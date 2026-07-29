@@ -1,10 +1,11 @@
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
+use std::process::{Command as ProcessCommand, Stdio};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use cortana::config::{Config, default_config_path};
+use cortana::config::{Config, SourceConfig, default_config_path};
 use cortana::connectors;
 use cortana::embed::{DeterministicEmbedder, Embedder, OpenAiEmbedder};
 use cortana::model::Document;
@@ -41,6 +42,13 @@ enum Command {
         source: String,
         #[arg(long, default_value = "default")]
         project: String,
+    },
+    /// Synchronize enabled sources declared in the configuration.
+    Sync {
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long, help = "Keep records missing from a completed source snapshot")]
+        no_reconcile: bool,
     },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
@@ -86,6 +94,19 @@ async fn main() -> Result<()> {
         }) => {
             let documents = connectors::filesystem_documents(&root, &source, &project)?;
             ingest_documents(&store, embedder.as_ref(), documents).await
+        }
+        Some(Command::Sync {
+            source,
+            no_reconcile,
+        }) => {
+            sync_configured_sources(
+                &config,
+                &store,
+                embedder.as_ref(),
+                source.as_deref(),
+                !no_reconcile,
+            )
+            .await
         }
         Some(Command::Search {
             query,
@@ -174,6 +195,10 @@ async fn ingest_documents(
     let mut changed = 0;
     let mut unchanged = 0;
     for document in documents {
+        if !store.needs_update(&document)? {
+            unchanged += 1;
+            continue;
+        }
         let texts = chunk(&document.content);
         let vectors = embedder.embed(&texts).await?;
         let chunks = texts.into_iter().zip(vectors).collect::<Vec<_>>();
@@ -185,6 +210,149 @@ async fn ingest_documents(
     }
     println!("ingested changed={changed} unchanged={unchanged}");
     Ok(())
+}
+
+async fn sync_configured_sources(
+    config: &Config,
+    store: &Store,
+    embedder: &dyn Embedder,
+    selected: Option<&str>,
+    reconcile: bool,
+) -> Result<()> {
+    let sources = config
+        .sources
+        .iter()
+        .filter(|source| source.enabled && selected.is_none_or(|name| source.name == name))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        !sources.is_empty(),
+        "no enabled configured sources matched the selection"
+    );
+    for source in sources {
+        let documents = source_documents(config, source)?;
+        let seen = documents
+            .iter()
+            .map(|document| document.source_id.clone())
+            .collect::<Vec<_>>();
+        let canonical_source = canonical_source(source);
+        ingest_documents(store, embedder, documents).await?;
+        let deleted = if reconcile {
+            store.reconcile(&canonical_source, &source.project, &seen)?
+        } else {
+            0
+        };
+        println!("synced source={} deleted={deleted}", source.name);
+    }
+    Ok(())
+}
+
+fn source_documents(config: &Config, source: &SourceConfig) -> Result<Vec<Document>> {
+    if source.kind == "filesystem" {
+        let root = source
+            .root
+            .as_ref()
+            .with_context(|| format!("source {} requires root", source.name))?;
+        let mut documents = connectors::filesystem_documents(
+            root,
+            source.source.as_deref().unwrap_or(&source.name),
+            &source.project,
+        )?;
+        normalize_documents(&mut documents, source);
+        return Ok(documents);
+    }
+    let mut command = if source.kind == "external" {
+        anyhow::ensure!(
+            !source.command.is_empty(),
+            "external source {} requires command",
+            source.name
+        );
+        source.command.clone()
+    } else {
+        let mut command = config.connectors.command.clone();
+        command.extend([
+            "--project".into(),
+            source.project.clone(),
+            source.kind.clone(),
+        ]);
+        connector_arguments(&mut command, source)?;
+        command
+    };
+    let executable = command.remove(0);
+    let output = ProcessCommand::new(&executable)
+        .args(&command)
+        .stdin(Stdio::null())
+        .output()
+        .with_context(|| format!("failed to run connector command {executable}"))?;
+    anyhow::ensure!(
+        output.status.success(),
+        "connector {} failed: {}",
+        source.name,
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+    let mut documents = String::from_utf8(output.stdout)?
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str(line).with_context(|| {
+                format!("connector {} emitted invalid Document JSONL", source.name)
+            })
+        })
+        .collect::<Result<Vec<Document>>>()?;
+    normalize_documents(&mut documents, source);
+    Ok(documents)
+}
+
+fn normalize_documents(documents: &mut [Document], source: &SourceConfig) {
+    let canonical = canonical_source(source);
+    for document in documents {
+        let connector_kind = document.source.clone();
+        document.source.clone_from(&canonical);
+        document.project.clone_from(&source.project);
+        if !document.metadata.is_object() {
+            document.metadata = serde_json::json!({});
+        }
+        let metadata = document
+            .metadata
+            .as_object_mut()
+            .expect("metadata was normalized to an object");
+        metadata
+            .entry("connector_kind")
+            .or_insert(serde_json::Value::String(connector_kind));
+        metadata
+            .entry("configured_source")
+            .or_insert(serde_json::Value::String(source.name.clone()));
+    }
+}
+
+fn connector_arguments(command: &mut Vec<String>, source: &SourceConfig) -> Result<()> {
+    if let Some(root) = &source.root {
+        command.extend(["--root".into(), root.display().to_string()]);
+    }
+    for channel in &source.channels {
+        command.extend(["--channel".into(), channel.clone()]);
+    }
+    if let Some(token_env) = &source.token_env {
+        command.extend(["--token-env".into(), token_env.clone()]);
+    }
+    if let Some(token) = &source.token {
+        command.extend(["--token".into(), token.display().to_string()]);
+    }
+    if let Some(query) = &source.query {
+        command.extend(["--query".into(), query.clone()]);
+    }
+    for label in &source.labels {
+        command.extend(["--label".into(), label.clone()]);
+    }
+    anyhow::ensure!(
+        !matches!(source.kind.as_str(), "slack" | "discord") || !source.channels.is_empty(),
+        "source {} requires at least one channel",
+        source.name
+    );
+    Ok(())
+}
+
+fn canonical_source(source: &SourceConfig) -> String {
+    source.source.as_deref().unwrap_or(&source.name).into()
 }
 
 async fn search(
