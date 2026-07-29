@@ -1,0 +1,12 @@
+[Unit]
+Description=Back up and verify Cortana
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cortana --config %h/.config/cortana/config.toml backup --keep 14
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/cortana

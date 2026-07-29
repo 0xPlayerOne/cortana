@@ -1,0 +1,13 @@
+[Unit]
+Description=Synchronize Cortana knowledge sources
+After=cortana-embedding.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cortana --config %h/.config/cortana/config.toml sync
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/cortana
