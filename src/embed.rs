@@ -73,7 +73,14 @@ impl Embedder for CachedEmbedder {
                 "embedding provider returned an unexpected vector count"
             );
             for (text, vector) in unique.iter().zip(vectors) {
-                self.store.cache_embedding(&fingerprint, text, &vector)?;
+                if !self
+                    .store
+                    .cache_embedding_if_available(&fingerprint, text, &vector)?
+                {
+                    tracing::warn!(
+                        "embedding cache write skipped because another index writer is active"
+                    );
+                }
                 for index in &missing[text.as_str()] {
                     output[*index] = Some(vector.clone());
                 }

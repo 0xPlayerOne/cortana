@@ -13,6 +13,8 @@ use sha2::{Digest, Sha256};
 
 use crate::model::{Document, StoredChunk};
 
+const DATABASE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Clone)]
 pub struct Store {
     connection: Arc<Mutex<Connection>>,
@@ -43,7 +45,7 @@ impl Store {
             std::fs::create_dir_all(parent)?;
         }
         let mut connection = Connection::open(path)?;
-        connection.busy_timeout(Duration::from_secs(5))?;
+        connection.busy_timeout(DATABASE_BUSY_TIMEOUT)?;
         connection.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA foreign_keys=ON;
@@ -396,11 +398,13 @@ impl Store {
             )
             .optional()?;
         if value.is_some() {
-            connection.execute(
-                "UPDATE embedding_cache SET hits=hits+1,last_used_at=?3
-                 WHERE fingerprint=?1 AND content_hash=?2",
-                params![fingerprint, hash, Utc::now().to_rfc3339()],
-            )?;
+            optional_write(&connection, || {
+                connection.execute(
+                    "UPDATE embedding_cache SET hits=hits+1,last_used_at=?3
+                     WHERE fingerprint=?1 AND content_hash=?2",
+                    params![fingerprint, hash, Utc::now().to_rfc3339()],
+                )
+            })?;
         }
         value
             .map(|(blob, json)| {
@@ -435,6 +439,33 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn cache_embedding_if_available(
+        &self,
+        fingerprint: &str,
+        content: &str,
+        embedding: &[f32],
+    ) -> Result<bool> {
+        let now = Utc::now().to_rfc3339();
+        let connection = self.connection.lock().expect("store lock poisoned");
+        optional_write(&connection, || {
+            connection.execute(
+                "INSERT INTO embedding_cache(
+                   fingerprint,content_hash,embedding_json,embedding_blob,hits,created_at,last_used_at)
+                 VALUES(?1,?2,'[]',?3,0,?4,?4)
+                 ON CONFLICT(fingerprint,content_hash) DO UPDATE SET
+                   embedding_json='[]',embedding_blob=excluded.embedding_blob,
+                   last_used_at=excluded.last_used_at",
+                params![
+                    fingerprint,
+                    hex_digest(content.as_bytes()),
+                    encode_embedding(embedding),
+                    now
+                ],
+            )
+        })
+        .map(|result| result.is_some())
     }
 
     pub fn prune_embedding_cache(&self, max_entries: usize) -> Result<usize> {
@@ -512,6 +543,27 @@ impl Store {
         drop(destination);
         secure_database_files(database)?;
         verify_database(database)
+    }
+}
+
+fn optional_write<T>(
+    connection: &Connection,
+    operation: impl FnOnce() -> rusqlite::Result<T>,
+) -> Result<Option<T>> {
+    connection.busy_timeout(Duration::ZERO)?;
+    let result = operation();
+    connection.busy_timeout(DATABASE_BUSY_TIMEOUT)?;
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(error)
+            if matches!(
+                error.sqlite_error_code(),
+                Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked)
+            ) =>
+        {
+            Ok(None)
+        }
+        Err(error) => Err(error.into()),
     }
 }
 
@@ -836,6 +888,39 @@ mod tests {
         let stats = store.stats().expect("stats");
         assert_eq!(stats.embedding_cache_entries, 1);
         assert_eq!(stats.embedding_cache_hits, 1);
+    }
+
+    #[test]
+    fn optional_cache_writes_do_not_block_readers_during_external_writes() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("store.sqlite3");
+        let store = Store::open(&path).expect("store");
+        store
+            .cache_embedding("model", "cached text", &[0.25, 0.75])
+            .expect("seed cache");
+        let blocker = Connection::open(&path).expect("blocking connection");
+        blocker
+            .execute_batch("PRAGMA journal_mode=WAL; BEGIN IMMEDIATE;")
+            .expect("hold writer lock");
+
+        assert_eq!(
+            store
+                .cached_embedding("model", "cached text")
+                .expect("cache read"),
+            Some(vec![0.25, 0.75])
+        );
+        assert!(
+            !store
+                .cache_embedding_if_available("model", "new text", &[0.5, 0.5])
+                .expect("best-effort cache write")
+        );
+
+        blocker.execute_batch("ROLLBACK").expect("release lock");
+        assert!(
+            store
+                .cache_embedding_if_available("model", "new text", &[0.5, 0.5])
+                .expect("cache write after lock")
+        );
     }
 
     #[test]
