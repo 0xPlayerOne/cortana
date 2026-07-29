@@ -90,12 +90,17 @@ pub fn search(
     let mut seen_documents = HashSet::new();
     Ok(ranked
         .into_iter()
-        .filter(|(chunk, _)| {
-            seen_documents.insert((chunk.source.as_str(), chunk.source_id.as_str()))
-        })
+        .filter(|(chunk, _)| seen_documents.insert(dedupe_key(chunk)))
         .take(limit)
         .map(|(chunk, score)| evidence(chunk, score, &semantic_ranks, &lexical_ranks))
         .collect())
+}
+
+fn dedupe_key(chunk: &StoredChunk) -> (&str, &str) {
+    (
+        chunk.source.as_str(),
+        chunk.uri.as_deref().unwrap_or(chunk.source_id.as_str()),
+    )
 }
 
 fn idf_overlap(query: &str, chunks: &[StoredChunk]) -> HashMap<String, f32> {
@@ -197,5 +202,17 @@ mod tests {
         let scores = idf_overlap("qwen embeddings", &chunks);
         assert!(scores["specific"] > scores["general"]);
         assert_eq!(scores["other"], 0.0);
+    }
+
+    #[test]
+    fn canonical_uri_deduplicates_source_records() {
+        let mut first = chunk("message-1", "First", "same thread");
+        first.source = "gmail".into();
+        first.uri = Some("https://mail.google.com/mail/u/0/#all/thread-1".into());
+        let mut second = chunk("message-2", "Second", "same thread");
+        second.source = "gmail".into();
+        second.uri.clone_from(&first.uri);
+
+        assert_eq!(dedupe_key(&first), dedupe_key(&second));
     }
 }
