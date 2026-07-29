@@ -6,7 +6,7 @@ codeql: auto
 dependency_review: auto
 package_manager: bun
 runtime_repository: 0xPlayerOne/code-foundry
-runtime_ref: v0.27.17
+runtime_ref: v0.30.3
 runner: ubuntu-latest
 unit_runner: ubuntu-slim
 ci_runner: ubuntu-latest
@@ -26,3 +26,9 @@ npm_publish: false
 license: agpl-3.0-or-later
 git_workflow: staging-release
 merge_strategy: rebase
+post_release: false
+post_release_workflow:
+post_release_mode: auto
+opencode_security: false
+sync_mode: overlay
+custom_workflows: preserve
