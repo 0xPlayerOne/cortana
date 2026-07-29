@@ -2,16 +2,14 @@
 
 ## [0.1.1](https://github.com/0xPlayerOne/cortana/compare/v0.1.0...v0.1.1) (2026-07-29)
 
-
 ### Bug Fixes
 
-* bound interactive retrieval latency ([e4e49ae](https://github.com/0xPlayerOne/cortana/commit/e4e49aecd5a94316b297f8ce7a57d1b9cfa4c872))
-
+- bound interactive retrieval latency ([e4e49ae](https://github.com/0xPlayerOne/cortana/commit/e4e49aecd5a94316b297f8ce7a57d1b9cfa4c872))
 
 ### Performance Improvements
 
-* bound oversized Drive exports ([16cba95](https://github.com/0xPlayerOne/cortana/commit/16cba9531b1d77d64a517bb3c016781406f6032c))
-* tighten Drive evidence budget ([bc155da](https://github.com/0xPlayerOne/cortana/commit/bc155da92a0d1c9531a976d9b7afaff96fcaca00))
+- bound oversized Drive exports ([16cba95](https://github.com/0xPlayerOne/cortana/commit/16cba9531b1d77d64a517bb3c016781406f6032c))
+- tighten Drive evidence budget ([bc155da](https://github.com/0xPlayerOne/cortana/commit/bc155da92a0d1c9531a976d9b7afaff96fcaca00))
 
 ## 0.1.0 (2026-07-29)
 

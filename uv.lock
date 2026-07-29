@@ -652,7 +652,7 @@ wheels = [
 
 [[package]]
 name = "cortana-brain"
-version = "0.1.0"
+version = "0.1.1" # x-release-please-version
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -687,10 +687,10 @@ provides-extras = ["ingestion", "hindsight"]
 [package.metadata.requires-dev]
 dev = [
     { name = "coverage", extras = ["toml"], specifier = ">=7.10,<8" },
-    { name = "mypy", specifier = ">=1.17,<2" },
+    { name = "mypy", specifier = ">=1.17,<3" },
     { name = "pytest", specifier = ">=9.0.3,<10" },
     { name = "pytest-asyncio", specifier = ">=1.1,<2" },
-    { name = "pytest-cov", specifier = ">=6.2,<7" },
+    { name = "pytest-cov", specifier = ">=6.2,<8" },
     { name = "ruff", specifier = ">=0.12,<1" },
 ]
 
