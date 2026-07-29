@@ -5,6 +5,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use cortana::config::{Config, default_config_path};
+use cortana::connectors;
 use cortana::embed::{DeterministicEmbedder, Embedder, OpenAiEmbedder};
 use cortana::model::Document;
 use cortana::retrieval;
@@ -32,6 +33,14 @@ enum Command {
     Ingest {
         #[arg(default_value = "-")]
         input: String,
+    },
+    /// Incrementally ingest a code, notes, transcript, or document tree.
+    SyncFiles {
+        root: PathBuf,
+        #[arg(long, default_value = "files")]
+        source: String,
+        #[arg(long, default_value = "default")]
+        project: String,
     },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
@@ -70,6 +79,14 @@ async fn main() -> Result<()> {
     match cli.command {
         Some(Command::Doctor) => doctor(&store, embedder.as_ref()).await,
         Some(Command::Ingest { input }) => ingest(&store, embedder.as_ref(), &input).await,
+        Some(Command::SyncFiles {
+            root,
+            source,
+            project,
+        }) => {
+            let documents = connectors::filesystem_documents(&root, &source, &project)?;
+            ingest_documents(&store, embedder.as_ref(), documents).await
+        }
         Some(Command::Search {
             query,
             project,
@@ -138,14 +155,25 @@ async fn ingest(store: &Store, embedder: &dyn Embedder, input: &str) -> Result<(
             std::fs::File::open(input).with_context(|| format!("failed to open {input}"))?,
         ))
     };
-    let mut changed = 0;
-    let mut unchanged = 0;
+    let mut documents = Vec::new();
     for line in reader.lines() {
         let line = line?;
         if line.trim().is_empty() {
             continue;
         }
-        let document: Document = serde_json::from_str(&line).context("invalid Document JSONL")?;
+        documents.push(serde_json::from_str(&line).context("invalid Document JSONL")?);
+    }
+    ingest_documents(store, embedder, documents).await
+}
+
+async fn ingest_documents(
+    store: &Store,
+    embedder: &dyn Embedder,
+    documents: Vec<Document>,
+) -> Result<()> {
+    let mut changed = 0;
+    let mut unchanged = 0;
+    for document in documents {
         let texts = chunk(&document.content);
         let vectors = embedder.embed(&texts).await?;
         let chunks = texts.into_iter().zip(vectors).collect::<Vec<_>>();
