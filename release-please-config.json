@@ -20,6 +20,10 @@
       "type": "json",
       "path": "bun.lock",
       "jsonpath": "$.workspaces['apps/web'].version"
+    },
+    {
+      "type": "generic",
+      "path": "src/cortana/__init__.py"
     }
   ],
   "changelog-sections": [
