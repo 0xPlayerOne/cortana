@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::{
+    context::{self as context_bundle, ContextBundle},
     embed::Embedder,
     model::Evidence,
     retrieval,
@@ -33,6 +34,17 @@ struct SearchRequest {
     limit: usize,
 }
 
+#[derive(Debug, Deserialize)]
+struct ContextRequest {
+    query: String,
+    project: Option<String>,
+    source: Option<String>,
+    #[serde(default = "default_limit")]
+    limit: usize,
+    #[serde(default = "default_context_tokens")]
+    max_tokens: usize,
+}
+
 #[derive(Debug, Serialize)]
 struct Health {
     status: &'static str,
@@ -50,6 +62,7 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(|| async { Json(Health { status: "ok" }) }))
         .route("/v1/status", get(status))
         .route("/v1/search", post(search))
+        .route("/v1/context", post(context))
         .with_state(state)
 }
 
@@ -70,21 +83,48 @@ async fn search(
     State(state): State<AppState>,
     Json(request): Json<SearchRequest>,
 ) -> Result<Json<Vec<Evidence>>, (StatusCode, String)> {
-    let vectors = state
-        .embedder
-        .embed(std::slice::from_ref(&request.query))
-        .await
-        .map_err(internal_error)?;
-    retrieval::search(
+    validate_query(&request.query)?;
+    retrieval::retrieve(
         &state.store,
+        &state.embedder,
         &request.query,
-        &vectors[0],
         request.project.as_deref(),
         request.source.as_deref(),
         request.limit.min(50),
     )
+    .await
     .map(Json)
     .map_err(internal_error)
+}
+
+async fn context(
+    State(state): State<AppState>,
+    Json(request): Json<ContextRequest>,
+) -> Result<Json<ContextBundle>, (StatusCode, String)> {
+    validate_query(&request.query)?;
+    let evidence = retrieval::retrieve(
+        &state.store,
+        &state.embedder,
+        &request.query,
+        request.project.as_deref(),
+        request.source.as_deref(),
+        request.limit.min(50),
+    )
+    .await
+    .map_err(internal_error)?;
+    Ok(Json(context_bundle::build(
+        &request.query,
+        &evidence,
+        request.max_tokens,
+    )))
+}
+
+fn validate_query(query: &str) -> Result<(), (StatusCode, String)> {
+    if query.trim().is_empty() {
+        Err((StatusCode::BAD_REQUEST, "query must not be empty".into()))
+    } else {
+        Ok(())
+    }
 }
 
 fn internal_error(error: anyhow::Error) -> (StatusCode, String) {
@@ -93,6 +133,10 @@ fn internal_error(error: anyhow::Error) -> (StatusCode, String) {
 
 fn default_limit() -> usize {
     10
+}
+
+fn default_context_tokens() -> usize {
+    8_000
 }
 
 pub async fn serve(state: AppState, address: &str, web_dir: Option<&Path>) -> Result<()> {

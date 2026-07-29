@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use cortana::config::{Config, SourceConfig, default_config_path};
 use cortana::connectors;
-use cortana::embed::{DeterministicEmbedder, Embedder, OpenAiEmbedder};
+use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbedder};
 use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::Store;
@@ -81,12 +81,18 @@ async fn main() -> Result<()> {
     }
     let config = Config::load(cli.config.as_deref())?;
     let store = Store::open(&config.database_path())?;
-    let embedder: Arc<dyn Embedder> = if cli.offline {
+    let cache_max_entries = config.embedding.cache_max_entries;
+    let base_embedder: Arc<dyn Embedder> = if cli.offline {
         Arc::new(DeterministicEmbedder::new(256))
     } else {
         Arc::new(OpenAiEmbedder::new(config.embedding.clone()))
     };
-    store.ensure_fingerprint(&embedder.fingerprint())?;
+    store.ensure_fingerprint(&base_embedder.fingerprint())?;
+    let embedder: Arc<dyn Embedder> = Arc::new(CachedEmbedder::with_limit(
+        store.clone(),
+        base_embedder,
+        cache_max_entries,
+    ));
 
     match cli.command {
         Some(Command::Doctor) => doctor(&store, embedder.as_ref()).await,
@@ -210,6 +216,7 @@ async fn ingest_documents(
     let mut unchanged = 0;
     for document in documents {
         if !store.needs_update(&document)? {
+            store.refresh_timestamp(&document)?;
             unchanged += 1;
             continue;
         }
