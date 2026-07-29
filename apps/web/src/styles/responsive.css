@@ -1,0 +1,134 @@
+@media (max-width: 1180px) {
+  .shell {
+    grid-template:
+      'rail title title' 56px
+      'rail sources workspace' minmax(0, 1fr)
+      'rail status status' 40px /
+      64px 250px minmax(470px, 1fr);
+  }
+
+  .context-panel {
+    position: fixed;
+    z-index: 20;
+    top: 56px;
+    right: 0;
+    bottom: 40px;
+    width: min(390px, 92vw);
+    box-shadow: -12px 0 30px rgb(0 0 0 / 30%);
+    transform: translateX(102%);
+    transition: transform 180ms ease;
+  }
+
+  .context-panel.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-button {
+    display: grid !important;
+  }
+}
+
+@media (max-width: 780px) {
+  .shell {
+    grid-template:
+      'title' 56px
+      'workspace' minmax(0, 1fr)
+      'status' 36px /
+      minmax(0, 1fr);
+  }
+
+  .rail {
+    display: none;
+  }
+
+  .titlebar {
+    padding: 0 9px;
+    gap: 8px;
+  }
+
+  .history-buttons {
+    display: none;
+  }
+
+  .search-form {
+    width: auto;
+    margin: 0;
+    flex: 1;
+  }
+
+  .search-form kbd,
+  .title-actions > button:first-child,
+  .title-actions > button:nth-child(2) {
+    display: none;
+  }
+
+  .source-panel {
+    position: fixed;
+    z-index: 30;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    display: block;
+    width: min(310px, 90vw);
+    box-shadow: 12px 0 30px rgb(0 0 0 / 35%);
+    transform: translateX(-102%);
+    transition: transform 180ms ease;
+  }
+
+  .source-panel.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-close {
+    display: grid !important;
+  }
+
+  .workspace-tabs {
+    height: 47px;
+    padding: 0 5px;
+    gap: 0;
+  }
+
+  .workspace-tabs button {
+    min-width: 0;
+    flex: 1;
+    font-size: 11px;
+  }
+
+  .document-grid {
+    display: block;
+    padding: 25px 22px 60px;
+  }
+
+  .document-outline {
+    display: none;
+  }
+
+  .breadcrumbs {
+    padding: 0 17px;
+  }
+
+  .breadcrumbs > span {
+    display: none;
+  }
+
+  .answer-view,
+  .timeline-view {
+    padding: 35px 23px 70px;
+  }
+
+  .graph-view > button {
+    --distance: min(31vw, 170px);
+    width: 115px;
+  }
+
+  .statusbar {
+    padding: 0 12px;
+    gap: 14px;
+  }
+
+  .statusbar > span:nth-child(2),
+  .statusbar > span:last-child {
+    display: none;
+  }
+}
