@@ -635,9 +635,17 @@ async fn sync_configured_sources(
         println!("no enabled configured sources matched the selection");
         return Ok(());
     }
+    let mut failures = Vec::new();
     for source in sources {
         let canonical_source = canonical_source(source);
-        let seen = sync_source_documents(config, store, embedder, source).await?;
+        let seen = match sync_source_documents(config, store, embedder, source).await {
+            Ok(seen) => seen,
+            Err(error) => {
+                eprintln!("source sync failed: source={} error={error:#}", source.name);
+                failures.push(source.name.clone());
+                continue;
+            }
+        };
         let deleted = if reconcile {
             store.reconcile(&canonical_source, &source.project, &seen)?
         } else {
@@ -645,6 +653,11 @@ async fn sync_configured_sources(
         };
         println!("synced source={} deleted={deleted}", source.name);
     }
+    anyhow::ensure!(
+        failures.is_empty(),
+        "source sync failed for: {}",
+        failures.join(", ")
+    );
     Ok(())
 }
 

@@ -99,6 +99,51 @@ fn configured_external_source_sync_is_incremental() {
 }
 
 #[test]
+fn source_failure_does_not_block_later_sources() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let input = directory.path().join("healthy.jsonl");
+    fs::write(
+        &input,
+        r#"{"source":"upstream","source_id":"one","title":"Healthy","content":"Indexed after a failed source.","project":"demo"}"#,
+    )
+    .expect("write healthy source");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n\
+             [[sources]]\nname = \"broken\"\nkind = \"external\"\nproject = \"demo\"\n\
+             command = [\"/usr/bin/false\"]\n\
+             [[sources]]\nname = \"healthy\"\nkind = \"external\"\nproject = \"demo\"\n\
+             command = [\"/bin/cat\", {input:?}]\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .arg("sync")
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("synced source=healthy"))
+        .stderr(predicate::str::contains(
+            "source sync failed: source=broken",
+        ));
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["search", "indexed after", "--project", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"title\": \"Healthy\""));
+}
+
+#[test]
 fn backup_verify_and_restore_round_trip() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");
