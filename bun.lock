@@ -22,7 +22,7 @@
     },
     "apps/web": {
       "name": "@cortana/web",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "lucide-react": "^0.536.0",
         "react": "^19.1.1",
