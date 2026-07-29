@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
+use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::model::{Document, StoredChunk};
@@ -11,6 +12,23 @@ use crate::model::{Document, StoredChunk};
 #[derive(Clone)]
 pub struct Store {
     connection: Arc<Mutex<Connection>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StoreStats {
+    pub documents: i64,
+    pub chunks: i64,
+    pub embedding_fingerprint: Option<String>,
+    pub sources: Vec<SourceStats>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourceStats {
+    pub source: String,
+    pub project: String,
+    pub documents: i64,
+    pub chunks: i64,
+    pub latest_updated_at: Option<String>,
 }
 
 impl Store {
@@ -195,6 +213,42 @@ impl Store {
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
     }
+
+    pub fn stats(&self) -> Result<StoreStats> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let documents =
+            connection.query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))?;
+        let chunks = connection.query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
+        let embedding_fingerprint = connection
+            .query_row(
+                "SELECT value FROM meta WHERE key='embedding_fingerprint'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let mut statement = connection.prepare(
+            "SELECT d.source,d.project,COUNT(DISTINCT d.id),COUNT(c.id),MAX(d.updated_at)
+             FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
+             GROUP BY d.source,d.project ORDER BY d.project,d.source",
+        )?;
+        let sources = statement
+            .query_map([], |row| {
+                Ok(SourceStats {
+                    source: row.get(0)?,
+                    project: row.get(1)?,
+                    documents: row.get(2)?,
+                    chunks: row.get(3)?,
+                    latest_updated_at: row.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(StoreStats {
+            documents,
+            chunks,
+            embedding_fingerprint,
+            sources,
+        })
+    }
 }
 
 fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
@@ -284,5 +338,9 @@ mod tests {
                 .len(),
             1
         );
+        let stats = store.stats().expect("stats");
+        assert_eq!(stats.documents, 1);
+        assert_eq!(stats.chunks, 1);
+        assert_eq!(stats.sources[0].source, "test");
     }
 }

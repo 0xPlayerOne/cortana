@@ -1,0 +1,7 @@
+apps/web/dist
+coverage
+target
+uv.lock
+Cargo.lock
+docs/design/*.png
+.code-foundry

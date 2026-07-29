@@ -42,7 +42,17 @@ injection.
 External connectors must emit one JSON object per line:
 
 ```json
-{"source":"upstream","source_id":"stable-123","title":"Example","content":"Evidence body","uri":"https://example.test/item/123","updated_at":"2026-07-29T12:00:00Z","project":"work","acl":[],"metadata":{}}
+{
+  "source": "upstream",
+  "source_id": "stable-123",
+  "title": "Example",
+  "content": "Evidence body",
+  "uri": "https://example.test/item/123",
+  "updated_at": "2026-07-29T12:00:00Z",
+  "project": "work",
+  "acl": [],
+  "metadata": {}
+}
 ```
 
 `source_id` must remain stable across runs. `content` must be plain searchable text. Put

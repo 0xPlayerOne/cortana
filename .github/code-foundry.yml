@@ -1,10 +1,10 @@
 version: 1
 profile: application
-languages: rust,python
+languages: rust,python,typescript
 features: all
 codeql: auto
 dependency_review: auto
-package_manager: none
+package_manager: bun
 runtime_repository: 0xPlayerOne/code-foundry
 runtime_ref: v0.27.15
 runner: ubuntu-latest
