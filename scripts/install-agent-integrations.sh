@@ -5,7 +5,7 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 skill_source="$repo_dir/skills/cortana"
 binary_path="${CORTANA_BINARY:-${CORTANA_INSTALL_PREFIX:-$HOME/.local}/bin/cortana}"
 config_path="${CORTANA_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/cortana/config.toml}"
-skill_roots="${CORTANA_SKILL_ROOTS:-$HOME/.codex/skills:$HOME/.hermes/skills}"
+skill_roots="${CORTANA_SKILL_ROOTS:-$HOME/.codex/skills:$HOME/.hermes/skills:$HOME/.config/opencode/skills:$HOME/.agents/skills}"
 
 if [[ ! -x "$binary_path" ]]; then
   echo "Cortana binary is not executable: $binary_path" >&2

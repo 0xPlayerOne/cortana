@@ -22,7 +22,8 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 # Reproducible per-user install (Rust binary, workspace, connector venv, and macOS services).
 ./scripts/install-local.sh
 
-# Also install the portable Cortana skill for Codex and Hermes.
+# Also install the portable Cortana skill for Codex, Hermes, OpenCode, and
+# agents that support the shared ~/.agents/skills convention.
 CORTANA_INSTALL_AGENT_INTEGRATIONS=1 ./scripts/install-local.sh
 
 # Or run directly from a checkout.
