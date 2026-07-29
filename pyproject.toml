@@ -9,10 +9,10 @@ authors = [{ name = "0xPlayerOne" }]
 dependencies = [
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
-  "mcp>=1.13,<2",
+  "mcp>=1.13,<3",
   "pydantic-settings>=2.10,<3",
   "pydantic>=2.11,<3",
-  "structlog>=25.4,<26",
+  "structlog>=25.4,<27",
   "typer>=0.16,<1",
   "uvicorn[standard]>=0.35,<1",
 ]
@@ -27,17 +27,17 @@ ingestion = [
   "google-api-python-client>=2.176,<3",
   "google-auth-oauthlib>=1.2,<2",
   "markdownify>=1.1,<2",
-  "pypdf>=5.8,<6",
+  "pypdf>=5.8,<7",
 ]
 hindsight = ["hindsight-api>=0.8.5,<0.9"]
 
 [dependency-groups]
 dev = [
   "coverage[toml]>=7.10,<8",
-  "mypy>=1.17,<2",
-  "pytest>=8.4,<9",
+  "mypy>=1.17,<3",
+  "pytest>=8.4,<10",
   "pytest-asyncio>=1.1,<2",
-  "pytest-cov>=6.2,<7",
+  "pytest-cov>=6.2,<8",
   "ruff>=0.12,<1",
 ]
 
