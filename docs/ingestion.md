@@ -42,6 +42,11 @@ reconciliation, but Drive content is downloaded only when its modification times
 immutable Gmail message bodies are downloaded only once. The caches are disposable and can always
 be rebuilt from Google.
 
+Discord also keeps an owner-only derived cache. After the first complete channel snapshot,
+scheduled runs request only messages after the newest cached snowflake. A complete refresh runs
+daily to capture edits and deletions, while every emitted snapshot remains complete for safe
+reconciliation.
+
 ## Credentials
 
 - Slack and Discord tokens are read only from the configured environment-variable name.
