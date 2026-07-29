@@ -554,15 +554,21 @@ async fn ingest(store: &Store, embedder: &dyn Embedder, input: &str) -> Result<(
             std::fs::File::open(input).with_context(|| format!("failed to open {input}"))?,
         ))
     };
-    let mut documents = Vec::new();
+    let mut documents = Vec::with_capacity(64);
     for line in reader.lines() {
         let line = line?;
         if line.trim().is_empty() {
             continue;
         }
         documents.push(serde_json::from_str(&line).context("invalid Document JSONL")?);
+        if documents.len() == 64 {
+            ingest_documents(store, embedder, std::mem::take(&mut documents)).await?;
+        }
     }
-    ingest_documents(store, embedder, documents).await
+    if !documents.is_empty() {
+        ingest_documents(store, embedder, documents).await?;
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]
