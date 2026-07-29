@@ -44,6 +44,11 @@ be rebuilt from Google. First-time Drive content and Gmail detail retrieval use 
 eight-worker pools; cache writes and emitted documents remain ordered on the main connector
 thread.
 
+Gmail tolerates an isolated message that disappears or becomes inaccessible between list and
+detail requests. If more than 10% of an uncached page (with a minimum allowance of ten messages)
+is denied, the connector fails the snapshot so Cortana cannot reconcile against a broad permission
+failure.
+
 Discord also keeps an owner-only derived cache. After the first complete channel snapshot,
 scheduled runs request only messages after the newest cached snowflake. A complete refresh runs
 daily to capture edits and deletions, while every emitted snapshot remains complete for safe
