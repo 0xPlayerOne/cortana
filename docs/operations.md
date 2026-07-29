@@ -22,6 +22,11 @@ best-effort while another process owns SQLite's writer lock; Cortana serves the 
 instead of failing a request for cache telemetry. Canonical ingestion writes remain strict and
 use SQLite's bounded busy timeout.
 
+Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
+queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
+evidence; returned rows have no `semantic_rank`, and a warning records the degraded mode. Cached
+query embeddings still provide normal hybrid retrieval without touching the provider.
+
 ## Backup and recovery
 
 `cortana backup` creates a consistent online SQLite snapshot with `VACUUM INTO`, runs a full
