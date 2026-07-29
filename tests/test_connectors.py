@@ -360,6 +360,43 @@ def test_google_gmail_decodes_message_body(tmp_path: Path) -> None:
     assert documents[0].metadata["thread_id"] == "t1"
 
 
+def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+    cache = tmp_path / "cache"
+    detail_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal detail_requests
+        if request.url.path.endswith("/messages"):
+            return response({"messages": [{"id": "m1"}]}, request=request)
+        detail_requests += 1
+        return response(
+            {
+                "id": "m1",
+                "threadId": "t1",
+                "internalDate": "1700000000000",
+                "payload": {
+                    "headers": [{"name": "Subject", "value": "Cached"}],
+                    "mimeType": "text/plain",
+                    "body": {
+                        "data": base64.urlsafe_b64encode(b"Download once").decode(),
+                    },
+                },
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = list(fetch_gmail(token, "work", client=client, cache_dir=cache))
+    second = list(fetch_gmail(token, "work", client=client, cache_dir=cache))
+
+    assert first == second
+    assert detail_requests == 1
+    assert (cache / "gmail.sqlite3").stat().st_mode & 0o777 == 0o600
+    assert cache.stat().st_mode & 0o777 == 0o700
+
+
 def test_google_calendar_normalizes_events(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     token.write_text('{"token":"access"}', encoding="utf-8")

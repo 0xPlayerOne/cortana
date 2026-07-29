@@ -18,6 +18,7 @@ from .model import Document, emit
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="python -m cortana.connectors")
     root.add_argument("--project", default="default")
+    root.add_argument("--cache-dir", type=Path)
     commands = root.add_subparsers(dest="connector", required=True)
 
     commands.add_parser("apple-notes")
@@ -73,7 +74,13 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
     if arguments.connector == "google-drive":
         return fetch_drive(token_path, arguments.project, arguments.query)
     if arguments.connector == "gmail":
-        return fetch_gmail(token_path, arguments.project, arguments.query, arguments.labels)
+        return fetch_gmail(
+            token_path,
+            arguments.project,
+            arguments.query,
+            arguments.labels,
+            cache_dir=arguments.cache_dir,
+        )
     if arguments.connector == "google-calendar":
         return fetch_calendar(token_path, arguments.project, arguments.query)
     raise RuntimeError(f"unsupported connector: {arguments.connector}")
