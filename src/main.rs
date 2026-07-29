@@ -14,6 +14,7 @@ use cortana::store::Store;
 use cortana::{api, mcp, migration, service, supervisor};
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
+use serde::Deserialize;
 
 // Leave half of the default local TEI permits available for interactive agents.
 const EMBEDDING_REQUEST_SIZE: usize = 8;
@@ -80,6 +81,16 @@ enum Command {
     Ingest {
         #[arg(default_value = "-")]
         input: String,
+    },
+    /// Import trusted, pre-embedded Document records without calling an embedding provider.
+    ImportEmbeddings {
+        #[arg(default_value = "-")]
+        input: String,
+        #[arg(
+            long,
+            help = "Keep imported records absent from the completed input snapshot"
+        )]
+        no_reconcile: bool,
     },
     /// Incrementally ingest a code, notes, transcript, or document tree.
     SyncFiles {
@@ -259,6 +270,20 @@ async fn main() -> Result<()> {
             unreachable!()
         }
         Some(Command::Ingest { input }) => ingest(&store, embedder.as_ref(), &input).await,
+        Some(Command::ImportEmbeddings {
+            input,
+            no_reconcile,
+        }) => {
+            let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+            import_embeddings(
+                &store,
+                embedder.as_ref(),
+                &input,
+                config.embedding.dimension,
+                config.embedding.cache_max_entries,
+                !no_reconcile,
+            )
+        }
         Some(Command::SyncFiles {
             root,
             source,
@@ -538,6 +563,102 @@ async fn ingest(store: &Store, embedder: &dyn Embedder, input: &str) -> Result<(
         documents.push(serde_json::from_str(&line).context("invalid Document JSONL")?);
     }
     ingest_documents(store, embedder, documents).await
+}
+
+#[derive(Deserialize)]
+struct EmbeddedImportRecord {
+    embedding_fingerprint: String,
+    document: Document,
+    chunks: Vec<EmbeddedImportChunk>,
+}
+
+#[derive(Deserialize)]
+struct EmbeddedImportChunk {
+    content: String,
+    embedding: Vec<f32>,
+}
+
+fn import_embeddings(
+    store: &Store,
+    embedder: &dyn Embedder,
+    input: &str,
+    dimension: usize,
+    cache_max_entries: usize,
+    reconcile: bool,
+) -> Result<()> {
+    let reader: Box<dyn BufRead> = if input == "-" {
+        Box::new(std::io::BufReader::new(std::io::stdin()))
+    } else {
+        Box::new(std::io::BufReader::new(
+            std::fs::File::open(input).with_context(|| format!("failed to open {input}"))?,
+        ))
+    };
+    let expected_fingerprint = embedder.fingerprint();
+    let mut imported = 0_usize;
+    let mut unchanged = 0_usize;
+    let mut seen = std::collections::HashMap::<(String, String), Vec<String>>::new();
+    for (line_number, line) in reader.lines().enumerate() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let record: EmbeddedImportRecord = serde_json::from_str(&line)
+            .with_context(|| format!("invalid embedded JSONL at line {}", line_number + 1))?;
+        anyhow::ensure!(
+            record.embedding_fingerprint == expected_fingerprint,
+            "embedding fingerprint mismatch at line {}: expected {}",
+            line_number + 1,
+            expected_fingerprint
+        );
+        anyhow::ensure!(
+            !record.chunks.is_empty(),
+            "embedded record has no chunks at line {}",
+            line_number + 1
+        );
+        let chunks = record
+            .chunks
+            .into_iter()
+            .map(|chunk| {
+                anyhow::ensure!(
+                    !chunk.content.trim().is_empty(),
+                    "embedded record has an empty chunk at line {}",
+                    line_number + 1
+                );
+                anyhow::ensure!(
+                    chunk.embedding.len() == dimension,
+                    "embedding dimension mismatch at line {}: expected {}",
+                    line_number + 1,
+                    dimension
+                );
+                store.cache_embedding(&expected_fingerprint, &chunk.content, &chunk.embedding)?;
+                Ok((chunk.content, chunk.embedding))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let key = (
+            record.document.source.clone(),
+            record.document.project.clone(),
+        );
+        seen.entry(key)
+            .or_default()
+            .push(record.document.source_id.clone());
+        if store.upsert(&record.document, &chunks)? {
+            imported += 1;
+        } else {
+            unchanged += 1;
+        }
+        if (imported + unchanged).is_multiple_of(1_000) {
+            eprintln!("imported embedded records: changed={imported} unchanged={unchanged}");
+        }
+    }
+    let mut deleted = 0_usize;
+    if reconcile {
+        for ((source, project), source_ids) in seen {
+            deleted += store.reconcile(&source, &project, &source_ids)?;
+        }
+    }
+    store.prune_embedding_cache(cache_max_entries)?;
+    println!("imported embeddings changed={imported} unchanged={unchanged} deleted={deleted}");
+    Ok(())
 }
 
 async fn ingest_documents(

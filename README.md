@@ -71,8 +71,8 @@ telemetry, backup, restore, and Linux systemd units.
 
 Cortana can copy only reusable Google OAuth tokens and supported chat tokens from Hermes, lock
 every migrated credential to mode `0600`, and generate equivalent source configuration. Existing
-Chroma and Hindsight indexes are reported but deliberately retained until Cortana has completed
-and verified a fresh sync:
+Chroma and Hindsight indexes are reported and retained until Cortana has imported or rebuilt and
+verified their data:
 
 ```bash
 cortana migrate-hermes \
@@ -81,6 +81,19 @@ cortana migrate-hermes \
 cortana doctor
 cortana sync
 ```
+
+When the legacy Chroma collections use the configured embedding fingerprint, migrate their
+existing vectors without an expensive re-embedding pass:
+
+```bash
+"$HOME/.hermes/code-index-venv/bin/python" scripts/export_chroma.py \
+  --chroma-dir "$HOME/.hermes/code-index/chroma" |
+  cortana import-embeddings -
+```
+
+The import is streaming, validates every vector's model fingerprint and dimension, seeds the
+shared embedding cache, and reconciles only after the complete input is read. A truncated or
+invalid export therefore cannot delete the prior imported snapshot.
 
 Migration refuses to replace an existing Cortana configuration unless `--force` is explicit. It
 never prints credential values and recognizes only `DISCORD_BOT_TOKEN` and `SLACK_BOT_TOKEN` from
