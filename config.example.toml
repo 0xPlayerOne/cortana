@@ -13,6 +13,8 @@ model = "Qwen/Qwen3-Embedding-0.6B"
 dimension = 1024
 # Least-recently-used vectors beyond this count are pruned after a cache write.
 cache_max_entries = 250000
+# Bounds a wedged local router or cloud request before the retry policy takes over.
+request_timeout_seconds = 180
 # api_key_env = "CORTANA_EMBEDDING_API_KEY"
 
 [embedding.service]
