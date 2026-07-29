@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
-use reqwest::Client;
+use reqwest::{Client, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -128,14 +129,45 @@ struct EmbedItem {
 impl Embedder for OpenAiEmbedder {
     async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
         let url = format!("{}/embeddings", self.config.base_url.trim_end_matches('/'));
-        let mut request = self.client.post(url).json(&EmbedRequest {
-            model: &self.config.model,
-            input,
-        });
-        if let Some(key) = &self.api_key {
-            request = request.bearer_auth(key);
+        let mut response = None;
+        for attempt in 0..8 {
+            let mut request = self.client.post(&url).json(&EmbedRequest {
+                model: &self.config.model,
+                input,
+            });
+            if let Some(key) = &self.api_key {
+                request = request.bearer_auth(key);
+            }
+            match request.send().await {
+                Ok(candidate) if is_retryable(candidate.status()) && attempt < 7 => {
+                    let delay = retry_delay(&candidate, attempt);
+                    tracing::warn!(
+                        status = %candidate.status(),
+                        attempt = attempt + 1,
+                        delay_ms = delay.as_millis(),
+                        "embedding provider asked Cortana to retry"
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+                Ok(candidate) => {
+                    response = Some(candidate);
+                    break;
+                }
+                Err(error) if (error.is_connect() || error.is_timeout()) && attempt < 7 => {
+                    let delay = exponential_delay(attempt);
+                    tracing::warn!(
+                        attempt = attempt + 1,
+                        delay_ms = delay.as_millis(),
+                        "embedding provider connection failed; retrying"
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+                Err(error) => return Err(error.into()),
+            }
         }
-        let response = request.send().await?.error_for_status()?;
+        let response = response
+            .context("embedding provider did not return a response after bounded retries")?
+            .error_for_status()?;
         let vectors = response.json::<EmbedResponse>().await?.data;
         if vectors.len() != input.len()
             || vectors
@@ -150,6 +182,32 @@ impl Embedder for OpenAiEmbedder {
     fn fingerprint(&self) -> String {
         format!("{}:{}", self.config.model, self.config.dimension)
     }
+}
+
+fn is_retryable(status: StatusCode) -> bool {
+    status == StatusCode::TOO_MANY_REQUESTS
+        || matches!(
+            status,
+            StatusCode::INTERNAL_SERVER_ERROR
+                | StatusCode::BAD_GATEWAY
+                | StatusCode::SERVICE_UNAVAILABLE
+                | StatusCode::GATEWAY_TIMEOUT
+        )
+}
+
+fn retry_delay(response: &reqwest::Response, attempt: usize) -> Duration {
+    response
+        .headers()
+        .get(RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<f64>().ok())
+        .filter(|seconds| seconds.is_finite())
+        .map(|seconds| Duration::from_secs_f64(seconds.clamp(0.0, 30.0)))
+        .unwrap_or_else(|| exponential_delay(attempt))
+}
+
+fn exponential_delay(attempt: usize) -> Duration {
+    Duration::from_secs(1_u64 << attempt.min(5))
 }
 
 #[derive(Clone)]
@@ -240,5 +298,14 @@ mod tests {
         let stats = store.stats().expect("cache stats");
         assert_eq!(stats.embedding_cache_entries, 2);
         assert_eq!(stats.embedding_cache_hits, 3);
+    }
+
+    #[test]
+    fn embedding_retry_policy_is_bounded_and_transient_only() {
+        assert!(is_retryable(StatusCode::TOO_MANY_REQUESTS));
+        assert!(is_retryable(StatusCode::SERVICE_UNAVAILABLE));
+        assert!(!is_retryable(StatusCode::UNAUTHORIZED));
+        assert_eq!(exponential_delay(0), Duration::from_secs(1));
+        assert_eq!(exponential_delay(10), Duration::from_secs(32));
     }
 }
