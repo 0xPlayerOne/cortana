@@ -402,6 +402,50 @@ def test_google_drive_reuses_content_until_modified(tmp_path: Path) -> None:
     assert (cache / "drive.sqlite3").stat().st_mode & 0o777 == 0o600
 
 
+def test_google_drive_isolates_content_failure_and_uses_stale_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+    cache = tmp_path / "cache"
+    modified_time = "2026-07-29T12:00:00Z"
+    fail = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response(
+            {
+                "files": [
+                    {
+                        "id": "doc1",
+                        "name": "Roadmap",
+                        "mimeType": "application/vnd.google-apps.document",
+                        "modifiedTime": modified_time,
+                    }
+                ]
+            },
+            request=request,
+        )
+
+    def content(_session: GoogleSession, _item: dict[str, Any]) -> str:
+        if fail:
+            raise ValueError("sensitive provider detail")
+        return "Last known good content"
+
+    monkeypatch.setattr(google, "_drive_content", content)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = list(fetch_drive(token, "work", client=client, cache_dir=cache))
+    modified_time = "2026-07-29T13:00:00Z"
+    fail = True
+    second = list(fetch_drive(token, "work", client=client, cache_dir=cache))
+
+    assert second[0].content == first[0].content
+    assert first[0].metadata["content_stale"] is False
+    assert second[0].metadata["content_stale"] is True
+    diagnostic = capsys.readouterr().err
+    assert "error=ValueError using_stale_cache=True" in diagnostic
+    assert "sensitive provider detail" not in diagnostic
+
+
 def test_google_gmail_decodes_message_body(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     token.write_text('{"token":"access"}', encoding="utf-8")
