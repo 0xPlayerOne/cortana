@@ -13,7 +13,7 @@ import httpx
 import pytest
 
 from cortana.connectors import __main__ as connector_cli
-from cortana.connectors import apple_notes, buzz, chat
+from cortana.connectors import apple_notes, buzz, chat, google
 from cortana.connectors.__main__ import main
 from cortana.connectors.google import (
     GoogleSession,
@@ -472,6 +472,63 @@ def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
     assert detail_requests == 1
     assert (cache / "gmail.sqlite3").stat().st_mode & 0o777 == 0o600
     assert cache.stat().st_mode & 0o777 == 0o700
+
+
+def test_google_gmail_skips_isolated_inaccessible_message(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response(
+                {"messages": [{"id": "available"}, {"id": "denied"}]},
+                request=request,
+            )
+        if request.url.path.endswith("/denied"):
+            return response({"error": "forbidden"}, status=403, request=request)
+        return response(
+            {
+                "id": "available",
+                "threadId": "t1",
+                "internalDate": "1700000000000",
+                "payload": {
+                    "headers": [{"name": "Subject", "value": "Available"}],
+                    "mimeType": "text/plain",
+                    "body": {
+                        "data": base64.urlsafe_b64encode(b"Still indexed").decode(),
+                    },
+                },
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    documents = list(fetch_gmail(token, "work", client=client))
+
+    assert [document.source_id for document in documents] == ["available"]
+
+
+def test_google_gmail_refuses_broad_detail_denial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: response(
+                {"messages": [{"id": f"m{index}"} for index in range(11)]},
+                request=request,
+            )
+        )
+    )
+    monkeypatch.setattr(
+        google,
+        "_fetch_gmail_message",
+        lambda _session, _message_id: None,
+    )
+
+    with pytest.raises(RuntimeError, match="refusing partial snapshot"):
+        list(fetch_gmail(token, "work", client=client))
 
 
 def test_google_calendar_normalizes_events(tmp_path: Path) -> None:
