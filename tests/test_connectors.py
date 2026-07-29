@@ -325,6 +325,40 @@ def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
     assert documents[0].metadata["owners"] == ["Ada"]
 
 
+def test_google_drive_reuses_content_until_modified(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+    cache = tmp_path / "cache"
+    content_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal content_requests
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "doc1",
+                            "name": "Roadmap",
+                            "mimeType": "application/vnd.google-apps.document",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        content_requests += 1
+        return httpx.Response(200, text="Download once", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = list(fetch_drive(token, "work", client=client, cache_dir=cache))
+    second = list(fetch_drive(token, "work", client=client, cache_dir=cache))
+
+    assert first == second
+    assert content_requests == 1
+    assert (cache / "drive.sqlite3").stat().st_mode & 0o777 == 0o600
+
+
 def test_google_gmail_decodes_message_body(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     token.write_text('{"token":"access"}', encoding="utf-8")
