@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sqlite3
+import sys
 import tempfile
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -249,11 +250,24 @@ def fetch_gmail(
                             lambda message_id: _fetch_gmail_message(session, message_id),
                             missing_ids,
                         )
-                        messages.update(zip(missing_ids, fetched, strict=True))
+                        unavailable = 0
+                        for message_id, message in zip(missing_ids, fetched, strict=True):
+                            if message is None:
+                                unavailable += 1
+                            else:
+                                messages[message_id] = message
+                        maximum_unavailable = max(10, len(missing_ids) // 10)
+                        if unavailable > maximum_unavailable:
+                            raise RuntimeError(
+                                "Gmail denied too many message details "
+                                f"({unavailable}/{len(missing_ids)}); refusing partial snapshot"
+                            )
                 missing_set = set(missing_ids)
                 for reference in listing.get("messages", []):
                     message_id = str(reference["id"])
-                    message = messages[message_id]
+                    message = messages.get(message_id)
+                    if message is None:
+                        continue
                     if message_id in missing_set and cache is not None:
                         cache.execute(
                             "INSERT OR REPLACE INTO messages(id,body) VALUES(?,?)",
@@ -277,12 +291,22 @@ def fetch_gmail(
             cache.close()
 
 
-def _fetch_gmail_message(session: GoogleSession, message_id: str) -> dict[str, Any]:
-    message: dict[str, Any] = session.request(
-        "GET",
-        f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
-        params={"format": "full"},
-    ).json()
+def _fetch_gmail_message(session: GoogleSession, message_id: str) -> dict[str, Any] | None:
+    try:
+        response = session.request(
+            "GET",
+            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
+            params={"format": "full"},
+        )
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code not in {403, 404}:
+            raise
+        print(
+            f"gmail message skipped: id={message_id} status={error.response.status_code}",
+            file=sys.stderr,
+        )
+        return None
+    message: dict[str, Any] = response.json()
     return message
 
 
