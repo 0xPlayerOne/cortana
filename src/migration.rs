@@ -151,7 +151,6 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
         Some("work-code"),
     );
     work_code.exclude.push("second-brain".into());
-    config.sources.push(work_code);
     #[cfg(target_os = "macos")]
     config.sources.push(source(
         "personal-notes",
@@ -244,6 +243,10 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
             Some("buzz"),
         ));
     }
+    // The initial code corpus is usually the largest source. Keep it last so
+    // a fresh installation makes personal and operational context available
+    // before beginning the long code embedding pass.
+    config.sources.push(work_code);
 
     fs::create_dir_all(&config.data_dir)
         .with_context(|| format!("failed to create {}", config.data_dir.display()))?;
