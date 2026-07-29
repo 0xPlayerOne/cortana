@@ -13,6 +13,8 @@ use cortana::retrieval;
 use cortana::store::Store;
 use cortana::{api, mcp, migration, service, supervisor};
 
+const EMBEDDING_REQUEST_SIZE: usize = 16;
+
 #[derive(Debug, Parser)]
 #[command(name = "cortana", version, about = "Agent-native second brain")]
 struct Cli {
@@ -515,7 +517,6 @@ async fn ingest_documents(
     embedder: &dyn Embedder,
     documents: Vec<Document>,
 ) -> Result<()> {
-    const EMBEDDING_BATCH_SIZE: usize = 16;
     let mut changed = 0;
     let mut unchanged = 0;
     let mut pending = Vec::new();
@@ -529,7 +530,7 @@ async fn ingest_documents(
         let texts = chunk(&document.content);
         pending_chunks += texts.len();
         pending.push((document, texts));
-        if pending_chunks >= EMBEDDING_BATCH_SIZE {
+        if pending_chunks >= EMBEDDING_REQUEST_SIZE {
             flush_ingest_batch(store, embedder, &mut pending, &mut changed, &mut unchanged).await?;
             pending_chunks = 0;
         }
@@ -553,7 +554,11 @@ async fn flush_ingest_batch(
         .iter()
         .flat_map(|(_, texts)| texts.iter().cloned())
         .collect::<Vec<_>>();
-    let mut vectors = embedder.embed(&input).await?.into_iter();
+    let mut all_vectors = Vec::with_capacity(input.len());
+    for request in input.chunks(EMBEDDING_REQUEST_SIZE) {
+        all_vectors.extend(embedder.embed(request).await?);
+    }
+    let mut vectors = all_vectors.into_iter();
     for (document, texts) in pending.drain(..) {
         let chunks = texts
             .into_iter()
@@ -869,7 +874,32 @@ fn chunk(content: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{chunk, private_file};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use anyhow::Result;
+    use async_trait::async_trait;
+    use chrono::Utc;
+
+    use super::{chunk, ingest_documents, private_file};
+    use cortana::embed::Embedder;
+    use cortana::model::Document;
+    use cortana::store::Store;
+
+    struct BatchRecordingEmbedder {
+        maximum: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl Embedder for BatchRecordingEmbedder {
+        async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+            self.maximum.fetch_max(input.len(), Ordering::SeqCst);
+            Ok(input.iter().map(|_| vec![1.0]).collect())
+        }
+
+        fn fingerprint(&self) -> String {
+            "recording:1".into()
+        }
+    }
 
     #[test]
     fn chunk_bounds_unbroken_content_and_preserves_unicode() {
@@ -895,5 +925,31 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[tokio::test]
+    async fn oversized_documents_respect_embedding_provider_batch_bound() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder = BatchRecordingEmbedder {
+            maximum: AtomicUsize::new(0),
+        };
+        let document = Document {
+            source: "test".into(),
+            source_id: "large".into(),
+            title: "Large".into(),
+            content: "large document content\n".repeat(2_000),
+            uri: None,
+            updated_at: Utc::now(),
+            project: "test".into(),
+            acl: Vec::new(),
+            metadata: serde_json::json!({}),
+        };
+
+        ingest_documents(&store, &embedder, vec![document])
+            .await
+            .expect("ingest");
+
+        assert_eq!(embedder.maximum.load(Ordering::SeqCst), 16);
     }
 }
