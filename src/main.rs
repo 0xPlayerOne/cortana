@@ -13,6 +13,7 @@ use cortana::retrieval;
 use cortana::store::Store;
 use cortana::{api, mcp, migration, service, supervisor};
 use fs2::FileExt;
+use futures_util::{StreamExt, TryStreamExt, stream};
 
 // Leave half of the default local TEI permits available for interactive agents.
 const EMBEDDING_REQUEST_SIZE: usize = 8;
@@ -557,7 +558,7 @@ async fn ingest_documents(
         let texts = chunk(&document.content);
         pending_chunks += texts.len();
         pending.push((document, texts));
-        if pending_chunks >= EMBEDDING_REQUEST_SIZE {
+        if pending_chunks >= EMBEDDING_REQUEST_SIZE * embedder.request_concurrency() {
             flush_ingest_batch(store, embedder, &mut pending, &mut changed, &mut unchanged).await?;
             pending_chunks = 0;
         }
@@ -581,10 +582,12 @@ async fn flush_ingest_batch(
         .iter()
         .flat_map(|(_, texts)| texts.iter().cloned())
         .collect::<Vec<_>>();
-    let mut all_vectors = Vec::with_capacity(input.len());
-    for request in input.chunks(EMBEDDING_REQUEST_SIZE) {
-        all_vectors.extend(embedder.embed(request).await?);
-    }
+    let batches = stream::iter(input.chunks(EMBEDDING_REQUEST_SIZE))
+        .map(|request| embedder.embed(request))
+        .buffered(embedder.request_concurrency())
+        .try_collect::<Vec<_>>()
+        .await?;
+    let all_vectors = batches.into_iter().flatten().collect::<Vec<_>>();
     let mut vectors = all_vectors.into_iter();
     for (document, texts) in pending.drain(..) {
         let chunks = texts
@@ -974,6 +977,7 @@ fn chunk(content: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
     use anyhow::Result;
     use async_trait::async_trait;
@@ -988,6 +992,11 @@ mod tests {
         maximum: AtomicUsize,
     }
 
+    struct ConcurrencyRecordingEmbedder {
+        active: AtomicUsize,
+        maximum: AtomicUsize,
+    }
+
     #[async_trait]
     impl Embedder for BatchRecordingEmbedder {
         async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
@@ -997,6 +1006,25 @@ mod tests {
 
         fn fingerprint(&self) -> String {
             "recording:1".into()
+        }
+    }
+
+    #[async_trait]
+    impl Embedder for ConcurrencyRecordingEmbedder {
+        async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+            let active = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+            self.maximum.fetch_max(active, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            self.active.fetch_sub(1, Ordering::SeqCst);
+            Ok(input.iter().map(|_| vec![1.0]).collect())
+        }
+
+        fn fingerprint(&self) -> String {
+            "concurrency-recording:1".into()
+        }
+
+        fn request_concurrency(&self) -> usize {
+            4
         }
     }
 
@@ -1071,6 +1099,33 @@ mod tests {
             .expect("ingest");
 
         assert_eq!(embedder.maximum.load(Ordering::SeqCst), 8);
+    }
+
+    #[tokio::test]
+    async fn ingestion_uses_bounded_embedding_request_concurrency() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder = ConcurrencyRecordingEmbedder {
+            active: AtomicUsize::new(0),
+            maximum: AtomicUsize::new(0),
+        };
+        let document = Document {
+            source: "test".into(),
+            source_id: "concurrent".into(),
+            title: "Concurrent".into(),
+            content: "concurrent embedding content\n".repeat(2_000),
+            uri: None,
+            updated_at: Utc::now(),
+            project: "test".into(),
+            acl: Vec::new(),
+            metadata: serde_json::json!({}),
+        };
+
+        ingest_documents(&store, &embedder, vec![document])
+            .await
+            .expect("ingest");
+
+        assert_eq!(embedder.maximum.load(Ordering::SeqCst), 4);
     }
 
     #[test]

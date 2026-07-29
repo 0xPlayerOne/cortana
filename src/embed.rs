@@ -15,6 +15,9 @@ use crate::store::Store;
 pub trait Embedder: Send + Sync {
     async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>>;
     fn fingerprint(&self) -> String;
+    fn request_concurrency(&self) -> usize {
+        1
+    }
 
     async fn probe(&self) -> Result<()> {
         let vectors = self.embed(&["__cortana_probe__".into()]).await?;
@@ -85,6 +88,10 @@ impl Embedder for CachedEmbedder {
 
     fn fingerprint(&self) -> String {
         self.inner.fingerprint()
+    }
+
+    fn request_concurrency(&self) -> usize {
+        self.inner.request_concurrency()
     }
 
     async fn probe(&self) -> Result<()> {
@@ -185,6 +192,10 @@ impl Embedder for OpenAiEmbedder {
 
     fn fingerprint(&self) -> String {
         format!("{}:{}", self.config.model, self.config.dimension)
+    }
+
+    fn request_concurrency(&self) -> usize {
+        self.config.request_concurrency.max(1)
     }
 }
 
