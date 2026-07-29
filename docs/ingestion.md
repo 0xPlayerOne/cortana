@@ -24,12 +24,16 @@ snapshots should reconcile so removed source records do not remain searchable.
 
 The Python adapter process writes only normalized JSON Lines to stdout. Counts and diagnostics go
 to stderr, which makes the boundary safe to pipe into `cortana ingest` or supervise independently.
+Google Calendar preserves one-off events individually and compacts expanded occurrences into one
+stable document per recurring series, including its occurrence count, date range, participants,
+and provenance. This prevents daily meetings from consuming thousands of redundant embeddings
+without discarding their long-term history.
 
 ## Credentials
 
 - Slack and Discord tokens are read only from the configured environment-variable name.
-- Google Drive and Gmail accept an OAuth token JSON path. Refresh data is updated atomically and
-  the token file is forced to mode `0600`.
+- Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Refresh data is updated
+  atomically and the token file is forced to mode `0600`.
 - Apple Notes uses the local macOS Notes automation permission and stores no credential.
 - Buzz opens the retention database read-only.
 
