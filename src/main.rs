@@ -242,7 +242,7 @@ async fn main() -> Result<()> {
                     .with_context(|| format!("{name} is not set"))
             })
             .transpose()?;
-        Arc::new(OpenAiEmbedder::new(config.embedding.clone(), api_key))
+        Arc::new(OpenAiEmbedder::new(config.embedding.clone(), api_key)?)
     };
     store.ensure_fingerprint(&base_embedder.fingerprint())?;
     let embedder: Arc<dyn Embedder> = Arc::new(CachedEmbedder::with_limit(

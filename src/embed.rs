@@ -100,12 +100,16 @@ pub struct OpenAiEmbedder {
 }
 
 impl OpenAiEmbedder {
-    pub fn new(config: EmbeddingConfig, api_key: Option<String>) -> Self {
-        Self {
-            client: Client::new(),
+    pub fn new(config: EmbeddingConfig, api_key: Option<String>) -> Result<Self> {
+        let client = Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(config.request_timeout_seconds.max(1)))
+            .build()?;
+        Ok(Self {
+            client,
             config,
             api_key,
-        }
+        })
     }
 }
 
