@@ -1,4 +1,4 @@
 interface:
-  display_name: "Cortana"
-  short_description: "Retrieve durable context from your second brain"
-  default_prompt: "Use $cortana to retrieve relevant prior context for this task before proceeding."
+  display_name: 'Cortana'
+  short_description: 'Retrieve durable context from your second brain'
+  default_prompt: 'Use $cortana to retrieve relevant prior context for this task before proceeding.'
