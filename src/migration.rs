@@ -139,7 +139,7 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
             "--max-batch-requests".into(),
             "16".into(),
             "--max-concurrent-requests".into(),
-            "16".into(),
+            "128".into(),
         ];
     }
 

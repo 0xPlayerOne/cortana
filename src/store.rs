@@ -41,6 +41,7 @@ impl Store {
             std::fs::create_dir_all(parent)?;
         }
         let mut connection = Connection::open(path)?;
+        connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA foreign_keys=ON;

@@ -12,6 +12,7 @@ use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::Store;
 use cortana::{api, mcp, migration, service, supervisor};
+use fs2::FileExt;
 
 // Leave half of the default local TEI permits available for interactive agents.
 const EMBEDDING_REQUEST_SIZE: usize = 8;
@@ -274,6 +275,7 @@ async fn main() -> Result<()> {
             source,
             no_reconcile,
         }) => {
+            let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
             sync_configured_sources(
                 &config,
                 &store,
@@ -333,6 +335,35 @@ async fn main() -> Result<()> {
             println!("cortana {}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
+    }
+}
+
+struct SyncLock {
+    _file: std::fs::File,
+}
+
+impl SyncLock {
+    fn acquire(path: &std::path::Path) -> Result<Self> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let file = options
+            .open(path)
+            .with_context(|| format!("failed to open sync lock {}", path.display()))?;
+        FileExt::try_lock_exclusive(&file).with_context(|| {
+            format!(
+                "another Cortana sync is already active (lock: {})",
+                path.display()
+            )
+        })?;
+        Ok(Self { _file: file })
     }
 }
 
@@ -881,7 +912,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
 
-    use super::{chunk, ingest_documents, private_file};
+    use super::{SyncLock, chunk, ingest_documents, private_file};
     use cortana::embed::Embedder;
     use cortana::model::Document;
     use cortana::store::Store;
@@ -952,5 +983,16 @@ mod tests {
             .expect("ingest");
 
         assert_eq!(embedder.maximum.load(Ordering::SeqCst), 8);
+    }
+
+    #[test]
+    fn sync_lock_prevents_overlapping_processes_and_recovers_on_drop() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("sync.lock");
+        let first = SyncLock::acquire(&path).expect("first lock");
+
+        assert!(SyncLock::acquire(&path).is_err());
+        drop(first);
+        SyncLock::acquire(&path).expect("lock after release");
     }
 }
