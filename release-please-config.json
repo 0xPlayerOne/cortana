@@ -1,10 +1,58 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "bump-minor-pre-major": true,
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Features"
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "revert",
+      "section": "Reverts"
+    },
+    {
+      "type": "deps",
+      "section": "Dependencies"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
+    },
+    {
+      "type": "test",
+      "section": "Tests"
+    },
+    {
+      "type": "ci",
+      "section": "CI"
+    },
+    {
+      "type": "refactor",
+      "section": "Maintenance"
+    },
+    {
+      "type": "chore",
+      "section": "Maintenance"
+    }
+  ],
   "include-component-in-tag": false,
-  "release-type": "rust",
   "packages": {
-    ".": {}
+    ".": {
+      "release-type": "rust",
+      "package-name": "cortana"
+    },
+    "apps/web": {
+      "release-type": "node",
+      "package-name": "@cortana/web"
+    }
   },
   "extra-files": [
     {
@@ -29,17 +77,5 @@
       "type": "generic",
       "path": "src/cortana/__init__.py"
     }
-  ],
-  "changelog-sections": [
-    { "type": "feat", "section": "Features" },
-    { "type": "fix", "section": "Bug Fixes" },
-    { "type": "perf", "section": "Performance" },
-    { "type": "revert", "section": "Reverts" },
-    { "type": "deps", "section": "Dependencies" },
-    { "type": "docs", "section": "Documentation" },
-    { "type": "test", "section": "Tests" },
-    { "type": "ci", "section": "CI" },
-    { "type": "refactor", "section": "Maintenance" },
-    { "type": "chore", "section": "Maintenance" }
   ]
 }
