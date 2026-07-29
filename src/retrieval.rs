@@ -39,13 +39,17 @@ pub fn search(
     source: Option<&str>,
     limit: usize,
 ) -> Result<Vec<Evidence>> {
-    let chunks = store.all_chunks(project, source)?;
-    let mut semantic = chunks
+    let candidate_limit = limit.saturating_mul(8).max(32);
+    let semantic = store.semantic_ids(query_embedding, project, source, candidate_limit)?;
+    let lexical = store.lexical_ids(query, project, source, candidate_limit)?;
+    let candidate_ids = semantic
         .iter()
-        .map(|chunk| (chunk.id.clone(), cosine(query_embedding, &chunk.embedding)))
+        .map(|(id, _)| id.clone())
+        .chain(lexical.iter().cloned())
+        .collect::<HashSet<_>>()
+        .into_iter()
         .collect::<Vec<_>>();
-    semantic.sort_by(|a, b| b.1.total_cmp(&a.1));
-    let lexical = store.lexical_ids(query, project, source, limit.saturating_mul(4))?;
+    let chunks = store.chunks_by_ids(&candidate_ids)?;
     let semantic_ranks = semantic
         .iter()
         .enumerate()
@@ -164,20 +168,6 @@ fn evidence(
     }
 }
 
-fn cosine(left: &[f32], right: &[f32]) -> f32 {
-    if left.len() != right.len() || left.is_empty() {
-        return 0.0;
-    }
-    let dot = left.iter().zip(right).map(|(a, b)| a * b).sum::<f32>();
-    let left_norm = left.iter().map(|v| v * v).sum::<f32>().sqrt();
-    let right_norm = right.iter().map(|v| v * v).sum::<f32>().sqrt();
-    if left_norm == 0.0 || right_norm == 0.0 {
-        0.0
-    } else {
-        dot / (left_norm * right_norm)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
@@ -195,13 +185,6 @@ mod tests {
             embedding: vec![1.0, 0.0],
             updated_at: Utc::now(),
         }
-    }
-
-    #[test]
-    fn cosine_handles_normal_and_invalid_vectors() {
-        assert!((cosine(&[1.0, 0.0], &[1.0, 0.0]) - 1.0).abs() < f32::EPSILON);
-        assert_eq!(cosine(&[1.0], &[1.0, 0.0]), 0.0);
-        assert_eq!(cosine(&[], &[]), 0.0);
     }
 
     #[test]
