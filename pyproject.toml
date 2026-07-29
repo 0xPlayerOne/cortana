@@ -22,10 +22,10 @@ hindsight = ["hindsight-api>=0.8.5,<0.9"]
 [dependency-groups]
 dev = [
   "coverage[toml]>=7.10,<8",
-  "mypy>=1.17,<2",
+  "mypy>=1.17,<3",
   "pytest>=9.0.3,<10",
   "pytest-asyncio>=1.1,<2",
-  "pytest-cov>=6.2,<7",
+  "pytest-cov>=6.2,<8",
   "ruff>=0.12,<1",
 ]
 
