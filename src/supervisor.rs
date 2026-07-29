@@ -114,7 +114,7 @@ fn embedding_command(config: &Config) -> Result<(String, Vec<String>)> {
             "--max-batch-requests".into(),
             "16".into(),
             "--max-concurrent-requests".into(),
-            "16".into(),
+            "128".into(),
         ],
     ))
 }
@@ -197,6 +197,11 @@ mod tests {
         let (program, arguments) = embedding_command(&config).expect("command");
         assert_eq!(program, "text-embeddings-router");
         assert!(arguments.windows(2).any(|pair| pair == ["--port", "6999"]));
+        assert!(
+            arguments
+                .windows(2)
+                .any(|pair| pair == ["--max-concurrent-requests", "128"])
+        );
         assert_eq!(
             embedding_probe_url(&config).expect("probe").as_str(),
             "http://127.0.0.1:6999/v1/embeddings"

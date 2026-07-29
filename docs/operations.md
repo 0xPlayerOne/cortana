@@ -55,6 +55,11 @@ Use `--no-embedding-service` for a cloud embedding provider. Logs are written be
 `data_dir/logs`. `service uninstall` stops and removes only Cortana's four launchd jobs; it does not
 delete configuration, data, logs, or backups.
 
+The generated Qwen/TEI profile keeps `max-batch-tokens=512`, which was faster than larger batches
+in the macOS Metal benchmark, and admits up to 128 queued inputs so background ingestion can share
+the provider with interactive agents without avoidable 429 responses. Cortana itself sends at most
+eight inputs per request and applies bounded retry/backoff for transient provider pressure.
+
 ## Linux systemd
 
 Templates live in [`packaging/systemd`](../packaging/systemd). Install the binary, built workspace,
