@@ -19,6 +19,10 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 ## Quick start
 
 ```bash
+# Reproducible per-user install (Rust binary, workspace, connector venv, and macOS services).
+./scripts/install-local.sh
+
+# Or run directly from a checkout.
 cargo build --release
 bun install --frozen-lockfile
 bun run build
@@ -51,6 +55,8 @@ embeddings are intentionally fingerprinted as different index generations and ca
 See [the ingestion guide](docs/ingestion.md) and
 [`config.example.toml`](config.example.toml) for Google Drive, Gmail, Apple Notes, Slack, Discord,
 Buzz, filesystem/code, and external adapters.
+See the [operations guide](docs/operations.md) for service management, authenticated remote access,
+telemetry, backup, restore, and Linux systemd units.
 
 ## Architecture
 

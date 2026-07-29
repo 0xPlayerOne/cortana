@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
@@ -359,6 +360,74 @@ impl Store {
         )?;
         Ok(deleted)
     }
+
+    pub fn integrity_check(&self) -> Result<()> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let result: String =
+            connection.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+        anyhow::ensure!(result == "ok", "database integrity check failed: {result}");
+        Ok(())
+    }
+
+    pub fn backup(&self, destination: &Path) -> Result<()> {
+        anyhow::ensure!(
+            !destination.exists(),
+            "backup already exists: {}",
+            destination.display()
+        );
+        if let Some(parent) = destination.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let temporary = destination.with_extension(format!("{}.partial", uuid::Uuid::new_v4()));
+        let result = (|| -> Result<()> {
+            let connection = self.connection.lock().expect("store lock poisoned");
+            connection.execute("VACUUM INTO ?1", [temporary.to_string_lossy().as_ref()])?;
+            drop(connection);
+            verify_database(&temporary)?;
+            std::fs::rename(&temporary, destination)?;
+            Ok(())
+        })();
+        if result.is_err() && temporary.exists() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        result
+    }
+
+    pub fn verify(path: &Path) -> Result<()> {
+        verify_database(path)
+    }
+
+    pub fn restore(database: &Path, source: &Path, recovery_backup: Option<&Path>) -> Result<()> {
+        verify_database(source)?;
+        if database.exists()
+            && let Some(recovery) = recovery_backup
+        {
+            Self::open(database)?.backup(recovery)?;
+        }
+        if let Some(parent) = database.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let source =
+            Connection::open_with_flags(source, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let mut destination = Connection::open(database)?;
+        let backup = rusqlite::backup::Backup::new(&source, &mut destination)?;
+        backup.run_to_completion(128, Duration::from_millis(10), None)?;
+        drop(backup);
+        drop(destination);
+        verify_database(database)
+    }
+}
+
+fn verify_database(path: &Path) -> Result<()> {
+    anyhow::ensure!(
+        path.is_file(),
+        "database does not exist: {}",
+        path.display()
+    );
+    let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let result: String = connection.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
+    anyhow::ensure!(result == "ok", "database integrity check failed: {result}");
+    Ok(())
 }
 
 fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
@@ -502,5 +571,53 @@ mod tests {
 
         assert_eq!(store.prune_embedding_cache(1).expect("prune"), 1);
         assert_eq!(store.stats().expect("stats").embedding_cache_entries, 1);
+    }
+
+    #[test]
+    fn backup_is_consistent_and_refuses_overwrite() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .upsert(
+                &document("one", "recoverable"),
+                &[("recoverable".into(), vec![1.0])],
+            )
+            .expect("insert");
+        let backup = directory.path().join("backups/brain.sqlite3");
+
+        store.backup(&backup).expect("backup");
+        Store::verify(&backup).expect("verify");
+        let restored = Store::open(&backup).expect("open backup");
+        assert_eq!(restored.stats().expect("stats").documents, 1);
+        drop(restored);
+        assert!(store.backup(&backup).is_err());
+
+        let target = directory.path().join("target.sqlite3");
+        let target_store = Store::open(&target).expect("open target");
+        target_store
+            .upsert(
+                &document("old", "replace me"),
+                &[("replace me".into(), vec![2.0])],
+            )
+            .expect("insert target");
+        drop(target_store);
+        let recovery = directory.path().join("backups/pre-restore.sqlite3");
+        Store::restore(&target, &backup, Some(&recovery)).expect("restore");
+        assert_eq!(
+            Store::open(&target)
+                .expect("restored")
+                .stats()
+                .expect("stats")
+                .documents,
+            1
+        );
+        assert_eq!(
+            Store::open(&recovery)
+                .expect("recovery")
+                .all_chunks(None, None)
+                .expect("recovery chunks")[0]
+                .content,
+            "replace me"
+        );
     }
 }

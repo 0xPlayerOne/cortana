@@ -1,6 +1,11 @@
 # Copy to ~/.config/cortana/config.toml. Keep tokens outside this file.
 data_dir = "/Users/you/Library/Application Support/cortana"
 
+[runtime]
+# Optional KEY=VALUE file. Cortana refuses this file unless its Unix mode is 0600.
+# Process environment variables take precedence over entries in this file.
+# env_file = "/Users/you/.config/cortana/secrets.env"
+
 [embedding]
 # Existing local Qwen/TEI profile. Any OpenAI-compatible cloud endpoint also works.
 base_url = "http://127.0.0.1:6999/v1"
@@ -9,6 +14,13 @@ dimension = 1024
 # Least-recently-used vectors beyond this count are pruned after a cache write.
 cache_max_entries = 250000
 # api_key_env = "CORTANA_EMBEDDING_API_KEY"
+
+[embedding.service]
+# `cortana embedding-service` supervises this command. When omitted it derives a local
+# text-embeddings-router command from the model and base URL above.
+# command = ["/absolute/path/text-embeddings-router", "--model-id", "Qwen/Qwen3-Embedding-0.6B", "--dtype", "float16", "--hostname", "127.0.0.1", "--port", "6999"]
+startup_timeout_seconds = 120
+memory_limit_mb = 2048
 
 [connectors]
 # Change this when Cortana is installed into a dedicated virtual environment.

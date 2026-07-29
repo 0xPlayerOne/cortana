@@ -90,3 +90,78 @@ fn configured_external_source_sync_is_incremental() {
         .success()
         .stdout(predicate::str::contains("\"title\": \"External\""));
 }
+
+#[test]
+fn backup_verify_and_restore_round_trip() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let backup = directory.path().join("snapshot.sqlite3");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n\
+             base_url = \"http://127.0.0.1:6999/v1\"\nmodel = \"Qwen/Qwen3-Embedding-0.6B\"\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(
+            r#"{"source":"test","source_id":"one","title":"First","content":"recoverable snapshot","project":"demo"}"#,
+        )
+        .assert()
+        .success();
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .arg("backup")
+        .arg(&backup)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("backup verified"));
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .arg("verify")
+        .arg(&backup)
+        .assert()
+        .success();
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(
+            r#"{"source":"test","source_id":"two","title":"Second","content":"temporary mutation","project":"demo"}"#,
+        )
+        .assert()
+        .success();
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .arg("restore")
+        .arg(&backup)
+        .arg("--force")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("previous index retained"));
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["search", "recoverable", "--project", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"title\": \"First\""))
+        .stdout(predicate::str::contains("\"title\": \"Second\"").not());
+}

@@ -17,22 +17,23 @@ dirs = "6.0"
 ignore = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rmcp = { version = "1.4", features = ["server", "macros", "transport-io"] }
-rusqlite = { version = "0.38", features = ["bundled"] }
+rusqlite = { version = "0.38", features = ["backup", "bundled"] }
 schemars = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
-tokio = { version = "1.47", features = ["macros", "rt-multi-thread", "signal", "net"] }
+tokio = { version = "1.47", features = ["macros", "net", "process", "rt-multi-thread", "signal"] }
 toml = "0.9"
-tower-http = { version = "0.6", features = ["fs"] }
+tower-http = { version = "0.6", features = ["fs", "timeout", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-uuid = { version = "1.18", features = ["serde", "v5"] }
+uuid = { version = "1.18", features = ["serde", "v4", "v5"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"
 predicates = "3.1"
 tempfile = "3.21"
+tower = { version = "0.5", features = ["util"] }
 
 [profile.release]
 lto = "thin"
