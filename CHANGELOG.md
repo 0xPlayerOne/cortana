@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/0xPlayerOne/cortana/compare/v0.1.4...v0.1.5) (2026-07-29)
+
+
+### Bug Fixes
+
+* **service:** make launchd upgrades idempotent ([a517ba1](https://github.com/0xPlayerOne/cortana/commit/a517ba1d02df80af2a9befb3a2076164f14bb170))
+
 ## [0.1.4](https://github.com/0xPlayerOne/cortana/compare/v0.1.3...v0.1.4) (2026-07-29)
 
 
