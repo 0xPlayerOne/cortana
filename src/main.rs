@@ -787,6 +787,13 @@ fn configured_connector_command(config: &Config, source: &SourceConfig) -> Resul
         command.extend([
             "--project".into(),
             source.project.clone(),
+            "--cache-dir".into(),
+            config
+                .data_dir
+                .join("connector-cache")
+                .join(&source.name)
+                .display()
+                .to_string(),
             source.kind.clone(),
         ]);
         connector_arguments(&mut command, source)?;

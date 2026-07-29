@@ -10,6 +10,7 @@ import io
 import json
 import os
 import re
+import sqlite3
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
@@ -163,30 +164,85 @@ def fetch_gmail(
     query: str = "",
     labels: list[str] | None = None,
     client: httpx.Client | None = None,
+    cache_dir: Path | None = None,
 ) -> Iterable[Document]:
-    with GoogleSession(token_path, client) as session:
-        page_token: str | None = None
-        while True:
-            params: dict[str, Any] = {"maxResults": 500, "q": query}
-            if labels:
-                params["labelIds"] = labels
-            if page_token:
-                params["pageToken"] = page_token
-            listing = session.request(
-                "GET",
-                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-                params=params,
-            ).json()
-            for reference in listing.get("messages", []):
-                message = session.request(
+    cache = _gmail_cache(cache_dir)
+    try:
+        with GoogleSession(token_path, client) as session:
+            page_token: str | None = None
+            pending_writes = 0
+            while True:
+                params: dict[str, Any] = {"maxResults": 500, "q": query}
+                if labels:
+                    params["labelIds"] = labels
+                if page_token:
+                    params["pageToken"] = page_token
+                listing = session.request(
                     "GET",
-                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{reference['id']}",
-                    params={"format": "full"},
+                    "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                    params=params,
                 ).json()
-                yield _gmail_document(message, project)
-            page_token = listing.get("nextPageToken")
-            if not page_token:
-                break
+                for reference in listing.get("messages", []):
+                    message_id = str(reference["id"])
+                    message = _cached_gmail_message(cache, message_id)
+                    if message is None:
+                        message = session.request(
+                            "GET",
+                            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
+                            params={"format": "full"},
+                        ).json()
+                        if cache is not None:
+                            cache.execute(
+                                "INSERT OR REPLACE INTO messages(id,body) VALUES(?,?)",
+                                (message_id, json.dumps(message, separators=(",", ":"))),
+                            )
+                            pending_writes += 1
+                    if cache is not None:
+                        cache.execute("INSERT OR IGNORE INTO seen(id) VALUES(?)", (message_id,))
+                        if pending_writes >= 100:
+                            cache.commit()
+                            pending_writes = 0
+                    yield _gmail_document(message, project)
+                page_token = listing.get("nextPageToken")
+                if not page_token:
+                    break
+        if cache is not None:
+            cache.execute("DELETE FROM messages WHERE id NOT IN (SELECT id FROM seen)")
+            cache.commit()
+    finally:
+        if cache is not None:
+            cache.close()
+
+
+def _gmail_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
+    if cache_dir is None:
+        return None
+    cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    cache_dir.chmod(0o700)
+    path = cache_dir / "gmail.sqlite3"
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    os.close(descriptor)
+    path.chmod(0o600)
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA journal_mode=MEMORY")
+    connection.execute("PRAGMA synchronous=NORMAL")
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,body TEXT NOT NULL)"
+    )
+    connection.execute("CREATE TEMP TABLE seen(id TEXT PRIMARY KEY)")
+    return connection
+
+
+def _cached_gmail_message(
+    cache: sqlite3.Connection | None, message_id: str
+) -> dict[str, Any] | None:
+    if cache is None:
+        return None
+    row = cache.execute("SELECT body FROM messages WHERE id=?", (message_id,)).fetchone()
+    if row is None:
+        return None
+    message: dict[str, Any] = json.loads(str(row[0]))
+    return message
 
 
 def fetch_calendar(
