@@ -13,7 +13,8 @@ use cortana::retrieval;
 use cortana::store::Store;
 use cortana::{api, mcp, migration, service, supervisor};
 
-const EMBEDDING_REQUEST_SIZE: usize = 16;
+// Leave half of the default local TEI permits available for interactive agents.
+const EMBEDDING_REQUEST_SIZE: usize = 8;
 
 #[derive(Debug, Parser)]
 #[command(name = "cortana", version, about = "Agent-native second brain")]
@@ -950,6 +951,6 @@ mod tests {
             .await
             .expect("ingest");
 
-        assert_eq!(embedder.maximum.load(Ordering::SeqCst), 16);
+        assert_eq!(embedder.maximum.load(Ordering::SeqCst), 8);
     }
 }
