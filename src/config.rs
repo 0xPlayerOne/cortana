@@ -87,6 +87,8 @@ pub struct SourceConfig {
     #[serde(default)]
     pub labels: Vec<String>,
     #[serde(default)]
+    pub max_content_chars: Option<usize>,
+    #[serde(default)]
     pub exclude: Vec<String>,
     #[serde(default)]
     pub command: Vec<String>,
@@ -299,6 +301,7 @@ mod tests {
             name = "notes"
             kind = "apple-notes"
             project = "personal"
+            max_content_chars = 12345
 
             [[sources]]
             name = "code"
@@ -311,6 +314,7 @@ mod tests {
 
         assert_eq!(config.sources.len(), 2);
         assert!(config.sources[0].enabled);
+        assert_eq!(config.sources[0].max_content_chars, Some(12_345));
         assert_eq!(config.sources[1].source.as_deref(), Some("code"));
     }
 

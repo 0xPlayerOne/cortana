@@ -22,6 +22,16 @@ best-effort while another process owns SQLite's writer lock; Cortana serves the 
 instead of failing a request for cache telemetry. Canonical ingestion writes remain strict and
 use SQLite's bounded busy timeout.
 
+Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
+queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
+evidence; returned rows have no `semantic_rank`, and a warning records the degraded mode. Cached
+query embeddings still provide normal hybrid retrieval without touching the provider.
+
+Google Drive content is bounded to 50,000 characters per file by default. Oversized exports keep
+equal head and tail samples plus `content_truncated` and `content_original_chars` metadata, avoiding
+hours of low-value embedding work for multi-megabyte CSVs. Set `max_content_chars` on an individual
+`google-drive` source when a different evidence budget is justified.
+
 ## Backup and recovery
 
 `cortana backup` creates a consistent online SQLite snapshot with `VACUUM INTO`, runs a full

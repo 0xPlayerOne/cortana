@@ -38,6 +38,7 @@ TEXT_MIME_TYPES = {
     "text/markdown",
     "text/plain",
 }
+DEFAULT_MAX_DRIVE_CONTENT_CHARS = 50_000
 
 
 class GoogleSession:
@@ -119,7 +120,10 @@ def fetch_drive(
     query: str = "trashed = false",
     client: httpx.Client | None = None,
     cache_dir: Path | None = None,
+    max_content_chars: int = DEFAULT_MAX_DRIVE_CONTENT_CHARS,
 ) -> Iterable[Document]:
+    if max_content_chars <= 0:
+        raise ValueError("max_content_chars must be greater than zero")
     cache = _drive_cache(cache_dir)
     try:
         with GoogleSession(token_path, client) as session:
@@ -193,11 +197,12 @@ def fetch_drive(
                             pending_writes = 0
                     if not body.strip():
                         continue
+                    content, content_truncated = _bounded_content(body, max_content_chars)
                     yield Document(
                         source="google-drive",
                         source_id=file_id,
                         title=str(item.get("name") or "Untitled Drive file"),
-                        content=body,
+                        content=content,
                         uri=item.get("webViewLink"),
                         updated_at=_timestamp(item.get("modifiedTime")),
                         project=project,
@@ -209,6 +214,8 @@ def fetch_drive(
                                 if owner.get("displayName")
                             ],
                             "content_stale": file_id in stale_ids,
+                            "content_truncated": content_truncated,
+                            "content_original_chars": len(body),
                         },
                     )
                 page_token = payload.get("nextPageToken")
@@ -598,6 +605,18 @@ def _safe_drive_content(session: GoogleSession, item: dict[str, Any]) -> tuple[s
         return _drive_content(session, item), None
     except Exception as error:
         return "", type(error).__name__
+
+
+def _bounded_content(value: str, max_chars: int) -> tuple[str, bool]:
+    if len(value) <= max_chars:
+        return value, False
+    marker = f"\n\n[Cortana omitted {len(value) - max_chars:,} middle characters]\n\n"
+    available = max_chars - len(marker)
+    if available <= 0:
+        return value[:max_chars], True
+    head = available // 2
+    tail = available - head
+    return f"{value[:head]}{marker}{value[-tail:]}", True
 
 
 def _gmail_document(message: dict[str, Any], project: str) -> Document:

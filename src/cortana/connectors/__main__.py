@@ -41,6 +41,7 @@ def parser() -> argparse.ArgumentParser:
     drive = commands.add_parser("google-drive")
     _google_arguments(drive)
     drive.add_argument("--query", default="trashed = false")
+    drive.add_argument("--max-content-chars", type=int, default=50_000)
 
     gmail = commands.add_parser("gmail")
     _google_arguments(gmail)
@@ -82,6 +83,7 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
             arguments.project,
             arguments.query,
             cache_dir=arguments.cache_dir,
+            max_content_chars=arguments.max_content_chars,
         )
     if arguments.connector == "gmail":
         return fetch_gmail(
