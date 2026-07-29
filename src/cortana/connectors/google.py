@@ -13,6 +13,7 @@ import re
 import sqlite3
 import tempfile
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -207,21 +208,35 @@ def fetch_gmail(
                     "https://gmail.googleapis.com/gmail/v1/users/me/messages",
                     params=params,
                 ).json()
+                messages: dict[str, dict[str, Any]] = {}
+                missing_ids: list[str] = []
                 for reference in listing.get("messages", []):
                     message_id = str(reference["id"])
                     message = _cached_gmail_message(cache, message_id)
                     if message is None:
-                        message = session.request(
-                            "GET",
-                            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
-                            params={"format": "full"},
-                        ).json()
-                        if cache is not None:
-                            cache.execute(
-                                "INSERT OR REPLACE INTO messages(id,body) VALUES(?,?)",
-                                (message_id, json.dumps(message, separators=(",", ":"))),
-                            )
-                            pending_writes += 1
+                        missing_ids.append(message_id)
+                    else:
+                        messages[message_id] = message
+                if missing_ids:
+                    with ThreadPoolExecutor(
+                        max_workers=min(8, len(missing_ids)),
+                        thread_name_prefix="cortana-gmail",
+                    ) as pool:
+                        fetched = pool.map(
+                            lambda message_id: _fetch_gmail_message(session, message_id),
+                            missing_ids,
+                        )
+                        messages.update(zip(missing_ids, fetched, strict=True))
+                missing_set = set(missing_ids)
+                for reference in listing.get("messages", []):
+                    message_id = str(reference["id"])
+                    message = messages[message_id]
+                    if message_id in missing_set and cache is not None:
+                        cache.execute(
+                            "INSERT OR REPLACE INTO messages(id,body) VALUES(?,?)",
+                            (message_id, json.dumps(message, separators=(",", ":"))),
+                        )
+                        pending_writes += 1
                     if cache is not None:
                         cache.execute("INSERT OR IGNORE INTO seen(id) VALUES(?)", (message_id,))
                         if pending_writes >= 100:
@@ -237,6 +252,15 @@ def fetch_gmail(
     finally:
         if cache is not None:
             cache.close()
+
+
+def _fetch_gmail_message(session: GoogleSession, message_id: str) -> dict[str, Any]:
+    message: dict[str, Any] = session.request(
+        "GET",
+        f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
+        params={"format": "full"},
+    ).json()
+    return message
 
 
 def _gmail_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
