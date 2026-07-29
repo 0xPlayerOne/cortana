@@ -44,7 +44,9 @@ reconciliation, but Drive content is downloaded only when its modification times
 immutable Gmail message bodies are downloaded only once. The caches are disposable and can always
 be rebuilt from Google. First-time Drive content and Gmail detail retrieval use bounded
 eight-worker pools; cache writes and emitted documents remain ordered on the main connector
-thread.
+thread. Drive installs pypdf's AES support. A single malformed, inaccessible, or unsupported file
+does not abort the source: Cortana retains a prior cached body when available, marks it
+`content_stale` in metadata, and emits only the exception class in diagnostics.
 
 Gmail tolerates an isolated message that disappears or becomes inaccessible between list and
 detail requests. If more than 10% of an uncached page (with a minimum allowance of ten messages)
@@ -89,3 +91,15 @@ External connectors must emit one JSON object per line:
 `source_id` must remain stable across runs. `content` must be plain searchable text. Put
 provenance, channel/account identifiers, participants, and source-specific fields in `metadata`;
 never place credentials there.
+
+## Pre-embedded import
+
+`cortana import-embeddings` accepts trusted JSON Lines for migrations from a compatible vector
+store. Every record declares `embedding_fingerprint`, one normalized `document`, and one or more
+`chunks` containing text and a vector. Cortana rejects the stream on the first fingerprint,
+dimension, empty-chunk, or JSON mismatch. Valid vectors are also written to the persistent
+embedding cache, allowing later native source syncs to reuse identical chunks.
+
+The command reconciles each `(source, project)` represented by a fully read stream. Pass
+`--no-reconcile` only when intentionally importing a partial snapshot. Do not import vectors whose
+model, dimensions, or preprocessing are uncertain; rebuild those records through normal ingestion.

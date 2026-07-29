@@ -39,6 +39,63 @@ fn offline_ingest_and_search_round_trip() {
 }
 
 #[test]
+fn preembedded_import_validates_and_searches_without_provider_calls() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!("data_dir = {data:?}\n[embedding]\ndimension = 256\n"),
+    )
+    .expect("write config");
+    let record = serde_json::json!({
+        "embedding_fingerprint": "deterministic:256",
+        "document": {
+            "source": "legacy-code",
+            "source_id": "repo::runbook#0",
+            "title": "repo/runbook.md",
+            "content": "Imported deployment recovery procedure.",
+            "project": "repo"
+        },
+        "chunks": [{
+            "content": "Imported deployment recovery procedure.",
+            "embedding": vec![0.0_f32; 256]
+        }]
+    })
+    .to_string();
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["import-embeddings", "-"])
+        .write_stdin(record.clone())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("changed=1"));
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["search", "deployment recovery", "--project", "repo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"title\": \"repo/runbook.md\""));
+
+    let wrong_fingerprint = record.replace("deterministic:256", "another-model:256");
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["import-embeddings", "-"])
+        .write_stdin(wrong_fingerprint)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("embedding fingerprint mismatch"));
+}
+
+#[test]
 fn configured_external_source_sync_is_incremental() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");
