@@ -698,18 +698,26 @@ async fn sync_source_documents(
             .root
             .as_ref()
             .with_context(|| format!("source {} requires root", source.name))?;
-        let mut documents = connectors::filesystem_documents_with_excludes(
+        let documents = connectors::filesystem_document_iter(
             root,
             source.source.as_deref().unwrap_or(&source.name),
             &source.project,
             &source.exclude,
         )?;
-        normalize_documents(&mut documents, source);
-        let seen = documents
-            .iter()
-            .map(|document| document.source_id.clone())
-            .collect::<Vec<_>>();
-        ingest_documents(store, embedder, documents).await?;
+        let mut seen = Vec::new();
+        let mut batch = Vec::with_capacity(DOCUMENT_BATCH_SIZE);
+        for document in documents {
+            let mut document = document?;
+            normalize_documents(std::slice::from_mut(&mut document), source);
+            seen.push(document.source_id.clone());
+            batch.push(document);
+            if batch.len() >= DOCUMENT_BATCH_SIZE {
+                ingest_documents(store, embedder, std::mem::take(&mut batch)).await?;
+            }
+        }
+        if !batch.is_empty() {
+            ingest_documents(store, embedder, batch).await?;
+        }
         return Ok(seen);
     }
 
