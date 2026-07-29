@@ -38,7 +38,7 @@ TEXT_MIME_TYPES = {
     "text/markdown",
     "text/plain",
 }
-DEFAULT_MAX_DRIVE_CONTENT_CHARS = 200_000
+DEFAULT_MAX_DRIVE_CONTENT_CHARS = 50_000
 
 
 class GoogleSession:

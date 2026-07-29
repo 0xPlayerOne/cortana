@@ -53,7 +53,7 @@ project = "personal"
 token = "/secure/path/google-token.json"
 query = "trashed = false"
 # Sample the beginning and end of very large exports instead of embedding them verbatim.
-max_content_chars = 200000
+max_content_chars = 50000
 
 [[sources]]
 name = "personal-gmail"
