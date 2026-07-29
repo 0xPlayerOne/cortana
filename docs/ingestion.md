@@ -40,8 +40,9 @@ Google Drive and Gmail keep owner-only derived caches under
 `data_dir/connector-cache/<source>/`. Complete runs still list every item ID for correct deletion
 reconciliation, but Drive content is downloaded only when its modification timestamp changes and
 immutable Gmail message bodies are downloaded only once. The caches are disposable and can always
-be rebuilt from Google. First-time Gmail detail retrieval uses a bounded eight-worker pool; cache
-writes and emitted documents remain ordered on the main connector thread.
+be rebuilt from Google. First-time Drive content and Gmail detail retrieval use bounded
+eight-worker pools; cache writes and emitted documents remain ordered on the main connector
+thread.
 
 Discord also keeps an owner-only derived cache. After the first complete channel snapshot,
 scheduled runs request only messages after the newest cached snowflake. A complete refresh runs
