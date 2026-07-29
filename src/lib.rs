@@ -6,4 +6,6 @@ pub mod embed;
 pub mod mcp;
 pub mod model;
 pub mod retrieval;
+pub mod service;
 pub mod store;
+pub mod supervisor;

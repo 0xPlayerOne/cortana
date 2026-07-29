@@ -11,7 +11,7 @@ use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbe
 use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::Store;
-use cortana::{api, mcp};
+use cortana::{api, mcp, service, supervisor};
 
 #[derive(Debug, Parser)]
 #[command(name = "cortana", version, about = "Agent-native second brain")]
@@ -27,9 +27,28 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Create a safe local configuration and data directory.
-    Init,
+    Init {
+        #[arg(long)]
+        connector_command: Option<PathBuf>,
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+    },
     /// Validate configuration, storage, and the embedding provider.
     Doctor,
+    /// Create and verify an online SQLite snapshot.
+    Backup {
+        output: Option<PathBuf>,
+        #[arg(long, default_value_t = 14)]
+        keep: usize,
+    },
+    /// Run SQLite's full integrity check against the active index or a backup.
+    Verify { input: Option<PathBuf> },
+    /// Restore a verified snapshot, retaining a recovery copy of the current index.
+    Restore {
+        input: PathBuf,
+        #[arg(long, help = "Confirm replacement of the current index")]
+        force: bool,
+    },
     /// Ingest normalized Document records from a JSON Lines file or stdin.
     Ingest {
         #[arg(default_value = "-")]
@@ -68,24 +87,101 @@ enum Command {
         web_dir: PathBuf,
         #[arg(long, help = "Serve only the JSON API")]
         no_web: bool,
+        #[arg(
+            long,
+            help = "Permit a bearer-authenticated non-loopback bind; terminate TLS upstream"
+        )]
+        allow_remote: bool,
+        #[arg(
+            long,
+            env = "CORTANA_API_TOKEN_ENV",
+            help = "Environment variable containing the HTTP bearer token"
+        )]
+        api_token_env: Option<String>,
     },
     /// Serve retrieval tools over MCP stdio.
     Mcp,
+    /// Supervise the configured local OpenAI-compatible embedding process.
+    EmbeddingService,
+    /// Install, inspect, or remove the per-user background services.
+    Service {
+        #[command(subcommand)]
+        action: ServiceAction,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum ServiceAction {
+    /// Install and immediately bootstrap macOS launchd jobs.
+    Install {
+        #[arg(long, default_value = "apps/web/dist")]
+        web_dir: PathBuf,
+        #[arg(long)]
+        working_directory: Option<PathBuf>,
+        #[arg(long, default_value_t = 900)]
+        sync_seconds: u64,
+        #[arg(long, default_value_t = 86_400)]
+        backup_seconds: u64,
+        #[arg(long)]
+        no_embedding_service: bool,
+    },
+    /// Print current background service states.
+    Status,
+    /// Stop and remove Cortana's per-user background services.
+    Uninstall,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    init_tracing();
     let cli = Cli::parse();
-    if matches!(cli.command, Some(Command::Init)) {
-        return init(cli.config);
+    if let Some(Command::Init {
+        connector_command,
+        data_dir,
+    }) = cli.command.as_ref()
+    {
+        return init(
+            cli.config,
+            connector_command.as_deref(),
+            data_dir.as_deref(),
+        );
     }
-    let config = Config::load(cli.config.as_deref())?;
+    let config_path = cli.config.clone().unwrap_or_else(default_config_path);
+    let mut config = Config::load(Some(&config_path))?;
+    config.load_environment()?;
+    match &cli.command {
+        Some(Command::Backup { output, keep }) => {
+            return backup_database(&config, output.as_deref(), *keep);
+        }
+        Some(Command::Verify { input: Some(input) }) => return verify_database(input),
+        Some(Command::Verify { input: None }) => {
+            return verify_database(&config.database_path());
+        }
+        Some(Command::Restore { input, force }) => {
+            return restore_database(&config, input, *force);
+        }
+        Some(Command::EmbeddingService) => return supervisor::run_embedding(&config).await,
+        Some(Command::Service { action }) => {
+            return manage_service(&config, &config_path, action);
+        }
+        _ => {}
+    }
     let store = Store::open(&config.database_path())?;
     let cache_max_entries = config.embedding.cache_max_entries;
     let base_embedder: Arc<dyn Embedder> = if cli.offline {
         Arc::new(DeterministicEmbedder::new(256))
     } else {
-        Arc::new(OpenAiEmbedder::new(config.embedding.clone()))
+        let api_key = config
+            .embedding
+            .api_key_env
+            .as_deref()
+            .map(|name| {
+                config
+                    .environment_value(name)
+                    .with_context(|| format!("{name} is not set"))
+            })
+            .transpose()?;
+        Arc::new(OpenAiEmbedder::new(config.embedding.clone(), api_key))
     };
     store.ensure_fingerprint(&base_embedder.fingerprint())?;
     let embedder: Arc<dyn Embedder> = Arc::new(CachedEmbedder::with_limit(
@@ -96,6 +192,15 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Some(Command::Doctor) => doctor(&store, embedder.as_ref()).await,
+        Some(
+            Command::Backup { .. }
+            | Command::Verify { .. }
+            | Command::Restore { .. }
+            | Command::EmbeddingService
+            | Command::Service { .. },
+        ) => {
+            unreachable!()
+        }
         Some(Command::Ingest { input }) => ingest(&store, embedder.as_ref(), &input).await,
         Some(Command::SyncFiles {
             root,
@@ -138,17 +243,32 @@ async fn main() -> Result<()> {
             address,
             web_dir,
             no_web,
+            allow_remote,
+            api_token_env,
         }) => {
+            let api_token = api_token_env
+                .as_deref()
+                .map(|name| {
+                    config.environment_value(name).with_context(|| {
+                        format!("HTTP token environment variable {name} is not set")
+                    })
+                })
+                .transpose()?;
+            anyhow::ensure!(
+                !allow_remote || api_token.is_some(),
+                "--allow-remote requires --api-token-env"
+            );
             let web_dir = (!no_web).then_some(web_dir);
             api::serve(
-                api::AppState { store, embedder },
+                api::AppState::new(store, embedder, api_token),
                 &address,
                 web_dir.as_deref(),
+                allow_remote,
             )
             .await
         }
         Some(Command::Mcp) => mcp::serve(mcp::BrainServer::new(store, embedder)).await,
-        Some(Command::Init) => unreachable!(),
+        Some(Command::Init { .. }) => unreachable!(),
         None => {
             println!("cortana {}", env!("CARGO_PKG_VERSION"));
             Ok(())
@@ -156,7 +276,127 @@ async fn main() -> Result<()> {
     }
 }
 
-fn init(path: Option<PathBuf>) -> Result<()> {
+fn manage_service(
+    config: &Config,
+    config_path: &std::path::Path,
+    action: &ServiceAction,
+) -> Result<()> {
+    match action {
+        ServiceAction::Install {
+            web_dir,
+            working_directory,
+            sync_seconds,
+            backup_seconds,
+            no_embedding_service,
+        } => {
+            let web_dir = web_dir.canonicalize().with_context(|| {
+                format!("workspace directory does not exist: {}", web_dir.display())
+            })?;
+            let working_directory = working_directory
+                .clone()
+                .unwrap_or(std::env::current_dir()?)
+                .canonicalize()?;
+            service::install(
+                config,
+                service::InstallOptions {
+                    config: &config_path.canonicalize()?,
+                    web_dir: &web_dir,
+                    working_directory: &working_directory,
+                    sync_seconds: *sync_seconds,
+                    backup_seconds: *backup_seconds,
+                    install_embedding: !no_embedding_service
+                        && supervisor::uses_local_service(config),
+                },
+            )
+        }
+        ServiceAction::Status => service::status(),
+        ServiceAction::Uninstall => service::uninstall(),
+    }
+}
+
+fn init_tracing() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("cortana=info,tower_http=info"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .try_init();
+}
+
+fn backup_database(config: &Config, output: Option<&std::path::Path>, keep: usize) -> Result<()> {
+    let directory = config.data_dir.join("backups");
+    let destination = output.map(PathBuf::from).unwrap_or_else(|| {
+        directory.join(format!(
+            "cortana-{}.sqlite3",
+            chrono::Utc::now().format("%Y%m%d-%H%M%S")
+        ))
+    });
+    let store = Store::open(&config.database_path())?;
+    store.integrity_check()?;
+    store.backup(&destination)?;
+    if destination.parent() == Some(directory.as_path()) {
+        prune_backups(&directory, keep, Some(&destination))?;
+    }
+    println!("backup verified: {}", destination.display());
+    Ok(())
+}
+
+fn verify_database(path: &std::path::Path) -> Result<()> {
+    Store::verify(path)?;
+    println!("database verified: {}", path.display());
+    Ok(())
+}
+
+fn restore_database(config: &Config, input: &std::path::Path, force: bool) -> Result<()> {
+    let database = config.database_path();
+    anyhow::ensure!(
+        force || !database.exists(),
+        "restore would replace {}; rerun with --force after stopping Cortana",
+        database.display()
+    );
+    let recovery = database.exists().then(|| {
+        config.data_dir.join("backups").join(format!(
+            "pre-restore-{}.sqlite3",
+            chrono::Utc::now().format("%Y%m%d-%H%M%S")
+        ))
+    });
+    Store::restore(&database, input, recovery.as_deref())?;
+    println!("database restored from {}", input.display());
+    if let Some(path) = recovery {
+        println!("previous index retained at {}", path.display());
+    }
+    Ok(())
+}
+
+fn prune_backups(
+    directory: &std::path::Path,
+    keep: usize,
+    protected: Option<&std::path::Path>,
+) -> Result<()> {
+    if keep == 0 || !directory.is_dir() {
+        return Ok(());
+    }
+    let mut backups = std::fs::read_dir(directory)?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "sqlite3")
+                && protected.is_none_or(|protected| path != protected)
+        })
+        .collect::<Vec<_>>();
+    backups.sort();
+    let remove = backups.len().saturating_sub(keep.saturating_sub(1));
+    for path in backups.into_iter().take(remove) {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+fn init(
+    path: Option<PathBuf>,
+    connector_command: Option<&std::path::Path>,
+    data_dir: Option<&std::path::Path>,
+) -> Result<()> {
     let path = path.unwrap_or_else(default_config_path);
     if path.exists() {
         println!("configuration already exists: {}", path.display());
@@ -165,7 +405,13 @@ fn init(path: Option<PathBuf>) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let config = Config::default();
+    let mut config = Config::default();
+    if let Some(data_dir) = data_dir {
+        config.data_dir = data_dir.to_path_buf();
+    }
+    if let Some(command) = connector_command {
+        config.connectors.command = vec![command.display().to_string()];
+    }
     std::fs::create_dir_all(&config.data_dir)?;
     let body = toml::to_string_pretty(&config)?;
     std::fs::write(&path, body)?;
@@ -245,10 +491,10 @@ async fn sync_configured_sources(
         .iter()
         .filter(|source| source.enabled && selected.is_none_or(|name| source.name == name))
         .collect::<Vec<_>>();
-    anyhow::ensure!(
-        !sources.is_empty(),
-        "no enabled configured sources matched the selection"
-    );
+    if sources.is_empty() {
+        println!("no enabled configured sources matched the selection");
+        return Ok(());
+    }
     for source in sources {
         let documents = source_documents(config, source)?;
         let seen = documents
@@ -301,6 +547,7 @@ fn source_documents(config: &Config, source: &SourceConfig) -> Result<Vec<Docume
     let executable = command.remove(0);
     let output = ProcessCommand::new(&executable)
         .args(&command)
+        .envs(&config.environment)
         .stdin(Stdio::null())
         .output()
         .with_context(|| format!("failed to run connector command {executable}"))?;

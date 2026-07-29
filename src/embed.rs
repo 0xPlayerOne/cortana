@@ -14,6 +14,15 @@ use crate::store::Store;
 pub trait Embedder: Send + Sync {
     async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>>;
     fn fingerprint(&self) -> String;
+
+    async fn probe(&self) -> Result<()> {
+        let vectors = self.embed(&["__cortana_probe__".into()]).await?;
+        anyhow::ensure!(
+            vectors.first().is_some_and(|vector| !vector.is_empty()),
+            "embedding provider returned no probe vector"
+        );
+        Ok(())
+    }
 }
 
 pub struct CachedEmbedder {
@@ -76,19 +85,25 @@ impl Embedder for CachedEmbedder {
     fn fingerprint(&self) -> String {
         self.inner.fingerprint()
     }
+
+    async fn probe(&self) -> Result<()> {
+        self.inner.probe().await
+    }
 }
 
 #[derive(Clone)]
 pub struct OpenAiEmbedder {
     client: Client,
     config: EmbeddingConfig,
+    api_key: Option<String>,
 }
 
 impl OpenAiEmbedder {
-    pub fn new(config: EmbeddingConfig) -> Self {
+    pub fn new(config: EmbeddingConfig, api_key: Option<String>) -> Self {
         Self {
             client: Client::new(),
             config,
+            api_key,
         }
     }
 }
@@ -117,8 +132,7 @@ impl Embedder for OpenAiEmbedder {
             model: &self.config.model,
             input,
         });
-        if let Some(name) = &self.config.api_key_env {
-            let key = std::env::var(name).with_context(|| format!("{name} is not set"))?;
+        if let Some(key) = &self.api_key {
             request = request.bearer_auth(key);
         }
         let response = request.send().await?.error_for_status()?;

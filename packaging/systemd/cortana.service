@@ -1,0 +1,20 @@
+[Unit]
+Description=Cortana second-brain API and workspace
+After=network-online.target cortana-embedding.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cortana --config %h/.config/cortana/config.toml serve --web-dir /usr/local/share/cortana/web
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/cortana
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=default.target
