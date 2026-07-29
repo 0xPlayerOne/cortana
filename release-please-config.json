@@ -22,9 +22,8 @@
       "jsonpath": "$.version"
     },
     {
-      "type": "json",
-      "path": "bun.lock",
-      "jsonpath": "$.workspaces['apps/web'].version"
+      "type": "generic",
+      "path": "bun.lock"
     },
     {
       "type": "generic",
