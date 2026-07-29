@@ -321,6 +321,7 @@ dependencies = [
  "clap",
  "dirs",
  "fs2",
+ "futures-util",
  "ignore",
  "predicates",
  "reqwest",
