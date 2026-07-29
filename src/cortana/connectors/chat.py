@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
+import sqlite3
 import time
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -69,12 +72,16 @@ def fetch_discord(
     channel_ids: list[str],
     project: str,
     token_env: str = "DISCORD_BOT_TOKEN",
+    cache_dir: Path | None = None,
 ) -> Iterable[Document]:
     token = _required_env(token_env)
     headers = {"Authorization": f"Bot {token}"}
     with httpx.Client(
         base_url="https://discord.com/api/v10", headers=headers, timeout=30
     ) as client:
+        if cache_dir is not None:
+            yield from _fetch_discord_cached(client, channel_ids, project, cache_dir)
+            return
         for channel_id in channel_ids:
             before: str | None = None
             while True:
@@ -89,31 +96,151 @@ def fetch_discord(
                 if not messages:
                     break
                 for message in messages:
-                    content = str(message.get("content") or "").strip()
-                    attachments = "\n".join(
-                        item.get("url", "") for item in message.get("attachments", [])
-                    )
-                    body = "\n".join(part for part in [content, attachments] if part)
-                    if not body:
-                        continue
-                    yield Document(
-                        source="discord",
-                        source_id=str(message["id"]),
-                        title=_title(content, f"Discord {channel_id}"),
-                        content=f"{message.get('author', {}).get('username', 'unknown')}: {body}",
-                        uri=f"https://discord.com/channels/@me/{channel_id}/{message['id']}",
-                        updated_at=dt.datetime.fromisoformat(
-                            str(message["timestamp"]).replace("Z", "+00:00")
-                        ),
-                        project=project,
-                        metadata={
-                            "channel_id": channel_id,
-                            "author_id": message.get("author", {}).get("id"),
-                        },
-                    )
+                    document = _discord_document(message, channel_id, project)
+                    if document is not None:
+                        yield document
                 before = str(messages[-1]["id"])
                 if len(messages) < 100:
                     break
+
+
+def _fetch_discord_cached(
+    client: httpx.Client,
+    channel_ids: list[str],
+    project: str,
+    cache_dir: Path,
+) -> Iterable[Document]:
+    cache = _discord_cache(cache_dir)
+    try:
+        for channel_id in channel_ids:
+            row = cache.execute(
+                "SELECT latest_id,last_full FROM channels WHERE channel_id=?",
+                (channel_id,),
+            ).fetchone()
+            full = row is None or _full_refresh_due(str(row[1]))
+            latest_id = None if row is None else str(row[0] or "")
+            before: str | None = None
+            after = None if full else latest_id
+            while True:
+                params: dict[str, Any] = {"limit": 100}
+                if full and before:
+                    params["before"] = before
+                elif not full and after:
+                    params["after"] = after
+                response = _get_with_backoff(
+                    client, f"/channels/{channel_id}/messages", params=params
+                )
+                response.raise_for_status()
+                messages: list[dict[str, Any]] = response.json()
+                if not messages:
+                    break
+                for message in messages:
+                    message_id = str(message["id"])
+                    cache.execute(
+                        "INSERT OR REPLACE INTO discord_messages(id,channel_id,body) VALUES(?,?,?)",
+                        (
+                            message_id,
+                            channel_id,
+                            json.dumps(message, separators=(",", ":")),
+                        ),
+                    )
+                    if full:
+                        cache.execute(
+                            "INSERT OR IGNORE INTO seen(channel_id,id) VALUES(?,?)",
+                            (channel_id, message_id),
+                        )
+                    if not latest_id or int(message_id) > int(latest_id):
+                        latest_id = message_id
+                cache.commit()
+                if len(messages) < 100:
+                    break
+                if full:
+                    before = str(messages[-1]["id"])
+                else:
+                    next_after = max((str(message["id"]) for message in messages), key=int)
+                    if next_after == after:
+                        break
+                    after = next_after
+            if full:
+                cache.execute(
+                    "DELETE FROM discord_messages WHERE channel_id=? "
+                    "AND id NOT IN (SELECT id FROM seen WHERE channel_id=?)",
+                    (channel_id, channel_id),
+                )
+            cache.execute(
+                "INSERT OR REPLACE INTO channels(channel_id,latest_id,last_full) VALUES(?,?,?)",
+                (
+                    channel_id,
+                    latest_id,
+                    dt.datetime.now(dt.UTC).isoformat() if full else str(row[1]),
+                ),
+            )
+            cache.commit()
+
+        rows = cache.execute(
+            "SELECT channel_id,body FROM discord_messages ORDER BY CAST(id AS INTEGER)"
+        )
+        for channel_id, body in rows:
+            cached_message: dict[str, Any] = json.loads(str(body))
+            document = _discord_document(cached_message, str(channel_id), project)
+            if document is not None:
+                yield document
+    finally:
+        cache.close()
+
+
+def _discord_cache(cache_dir: Path) -> sqlite3.Connection:
+    cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    cache_dir.chmod(0o700)
+    path = cache_dir / "discord.sqlite3"
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    os.close(descriptor)
+    path.chmod(0o600)
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA journal_mode=MEMORY")
+    connection.execute("PRAGMA synchronous=NORMAL")
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS discord_messages("
+        "id TEXT PRIMARY KEY,channel_id TEXT NOT NULL,body TEXT NOT NULL)"
+    )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS channels("
+        "channel_id TEXT PRIMARY KEY,latest_id TEXT,last_full TEXT NOT NULL)"
+    )
+    connection.execute(
+        "CREATE TEMP TABLE seen(channel_id TEXT NOT NULL,id TEXT NOT NULL,"
+        "PRIMARY KEY(channel_id,id))"
+    )
+    return connection
+
+
+def _full_refresh_due(last_full: str) -> bool:
+    try:
+        previous = dt.datetime.fromisoformat(last_full)
+    except ValueError:
+        return True
+    return dt.datetime.now(dt.UTC) - previous.astimezone(dt.UTC) >= dt.timedelta(days=1)
+
+
+def _discord_document(message: dict[str, Any], channel_id: str, project: str) -> Document | None:
+    content = str(message.get("content") or "").strip()
+    attachments = "\n".join(item.get("url", "") for item in message.get("attachments", []))
+    body = "\n".join(part for part in [content, attachments] if part)
+    if not body:
+        return None
+    return Document(
+        source="discord",
+        source_id=str(message["id"]),
+        title=_title(content, f"Discord {channel_id}"),
+        content=f"{message.get('author', {}).get('username', 'unknown')}: {body}",
+        uri=f"https://discord.com/channels/@me/{channel_id}/{message['id']}",
+        updated_at=dt.datetime.fromisoformat(str(message["timestamp"]).replace("Z", "+00:00")),
+        project=project,
+        metadata={
+            "channel_id": channel_id,
+            "author_id": message.get("author", {}).get("id"),
+        },
+    )
 
 
 def _required_env(name: str) -> str:
