@@ -9,7 +9,7 @@ from pathlib import Path
 from .apple_notes import fetch as fetch_apple_notes
 from .buzz import fetch as fetch_buzz
 from .chat import fetch_discord, fetch_slack
-from .google import fetch_drive, fetch_gmail
+from .google import fetch_calendar, fetch_drive, fetch_gmail
 from .model import Document, emit
 
 
@@ -43,6 +43,10 @@ def parser() -> argparse.ArgumentParser:
     _google_arguments(gmail)
     gmail.add_argument("--query", default="")
     gmail.add_argument("--label", action="append", dest="labels")
+
+    calendar = commands.add_parser("google-calendar")
+    _google_arguments(calendar)
+    calendar.add_argument("--query", default="")
     return root
 
 
@@ -68,6 +72,8 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
         return fetch_drive(token_path, arguments.project, arguments.query)
     if arguments.connector == "gmail":
         return fetch_gmail(token_path, arguments.project, arguments.query, arguments.labels)
+    if arguments.connector == "google-calendar":
+        return fetch_calendar(token_path, arguments.project, arguments.query)
     raise RuntimeError(f"unsupported connector: {arguments.connector}")
 
 

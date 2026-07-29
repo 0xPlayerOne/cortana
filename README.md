@@ -53,8 +53,8 @@ curl -sS http://127.0.0.1:7331/v1/context \
 Use `--offline` for a deterministic, zero-network evaluation index. Offline and production
 embeddings are intentionally fingerprinted as different index generations and cannot be mixed.
 See [the ingestion guide](docs/ingestion.md) and
-[`config.example.toml`](config.example.toml) for Google Drive, Gmail, Apple Notes, Slack, Discord,
-Buzz, filesystem/code, and external adapters.
+[`config.example.toml`](config.example.toml) for Google Drive, Gmail, Calendar, Apple Notes, Slack,
+Discord, Buzz, filesystem/code, and external adapters.
 See the [operations guide](docs/operations.md) for service management, authenticated remote access,
 telemetry, backup, restore, and Linux systemd units.
 

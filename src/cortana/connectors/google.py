@@ -14,6 +14,7 @@ import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -186,6 +187,88 @@ def fetch_gmail(
             page_token = listing.get("nextPageToken")
             if not page_token:
                 break
+
+
+def fetch_calendar(
+    token_path: Path,
+    project: str,
+    query: str = "",
+    client: httpx.Client | None = None,
+) -> Iterable[Document]:
+    with GoogleSession(token_path, client) as session:
+        calendars = session.request(
+            "GET", "https://www.googleapis.com/calendar/v3/users/me/calendarList"
+        ).json()
+        for calendar in calendars.get("items", []):
+            calendar_id = str(calendar.get("id") or "")
+            if not calendar_id or calendar.get("deleted") or calendar.get("hidden"):
+                continue
+            encoded_calendar_id = quote(calendar_id, safe="")
+            page_token: str | None = None
+            while True:
+                params: dict[str, Any] = {
+                    "singleEvents": "true",
+                    "orderBy": "startTime",
+                    "timeMin": (dt.datetime.now(dt.UTC) - dt.timedelta(days=365 * 5)).isoformat(),
+                    "maxResults": 2500,
+                }
+                if query:
+                    params["q"] = query
+                if page_token:
+                    params["pageToken"] = page_token
+                payload = session.request(
+                    "GET",
+                    f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events",
+                    params=params,
+                ).json()
+                for event in payload.get("items", []):
+                    if event.get("status") == "cancelled":
+                        continue
+                    yield _calendar_document(event, calendar, project)
+                page_token = payload.get("nextPageToken")
+                if not page_token:
+                    break
+
+
+def _calendar_document(event: dict[str, Any], calendar: dict[str, Any], project: str) -> Document:
+    start = event.get("start", {}).get("dateTime") or event.get("start", {}).get("date") or ""
+    end = event.get("end", {}).get("dateTime") or event.get("end", {}).get("date") or ""
+    attendees = [
+        str(attendee.get("email") or attendee.get("displayName") or "")
+        for attendee in event.get("attendees", [])
+        if attendee.get("email") or attendee.get("displayName")
+    ]
+    content = "\n".join(
+        part
+        for part in [
+            f"Calendar: {calendar.get('summary') or calendar.get('id') or ''}",
+            f"Start: {start}",
+            f"End: {end}",
+            f"Location: {event.get('location') or ''}",
+            f"Organizer: {event.get('organizer', {}).get('email') or ''}",
+            f"Attendees: {', '.join(attendees)}",
+            "",
+            str(event.get("description") or ""),
+        ]
+        if part
+    ).strip()
+    calendar_id = str(calendar.get("id") or "primary")
+    return Document(
+        source="google-calendar",
+        source_id=f"{calendar_id}:{event['id']}",
+        title=str(event.get("summary") or "(untitled event)"),
+        content=content,
+        uri=event.get("htmlLink"),
+        updated_at=_timestamp(event.get("updated") or start),
+        project=project,
+        metadata={
+            "calendar_id": calendar_id,
+            "calendar": calendar.get("summary"),
+            "attendees": attendees,
+            "status": event.get("status"),
+            "recurring_event_id": event.get("recurringEventId"),
+        },
+    )
 
 
 def _drive_content(session: GoogleSession, item: dict[str, Any]) -> str:

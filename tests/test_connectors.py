@@ -20,6 +20,7 @@ from cortana.connectors.google import (
     _gmail_document,
     _plain_text,
     _timestamp,
+    fetch_calendar,
     fetch_drive,
     fetch_gmail,
 )
@@ -263,6 +264,48 @@ def test_google_gmail_decodes_message_body(tmp_path: Path) -> None:
     assert documents[0].title == "Release"
     assert "Deployment is green" in documents[0].content
     assert documents[0].metadata["thread_id"] == "t1"
+
+
+def test_google_calendar_normalizes_events(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/calendarList"):
+            return response(
+                {"items": [{"id": "primary", "summary": "Work"}]},
+                request=request,
+            )
+        return response(
+            {
+                "items": [
+                    {
+                        "id": "event-1",
+                        "summary": "Release review",
+                        "description": "Approve the rollout.",
+                        "start": {"dateTime": "2026-07-29T12:00:00Z"},
+                        "end": {"dateTime": "2026-07-29T12:30:00Z"},
+                        "updated": "2026-07-29T11:00:00Z",
+                        "htmlLink": "https://calendar.google.com/event?eid=1",
+                        "status": "confirmed",
+                        "attendees": [{"email": "ada@example.test"}],
+                    }
+                ]
+            },
+            request=request,
+        )
+
+    documents = list(
+        fetch_calendar(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert documents[0].source_id == "primary:event-1"
+    assert "Approve the rollout." in documents[0].content
+    assert documents[0].metadata["attendees"] == ["ada@example.test"]
 
 
 def test_google_session_refreshes_and_secures_token_file(tmp_path: Path) -> None:
