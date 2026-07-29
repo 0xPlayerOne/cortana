@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.3](https://github.com/0xPlayerOne/cortana/compare/v0.1.2...v0.1.3) (2026-07-29)
+
+
+### Bug Fixes
+
+* **release:** configure root manifest package ([9f18714](https://github.com/0xPlayerOne/cortana/commit/9f18714a5570cda98ed5179a735a7eb98a092179))
+* **release:** support Bun JSONC lockfile ([73983f6](https://github.com/0xPlayerOne/cortana/commit/73983f60f3a1134fa4378c3d9ad56d72fa3c6271))
+
+
+### Documentation
+
+* **release:** document immutable patch history ([52bd63d](https://github.com/0xPlayerOne/cortana/commit/52bd63df89aecb0ec6976d1408ac203b198be43c))
+
+
+### Maintenance
+
+* **main:** release 0.1.2 ([b4f480e](https://github.com/0xPlayerOne/cortana/commit/b4f480e654709b145d3e523dd3171026b933f16d))
+
 ## [0.1.2](https://github.com/0xPlayerOne/cortana/compare/v0.1.1...v0.1.2) (2026-07-29)
 
 
