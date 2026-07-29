@@ -58,6 +58,25 @@ Discord, Buzz, filesystem/code, and external adapters.
 See the [operations guide](docs/operations.md) for service management, authenticated remote access,
 telemetry, backup, restore, and Linux systemd units.
 
+### Migrate an existing Hermes second brain
+
+Cortana can copy only reusable Google OAuth tokens and supported chat tokens from Hermes, lock
+every migrated credential to mode `0600`, and generate equivalent source configuration. Existing
+Chroma and Hindsight indexes are reported but deliberately retained until Cortana has completed
+and verified a fresh sync:
+
+```bash
+cortana migrate-hermes \
+  --connector-command "$HOME/.local/share/cortana/venv/bin/cortana-connectors" \
+  --discord-channel 123456789012345678
+cortana doctor
+cortana sync
+```
+
+Migration refuses to replace an existing Cortana configuration unless `--force` is explicit. It
+never prints credential values and recognizes only `DISCORD_BOT_TOKEN` and `SLACK_BOT_TOKEN` from
+legacy environment files.
+
 ## Architecture
 
 ```text

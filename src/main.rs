@@ -11,7 +11,7 @@ use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbe
 use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::Store;
-use cortana::{api, mcp, service, supervisor};
+use cortana::{api, mcp, migration, service, supervisor};
 
 #[derive(Debug, Parser)]
 #[command(name = "cortana", version, about = "Agent-native second brain")]
@@ -32,6 +32,28 @@ enum Command {
         connector_command: Option<PathBuf>,
         #[arg(long)]
         data_dir: Option<PathBuf>,
+    },
+    /// Securely migrate reusable sources and credentials from a Hermes installation.
+    MigrateHermes {
+        #[arg(long)]
+        hermes_home: Option<PathBuf>,
+        #[arg(long)]
+        developer_root: Option<PathBuf>,
+        #[arg(long)]
+        data_dir: Option<PathBuf>,
+        #[arg(long)]
+        connector_command: Option<PathBuf>,
+        #[arg(long = "google-account")]
+        google_accounts: Vec<String>,
+        #[arg(long = "discord-channel")]
+        discord_channels: Vec<String>,
+        #[arg(long = "slack-channel")]
+        slack_channels: Vec<String>,
+        #[arg(
+            long,
+            help = "Replace an existing Cortana configuration and migrated files"
+        )]
+        force: bool,
     },
     /// Validate configuration, storage, and the embedding provider.
     Doctor,
@@ -145,6 +167,41 @@ async fn main() -> Result<()> {
             connector_command.as_deref(),
             data_dir.as_deref(),
         );
+    }
+    if let Some(Command::MigrateHermes {
+        hermes_home,
+        developer_root,
+        data_dir,
+        connector_command,
+        google_accounts,
+        discord_channels,
+        slack_channels,
+        force,
+    }) = cli.command.as_ref()
+    {
+        let home = dirs::home_dir().context("cannot resolve the home directory")?;
+        let config_path = cli.config.clone().unwrap_or_else(default_config_path);
+        let report = migration::migrate_hermes(&migration::HermesMigrationOptions {
+            config_path,
+            hermes_home: hermes_home.clone().unwrap_or_else(|| home.join(".hermes")),
+            developer_root: developer_root
+                .clone()
+                .unwrap_or_else(|| home.join("Developer")),
+            data_dir: data_dir.clone(),
+            connector_command: connector_command.clone(),
+            google_accounts: google_accounts.clone(),
+            discord_channels: discord_channels.clone(),
+            slack_channels: slack_channels.clone(),
+            force: *force,
+        })?;
+        println!(
+            "migrated Hermes configuration: accounts={} sources={} legacy indexes retained={}",
+            report.google_accounts.len(),
+            report.configured_sources.len(),
+            report.legacy_indexes_retained.len()
+        );
+        println!("created {}", report.config_path.display());
+        return Ok(());
     }
     let config_path = cli.config.clone().unwrap_or_else(default_config_path);
     let mut config = Config::load(Some(&config_path))?;
@@ -268,7 +325,7 @@ async fn main() -> Result<()> {
             .await
         }
         Some(Command::Mcp) => mcp::serve(mcp::BrainServer::new(store, embedder)).await,
-        Some(Command::Init { .. }) => unreachable!(),
+        Some(Command::Init { .. } | Command::MigrateHermes { .. }) => unreachable!(),
         None => {
             println!("cortana {}", env!("CARGO_PKG_VERSION"));
             Ok(())
