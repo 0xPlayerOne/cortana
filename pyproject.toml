@@ -15,7 +15,7 @@ cortana-connectors = "cortana.connectors.__main__:entrypoint"
 
 [project.optional-dependencies]
 ingestion = [
-  "pypdf>=5.8,<6",
+  "pypdf>=6.14.2,<7",
 ]
 hindsight = ["hindsight-api>=0.8.5,<0.9"]
 
@@ -23,7 +23,7 @@ hindsight = ["hindsight-api>=0.8.5,<0.9"]
 dev = [
   "coverage[toml]>=7.10,<8",
   "mypy>=1.17,<2",
-  "pytest>=8.4,<9",
+  "pytest>=9.0.3,<10",
   "pytest-asyncio>=1.1,<2",
   "pytest-cov>=6.2,<7",
   "ruff>=0.12,<1",
