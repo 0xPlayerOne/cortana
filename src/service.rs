@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 
@@ -82,7 +84,7 @@ pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
     ]);
 
     for label in LABELS {
-        bootout(label);
+        bootout(label)?;
         let path = launch_agents.join(format!("{label}.plist"));
         if path.exists() {
             std::fs::remove_file(path)?;
@@ -92,6 +94,7 @@ pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
         let path = launch_agents.join(format!("{}.plist", job.label));
         let body = plist(&job, options.working_directory, &logs);
         atomic_write(&path, body.as_bytes())?;
+        enable(job.label)?;
         bootstrap(&path)?;
         println!("installed {}", job.label);
     }
@@ -102,7 +105,7 @@ pub fn uninstall() -> Result<()> {
     require_macos()?;
     let launch_agents = launch_agents_directory()?;
     for label in LABELS {
-        bootout(label);
+        bootout(label)?;
         let path = launch_agents.join(format!("{label}.plist"));
         if path.exists() {
             std::fs::remove_file(&path)?;
@@ -216,13 +219,36 @@ fn bootstrap(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn bootout(label: &str) {
-    let Ok(domain) = launch_domain() else {
-        return;
-    };
+fn enable(label: &str) -> Result<()> {
+    let status = Command::new("launchctl")
+        .args(["enable", &format!("{}/{label}", launch_domain()?)])
+        .status()?;
+    anyhow::ensure!(status.success(), "launchctl enable failed for {label}");
+    Ok(())
+}
+
+fn bootout(label: &str) -> Result<()> {
+    let domain = launch_domain()?;
     let _ = Command::new("launchctl")
         .args(["bootout", &format!("{domain}/{label}")])
         .output();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while launchctl_job_loaded(&domain, label)? {
+        anyhow::ensure!(
+            Instant::now() < deadline,
+            "launchctl job did not unload: {label}"
+        );
+        thread::sleep(Duration::from_millis(100));
+    }
+    Ok(())
+}
+
+fn launchctl_job_loaded(domain: &str, label: &str) -> Result<bool> {
+    Ok(Command::new("launchctl")
+        .args(["print", &format!("{domain}/{label}")])
+        .output()?
+        .status
+        .success())
 }
 
 fn launch_domain() -> Result<String> {
