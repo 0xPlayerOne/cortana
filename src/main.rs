@@ -1058,6 +1058,19 @@ fn connector_arguments(command: &mut Vec<String>, source: &SourceConfig) -> Resu
     for label in &source.labels {
         command.extend(["--label".into(), label.clone()]);
     }
+    if let Some(max_content_chars) = source.max_content_chars {
+        anyhow::ensure!(
+            source.kind == "google-drive",
+            "source {} only supports max_content_chars for google-drive",
+            source.name
+        );
+        anyhow::ensure!(
+            max_content_chars > 0,
+            "source {} requires max_content_chars greater than zero",
+            source.name
+        );
+        command.extend(["--max-content-chars".into(), max_content_chars.to_string()]);
+    }
     anyhow::ensure!(
         !matches!(source.kind.as_str(), "slack" | "discord") || !source.channels.is_empty(),
         "source {} requires at least one channel",
