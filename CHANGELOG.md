@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.4](https://github.com/0xPlayerOne/cortana/compare/v0.1.3...v0.1.4) (2026-07-29)
+
+
+### Bug Fixes
+
+* **ci:** give mixed unit tests a full runner ([7d64155](https://github.com/0xPlayerOne/cortana/commit/7d6415504aeb357d2cae66d48553fe9b2d4ce639))
+* **embedding:** batch local requests efficiently ([a7b6821](https://github.com/0xPlayerOne/cortana/commit/a7b682106b73afcbfd4abb98e37a2e3cff9a7ce7))
+* **embedding:** raise local model memory ceiling ([cf8375b](https://github.com/0xPlayerOne/cortana/commit/cf8375b6897e5c22d4d9ac163bba12f73d6d4414))
+* **release:** dispatch assets without a checkout ([ef2d67c](https://github.com/0xPlayerOne/cortana/commit/ef2d67cf6f9b06d2e5faa83f8f91f045a5270e61))
+
 ## [0.1.3](https://github.com/0xPlayerOne/cortana/compare/v0.1.2...v0.1.3) (2026-07-29)
 
 
