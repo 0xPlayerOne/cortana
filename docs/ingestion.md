@@ -11,6 +11,8 @@ chat export in memory. Temporary spools are removed after success or failure, an
 uses a temporary SQLite key table rather than an unbounded SQL parameter list.
 If one configured source fails, Cortana records the failure, continues syncing the remaining
 sources, and exits nonzero after the run so supervisors still detect the partial failure.
+Connector subprocesses also have a configurable wall-clock timeout (six hours by default), which
+prevents a wedged upstream API from holding the cross-process sync lock indefinitely.
 
 Configured source names are index namespaces. This prevents two Gmail accounts, Drive accounts, or
 Slack workspaces from deleting or colliding with one another. The original adapter kind is retained

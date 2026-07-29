@@ -58,6 +58,8 @@ pub struct EmbeddingServiceConfig {
 pub struct ConnectorConfig {
     #[serde(default = "default_connector_command")]
     pub command: Vec<String>,
+    #[serde(default = "default_connector_timeout")]
+    pub timeout_seconds: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -116,6 +118,7 @@ impl Default for ConnectorConfig {
     fn default() -> Self {
         Self {
             command: default_connector_command(),
+            timeout_seconds: default_connector_timeout(),
         }
     }
 }
@@ -263,6 +266,10 @@ fn default_connector_command() -> Vec<String> {
         "-m".into(),
         "cortana.connectors".into(),
     ]
+}
+
+fn default_connector_timeout() -> u64 {
+    6 * 60 * 60
 }
 
 fn default_enabled() -> bool {

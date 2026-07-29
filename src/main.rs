@@ -765,21 +765,40 @@ fn run_connector_to_spool(config: &Config, source: &SourceConfig) -> Result<(Pat
     let stderr = private_file(&diagnostics)?;
     let mut command = configured_connector_command(config, source)?;
     let executable = command.remove(0);
-    let status = ProcessCommand::new(&executable)
+    let child = ProcessCommand::new(&executable)
         .args(&command)
         .envs(&config.environment)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
-        .status()
+        .spawn()
         .with_context(|| format!("failed to run connector command {executable}"));
-    let status = match status {
-        Ok(status) => status,
+    let mut child = match child {
+        Ok(child) => child,
         Err(error) => {
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             return Err(error);
         }
+    };
+    let timeout = std::time::Duration::from_secs(config.connectors.timeout_seconds.max(1));
+    let started = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if started.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&spool);
+            let _ = std::fs::remove_file(&diagnostics);
+            anyhow::bail!(
+                "connector {} timed out after {} seconds",
+                source.name,
+                timeout.as_secs()
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     };
     if !status.success() {
         let message = std::fs::read_to_string(&diagnostics).unwrap_or_default();
