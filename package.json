@@ -7,7 +7,8 @@
     "apps/*"
   ],
   "overrides": {
-    "brace-expansion": "5.0.8"
+    "brace-expansion": "5.0.8",
+    "minimatch": "10.2.6"
   },
   "scripts": {
     "build": "bun run --cwd apps/web build",
