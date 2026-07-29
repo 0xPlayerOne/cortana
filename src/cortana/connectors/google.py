@@ -141,6 +141,8 @@ def fetch_drive(
                 items: list[dict[str, Any]] = payload.get("files", [])
                 bodies: dict[str, str] = {}
                 missing_items: list[dict[str, Any]] = []
+                downloaded_ids: set[str] = set()
+                stale_ids: set[str] = set()
                 for item in items:
                     file_id = str(item["id"])
                     modified_time = str(item.get("modifiedTime") or "")
@@ -155,19 +157,30 @@ def fetch_drive(
                         thread_name_prefix="cortana-drive",
                     ) as pool:
                         downloaded = pool.map(
-                            lambda item: _drive_content(session, item),
+                            lambda item: _safe_drive_content(session, item),
                             missing_items,
                         )
-                        bodies.update(
-                            (str(item["id"]), body)
-                            for item, body in zip(missing_items, downloaded, strict=True)
-                        )
-                missing_ids = {str(item["id"]) for item in missing_items}
+                        for item, (body, error_name) in zip(missing_items, downloaded, strict=True):
+                            file_id = str(item["id"])
+                            if error_name is None:
+                                downloaded_ids.add(file_id)
+                            else:
+                                stale = _stale_cached_drive_content(cache, file_id)
+                                if stale is not None:
+                                    body = stale
+                                    stale_ids.add(file_id)
+                                print(
+                                    "drive file content unavailable: "
+                                    f"id={file_id} error={error_name} "
+                                    f"using_stale_cache={stale is not None}",
+                                    file=sys.stderr,
+                                )
+                            bodies[file_id] = body
                 for item in items:
                     file_id = str(item["id"])
                     modified_time = str(item.get("modifiedTime") or "")
                     body = bodies[file_id]
-                    if file_id in missing_ids and cache is not None:
+                    if file_id in downloaded_ids and cache is not None:
                         cache.execute(
                             "INSERT OR REPLACE INTO files(id,modified_time,body) VALUES(?,?,?)",
                             (file_id, modified_time, body),
@@ -195,6 +208,7 @@ def fetch_drive(
                                 for owner in item.get("owners", [])
                                 if owner.get("displayName")
                             ],
+                            "content_stale": file_id in stale_ids,
                         },
                     )
                 page_token = payload.get("nextPageToken")
@@ -354,6 +368,13 @@ def _cached_drive_content(
         "SELECT body FROM files WHERE id=? AND modified_time=?",
         (file_id, modified_time),
     ).fetchone()
+    return None if row is None else str(row[0])
+
+
+def _stale_cached_drive_content(cache: sqlite3.Connection | None, file_id: str) -> str | None:
+    if cache is None:
+        return None
+    row = cache.execute("SELECT body FROM files WHERE id=?", (file_id,)).fetchone()
     return None if row is None else str(row[0])
 
 
@@ -570,6 +591,13 @@ def _drive_content(session: GoogleSession, item: dict[str, Any]) -> str:
             page.extract_text() or "" for page in PdfReader(io.BytesIO(response.content)).pages
         ).strip()
     return ""
+
+
+def _safe_drive_content(session: GoogleSession, item: dict[str, Any]) -> tuple[str, str | None]:
+    try:
+        return _drive_content(session, item), None
+    except Exception as error:
+        return "", type(error).__name__
 
 
 def _gmail_document(message: dict[str, Any], project: str) -> Document:
