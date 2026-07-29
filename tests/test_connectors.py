@@ -282,6 +282,49 @@ def test_chat_connectors_reassemble_slack_and_normalize_discord(
     assert discord_documents[0].metadata["author_id"] == "u1"
 
 
+def test_discord_cache_uses_incremental_after_cursor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DISCORD_TEST_TOKEN", "secret")
+    real_client = httpx.Client
+    cursors: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        after = request.url.params.get("after")
+        cursors.append(after)
+        messages = (
+            [
+                {
+                    "id": "99",
+                    "content": "Status",
+                    "attachments": [],
+                    "timestamp": "2026-07-29T12:00:00Z",
+                    "author": {"id": "u1", "username": "Ada"},
+                }
+            ]
+            if after is None
+            else []
+        )
+        return response(messages, request=request)
+
+    monkeypatch.setattr(
+        chat.httpx,
+        "Client",
+        lambda **_kwargs: real_client(
+            base_url="https://discord.test",
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    cache = tmp_path / "cache"
+    first = list(chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN", cache_dir=cache))
+    second = list(chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN", cache_dir=cache))
+
+    assert first == second
+    assert cursors == [None, "99"]
+    assert (cache / "discord.sqlite3").stat().st_mode & 0o777 == 0o600
+    assert cache.stat().st_mode & 0o777 == 0o700
+
+
 def test_chat_connector_rejects_missing_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MISSING_TOKEN", raising=False)
     with pytest.raises(RuntimeError, match="MISSING_TOKEN is required"):
@@ -628,7 +671,7 @@ def test_connector_cli_emits_buzz_jsonl(tmp_path: Path, capsys: pytest.CaptureFi
 def test_connector_cli_dispatches_chat_sources(monkeypatch: pytest.MonkeyPatch) -> None:
     expected = [Document(source="test", source_id="1", title="One", content="Body")]
     monkeypatch.setattr(connector_cli, "fetch_slack", lambda *_args: expected)
-    monkeypatch.setattr(connector_cli, "fetch_discord", lambda *_args: expected)
+    monkeypatch.setattr(connector_cli, "fetch_discord", lambda *_args, **_kwargs: expected)
 
     slack_args = connector_cli.parser().parse_args(
         ["--project", "work", "slack", "--channel", "C1"]

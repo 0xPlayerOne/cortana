@@ -69,7 +69,12 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
     if arguments.connector == "slack":
         return fetch_slack(arguments.channels, arguments.project, arguments.token_env)
     if arguments.connector == "discord":
-        return fetch_discord(arguments.channels, arguments.project, arguments.token_env)
+        return fetch_discord(
+            arguments.channels,
+            arguments.project,
+            arguments.token_env,
+            cache_dir=arguments.cache_dir,
+        )
     token_path = _token_path(arguments)
     if arguments.connector == "google-drive":
         return fetch_drive(
