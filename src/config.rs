@@ -264,7 +264,7 @@ fn default_embedding_startup_timeout() -> u64 {
 }
 
 fn default_embedding_memory_limit() -> u64 {
-    2_048
+    4_096
 }
 
 fn default_connector_command() -> Vec<String> {
@@ -316,6 +316,11 @@ mod tests {
         assert!(config.sources[0].enabled);
         assert_eq!(config.sources[0].max_content_chars, Some(12_345));
         assert_eq!(config.sources[1].source.as_deref(), Some("code"));
+    }
+
+    #[test]
+    fn reserves_enough_memory_for_the_default_local_embedding_model() {
+        assert_eq!(Config::default().embedding.service.memory_limit_mb, 4_096);
     }
 
     #[cfg(unix)]
