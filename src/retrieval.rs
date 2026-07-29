@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use chrono::Utc;
@@ -7,6 +8,8 @@ use chrono::Utc;
 use crate::embed::Embedder;
 use crate::model::{Evidence, StoredChunk};
 use crate::store::Store;
+
+const INTERACTIVE_EMBEDDING_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub async fn retrieve(
     store: &Store,
@@ -16,15 +19,47 @@ pub async fn retrieve(
     source: Option<&str>,
     limit: usize,
 ) -> Result<Vec<Evidence>> {
+    retrieve_with_timeout(
+        store,
+        embedder,
+        query,
+        project,
+        source,
+        limit,
+        INTERACTIVE_EMBEDDING_TIMEOUT,
+    )
+    .await
+}
+
+async fn retrieve_with_timeout(
+    store: &Store,
+    embedder: &Arc<dyn Embedder>,
+    query: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+    limit: usize,
+    embedding_timeout: Duration,
+) -> Result<Vec<Evidence>> {
     anyhow::ensure!(!query.trim().is_empty(), "query must not be empty");
-    let vectors = embedder.embed(&[query.to_string()]).await?;
-    let query_embedding = vectors
-        .first()
-        .ok_or_else(|| anyhow::anyhow!("embedding provider returned no query vector"))?;
-    search(
+    let query_embedding =
+        match tokio::time::timeout(embedding_timeout, embedder.embed(&[query.to_string()])).await {
+            Ok(Ok(vectors)) => vectors.into_iter().next(),
+            Ok(Err(error)) => {
+                tracing::warn!(%error, "query embedding unavailable; using lexical retrieval");
+                None
+            }
+            Err(_) => {
+                tracing::warn!(
+                    timeout_seconds = embedding_timeout.as_secs_f32(),
+                    "query embedding saturated; using lexical retrieval"
+                );
+                None
+            }
+        };
+    rank(
         store,
         query,
-        query_embedding,
+        query_embedding.as_deref(),
         project,
         source,
         limit.min(50),
@@ -39,8 +74,22 @@ pub fn search(
     source: Option<&str>,
     limit: usize,
 ) -> Result<Vec<Evidence>> {
+    rank(store, query, Some(query_embedding), project, source, limit)
+}
+
+fn rank(
+    store: &Store,
+    query: &str,
+    query_embedding: Option<&[f32]>,
+    project: Option<&str>,
+    source: Option<&str>,
+    limit: usize,
+) -> Result<Vec<Evidence>> {
     let candidate_limit = limit.saturating_mul(8).max(32);
-    let semantic = store.semantic_ids(query_embedding, project, source, candidate_limit)?;
+    let semantic = query_embedding.map_or_else(
+        || Ok(Vec::new()),
+        |embedding| store.semantic_ids(embedding, project, source, candidate_limit),
+    )?;
     let lexical = store.lexical_ids(query, project, source, candidate_limit)?;
     let candidate_ids = semantic
         .iter()
@@ -175,9 +224,40 @@ fn evidence(
 
 #[cfg(test)]
 mod tests {
+    use anyhow::bail;
+    use async_trait::async_trait;
     use chrono::Utc;
+    use serde_json::json;
+    use tempfile::tempdir;
 
     use super::*;
+    use crate::model::Document;
+
+    struct UnavailableEmbedder;
+    struct SlowEmbedder;
+
+    #[async_trait]
+    impl Embedder for UnavailableEmbedder {
+        fn fingerprint(&self) -> String {
+            "unavailable:2".into()
+        }
+
+        async fn embed(&self, _input: &[String]) -> Result<Vec<Vec<f32>>> {
+            bail!("embedding backend unavailable")
+        }
+    }
+
+    #[async_trait]
+    impl Embedder for SlowEmbedder {
+        fn fingerprint(&self) -> String {
+            "slow:2".into()
+        }
+
+        async fn embed(&self, _input: &[String]) -> Result<Vec<Vec<f32>>> {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok(vec![vec![1.0, 0.0]])
+        }
+    }
 
     fn chunk(id: &str, title: &str, content: &str) -> StoredChunk {
         StoredChunk {
@@ -214,5 +294,89 @@ mod tests {
         second.uri.clone_from(&first.uri);
 
         assert_eq!(dedupe_key(&first), dedupe_key(&second));
+    }
+
+    #[tokio::test]
+    async fn unavailable_embeddings_fall_back_to_lexical_evidence() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let document = Document {
+            source: "notes".into(),
+            source_id: "qwen-runbook".into(),
+            title: "Qwen runbook".into(),
+            content: "Cortana owns the Qwen embedding service.".into(),
+            uri: None,
+            updated_at: Utc::now(),
+            project: "cortana".into(),
+            acl: Vec::new(),
+            metadata: json!({}),
+        };
+        store
+            .upsert(
+                &document,
+                &[(
+                    "Cortana owns the Qwen embedding service.".into(),
+                    vec![1.0, 0.0],
+                )],
+            )
+            .expect("upsert");
+
+        let evidence = retrieve(
+            &store,
+            &(Arc::new(UnavailableEmbedder) as Arc<dyn Embedder>),
+            "Qwen",
+            Some("cortana"),
+            None,
+            10,
+        )
+        .await
+        .expect("lexical fallback");
+
+        assert_eq!(evidence.len(), 1);
+        assert_eq!(evidence[0].title, "Qwen runbook");
+        assert_eq!(evidence[0].semantic_rank, None);
+        assert_eq!(evidence[0].lexical_rank, Some(1));
+    }
+
+    #[tokio::test]
+    async fn saturated_embeddings_respect_the_interactive_latency_budget() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let document = Document {
+            source: "notes".into(),
+            source_id: "release-runbook".into(),
+            title: "Release runbook".into(),
+            content: "Use the blue green release procedure.".into(),
+            uri: None,
+            updated_at: Utc::now(),
+            project: "cortana".into(),
+            acl: Vec::new(),
+            metadata: json!({}),
+        };
+        store
+            .upsert(
+                &document,
+                &[(
+                    "Use the blue green release procedure.".into(),
+                    vec![1.0, 0.0],
+                )],
+            )
+            .expect("upsert");
+
+        let evidence = retrieve_with_timeout(
+            &store,
+            &(Arc::new(SlowEmbedder) as Arc<dyn Embedder>),
+            "blue green",
+            Some("cortana"),
+            None,
+            10,
+            Duration::from_millis(1),
+        )
+        .await
+        .expect("timeout fallback");
+
+        assert_eq!(evidence.len(), 1);
+        assert_eq!(evidence[0].semantic_rank, None);
+        assert_eq!(evidence[0].lexical_rank, Some(1));
     }
 }
