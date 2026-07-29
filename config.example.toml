@@ -27,6 +27,8 @@ memory_limit_mb = 2048
 [connectors]
 # Change this when Cortana is installed into a dedicated virtual environment.
 command = ["uv", "run", "python", "-m", "cortana.connectors"]
+# Prevent a wedged external API process from holding the single-writer sync lock forever.
+timeout_seconds = 21600
 
 [[sources]]
 name = "work-code"

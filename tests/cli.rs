@@ -144,6 +144,34 @@ fn source_failure_does_not_block_later_sources() {
 }
 
 #[test]
+fn connector_wall_clock_timeout_is_enforced() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n\
+             [connectors]\ntimeout_seconds = 1\n\
+             [[sources]]\nname = \"wedged\"\nkind = \"external\"\nproject = \"demo\"\n\
+             command = [\"/bin/sleep\", \"30\"]\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .arg("sync")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "connector wedged timed out after 1 seconds",
+        ));
+}
+
+#[test]
 fn backup_verify_and_restore_round_trip() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");
