@@ -38,6 +38,8 @@ pub struct EmbeddingConfig {
     pub dimension: usize,
     #[serde(default = "default_embedding_cache_entries")]
     pub cache_max_entries: usize,
+    #[serde(default = "default_embedding_request_timeout")]
+    pub request_timeout_seconds: u64,
     #[serde(default)]
     pub service: EmbeddingServiceConfig,
 }
@@ -94,6 +96,7 @@ impl Default for EmbeddingConfig {
             api_key_env: None,
             dimension: default_dimension(),
             cache_max_entries: default_embedding_cache_entries(),
+            request_timeout_seconds: default_embedding_request_timeout(),
             service: EmbeddingServiceConfig::default(),
         }
     }
@@ -238,6 +241,10 @@ fn default_dimension() -> usize {
 
 fn default_embedding_cache_entries() -> usize {
     250_000
+}
+
+fn default_embedding_request_timeout() -> u64 {
+    180
 }
 
 fn default_embedding_startup_timeout() -> u64 {
