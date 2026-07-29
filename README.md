@@ -26,6 +26,7 @@ cargo build --release
 
 # Ingest normalized documents, then retrieve structured cited evidence.
 ./target/release/cortana ingest documents.jsonl
+./target/release/cortana sync
 ./target/release/cortana search "how do releases work?" --project engineering
 
 # Agent transport and workspace API use the identical retrieval pipeline.
@@ -35,6 +36,9 @@ cargo build --release
 
 Use `--offline` for a deterministic, zero-network evaluation index. Offline and production
 embeddings are intentionally fingerprinted as different index generations and cannot be mixed.
+See [the ingestion guide](docs/ingestion.md) and
+[`config.example.toml`](config.example.toml) for Google Drive, Gmail, Apple Notes, Slack, Discord,
+Buzz, filesystem/code, and external adapters.
 
 ## Architecture
 

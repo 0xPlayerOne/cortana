@@ -9,6 +9,10 @@ pub struct Config {
     pub data_dir: PathBuf,
     #[serde(default)]
     pub embedding: EmbeddingConfig,
+    #[serde(default)]
+    pub connectors: ConnectorConfig,
+    #[serde(default)]
+    pub sources: Vec<SourceConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -23,6 +27,38 @@ pub struct EmbeddingConfig {
     pub dimension: usize,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ConnectorConfig {
+    #[serde(default = "default_connector_command")]
+    pub command: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct SourceConfig {
+    pub name: String,
+    pub kind: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_project")]
+    pub project: String,
+    #[serde(default)]
+    pub root: Option<PathBuf>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub channels: Vec<String>,
+    #[serde(default)]
+    pub token_env: Option<String>,
+    #[serde(default)]
+    pub token: Option<PathBuf>,
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub labels: Vec<String>,
+    #[serde(default)]
+    pub command: Vec<String>,
+}
+
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
@@ -34,11 +70,21 @@ impl Default for EmbeddingConfig {
     }
 }
 
+impl Default for ConnectorConfig {
+    fn default() -> Self {
+        Self {
+            command: default_connector_command(),
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             data_dir: default_data_dir(),
             embedding: EmbeddingConfig::default(),
+            connectors: ConnectorConfig::default(),
+            sources: Vec::new(),
         }
     }
 }
@@ -83,4 +129,50 @@ fn default_embedding_model() -> String {
 
 fn default_dimension() -> usize {
     1024
+}
+
+fn default_connector_command() -> Vec<String> {
+    vec![
+        "uv".into(),
+        "run".into(),
+        "python".into(),
+        "-m".into(),
+        "cortana.connectors".into(),
+    ]
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+fn default_project() -> String {
+    "default".into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_configurable_sources() {
+        let config: Config = toml::from_str(
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "apple-notes"
+            project = "personal"
+
+            [[sources]]
+            name = "code"
+            kind = "filesystem"
+            root = "/tmp/project"
+            source = "code"
+            "#,
+        )
+        .expect("valid source config");
+
+        assert_eq!(config.sources.len(), 2);
+        assert!(config.sources[0].enabled);
+        assert_eq!(config.sources[1].source.as_deref(), Some("code"));
+    }
 }
