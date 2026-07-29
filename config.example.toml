@@ -53,6 +53,12 @@ token = "/secure/path/google-token.json"
 query = "newer_than:5y"
 
 [[sources]]
+name = "personal-calendar"
+kind = "google-calendar"
+project = "personal"
+token = "/secure/path/google-token.json"
+
+[[sources]]
 name = "team-slack"
 kind = "slack"
 project = "work"
