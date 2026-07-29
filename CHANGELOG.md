@@ -5,6 +5,28 @@
 
 ### Bug Fixes
 
+* **release:** add manifest version ledger ([72bddd0](https://github.com/0xPlayerOne/cortana/commit/72bddd0f08567ab079bc7dc3e8bdc22197b61d8c))
+* **release:** adopt automated manifest releases ([313b79e](https://github.com/0xPlayerOne/cortana/commit/313b79eee687ea3976ded3cb15182d8e61bda033))
+* **release:** configure root manifest package ([9f18714](https://github.com/0xPlayerOne/cortana/commit/9f18714a5570cda98ed5179a735a7eb98a092179))
+* **release:** dispatch binary assets after versioning ([8dd05c8](https://github.com/0xPlayerOne/cortana/commit/8dd05c894efe73d6afecd6effb5f23a6b4084381))
+* **release:** ship self-installing artifacts ([3a5be85](https://github.com/0xPlayerOne/cortana/commit/3a5be8584376395ea3011e71ff897c8dcca2cc43))
+* **release:** support Bun JSONC lockfile ([73983f6](https://github.com/0xPlayerOne/cortana/commit/73983f60f3a1134fa4378c3d9ad56d72fa3c6271))
+
+
+### Maintenance
+
+* **main:** release 0.1.1 ([95002c3](https://github.com/0xPlayerOne/cortana/commit/95002c3f03b6e88df91828cafb5136d81acc3679))
+* **main:** release 0.1.2 ([8a3963e](https://github.com/0xPlayerOne/cortana/commit/8a3963ed4c5f7e1466a0c1e1cd7131f8a5448edc))
+* **main:** release 0.1.2 ([3e04336](https://github.com/0xPlayerOne/cortana/commit/3e04336b4459c7436b2ae76ccb7ca71318160a6f))
+* realign staging after v0.1.1 ([cda649e](https://github.com/0xPlayerOne/cortana/commit/cda649ee26ac5ae05ea1da264d886510bd900b62))
+* realign staging after v0.1.1 ([74afbb7](https://github.com/0xPlayerOne/cortana/commit/74afbb7af60a2111e97a3f9a183a605f8f15df03))
+* synchronize release metadata ([8b70001](https://github.com/0xPlayerOne/cortana/commit/8b7000166f537c438206f0daf0e5481b4d16c795))
+
+## [0.1.2](https://github.com/0xPlayerOne/cortana/compare/v0.1.1...v0.1.2) (2026-07-29)
+
+
+### Bug Fixes
+
 * **release:** dispatch binary assets after versioning ([8dd05c8](https://github.com/0xPlayerOne/cortana/commit/8dd05c894efe73d6afecd6effb5f23a6b4084381))
 * **release:** ship self-installing artifacts ([3a5be85](https://github.com/0xPlayerOne/cortana/commit/3a5be8584376395ea3011e71ff897c8dcca2cc43))
 
