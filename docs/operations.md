@@ -16,6 +16,12 @@ HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for examp
 `RUST_LOG=cortana=debug,tower_http=info`, to change verbosity. Request headers and evidence content
 are never logged.
 
+SQLite runs in WAL mode so retrieval remains available during connector syncs and compatible
+embedding imports. Query-side cache hit counters and new query-vector cache writes are
+best-effort while another process owns SQLite's writer lock; Cortana serves the retrieval result
+instead of failing a request for cache telemetry. Canonical ingestion writes remain strict and
+use SQLite's bounded busy timeout.
+
 ## Backup and recovery
 
 `cortana backup` creates a consistent online SQLite snapshot with `VACUUM INTO`, runs a full
@@ -59,6 +65,8 @@ The generated Qwen/TEI profile keeps `max-batch-tokens=512`, which was faster th
 in the macOS Metal benchmark, and admits up to 128 queued inputs so background ingestion can share
 the provider with interactive agents without avoidable 429 responses. Cortana itself sends at most
 eight inputs per request and applies bounded retry/backoff for transient provider pressure.
+Up to four ordered requests run concurrently by default; lower `request_concurrency` when a cloud
+provider has a stricter rate limit.
 
 ## Linux systemd
 
