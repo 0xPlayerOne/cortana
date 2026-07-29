@@ -15,11 +15,26 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 - planner → concurrent retrieval → synthesis for the human UI;
 - provenance, access scope, audit events, and observability as core data.
 
-## Status
+## Quick start
 
-Cortana is under active initial development. The first milestone establishes repository policy and
-architecture. Runtime commands and migration instructions will land in versioned releases as their
-end-to-end checks become available.
+```bash
+cargo build --release
+./target/release/cortana init
+
+# Verify the configured Qwen/TEI or cloud OpenAI-compatible embedding endpoint.
+./target/release/cortana doctor
+
+# Ingest normalized documents, then retrieve structured cited evidence.
+./target/release/cortana ingest documents.jsonl
+./target/release/cortana search "how do releases work?" --project engineering
+
+# Agent transport and workspace API use the identical retrieval pipeline.
+./target/release/cortana mcp
+./target/release/cortana serve --address 127.0.0.1:7331
+```
+
+Use `--offline` for a deterministic, zero-network evaluation index. Offline and production
+embeddings are intentionally fingerprinted as different index generations and cannot be mixed.
 
 ## Architecture
 
@@ -38,8 +53,10 @@ The core runtime is Rust: service supervision, normalization contracts, storage,
 retrieval, HTTP, MCP, and the CLI. Python is an isolated connector SDK for integrations where
 mature vendor libraries or macOS automation are the safer boundary.
 
-Postgres with `pgvector` is the production canonical store. A zero-service local profile is planned
-for evaluation and offline use. OpenAI-compatible embedding APIs make the existing local
+The shipped local profile uses SQLite WAL, FTS5, content-addressed incremental updates, and an
+embedding index generation fingerprint. Postgres with `pgvector` is the planned multi-user store;
+the canonical model intentionally does not depend on either backend. OpenAI-compatible embedding
+APIs make the existing local
 Qwen/TEI service and cloud embedding providers interchangeable without mixing vector spaces inside
 an index generation.
 
