@@ -207,14 +207,18 @@ fn validate_secret_file(path: &Path) -> Result<()> {
 }
 
 pub fn default_config_path() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
+    std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
+        .unwrap_or_else(|| PathBuf::from(".config"))
         .join("cortana/config.toml")
 }
 
 fn default_data_dir() -> PathBuf {
-    dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from(".cortana"))
+    std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".local/share")))
+        .unwrap_or_else(|| PathBuf::from(".local/share"))
         .join("cortana")
 }
 
