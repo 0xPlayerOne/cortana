@@ -41,5 +41,6 @@ jobs:
             exit 0
           fi
           gh workflow run release-assets.yml \
+            --repo "${GITHUB_REPOSITORY}" \
             --ref "${GITHUB_REF_NAME}" \
             -f "tag=${tag}"
