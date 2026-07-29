@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use rusqlite::types::Type;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -225,6 +225,63 @@ impl Store {
              WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
         )?;
         let rows = statement.query_map(params![project, source], row_to_chunk)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn semantic_ids(
+        &self,
+        query_embedding: &[f32],
+        project: Option<&str>,
+        source: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<(String, f32)>> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT c.id,c.embedding_blob,c.embedding_json
+             FROM chunks c JOIN documents d ON d.id=c.document_id
+             WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
+        )?;
+        let rows = statement.query_map(params![project, source], |row| {
+            let id = row.get::<_, String>(0)?;
+            let blob = row.get::<_, Option<Vec<u8>>>(1)?;
+            let json = row.get::<_, String>(2)?;
+            let embedding = blob.map_or_else(
+                || {
+                    serde_json::from_str(&json).map_err(|error| {
+                        rusqlite::Error::FromSqlConversionFailure(2, Type::Text, Box::new(error))
+                    })
+                },
+                |blob| {
+                    decode_embedding(&blob).map_err(|error| {
+                        rusqlite::Error::FromSqlConversionFailure(1, Type::Blob, error.into())
+                    })
+                },
+            )?;
+            Ok((id, cosine(query_embedding, &embedding)))
+        })?;
+        let mut ranked = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        ranked.sort_by(|left, right| right.1.total_cmp(&left.1));
+        ranked.truncate(limit);
+        Ok(ranked)
+    }
+
+    pub fn chunks_by_ids(&self, ids: &[String]) -> Result<Vec<StoredChunk>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = std::iter::repeat_n("?", ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,
+                    c.embedding_blob,c.embedding_json,d.updated_at
+             FROM chunks c JOIN documents d ON d.id=c.document_id
+             WHERE c.id IN ({placeholders})"
+        );
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(&sql)?;
+        let rows = statement.query_map(params_from_iter(ids), row_to_chunk)?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
     }
@@ -574,6 +631,20 @@ fn decode_embedding(value: &[u8]) -> Result<Vec<f32>> {
         .collect())
 }
 
+fn cosine(left: &[f32], right: &[f32]) -> f32 {
+    if left.len() != right.len() || left.is_empty() {
+        return 0.0;
+    }
+    let dot = left.iter().zip(right).map(|(a, b)| a * b).sum::<f32>();
+    let left_norm = left.iter().map(|value| value * value).sum::<f32>().sqrt();
+    let right_norm = right.iter().map(|value| value * value).sum::<f32>().sqrt();
+    if left_norm == 0.0 || right_norm == 0.0 {
+        0.0
+    } else {
+        dot / (left_norm * right_norm)
+    }
+}
+
 fn stable_id(source: &str, source_id: &str) -> String {
     hex_digest(format!("{source}\0{source_id}").as_bytes())
 }
@@ -658,6 +729,41 @@ mod tests {
         assert_eq!(stats.chunks, 1);
         assert_eq!(stats.sources[0].source, "test");
         assert_eq!(stats.embedding_cache_entries, 0);
+    }
+
+    #[test]
+    fn semantic_candidates_load_only_requested_chunks() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .upsert(
+                &document("near", "nearest"),
+                &[("nearest".into(), vec![1.0, 0.0])],
+            )
+            .expect("insert nearest");
+        store
+            .upsert(
+                &document("far", "farthest"),
+                &[("farthest".into(), vec![0.0, 1.0])],
+            )
+            .expect("insert farthest");
+
+        let candidates = store
+            .semantic_ids(&[1.0, 0.0], Some("demo"), Some("test"), 1)
+            .expect("semantic candidates");
+        assert_eq!(candidates.len(), 1);
+        assert!((candidates[0].1 - 1.0).abs() < f32::EPSILON);
+        let chunks = store
+            .chunks_by_ids(&[candidates[0].0.clone()])
+            .expect("candidate chunks");
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].source_id, "near");
+        assert!(
+            store
+                .chunks_by_ids(&[])
+                .expect("empty candidates")
+                .is_empty()
+        );
     }
 
     #[test]
