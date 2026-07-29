@@ -626,6 +626,7 @@ async fn sync_configured_sources(
     selected: Option<&str>,
     reconcile: bool,
 ) -> Result<()> {
+    cleanup_connector_spools(&config.data_dir)?;
     let sources = config
         .sources
         .iter()
@@ -659,6 +660,30 @@ async fn sync_configured_sources(
         failures.join(", ")
     );
     Ok(())
+}
+
+fn cleanup_connector_spools(data_dir: &std::path::Path) -> Result<usize> {
+    let staging = data_dir.join("staging");
+    if !staging.is_dir() {
+        return Ok(0);
+    }
+    let mut removed = 0;
+    for entry in std::fs::read_dir(&staging)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if entry.file_type()?.is_file()
+            && name.starts_with("connector-")
+            && (name.ends_with(".jsonl") || name.ends_with(".stderr"))
+        {
+            std::fs::remove_file(entry.path())?;
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        tracing::info!(removed, "removed stale connector spools");
+    }
+    Ok(removed)
 }
 
 async fn sync_source_documents(
@@ -932,7 +957,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
 
-    use super::{SyncLock, chunk, ingest_documents, private_file};
+    use super::{SyncLock, chunk, cleanup_connector_spools, ingest_documents, private_file};
     use cortana::embed::Embedder;
     use cortana::model::Document;
     use cortana::store::Store;
@@ -977,6 +1002,27 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn stale_connector_spools_are_removed_without_touching_other_files() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let staging = directory.path().join("staging");
+        std::fs::create_dir(&staging).expect("staging directory");
+        std::fs::write(staging.join("connector-old.jsonl"), "private").expect("stale spool");
+        std::fs::write(staging.join("connector-old.stderr"), "diagnostic")
+            .expect("stale diagnostics");
+        std::fs::write(staging.join("retain.txt"), "unrelated").expect("retained file");
+
+        assert_eq!(
+            cleanup_connector_spools(directory.path()).expect("cleanup"),
+            2
+        );
+        assert!(staging.join("retain.txt").is_file());
+        assert_eq!(
+            cleanup_connector_spools(directory.path()).expect("repeat cleanup"),
+            0
+        );
     }
 
     #[tokio::test]
