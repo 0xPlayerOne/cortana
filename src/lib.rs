@@ -4,6 +4,7 @@ pub mod connectors;
 pub mod context;
 pub mod embed;
 pub mod mcp;
+pub mod migration;
 pub mod model;
 pub mod retrieval;
 pub mod service;
