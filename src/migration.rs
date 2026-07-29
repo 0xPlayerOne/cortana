@@ -143,13 +143,15 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
         ];
     }
 
-    config.sources.push(source(
+    let mut work_code = source(
         "work-code",
         "filesystem",
         "work",
         Some(&options.developer_root),
         Some("work-code"),
-    ));
+    );
+    work_code.exclude.push("second-brain".into());
+    config.sources.push(work_code);
     #[cfg(target_os = "macos")]
     config.sources.push(source(
         "personal-notes",
@@ -158,6 +160,19 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
         None,
         None,
     ));
+    let legacy_brain = options.developer_root.join("second-brain");
+    for (name, project, section) in [
+        ("legacy-work-notes", "work", "Nifty League"),
+        ("legacy-personal-notes", "personal", "Personal"),
+        ("legacy-special-notes", "special", "Pink Binder"),
+    ] {
+        let root = legacy_brain.join(section).join("Notes");
+        if root.is_dir() {
+            config
+                .sources
+                .push(source(name, "filesystem", project, Some(&root), Some(name)));
+        }
+    }
     for account in &migrated_accounts {
         let token = token_dir.join(format!("{account}.json"));
         let project = account.as_str();
@@ -283,6 +298,7 @@ fn source(
         token: None,
         query: None,
         labels: Vec::new(),
+        exclude: Vec::new(),
         command: Vec::new(),
     }
 }

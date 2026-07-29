@@ -14,16 +14,30 @@ const TEXT_EXTENSIONS: &[&str] = &[
 ];
 
 pub fn filesystem_documents(root: &Path, source: &str, project: &str) -> Result<Vec<Document>> {
+    filesystem_documents_with_excludes(root, source, project, &[])
+}
+
+pub fn filesystem_documents_with_excludes(
+    root: &Path,
+    source: &str,
+    project: &str,
+    excludes: &[String],
+) -> Result<Vec<Document>> {
     let canonical_root = root
         .canonicalize()
         .with_context(|| format!("source root does not exist: {}", root.display()))?;
+    let filter_root = canonical_root.clone();
+    let filter_excludes = excludes.to_vec();
     let mut documents = Vec::new();
     for entry in WalkBuilder::new(&canonical_root)
         .hidden(false)
         .git_ignore(true)
         .git_global(true)
         .git_exclude(true)
-        .filter_entry(|entry| !is_generated(entry.path()))
+        .filter_entry(move |entry| {
+            !is_generated(entry.path())
+                && !is_excluded(entry.path(), &filter_root, &filter_excludes)
+        })
         .build()
         .filter_map(Result::ok)
     {
@@ -64,6 +78,14 @@ pub fn filesystem_documents(root: &Path, source: &str, project: &str) -> Result<
     Ok(documents)
 }
 
+fn is_excluded(path: &Path, root: &Path, excludes: &[String]) -> bool {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    excludes
+        .iter()
+        .map(Path::new)
+        .any(|excluded| !excluded.as_os_str().is_empty() && relative.starts_with(excluded))
+}
+
 fn is_text(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -84,4 +106,39 @@ fn is_generated(path: &Path) -> bool {
     path.components()
         .filter_map(|component| component.as_os_str().to_str())
         .any(|component| SKIP.contains(&component))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filesystem_source_applies_relative_excludes_and_generated_defaults() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        std::fs::write(directory.path().join("keep.rs"), "fn keep() {}").expect("keep file");
+        std::fs::create_dir_all(directory.path().join("second-brain")).expect("excluded directory");
+        std::fs::write(
+            directory.path().join("second-brain/private.md"),
+            "separate source",
+        )
+        .expect("excluded file");
+        std::fs::create_dir_all(directory.path().join("node_modules"))
+            .expect("generated directory");
+        std::fs::write(
+            directory.path().join("node_modules/generated.js"),
+            "generated",
+        )
+        .expect("generated file");
+
+        let documents = filesystem_documents_with_excludes(
+            directory.path(),
+            "code",
+            "work",
+            &["second-brain".into()],
+        )
+        .expect("documents");
+
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].source_id, "keep.rs");
+    }
 }
