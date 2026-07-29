@@ -1,3 +1,5 @@
+use std::cmp::{Ordering, Reverse};
+use std::collections::BinaryHeap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -260,9 +262,27 @@ impl Store {
             )?;
             Ok((id, cosine(query_embedding, &embedding)))
         })?;
-        let mut ranked = rows.collect::<rusqlite::Result<Vec<_>>>()?;
-        ranked.sort_by(|left, right| right.1.total_cmp(&left.1));
-        ranked.truncate(limit);
+        let mut best = BinaryHeap::<Reverse<SemanticCandidate>>::with_capacity(limit);
+        for row in rows {
+            let (id, score) = row?;
+            let candidate = SemanticCandidate { id, score };
+            if best.len() < limit {
+                best.push(Reverse(candidate));
+            } else if best.peek().is_some_and(|current| candidate > current.0) {
+                best.pop();
+                best.push(Reverse(candidate));
+            }
+        }
+        let mut ranked = best
+            .into_iter()
+            .map(|Reverse(candidate)| (candidate.id, candidate.score))
+            .collect::<Vec<_>>();
+        ranked.sort_by(|left, right| {
+            right
+                .1
+                .total_cmp(&left.1)
+                .then_with(|| left.0.cmp(&right.0))
+        });
         Ok(ranked)
     }
 
@@ -530,6 +550,33 @@ fn secure_database_files(database: &Path) -> Result<()> {
         }
     }
     Ok(())
+}
+
+struct SemanticCandidate {
+    id: String,
+    score: f32,
+}
+
+impl PartialEq for SemanticCandidate {
+    fn eq(&self, other: &Self) -> bool {
+        self.score.to_bits() == other.score.to_bits() && self.id == other.id
+    }
+}
+
+impl Eq for SemanticCandidate {}
+
+impl PartialOrd for SemanticCandidate {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SemanticCandidate {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.score
+            .total_cmp(&other.score)
+            .then_with(|| self.id.cmp(&other.id))
+    }
 }
 
 fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
