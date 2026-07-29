@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -65,6 +65,7 @@ impl Store {
              CREATE INDEX IF NOT EXISTS idx_documents_scope ON documents(project, source);",
         )?;
         migrate_embedding_blobs(&mut connection)?;
+        secure_database_files(path)?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
         })
@@ -400,6 +401,7 @@ impl Store {
             let connection = self.connection.lock().expect("store lock poisoned");
             connection.execute("VACUUM INTO ?1", [temporary.to_string_lossy().as_ref()])?;
             drop(connection);
+            secure_file(&temporary)?;
             verify_database(&temporary)?;
             std::fs::rename(&temporary, destination)?;
             Ok(())
@@ -431,6 +433,7 @@ impl Store {
         backup.run_to_completion(128, Duration::from_millis(10), None)?;
         drop(backup);
         drop(destination);
+        secure_database_files(database)?;
         verify_database(database)
     }
 }
@@ -444,6 +447,31 @@ fn verify_database(path: &Path) -> Result<()> {
     let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let result: String = connection.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
     anyhow::ensure!(result == "ok", "database integrity check failed: {result}");
+    Ok(())
+}
+
+#[cfg(unix)]
+fn secure_file(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("failed to secure {}", path.display()))
+}
+
+#[cfg(not(unix))]
+fn secure_file(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+fn secure_database_files(database: &Path) -> Result<()> {
+    for suffix in ["", "-wal", "-shm"] {
+        let mut path = database.as_os_str().to_os_string();
+        path.push(suffix);
+        let path = PathBuf::from(path);
+        if path.exists() {
+            secure_file(&path)?;
+        }
+    }
     Ok(())
 }
 
@@ -744,6 +772,27 @@ mod tests {
 
         store.backup(&backup).expect("backup");
         Store::verify(&backup).expect("verify");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            assert_eq!(
+                std::fs::metadata(&backup)
+                    .expect("backup metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+            assert_eq!(
+                std::fs::metadata(directory.path().join("store.sqlite3"))
+                    .expect("database metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
         let restored = Store::open(&backup).expect("open backup");
         assert_eq!(restored.stats().expect("stats").documents, 1);
         drop(restored);
