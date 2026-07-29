@@ -137,18 +137,41 @@ def fetch_drive(
                 payload = session.request(
                     "GET", "https://www.googleapis.com/drive/v3/files", params=params
                 ).json()
-                for item in payload.get("files", []):
+                items: list[dict[str, Any]] = payload.get("files", [])
+                bodies: dict[str, str] = {}
+                missing_items: list[dict[str, Any]] = []
+                for item in items:
                     file_id = str(item["id"])
                     modified_time = str(item.get("modifiedTime") or "")
                     body = _cached_drive_content(cache, file_id, modified_time)
                     if body is None:
-                        body = _drive_content(session, item)
-                        if cache is not None:
-                            cache.execute(
-                                "INSERT OR REPLACE INTO files(id,modified_time,body) VALUES(?,?,?)",
-                                (file_id, modified_time, body),
-                            )
-                            pending_writes += 1
+                        missing_items.append(item)
+                    else:
+                        bodies[file_id] = body
+                if missing_items:
+                    with ThreadPoolExecutor(
+                        max_workers=min(8, len(missing_items)),
+                        thread_name_prefix="cortana-drive",
+                    ) as pool:
+                        downloaded = pool.map(
+                            lambda item: _drive_content(session, item),
+                            missing_items,
+                        )
+                        bodies.update(
+                            (str(item["id"]), body)
+                            for item, body in zip(missing_items, downloaded, strict=True)
+                        )
+                missing_ids = {str(item["id"]) for item in missing_items}
+                for item in items:
+                    file_id = str(item["id"])
+                    modified_time = str(item.get("modifiedTime") or "")
+                    body = bodies[file_id]
+                    if file_id in missing_ids and cache is not None:
+                        cache.execute(
+                            "INSERT OR REPLACE INTO files(id,modified_time,body) VALUES(?,?,?)",
+                            (file_id, modified_time, body),
+                        )
+                        pending_writes += 1
                     if cache is not None:
                         cache.execute("INSERT OR IGNORE INTO seen(id) VALUES(?)", (file_id,))
                         if pending_writes >= 100:
