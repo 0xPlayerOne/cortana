@@ -185,7 +185,7 @@ async fn main() -> Result<()> {
     {
         let home = dirs::home_dir().context("cannot resolve the home directory")?;
         let config_path = cli.config.clone().unwrap_or_else(default_config_path);
-        let report = migration::migrate_hermes(&migration::HermesMigrationOptions {
+        migration::migrate_hermes(&migration::HermesMigrationOptions {
             config_path,
             hermes_home: hermes_home.clone().unwrap_or_else(|| home.join(".hermes")),
             developer_root: developer_root
@@ -197,14 +197,9 @@ async fn main() -> Result<()> {
             discord_channels: discord_channels.clone(),
             slack_channels: slack_channels.clone(),
             force: *force,
-        })?;
-        println!(
-            "migrated Hermes configuration: accounts={} sources={} legacy indexes retained={}",
-            report.google_accounts.len(),
-            report.configured_sources.len(),
-            report.legacy_indexes_retained.len()
-        );
-        println!("created {}", report.config_path.display());
+        })
+        .map_err(|_| anyhow::anyhow!("Hermes migration failed"))?;
+        println!("migrated Hermes configuration");
         return Ok(());
     }
     let config_path = cli.config.clone().unwrap_or_else(default_config_path);
