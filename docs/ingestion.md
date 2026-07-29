@@ -100,6 +100,8 @@ store. Every record declares `embedding_fingerprint`, one normalized `document`,
 dimension, empty-chunk, or JSON mismatch. Valid vectors are also written to the persistent
 embedding cache, allowing later native source syncs to reuse identical chunks.
 
-The command reconciles each `(source, project)` represented by a fully read stream. Pass
+The exporter terminates the stream with a completion record containing the exact document count.
+Cortana requires that trailer before it reconciles each `(source, project)` represented by the
+stream, so a broken or truncated pipe cannot delete an earlier snapshot. Pass
 `--no-reconcile` only when intentionally importing a partial snapshot. Do not import vectors whose
 model, dimensions, or preprocessing are uncertain; rebuild those records through normal ingestion.
