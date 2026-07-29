@@ -1,0 +1,57 @@
+# Changelog
+
+## 0.1.0 (2026-07-29)
+
+
+### Features
+
+* add agent evidence workspace ([#5](https://github.com/0xPlayerOne/cortana/issues/5)) ([308d29b](https://github.com/0xPlayerOne/cortana/commit/308d29bab09d6bbf57555983a30bcfdcbc175344))
+* add citation-ready context query layer ([#6](https://github.com/0xPlayerOne/cortana/issues/6)) ([0fe43e0](https://github.com/0xPlayerOne/cortana/commit/0fe43e014f8b2fbf70d558e51b1ddb4361120845))
+* add configurable incremental ingestion platform ([b96bc4d](https://github.com/0xPlayerOne/cortana/commit/b96bc4d5954305d44c4a897d7c8c8c43c0b4ae18))
+* add Google Calendar ingestion ([4e1a68f](https://github.com/0xPlayerOne/cortana/commit/4e1a68f54aff185a218a37b16ad6dabdd5d67d5d))
+* add hybrid retrieval core and agent transports ([cceae3b](https://github.com/0xPlayerOne/cortana/commit/cceae3b7756f9390138f52aac7a28fdd436c6763))
+* add native incremental filesystem connector ([e98a840](https://github.com/0xPlayerOne/cortana/commit/e98a840faaf0ebfb19b8c729337b159248cb34f5))
+* add production operations and recovery ([a2b8c48](https://github.com/0xPlayerOne/cortana/commit/a2b8c485e423082e85784166e7435d2f44c6591c))
+* add secure Hermes migration ([08be51e](https://github.com/0xPlayerOne/cortana/commit/08be51efa1d1459fb986c767e38575e45c31a1e5))
+* coordinate shared embedding operations ([9fef92d](https://github.com/0xPlayerOne/cortana/commit/9fef92d6e94f9bd28d79704c51abd2722f237556))
+* harden large source ingestion ([aec50bf](https://github.com/0xPlayerOne/cortana/commit/aec50bffa2bbc697a234d9dd0e01e5aca73e1d60))
+* import compatible legacy embeddings ([98fa068](https://github.com/0xPlayerOne/cortana/commit/98fa068a3f297017f9de88fcab7576f51469a699))
+* install portable agent integrations ([59519e9](https://github.com/0xPlayerOne/cortana/commit/59519e9b846cc0b7faeea44d357d9b1dbff0ffbb))
+* install skill for shared agent hosts ([affc2b3](https://github.com/0xPlayerOne/cortana/commit/affc2b38f5c327bf55c03aa1a20fa9eb460aa3f2))
+
+
+### Bug Fixes
+
+* bound connector subprocess duration ([d525fec](https://github.com/0xPlayerOne/cortana/commit/d525fec79c5297776f4dda9662614933a397ecee))
+* bound embedding request duration ([c74df75](https://github.com/0xPlayerOne/cortana/commit/c74df754114c55f278150cbdb86a2f03d607e5fa))
+* deduplicate canonical source URIs ([0dabe13](https://github.com/0xPlayerOne/cortana/commit/0dabe13272e047a21c9eec8259417b1106b5a3f3))
+* enforce embedding request bounds ([e6e3572](https://github.com/0xPlayerOne/cortana/commit/e6e357245e498457fd289ebfbcb66f619ed1ed49))
+* harden CI dependencies and MCP runtime ([417076e](https://github.com/0xPlayerOne/cortana/commit/417076e846cc20ec03180cedd9c3a5bb07192bbf))
+* isolate configured source failures ([4d152f9](https://github.com/0xPlayerOne/cortana/commit/4d152f9042fd643ede7dbf6c5ecb9c94d0a79d58))
+* isolate unreadable Drive files ([46b3b8c](https://github.com/0xPlayerOne/cortana/commit/46b3b8cda32cf986c4f1ac64e756fd18bb70b62c))
+* keep retrieval available during ingestion ([5444ee6](https://github.com/0xPlayerOne/cortana/commit/5444ee633b6ec8308044c7f662d953ad097cde8d))
+* prioritize context sources during migration ([104ab8b](https://github.com/0xPlayerOne/cortana/commit/104ab8b3d65fd1be41780be54aee03e544e18498))
+* recover stale connector spools ([722476c](https://github.com/0xPlayerOne/cortana/commit/722476caad7dce5af6b53665794bd021cff27a02))
+* require complete embedding snapshots ([be5ee96](https://github.com/0xPlayerOne/cortana/commit/be5ee963ebef6fabd14dbba4f97733a4b9df3d4d))
+* retry transient embedding pressure ([76186b9](https://github.com/0xPlayerOne/cortana/commit/76186b98a3b3ada9834fef2bdc9d2079d665ccd5))
+* secure index and backup files ([3711652](https://github.com/0xPlayerOne/cortana/commit/37116529297a1c4fa097b3df815d31fab080ce9f))
+* tolerate isolated Gmail access races ([cef1748](https://github.com/0xPlayerOne/cortana/commit/cef1748a690c2ed6b3dba4585283247b22d6b6e6))
+* update vulnerable Python toolchain pins ([88f73e2](https://github.com/0xPlayerOne/cortana/commit/88f73e2a73c5ab8ffebc0d457a60321351424862))
+
+
+### Performance Improvements
+
+* batch ingestion and bound chunks ([bdd75db](https://github.com/0xPlayerOne/cortana/commit/bdd75dbbc8f1032500edcf13465341087b216024))
+* bound retrieval candidate memory ([feb2912](https://github.com/0xPlayerOne/cortana/commit/feb2912bc6b41729116fb021371445bfb5bce5c8))
+* bound semantic ranking memory ([2f3c8a5](https://github.com/0xPlayerOne/cortana/commit/2f3c8a59e0ef07fb4fdbed9c0f1430f9b2f195c5))
+* cache Gmail message bodies ([f631150](https://github.com/0xPlayerOne/cortana/commit/f6311508b240a61507b10bcd07d398fe900235d2))
+* cache Google Drive content ([1a6bb32](https://github.com/0xPlayerOne/cortana/commit/1a6bb327595d14bfa90d9c406166f707bc8ea67b))
+* compact recurring calendar series ([27d17aa](https://github.com/0xPlayerOne/cortana/commit/27d17aafd71a9668a7eb69a6bcedf7e12b5fee42))
+* incrementally cache Discord channels ([1ac3574](https://github.com/0xPlayerOne/cortana/commit/1ac3574c1cc2b09eba8fc97a808e166f29f01107))
+* parallelize Drive content retrieval ([3e2284b](https://github.com/0xPlayerOne/cortana/commit/3e2284ba8ccfae238b9820ec9f20404c6e3e8555))
+* parallelize embedding requests ([f81ac18](https://github.com/0xPlayerOne/cortana/commit/f81ac188ae7308423042508a43cb87ef2c096c4b))
+* parallelize Gmail detail retrieval ([2fac0dd](https://github.com/0xPlayerOne/cortana/commit/2fac0dd43da5f39d98d8ca0f535978e5c5e3a6c2))
+* reserve embedding capacity for agents ([5587235](https://github.com/0xPlayerOne/cortana/commit/5587235207887a793e72e5b5c335c0df2e42e1dd))
+* store embeddings as compact binary vectors ([b833f81](https://github.com/0xPlayerOne/cortana/commit/b833f816b16d8fb4ae01b88e29c0e5b9bf0d4227))
+* stream direct JSONL ingestion ([0aeb898](https://github.com/0xPlayerOne/cortana/commit/0aeb89860519c5a7dd86e022ae0d46e9093be7ae))
+* stream filesystem ingestion batches ([6ff9835](https://github.com/0xPlayerOne/cortana/commit/6ff9835f759a1156ec0f8bfac07206ac72a37461))
