@@ -15,7 +15,7 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 dirs = "6.0"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-rmcp = { version = "0.16", features = ["server", "macros", "transport-io"] }
+rmcp = { version = "1.4", features = ["server", "macros", "transport-io"] }
 rusqlite = { version = "0.38", features = ["bundled"] }
 schemars = "1.0"
 serde = { version = "1.0", features = ["derive"] }

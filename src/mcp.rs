@@ -61,17 +61,12 @@ impl BrainServer {
     }
 }
 
-#[tool_handler]
+#[tool_handler(router = self.tool_router)]
 impl ServerHandler for BrainServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            instructions: Some(
-                "Retrieve cited evidence from the user's scoped second brain before broad context discovery."
-                    .into(),
-            ),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            ..Default::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "Retrieve cited evidence from the user's scoped second brain before broad context discovery.",
+        )
     }
 }
 
