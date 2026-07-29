@@ -9,6 +9,8 @@ Connector output is first captured in an owner-only on-disk spool and then inges
 batches. This preserves complete-snapshot reconciliation without holding a large Drive, Gmail, or
 chat export in memory. Temporary spools are removed after success or failure, and reconciliation
 uses a temporary SQLite key table rather than an unbounded SQL parameter list.
+If one configured source fails, Cortana records the failure, continues syncing the remaining
+sources, and exits nonzero after the run so supervisors still detect the partial failure.
 
 Configured source names are index namespaces. This prevents two Gmail accounts, Drive accounts, or
 Slack workspaces from deleting or colliding with one another. The original adapter kind is retained
@@ -33,6 +35,10 @@ Google Calendar preserves one-off events individually and compacts expanded occu
 stable document per recurring series, including its occurrence count, date range, participants,
 and provenance. This prevents daily meetings from consuming thousands of redundant embeddings
 without discarding their long-term history.
+
+Gmail keeps an owner-only derived cache under `data_dir/connector-cache/<source>/`. Complete runs
+still list every message ID for correct deletion reconciliation, but immutable message bodies are
+downloaded only once. The cache is disposable and can always be rebuilt from Gmail.
 
 ## Credentials
 
