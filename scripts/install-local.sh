@@ -52,6 +52,12 @@ if [[ "$(uname -s)" == "Darwin" && "${CORTANA_INSTALL_SERVICE:-1}" == "1" ]]; th
     --working-directory "$share_dir"
 fi
 
+if [[ "${CORTANA_INSTALL_AGENT_INTEGRATIONS:-0}" == "1" ]]; then
+  CORTANA_BINARY="$bin_dir/cortana" \
+    CORTANA_CONFIG="$config_path" \
+    "$repo_dir/scripts/install-agent-integrations.sh"
+fi
+
 echo "Cortana installed"
 echo "  binary: $bin_dir/cortana"
 echo "  config: $config_path"

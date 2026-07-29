@@ -1,12 +1,12 @@
 ---
 name: cortana
-description: Retrieve durable personal, project, communication, and code context from Cortana before broad or costly discovery.
+description: Retrieve durable personal, project, communication, calendar, email, document, and code context from Cortana. Use before broad or costly discovery when a task depends on prior decisions, preferences, project history, cross-repository code, messages, notes, meetings, or long-term agent memory.
 ---
 
 # Cortana retrieval
 
-Use the configured Cortana MCP server when a task depends on prior decisions, personal preferences,
-project history, code across repositories, messages, notes, email, or documents.
+Use the configured Cortana MCP server first. If the client has no MCP integration, call the local
+HTTP API at `http://127.0.0.1:7331/v1/context`; use `cortana search` only as a raw-evidence fallback.
 
 1. Start with `context` using the user's concrete terms and the current project when known. Its
    token-bounded Markdown is ready to place directly into the working context and cite with `[n]`.
@@ -22,7 +22,7 @@ project history, code across repositories, messages, notes, email, or documents.
    Cortana evidence outside the task unless the user asks.
 7. If evidence conflicts, prefer newer authoritative sources and disclose the conflict.
 
-The MCP configuration is:
+For an MCP client, configure:
 
 ```json
 {
@@ -32,3 +32,17 @@ The MCP configuration is:
 ```
 
 Use an absolute config path because MCP clients may launch from arbitrary working directories.
+
+For an HTTP-only client, send:
+
+```json
+{
+  "method": "POST",
+  "url": "http://127.0.0.1:7331/v1/context",
+  "json": {
+    "query": "the concrete question",
+    "project": "optional-project",
+    "max_tokens": 4000
+  }
+}
+```
