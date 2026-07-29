@@ -69,6 +69,8 @@ See [the ingestion guide](docs/ingestion.md) and
 Discord, Buzz, filesystem/code, and external adapters.
 See the [operations guide](docs/operations.md) for service management, authenticated remote access,
 telemetry, backup, restore, and Linux systemd units.
+See [release history](docs/releases.md) for the automated version-PR policy and transitional
+release notes.
 
 ### Migrate an existing Hermes second brain
 
