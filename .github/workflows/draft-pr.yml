@@ -1,0 +1,24 @@
+name: Code Foundry
+
+on:
+  push:
+    branches:
+      - 'feat/*'
+      - 'fix/*'
+      - 'chore/*'
+      - 'refactor/*'
+      - 'docs/*'
+      - 'style/*'
+      - 'test/*'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  draft-pr:
+    name: Draft PR
+    uses: 0xPlayerOne/code-foundry/.github/workflows/draft-pr.yml@v0.27.15
+    with:
+      runner: ubuntu-slim
+    secrets: inherit

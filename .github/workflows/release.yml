@@ -1,0 +1,20 @@
+name: Code Foundry
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    name: Release
+    uses: 0xPlayerOne/code-foundry/.github/workflows/release.yml@v0.27.15
+    with:
+      runner: ubuntu-slim
+    secrets: inherit

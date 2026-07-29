@@ -1,0 +1,26 @@
+[package]
+name = "cortana"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Local-first, agent-native second brain with configurable ingestion and hybrid retrieval"
+license = "AGPL-3.0-only"
+repository = "https://github.com/0xPlayerOne/cortana"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive", "env"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.47", features = ["macros", "rt-multi-thread", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

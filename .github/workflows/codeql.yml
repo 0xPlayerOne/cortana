@@ -1,0 +1,26 @@
+name: Code Foundry
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [staging]
+  schedule:
+    - cron: '31 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  packages: read
+  security-events: write
+
+jobs:
+  codeql:
+    name: CodeQL
+    uses: 0xPlayerOne/code-foundry/.github/workflows/codeql.yml@v0.27.15
+    with:
+      runtime-repository: 0xPlayerOne/code-foundry
+      runtime-ref: v0.27.15
+      runner: ubuntu-latest
+    secrets: inherit

@@ -1,0 +1,17 @@
+name: Code Foundry
+
+on:
+  push:
+    branches: [staging]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  release-pr:
+    name: Release PR
+    uses: 0xPlayerOne/code-foundry/.github/workflows/release-pr.yml@v0.27.15
+    with:
+      runner: ubuntu-slim
+    secrets: inherit
