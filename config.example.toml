@@ -6,6 +6,8 @@ data_dir = "/Users/you/Library/Application Support/cortana"
 base_url = "http://127.0.0.1:6999/v1"
 model = "Qwen/Qwen3-Embedding-0.6B"
 dimension = 1024
+# Least-recently-used vectors beyond this count are pruned after a cache write.
+cache_max_entries = 250000
 # api_key_env = "CORTANA_EMBEDDING_API_KEY"
 
 [connectors]
