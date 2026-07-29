@@ -41,7 +41,7 @@ def parser() -> argparse.ArgumentParser:
     drive = commands.add_parser("google-drive")
     _google_arguments(drive)
     drive.add_argument("--query", default="trashed = false")
-    drive.add_argument("--max-content-chars", type=int, default=200_000)
+    drive.add_argument("--max-content-chars", type=int, default=50_000)
 
     gmail = commands.add_parser("gmail")
     _google_arguments(gmail)
