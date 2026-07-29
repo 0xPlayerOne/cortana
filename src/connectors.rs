@@ -23,13 +23,24 @@ pub fn filesystem_documents_with_excludes(
     project: &str,
     excludes: &[String],
 ) -> Result<Vec<Document>> {
+    filesystem_document_iter(root, source, project, excludes)?.collect()
+}
+
+pub fn filesystem_document_iter(
+    root: &Path,
+    source: &str,
+    project: &str,
+    excludes: &[String],
+) -> Result<Box<dyn Iterator<Item = Result<Document>>>> {
     let canonical_root = root
         .canonicalize()
         .with_context(|| format!("source root does not exist: {}", root.display()))?;
     let filter_root = canonical_root.clone();
     let filter_excludes = excludes.to_vec();
-    let mut documents = Vec::new();
-    for entry in WalkBuilder::new(&canonical_root)
+    let document_root = canonical_root.clone();
+    let source = source.to_string();
+    let project = project.to_string();
+    let iterator = WalkBuilder::new(&canonical_root)
         .hidden(false)
         .git_ignore(true)
         .git_global(true)
@@ -40,42 +51,55 @@ pub fn filesystem_documents_with_excludes(
         })
         .build()
         .filter_map(Result::ok)
-    {
-        let path = entry.path();
-        if !entry.file_type().is_some_and(|kind| kind.is_file()) || !is_text(path) {
-            continue;
-        }
-        let metadata = path.metadata()?;
-        if metadata.len() > 2_000_000 {
-            continue;
-        }
-        let content = match std::fs::read_to_string(path) {
-            Ok(content) if !content.trim().is_empty() => content,
-            _ => continue,
-        };
-        let relative = path.strip_prefix(&canonical_root).unwrap_or(path);
-        let updated_at = metadata
-            .modified()
-            .ok()
-            .map(DateTime::<Utc>::from)
-            .unwrap_or_else(Utc::now);
-        documents.push(Document {
-            source: source.to_string(),
-            source_id: relative.to_string_lossy().into_owned(),
-            title: relative.to_string_lossy().into_owned(),
-            content,
-            uri: Some(format!("file://{}", path.to_string_lossy())),
-            updated_at,
-            project: project.to_string(),
-            acl: Vec::new(),
-            metadata: json!({
-                "root": canonical_root.file_name().and_then(|name| name.to_str()),
-                "extension": path.extension().and_then(|extension| extension.to_str()),
-                "bytes": metadata.len(),
-            }),
+        .filter_map(move |entry| {
+            match filesystem_document(&entry, &document_root, &source, &project) {
+                Ok(Some(document)) => Some(Ok(document)),
+                Ok(None) => None,
+                Err(error) => Some(Err(error)),
+            }
         });
+    Ok(Box::new(iterator))
+}
+
+fn filesystem_document(
+    entry: &ignore::DirEntry,
+    canonical_root: &Path,
+    source: &str,
+    project: &str,
+) -> Result<Option<Document>> {
+    let path = entry.path();
+    if !entry.file_type().is_some_and(|kind| kind.is_file()) || !is_text(path) {
+        return Ok(None);
     }
-    Ok(documents)
+    let metadata = path.metadata()?;
+    if metadata.len() > 2_000_000 {
+        return Ok(None);
+    }
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) if !content.trim().is_empty() => content,
+        _ => return Ok(None),
+    };
+    let relative = path.strip_prefix(canonical_root).unwrap_or(path);
+    let updated_at = metadata
+        .modified()
+        .ok()
+        .map(DateTime::<Utc>::from)
+        .unwrap_or_else(Utc::now);
+    Ok(Some(Document {
+        source: source.to_string(),
+        source_id: relative.to_string_lossy().into_owned(),
+        title: relative.to_string_lossy().into_owned(),
+        content,
+        uri: Some(format!("file://{}", path.to_string_lossy())),
+        updated_at,
+        project: project.to_string(),
+        acl: Vec::new(),
+        metadata: json!({
+            "root": canonical_root.file_name().and_then(|name| name.to_str()),
+            "extension": path.extension().and_then(|extension| extension.to_str()),
+            "bytes": metadata.len(),
+        }),
+    }))
 }
 
 fn is_excluded(path: &Path, root: &Path, excludes: &[String]) -> bool {
