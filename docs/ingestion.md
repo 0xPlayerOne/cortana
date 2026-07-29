@@ -5,6 +5,11 @@ Cortana treats every connector as a snapshot producer. Each successful run emits
 changed, atomically replaces their chunks, and reconciles records that disappeared from the
 completed snapshot. A failed connector never triggers deletion reconciliation.
 
+Connector output is first captured in an owner-only on-disk spool and then ingested in bounded
+batches. This preserves complete-snapshot reconciliation without holding a large Drive, Gmail, or
+chat export in memory. Temporary spools are removed after success or failure, and reconciliation
+uses a temporary SQLite key table rather than an unbounded SQL parameter list.
+
 Configured source names are index namespaces. This prevents two Gmail accounts, Drive accounts, or
 Slack workspaces from deleting or colliding with one another. The original adapter kind is retained
 in metadata for provenance.

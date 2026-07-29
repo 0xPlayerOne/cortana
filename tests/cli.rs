@@ -73,6 +73,13 @@ fn configured_external_source_sync_is_incremental() {
         .assert()
         .success()
         .stdout(predicate::str::contains("changed=0 unchanged=1"));
+    assert_eq!(
+        fs::read_dir(data.join("staging"))
+            .expect("staging directory")
+            .count(),
+        0,
+        "connector spools must be removed after a completed sync"
+    );
 
     Command::cargo_bin("cortana")
         .expect("binary exists")

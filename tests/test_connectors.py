@@ -91,6 +91,16 @@ def test_apple_notes_normalizes_jxa_rows(monkeypatch: pytest.MonkeyPatch) -> Non
     assert documents[0].metadata == {"account": "iCloud", "folder": "Notes"}
 
 
+def test_apple_notes_reports_actionable_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    def timeout(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(["osascript"], 120)
+
+    monkeypatch.setattr(subprocess, "run", timeout)
+
+    with pytest.raises(RuntimeError, match="grant Automation access"):
+        list(apple_notes.fetch())
+
+
 def test_buzz_reads_personas_and_logs_read_only(tmp_path: Path) -> None:
     agents = tmp_path / "agents"
     logs = agents / "logs"
@@ -170,6 +180,90 @@ class FakeDiscordClient:
                 }
             ]
         )
+
+
+def test_chat_retries_server_directed_rate_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+    delays: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(
+                429,
+                json={"retry_after": 0.25},
+                request=request,
+            )
+        return httpx.Response(200, json={"ok": True}, request=request)
+
+    monkeypatch.setattr(chat.time, "sleep", delays.append)
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = chat._get_with_backoff(client, "https://api.test/messages", params={})
+
+    assert result.status_code == 200
+    assert calls == 2
+    assert delays == [0.25]
+
+
+def test_chat_retry_policy_respects_headers_and_bounded_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = httpx.Request("GET", "https://api.test/messages")
+    assert (
+        chat._retry_after(
+            httpx.Response(429, headers={"retry-after": "2.5"}, request=request),
+            0,
+        )
+        == 2.5
+    )
+    assert (
+        chat._retry_after(
+            httpx.Response(
+                429,
+                headers={"retry-after": "invalid"},
+                json={"retry_after": 0.5},
+                request=request,
+            ),
+            0,
+        )
+        == 0.5
+    )
+    assert chat._retry_after(httpx.Response(503, text="not-json", request=request), 3) == 8.0
+
+    delays: list[float] = []
+    monkeypatch.setattr(chat.time, "sleep", delays.append)
+    chat._respect_rate_limit_headers(
+        httpx.Response(
+            200,
+            headers={"x-ratelimit-remaining": "0", "x-ratelimit-reset-after": "0.75"},
+            request=request,
+        )
+    )
+    chat._respect_rate_limit_headers(
+        httpx.Response(
+            200,
+            headers={"x-ratelimit-remaining": "1"},
+            request=request,
+        )
+    )
+    assert delays == [0.75]
+
+
+def test_chat_returns_final_retryable_response_after_bound() -> None:
+    request = httpx.Request("GET", "https://api.test/messages")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, request=request)
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = chat._get_with_backoff(
+            client,
+            "https://api.test/messages",
+            params={},
+            max_attempts=1,
+        )
+    assert result.status_code == 503
 
 
 def test_chat_connectors_reassemble_slack_and_normalize_discord(
@@ -481,3 +575,15 @@ def test_connector_cli_requires_existing_google_token(tmp_path: Path) -> None:
     )
     with pytest.raises(RuntimeError, match="does not exist"):
         connector_cli._documents(args)
+
+
+def test_connector_entrypoint_reports_expected_failures(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fail(_argv: list[str] | None = None) -> int:
+        raise RuntimeError("expected failure")
+
+    monkeypatch.setattr(connector_cli, "main", fail)
+
+    assert connector_cli.entrypoint() == 1
+    assert capsys.readouterr().err == "connector error: expected failure\n"

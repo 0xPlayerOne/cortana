@@ -81,6 +81,8 @@ pub struct SourceConfig {
     #[serde(default)]
     pub labels: Vec<String>,
     #[serde(default)]
+    pub exclude: Vec<String>,
+    #[serde(default)]
     pub command: Vec<String>,
 }
 
