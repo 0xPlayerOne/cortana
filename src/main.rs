@@ -515,8 +515,11 @@ async fn ingest_documents(
     embedder: &dyn Embedder,
     documents: Vec<Document>,
 ) -> Result<()> {
+    const EMBEDDING_BATCH_SIZE: usize = 16;
     let mut changed = 0;
     let mut unchanged = 0;
+    let mut pending = Vec::new();
+    let mut pending_chunks = 0;
     for document in documents {
         if !store.needs_update(&document)? {
             store.refresh_timestamp(&document)?;
@@ -524,15 +527,58 @@ async fn ingest_documents(
             continue;
         }
         let texts = chunk(&document.content);
-        let vectors = embedder.embed(&texts).await?;
-        let chunks = texts.into_iter().zip(vectors).collect::<Vec<_>>();
-        if store.upsert(&document, &chunks)? {
-            changed += 1;
-        } else {
-            unchanged += 1;
+        pending_chunks += texts.len();
+        pending.push((document, texts));
+        if pending_chunks >= EMBEDDING_BATCH_SIZE {
+            flush_ingest_batch(store, embedder, &mut pending, &mut changed, &mut unchanged).await?;
+            pending_chunks = 0;
         }
     }
+    flush_ingest_batch(store, embedder, &mut pending, &mut changed, &mut unchanged).await?;
     println!("ingested changed={changed} unchanged={unchanged}");
+    Ok(())
+}
+
+async fn flush_ingest_batch(
+    store: &Store,
+    embedder: &dyn Embedder,
+    pending: &mut Vec<(Document, Vec<String>)>,
+    changed: &mut usize,
+    unchanged: &mut usize,
+) -> Result<()> {
+    if pending.is_empty() {
+        return Ok(());
+    }
+    let input = pending
+        .iter()
+        .flat_map(|(_, texts)| texts.iter().cloned())
+        .collect::<Vec<_>>();
+    let mut vectors = embedder.embed(&input).await?.into_iter();
+    for (document, texts) in pending.drain(..) {
+        let chunks = texts
+            .into_iter()
+            .map(|text| {
+                let vector = vectors
+                    .next()
+                    .context("embedding provider returned too few vectors")?;
+                Ok((text, vector))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if store.upsert(&document, &chunks)? {
+            *changed += 1;
+        } else {
+            *unchanged += 1;
+        }
+    }
+    anyhow::ensure!(
+        vectors.next().is_none(),
+        "embedding provider returned too many vectors"
+    );
+    tracing::info!(
+        changed = *changed,
+        unchanged = *unchanged,
+        "ingestion batch committed"
+    );
     Ok(())
 }
 
@@ -700,23 +746,61 @@ fn chunk(content: &str) -> Vec<String> {
     const TARGET: usize = 1_600;
     const OVERLAP: usize = 200;
     let mut output = Vec::new();
-    let mut current = String::new();
-    for paragraph in content.split("\n\n").filter(|part| !part.trim().is_empty()) {
-        if !current.is_empty() && current.len() + paragraph.len() + 2 > TARGET {
-            output.push(current.clone());
-            let tail = current
-                .char_indices()
-                .rev()
-                .find(|(index, _)| current.len() - index >= OVERLAP)
-                .map(|(index, _)| &current[index..])
-                .unwrap_or(&current);
-            current = format!("{tail}\n\n");
+    let mut start = 0;
+    while start < content.len() {
+        while start < content.len() && !content.is_char_boundary(start) {
+            start += 1;
         }
-        current.push_str(paragraph.trim());
-        current.push_str("\n\n");
-    }
-    if !current.trim().is_empty() {
-        output.push(current.trim().to_string());
+        let hard_end = (start + TARGET).min(content.len());
+        let mut end = hard_end;
+        while end > start && !content.is_char_boundary(end) {
+            end -= 1;
+        }
+        if end < content.len() {
+            let window = &content[start..end];
+            let preferred_floor = window.len() / 2;
+            end = window
+                .rfind("\n\n")
+                .filter(|position| *position >= preferred_floor)
+                .map(|position| start + position + 2)
+                .or_else(|| {
+                    window
+                        .rfind('\n')
+                        .filter(|position| *position >= preferred_floor)
+                        .map(|position| start + position + 1)
+                })
+                .unwrap_or(end);
+        }
+        let text = content[start..end].trim();
+        if !text.is_empty() {
+            output.push(text.to_string());
+        }
+        if end == content.len() {
+            break;
+        }
+        let mut next = end.saturating_sub(OVERLAP);
+        while next < end && !content.is_char_boundary(next) {
+            next += 1;
+        }
+        if next <= start {
+            next = end;
+        }
+        start = next;
     }
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::chunk;
+
+    #[test]
+    fn chunk_bounds_unbroken_content_and_preserves_unicode() {
+        let content = format!("{}{}", "a".repeat(5_000), "🧠".repeat(300));
+        let chunks = chunk(&content);
+
+        assert!(chunks.len() > 3);
+        assert!(chunks.iter().all(|item| item.len() <= 1_600));
+        assert!(chunks.iter().any(|item| item.contains('🧠')));
+    }
 }
