@@ -116,46 +116,71 @@ def fetch_drive(
     project: str,
     query: str = "trashed = false",
     client: httpx.Client | None = None,
+    cache_dir: Path | None = None,
 ) -> Iterable[Document]:
-    with GoogleSession(token_path, client) as session:
-        page_token: str | None = None
-        while True:
-            params = {
-                "q": query,
-                "pageSize": 1000,
-                "fields": DRIVE_FIELDS,
-                "supportsAllDrives": "true",
-                "includeItemsFromAllDrives": "true",
-            }
-            if page_token:
-                params["pageToken"] = page_token
-            payload = session.request(
-                "GET", "https://www.googleapis.com/drive/v3/files", params=params
-            ).json()
-            for item in payload.get("files", []):
-                body = _drive_content(session, item)
-                if not body.strip():
-                    continue
-                yield Document(
-                    source="google-drive",
-                    source_id=str(item["id"]),
-                    title=str(item.get("name") or "Untitled Drive file"),
-                    content=body,
-                    uri=item.get("webViewLink"),
-                    updated_at=_timestamp(item.get("modifiedTime")),
-                    project=project,
-                    metadata={
-                        "mime_type": item.get("mimeType"),
-                        "owners": [
-                            owner.get("displayName")
-                            for owner in item.get("owners", [])
-                            if owner.get("displayName")
-                        ],
-                    },
-                )
-            page_token = payload.get("nextPageToken")
-            if not page_token:
-                break
+    cache = _drive_cache(cache_dir)
+    try:
+        with GoogleSession(token_path, client) as session:
+            page_token: str | None = None
+            pending_writes = 0
+            while True:
+                params = {
+                    "q": query,
+                    "pageSize": 1000,
+                    "fields": DRIVE_FIELDS,
+                    "supportsAllDrives": "true",
+                    "includeItemsFromAllDrives": "true",
+                }
+                if page_token:
+                    params["pageToken"] = page_token
+                payload = session.request(
+                    "GET", "https://www.googleapis.com/drive/v3/files", params=params
+                ).json()
+                for item in payload.get("files", []):
+                    file_id = str(item["id"])
+                    modified_time = str(item.get("modifiedTime") or "")
+                    body = _cached_drive_content(cache, file_id, modified_time)
+                    if body is None:
+                        body = _drive_content(session, item)
+                        if cache is not None:
+                            cache.execute(
+                                "INSERT OR REPLACE INTO files(id,modified_time,body) VALUES(?,?,?)",
+                                (file_id, modified_time, body),
+                            )
+                            pending_writes += 1
+                    if cache is not None:
+                        cache.execute("INSERT OR IGNORE INTO seen(id) VALUES(?)", (file_id,))
+                        if pending_writes >= 100:
+                            cache.commit()
+                            pending_writes = 0
+                    if not body.strip():
+                        continue
+                    yield Document(
+                        source="google-drive",
+                        source_id=file_id,
+                        title=str(item.get("name") or "Untitled Drive file"),
+                        content=body,
+                        uri=item.get("webViewLink"),
+                        updated_at=_timestamp(item.get("modifiedTime")),
+                        project=project,
+                        metadata={
+                            "mime_type": item.get("mimeType"),
+                            "owners": [
+                                owner.get("displayName")
+                                for owner in item.get("owners", [])
+                                if owner.get("displayName")
+                            ],
+                        },
+                    )
+                page_token = payload.get("nextPageToken")
+                if not page_token:
+                    break
+        if cache is not None:
+            cache.execute("DELETE FROM files WHERE id NOT IN (SELECT id FROM seen)")
+            cache.commit()
+    finally:
+        if cache is not None:
+            cache.close()
 
 
 def fetch_gmail(
@@ -217,20 +242,48 @@ def fetch_gmail(
 def _gmail_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
     if cache_dir is None:
         return None
-    cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    cache_dir.chmod(0o700)
-    path = cache_dir / "gmail.sqlite3"
+    connection = _private_cache(cache_dir / "gmail.sqlite3")
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,body TEXT NOT NULL)"
+    )
+    connection.execute("CREATE TEMP TABLE seen(id TEXT PRIMARY KEY)")
+    return connection
+
+
+def _drive_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
+    if cache_dir is None:
+        return None
+    connection = _private_cache(cache_dir / "drive.sqlite3")
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS files("
+        "id TEXT PRIMARY KEY,modified_time TEXT NOT NULL,body TEXT NOT NULL)"
+    )
+    connection.execute("CREATE TEMP TABLE seen(id TEXT PRIMARY KEY)")
+    return connection
+
+
+def _private_cache(path: Path) -> sqlite3.Connection:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.parent.chmod(0o700)
     descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
     os.close(descriptor)
     path.chmod(0o600)
     connection = sqlite3.connect(path)
     connection.execute("PRAGMA journal_mode=MEMORY")
     connection.execute("PRAGMA synchronous=NORMAL")
-    connection.execute(
-        "CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,body TEXT NOT NULL)"
-    )
-    connection.execute("CREATE TEMP TABLE seen(id TEXT PRIMARY KEY)")
     return connection
+
+
+def _cached_drive_content(
+    cache: sqlite3.Connection | None, file_id: str, modified_time: str
+) -> str | None:
+    if cache is None:
+        return None
+    row = cache.execute(
+        "SELECT body FROM files WHERE id=? AND modified_time=?",
+        (file_id, modified_time),
+    ).fetchone()
+    return None if row is None else str(row[0])
 
 
 def _cached_gmail_message(

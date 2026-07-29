@@ -72,7 +72,12 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
         return fetch_discord(arguments.channels, arguments.project, arguments.token_env)
     token_path = _token_path(arguments)
     if arguments.connector == "google-drive":
-        return fetch_drive(token_path, arguments.project, arguments.query)
+        return fetch_drive(
+            token_path,
+            arguments.project,
+            arguments.query,
+            cache_dir=arguments.cache_dir,
+        )
     if arguments.connector == "gmail":
         return fetch_gmail(
             token_path,

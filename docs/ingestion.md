@@ -36,9 +36,11 @@ stable document per recurring series, including its occurrence count, date range
 and provenance. This prevents daily meetings from consuming thousands of redundant embeddings
 without discarding their long-term history.
 
-Gmail keeps an owner-only derived cache under `data_dir/connector-cache/<source>/`. Complete runs
-still list every message ID for correct deletion reconciliation, but immutable message bodies are
-downloaded only once. The cache is disposable and can always be rebuilt from Gmail.
+Google Drive and Gmail keep owner-only derived caches under
+`data_dir/connector-cache/<source>/`. Complete runs still list every item ID for correct deletion
+reconciliation, but Drive content is downloaded only when its modification timestamp changes and
+immutable Gmail message bodies are downloaded only once. The caches are disposable and can always
+be rebuilt from Google.
 
 ## Credentials
 
