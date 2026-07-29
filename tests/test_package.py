@@ -1,5 +1,7 @@
+from importlib.metadata import version
+
 from cortana import __version__
 
 
-def test_version_matches_initial_release() -> None:
-    assert __version__ == "0.1.0"
+def test_runtime_version_matches_package_metadata() -> None:
+    assert __version__ == version("cortana-brain")

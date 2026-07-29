@@ -19,6 +19,9 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 ## Quick start
 
 ```bash
+# From an extracted GitHub release archive (binary, UI, and connector wheel).
+./install.sh
+
 # Reproducible per-user install (Rust binary, workspace, connector venv, and macOS services).
 ./scripts/install-local.sh
 
