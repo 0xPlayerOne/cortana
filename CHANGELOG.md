@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/0xPlayerOne/cortana/compare/v0.1.1...v0.1.2) (2026-07-29)
+
+
+### Bug Fixes
+
+* **release:** dispatch binary assets after versioning ([8dd05c8](https://github.com/0xPlayerOne/cortana/commit/8dd05c894efe73d6afecd6effb5f23a6b4084381))
+* **release:** ship self-installing artifacts ([3a5be85](https://github.com/0xPlayerOne/cortana/commit/3a5be8584376395ea3011e71ff897c8dcca2cc43))
+
 ## [0.1.1](https://github.com/0xPlayerOne/cortana/compare/v0.1.0...v0.1.1) (2026-07-29)
 
 ### Bug Fixes
