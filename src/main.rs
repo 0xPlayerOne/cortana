@@ -566,16 +566,22 @@ async fn ingest(store: &Store, embedder: &dyn Embedder, input: &str) -> Result<(
 }
 
 #[derive(Deserialize)]
-struct EmbeddedImportRecord {
-    embedding_fingerprint: String,
-    document: Document,
-    chunks: Vec<EmbeddedImportChunk>,
-}
-
-#[derive(Deserialize)]
 struct EmbeddedImportChunk {
     content: String,
     embedding: Vec<f32>,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum EmbeddedImportLine {
+    Document {
+        embedding_fingerprint: String,
+        document: Box<Document>,
+        chunks: Vec<EmbeddedImportChunk>,
+    },
+    Complete {
+        records: usize,
+    },
 }
 
 fn import_embeddings(
@@ -596,27 +602,53 @@ fn import_embeddings(
     let expected_fingerprint = embedder.fingerprint();
     let mut imported = 0_usize;
     let mut unchanged = 0_usize;
+    let mut completed = false;
     let mut seen = std::collections::HashMap::<(String, String), Vec<String>>::new();
     for (line_number, line) in reader.lines().enumerate() {
         let line = line?;
         if line.trim().is_empty() {
             continue;
         }
-        let record: EmbeddedImportRecord = serde_json::from_str(&line)
+        let record: EmbeddedImportLine = serde_json::from_str(&line)
             .with_context(|| format!("invalid embedded JSONL at line {}", line_number + 1))?;
+        let (embedding_fingerprint, document, embedded_chunks) = match record {
+            EmbeddedImportLine::Document {
+                embedding_fingerprint,
+                document,
+                chunks,
+            } => (embedding_fingerprint, document, chunks),
+            EmbeddedImportLine::Complete { records } => {
+                anyhow::ensure!(
+                    !completed,
+                    "duplicate embedded import completion record at line {}",
+                    line_number + 1
+                );
+                anyhow::ensure!(
+                    records == imported + unchanged,
+                    "embedded import is incomplete: expected {records} records, received {}",
+                    imported + unchanged
+                );
+                completed = true;
+                continue;
+            }
+        };
         anyhow::ensure!(
-            record.embedding_fingerprint == expected_fingerprint,
+            !completed,
+            "embedded import contains data after its completion record at line {}",
+            line_number + 1
+        );
+        anyhow::ensure!(
+            embedding_fingerprint == expected_fingerprint,
             "embedding fingerprint mismatch at line {}: expected {}",
             line_number + 1,
             expected_fingerprint
         );
         anyhow::ensure!(
-            !record.chunks.is_empty(),
+            !embedded_chunks.is_empty(),
             "embedded record has no chunks at line {}",
             line_number + 1
         );
-        let chunks = record
-            .chunks
+        let chunks = embedded_chunks
             .into_iter()
             .map(|chunk| {
                 anyhow::ensure!(
@@ -634,14 +666,11 @@ fn import_embeddings(
                 Ok((chunk.content, chunk.embedding))
             })
             .collect::<Result<Vec<_>>>()?;
-        let key = (
-            record.document.source.clone(),
-            record.document.project.clone(),
-        );
+        let key = (document.source.clone(), document.project.clone());
         seen.entry(key)
             .or_default()
-            .push(record.document.source_id.clone());
-        if store.upsert(&record.document, &chunks)? {
+            .push(document.source_id.clone());
+        if store.upsert(&document, &chunks)? {
             imported += 1;
         } else {
             unchanged += 1;
@@ -650,6 +679,10 @@ fn import_embeddings(
             eprintln!("imported embedded records: changed={imported} unchanged={unchanged}");
         }
     }
+    anyhow::ensure!(
+        completed,
+        "embedded import ended without a valid completion record; no reconciliation was performed"
+    );
     let mut deleted = 0_usize;
     if reconcile {
         for ((source, project), source_ids) in seen {

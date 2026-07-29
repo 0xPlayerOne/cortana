@@ -85,6 +85,7 @@ def records(
             )
             vector = embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
             yield {
+                "type": "document",
                 "embedding_fingerprint": fingerprint,
                 "document": {
                     "source": source,
@@ -119,6 +120,7 @@ def main() -> int:
         settings=Settings(anonymized_telemetry=False),
     )
     names = args.collection or ["code", "second-brain"]
+    exported = 0
     for name in names:
         collection = client.get_collection(name)
         for record in records(
@@ -130,6 +132,8 @@ def main() -> int:
             args.batch_size,
         ):
             print(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+            exported += 1
+    print(json.dumps({"type": "complete", "records": exported}, separators=(",", ":")))
     return 0
 
 

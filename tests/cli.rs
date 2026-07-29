@@ -49,6 +49,7 @@ fn preembedded_import_validates_and_searches_without_provider_calls() {
     )
     .expect("write config");
     let record = serde_json::json!({
+        "type": "document",
         "embedding_fingerprint": "deterministic:256",
         "document": {
             "source": "legacy-code",
@@ -63,13 +64,14 @@ fn preembedded_import_validates_and_searches_without_provider_calls() {
         }]
     })
     .to_string();
+    let stream = format!("{record}\n{{\"type\":\"complete\",\"records\":1}}\n");
 
     Command::cargo_bin("cortana")
         .expect("binary exists")
         .args(["--offline", "--config"])
         .arg(&config)
         .args(["import-embeddings", "-"])
-        .write_stdin(record.clone())
+        .write_stdin(stream)
         .assert()
         .success()
         .stdout(predicate::str::contains("changed=1"));
@@ -83,7 +85,10 @@ fn preembedded_import_validates_and_searches_without_provider_calls() {
         .success()
         .stdout(predicate::str::contains("\"title\": \"repo/runbook.md\""));
 
-    let wrong_fingerprint = record.replace("deterministic:256", "another-model:256");
+    let wrong_fingerprint = format!(
+        "{}\n{{\"type\":\"complete\",\"records\":1}}\n",
+        record.replace("deterministic:256", "another-model:256")
+    );
     Command::cargo_bin("cortana")
         .expect("binary exists")
         .args(["--offline", "--config"])
