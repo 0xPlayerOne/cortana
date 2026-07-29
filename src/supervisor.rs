@@ -110,7 +110,7 @@ fn embedding_command(config: &Config) -> Result<(String, Vec<String>)> {
             "--port".into(),
             port.to_string(),
             "--max-batch-tokens".into(),
-            "512".into(),
+            "4096".into(),
             "--max-batch-requests".into(),
             "16".into(),
             "--max-concurrent-requests".into(),
@@ -201,6 +201,11 @@ mod tests {
             arguments
                 .windows(2)
                 .any(|pair| pair == ["--max-concurrent-requests", "128"])
+        );
+        assert!(
+            arguments
+                .windows(2)
+                .any(|pair| pair == ["--max-batch-tokens", "4096"])
         );
         assert_eq!(
             embedding_probe_url(&config).expect("probe").as_str(),
