@@ -204,6 +204,7 @@ def fetch_calendar(
             if not calendar_id or calendar.get("deleted") or calendar.get("hidden"):
                 continue
             encoded_calendar_id = quote(calendar_id, safe="")
+            recurring_series: dict[str, dict[str, Any]] = {}
             page_token: str | None = None
             while True:
                 params: dict[str, Any] = {
@@ -224,10 +225,16 @@ def fetch_calendar(
                 for event in payload.get("items", []):
                     if event.get("status") == "cancelled":
                         continue
-                    yield _calendar_document(event, calendar, project)
+                    recurring_id = str(event.get("recurringEventId") or "")
+                    if recurring_id:
+                        _add_calendar_occurrence(recurring_series, recurring_id, event)
+                    else:
+                        yield _calendar_document(event, calendar, project)
                 page_token = payload.get("nextPageToken")
                 if not page_token:
                     break
+            for recurring_id, series in recurring_series.items():
+                yield _calendar_series_document(recurring_id, series, calendar, project)
 
 
 def _calendar_document(event: dict[str, Any], calendar: dict[str, Any], project: str) -> Document:
@@ -267,6 +274,86 @@ def _calendar_document(event: dict[str, Any], calendar: dict[str, Any], project:
             "attendees": attendees,
             "status": event.get("status"),
             "recurring_event_id": event.get("recurringEventId"),
+        },
+    )
+
+
+def _add_calendar_occurrence(
+    series: dict[str, dict[str, Any]],
+    recurring_id: str,
+    event: dict[str, Any],
+) -> None:
+    start = str(event.get("start", {}).get("dateTime") or event.get("start", {}).get("date") or "")
+    updated_at = _timestamp(event.get("updated") or start)
+    attendees = {
+        str(attendee.get("email") or attendee.get("displayName") or "")
+        for attendee in event.get("attendees", [])
+        if attendee.get("email") or attendee.get("displayName")
+    }
+    current = series.get(recurring_id)
+    if current is None:
+        series[recurring_id] = {
+            "event": event,
+            "count": 1,
+            "first_start": start,
+            "last_start": start,
+            "updated_at": updated_at,
+            "attendees": attendees,
+        }
+        return
+    current["count"] += 1
+    if start and (not current["first_start"] or start < current["first_start"]):
+        current["first_start"] = start
+    if start > current["last_start"]:
+        current["last_start"] = start
+        current["event"] = event
+    if updated_at > current["updated_at"]:
+        current["updated_at"] = updated_at
+    current["attendees"].update(attendees)
+
+
+def _calendar_series_document(
+    recurring_id: str,
+    series: dict[str, Any],
+    calendar: dict[str, Any],
+    project: str,
+) -> Document:
+    event = series["event"]
+    calendar_id = str(calendar.get("id") or "primary")
+    attendees = sorted(series["attendees"])
+    content = "\n".join(
+        part
+        for part in [
+            f"Calendar: {calendar.get('summary') or calendar_id}",
+            (
+                f"Recurring series: {series['count']} occurrences from "
+                f"{series['first_start']} through {series['last_start']}"
+            ),
+            f"Location: {event.get('location') or ''}",
+            f"Organizer: {event.get('organizer', {}).get('email') or ''}",
+            f"Attendees: {', '.join(attendees)}",
+            "",
+            str(event.get("description") or ""),
+        ]
+        if part
+    ).strip()
+    return Document(
+        source="google-calendar",
+        source_id=f"{calendar_id}:recurring:{recurring_id}",
+        title=str(event.get("summary") or "(untitled recurring event)"),
+        content=content,
+        uri=event.get("htmlLink"),
+        updated_at=series["updated_at"],
+        project=project,
+        metadata={
+            "calendar_id": calendar_id,
+            "calendar": calendar.get("summary"),
+            "attendees": attendees,
+            "status": event.get("status"),
+            "recurring_event_id": recurring_id,
+            "occurrence_count": series["count"],
+            "first_start": series["first_start"],
+            "last_start": series["last_start"],
         },
     )
 

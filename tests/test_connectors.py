@@ -308,6 +308,60 @@ def test_google_calendar_normalizes_events(tmp_path: Path) -> None:
     assert documents[0].metadata["attendees"] == ["ada@example.test"]
 
 
+def test_google_calendar_collapses_recurring_occurrences(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/calendarList"):
+            return response(
+                {"items": [{"id": "primary", "summary": "Work"}]},
+                request=request,
+            )
+        return response(
+            {
+                "items": [
+                    {
+                        "id": "instance-1",
+                        "recurringEventId": "daily-standup",
+                        "summary": "Standup",
+                        "start": {"dateTime": "2026-07-28T12:00:00Z"},
+                        "end": {"dateTime": "2026-07-28T12:15:00Z"},
+                        "updated": "2026-07-28T13:00:00Z",
+                        "attendees": [{"email": "ada@example.test"}],
+                    },
+                    {
+                        "id": "instance-2",
+                        "recurringEventId": "daily-standup",
+                        "summary": "Standup",
+                        "start": {"dateTime": "2026-07-29T12:00:00Z"},
+                        "end": {"dateTime": "2026-07-29T12:15:00Z"},
+                        "updated": "2026-07-29T13:00:00Z",
+                        "attendees": [{"email": "grace@example.test"}],
+                    },
+                ]
+            },
+            request=request,
+        )
+
+    documents = list(
+        fetch_calendar(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert len(documents) == 1
+    assert documents[0].source_id == "primary:recurring:daily-standup"
+    assert "2 occurrences" in documents[0].content
+    assert documents[0].metadata["occurrence_count"] == 2
+    assert documents[0].metadata["attendees"] == [
+        "ada@example.test",
+        "grace@example.test",
+    ]
+
+
 def test_google_session_refreshes_and_secures_token_file(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     token.write_text(
