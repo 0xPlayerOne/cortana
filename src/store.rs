@@ -2,8 +2,9 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
+use rusqlite::types::Type;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -39,7 +40,7 @@ impl Store {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let connection = Connection::open(path)?;
+        let mut connection = Connection::open(path)?;
         connection.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA foreign_keys=ON;
@@ -51,16 +52,18 @@ impl Store {
                metadata_json TEXT NOT NULL, UNIQUE(source, source_id));
              CREATE TABLE IF NOT EXISTS chunks(
                id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-               ordinal INTEGER NOT NULL, content TEXT NOT NULL, embedding_json TEXT NOT NULL);
+               ordinal INTEGER NOT NULL, content TEXT NOT NULL, embedding_json TEXT NOT NULL,
+               embedding_blob BLOB);
              CREATE TABLE IF NOT EXISTS embedding_cache(
                fingerprint TEXT NOT NULL, content_hash TEXT NOT NULL,
-               embedding_json TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 0,
+               embedding_json TEXT NOT NULL, embedding_blob BLOB, hits INTEGER NOT NULL DEFAULT 0,
                created_at TEXT NOT NULL, last_used_at TEXT NOT NULL,
                PRIMARY KEY(fingerprint,content_hash));
              CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                chunk_id UNINDEXED, title, content, tokenize='unicode61');
              CREATE INDEX IF NOT EXISTS idx_documents_scope ON documents(project, source);",
         )?;
+        migrate_embedding_blobs(&mut connection)?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
         })
@@ -118,8 +121,16 @@ impl Store {
         for (ordinal, (content, embedding)) in chunks.iter().enumerate() {
             let chunk_id = format!("{id}:{ordinal}");
             transaction.execute(
-                "INSERT INTO chunks(id,document_id,ordinal,content,embedding_json) VALUES(?1,?2,?3,?4,?5)",
-                params![chunk_id, id, ordinal as i64, content, serde_json::to_string(embedding)?],
+                "INSERT INTO chunks(
+                   id,document_id,ordinal,content,embedding_json,embedding_blob
+                 ) VALUES(?1,?2,?3,?4,'[]',?5)",
+                params![
+                    chunk_id,
+                    id,
+                    ordinal as i64,
+                    content,
+                    encode_embedding(embedding)
+                ],
             )?;
             transaction.execute(
                 "INSERT INTO chunks_fts(chunk_id,title,content) VALUES(?1,?2,?3)",
@@ -208,7 +219,8 @@ impl Store {
     ) -> Result<Vec<StoredChunk>> {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
-            "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,c.embedding_json,d.updated_at
+            "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,
+                    c.embedding_blob,c.embedding_json,d.updated_at
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
         )?;
@@ -298,12 +310,12 @@ impl Store {
     pub fn cached_embedding(&self, fingerprint: &str, content: &str) -> Result<Option<Vec<f32>>> {
         let hash = hex_digest(content.as_bytes());
         let connection = self.connection.lock().expect("store lock poisoned");
-        let value: Option<String> = connection
+        let value: Option<(Option<Vec<u8>>, String)> = connection
             .query_row(
-                "SELECT embedding_json FROM embedding_cache
+                "SELECT embedding_blob,embedding_json FROM embedding_cache
                  WHERE fingerprint=?1 AND content_hash=?2",
                 params![fingerprint, hash],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
         if value.is_some() {
@@ -314,7 +326,12 @@ impl Store {
             )?;
         }
         value
-            .map(|json| serde_json::from_str(&json).map_err(Into::into))
+            .map(|(blob, json)| {
+                blob.map_or_else(
+                    || serde_json::from_str(&json).map_err(Into::into),
+                    |blob| decode_embedding(&blob),
+                )
+            })
             .transpose()
     }
 
@@ -328,14 +345,15 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         connection.execute(
             "INSERT INTO embedding_cache(
-               fingerprint,content_hash,embedding_json,hits,created_at,last_used_at)
-             VALUES(?1,?2,?3,0,?4,?4)
+               fingerprint,content_hash,embedding_json,embedding_blob,hits,created_at,last_used_at)
+             VALUES(?1,?2,'[]',?3,0,?4,?4)
              ON CONFLICT(fingerprint,content_hash) DO UPDATE SET
-               embedding_json=excluded.embedding_json,last_used_at=excluded.last_used_at",
+               embedding_json='[]',embedding_blob=excluded.embedding_blob,
+               last_used_at=excluded.last_used_at",
             params![
                 fingerprint,
                 hex_digest(content.as_bytes()),
-                serde_json::to_string(embedding)?,
+                encode_embedding(embedding),
                 now
             ],
         )?;
@@ -431,8 +449,21 @@ fn verify_database(path: &Path) -> Result<()> {
 }
 
 fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
-    let embedding: String = row.get(6)?;
-    let updated_at: String = row.get(7)?;
+    let embedding_blob: Option<Vec<u8>> = row.get(6)?;
+    let embedding_json: String = row.get(7)?;
+    let embedding = embedding_blob.map_or_else(
+        || {
+            serde_json::from_str(&embedding_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(7, Type::Text, Box::new(error))
+            })
+        },
+        |blob| {
+            decode_embedding(&blob).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(6, Type::Blob, error.into())
+            })
+        },
+    )?;
+    let updated_at: String = row.get(8)?;
     Ok(StoredChunk {
         id: row.get(0)?,
         source: row.get(1)?,
@@ -440,11 +471,80 @@ fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
         title: row.get(3)?,
         uri: row.get(4)?,
         content: row.get(5)?,
-        embedding: serde_json::from_str(&embedding).unwrap_or_default(),
+        embedding,
         updated_at: DateTime::parse_from_rfc3339(&updated_at)
             .map(|value| value.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now()),
     })
+}
+
+fn migrate_embedding_blobs(connection: &mut Connection) -> Result<()> {
+    ensure_column(connection, "chunks", "embedding_blob", "BLOB")?;
+    ensure_column(connection, "embedding_cache", "embedding_blob", "BLOB")?;
+    for table in ["chunks", "embedding_cache"] {
+        let rows = {
+            let mut statement = connection.prepare(&format!(
+                "SELECT rowid,embedding_json FROM {table}
+                 WHERE embedding_blob IS NULL"
+            ))?;
+            statement
+                .query_map([], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        if rows.is_empty() {
+            continue;
+        }
+        let transaction = connection.transaction()?;
+        for (rowid, json) in rows {
+            let embedding: Vec<f32> = serde_json::from_str(&json)
+                .with_context(|| format!("invalid legacy embedding in {table} row {rowid}"))?;
+            transaction.execute(
+                &format!("UPDATE {table} SET embedding_blob=?2,embedding_json='[]' WHERE rowid=?1"),
+                params![rowid, encode_embedding(&embedding)],
+            )?;
+        }
+        transaction.commit()?;
+    }
+    Ok(())
+}
+
+fn ensure_column(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+    declaration: &str,
+) -> Result<()> {
+    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    if !columns.iter().any(|existing| existing == column) {
+        connection.execute_batch(&format!(
+            "ALTER TABLE {table} ADD COLUMN {column} {declaration}"
+        ))?;
+    }
+    Ok(())
+}
+
+fn encode_embedding(embedding: &[f32]) -> Vec<u8> {
+    embedding
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect()
+}
+
+fn decode_embedding(value: &[u8]) -> Result<Vec<f32>> {
+    anyhow::ensure!(
+        value.len().is_multiple_of(std::mem::size_of::<f32>()),
+        "embedding blob length is not divisible by four"
+    );
+    Ok(value
+        .chunks_exact(4)
+        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect())
 }
 
 fn stable_id(source: &str, source_id: &str) -> String {
@@ -556,6 +656,64 @@ mod tests {
         let stats = store.stats().expect("stats");
         assert_eq!(stats.embedding_cache_entries, 1);
         assert_eq!(stats.embedding_cache_hits, 1);
+    }
+
+    #[test]
+    fn migrates_legacy_json_embeddings_to_compact_blobs() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("store.sqlite3");
+        let store = Store::open(&path).expect("open store");
+        store
+            .upsert(
+                &document("legacy", "legacy content"),
+                &[("legacy content".into(), vec![0.25, 0.75])],
+            )
+            .expect("insert chunk");
+        store
+            .cache_embedding("model", "legacy content", &[0.25, 0.75])
+            .expect("cache embedding");
+        drop(store);
+        let connection = Connection::open(&path).expect("open raw database");
+        connection
+            .execute(
+                "UPDATE chunks SET embedding_json='[0.25,0.75]',embedding_blob=NULL",
+                [],
+            )
+            .expect("legacy chunk");
+        connection
+            .execute(
+                "UPDATE embedding_cache
+                 SET embedding_json='[0.25,0.75]',embedding_blob=NULL",
+                [],
+            )
+            .expect("legacy cache");
+        drop(connection);
+
+        let migrated = Store::open(&path).expect("migrate store");
+        assert_eq!(
+            migrated.all_chunks(None, None).expect("chunks")[0].embedding,
+            vec![0.25, 0.75]
+        );
+        assert_eq!(
+            migrated
+                .cached_embedding("model", "legacy content")
+                .expect("cache"),
+            Some(vec![0.25, 0.75])
+        );
+        let connection = Connection::open(&path).expect("inspect database");
+        for table in ["chunks", "embedding_cache"] {
+            let blob_rows: i64 = connection
+                .query_row(
+                    &format!(
+                        "SELECT COUNT(*) FROM {table}
+                         WHERE embedding_blob IS NOT NULL AND embedding_json='[]'"
+                    ),
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("blob count");
+            assert_eq!(blob_rows, 1);
+        }
     }
 
     #[test]
