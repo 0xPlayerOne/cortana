@@ -30,6 +30,8 @@ ingestion = [
   "pypdf>=5.8,<6",
 ]
 hindsight = ["hindsight-api>=0.8.5,<0.9"]
+
+[dependency-groups]
 dev = [
   "coverage[toml]>=7.10,<8",
   "mypy>=1.17,<2",
