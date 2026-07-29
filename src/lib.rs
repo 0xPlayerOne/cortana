@@ -1,6 +1,7 @@
 pub mod api;
 pub mod config;
 pub mod connectors;
+pub mod context;
 pub mod embed;
 pub mod mcp;
 pub mod model;

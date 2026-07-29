@@ -9,7 +9,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 
-use crate::{embed::Embedder, retrieval, store::Store};
+use crate::{context, embed::Embedder, retrieval, store::Store};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchParams {
@@ -17,6 +17,15 @@ pub struct SearchParams {
     project: Option<String>,
     source: Option<String>,
     limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ContextParams {
+    query: String,
+    project: Option<String>,
+    source: Option<String>,
+    limit: Option<usize>,
+    max_tokens: Option<usize>,
 }
 
 #[derive(Clone)]
@@ -40,23 +49,52 @@ impl BrainServer {
         description = "Hybrid semantic and exact-term search across configured knowledge sources"
     )]
     async fn search(&self, Parameters(params): Parameters<SearchParams>) -> String {
-        match self
-            .embedder
-            .embed(std::slice::from_ref(&params.query))
-            .await
+        match retrieval::retrieve(
+            &self.store,
+            &self.embedder,
+            &params.query,
+            params.project.as_deref(),
+            params.source.as_deref(),
+            params.limit.unwrap_or(10),
+        )
+        .await
         {
-            Ok(vectors) => match retrieval::search(
-                &self.store,
+            Ok(rows) => serde_json::to_string(&rows).unwrap_or_else(|error| error.to_string()),
+            Err(error) => format!("retrieval error: {error}"),
+        }
+    }
+
+    #[tool(
+        description = "Build a token-bounded, citation-ready context bundle. Agents should prefer this tool before answering questions about the user or their work."
+    )]
+    async fn context(&self, Parameters(params): Parameters<ContextParams>) -> String {
+        match retrieval::retrieve(
+            &self.store,
+            &self.embedder,
+            &params.query,
+            params.project.as_deref(),
+            params.source.as_deref(),
+            params.limit.unwrap_or(20),
+        )
+        .await
+        {
+            Ok(rows) => serde_json::to_string(&context::build(
                 &params.query,
-                &vectors[0],
-                params.project.as_deref(),
-                params.source.as_deref(),
-                params.limit.unwrap_or(10).min(50),
-            ) {
-                Ok(rows) => serde_json::to_string(&rows).unwrap_or_else(|error| error.to_string()),
-                Err(error) => format!("retrieval error: {error}"),
-            },
-            Err(error) => format!("embedding error: {error}"),
+                &rows,
+                params.max_tokens.unwrap_or(8_000),
+            ))
+            .unwrap_or_else(|error| error.to_string()),
+            Err(error) => format!("retrieval error: {error}"),
+        }
+    }
+
+    #[tool(
+        description = "Report index health, source coverage, embedding identity, and persistent embedding-cache telemetry"
+    )]
+    async fn brain_status(&self) -> String {
+        match self.store.stats() {
+            Ok(stats) => serde_json::to_string(&stats).unwrap_or_else(|error| error.to_string()),
+            Err(error) => format!("status error: {error}"),
         }
     }
 }
@@ -65,7 +103,7 @@ impl BrainServer {
 impl ServerHandler for BrainServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            "Retrieve cited evidence from the user's scoped second brain before broad context discovery.",
+            "Call context before answering questions about the user or their work. Reuse its citation-ready output instead of repeating broad discovery calls.",
         )
     }
 }

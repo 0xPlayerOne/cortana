@@ -25,6 +25,8 @@ pub struct EmbeddingConfig {
     pub api_key_env: Option<String>,
     #[serde(default = "default_dimension")]
     pub dimension: usize,
+    #[serde(default = "default_embedding_cache_entries")]
+    pub cache_max_entries: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -66,6 +68,7 @@ impl Default for EmbeddingConfig {
             model: default_embedding_model(),
             api_key_env: None,
             dimension: default_dimension(),
+            cache_max_entries: default_embedding_cache_entries(),
         }
     }
 }
@@ -129,6 +132,10 @@ fn default_embedding_model() -> String {
 
 fn default_dimension() -> usize {
     1024
+}
+
+fn default_embedding_cache_entries() -> usize {
+    250_000
 }
 
 fn default_connector_command() -> Vec<String> {

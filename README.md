@@ -8,6 +8,7 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 
 - one canonical evidence schema across heterogeneous sources;
 - incremental ingestion with stable source IDs and deletion reconciliation;
+- persistent content-addressed embedding reuse across ingestion and queries;
 - lexical, semantic, IDF, and recency signals fused before reranking;
 - source-level deduplication and surrounding-context expansion;
 - project-scoped retrieval instead of unbounded “search everything”;
@@ -38,6 +39,11 @@ bun run build
 ./target/release/cortana serve --address 127.0.0.1:7331
 # API-only deployments can opt out of static workspace serving.
 ./target/release/cortana serve --address 127.0.0.1:7331 --no-web
+
+# Retrieve the same citation-ready, token-bounded bundle used by the workspace and MCP.
+curl -sS http://127.0.0.1:7331/v1/context \
+  -H 'content-type: application/json' \
+  -d '{"query":"how do releases work?","project":"engineering","max_tokens":8000}'
 ```
 
 Use `--offline` for a deterministic, zero-network evaluation index. Offline and production
@@ -63,12 +69,11 @@ The core runtime is Rust: service supervision, normalization contracts, storage,
 retrieval, HTTP, MCP, and the CLI. Python is an isolated connector SDK for integrations where
 mature vendor libraries or macOS automation are the safer boundary.
 
-The shipped local profile uses SQLite WAL, FTS5, content-addressed incremental updates, and an
-embedding index generation fingerprint. Postgres with `pgvector` is the planned multi-user store;
-the canonical model intentionally does not depend on either backend. OpenAI-compatible embedding
-APIs make the existing local
-Qwen/TEI service and cloud embedding providers interchangeable without mixing vector spaces inside
-an index generation.
+The shipped local profile uses SQLite WAL, FTS5, content-addressed incremental updates, a persistent
+embedding cache, and an embedding index generation fingerprint. Postgres with `pgvector` is the
+planned multi-user store; the canonical model intentionally does not depend on either backend.
+OpenAI-compatible embedding APIs make the existing local Qwen/TEI service and cloud embedding
+providers interchangeable without mixing vector spaces inside an index generation.
 
 Hindsight is retained as an optional derived memory adapter for temporal/reflection workflows. It
 is not the system of record: source evidence, provenance, permissions, and retrieval remain native

@@ -19,6 +19,8 @@ pub struct StoreStats {
     pub documents: i64,
     pub chunks: i64,
     pub embedding_fingerprint: Option<String>,
+    pub embedding_cache_entries: i64,
+    pub embedding_cache_hits: i64,
     pub sources: Vec<SourceStats>,
 }
 
@@ -49,6 +51,11 @@ impl Store {
              CREATE TABLE IF NOT EXISTS chunks(
                id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
                ordinal INTEGER NOT NULL, content TEXT NOT NULL, embedding_json TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS embedding_cache(
+               fingerprint TEXT NOT NULL, content_hash TEXT NOT NULL,
+               embedding_json TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 0,
+               created_at TEXT NOT NULL, last_used_at TEXT NOT NULL,
+               PRIMARY KEY(fingerprint,content_hash));
              CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                chunk_id UNINDEXED, title, content, tokenize='unicode61');
              CREATE INDEX IF NOT EXISTS idx_documents_scope ON documents(project, source);",
@@ -136,6 +143,16 @@ impl Store {
         Ok(previous.as_deref() != Some(&hash))
     }
 
+    pub fn refresh_timestamp(&self, document: &Document) -> Result<()> {
+        let id = stable_id(&document.source, &document.source_id);
+        let connection = self.connection.lock().expect("store lock poisoned");
+        connection.execute(
+            "UPDATE documents SET updated_at=?2 WHERE id=?1",
+            params![id, document.updated_at.to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
     pub fn reconcile(
         &self,
         source: &str,
@@ -199,17 +216,37 @@ impl Store {
             .map_err(Into::into)
     }
 
-    pub fn lexical_ids(&self, query: &str, limit: usize) -> Result<Vec<String>> {
+    pub fn lexical_ids(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        source: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<String>> {
         let connection = self.connection.lock().expect("store lock poisoned");
-        let mut statement = connection.prepare(
-            "SELECT chunk_id FROM chunks_fts WHERE chunks_fts MATCH ?1 ORDER BY bm25(chunks_fts) LIMIT ?2",
-        )?;
         let safe_query = query
             .split_whitespace()
-            .map(|token| format!("\"{}\"", token.replace('"', "")))
+            .map(|token| token.replace('"', ""))
+            .filter(|token| !token.is_empty())
+            .map(|token| format!("\"{token}\""))
             .collect::<Vec<_>>()
             .join(" OR ");
-        let rows = statement.query_map(params![safe_query, limit as i64], |row| row.get(0))?;
+        if safe_query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut statement = connection.prepare(
+            "SELECT f.chunk_id FROM chunks_fts f
+             JOIN chunks c ON c.id=f.chunk_id
+             JOIN documents d ON d.id=c.document_id
+             WHERE chunks_fts MATCH ?1
+               AND (?2 IS NULL OR d.project=?2)
+               AND (?3 IS NULL OR d.source=?3)
+             ORDER BY bm25(chunks_fts) LIMIT ?4",
+        )?;
+        let rows = statement
+            .query_map(params![safe_query, project, source, limit as i64], |row| {
+                row.get(0)
+            })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
     }
@@ -226,6 +263,11 @@ impl Store {
                 |row| row.get(0),
             )
             .optional()?;
+        let (embedding_cache_entries, embedding_cache_hits) = connection.query_row(
+            "SELECT COUNT(*),COALESCE(SUM(hits),0) FROM embedding_cache",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
         let mut statement = connection.prepare(
             "SELECT d.source,d.project,COUNT(DISTINCT d.id),COUNT(c.id),MAX(d.updated_at)
              FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
@@ -246,8 +288,76 @@ impl Store {
             documents,
             chunks,
             embedding_fingerprint,
+            embedding_cache_entries,
+            embedding_cache_hits,
             sources,
         })
+    }
+
+    pub fn cached_embedding(&self, fingerprint: &str, content: &str) -> Result<Option<Vec<f32>>> {
+        let hash = hex_digest(content.as_bytes());
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let value: Option<String> = connection
+            .query_row(
+                "SELECT embedding_json FROM embedding_cache
+                 WHERE fingerprint=?1 AND content_hash=?2",
+                params![fingerprint, hash],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if value.is_some() {
+            connection.execute(
+                "UPDATE embedding_cache SET hits=hits+1,last_used_at=?3
+                 WHERE fingerprint=?1 AND content_hash=?2",
+                params![fingerprint, hash, Utc::now().to_rfc3339()],
+            )?;
+        }
+        value
+            .map(|json| serde_json::from_str(&json).map_err(Into::into))
+            .transpose()
+    }
+
+    pub fn cache_embedding(
+        &self,
+        fingerprint: &str,
+        content: &str,
+        embedding: &[f32],
+    ) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let connection = self.connection.lock().expect("store lock poisoned");
+        connection.execute(
+            "INSERT INTO embedding_cache(
+               fingerprint,content_hash,embedding_json,hits,created_at,last_used_at)
+             VALUES(?1,?2,?3,0,?4,?4)
+             ON CONFLICT(fingerprint,content_hash) DO UPDATE SET
+               embedding_json=excluded.embedding_json,last_used_at=excluded.last_used_at",
+            params![
+                fingerprint,
+                hex_digest(content.as_bytes()),
+                serde_json::to_string(embedding)?,
+                now
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn prune_embedding_cache(&self, max_entries: usize) -> Result<usize> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let count: i64 =
+            connection.query_row("SELECT COUNT(*) FROM embedding_cache", [], |row| row.get(0))?;
+        let maximum = i64::try_from(max_entries).unwrap_or(i64::MAX);
+        let remove = (count - maximum).max(0);
+        if remove == 0 {
+            return Ok(0);
+        }
+        let deleted = connection.execute(
+            "DELETE FROM embedding_cache WHERE rowid IN (
+               SELECT rowid FROM embedding_cache
+               ORDER BY last_used_at ASC,created_at ASC LIMIT ?1
+             )",
+            [remove],
+        )?;
+        Ok(deleted)
     }
 }
 
@@ -326,6 +436,15 @@ mod tests {
             .upsert(&second, &[("second".into(), vec![1.0])])
             .expect("insert second");
         assert!(!store.needs_update(&first).expect("check unchanged"));
+        let mut refreshed = first.clone();
+        refreshed.updated_at += chrono::Duration::days(1);
+        store
+            .refresh_timestamp(&refreshed)
+            .expect("refresh timestamp");
+        assert_eq!(
+            store.all_chunks(None, None).expect("chunks")[0].updated_at,
+            refreshed.updated_at
+        );
 
         let deleted = store
             .reconcile("test", "demo", &["one".into()])
@@ -342,5 +461,46 @@ mod tests {
         assert_eq!(stats.documents, 1);
         assert_eq!(stats.chunks, 1);
         assert_eq!(stats.sources[0].source, "test");
+        assert_eq!(stats.embedding_cache_entries, 0);
+    }
+
+    #[test]
+    fn embedding_cache_tracks_reuse_by_fingerprint_and_content() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .cache_embedding("model-a", "same text", &[0.25, 0.75])
+            .expect("cache embedding");
+
+        assert_eq!(
+            store
+                .cached_embedding("model-a", "same text")
+                .expect("cache read"),
+            Some(vec![0.25, 0.75])
+        );
+        assert_eq!(
+            store
+                .cached_embedding("model-b", "same text")
+                .expect("other model"),
+            None
+        );
+        let stats = store.stats().expect("stats");
+        assert_eq!(stats.embedding_cache_entries, 1);
+        assert_eq!(stats.embedding_cache_hits, 1);
+    }
+
+    #[test]
+    fn embedding_cache_prunes_to_configured_bound() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .cache_embedding("model", "first", &[1.0])
+            .expect("cache first");
+        store
+            .cache_embedding("model", "second", &[2.0])
+            .expect("cache second");
+
+        assert_eq!(store.prune_embedding_cache(1).expect("prune"), 1);
+        assert_eq!(store.stats().expect("stats").embedding_cache_entries, 1);
     }
 }

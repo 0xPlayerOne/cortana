@@ -1,19 +1,19 @@
 import { FileText, LoaderCircle, Search } from 'lucide-react'
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 
-import { getStatus, isDemoMode, searchEvidence } from './api'
+import { getContext, getStatus, isDemoMode } from './api'
 import { ContextPanel } from './components/ContextPanel'
 import { Navigation, TitleActions } from './components/Navigation'
 import { SourcePanel } from './components/SourcePanel'
 import { Workspace } from './components/Workspace'
-import { buildAgentContext } from './context'
-import type { BrainStatus, Evidence } from './types'
+import type { BrainStatus, ContextBundle, Evidence } from './types'
 
 export function App() {
   const [query, setQuery] = useState('How do releases work?')
   const [activeQuery, setActiveQuery] = useState(query)
   const [status, setStatus] = useState<BrainStatus | null>(null)
   const [evidence, setEvidence] = useState<Evidence[]>([])
+  const [bundle, setBundle] = useState<ContextBundle | null>(null)
   const [selected, setSelected] = useState(0)
   const [source, setSource] = useState('')
   const [loading, setLoading] = useState(true)
@@ -25,7 +25,10 @@ export function App() {
     const controller = new AbortController()
     void Promise.all([
       getStatus(controller.signal).then(setStatus),
-      searchEvidence(query, undefined, undefined, controller.signal).then(setEvidence),
+      getContext(query, undefined, undefined, controller.signal).then((next) => {
+        setBundle(next)
+        setEvidence(next.evidence)
+      }),
     ])
       .catch((caught: unknown) => {
         if (controller.signal.aborted) return
@@ -41,11 +44,14 @@ export function App() {
     setLoading(true)
     setError('')
     try {
-      setEvidence(await searchEvidence(value, undefined, nextSource || undefined))
+      const next = await getContext(value, undefined, nextSource || undefined)
+      setBundle(next)
+      setEvidence(next.evidence)
       setActiveQuery(value)
       setSelected(0)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Search failed')
+      setBundle(null)
       setEvidence([])
     } finally {
       setLoading(false)
@@ -63,8 +69,6 @@ export function App() {
     setLeftOpen(false)
     void runSearch(query.trim() || activeQuery, value)
   }
-
-  const context = useMemo(() => buildAgentContext(activeQuery, evidence), [activeQuery, evidence])
 
   return (
     <div className="shell">
@@ -104,7 +108,8 @@ export function App() {
         evidence={evidence}
         selected={selected}
         status={status}
-        context={context}
+        context={bundle?.context ?? ''}
+        contextTokens={bundle?.metrics.estimated_tokens ?? 0}
         onSelect={setSelected}
         onClose={() => setRightOpen(false)}
       />

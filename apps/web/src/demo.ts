@@ -58,6 +58,8 @@ export const demoEvidence: Evidence[] = [
 export const demoStatus: BrainStatus = {
   status: 'ok',
   embedding_fingerprint: 'openai-compatible:Qwen/Qwen3-Embedding-0.6B:1024',
+  embedding_cache_entries: 42891,
+  embedding_cache_hits: 10642,
   documents: 9834,
   chunks: 128412,
   sources: [

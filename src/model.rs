@@ -19,7 +19,7 @@ pub struct Document {
     pub metadata: Value,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Evidence {
     pub chunk_id: String,
     pub source: String,

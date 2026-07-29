@@ -10,6 +10,7 @@ export function ContextPanel({
   selected,
   status,
   context,
+  contextTokens,
   onSelect,
   onClose,
 }: {
@@ -19,6 +20,7 @@ export function ContextPanel({
   selected: number
   status: BrainStatus | null
   context: string
+  contextTokens: number
   onSelect: (index: number) => void
   onClose: () => void
 }) {
@@ -63,6 +65,10 @@ export function ContextPanel({
         <section className="provenance">
           <span className="section-title">Embedding</span>
           <p>{status?.embedding_fingerprint ?? 'unavailable'}</p>
+          <p>
+            {contextTokens.toLocaleString()} context tokens ·{' '}
+            {(status?.embedding_cache_hits ?? 0).toLocaleString()} cache hits
+          </p>
         </section>
       </div>
       <div className="copy-area">

@@ -22,7 +22,22 @@ export type SourceSummary = {
 export type BrainStatus = {
   status: string
   embedding_fingerprint: string | null
+  embedding_cache_entries: number
+  embedding_cache_hits: number
   documents: number
   chunks: number
   sources: SourceSummary[]
+}
+
+export type ContextBundle = {
+  query: string
+  context: string
+  evidence: Evidence[]
+  metrics: {
+    retrieved: number
+    included: number
+    omitted: number
+    estimated_tokens: number
+    max_tokens: number
+  }
 }
