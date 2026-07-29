@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/0xPlayerOne/cortana/compare/v0.1.5...v0.1.6) (2026-07-29)
+
+
+### Bug Fixes
+
+* **release:** build assets once per publication ([564f18d](https://github.com/0xPlayerOne/cortana/commit/564f18ddcddfed3a527837e7d26bf9c2eec7bfb6))
+
 ## [0.1.5](https://github.com/0xPlayerOne/cortana/compare/v0.1.4...v0.1.5) (2026-07-29)
 
 
