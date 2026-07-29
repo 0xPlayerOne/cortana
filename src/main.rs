@@ -64,6 +64,10 @@ enum Command {
     Serve {
         #[arg(long, default_value = "127.0.0.1:7331")]
         address: String,
+        #[arg(long, default_value = "apps/web/dist")]
+        web_dir: PathBuf,
+        #[arg(long, help = "Serve only the JSON API")]
+        no_web: bool,
     },
     /// Serve retrieval tools over MCP stdio.
     Mcp,
@@ -124,8 +128,18 @@ async fn main() -> Result<()> {
             )
             .await
         }
-        Some(Command::Serve { address }) => {
-            api::serve(api::AppState { store, embedder }, &address).await
+        Some(Command::Serve {
+            address,
+            web_dir,
+            no_web,
+        }) => {
+            let web_dir = (!no_web).then_some(web_dir);
+            api::serve(
+                api::AppState { store, embedder },
+                &address,
+                web_dir.as_deref(),
+            )
+            .await
         }
         Some(Command::Mcp) => mcp::serve(mcp::BrainServer::new(store, embedder)).await,
         Some(Command::Init) => unreachable!(),

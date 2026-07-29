@@ -19,6 +19,9 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 
 ```bash
 cargo build --release
+bun install --frozen-lockfile
+bun run build
+
 ./target/release/cortana init
 
 # Verify the configured Qwen/TEI or cloud OpenAI-compatible embedding endpoint.
@@ -31,7 +34,10 @@ cargo build --release
 
 # Agent transport and workspace API use the identical retrieval pipeline.
 ./target/release/cortana mcp
+# `bun run build` packages the Obsidian-like workspace served at this address.
 ./target/release/cortana serve --address 127.0.0.1:7331
+# API-only deployments can opt out of static workspace serving.
+./target/release/cortana serve --address 127.0.0.1:7331 --no-web
 ```
 
 Use `--offline` for a deterministic, zero-network evaluation index. Offline and production
@@ -75,6 +81,15 @@ pipeline is measurable.
 rustup show
 cargo test
 
+# Workspace
+bun install --frozen-lockfile
+bun run format
+bun run lint
+bun run typecheck
+bun test
+bun run build
+
+# Connector SDK
 uv sync --all-extras
 uv run pytest
 uv run ruff check .

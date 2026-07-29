@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -8,8 +9,14 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
+use tower_http::services::{ServeDir, ServeFile};
 
-use crate::{embed::Embedder, model::Evidence, retrieval, store::Store};
+use crate::{
+    embed::Embedder,
+    model::Evidence,
+    retrieval,
+    store::{Store, StoreStats},
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -31,11 +38,32 @@ struct Health {
     status: &'static str,
 }
 
+#[derive(Debug, Serialize)]
+struct Status {
+    status: &'static str,
+    #[serde(flatten)]
+    stats: StoreStats,
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/healthz", get(|| async { Json(Health { status: "ok" }) }))
+        .route("/v1/status", get(status))
         .route("/v1/search", post(search))
         .with_state(state)
+}
+
+async fn status(State(state): State<AppState>) -> Result<Json<Status>, (StatusCode, String)> {
+    state
+        .store
+        .stats()
+        .map(|stats| {
+            Json(Status {
+                status: "ok",
+                stats,
+            })
+        })
+        .map_err(internal_error)
 }
 
 async fn search(
@@ -67,8 +95,18 @@ fn default_limit() -> usize {
     10
 }
 
-pub async fn serve(state: AppState, address: &str) -> Result<()> {
+pub async fn serve(state: AppState, address: &str, web_dir: Option<&Path>) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(address).await?;
-    axum::serve(listener, router(state)).await?;
+    let mut app = router(state);
+    if let Some(directory) = web_dir {
+        let index = directory.join("index.html");
+        anyhow::ensure!(
+            index.is_file(),
+            "workspace build is missing: run `bun run build` or use --no-web"
+        );
+        app =
+            app.fallback_service(ServeDir::new(directory).not_found_service(ServeFile::new(index)));
+    }
+    axum::serve(listener, app).await?;
     Ok(())
 }
