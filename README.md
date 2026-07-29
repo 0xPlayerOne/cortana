@@ -22,6 +22,9 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 # Reproducible per-user install (Rust binary, workspace, connector venv, and macOS services).
 ./scripts/install-local.sh
 
+# Also install the portable Cortana skill for Codex and Hermes.
+CORTANA_INSTALL_AGENT_INTEGRATIONS=1 ./scripts/install-local.sh
+
 # Or run directly from a checkout.
 cargo build --release
 bun install --frozen-lockfile
@@ -49,6 +52,11 @@ curl -sS http://127.0.0.1:7331/v1/context \
   -H 'content-type: application/json' \
   -d '{"query":"how do releases work?","project":"engineering","max_tokens":8000}'
 ```
+
+For an existing installation, run `./scripts/install-agent-integrations.sh`.
+The script installs only skill files; MCP client configuration remains an
+explicit, one-time agent setting. Point the MCP command at the installed
+`cortana` binary with `--config <path> mcp`.
 
 Use `--offline` for a deterministic, zero-network evaluation index. Offline and production
 embeddings are intentionally fingerprinted as different index generations and cannot be mixed.
