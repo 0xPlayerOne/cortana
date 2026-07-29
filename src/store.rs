@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use sha2::{Digest, Sha256};
 
 use crate::model::{Document, StoredChunk};
@@ -61,7 +61,7 @@ impl Store {
 
     pub fn upsert(&self, document: &Document, chunks: &[(String, Vec<f32>)]) -> Result<bool> {
         let id = stable_id(&document.source, &document.source_id);
-        let hash = hex_digest(document.content.as_bytes());
+        let hash = document_hash(document)?;
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let previous: Option<String> = connection
             .query_row(
@@ -102,6 +102,67 @@ impl Store {
         }
         transaction.commit()?;
         Ok(true)
+    }
+
+    pub fn needs_update(&self, document: &Document) -> Result<bool> {
+        let id = stable_id(&document.source, &document.source_id);
+        let hash = document_hash(document)?;
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let previous: Option<String> = connection
+            .query_row(
+                "SELECT content_hash FROM documents WHERE id=?1",
+                [&id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(previous.as_deref() != Some(&hash))
+    }
+
+    pub fn reconcile(
+        &self,
+        source: &str,
+        project: &str,
+        seen_source_ids: &[String],
+    ) -> Result<usize> {
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let mut query = String::from("SELECT id FROM documents WHERE source=?1 AND project=?2");
+        if !seen_source_ids.is_empty() {
+            query.push_str(" AND source_id NOT IN (");
+            query.push_str(
+                &(0..seen_source_ids.len())
+                    .map(|index| format!("?{}", index + 3))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            );
+            query.push(')');
+        }
+        let mut values = vec![
+            rusqlite::types::Value::Text(source.to_string()),
+            rusqlite::types::Value::Text(project.to_string()),
+        ];
+        values.extend(
+            seen_source_ids
+                .iter()
+                .cloned()
+                .map(rusqlite::types::Value::Text),
+        );
+        let stale = {
+            let mut statement = transaction.prepare(&query)?;
+            statement
+                .query_map(params_from_iter(values), |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?
+        };
+        for id in &stale {
+            transaction.execute(
+                "DELETE FROM chunks_fts WHERE chunk_id IN
+                 (SELECT id FROM chunks WHERE document_id=?1)",
+                [id],
+            )?;
+            transaction.execute("DELETE FROM documents WHERE id=?1", [id])?;
+        }
+        transaction.commit()?;
+        Ok(stale.len())
     }
 
     pub fn all_chunks(
@@ -162,4 +223,66 @@ fn hex_digest(value: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+fn document_hash(document: &Document) -> Result<String> {
+    let value = serde_json::to_vec(&serde_json::json!({
+        "title": document.title,
+        "content": document.content,
+        "uri": document.uri,
+        "project": document.project,
+        "acl": document.acl,
+        "metadata": document.metadata,
+    }))?;
+    Ok(hex_digest(&value))
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use tempfile::tempdir;
+
+    use super::*;
+
+    fn document(source_id: &str, content: &str) -> Document {
+        Document {
+            source: "test".into(),
+            source_id: source_id.into(),
+            title: source_id.into(),
+            content: content.into(),
+            uri: None,
+            updated_at: Utc::now(),
+            project: "demo".into(),
+            acl: Vec::new(),
+            metadata: serde_json::json!({}),
+        }
+    }
+
+    #[test]
+    fn unchanged_documents_skip_work_and_reconciliation_deletes_stale_rows() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let first = document("one", "first");
+        let second = document("two", "second");
+        assert!(store.needs_update(&first).expect("check first"));
+        store
+            .upsert(&first, &[("first".into(), vec![1.0])])
+            .expect("insert first");
+        store
+            .upsert(&second, &[("second".into(), vec![1.0])])
+            .expect("insert second");
+        assert!(!store.needs_update(&first).expect("check unchanged"));
+
+        let deleted = store
+            .reconcile("test", "demo", &["one".into()])
+            .expect("reconcile");
+        assert_eq!(deleted, 1);
+        assert_eq!(
+            store
+                .all_chunks(Some("demo"), Some("test"))
+                .expect("remaining")
+                .len(),
+            1
+        );
+    }
 }

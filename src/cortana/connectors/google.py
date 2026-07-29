@@ -1,0 +1,306 @@
+from __future__ import annotations
+
+import base64
+import datetime as dt
+import email
+import email.policy
+import email.utils
+import html
+import io
+import json
+import os
+import re
+import tempfile
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+from .model import Document
+
+DRIVE_FIELDS = "nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink,owners(displayName))"
+GOOGLE_EXPORTS = {
+    "application/vnd.google-apps.document": ("text/plain", "txt"),
+    "application/vnd.google-apps.presentation": ("text/plain", "txt"),
+    "application/vnd.google-apps.spreadsheet": ("text/csv", "csv"),
+}
+TEXT_MIME_TYPES = {
+    "application/json",
+    "application/rtf",
+    "application/xml",
+    "text/csv",
+    "text/html",
+    "text/markdown",
+    "text/plain",
+}
+
+
+class GoogleSession:
+    """Small OAuth REST client compatible with Google token JSON files."""
+
+    def __init__(self, token_path: Path, client: httpx.Client | None = None) -> None:
+        self.token_path = token_path
+        self.credentials: dict[str, Any] = json.loads(token_path.read_text(encoding="utf-8"))
+        self.client = client or httpx.Client(timeout=60, follow_redirects=True)
+        self._owns_client = client is None
+
+    def __enter__(self) -> GoogleSession:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        if self._owns_client:
+            self.client.close()
+
+    def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        token = self._access_token()
+        headers = dict(kwargs.pop("headers", {}))
+        headers["Authorization"] = f"Bearer {token}"
+        response = self.client.request(method, url, headers=headers, **kwargs)
+        if response.status_code == 401 and self.credentials.get("refresh_token"):
+            self._refresh()
+            headers["Authorization"] = f"Bearer {self._access_token()}"
+            response = self.client.request(method, url, headers=headers, **kwargs)
+        response.raise_for_status()
+        return response
+
+    def _access_token(self) -> str:
+        token = str(self.credentials.get("token") or self.credentials.get("access_token") or "")
+        if not token:
+            self._refresh()
+            token = str(self.credentials.get("token") or self.credentials.get("access_token") or "")
+        if not token:
+            raise RuntimeError(f"Google token file has no access token: {self.token_path}")
+        return token
+
+    def _refresh(self) -> None:
+        required = ("refresh_token", "client_id", "client_secret")
+        missing = [key for key in required if not self.credentials.get(key)]
+        if missing:
+            raise RuntimeError(f"Google credentials cannot refresh; missing {', '.join(missing)}")
+        response = self.client.post(
+            str(self.credentials.get("token_uri") or "https://oauth2.googleapis.com/token"),
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": self.credentials["refresh_token"],
+                "client_id": self.credentials["client_id"],
+                "client_secret": self.credentials["client_secret"],
+            },
+        )
+        response.raise_for_status()
+        refreshed: dict[str, Any] = response.json()
+        self.credentials["token"] = refreshed["access_token"]
+        self.credentials["access_token"] = refreshed["access_token"]
+        self.credentials["expiry"] = (
+            dt.datetime.now(dt.UTC) + dt.timedelta(seconds=int(refreshed.get("expires_in", 3600)))
+        ).isoformat()
+        body = json.dumps(self.credentials, indent=2, sort_keys=True) + "\n"
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=f".{self.token_path.name}.", dir=self.token_path.parent
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                output.write(body)
+                output.flush()
+                os.fsync(output.fileno())
+            Path(temporary).chmod(0o600)
+            os.replace(temporary, self.token_path)
+        finally:
+            Path(temporary).unlink(missing_ok=True)
+
+
+def fetch_drive(
+    token_path: Path,
+    project: str,
+    query: str = "trashed = false",
+    client: httpx.Client | None = None,
+) -> Iterable[Document]:
+    with GoogleSession(token_path, client) as session:
+        page_token: str | None = None
+        while True:
+            params = {
+                "q": query,
+                "pageSize": 1000,
+                "fields": DRIVE_FIELDS,
+                "supportsAllDrives": "true",
+                "includeItemsFromAllDrives": "true",
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            payload = session.request(
+                "GET", "https://www.googleapis.com/drive/v3/files", params=params
+            ).json()
+            for item in payload.get("files", []):
+                body = _drive_content(session, item)
+                if not body.strip():
+                    continue
+                yield Document(
+                    source="google-drive",
+                    source_id=str(item["id"]),
+                    title=str(item.get("name") or "Untitled Drive file"),
+                    content=body,
+                    uri=item.get("webViewLink"),
+                    updated_at=_timestamp(item.get("modifiedTime")),
+                    project=project,
+                    metadata={
+                        "mime_type": item.get("mimeType"),
+                        "owners": [
+                            owner.get("displayName")
+                            for owner in item.get("owners", [])
+                            if owner.get("displayName")
+                        ],
+                    },
+                )
+            page_token = payload.get("nextPageToken")
+            if not page_token:
+                break
+
+
+def fetch_gmail(
+    token_path: Path,
+    project: str,
+    query: str = "",
+    labels: list[str] | None = None,
+    client: httpx.Client | None = None,
+) -> Iterable[Document]:
+    with GoogleSession(token_path, client) as session:
+        page_token: str | None = None
+        while True:
+            params: dict[str, Any] = {"maxResults": 500, "q": query}
+            if labels:
+                params["labelIds"] = labels
+            if page_token:
+                params["pageToken"] = page_token
+            listing = session.request(
+                "GET",
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                params=params,
+            ).json()
+            for reference in listing.get("messages", []):
+                message = session.request(
+                    "GET",
+                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{reference['id']}",
+                    params={"format": "full"},
+                ).json()
+                yield _gmail_document(message, project)
+            page_token = listing.get("nextPageToken")
+            if not page_token:
+                break
+
+
+def _drive_content(session: GoogleSession, item: dict[str, Any]) -> str:
+    file_id = item["id"]
+    mime_type = str(item.get("mimeType") or "")
+    if mime_type in GOOGLE_EXPORTS:
+        export_mime, _extension = GOOGLE_EXPORTS[mime_type]
+        response = session.request(
+            "GET",
+            f"https://www.googleapis.com/drive/v3/files/{file_id}/export",
+            params={"mimeType": export_mime},
+        )
+        return response.text
+    if mime_type in TEXT_MIME_TYPES or mime_type.startswith("text/"):
+        response = session.request(
+            "GET",
+            f"https://www.googleapis.com/drive/v3/files/{file_id}",
+            params={"alt": "media"},
+        )
+        return _plain_text(response.text, mime_type)
+    if mime_type == "application/pdf":
+        response = session.request(
+            "GET",
+            f"https://www.googleapis.com/drive/v3/files/{file_id}",
+            params={"alt": "media"},
+        )
+        try:
+            from pypdf import PdfReader
+        except ImportError as error:
+            raise RuntimeError("PDF ingestion requires `uv sync --extra ingestion`") from error
+        return "\n\n".join(
+            page.extract_text() or "" for page in PdfReader(io.BytesIO(response.content)).pages
+        ).strip()
+    return ""
+
+
+def _gmail_document(message: dict[str, Any], project: str) -> Document:
+    payload = message.get("payload", {})
+    headers = {
+        str(item.get("name", "")).lower(): str(item.get("value", ""))
+        for item in payload.get("headers", [])
+    }
+    body = _gmail_parts(payload)
+    sent_at = _timestamp(headers.get("date"))
+    if "internalDate" in message:
+        sent_at = dt.datetime.fromtimestamp(int(message["internalDate"]) / 1000, dt.UTC)
+    participants = [headers.get(name, "") for name in ("from", "to", "cc") if headers.get(name)]
+    content = "\n".join(
+        part
+        for part in [
+            f"From: {headers.get('from', '')}",
+            f"To: {headers.get('to', '')}",
+            f"Subject: {headers.get('subject', '')}",
+            "",
+            body or str(message.get("snippet") or ""),
+        ]
+        if part or part == ""
+    )
+    thread_id = str(message.get("threadId") or "")
+    return Document(
+        source="gmail",
+        source_id=str(message["id"]),
+        title=headers.get("subject") or "(no subject)",
+        content=content.strip(),
+        uri=f"https://mail.google.com/mail/u/0/#all/{thread_id or message['id']}",
+        updated_at=sent_at,
+        project=project,
+        metadata={
+            "thread_id": thread_id,
+            "labels": message.get("labelIds", []),
+            "participants": participants,
+        },
+    )
+
+
+def _gmail_parts(payload: dict[str, Any]) -> str:
+    parts = payload.get("parts") or []
+    if parts:
+        preferred = [
+            _gmail_parts(part)
+            for part in parts
+            if part.get("mimeType") in {"text/plain", "multipart/alternative", "multipart/mixed"}
+        ]
+        body = "\n".join(part for part in preferred if part)
+        if body:
+            return body
+        return "\n".join(filter(None, (_gmail_parts(part) for part in parts)))
+    encoded = payload.get("body", {}).get("data")
+    if not encoded:
+        return ""
+    decoded = base64.urlsafe_b64decode(str(encoded) + "===")
+    text = decoded.decode("utf-8", errors="replace")
+    return _plain_text(text, str(payload.get("mimeType") or "text/plain"))
+
+
+def _plain_text(value: str, mime_type: str) -> str:
+    if mime_type == "text/html":
+        parsed = email.message_from_string(
+            f"Content-Type: text/html; charset=utf-8\n\n{value}", policy=email.policy.default
+        )
+        value = parsed.get_content()
+        value = re.sub(r"<(script|style).*?</\1>", " ", value, flags=re.I | re.S)
+        value = re.sub(r"<[^>]+>", " ", value)
+        value = html.unescape(value)
+    return re.sub(r"\n{3,}", "\n\n", value).strip()
+
+
+def _timestamp(value: object) -> dt.datetime:
+    if not value:
+        return dt.datetime.now(dt.UTC)
+    text = str(value)
+    try:
+        parsed = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        parsed = email.utils.parsedate_to_datetime(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.UTC)
+    return parsed.astimezone(dt.UTC)

@@ -1,0 +1,66 @@
+# Copy to ~/.config/cortana/config.toml. Keep tokens outside this file.
+data_dir = "/Users/you/Library/Application Support/cortana"
+
+[embedding]
+# Existing local Qwen/TEI profile. Any OpenAI-compatible cloud endpoint also works.
+base_url = "http://127.0.0.1:6999/v1"
+model = "Qwen/Qwen3-Embedding-0.6B"
+dimension = 1024
+# api_key_env = "CORTANA_EMBEDDING_API_KEY"
+
+[connectors]
+# Change this when Cortana is installed into a dedicated virtual environment.
+command = ["uv", "run", "python", "-m", "cortana.connectors"]
+
+[[sources]]
+name = "work-code"
+kind = "filesystem"
+project = "work"
+root = "/absolute/path/to/code"
+source = "work-code"
+
+[[sources]]
+name = "personal-notes"
+kind = "apple-notes"
+project = "personal"
+
+[[sources]]
+name = "personal-drive"
+kind = "google-drive"
+project = "personal"
+token = "/secure/path/google-token.json"
+query = "trashed = false"
+
+[[sources]]
+name = "personal-gmail"
+kind = "gmail"
+project = "personal"
+token = "/secure/path/google-token.json"
+query = "newer_than:5y"
+
+[[sources]]
+name = "team-slack"
+kind = "slack"
+project = "work"
+channels = ["C0123456789"]
+token_env = "SLACK_BOT_TOKEN"
+
+[[sources]]
+name = "community-discord"
+kind = "discord"
+project = "community"
+channels = ["123456789012345678"]
+token_env = "DISCORD_BOT_TOKEN"
+
+[[sources]]
+name = "buzz"
+kind = "buzz"
+project = "agents"
+root = "/Users/you/Library/Application Support/xyz.block.buzz.app"
+
+# Any command that emits one normalized Document JSON object per line can plug in.
+# [[sources]]
+# name = "custom"
+# kind = "external"
+# project = "work"
+# command = ["/absolute/path/to/connector", "--jsonl"]
