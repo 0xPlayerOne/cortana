@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use rusqlite::types::Type;
-use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -173,31 +173,29 @@ impl Store {
     ) -> Result<usize> {
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
-        let mut query = String::from("SELECT id FROM documents WHERE source=?1 AND project=?2");
-        if !seen_source_ids.is_empty() {
-            query.push_str(" AND source_id NOT IN (");
-            query.push_str(
-                &(0..seen_source_ids.len())
-                    .map(|index| format!("?{}", index + 3))
-                    .collect::<Vec<_>>()
-                    .join(","),
-            );
-            query.push(')');
+        transaction.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS reconcile_seen(
+               source_id TEXT PRIMARY KEY
+             ) WITHOUT ROWID;
+             DELETE FROM reconcile_seen;",
+        )?;
+        {
+            let mut insert = transaction
+                .prepare("INSERT OR IGNORE INTO reconcile_seen(source_id) VALUES(?1)")?;
+            for source_id in seen_source_ids {
+                insert.execute([source_id])?;
+            }
         }
-        let mut values = vec![
-            rusqlite::types::Value::Text(source.to_string()),
-            rusqlite::types::Value::Text(project.to_string()),
-        ];
-        values.extend(
-            seen_source_ids
-                .iter()
-                .cloned()
-                .map(rusqlite::types::Value::Text),
-        );
         let stale = {
-            let mut statement = transaction.prepare(&query)?;
+            let mut statement = transaction.prepare(
+                "SELECT d.id FROM documents d
+                 WHERE d.source=?1 AND d.project=?2
+                   AND NOT EXISTS(
+                     SELECT 1 FROM reconcile_seen s WHERE s.source_id=d.source_id
+                   )",
+            )?;
             statement
-                .query_map(params_from_iter(values), |row| row.get::<_, String>(0))?
+                .query_map(params![source, project], |row| row.get::<_, String>(0))?
                 .collect::<rusqlite::Result<Vec<_>>>()?
         };
         for id in &stale {

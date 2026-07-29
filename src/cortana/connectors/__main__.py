@@ -6,6 +6,8 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
+import httpx
+
 from .apple_notes import fetch as fetch_apple_notes
 from .buzz import fetch as fetch_buzz
 from .chat import fetch_discord, fetch_slack
@@ -92,5 +94,13 @@ def _token_path(arguments: argparse.Namespace) -> Path:
     return token_path
 
 
+def entrypoint() -> int:
+    try:
+        return main()
+    except (OSError, RuntimeError, httpx.HTTPError) as error:
+        print(f"connector error: {error}", file=sys.stderr)
+        return 1
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(entrypoint())

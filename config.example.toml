@@ -32,6 +32,8 @@ kind = "filesystem"
 project = "work"
 root = "/absolute/path/to/code"
 source = "work-code"
+# Relative paths to omit from this source. Generated directories are always skipped.
+exclude = ["second-brain"]
 
 [[sources]]
 name = "personal-notes"

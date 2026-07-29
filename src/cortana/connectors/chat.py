@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import time
 from collections.abc import Iterable
 from typing import Any
 
@@ -21,7 +22,8 @@ def fetch_slack(
         for channel_id in channel_ids:
             cursor = ""
             while True:
-                response = client.get(
+                response = _get_with_backoff(
+                    client,
                     "/conversations.history",
                     params={"channel": channel_id, "limit": 200, "cursor": cursor},
                 )
@@ -29,7 +31,8 @@ def fetch_slack(
                 for parent in payload.get("messages", []):
                     thread = [parent]
                     if int(parent.get("reply_count", 0)):
-                        replies = client.get(
+                        replies = _get_with_backoff(
+                            client,
                             "/conversations.replies",
                             params={"channel": channel_id, "ts": parent["ts"], "limit": 200},
                         )
@@ -78,7 +81,9 @@ def fetch_discord(
                 params: dict[str, Any] = {"limit": 100}
                 if before:
                     params["before"] = before
-                response = client.get(f"/channels/{channel_id}/messages", params=params)
+                response = _get_with_backoff(
+                    client, f"/channels/{channel_id}/messages", params=params
+                )
                 response.raise_for_status()
                 messages = response.json()
                 if not messages:
@@ -116,6 +121,54 @@ def _required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"{name} is required")
     return value
+
+
+def _get_with_backoff(
+    client: httpx.Client,
+    url: str,
+    *,
+    params: dict[str, Any],
+    max_attempts: int = 8,
+) -> httpx.Response:
+    for attempt in range(max_attempts):
+        response = client.get(url, params=params)
+        if response.status_code not in {429, 500, 502, 503, 504}:
+            _respect_rate_limit_headers(response)
+            return response
+        if attempt + 1 == max_attempts:
+            return response
+        time.sleep(_retry_after(response, attempt))
+    raise AssertionError("retry loop must return")
+
+
+def _retry_after(response: httpx.Response, attempt: int) -> float:
+    header = response.headers.get("retry-after")
+    if header:
+        try:
+            return min(max(float(header), 0.0), 60.0)
+        except ValueError:
+            pass
+    try:
+        payload = response.json()
+        if isinstance(payload, dict) and payload.get("retry_after") is not None:
+            return min(max(float(payload["retry_after"]), 0.0), 60.0)
+    except (TypeError, ValueError):
+        pass
+    return min(float(2**attempt), 30.0)
+
+
+def _respect_rate_limit_headers(response: httpx.Response) -> None:
+    if response.headers.get("x-ratelimit-remaining") != "0":
+        return
+    reset_after = response.headers.get("x-ratelimit-reset-after")
+    if not reset_after:
+        return
+    try:
+        delay = min(max(float(reset_after), 0.0), 60.0)
+    except ValueError:
+        return
+    if delay:
+        time.sleep(delay)
 
 
 def _slack_payload(response: httpx.Response) -> dict[str, Any]:

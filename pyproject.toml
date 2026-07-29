@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cortana-connectors = "cortana.connectors.__main__:main"
+cortana-connectors = "cortana.connectors.__main__:entrypoint"
 
 [project.optional-dependencies]
 ingestion = [

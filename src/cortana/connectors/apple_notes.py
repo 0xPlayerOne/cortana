@@ -29,13 +29,19 @@ JSON.stringify(rows);
 
 
 def fetch(project: str = "personal", timeout: int = 120) -> Iterable[Document]:
-    result = subprocess.run(
-        ["osascript", "-l", "JavaScript", "-e", SCRIPT],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    try:
+        result = subprocess.run(
+            ["osascript", "-l", "JavaScript", "-e", SCRIPT],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            "Apple Notes automation timed out; open Notes and grant Automation access to "
+            "the invoking terminal or Cortana service"
+        ) from error
     for row in json.loads(result.stdout):
         content = str(row.get("body") or "").strip()
         if not content:

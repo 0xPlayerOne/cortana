@@ -599,13 +599,8 @@ async fn sync_configured_sources(
         return Ok(());
     }
     for source in sources {
-        let documents = source_documents(config, source)?;
-        let seen = documents
-            .iter()
-            .map(|document| document.source_id.clone())
-            .collect::<Vec<_>>();
         let canonical_source = canonical_source(source);
-        ingest_documents(store, embedder, documents).await?;
+        let seen = sync_source_documents(config, store, embedder, source).await?;
         let deleted = if reconcile {
             store.reconcile(&canonical_source, &source.project, &seen)?
         } else {
@@ -616,21 +611,121 @@ async fn sync_configured_sources(
     Ok(())
 }
 
-fn source_documents(config: &Config, source: &SourceConfig) -> Result<Vec<Document>> {
+async fn sync_source_documents(
+    config: &Config,
+    store: &Store,
+    embedder: &dyn Embedder,
+    source: &SourceConfig,
+) -> Result<Vec<String>> {
+    const DOCUMENT_BATCH_SIZE: usize = 64;
     if source.kind == "filesystem" {
         let root = source
             .root
             .as_ref()
             .with_context(|| format!("source {} requires root", source.name))?;
-        let mut documents = connectors::filesystem_documents(
+        let mut documents = connectors::filesystem_documents_with_excludes(
             root,
             source.source.as_deref().unwrap_or(&source.name),
             &source.project,
+            &source.exclude,
         )?;
         normalize_documents(&mut documents, source);
-        return Ok(documents);
+        let seen = documents
+            .iter()
+            .map(|document| document.source_id.clone())
+            .collect::<Vec<_>>();
+        ingest_documents(store, embedder, documents).await?;
+        return Ok(seen);
     }
-    let mut command = if source.kind == "external" {
+
+    let (spool, diagnostics) = run_connector_to_spool(config, source)?;
+    let result = async {
+        let reader = std::io::BufReader::new(
+            std::fs::File::open(&spool)
+                .with_context(|| format!("failed to open {}", spool.display()))?,
+        );
+        let mut seen = Vec::new();
+        let mut batch = Vec::with_capacity(DOCUMENT_BATCH_SIZE);
+        for line in reader.lines() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let mut document: Document = serde_json::from_str(&line).with_context(|| {
+                format!("connector {} emitted invalid Document JSONL", source.name)
+            })?;
+            normalize_documents(std::slice::from_mut(&mut document), source);
+            seen.push(document.source_id.clone());
+            batch.push(document);
+            if batch.len() >= DOCUMENT_BATCH_SIZE {
+                ingest_documents(store, embedder, std::mem::take(&mut batch)).await?;
+            }
+        }
+        if !batch.is_empty() {
+            ingest_documents(store, embedder, batch).await?;
+        }
+        Ok(seen)
+    }
+    .await;
+    let _ = std::fs::remove_file(&spool);
+    let _ = std::fs::remove_file(&diagnostics);
+    result
+}
+
+fn run_connector_to_spool(config: &Config, source: &SourceConfig) -> Result<(PathBuf, PathBuf)> {
+    let staging = config.data_dir.join("staging");
+    std::fs::create_dir_all(&staging)?;
+    let identifier = uuid::Uuid::new_v4();
+    let spool = staging.join(format!("connector-{identifier}.jsonl"));
+    let diagnostics = staging.join(format!("connector-{identifier}.stderr"));
+    let stdout = private_file(&spool)?;
+    let stderr = private_file(&diagnostics)?;
+    let mut command = configured_connector_command(config, source)?;
+    let executable = command.remove(0);
+    let status = ProcessCommand::new(&executable)
+        .args(&command)
+        .envs(&config.environment)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr))
+        .status()
+        .with_context(|| format!("failed to run connector command {executable}"));
+    let status = match status {
+        Ok(status) => status,
+        Err(error) => {
+            let _ = std::fs::remove_file(&spool);
+            let _ = std::fs::remove_file(&diagnostics);
+            return Err(error);
+        }
+    };
+    if !status.success() {
+        let message = std::fs::read_to_string(&diagnostics).unwrap_or_default();
+        let _ = std::fs::remove_file(&spool);
+        let _ = std::fs::remove_file(&diagnostics);
+        anyhow::bail!(
+            "connector {} failed: {}",
+            source.name,
+            message.trim().chars().take(16_384).collect::<String>()
+        );
+    }
+    Ok((spool, diagnostics))
+}
+
+fn private_file(path: &std::path::Path) -> Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
+        .open(path)
+        .with_context(|| format!("failed to create private spool {}", path.display()))
+}
+
+fn configured_connector_command(config: &Config, source: &SourceConfig) -> Result<Vec<String>> {
+    let command = if source.kind == "external" {
         anyhow::ensure!(
             !source.command.is_empty(),
             "external source {} requires command",
@@ -647,30 +742,12 @@ fn source_documents(config: &Config, source: &SourceConfig) -> Result<Vec<Docume
         connector_arguments(&mut command, source)?;
         command
     };
-    let executable = command.remove(0);
-    let output = ProcessCommand::new(&executable)
-        .args(&command)
-        .envs(&config.environment)
-        .stdin(Stdio::null())
-        .output()
-        .with_context(|| format!("failed to run connector command {executable}"))?;
     anyhow::ensure!(
-        output.status.success(),
-        "connector {} failed: {}",
-        source.name,
-        String::from_utf8_lossy(&output.stderr).trim()
+        !command.is_empty(),
+        "connector command for {} is empty",
+        source.name
     );
-    let mut documents = String::from_utf8(output.stdout)?
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(|line| {
-            serde_json::from_str(line).with_context(|| {
-                format!("connector {} emitted invalid Document JSONL", source.name)
-            })
-        })
-        .collect::<Result<Vec<Document>>>()?;
-    normalize_documents(&mut documents, source);
-    Ok(documents)
+    Ok(command)
 }
 
 fn normalize_documents(documents: &mut [Document], source: &SourceConfig) {
@@ -792,7 +869,7 @@ fn chunk(content: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::chunk;
+    use super::{chunk, private_file};
 
     #[test]
     fn chunk_bounds_unbroken_content_and_preserves_unicode() {
@@ -802,5 +879,21 @@ mod tests {
         assert!(chunks.len() > 3);
         assert!(chunks.iter().all(|item| item.len() <= 1_600));
         assert!(chunks.iter().any(|item| item.contains('🧠')));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn connector_spools_are_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("private.jsonl");
+        drop(private_file(&path).expect("private spool"));
+
+        let mode = std::fs::metadata(path)
+            .expect("spool metadata")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 }
