@@ -368,6 +368,39 @@ def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
     assert documents[0].metadata["owners"] == ["Ada"]
 
 
+def test_google_drive_bounds_oversized_exports_with_explicit_metadata(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+    body = "header\n" + ("middle-row\n" * 100) + "final-row"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "csv1",
+                            "name": "Large export",
+                            "mimeType": "text/csv",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text=body, request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    document = list(fetch_drive(token, "work", client=client, max_content_chars=200))[0]
+
+    assert len(document.content) <= 200
+    assert document.content.startswith("header")
+    assert document.content.endswith("final-row")
+    assert "Cortana omitted" in document.content
+    assert document.metadata["content_truncated"] is True
+    assert document.metadata["content_original_chars"] == len(body)
+
+
 def test_google_drive_reuses_content_until_modified(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     token.write_text('{"token":"access"}', encoding="utf-8")

@@ -301,6 +301,7 @@ fn source(
         token: None,
         query: None,
         labels: Vec::new(),
+        max_content_chars: None,
         exclude: Vec::new(),
         command: Vec::new(),
     }

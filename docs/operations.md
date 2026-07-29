@@ -27,6 +27,11 @@ queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back 
 evidence; returned rows have no `semantic_rank`, and a warning records the degraded mode. Cached
 query embeddings still provide normal hybrid retrieval without touching the provider.
 
+Google Drive content is bounded to 200,000 characters per file by default. Oversized exports keep
+equal head and tail samples plus `content_truncated` and `content_original_chars` metadata, avoiding
+hours of low-value embedding work for multi-megabyte CSVs. Set `max_content_chars` on an individual
+`google-drive` source when a different evidence budget is justified.
+
 ## Backup and recovery
 
 `cortana backup` creates a consistent online SQLite snapshot with `VACUUM INTO`, runs a full
