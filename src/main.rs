@@ -82,6 +82,11 @@ enum Command {
         )]
         allow_sync_service: bool,
     },
+    /// Inspect or migrate legacy public document ACLs.
+    Acl {
+        #[command(subcommand)]
+        action: AclAction,
+    },
     /// Create and verify an online SQLite snapshot.
     Backup {
         output: Option<PathBuf>,
@@ -236,6 +241,22 @@ enum ServiceAction {
     Uninstall,
 }
 
+#[derive(Debug, Subcommand)]
+enum AclAction {
+    /// Report public rows and preview explicit project-to-label mappings.
+    Plan {
+        #[arg(long = "project", value_name = "PROJECT=LABEL[,LABEL]")]
+        projects: Vec<String>,
+    },
+    /// Apply explicit project ACLs after source defaults agree.
+    Apply {
+        #[arg(long = "project", value_name = "PROJECT=LABEL[,LABEL]")]
+        projects: Vec<String>,
+        #[arg(long, help = "Confirm mutation of legacy public ACL rows")]
+        force: bool,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     init_tracing();
@@ -388,6 +409,9 @@ async fn main() -> Result<()> {
         _ => {}
     }
     let store = Store::open(&config.database_path())?;
+    if let Some(Command::Acl { action }) = cli.command.as_ref() {
+        return manage_acl(&config, &store, action);
+    }
     let cache_max_entries = config.embedding.cache_max_entries;
     let base_embedder: Arc<dyn Embedder> = if cli.offline {
         Arc::new(DeterministicEmbedder::new(256))
@@ -438,7 +462,8 @@ async fn main() -> Result<()> {
             | Command::Restore { .. }
             | Command::EmbeddingService
             | Command::Service { .. }
-            | Command::Readiness { .. },
+            | Command::Readiness { .. }
+            | Command::Acl { .. },
         ) => {
             unreachable!()
         }
@@ -837,6 +862,115 @@ fn plan_configured_sources(
         );
     }
     Ok(())
+}
+
+fn manage_acl(config: &Config, store: &Store, action: &AclAction) -> Result<()> {
+    let (values, apply, force) = match action {
+        AclAction::Plan { projects } => (projects, false, false),
+        AclAction::Apply { projects, force } => (projects, true, *force),
+    };
+    let mappings = parse_project_acl_mappings(values)?;
+    let public = store.public_acl_summary()?;
+    let alignment_errors = acl_alignment_errors(config, &mappings);
+    if apply {
+        anyhow::ensure!(force, "ACL apply requires --force");
+        anyhow::ensure!(
+            !mappings.is_empty(),
+            "ACL apply requires --project mappings"
+        );
+        anyhow::ensure!(
+            alignment_errors.is_empty(),
+            "configured source ACLs do not match the requested migration: {}",
+            alignment_errors.join("; ")
+        );
+        let changed = store.backfill_project_acls(&mappings)?;
+        println!(
+            "{}",
+            serde_json::json!({
+                "applied": true,
+                "documents_changed": changed,
+                "corpus_revision": store.corpus_revision()?,
+                "remaining_public": store.public_acl_summary()?,
+            })
+        );
+        return Ok(());
+    }
+    let proposed = mappings
+        .iter()
+        .map(|(project, labels)| {
+            let documents = public
+                .iter()
+                .find(|summary| &summary.project == project)
+                .map_or(0, |summary| summary.documents);
+            serde_json::json!({
+                "project": project,
+                "labels": labels,
+                "documents": documents,
+            })
+        })
+        .collect::<Vec<_>>();
+    println!(
+        "{}",
+        serde_json::json!({
+            "applied": false,
+            "public": public,
+            "proposed": proposed,
+            "source_alignment_errors": alignment_errors,
+        })
+    );
+    Ok(())
+}
+
+fn parse_project_acl_mappings(values: &[String]) -> Result<Vec<(String, Vec<String>)>> {
+    let mut mappings = Vec::new();
+    for value in values {
+        let (project, labels) = value.split_once('=').with_context(|| {
+            format!("invalid ACL mapping {value}; expected PROJECT=LABEL[,LABEL]")
+        })?;
+        let project = project.trim();
+        anyhow::ensure!(!project.is_empty(), "ACL project must not be empty");
+        anyhow::ensure!(
+            !mappings.iter().any(|(existing, _)| existing == project),
+            "duplicate ACL project mapping {project}"
+        );
+        let mut labels = labels
+            .split(',')
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        labels.sort();
+        labels.dedup();
+        anyhow::ensure!(!labels.is_empty(), "ACL labels must not be empty");
+        anyhow::ensure!(
+            !labels.iter().any(|label| label == "*"),
+            "ACL migration cannot assign the reserved owner wildcard"
+        );
+        mappings.push((project.to_string(), labels));
+    }
+    Ok(mappings)
+}
+
+fn acl_alignment_errors(config: &Config, mappings: &[(String, Vec<String>)]) -> Vec<String> {
+    let mut errors = Vec::new();
+    for source in &config.sources {
+        let Some((_, expected)) = mappings
+            .iter()
+            .find(|(project, _)| project == &source.project)
+        else {
+            continue;
+        };
+        let mut configured = source.acl.clone();
+        configured.sort();
+        configured.dedup();
+        if &configured != expected {
+            errors.push(format!(
+                "{} has acl={configured:?}, expected {expected:?}",
+                source.name
+            ));
+        }
+    }
+    errors
 }
 
 fn validate_configured_source(

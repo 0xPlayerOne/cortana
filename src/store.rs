@@ -44,6 +44,12 @@ pub struct StoreStats {
     pub sync_runs: Vec<SourceSyncStats>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct PublicAclSummary {
+    pub project: String,
+    pub documents: usize,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SourceStats {
     pub source: String,
@@ -783,6 +789,41 @@ impl Store {
         })
     }
 
+    pub fn public_acl_summary(&self) -> Result<Vec<PublicAclSummary>> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT project,COUNT(*) FROM documents
+             WHERE acl_json='[]' GROUP BY project ORDER BY project",
+        )?;
+        statement
+            .query_map([], |row| {
+                Ok(PublicAclSummary {
+                    project: row.get(0)?,
+                    documents: usize::try_from(row.get::<_, i64>(1)?).unwrap_or(usize::MAX),
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn backfill_project_acls(&self, mappings: &[(String, Vec<String>)]) -> Result<usize> {
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let mut changed = 0_usize;
+        for (project, labels) in mappings {
+            anyhow::ensure!(!labels.is_empty(), "ACL labels must not be empty");
+            changed = changed.saturating_add(transaction.execute(
+                "UPDATE documents SET acl_json=?2 WHERE project=?1 AND acl_json='[]'",
+                params![project, serde_json::to_string(labels)?],
+            )?);
+        }
+        if changed > 0 {
+            bump_corpus_revision(&transaction)?;
+        }
+        transaction.commit()?;
+        Ok(changed)
+    }
+
     pub fn cached_embedding(&self, fingerprint: &str, content: &str) -> Result<Option<Vec<f32>>> {
         let hash = hex_digest(content.as_bytes());
         let connection = self.connection.lock().expect("store lock poisoned");
@@ -1384,6 +1425,54 @@ mod tests {
                 .expect("disabled audit")
         );
         assert_eq!(store.audit_events(500).expect("unchanged audit").len(), 2);
+    }
+
+    #[test]
+    fn acl_backfill_is_explicit_bounded_and_invalidates_query_revision_once() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let work = document("work", "work document");
+        let mut personal = document("personal", "personal document");
+        personal.project = "personal".into();
+        store
+            .upsert(&work, &[("work document".into(), vec![1.0])])
+            .expect("work document");
+        store
+            .upsert(&personal, &[("personal document".into(), vec![1.0])])
+            .expect("personal document");
+        let revision = store.corpus_revision().expect("revision");
+        assert_eq!(store.public_acl_summary().expect("summary").len(), 2);
+
+        assert_eq!(
+            store
+                .backfill_project_acls(&[("demo".into(), vec!["work".into()])])
+                .expect("backfill"),
+            1
+        );
+        assert_eq!(
+            store.corpus_revision().expect("backfill revision"),
+            revision + 1
+        );
+        let scoped = store
+            .lexical_ids_scoped(
+                "work document",
+                Some("demo"),
+                None,
+                10,
+                &["personal".into()],
+            )
+            .expect("scoped chunks");
+        assert!(scoped.is_empty());
+        assert_eq!(
+            store
+                .backfill_project_acls(&[("demo".into(), vec!["work".into()])])
+                .expect("idempotent backfill"),
+            0
+        );
+        assert_eq!(
+            store.corpus_revision().expect("stable revision"),
+            revision + 1
+        );
     }
 
     #[test]

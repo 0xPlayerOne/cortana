@@ -366,6 +366,66 @@ fn connector_live_output_bound_stops_oversized_validation() {
 }
 
 #[test]
+fn acl_backfill_requires_matching_source_defaults_and_force() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 256\n\
+             [[sources]]\nname = \"demo-source\"\nkind = \"external\"\nenabled = false\n\
+             project = \"demo\"\nacl = [\"work\"]\ncommand = [\"/usr/bin/false\"]\n"
+        ),
+    )
+    .expect("write config");
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(
+            r#"{"source":"demo-source","source_id":"legacy","title":"Legacy","content":"legacy public row","project":"demo"}"#,
+        )
+        .assert()
+        .success();
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["acl", "plan", "--project", "demo=work"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"applied\":false"))
+        .stdout(predicate::str::contains("\"documents\":1"))
+        .stdout(predicate::str::contains("\"source_alignment_errors\":[]"));
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["acl", "apply", "--project", "demo=work"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("ACL apply requires --force"));
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["acl", "apply", "--project", "demo=work", "--force"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"documents_changed\":1"));
+
+    let connection =
+        Connection::open(data.join("cortana.sqlite3")).expect("open initialized index");
+    let acl: String = connection
+        .query_row("SELECT acl_json FROM documents", [], |row| row.get(0))
+        .expect("document ACL");
+    assert_eq!(acl, r#"["work"]"#);
+}
+
+#[test]
 fn source_budget_rejects_snapshot_before_partial_ingestion() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

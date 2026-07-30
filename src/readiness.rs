@@ -32,6 +32,7 @@ pub async fn run(
 ) -> ReadinessReport {
     let mut checks = Vec::new();
     checks.push(database_check(store));
+    checks.push(public_acl_check(config, store));
     checks.push(embedding_check(embedder).await);
     checks.push(api_check(api_url).await);
     checks.push(backup_check(
@@ -57,6 +58,38 @@ pub async fn run(
         }
         .into(),
         checks,
+    }
+}
+
+fn public_acl_check(config: &Config, store: &Store) -> ReadinessCheck {
+    match store.public_acl_summary() {
+        Ok(summary) => {
+            let public = summary
+                .iter()
+                .map(|project| project.documents)
+                .sum::<usize>();
+            let shared = !config.auth.tokens.is_empty();
+            ReadinessCheck {
+                name: "shared-access-acl".into(),
+                passed: !shared || public == 0,
+                detail: if shared && public > 0 {
+                    format!(
+                        "{public} public legacy documents remain; run `cortana acl plan` before shared access"
+                    )
+                } else if shared {
+                    "shared principals configured and no public legacy documents remain".into()
+                } else {
+                    format!(
+                        "{public} public documents are reachable only through the local-owner deployment"
+                    )
+                },
+            }
+        }
+        Err(error) => ReadinessCheck {
+            name: "shared-access-acl".into(),
+            passed: false,
+            detail: error.to_string(),
+        },
     }
 }
 
@@ -197,6 +230,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+    use crate::config::AuthTokenConfig;
+    use crate::model::Document;
 
     #[test]
     fn backup_freshness_requires_a_sqlite_snapshot() {
@@ -204,5 +239,36 @@ mod tests {
         assert!(!backup_check(directory.path(), 48).passed);
         File::create(directory.path().join("backup.sqlite3")).expect("backup fixture");
         assert!(backup_check(directory.path(), 48).passed);
+    }
+
+    #[test]
+    fn shared_mode_fails_readiness_while_legacy_public_rows_remain() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        store
+            .upsert(
+                &Document {
+                    source: "test".into(),
+                    source_id: "public".into(),
+                    title: "Public".into(),
+                    content: "legacy".into(),
+                    uri: None,
+                    updated_at: chrono::Utc::now(),
+                    project: "work".into(),
+                    acl: Vec::new(),
+                    metadata: serde_json::json!({}),
+                },
+                &[("legacy".into(), vec![1.0])],
+            )
+            .expect("public document");
+        let mut config = Config::default();
+        assert!(public_acl_check(&config, &store).passed);
+        config.auth.tokens.push(AuthTokenConfig {
+            principal: "shared".into(),
+            token_env: "SHARED_TOKEN".into(),
+            scopes: vec!["query".into()],
+            acl: vec!["work".into()],
+        });
+        assert!(!public_acl_check(&config, &store).passed);
     }
 }
