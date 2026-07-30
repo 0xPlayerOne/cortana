@@ -48,6 +48,10 @@
     ".": {
       "release-type": "rust",
       "package-name": "cortana"
+    },
+    "apps/web": {
+      "release-type": "node",
+      "package-name": "@cortana/web"
     }
   },
   "extra-files": [
