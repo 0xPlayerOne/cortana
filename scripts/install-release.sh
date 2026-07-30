@@ -73,14 +73,16 @@ if [[ ! -f "$config_path" ]]; then
 fi
 
 if [[ "$(uname -s)" == "Darwin" && "${CORTANA_INSTALL_SERVICE:-1}" == "1" ]]; then
-  service_args=()
   if [[ "${CORTANA_ENABLE_SYNC_SERVICE:-0}" == "1" ]]; then
-    service_args+=(--enable-sync-service)
+    "$bin_dir/cortana" --config "$config_path" service install \
+      --web-dir "$web_dir" \
+      --working-directory "$share_dir" \
+      --enable-sync-service
+  else
+    "$bin_dir/cortana" --config "$config_path" service install \
+      --web-dir "$web_dir" \
+      --working-directory "$share_dir"
   fi
-  "$bin_dir/cortana" --config "$config_path" service install \
-    --web-dir "$web_dir" \
-    --working-directory "$share_dir" \
-    "${service_args[@]}"
 fi
 
 if [[ "${CORTANA_INSTALL_AGENT_INTEGRATIONS:-0}" == "1" ]]; then
