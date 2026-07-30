@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.1](https://github.com/0xPlayerOne/cortana/compare/v0.3.0...v0.3.1) (2026-07-30)
+
+
+### CI
+
+* use full runner for mixed-language tests ([98bbff8](https://github.com/0xPlayerOne/cortana/commit/98bbff8ac86c939a6e5ca306fc3c793c820158d4))
+
+
+### Maintenance
+
+* **code-foundry:** pin final runtime tag ([52bfb01](https://github.com/0xPlayerOne/cortana/commit/52bfb017b457707e85569371db943f3225476f72))
+* **code-foundry:** upgrade runtime to v0.31.13 ([d039c35](https://github.com/0xPlayerOne/cortana/commit/d039c35716f1ba325369c1892da1bf690565e7df))
+
 ## [0.3.0](https://github.com/0xPlayerOne/cortana/compare/v0.2.0...v0.3.0) (2026-07-30)
 
 
