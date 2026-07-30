@@ -3,6 +3,7 @@ use std::time::{Duration, SystemTime};
 
 use serde::Serialize;
 
+use crate::answer;
 use crate::config::Config;
 use crate::embed::Embedder;
 use crate::service;
@@ -40,15 +41,7 @@ pub async fn run(
         max_backup_age_hours,
     ));
     checks.push(sync_check(allow_sync_service));
-    checks.push(ReadinessCheck {
-        name: "query-mode".into(),
-        passed: true,
-        detail: if config.query.synthesis_enabled {
-            format!("synthesis enabled with model {}", config.query.model)
-        } else {
-            "deterministic extractive fallback".into()
-        },
-    });
+    checks.push(query_check(config).await);
     ReadinessReport {
         passed: checks.iter().all(|check| check.passed),
         query_mode: if config.query.synthesis_enabled {
@@ -58,6 +51,48 @@ pub async fn run(
         }
         .into(),
         checks,
+    }
+}
+
+async fn query_check(config: &Config) -> ReadinessCheck {
+    if !config.query.synthesis_enabled {
+        return ReadinessCheck {
+            name: "query-mode".into(),
+            passed: true,
+            detail: "deterministic extractive fallback".into(),
+        };
+    }
+    let api_key = match config.query.api_key_env.as_deref() {
+        Some(name) => match config.environment_value(name) {
+            Some(value) => Some(value),
+            None => {
+                return ReadinessCheck {
+                    name: "query-model".into(),
+                    passed: false,
+                    detail: format!("{name} is not set"),
+                };
+            }
+        },
+        None => None,
+    };
+    if config.query.model.trim().is_empty() {
+        return ReadinessCheck {
+            name: "query-model".into(),
+            passed: false,
+            detail: "query model must not be empty when synthesis is enabled".into(),
+        };
+    }
+    match answer::probe_configured_model(&config.query, api_key).await {
+        Ok(()) => ReadinessCheck {
+            name: "query-model".into(),
+            passed: true,
+            detail: format!("{} passed the grounded synthesis probe", config.query.model),
+        },
+        Err(error) => ReadinessCheck {
+            name: "query-model".into(),
+            passed: false,
+            detail: error.to_string(),
+        },
     }
 }
 
