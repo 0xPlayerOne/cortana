@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.8](https://github.com/0xPlayerOne/cortana/compare/v0.1.7...v0.1.8) (2026-07-30)
+
+
+### Bug Fixes
+
+* **release:** support query-only installs on macOS ([1adb193](https://github.com/0xPlayerOne/cortana/commit/1adb1931bbc461039a9f809af76d7f972d25476b))
+
+
+### Maintenance
+
+* **main:** release 0.1.7 ([dca3248](https://github.com/0xPlayerOne/cortana/commit/dca3248ed57c789ce4be4ec14011007efd21c03b))
+
 ## [0.1.7](https://github.com/0xPlayerOne/cortana/compare/v0.1.6...v0.1.7) (2026-07-30)
 
 
