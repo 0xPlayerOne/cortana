@@ -90,13 +90,16 @@ export function App() {
 
   useEffect(() => {
     if (!isDesktopApp) return
-    void getDesktopSettings().then((next) => {
-      setDesktopSettings(next)
-      if (next.needs_setup) setView('settings')
-    })
+    void getDesktopSettings()
+      .then((next) => {
+        setDesktopSettings(next)
+        if (next.needs_setup) setView('settings')
+      })
+      .catch(() => {
+        setView('settings')
+      })
     void getDesktopInfo()
       .then(setDesktopInfo)
-      .catch(() => {})
       .catch(() => {
         // The settings view will surface the local configuration error.
       })

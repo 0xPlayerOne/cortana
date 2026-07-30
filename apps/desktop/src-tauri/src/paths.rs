@@ -26,6 +26,19 @@ pub async fn pick(app: AppHandle, kind: &str) -> Result<Option<String>, String> 
             .save_file(move |path| {
                 let _ = sender.send(path);
             }),
+        "settings-export" => dialog
+            .set_title("Export redacted Cortana settings")
+            .set_file_name("cortana-settings.json")
+            .add_filter("Cortana settings", &["json"])
+            .save_file(move |path| {
+                let _ = sender.send(path);
+            }),
+        "settings-import" => dialog
+            .set_title("Import redacted Cortana settings")
+            .add_filter("Cortana settings", &["json"])
+            .pick_file(move |path| {
+                let _ = sender.send(path);
+            }),
         _ => return Err("unsupported native path picker".into()),
     }
     let selected = receiver

@@ -43,7 +43,8 @@ credentials and are reported independently from the updater signature.
 The Settings **Readiness** panel runs an explicit, read-only scan. It checks the bundled runtime,
 uv, Python 3.11+, the connector environment, and the core production gates without starting an
 ingestion run. Fixed tool installers require a confirmation and native approval, expose bounded
-logs, and can be cancelled or retried.
+logs, and can be cancelled or retried. On a first launch, the guided setup opens this panel and
+runs the read-only scan automatically; every installation still requires separate approval.
 
 The Settings **Sources** panel edits typed connector configuration, workspace assignments,
 credential references, and per-source safety budgets. Secret values are write-only. External
@@ -64,3 +65,8 @@ excluded. **Updates** uses the fixed signed GitHub feed, reports download progre
 confirmation before native signature verification, installation, and restart. **Access** manages
 named scopes and ACL labels with write-only bearer values. **Audit** displays bounded metadata-only
 runtime and Desktop events without queries, content, command logs, or credentials.
+
+The **Advanced** panel can export a versioned JSON settings backup or import one as an unsaved
+preview. Portable files never include secret values or executable external-connector commands.
+Import preserves existing external connectors, validates the complete bounded settings contract,
+and writes nothing until **Save changes** creates the normal rollback copy.
