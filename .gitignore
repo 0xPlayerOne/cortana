@@ -29,8 +29,6 @@ __pycache__/
 
 # Rust
 target/
-apps/desktop/src-tauri/gen/
-apps/desktop/src-tauri/binaries/
 
 # Build and test output
 dist/
@@ -77,3 +75,7 @@ mise.local.toml
 mise.local.lock
 .mise.local.lock
 *.code-workspace
+
+# Repository-specific rules
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/binaries/
