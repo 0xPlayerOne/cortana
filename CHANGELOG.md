@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/0xPlayerOne/cortana/compare/v0.10.0...v0.11.0) (2026-07-30)
+
+
+### Features
+
+* **desktop:** complete Obsidian-style workspace browser ([51a5364](https://github.com/0xPlayerOne/cortana/commit/51a5364dcb4b539cb1ca072cf876dce13262b7be))
+
+
+### Maintenance
+
+* **release:** synchronize main -&gt; staging ([0afcd7c](https://github.com/0xPlayerOne/cortana/commit/0afcd7c7a91ac9ceb334a8385a2d75ad31d5f8d0))
+
 ## [0.10.0](https://github.com/0xPlayerOne/cortana/compare/v0.9.0...v0.10.0) (2026-07-30)
 
 
