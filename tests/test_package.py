@@ -20,15 +20,9 @@ def test_release_manifest_has_one_shared_application_version() -> None:
     python = tomllib.loads((ROOT / "pyproject.toml").read_text())
     web = json.loads((ROOT / "apps/web/package.json").read_text())
     desktop = json.loads((ROOT / "apps/desktop/package.json").read_text())
-    desktop_cargo = tomllib.loads(
-        (ROOT / "apps/desktop/src-tauri/Cargo.toml").read_text()
-    )
-    desktop_lock = tomllib.loads(
-        (ROOT / "apps/desktop/src-tauri/Cargo.lock").read_text()
-    )
-    desktop_config = json.loads(
-        (ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text()
-    )
+    desktop_cargo = tomllib.loads((ROOT / "apps/desktop/src-tauri/Cargo.toml").read_text())
+    desktop_lock = tomllib.loads((ROOT / "apps/desktop/src-tauri/Cargo.lock").read_text())
+    desktop_config = json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text())
     desktop_lock_version = next(
         package["version"]
         for package in desktop_lock["package"]
