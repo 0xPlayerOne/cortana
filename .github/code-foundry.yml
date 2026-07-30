@@ -6,7 +6,7 @@ codeql: auto
 dependency_review: auto
 package_manager: bun
 runtime_repository: 0xPlayerOne/code-foundry
-runtime_ref: 3c8eeb29b2984e98e2604fbb6a86d3df72f1c0b2
+runtime_ref: v0.31.13
 runner: ubuntu-latest
 unit_runner: ubuntu-latest
 ci_runner: ubuntu-latest
