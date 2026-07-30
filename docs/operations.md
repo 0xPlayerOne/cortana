@@ -84,11 +84,26 @@ bun run build
 ./target/release/cortana --config ~/.config/cortana/config.toml service install \
   --web-dir ./apps/web/dist
 ./target/release/cortana service status
+./target/release/cortana service status --json
 ```
 
 Use `--no-embedding-service` for a cloud embedding provider. Logs are written beneath
 `data_dir/logs`. `service uninstall` stops and removes only Cortana's four launchd jobs; it does not
 delete configuration, data, logs, or backups.
+
+Installed jobs can be controlled independently without rewriting their launchd definitions:
+
+```bash
+cortana service start server
+cortana service stop embedding
+cortana service restart backup
+```
+
+The fixed service IDs are `embedding`, `server`, `sync`, and `backup`. Start and restart refuse an
+uninstalled job. Stop unloads the job but preserves its plist so it can be started again. The
+Desktop Services panel uses this same fixed command boundary, shows loaded state, PID, and last
+exit status, and records metadata-only action audits. It never installs the recurring sync job.
+Desktop-at-login is a separate setting: enabling it starts the tray/control plane, not ingestion.
 
 After planning each enabled source and choosing explicit budgets, opt in to the recurring job:
 

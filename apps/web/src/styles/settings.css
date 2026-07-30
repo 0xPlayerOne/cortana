@@ -164,6 +164,77 @@
   font-size: 11px;
 }
 
+.service-autostart {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.service-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.service-card > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.service-card > header div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.service-card small,
+.service-card p,
+.settings-note {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.service-state {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #777971;
+}
+
+.service-state.ready {
+  background: #7ec999;
+  box-shadow: 0 0 8px rgba(126, 201, 153, 0.45);
+}
+
+.service-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.service-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+@media (max-width: 760px) {
+  .service-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .source-settings-list {
   display: flex;
   gap: 14px;

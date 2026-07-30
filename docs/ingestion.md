@@ -144,6 +144,23 @@ summary—never credentials, source content, or connector output.
 Filesystem validation performs the same bounded preflight walk used by sync, so start with a
 narrow root and conservative limits.
 
+Desktop exposes a separately confirmed guarded trial sync after validation. It invokes the fixed
+equivalent of:
+
+```bash
+cortana sync --source SOURCE \
+  --require-validation --no-reconcile \
+  --max-documents 25 --max-bytes 5242880 --max-seconds 300
+```
+
+`--require-validation` fails before opening the index or embedding provider unless the selected
+source is enabled and its latest validation succeeded for the exact current source configuration
+at equal or larger document and byte limits. The validation record stores only a one-way
+configuration fingerprint. Trial sync may embed and index committed batches, but it never deletes
+records absent from the bounded snapshot. Cancellation preserves already committed batches.
+Larger initial syncs remain a CLI/operator workflow that must be planned and assigned explicit
+budgets; Desktop does not silently escalate beyond the trial limits.
+
 External connectors must emit one JSON object per line:
 
 ```json

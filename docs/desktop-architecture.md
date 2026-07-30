@@ -50,6 +50,13 @@ the declared sidecar command with fixed `validate-source` arguments and limits o
 cancellable. The command cannot start sync, embedding, indexing, or reconciliation, and its
 metadata-only lifecycle is appended to the Desktop audit log.
 
+Guarded trial sync reuses the source-job boundary but is intentionally distinct from validation.
+It requires explicit confirmation and a matching successful validation fingerprint, then invokes
+only the fixed `sync --source NAME --require-validation --no-reconcile` shape with limits of 25
+documents, 5 MiB, and five minutes. It may write embeddings and documents, so the UI and audit
+record say so explicitly. It cannot reconcile deletions, expand its limits, select multiple
+sources, or install a recurring sync job.
+
 Source authorization and setup are separate fixed native boundaries. For Google sources, the
 renderer can request authorization only for an exact saved source with an absolute token
 destination and Desktop OAuth client path. Native Rust invokes the bundled sidecar with the fixed
@@ -97,6 +104,12 @@ There are two distinct lifecycles:
 Closing the main window hides it. The tray continues to report runtime and corpus status. Quitting
 from the tray exits only the desktop process; it does not silently stop the runtime or start a
 sync. A second desktop launch focuses the existing window.
+
+The Services panel reads a bounded structured report from the bundled sidecar and accepts only
+the fixed `embedding`, `server`, `sync`, and `backup` IDs with `start`, `stop`, or `restart`.
+Every action requires an explicit confirmation and is audited without command output or secrets.
+An uninstalled sync job remains uninstalled and cannot be enabled from this panel. Desktop
+autostart is managed separately and does not change runtime-service or ingestion state.
 
 ## Releases
 

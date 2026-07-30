@@ -780,6 +780,7 @@ mod tests {
                 max_documents: 25,
                 max_bytes: 4096,
                 max_seconds: 45,
+                configuration_fingerprint: None,
                 error: None,
             },
         )

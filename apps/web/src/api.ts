@@ -7,7 +7,9 @@ import type {
   BrainStatus,
   ContextBundle,
   DesktopInstallJob,
+  DesktopInfo,
   DesktopReadiness,
+  DesktopServiceReport,
   DesktopSettings,
   DesktopSettingsUpdate,
   DesktopSourceJob,
@@ -30,6 +32,33 @@ export async function saveDesktopSettings(update: DesktopSettingsUpdate): Promis
 export async function scanDesktopReadiness(): Promise<DesktopReadiness> {
   if (!isDesktopApp) throw new Error('Readiness is available in Cortana Desktop')
   return invokeDesktop<DesktopReadiness>('desktop_readiness_scan')
+}
+
+export async function getDesktopInfo(): Promise<DesktopInfo> {
+  if (!isDesktopApp) throw new Error('Desktop information is available in Cortana Desktop')
+  return invokeDesktop<DesktopInfo>('desktop_info')
+}
+
+export async function setDesktopAutostart(enabled: boolean): Promise<DesktopInfo> {
+  if (!isDesktopApp) throw new Error('Desktop autostart is available in Cortana Desktop')
+  return invokeDesktop<DesktopInfo>('desktop_autostart_set', { enabled })
+}
+
+export async function getDesktopServices(): Promise<DesktopServiceReport> {
+  if (!isDesktopApp) throw new Error('Service status is available in Cortana Desktop')
+  return invokeDesktop<DesktopServiceReport>('desktop_services_status')
+}
+
+export async function runDesktopServiceAction(
+  service: DesktopServiceReport['services'][number]['name'],
+  action: 'start' | 'stop' | 'restart'
+): Promise<DesktopServiceReport> {
+  if (!isDesktopApp) throw new Error('Service control is available in Cortana Desktop')
+  return invokeDesktop<DesktopServiceReport>('desktop_service_action', {
+    service,
+    action,
+    approved: true,
+  })
 }
 
 export async function startDesktopInstaller(tool: string): Promise<DesktopInstallJob> {
@@ -55,6 +84,14 @@ export async function startDesktopSourceValidation(source: string): Promise<Desk
 export async function startDesktopSourceAuthorization(source: string): Promise<DesktopSourceJob> {
   if (!isDesktopApp) throw new Error('Source authorization is available in Cortana Desktop')
   return invokeDesktop<DesktopSourceJob>('desktop_source_authorization_start', { source })
+}
+
+export async function startDesktopSourceTrialSync(source: string): Promise<DesktopSourceJob> {
+  if (!isDesktopApp) throw new Error('Trial sync is available in Cortana Desktop')
+  return invokeDesktop<DesktopSourceJob>('desktop_source_trial_sync_start', {
+    source,
+    approved: true,
+  })
 }
 
 export async function openDesktopSourceSetup(source: string): Promise<DesktopSetupOpen> {
