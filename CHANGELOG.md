@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/0xPlayerOne/cortana/compare/v0.4.0...v0.4.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **operations:** promote live validation status refresh ([cd9defa](https://github.com/0xPlayerOne/cortana/commit/cd9defaee5a688b03ea8ed45130448e276ae9156))
+* **operations:** refresh validation status live ([#107](https://github.com/0xPlayerOne/cortana/issues/107)) ([d8724c0](https://github.com/0xPlayerOne/cortana/commit/d8724c02c09bc52c822981913c23065fd960d1cb))
+
 ## [0.4.0](https://github.com/0xPlayerOne/cortana/compare/v0.3.1...v0.4.0) (2026-07-30)
 
 
