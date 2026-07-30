@@ -772,6 +772,11 @@ async fn metrics(
 fn validate_query(query: &str) -> Result<(), (StatusCode, String)> {
     if query.trim().is_empty() {
         Err((StatusCode::BAD_REQUEST, "query must not be empty".into()))
+    } else if query.len() > retrieval::MAX_QUERY_BYTES {
+        Err((
+            StatusCode::PAYLOAD_TOO_LARGE,
+            format!("query exceeds {} bytes", retrieval::MAX_QUERY_BYTES),
+        ))
     } else {
         Ok(())
     }
@@ -928,6 +933,27 @@ mod tests {
                     .uri("/v1/context")
                     .header(header::CONTENT_TYPE, "application/json")
                     .body(Body::from("x".repeat(1024 * 1024 + 1)))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn search_rejects_oversized_queries_before_embedding() {
+        let (_directory, state) = test_state(None);
+        let body = serde_json::to_vec(&serde_json::json!({
+            "query": "x".repeat(retrieval::MAX_QUERY_BYTES + 1)
+        }))
+        .expect("request JSON");
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
                     .expect("request"),
             )
             .await

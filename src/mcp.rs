@@ -35,6 +35,13 @@ pub struct ContextParams {
     max_tokens: Option<usize>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DomainSearchParams {
+    query: String,
+    project: Option<String>,
+    limit: Option<usize>,
+}
+
 #[derive(Clone)]
 pub struct BrainServer {
     store: Store,
@@ -42,6 +49,8 @@ pub struct BrainServer {
     tool_router: ToolRouter<Self>,
     audit_max_events: usize,
     principal: Principal,
+    code_sources: Vec<String>,
+    message_sources: Vec<String>,
 }
 
 #[tool_router]
@@ -53,6 +62,8 @@ impl BrainServer {
             tool_router: Self::tool_router(),
             audit_max_events: 10_000,
             principal: Principal::local("local-mcp"),
+            code_sources: Vec::new(),
+            message_sources: Vec::new(),
         }
     }
 
@@ -63,6 +74,16 @@ impl BrainServer {
 
     pub fn with_audit_limit(mut self, max_events: usize) -> Self {
         self.audit_max_events = max_events;
+        self
+    }
+
+    pub fn with_source_groups(
+        mut self,
+        code_sources: Vec<String>,
+        message_sources: Vec<String>,
+    ) -> Self {
+        self.code_sources = normalized_sources(code_sources);
+        self.message_sources = normalized_sources(message_sources);
         self
     }
 
@@ -176,6 +197,30 @@ impl BrainServer {
     }
 
     #[tool(
+        description = "Search configured code and filesystem indexes with hybrid retrieval and bounded neighboring context"
+    )]
+    async fn search_code(&self, Parameters(params): Parameters<DomainSearchParams>) -> String {
+        self.domain_search("mcp.search_code", &self.code_sources, params)
+            .await
+    }
+
+    #[tool(
+        description = "Search configured Buzz, Gmail, Slack, and Discord evidence without invoking a language model"
+    )]
+    async fn search_messages(&self, Parameters(params): Parameters<DomainSearchParams>) -> String {
+        self.domain_search("mcp.search_messages", &self.message_sources, params)
+            .await
+    }
+
+    #[tool(
+        description = "Find communication evidence about people who may know a subject; returns cited source records rather than inferred profiles"
+    )]
+    async fn who_knows(&self, Parameters(params): Parameters<DomainSearchParams>) -> String {
+        self.domain_search("mcp.who_knows", &self.message_sources, params)
+            .await
+    }
+
+    #[tool(
         description = "Report index health, source coverage, embedding identity, and persistent embedding-cache telemetry"
     )]
     async fn brain_status(&self) -> String {
@@ -190,6 +235,60 @@ impl BrainServer {
 }
 
 impl BrainServer {
+    async fn domain_search(
+        &self,
+        action: &str,
+        sources: &[String],
+        params: DomainSearchParams,
+    ) -> String {
+        let started = Instant::now();
+        if !self.principal.has_scope(QUERY_SCOPE) {
+            self.audit(
+                action,
+                params.project.as_deref(),
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            return "authorization error: query scope required".into();
+        }
+        match retrieval::retrieve_sources_scoped(
+            &self.store,
+            &self.embedder,
+            &params.query,
+            params.project.as_deref(),
+            sources,
+            params.limit.unwrap_or(10).clamp(1, 50),
+            &self.principal.acl_labels(),
+        )
+        .await
+        {
+            Ok(rows) => {
+                self.audit(
+                    action,
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(rows.len()),
+                    started,
+                );
+                serde_json::to_string(&rows).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit(
+                    action,
+                    params.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("retrieval error: {error}")
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn audit(
         &self,
@@ -219,9 +318,21 @@ impl BrainServer {
 impl ServerHandler for BrainServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            "Call context before answering questions about the user or their work. Reuse its citation-ready output instead of repeating broad discovery calls.",
+            "Call context before answering questions about the user or their work. Prefer search_code, search_messages, or who_knows for narrow discovery. Reuse citation-ready output instead of repeating broad calls.",
         )
     }
+}
+
+fn normalized_sources(sources: Vec<String>) -> Vec<String> {
+    let mut sources = sources
+        .into_iter()
+        .map(|source| source.trim().to_string())
+        .filter(|source| !source.is_empty())
+        .collect::<Vec<_>>();
+    sources.sort();
+    sources.dedup();
+    sources.truncate(32);
+    sources
 }
 
 pub async fn serve(server: BrainServer) -> anyhow::Result<()> {
@@ -305,5 +416,75 @@ mod tests {
         let audit = store.audit_events(10).expect("audit");
         assert_eq!(audit[0].principal, "work-agent");
         assert_eq!(audit[0].action, "mcp.search");
+    }
+
+    #[tokio::test]
+    async fn task_specific_tools_search_only_configured_source_groups() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        for (source, source_id, content) in [
+            ("code-index", "repository", "shared symbol implementation"),
+            ("slack-work", "thread", "Avery knows the cache architecture"),
+            ("notes", "private-note", "shared symbol personal reminder"),
+        ] {
+            let content = content.to_string();
+            let vector = embedder
+                .embed(std::slice::from_ref(&content))
+                .await
+                .expect("embedding")
+                .remove(0);
+            store
+                .upsert(
+                    &Document {
+                        source: source.into(),
+                        source_id: source_id.into(),
+                        title: source_id.into(),
+                        content: content.clone(),
+                        uri: None,
+                        updated_at: Utc::now(),
+                        project: "demo".into(),
+                        acl: Vec::new(),
+                        metadata: serde_json::json!({}),
+                    },
+                    &[(content, vector)],
+                )
+                .expect("document");
+        }
+        let server = BrainServer::new(store.clone(), embedder).with_source_groups(
+            vec!["code-index".into(), "code-index".into(), String::new()],
+            vec!["slack-work".into()],
+        );
+
+        let code: Vec<Evidence> = serde_json::from_str(
+            &server
+                .search_code(Parameters(DomainSearchParams {
+                    query: "shared symbol".into(),
+                    project: Some("demo".into()),
+                    limit: Some(10),
+                }))
+                .await,
+        )
+        .expect("code evidence");
+        assert_eq!(code.len(), 1);
+        assert_eq!(code[0].source, "code-index");
+
+        let people: Vec<Evidence> = serde_json::from_str(
+            &server
+                .who_knows(Parameters(DomainSearchParams {
+                    query: "cache architecture".into(),
+                    project: Some("demo".into()),
+                    limit: Some(10),
+                }))
+                .await,
+        )
+        .expect("expertise evidence");
+        assert_eq!(people.len(), 1);
+        assert_eq!(people[0].source, "slack-work");
+        assert!(people[0].content.contains("Avery"));
+
+        let audit = store.audit_events(10).expect("audit");
+        assert_eq!(audit[0].action, "mcp.who_knows");
+        assert_eq!(audit[1].action, "mcp.search_code");
     }
 }
