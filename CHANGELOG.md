@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.6.0](https://github.com/0xPlayerOne/cortana/compare/v0.5.0...v0.6.0) (2026-07-30)
+
+
+### Features
+
+* **desktop:** add guarded operations control ([#127](https://github.com/0xPlayerOne/cortana/issues/127)) ([48e9647](https://github.com/0xPlayerOne/cortana/commit/48e9647e2d6da5c1180609759cb038c5a4ec4f4a))
+* **desktop:** add secure source control and validation ([#125](https://github.com/0xPlayerOne/cortana/issues/125)) ([3cbb6c6](https://github.com/0xPlayerOne/cortana/commit/3cbb6c6e410dba29f117fb5550afdd0ebb228aee))
+* **desktop:** add secure workspace settings ([#120](https://github.com/0xPlayerOne/cortana/issues/120)) ([7811717](https://github.com/0xPlayerOne/cortana/commit/78117179aa80bf525eae990518f9bd12de446470))
+* **desktop:** authorize Google sources securely ([#126](https://github.com/0xPlayerOne/cortana/issues/126)) ([d1b385e](https://github.com/0xPlayerOne/cortana/commit/d1b385e67d858fe5406a713c5835884a0dc2ea7b))
+* **desktop:** bundle runtime readiness and installers ([#123](https://github.com/0xPlayerOne/cortana/issues/123)) ([f86131f](https://github.com/0xPlayerOne/cortana/commit/f86131ff5dfdca6e4c176f9814d76850a79bdeff))
+
+
+### Bug Fixes
+
+* **security:** backport patched glib iterator ([cea750f](https://github.com/0xPlayerOne/cortana/commit/cea750f67ab1bf9657213b4bf498c767d4573c5b))
+* **security:** backport patched glib iterator ([5bb1d40](https://github.com/0xPlayerOne/cortana/commit/5bb1d407424ddacca2033f2d1c934b638c08e731))
+
+
+### Maintenance
+
+* reconcile main release lineage ([93d1392](https://github.com/0xPlayerOne/cortana/commit/93d1392d7bed0aa46fb8a9c7418e314fe8005d1d))
+* reconcile main release lineage ([daf2eb9](https://github.com/0xPlayerOne/cortana/commit/daf2eb914288946921861b82e8c79441b6f71279))
+* **release:** synchronize main -&gt; staging ([254ac1b](https://github.com/0xPlayerOne/cortana/commit/254ac1bdd058a2ac01d9de2289d413b4f22cdc2d))
+* **release:** synchronize main -&gt; staging ([aae8682](https://github.com/0xPlayerOne/cortana/commit/aae868214afaecd39fa2c70c236e66b690845531))
+
 ## [0.5.0](https://github.com/0xPlayerOne/cortana/compare/v0.4.1...v0.5.0) (2026-07-30)
 
 
