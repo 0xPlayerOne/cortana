@@ -32,6 +32,26 @@ For an MCP client, configure:
 ```
 
 Use an absolute config path because MCP clients may launch from arbitrary working directories.
+The no-token form is the local owner's unrestricted profile. For a shared or narrowly scoped
+agent, define a `[[auth.tokens]]` principal in Cortana's configuration and pass its environment
+variable name:
+
+```json
+{
+  "command": "cortana",
+  "args": [
+    "--config",
+    "/absolute/path/to/cortana.toml",
+    "mcp",
+    "--token-env",
+    "CORTANA_SHARED_AGENT_TOKEN"
+  ]
+}
+```
+
+The token value stays in the agent process environment/private Cortana env file. Cortana maps it
+to the configured principal, enforces query/status scopes and document ACL labels inside MCP, and
+records only metadata-only audit events under that principal name.
 
 For an HTTP-only client, send:
 

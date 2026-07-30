@@ -141,3 +141,7 @@ owner and legacy single-token mode. Answer-cache keys include the sorted ACL lab
 reuse across authorization boundaries. `GET /v1/audit` requires `admin` and returns at most 500
 metadata-only events. Audit records contain principal, action, project/source scope, outcome,
 result count, latency, and timestamp—never query text, evidence, bearer tokens, or token hashes.
+HTTP clients send the token as a bearer credential. Stdio MCP clients pass only its environment
+variable name with `cortana mcp --token-env NAME`; Cortana resolves the value privately, maps it to
+the configured principal, and enforces the same scopes and ACLs. Omitting `--token-env` keeps the
+MCP process in the unrestricted local-owner profile and must not be used for a shared agent.
