@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.7](https://github.com/0xPlayerOne/cortana/compare/v0.1.6...v0.1.7) (2026-07-30)
+
+
+### Maintenance
+
+* **code-foundry:** upgrade runtime to v0.31.4 ([f241959](https://github.com/0xPlayerOne/cortana/commit/f24195990c331e99bae5ab07346bbc549cfa7250))
+* **security:** opt in OpenCode Security scan ([344094f](https://github.com/0xPlayerOne/cortana/commit/344094f52f9f0ee637da24c450d540eb3d793e88))
+
 ## [0.1.6](https://github.com/0xPlayerOne/cortana/compare/v0.1.5...v0.1.6) (2026-07-29)
 
 
