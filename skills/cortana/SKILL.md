@@ -10,8 +10,9 @@ HTTP API at `http://127.0.0.1:7331/v1/context`; use `cortana search` only as a r
 
 1. Start with `context` using the user's concrete terms and the current project when known. Its
    token-bounded Markdown is ready to place directly into the working context and cite with `[n]`.
-2. Use `search` only when you need raw evidence rows, a second focused pass, or exact debugging
-   details not present in the first bundle.
+2. Use `search_code` for repository and filesystem evidence, `search_messages` for Gmail, Slack,
+   and Discord evidence, and `who_knows` when identifying source-backed expertise. Use generic
+   `search` only for another focused pass, an explicit source, or exact debugging details.
 3. Use source filters for exact configured source names. Inspect `brain_status` when source names
    or index freshness are uncertain.
 4. Reuse a context bundle within the same task. Cortana persistently caches query and ingestion
