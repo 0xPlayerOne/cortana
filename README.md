@@ -81,6 +81,8 @@ See the [operations guide](docs/operations.md) for service management, authentic
 telemetry, backup, restore, and Linux systemd units.
 Run the isolated [evaluation and readiness gates](docs/evaluation.md) before enabling synthesis or
 recurring ingestion.
+See the [desktop architecture](docs/desktop-architecture.md) for the Tauri trust boundary,
+background lifecycle, contributor builds, and native release packaging.
 See [release history](docs/releases.md) for the automated version-PR policy and transitional
 release notes.
 
@@ -163,6 +165,13 @@ bun run lint
 bun run typecheck
 bun test
 bun run build
+
+# Tauri 2 desktop
+bun run desktop:test
+bun run --cwd apps/desktop clippy
+bun run desktop:build
+# macOS-only unsigned local application bundle
+bun run desktop:bundle:mac
 
 # Connector SDK
 uv sync --all-extras

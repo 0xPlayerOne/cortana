@@ -1,0 +1,30 @@
+[package]
+name = "cortana-desktop"
+version = "0.4.1"
+edition = "2024"
+rust-version = "1.88"
+description = "Tauri control plane for the Cortana local second brain"
+license = "AGPL-3.0-only"
+repository = "https://github.com/0xPlayerOne/cortana"
+
+[lib]
+name = "cortana_desktop"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "cortana-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.6.3", features = [] }
+
+[dependencies]
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tauri = { version = "2.11.5", features = ["image-png", "tray-icon"] }
+tauri-plugin-autostart = "2.5.1"
+tauri-plugin-process = "2.3.1"
+tauri-plugin-single-instance = "2.4.3"
+tauri-plugin-updater = { version = "2.10.1", features = ["rustls-tls"] }
+tokio = { version = "1.47", features = ["time"] }
