@@ -126,3 +126,11 @@ An optional `[runtime].env_file` supplies connector, cloud-provider, and HTTP-to
 variables without putting values in launchd or systemd definitions. On Unix, Cortana refuses to
 read this file if any group or other permission bit is set. Use mode `0600`; process environment
 variables take precedence.
+
+For shared agents, configure one bearer principal per environment variable under `[[auth.tokens]]`.
+`query`, `status`, and `admin` scopes are enforced independently. Document ACLs are public when
+empty and otherwise require a matching principal label; `*` is reserved for the implicit local
+owner and legacy single-token mode. Answer-cache keys include the sorted ACL labels, preventing
+reuse across authorization boundaries. `GET /v1/audit` requires `admin` and returns at most 500
+metadata-only events. Audit records contain principal, action, project/source scope, outcome,
+result count, latency, and timestamp—never query text, evidence, bearer tokens, or token hashes.

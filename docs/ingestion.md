@@ -112,6 +112,12 @@ External connectors must emit one JSON object per line:
 provenance, channel/account identifiers, participants, and source-specific fields in `metadata`;
 never place credentials there.
 
+Set `acl` on a source to apply a default access label to every document that connector emits
+without its own ACL. Empty document ACLs are public when the source also has no default. A
+document with one or more labels is returned only to a query principal with at least one matching
+label; the implicit loopback owner can access all labels. Use stable trust-domain labels such as
+`personal`, `work`, or `shared`, not user-controlled channel names.
+
 ## Pre-embedded import
 
 `cortana import-embeddings` accepts trusted JSON Lines for migrations from a compatible vector

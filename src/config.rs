@@ -15,6 +15,8 @@ pub struct Config {
     #[serde(default)]
     pub query: QueryConfig,
     #[serde(default)]
+    pub auth: AuthConfig,
+    #[serde(default)]
     pub connectors: ConnectorConfig,
     #[serde(default)]
     pub runtime: RuntimeConfig,
@@ -107,6 +109,24 @@ pub struct QueryConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AuthConfig {
+    #[serde(default = "default_audit_max_events")]
+    pub audit_max_events: usize,
+    #[serde(default)]
+    pub tokens: Vec<AuthTokenConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct AuthTokenConfig {
+    pub principal: String,
+    pub token_env: String,
+    #[serde(default = "default_auth_scopes")]
+    pub scopes: Vec<String>,
+    #[serde(default)]
+    pub acl: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConnectorConfig {
     #[serde(default = "default_connector_command")]
     pub command: Vec<String>,
@@ -148,6 +168,8 @@ pub struct SourceConfig {
     pub exclude: Vec<String>,
     #[serde(default)]
     pub command: Vec<String>,
+    #[serde(default)]
+    pub acl: Vec<String>,
 }
 
 impl Default for EmbeddingConfig {
@@ -217,6 +239,15 @@ impl Default for ConnectorConfig {
     }
 }
 
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            audit_max_events: default_audit_max_events(),
+            tokens: Vec::new(),
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -224,6 +255,7 @@ impl Default for Config {
             embedding: EmbeddingConfig::default(),
             ingestion: IngestionConfig::default(),
             query: QueryConfig::default(),
+            auth: AuthConfig::default(),
             connectors: ConnectorConfig::default(),
             runtime: RuntimeConfig::default(),
             sources: Vec::new(),
@@ -380,6 +412,14 @@ const fn default_query_cache_entries() -> usize {
 
 const fn default_query_cache_ttl() -> u64 {
     3_600
+}
+
+const fn default_audit_max_events() -> usize {
+    10_000
+}
+
+fn default_auth_scopes() -> Vec<String> {
+    vec!["query".into(), "status".into()]
 }
 
 fn default_dimension() -> usize {

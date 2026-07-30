@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, State},
+    extract::{DefaultBodyLimit, Extension, Query as AxumQuery, State},
     http::{Request, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -20,12 +20,13 @@ use tracing::Level;
 
 use crate::{
     answer::{AnswerEngine, AnswerRequest, AnswerResponse, QueryRuntimeStatus},
+    auth::{ADMIN_SCOPE, AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE},
     config::Config,
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
     model::Evidence,
     retrieval,
-    store::{Store, StoreStats},
+    store::{AuditEvent, Store, StoreStats},
 };
 
 #[derive(Clone)]
@@ -33,9 +34,10 @@ pub struct AppState {
     pub store: Store,
     pub embedder: Arc<dyn Embedder>,
     metrics: Arc<RuntimeMetrics>,
-    api_token: Option<Arc<str>>,
+    auth: AuthPolicy,
     ingestion: Arc<IngestionStatus>,
     answer: AnswerEngine,
+    audit_max_events: usize,
 }
 
 impl AppState {
@@ -50,19 +52,26 @@ impl AppState {
             store,
             embedder,
             metrics: Arc::new(RuntimeMetrics::new()),
-            api_token: api_token.map(Arc::from),
+            auth: AuthPolicy::legacy(api_token),
             ingestion: Arc::new(IngestionStatus::default()),
             answer,
+            audit_max_events: crate::config::AuthConfig::default().audit_max_events,
         }
     }
 
     pub fn with_config(mut self, config: &Config, scheduled: bool) -> Self {
         self.ingestion = Arc::new(IngestionStatus::from_config(config, scheduled));
+        self.audit_max_events = config.auth.audit_max_events;
         self
     }
 
     pub fn with_answer_engine(mut self, answer: AnswerEngine) -> Self {
         self.answer = answer;
+        self
+    }
+
+    pub fn with_auth_policy(mut self, auth: AuthPolicy) -> Self {
+        self.auth = auth;
         self
     }
 }
@@ -202,6 +211,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/search", post(search))
         .route("/v1/context", post(context))
         .route("/v1/answer", post(answer))
+        .route("/v1/audit", get(audit_events))
         .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
@@ -218,30 +228,41 @@ pub fn router(state: AppState) -> Router {
 
 async fn authorize(
     State(state): State<AppState>,
-    request: Request<axum::body::Body>,
+    mut request: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
     let path = request.uri().path();
-    if state.api_token.is_none() || matches!(path, "/healthz" | "/readyz") {
+    if matches!(path, "/healthz" | "/readyz") {
         return next.run(request).await;
     }
-    let authorized = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .zip(state.api_token.as_deref())
-        .is_some_and(|(provided, expected)| provided == expected);
-    if authorized {
-        next.run(request).await
+    let principal = if state.auth.requires_token() {
+        request
+            .headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "))
+            .and_then(|token| state.auth.authenticate(token))
     } else {
-        (
+        Some(Principal::local("local-http"))
+    };
+    let Some(principal) = principal else {
+        return (
             StatusCode::UNAUTHORIZED,
             [(header::WWW_AUTHENTICATE, "Bearer realm=\"cortana\"")],
             "authorization required",
         )
-            .into_response()
+            .into_response();
+    };
+    let required_scope = match path {
+        "/metrics" | "/v1/audit" => ADMIN_SCOPE,
+        "/v1/status" => STATUS_SCOPE,
+        _ => QUERY_SCOPE,
+    };
+    if !principal.has_scope(required_scope) {
+        return StatusCode::FORBIDDEN.into_response();
     }
+    request.extensions_mut().insert(principal);
+    next.run(request).await
 }
 
 async fn ready(State(state): State<AppState>) -> impl IntoResponse {
@@ -263,7 +284,10 @@ async fn ready(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-async fn status(State(state): State<AppState>) -> Result<Json<Status>, (StatusCode, String)> {
+async fn status(
+    State(state): State<AppState>,
+    Extension(_principal): Extension<Principal>,
+) -> Result<Json<Status>, (StatusCode, String)> {
     state
         .store
         .stats()
@@ -285,39 +309,81 @@ async fn status(State(state): State<AppState>) -> Result<Json<Status>, (StatusCo
 
 async fn answer(
     State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
     Json(request): Json<AnswerRequest>,
 ) -> Result<Json<AnswerResponse>, (StatusCode, String)> {
     validate_query(&request.query)?;
+    let started = Instant::now();
+    let project = request.project.clone();
+    let source = request.source.clone();
     state.metrics.answers.fetch_add(1, Ordering::Relaxed);
-    state
+    let result = state
         .answer
-        .answer(request)
-        .await
-        .map(Json)
-        .map_err(|error| {
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
-            internal_error(error)
-        })
+        .answer_scoped(request, &principal.acl_labels())
+        .await;
+    let (outcome, count) = match &result {
+        Ok(response) => ("succeeded", Some(response.evidence.len())),
+        Err(_) => ("failed", None),
+    };
+    record_audit(
+        &state,
+        &principal,
+        "answer",
+        project.as_deref(),
+        source.as_deref(),
+        outcome,
+        count,
+        started,
+    );
+    result.map(Json).map_err(|error| {
+        state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+        internal_error(error)
+    })
 }
 
 async fn search(
     State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
     Json(request): Json<SearchRequest>,
 ) -> Result<Json<Vec<Evidence>>, (StatusCode, String)> {
     validate_query(&request.query)?;
+    let started = Instant::now();
     state.metrics.searches.fetch_add(1, Ordering::Relaxed);
-    match retrieval::retrieve(
+    match retrieval::retrieve_scoped(
         &state.store,
         &state.embedder,
         &request.query,
         request.project.as_deref(),
         request.source.as_deref(),
         request.limit.min(50),
+        &principal.acl_labels(),
     )
     .await
     {
-        Ok(evidence) => Ok(Json(evidence)),
+        Ok(evidence) => {
+            record_audit(
+                &state,
+                &principal,
+                "search",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "succeeded",
+                Some(evidence.len()),
+                started,
+            );
+            Ok(Json(evidence))
+        }
         Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "search",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "failed",
+                None,
+                started,
+            );
             state.metrics.errors.fetch_add(1, Ordering::Relaxed);
             Err(internal_error(error))
         }
@@ -326,23 +392,49 @@ async fn search(
 
 async fn context(
     State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
     Json(request): Json<ContextRequest>,
 ) -> Result<Json<ContextBundle>, (StatusCode, String)> {
     validate_query(&request.query)?;
+    let started = Instant::now();
     state.metrics.contexts.fetch_add(1, Ordering::Relaxed);
-    let evidence = retrieval::retrieve(
+    let evidence = match retrieval::retrieve_scoped(
         &state.store,
         &state.embedder,
         &request.query,
         request.project.as_deref(),
         request.source.as_deref(),
         request.limit.min(50),
+        &principal.acl_labels(),
     )
     .await
-    .map_err(|error| {
-        state.metrics.errors.fetch_add(1, Ordering::Relaxed);
-        internal_error(error)
-    })?;
+    {
+        Ok(evidence) => evidence,
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "context",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "failed",
+                None,
+                started,
+            );
+            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            return Err(internal_error(error));
+        }
+    };
+    record_audit(
+        &state,
+        &principal,
+        "context",
+        request.project.as_deref(),
+        request.source.as_deref(),
+        "succeeded",
+        Some(evidence.len()),
+        started,
+    );
     Ok(Json(context_bundle::build(
         &request.query,
         &evidence,
@@ -350,7 +442,53 @@ async fn context(
     )))
 }
 
-async fn metrics(State(state): State<AppState>) -> Result<impl IntoResponse, (StatusCode, String)> {
+#[derive(Deserialize)]
+struct AuditParams {
+    #[serde(default = "default_audit_limit")]
+    limit: usize,
+}
+
+async fn audit_events(
+    State(state): State<AppState>,
+    Extension(_principal): Extension<Principal>,
+    AxumQuery(params): AxumQuery<AuditParams>,
+) -> Result<Json<Vec<AuditEvent>>, (StatusCode, String)> {
+    state
+        .store
+        .audit_events(params.limit.clamp(1, 500))
+        .map(Json)
+        .map_err(internal_error)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_audit(
+    state: &AppState,
+    principal: &Principal,
+    action: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+    outcome: &str,
+    count: Option<usize>,
+    started: Instant,
+) {
+    if let Err(error) = state.store.record_audit(
+        &principal.name,
+        action,
+        project,
+        source,
+        outcome,
+        count,
+        elapsed_ms(started),
+        state.audit_max_events,
+    ) {
+        tracing::warn!(%error, "query audit write failed");
+    }
+}
+
+async fn metrics(
+    State(state): State<AppState>,
+    Extension(_principal): Extension<Principal>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
     let stats = state.store.stats().map_err(internal_error)?;
     let body = format!(
         "# HELP cortana_uptime_seconds Process uptime in seconds.\n\
@@ -421,6 +559,14 @@ fn default_context_tokens() -> usize {
     8_000
 }
 
+fn default_audit_limit() -> usize {
+    100
+}
+
+fn elapsed_ms(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
 pub async fn serve(
     state: AppState,
     address: &str,
@@ -428,7 +574,7 @@ pub async fn serve(
     allow_remote: bool,
 ) -> Result<()> {
     let socket: std::net::SocketAddr = address.parse()?;
-    let authenticated = state.api_token.is_some();
+    let authenticated = state.auth.requires_token();
     anyhow::ensure!(
         socket.ip().is_loopback() || (allow_remote && authenticated),
         "refusing non-loopback bind without --allow-remote and a bearer token"
@@ -485,7 +631,9 @@ mod tests {
     use tempfile::tempdir;
     use tower::ServiceExt;
 
+    use crate::config::AuthTokenConfig;
     use crate::embed::DeterministicEmbedder;
+    use crate::model::Document;
 
     use super::*;
 
@@ -638,5 +786,121 @@ mod tests {
             serde_json::json!(["unknown topic"])
         );
         assert_eq!(value["evidence"], serde_json::json!([]));
+    }
+
+    #[tokio::test]
+    async fn scoped_tokens_filter_evidence_and_admin_only_audit_omits_queries() {
+        let (_directory, state) = test_state(None);
+        state
+            .store
+            .upsert(
+                &Document {
+                    source: "notes".into(),
+                    source_id: "personal".into(),
+                    title: "Personal secret".into(),
+                    content: "classified launch phrase".into(),
+                    uri: None,
+                    updated_at: chrono::Utc::now(),
+                    project: "demo".into(),
+                    acl: vec!["personal".into()],
+                    metadata: serde_json::json!({}),
+                },
+                &[("classified launch phrase".into(), vec![1.0; 16])],
+            )
+            .expect("private document");
+        state
+            .store
+            .upsert(
+                &Document {
+                    source: "notes".into(),
+                    source_id: "work".into(),
+                    title: "Work note".into(),
+                    content: "shared launch phrase".into(),
+                    uri: None,
+                    updated_at: chrono::Utc::now(),
+                    project: "demo".into(),
+                    acl: vec!["work".into()],
+                    metadata: serde_json::json!({}),
+                },
+                &[("shared launch phrase".into(), vec![1.0; 16])],
+            )
+            .expect("work document");
+        let mut config = Config::default();
+        config.auth.tokens = vec![
+            AuthTokenConfig {
+                principal: "work-agent".into(),
+                token_env: "WORK_TOKEN".into(),
+                scopes: vec!["query".into(), "status".into()],
+                acl: vec!["work".into()],
+            },
+            AuthTokenConfig {
+                principal: "auditor".into(),
+                token_env: "ADMIN_TOKEN".into(),
+                scopes: vec!["admin".into()],
+                acl: Vec::new(),
+            },
+        ];
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config
+            .environment
+            .insert("ADMIN_TOKEN".into(), "admin-secret".into());
+        let policy = AuthPolicy::from_config(&config, None).expect("auth policy");
+        let app = router(state.with_config(&config, false).with_auth_policy(policy));
+        let search = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"launch phrase","project":"demo","limit":10}"#,
+                    ))
+                    .expect("search request"),
+            )
+            .await
+            .expect("search response");
+        assert_eq!(search.status(), StatusCode::OK);
+        let search_body = to_bytes(search.into_body(), 1024 * 1024)
+            .await
+            .expect("search body");
+        let rows: Vec<Evidence> = serde_json::from_slice(&search_body).expect("search JSON");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].source_id, "work");
+
+        let forbidden = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/audit")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("forbidden request"),
+            )
+            .await
+            .expect("forbidden response");
+        assert_eq!(forbidden.status(), StatusCode::FORBIDDEN);
+
+        let audit = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/audit?limit=10")
+                    .header(header::AUTHORIZATION, "Bearer admin-secret")
+                    .body(Body::empty())
+                    .expect("audit request"),
+            )
+            .await
+            .expect("audit response");
+        assert_eq!(audit.status(), StatusCode::OK);
+        let audit_body = to_bytes(audit.into_body(), 1024 * 1024)
+            .await
+            .expect("audit body");
+        let value: serde_json::Value = serde_json::from_slice(&audit_body).expect("audit JSON");
+        assert_eq!(value[0]["principal"], "work-agent");
+        assert_eq!(value[0]["action"], "search");
+        assert!(value[0].get("query").is_none());
     }
 }

@@ -11,6 +11,7 @@ use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+use crate::auth::acl_allows;
 use crate::model::{Document, StoredChunk};
 
 const DATABASE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -67,6 +68,18 @@ pub struct SourceSyncStats {
     pub budget_seconds: i64,
 }
 
+#[derive(Debug, Serialize)]
+pub struct AuditEvent {
+    pub timestamp: String,
+    pub principal: String,
+    pub action: String,
+    pub project: Option<String>,
+    pub source: Option<String>,
+    pub outcome: String,
+    pub result_count: Option<i64>,
+    pub latency_ms: i64,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum SyncRunStatus {
     Succeeded,
@@ -121,11 +134,17 @@ impl Store {
                cache_key TEXT PRIMARY KEY, response_json TEXT NOT NULL,
                created_at TEXT NOT NULL, last_used_at TEXT NOT NULL,
                hits INTEGER NOT NULL DEFAULT 0);
+             CREATE TABLE IF NOT EXISTS audit_events(
+               id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL,
+               principal TEXT NOT NULL, action TEXT NOT NULL, project TEXT, source TEXT,
+               outcome TEXT NOT NULL, result_count INTEGER, latency_ms INTEGER NOT NULL);
              CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                chunk_id UNINDEXED, title, content, tokenize='unicode61');
              CREATE INDEX IF NOT EXISTS idx_documents_scope ON documents(project, source);
              CREATE INDEX IF NOT EXISTS idx_sync_runs_source
-               ON sync_runs(source,project,started_at DESC);",
+               ON sync_runs(source,project,started_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp
+               ON audit_events(timestamp DESC);",
         )?;
         connection.execute(
             "INSERT OR IGNORE INTO meta(key,value) VALUES('corpus_revision','0')",
@@ -425,6 +444,76 @@ impl Store {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_audit(
+        &self,
+        principal: &str,
+        action: &str,
+        project: Option<&str>,
+        source: Option<&str>,
+        outcome: &str,
+        result_count: Option<usize>,
+        latency_ms: u64,
+        max_events: usize,
+    ) -> Result<bool> {
+        if max_events == 0 {
+            return Ok(false);
+        }
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let Some(_) = optional_write(&connection, || {
+            connection.execute(
+                "INSERT INTO audit_events(
+                   timestamp,principal,action,project,source,outcome,result_count,latency_ms)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+                params![
+                    Utc::now().to_rfc3339(),
+                    principal,
+                    action,
+                    project,
+                    source,
+                    outcome,
+                    result_count.map(|count| i64::try_from(count).unwrap_or(i64::MAX)),
+                    i64::try_from(latency_ms).unwrap_or(i64::MAX),
+                ],
+            )
+        })?
+        else {
+            return Ok(false);
+        };
+        optional_write(&connection, || {
+            connection.execute(
+                "DELETE FROM audit_events WHERE id IN (
+                   SELECT id FROM audit_events ORDER BY id DESC LIMIT -1 OFFSET ?1
+                 )",
+                [i64::try_from(max_events).unwrap_or(i64::MAX)],
+            )
+        })?;
+        Ok(true)
+    }
+
+    pub fn audit_events(&self, limit: usize) -> Result<Vec<AuditEvent>> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT timestamp,principal,action,project,source,outcome,result_count,latency_ms
+             FROM audit_events ORDER BY id DESC LIMIT ?1",
+        )?;
+        statement
+            .query_map([i64::try_from(limit.min(500)).unwrap_or(500)], |row| {
+                Ok(AuditEvent {
+                    timestamp: row.get(0)?,
+                    principal: row.get(1)?,
+                    action: row.get(2)?,
+                    project: row.get(3)?,
+                    source: row.get(4)?,
+                    outcome: row.get(5)?,
+                    result_count: row.get(6)?,
+                    latency_ms: row.get(7)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     pub fn all_chunks(
         &self,
         project: Option<&str>,
@@ -432,7 +521,7 @@ impl Store {
     ) -> Result<Vec<StoredChunk>> {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
-            "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,
+            "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,d.acl_json,
                     c.embedding_blob,c.embedding_json,d.updated_at
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
@@ -449,9 +538,20 @@ impl Store {
         source: Option<&str>,
         limit: usize,
     ) -> Result<Vec<(String, f32)>> {
+        self.semantic_ids_scoped(query_embedding, project, source, limit, &["*".into()])
+    }
+
+    pub fn semantic_ids_scoped(
+        &self,
+        query_embedding: &[f32],
+        project: Option<&str>,
+        source: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+    ) -> Result<Vec<(String, f32)>> {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
-            "SELECT c.id,c.embedding_blob,c.embedding_json
+            "SELECT c.id,c.embedding_blob,c.embedding_json,d.acl_json
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
         )?;
@@ -459,6 +559,9 @@ impl Store {
             let id = row.get::<_, String>(0)?;
             let blob = row.get::<_, Option<Vec<u8>>>(1)?;
             let json = row.get::<_, String>(2)?;
+            let acl = serde_json::from_str::<Vec<String>>(&row.get::<_, String>(3)?).map_err(
+                |error| rusqlite::Error::FromSqlConversionFailure(3, Type::Text, Box::new(error)),
+            )?;
             let embedding = blob.map_or_else(
                 || {
                     serde_json::from_str(&json).map_err(|error| {
@@ -471,11 +574,14 @@ impl Store {
                     })
                 },
             )?;
-            Ok((id, cosine(query_embedding, &embedding)))
+            Ok((id, cosine(query_embedding, &embedding), acl))
         })?;
         let mut best = BinaryHeap::<Reverse<SemanticCandidate>>::with_capacity(limit);
         for row in rows {
-            let (id, score) = row?;
+            let (id, score, acl) = row?;
+            if !acl_allows(&acl, principal_acl) {
+                continue;
+            }
             let candidate = SemanticCandidate { id, score };
             if best.len() < limit {
                 best.push(Reverse(candidate));
@@ -498,6 +604,14 @@ impl Store {
     }
 
     pub fn chunks_by_ids(&self, ids: &[String]) -> Result<Vec<StoredChunk>> {
+        self.chunks_by_ids_scoped(ids, &["*".into()])
+    }
+
+    pub fn chunks_by_ids_scoped(
+        &self,
+        ids: &[String],
+        principal_acl: &[String],
+    ) -> Result<Vec<StoredChunk>> {
         if ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -505,7 +619,7 @@ impl Store {
             .collect::<Vec<_>>()
             .join(",");
         let sql = format!(
-            "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,
+            "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,d.acl_json,
                     c.embedding_blob,c.embedding_json,d.updated_at
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE c.id IN ({placeholders})"
@@ -513,8 +627,13 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(&sql)?;
         let rows = statement.query_map(params_from_iter(ids), row_to_chunk)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(Into::into)
+        rows.filter_map(|row| match row {
+            Ok(chunk) if acl_allows(&chunk.acl, principal_acl) => Some(Ok(chunk)),
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
     }
 
     pub fn lexical_ids(
@@ -523,6 +642,17 @@ impl Store {
         project: Option<&str>,
         source: Option<&str>,
         limit: usize,
+    ) -> Result<Vec<String>> {
+        self.lexical_ids_scoped(query, project, source, limit, &["*".into()])
+    }
+
+    pub fn lexical_ids_scoped(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        source: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
     ) -> Result<Vec<String>> {
         let connection = self.connection.lock().expect("store lock poisoned");
         let safe_query = query
@@ -536,7 +666,7 @@ impl Store {
             return Ok(Vec::new());
         }
         let mut statement = connection.prepare(
-            "SELECT f.chunk_id FROM chunks_fts f
+            "SELECT f.chunk_id,d.acl_json FROM chunks_fts f
              JOIN chunks c ON c.id=f.chunk_id
              JOIN documents d ON d.id=c.document_id
              WHERE chunks_fts MATCH ?1
@@ -544,12 +674,23 @@ impl Store {
                AND (?3 IS NULL OR d.source=?3)
              ORDER BY bm25(chunks_fts) LIMIT ?4",
         )?;
-        let rows = statement
-            .query_map(params![safe_query, project, source, limit as i64], |row| {
-                row.get(0)
-            })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(Into::into)
+        let candidate_limit = limit.saturating_mul(8).max(limit);
+        let rows = statement.query_map(
+            params![safe_query, project, source, candidate_limit as i64],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )?;
+        let mut allowed = Vec::new();
+        for row in rows {
+            let (id, acl) = row?;
+            let acl: Vec<String> = serde_json::from_str(&acl)?;
+            if acl_allows(&acl, principal_acl) {
+                allowed.push(id);
+                if allowed.len() == limit {
+                    break;
+                }
+            }
+        }
+        Ok(allowed)
     }
 
     pub fn stats(&self) -> Result<StoreStats> {
@@ -880,21 +1021,25 @@ impl Ord for SemanticCandidate {
 }
 
 fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
-    let embedding_blob: Option<Vec<u8>> = row.get(6)?;
-    let embedding_json: String = row.get(7)?;
+    let acl_json: String = row.get(6)?;
+    let acl = serde_json::from_str(&acl_json).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(6, Type::Text, Box::new(error))
+    })?;
+    let embedding_blob: Option<Vec<u8>> = row.get(7)?;
+    let embedding_json: String = row.get(8)?;
     let embedding = embedding_blob.map_or_else(
         || {
             serde_json::from_str(&embedding_json).map_err(|error| {
-                rusqlite::Error::FromSqlConversionFailure(7, Type::Text, Box::new(error))
+                rusqlite::Error::FromSqlConversionFailure(8, Type::Text, Box::new(error))
             })
         },
         |blob| {
             decode_embedding(&blob).map_err(|error| {
-                rusqlite::Error::FromSqlConversionFailure(6, Type::Blob, error.into())
+                rusqlite::Error::FromSqlConversionFailure(7, Type::Blob, error.into())
             })
         },
     )?;
-    let updated_at: String = row.get(8)?;
+    let updated_at: String = row.get(9)?;
     Ok(StoredChunk {
         id: row.get(0)?,
         source: row.get(1)?,
@@ -902,6 +1047,7 @@ fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
         title: row.get(3)?,
         uri: row.get(4)?,
         content: row.get(5)?,
+        acl,
         embedding,
         updated_at: DateTime::parse_from_rfc3339(&updated_at)
             .map(|value| value.with_timezone(&Utc))
@@ -1117,6 +1263,42 @@ mod tests {
         let stats = store.stats().expect("cache stats");
         assert_eq!(stats.query_cache_entries, 1);
         assert_eq!(stats.query_cache_hits, 1);
+    }
+
+    #[test]
+    fn audit_is_bounded_and_records_metadata_only() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        for index in 0..3 {
+            assert!(
+                store
+                    .record_audit(
+                        "agent",
+                        "search",
+                        Some("demo"),
+                        Some("notes"),
+                        "ok",
+                        Some(index),
+                        index as u64,
+                        2,
+                    )
+                    .expect("record audit")
+            );
+        }
+
+        let events = store.audit_events(500).expect("audit events");
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].result_count, Some(2));
+        assert_eq!(events[1].result_count, Some(1));
+        assert_eq!(events[0].principal, "agent");
+        assert_eq!(events[0].project.as_deref(), Some("demo"));
+
+        assert!(
+            !store
+                .record_audit("agent", "answer", None, None, "ok", None, 0, 0)
+                .expect("disabled audit")
+        );
+        assert_eq!(store.audit_events(500).expect("unchanged audit").len(), 2);
     }
 
     #[test]

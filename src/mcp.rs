@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use rmcp::{
     ServerHandler, ServiceExt,
@@ -33,6 +34,7 @@ pub struct BrainServer {
     store: Store,
     embedder: Arc<dyn Embedder>,
     tool_router: ToolRouter<Self>,
+    audit_max_events: usize,
 }
 
 #[tool_router]
@@ -42,13 +44,20 @@ impl BrainServer {
             store,
             embedder,
             tool_router: Self::tool_router(),
+            audit_max_events: 10_000,
         }
+    }
+
+    pub fn with_audit_limit(mut self, max_events: usize) -> Self {
+        self.audit_max_events = max_events;
+        self
     }
 
     #[tool(
         description = "Hybrid semantic and exact-term search across configured knowledge sources"
     )]
     async fn search(&self, Parameters(params): Parameters<SearchParams>) -> String {
+        let started = Instant::now();
         match retrieval::retrieve(
             &self.store,
             &self.embedder,
@@ -59,8 +68,28 @@ impl BrainServer {
         )
         .await
         {
-            Ok(rows) => serde_json::to_string(&rows).unwrap_or_else(|error| error.to_string()),
-            Err(error) => format!("retrieval error: {error}"),
+            Ok(rows) => {
+                self.audit(
+                    "mcp.search",
+                    params.project.as_deref(),
+                    params.source.as_deref(),
+                    "succeeded",
+                    Some(rows.len()),
+                    started,
+                );
+                serde_json::to_string(&rows).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit(
+                    "mcp.search",
+                    params.project.as_deref(),
+                    params.source.as_deref(),
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("retrieval error: {error}")
+            }
         }
     }
 
@@ -68,6 +97,7 @@ impl BrainServer {
         description = "Build a token-bounded, citation-ready context bundle. Agents should prefer this tool before answering questions about the user or their work."
     )]
     async fn context(&self, Parameters(params): Parameters<ContextParams>) -> String {
+        let started = Instant::now();
         match retrieval::retrieve(
             &self.store,
             &self.embedder,
@@ -78,13 +108,33 @@ impl BrainServer {
         )
         .await
         {
-            Ok(rows) => serde_json::to_string(&context::build(
-                &params.query,
-                &rows,
-                params.max_tokens.unwrap_or(8_000),
-            ))
-            .unwrap_or_else(|error| error.to_string()),
-            Err(error) => format!("retrieval error: {error}"),
+            Ok(rows) => {
+                self.audit(
+                    "mcp.context",
+                    params.project.as_deref(),
+                    params.source.as_deref(),
+                    "succeeded",
+                    Some(rows.len()),
+                    started,
+                );
+                serde_json::to_string(&context::build(
+                    &params.query,
+                    &rows,
+                    params.max_tokens.unwrap_or(8_000),
+                ))
+                .unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit(
+                    "mcp.context",
+                    params.project.as_deref(),
+                    params.source.as_deref(),
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("retrieval error: {error}")
+            }
         }
     }
 
@@ -95,6 +145,32 @@ impl BrainServer {
         match self.store.stats() {
             Ok(stats) => serde_json::to_string(&stats).unwrap_or_else(|error| error.to_string()),
             Err(error) => format!("status error: {error}"),
+        }
+    }
+}
+
+impl BrainServer {
+    #[allow(clippy::too_many_arguments)]
+    fn audit(
+        &self,
+        action: &str,
+        project: Option<&str>,
+        source: Option<&str>,
+        outcome: &str,
+        count: Option<usize>,
+        started: Instant,
+    ) {
+        if let Err(error) = self.store.record_audit(
+            "local-mcp",
+            action,
+            project,
+            source,
+            outcome,
+            count,
+            u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            self.audit_max_events,
+        ) {
+            tracing::warn!(%error, "MCP audit write failed");
         }
     }
 }

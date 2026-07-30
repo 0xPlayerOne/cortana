@@ -194,10 +194,18 @@ impl AnswerEngine {
     }
 
     pub async fn answer(&self, request: AnswerRequest) -> Result<AnswerResponse> {
+        self.answer_scoped(request, &["*".into()]).await
+    }
+
+    pub async fn answer_scoped(
+        &self,
+        request: AnswerRequest,
+        principal_acl: &[String],
+    ) -> Result<AnswerResponse> {
         anyhow::ensure!(!request.query.trim().is_empty(), "query must not be empty");
         let started = Instant::now();
         let revision = self.store.corpus_revision()?;
-        let cache_key = self.cache_key(&request, revision)?;
+        let cache_key = self.cache_key(&request, revision, principal_acl)?;
         if let Some(cached) = self
             .store
             .cached_query(&cache_key, self.config.cache_ttl_seconds)?
@@ -227,13 +235,14 @@ impl AnswerEngine {
             }
         };
         let searches = plan.queries.iter().map(|query| {
-            retrieval::retrieve(
+            retrieval::retrieve_scoped(
                 &self.store,
                 &self.embedder,
                 query,
                 request.project.as_deref(),
                 request.source.as_deref(),
                 self.config.retrieval_limit.min(50),
+                principal_acl,
             )
         });
         let results = join_all(searches).await;
@@ -347,7 +356,15 @@ impl AnswerEngine {
         }
     }
 
-    fn cache_key(&self, request: &AnswerRequest, revision: u64) -> Result<String> {
+    fn cache_key(
+        &self,
+        request: &AnswerRequest,
+        revision: u64,
+        principal_acl: &[String],
+    ) -> Result<String> {
+        let mut principal_acl = principal_acl.to_vec();
+        principal_acl.sort();
+        principal_acl.dedup();
         let material = serde_json::to_vec(&serde_json::json!({
             "contract": CONTRACT_VERSION,
             "revision": revision,
@@ -357,6 +374,7 @@ impl AnswerEngine {
             "query": request.query.trim(),
             "project": request.project,
             "source": request.source,
+            "acl": principal_acl,
             "max_planned_queries": self.config.max_planned_queries,
             "retrieval_limit": self.config.retrieval_limit,
             "result_limit": self.config.result_limit,
@@ -566,6 +584,30 @@ mod tests {
         assert!(valid_citations("The release is ready [1].", 2));
         assert!(!valid_citations("The release is ready.", 2));
         assert!(!valid_citations("The release is ready [3].", 2));
+    }
+
+    #[test]
+    fn answer_cache_keys_are_isolated_by_acl_scope() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let engine = AnswerEngine::new(
+            store,
+            Arc::new(DeterministicEmbedder::new(16)),
+            None,
+            QueryConfig::default(),
+        );
+        let request = AnswerRequest {
+            query: "release".into(),
+            project: None,
+            source: None,
+        };
+        let work = engine
+            .cache_key(&request, 1, &["work".into()])
+            .expect("work key");
+        let personal = engine
+            .cache_key(&request, 1, &["personal".into()])
+            .expect("personal key");
+        assert_ne!(work, personal);
     }
 
     #[tokio::test]
