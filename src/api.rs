@@ -19,6 +19,7 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
 use crate::{
+    config::Config,
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
     model::Evidence,
@@ -32,6 +33,7 @@ pub struct AppState {
     pub embedder: Arc<dyn Embedder>,
     metrics: Arc<RuntimeMetrics>,
     api_token: Option<Arc<str>>,
+    ingestion: Arc<IngestionStatus>,
 }
 
 impl AppState {
@@ -41,7 +43,13 @@ impl AppState {
             embedder,
             metrics: Arc::new(RuntimeMetrics::new()),
             api_token: api_token.map(Arc::from),
+            ingestion: Arc::new(IngestionStatus::default()),
         }
+    }
+
+    pub fn with_config(mut self, config: &Config, scheduled: bool) -> Self {
+        self.ingestion = Arc::new(IngestionStatus::from_config(config, scheduled));
+        self
     }
 }
 
@@ -99,8 +107,72 @@ struct Status {
     searches_total: u64,
     contexts_total: u64,
     errors_total: u64,
+    ingestion: IngestionStatus,
     #[serde(flatten)]
     stats: StoreStats,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct IngestionStatus {
+    mode: &'static str,
+    scheduled: bool,
+    max_documents_per_source: usize,
+    max_bytes_per_source: u64,
+    max_duration_seconds: u64,
+    request_concurrency: usize,
+    configured_sources: Vec<ConfiguredSourceStatus>,
+}
+
+impl Default for IngestionStatus {
+    fn default() -> Self {
+        Self::from_config(&Config::default(), false)
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ConfiguredSourceStatus {
+    name: String,
+    source: String,
+    kind: String,
+    project: String,
+    enabled: bool,
+    max_documents: usize,
+    max_bytes: u64,
+    max_duration_seconds: u64,
+}
+
+impl IngestionStatus {
+    fn from_config(config: &Config, scheduled: bool) -> Self {
+        let configured_sources = config
+            .sources
+            .iter()
+            .map(|source| ConfiguredSourceStatus {
+                name: source.name.clone(),
+                source: source.source.clone().unwrap_or_else(|| source.name.clone()),
+                kind: source.kind.clone(),
+                project: source.project.clone(),
+                enabled: source.enabled,
+                max_documents: source
+                    .max_documents
+                    .unwrap_or(config.ingestion.max_documents_per_source),
+                max_bytes: source
+                    .max_bytes
+                    .unwrap_or(config.ingestion.max_bytes_per_source),
+                max_duration_seconds: source
+                    .max_duration_seconds
+                    .unwrap_or(config.ingestion.max_duration_seconds),
+            })
+            .collect();
+        Self {
+            mode: if scheduled { "scheduled" } else { "manual" },
+            scheduled,
+            max_documents_per_source: config.ingestion.max_documents_per_source,
+            max_bytes_per_source: config.ingestion.max_bytes_per_source,
+            max_duration_seconds: config.ingestion.max_duration_seconds,
+            request_concurrency: config.ingestion.request_concurrency,
+            configured_sources,
+        }
+    }
 }
 
 pub fn router(state: AppState) -> Router {
@@ -183,6 +255,7 @@ async fn status(State(state): State<AppState>) -> Result<Json<Status>, (StatusCo
                 searches_total: state.metrics.searches.load(Ordering::Relaxed),
                 contexts_total: state.metrics.contexts.load(Ordering::Relaxed),
                 errors_total: state.metrics.errors.load(Ordering::Relaxed),
+                ingestion: (*state.ingestion).clone(),
                 stats,
             })
         })
@@ -357,7 +430,7 @@ async fn shutdown_signal() {
 
 #[cfg(test)]
 mod tests {
-    use axum::body::Body;
+    use axum::body::{Body, to_bytes};
     use axum::http::Request;
     use tempfile::tempdir;
     use tower::ServiceExt;
@@ -432,5 +505,54 @@ mod tests {
             .await
             .expect("response");
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn status_reports_safe_ingestion_mode_and_configured_sources() {
+        let (_directory, state) = test_state(None);
+        let config: Config = toml::from_str(
+            r#"
+            [ingestion]
+            max_documents_per_source = 25
+            max_bytes_per_source = 4096
+            max_duration_seconds = 45
+            request_concurrency = 1
+
+            [[sources]]
+            name = "code"
+            kind = "filesystem"
+            enabled = false
+            project = "work"
+            source = "work-code"
+            root = "/tmp/code"
+            "#,
+        )
+        .expect("configuration");
+        let response = router(state.with_config(&config, false))
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("status body");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("status JSON");
+        assert_eq!(value["ingestion"]["mode"], "manual");
+        assert_eq!(value["ingestion"]["scheduled"], false);
+        assert_eq!(
+            value["ingestion"]["configured_sources"][0]["source"],
+            "work-code"
+        );
+        assert_eq!(
+            value["ingestion"]["configured_sources"][0]["enabled"],
+            false
+        );
+        assert_eq!(value["ingestion"]["max_documents_per_source"], 25);
+        assert_eq!(value["sync_runs"], serde_json::json!([]));
     }
 }

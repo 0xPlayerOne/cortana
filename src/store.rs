@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 use crate::model::{Document, StoredChunk};
 
 const DATABASE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+const SYNC_RUNS_PER_SOURCE: usize = 100;
 
 #[derive(Clone)]
 pub struct Store {
@@ -28,6 +29,7 @@ pub struct StoreStats {
     pub embedding_cache_entries: i64,
     pub embedding_cache_hits: i64,
     pub sources: Vec<SourceStats>,
+    pub sync_runs: Vec<SourceSyncStats>,
 }
 
 #[derive(Debug, Serialize)]
@@ -37,6 +39,40 @@ pub struct SourceStats {
     pub documents: i64,
     pub chunks: i64,
     pub latest_updated_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourceSyncStats {
+    pub source: String,
+    pub project: String,
+    pub status: String,
+    pub started_at: String,
+    pub completed_at: Option<String>,
+    pub documents: Option<i64>,
+    pub bytes: Option<i64>,
+    pub deleted: Option<i64>,
+    pub budget_documents: i64,
+    pub budget_bytes: i64,
+    pub budget_seconds: i64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum SyncRunStatus {
+    Succeeded,
+    Failed,
+    Cancelled,
+    BudgetExceeded,
+}
+
+impl SyncRunStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+            Self::BudgetExceeded => "budget_exceeded",
+        }
+    }
 }
 
 impl Store {
@@ -64,9 +100,17 @@ impl Store {
                embedding_json TEXT NOT NULL, embedding_blob BLOB, hits INTEGER NOT NULL DEFAULT 0,
                created_at TEXT NOT NULL, last_used_at TEXT NOT NULL,
                PRIMARY KEY(fingerprint,content_hash));
+             CREATE TABLE IF NOT EXISTS sync_runs(
+               id TEXT PRIMARY KEY, source TEXT NOT NULL, project TEXT NOT NULL,
+               status TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT,
+               documents INTEGER, bytes INTEGER, deleted INTEGER,
+               budget_documents INTEGER NOT NULL, budget_bytes INTEGER NOT NULL,
+               budget_seconds INTEGER NOT NULL);
              CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                chunk_id UNINDEXED, title, content, tokenize='unicode61');
-             CREATE INDEX IF NOT EXISTS idx_documents_scope ON documents(project, source);",
+             CREATE INDEX IF NOT EXISTS idx_documents_scope ON documents(project, source);
+             CREATE INDEX IF NOT EXISTS idx_sync_runs_source
+               ON sync_runs(source,project,started_at DESC);",
         )?;
         migrate_embedding_blobs(&mut connection)?;
         secure_database_files(path)?;
@@ -91,6 +135,76 @@ impl Store {
             "INSERT OR IGNORE INTO meta(key,value) VALUES('embedding_fingerprint',?1)",
             [fingerprint],
         )?;
+        Ok(())
+    }
+
+    pub fn begin_sync(
+        &self,
+        source: &str,
+        project: &str,
+        budget_documents: usize,
+        budget_bytes: u64,
+        budget_seconds: u64,
+    ) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO sync_runs(
+               id,source,project,status,started_at,
+               budget_documents,budget_bytes,budget_seconds)
+             VALUES(?1,?2,?3,'running',?4,?5,?6,?7)",
+            params![
+                id,
+                source,
+                project,
+                Utc::now().to_rfc3339(),
+                i64::try_from(budget_documents).unwrap_or(i64::MAX),
+                i64::try_from(budget_bytes).unwrap_or(i64::MAX),
+                i64::try_from(budget_seconds).unwrap_or(i64::MAX),
+            ],
+        )?;
+        transaction.execute(
+            "DELETE FROM sync_runs
+             WHERE id IN (
+               SELECT id FROM sync_runs
+               WHERE source=?1 AND project=?2
+               ORDER BY started_at DESC,rowid DESC
+               LIMIT -1 OFFSET ?3
+             )",
+            params![
+                source,
+                project,
+                i64::try_from(SYNC_RUNS_PER_SOURCE).unwrap_or(i64::MAX)
+            ],
+        )?;
+        transaction.commit()?;
+        Ok(id)
+    }
+
+    pub fn finish_sync(
+        &self,
+        id: &str,
+        status: SyncRunStatus,
+        documents: Option<usize>,
+        bytes: Option<u64>,
+        deleted: Option<usize>,
+    ) -> Result<()> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let changed = connection.execute(
+            "UPDATE sync_runs
+             SET status=?2,completed_at=?3,documents=?4,bytes=?5,deleted=?6
+             WHERE id=?1 AND status='running'",
+            params![
+                id,
+                status.as_str(),
+                Utc::now().to_rfc3339(),
+                documents.map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                bytes.map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                deleted.map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+            ],
+        )?;
+        anyhow::ensure!(changed == 1, "sync run is missing or already completed");
         Ok(())
     }
 
@@ -376,6 +490,37 @@ impl Store {
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut sync_statement = connection.prepare(
+            "SELECT source,project,status,started_at,completed_at,documents,bytes,deleted,
+                    budget_documents,budget_bytes,budget_seconds
+             FROM (
+               SELECT sync_runs.*,
+                      ROW_NUMBER() OVER (
+                        PARTITION BY source,project
+                        ORDER BY started_at DESC,rowid DESC
+                      ) AS rank
+               FROM sync_runs
+             )
+             WHERE rank=1
+             ORDER BY project,source",
+        )?;
+        let sync_runs = sync_statement
+            .query_map([], |row| {
+                Ok(SourceSyncStats {
+                    source: row.get(0)?,
+                    project: row.get(1)?,
+                    status: row.get(2)?,
+                    started_at: row.get(3)?,
+                    completed_at: row.get(4)?,
+                    documents: row.get(5)?,
+                    bytes: row.get(6)?,
+                    deleted: row.get(7)?,
+                    budget_documents: row.get(8)?,
+                    budget_bytes: row.get(9)?,
+                    budget_seconds: row.get(10)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(StoreStats {
             documents,
             chunks,
@@ -383,6 +528,7 @@ impl Store {
             embedding_cache_entries,
             embedding_cache_hits,
             sources,
+            sync_runs,
         })
     }
 
@@ -828,6 +974,76 @@ mod tests {
         assert_eq!(stats.chunks, 1);
         assert_eq!(stats.sources[0].source, "test");
         assert_eq!(stats.embedding_cache_entries, 0);
+    }
+
+    #[test]
+    fn sync_runs_persist_latest_source_outcome_and_budgets() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let interrupted = store
+            .begin_sync("work-code", "work", 100, 2_048, 30)
+            .expect("begin interrupted sync");
+        let running = store.stats().expect("running stats");
+        assert_eq!(running.sync_runs.len(), 1);
+        assert_eq!(running.sync_runs[0].status, "running");
+        assert!(running.sync_runs[0].completed_at.is_none());
+
+        store
+            .finish_sync(
+                &interrupted,
+                SyncRunStatus::BudgetExceeded,
+                None,
+                None,
+                None,
+            )
+            .expect("finish interrupted sync");
+        let completed = store
+            .begin_sync("work-code", "work", 200, 4_096, 60)
+            .expect("begin completed sync");
+        store
+            .finish_sync(
+                &completed,
+                SyncRunStatus::Succeeded,
+                Some(12),
+                Some(1_024),
+                Some(2),
+            )
+            .expect("finish completed sync");
+
+        let latest = store.stats().expect("latest stats");
+        assert_eq!(latest.sync_runs.len(), 1);
+        let run = &latest.sync_runs[0];
+        assert_eq!(run.status, "succeeded");
+        assert_eq!(run.documents, Some(12));
+        assert_eq!(run.bytes, Some(1_024));
+        assert_eq!(run.deleted, Some(2));
+        assert_eq!(run.budget_documents, 200);
+        assert_eq!(run.budget_bytes, 4_096);
+        assert_eq!(run.budget_seconds, 60);
+        assert!(run.completed_at.is_some());
+    }
+
+    #[test]
+    fn sync_run_history_is_bounded_per_source() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        for _ in 0..(SYNC_RUNS_PER_SOURCE + 5) {
+            let run = store
+                .begin_sync("source", "project", 10, 1_024, 30)
+                .expect("begin sync");
+            store
+                .finish_sync(&run, SyncRunStatus::Succeeded, Some(1), Some(10), Some(0))
+                .expect("finish sync");
+        }
+        let connection = store.connection.lock().expect("store lock");
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sync_runs WHERE source='source' AND project='project'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("history count");
+        assert_eq!(count, i64::try_from(SYNC_RUNS_PER_SOURCE).unwrap());
     }
 
     #[test]

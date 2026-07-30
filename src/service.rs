@@ -156,6 +156,19 @@ pub fn status() -> Result<()> {
     Ok(())
 }
 
+pub fn sync_job_installed() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        launch_agents_directory()
+            .map(|directory| directory.join("ai.cortana.sync.plist").is_file())
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
 struct Job {
     label: &'static str,
     arguments: Vec<String>,

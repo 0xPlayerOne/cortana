@@ -18,26 +18,46 @@ export function App() {
   const [source, setSource] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [statusError, setStatusError] = useState('')
   const [leftOpen, setLeftOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
-    void Promise.all([
-      getStatus(controller.signal).then(setStatus),
-      getContext(query, undefined, undefined, controller.signal).then((next) => {
+    const statusRequest = getStatus(controller.signal)
+      .then(setStatus)
+      .catch((caught: unknown) => {
+        if (controller.signal.aborted) return
+        setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
+      })
+    const contextRequest = getContext(query, undefined, undefined, controller.signal)
+      .then((next) => {
         setBundle(next)
         setEvidence(next.evidence)
-      }),
-    ])
+      })
       .catch((caught: unknown) => {
         if (controller.signal.aborted) return
         setError(caught instanceof Error ? caught.message : 'Cortana is unavailable')
       })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
+    void Promise.allSettled([statusRequest, contextRequest]).finally(() => {
+      if (!controller.signal.aborted) setLoading(false)
+    })
     return () => controller.abort()
+  }, [])
+
+  useEffect(() => {
+    const refresh = () => {
+      void getStatus()
+        .then((next) => {
+          setStatus(next)
+          setStatusError('')
+        })
+        .catch((caught: unknown) => {
+          setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
+        })
+    }
+    const interval = window.setInterval(refresh, 15_000)
+    return () => window.clearInterval(interval)
   }, [])
 
   async function runSearch(value: string, nextSource = source) {
@@ -88,7 +108,7 @@ export function App() {
       <Navigation />
       <SourcePanel
         open={leftOpen}
-        sources={status?.sources ?? []}
+        status={status}
         selected={source}
         onSelect={chooseSource}
         onClose={() => setLeftOpen(false)}
@@ -114,17 +134,45 @@ export function App() {
         onClose={() => setRightOpen(false)}
       />
       <footer className="statusbar">
-        <span className={error ? 'health error' : 'health'}>
-          <i /> Index {error ? 'offline' : 'healthy'}
+        <span className={statusError ? 'health error' : 'health'}>
+          <i /> Index {statusError ? 'offline' : status ? 'online' : 'checking'}
         </span>
         <span>Embedding: {status?.embedding_fingerprint?.split(':')[1] ?? '—'}</span>
         <span>
           <FileText size={13} /> Docs: {(status?.documents ?? 0).toLocaleString()}
         </span>
+        <IngestionIndicator status={status} />
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
         <span>Workspace: All</span>
       </footer>
     </div>
+  )
+}
+
+function IngestionIndicator({ status }: { status: BrainStatus | null }) {
+  const runs = status?.sync_runs ?? []
+  const running = runs.filter((run) => run.status === 'running').length
+  const failed = runs.filter((run) =>
+    ['failed', 'cancelled', 'budget_exceeded'].includes(run.status)
+  ).length
+  const state = running
+    ? 'running'
+    : failed
+      ? 'warning'
+      : status?.ingestion.scheduled
+        ? 'healthy'
+        : 'manual'
+  const label = running
+    ? `${running} running`
+    : failed
+      ? `${failed} need attention`
+      : status?.ingestion.scheduled
+        ? 'scheduled'
+        : 'paused · manual'
+  return (
+    <span className={`ingestion-health ${state}`}>
+      <i /> Ingestion: {label}
+    </span>
   )
 }
