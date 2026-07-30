@@ -5,6 +5,7 @@ CHANGELOG.md
 .github/.code-foundry
 
 # Repository-specific rules
+# Repository-specific rules
 apps/web/dist
 coverage
 target
