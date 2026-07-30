@@ -60,6 +60,18 @@ export const demoStatus: BrainStatus = {
   embedding_fingerprint: 'openai-compatible:Qwen/Qwen3-Embedding-0.6B:1024',
   embedding_cache_entries: 42891,
   embedding_cache_hits: 10642,
+  query_cache_entries: 328,
+  query_cache_hits: 971,
+  answers_total: 1324,
+  query: {
+    mode: 'synthesized',
+    model: 'auto-efficient',
+    max_planned_queries: 4,
+    retrieval_limit: 10,
+    result_limit: 20,
+    cache_ttl_seconds: 3600,
+    answer_timeout_seconds: 55,
+  },
   documents: 9834,
   chunks: 128412,
   ingestion: {

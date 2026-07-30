@@ -10,6 +10,7 @@ that bearer token only in browser session storage.
 - `GET /healthz` is an unauthenticated process-liveness check.
 - `GET /readyz` verifies both the SQLite index and a real embedding request.
 - `GET /v1/status` reports source freshness, index counts, runtime counters, and cache telemetry.
+- `POST /v1/answer` runs the bounded human-facing query pipeline.
 - `GET /metrics` exports low-cardinality Prometheus metrics.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
@@ -21,6 +22,12 @@ embedding imports. Query-side cache hit counters and new query-vector cache writ
 best-effort while another process owns SQLite's writer lock; Cortana serves the retrieval result
 instead of failing a request for cache telemetry. Canonical ingestion writes remain strict and
 use SQLite's bounded busy timeout.
+
+Planned answers use a persistent cache keyed by the query contract, corpus revision, embedding
+fingerprint, model endpoint/name, scope, and retrieval limits. Any changed/deleted document or
+changed source timestamp increments the corpus revision. `cache_ttl_seconds = 0` disables reads and
+`cache_max_entries = 0` disables writes. `/v1/status` and `/metrics` expose answer counts, cache
+entries, and cache hits without logging queries or evidence.
 
 `/v1/status` also reports whether recurring ingestion is installed, the global and per-source
 safety budgets, every configured source including disabled or not-yet-indexed sources, and the

@@ -59,11 +59,37 @@ export type BrainStatus = {
   embedding_fingerprint: string | null
   embedding_cache_entries: number
   embedding_cache_hits: number
+  query_cache_entries: number
+  query_cache_hits: number
+  answers_total: number
+  query: {
+    mode: 'extractive' | 'synthesized'
+    model: string | null
+    max_planned_queries: number
+    retrieval_limit: number
+    result_limit: number
+    cache_ttl_seconds: number
+    answer_timeout_seconds: number
+  }
   documents: number
   chunks: number
   sources: SourceSummary[]
   sync_runs: SourceSyncSummary[]
   ingestion: IngestionStatus
+}
+
+export type AnswerResponse = {
+  query: string
+  answer: string
+  evidence: Evidence[]
+  plan: {
+    queries: string[]
+    model_generated: boolean
+  }
+  mode: 'extractive' | 'synthesized'
+  cached: boolean
+  latency_ms: number
+  warnings: string[]
 }
 
 export type ContextBundle = {

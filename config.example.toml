@@ -26,6 +26,29 @@ request_concurrency = 4
 startup_timeout_seconds = 120
 memory_limit_mb = 4096
 
+[query]
+# The HTTP API and workspace always expose /v1/answer. With synthesis disabled, Cortana uses
+# deterministic single-query retrieval and a citation-stable extractive answer.
+synthesis_enabled = false
+# Enable this after an OpenAI-compatible model gateway or cloud provider has been verified.
+base_url = "http://127.0.0.1:8008/v1"
+model = "auto-efficient"
+# api_key_env = "CORTANA_QUERY_API_KEY"
+# Planner output and retrieval fan-out are hard-clamped by the runtime.
+max_planned_queries = 4
+retrieval_limit = 10
+result_limit = 20
+context_tokens = 8000
+output_tokens = 1200
+request_timeout_seconds = 45
+# Hard end-to-end deadline; clamped below the API's 60-second request timeout.
+answer_timeout_seconds = 55
+request_concurrency = 4
+# Answers are invalidated whenever indexed content, timestamps, or the embedding fingerprint
+# changes. Set either value to 0 to disable reuse without deleting prior cache rows.
+cache_max_entries = 10000
+cache_ttl_seconds = 3600
+
 [ingestion]
 # Every source must pass a complete preflight before Cortana embeds or reconciles it.
 # These conservative defaults bound first-run and unexpectedly expanded snapshots.

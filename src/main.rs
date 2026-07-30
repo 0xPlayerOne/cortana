@@ -497,9 +497,27 @@ async fn main() -> Result<()> {
                 "--allow-remote requires --api-token-env"
             );
             let web_dir = (!no_web).then_some(web_dir);
+            let query_api_key = config
+                .query
+                .api_key_env
+                .as_deref()
+                .map(|name| {
+                    config.environment_value(name).with_context(|| {
+                        format!("query API key environment variable {name} is not set")
+                    })
+                })
+                .transpose()?;
+            let query_model = cortana::answer::configured_model(&config.query, query_api_key)?;
+            let answer = cortana::answer::AnswerEngine::new(
+                store.clone(),
+                embedder.clone(),
+                query_model,
+                config.query.clone(),
+            );
             api::serve(
                 api::AppState::new(store, embedder, api_token)
-                    .with_config(&config, service::sync_job_installed()),
+                    .with_config(&config, service::sync_job_installed())
+                    .with_answer_engine(answer),
                 &address,
                 web_dir.as_deref(),
                 allow_remote,
