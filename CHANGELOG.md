@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.9.0](https://github.com/0xPlayerOne/cortana/compare/v0.8.0...v0.9.0) (2026-07-30)
+
+
+### Features
+
+* **desktop:** finish management control plane ([f62b68a](https://github.com/0xPlayerOne/cortana/commit/f62b68a44ab2636694d5fe41b6c87ec9a95ae6f0))
+* **desktop:** finish management control plane ([7103935](https://github.com/0xPlayerOne/cortana/commit/71039358d60ee2eb5741918fef2709b87af6ecef))
+* **desktop:** promote management control plane ([071d007](https://github.com/0xPlayerOne/cortana/commit/071d0073b3a4788862a3848681cb3313584b7bbe))
+
+
+### Bug Fixes
+
+* **desktop:** audit failed service actions ([40baef0](https://github.com/0xPlayerOne/cortana/commit/40baef01a2a446bd2c8f1602a1ff76a7433f71a8))
+* **desktop:** normalize control plane documentation ([6d33a7e](https://github.com/0xPlayerOne/cortana/commit/6d33a7e232c535df004906f7cb349c1912fdb1c4))
+
+
+### Maintenance
+
+* reconcile v0.8 main lineage ([47efcb0](https://github.com/0xPlayerOne/cortana/commit/47efcb07f0656fb49591c3a5c8ecb3b21e16ac11))
+* reconcile v0.8 main lineage ([3d749f6](https://github.com/0xPlayerOne/cortana/commit/3d749f6b3ccae70c325eebee50068f37ef08ded4))
+* **release:** synchronize main -&gt; staging ([c33d7e7](https://github.com/0xPlayerOne/cortana/commit/c33d7e751598ae1633d6ca8bcf376a078b64b3df))
+* **release:** synchronize main -&gt; staging ([7ea413a](https://github.com/0xPlayerOne/cortana/commit/7ea413aa3327fe73c132031f0f5e714b53405473))
+
 ## [0.8.0](https://github.com/0xPlayerOne/cortana/compare/v0.7.0...v0.8.0) (2026-07-30)
 
 
