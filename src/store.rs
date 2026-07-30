@@ -91,6 +91,7 @@ pub struct AuditEvent {
 pub struct DocumentSummary {
     pub id: String,
     pub source: String,
+    pub source_id: String,
     pub title: String,
     pub uri: Option<String>,
     pub updated_at: String,
@@ -99,12 +100,26 @@ pub struct DocumentSummary {
     pub content_chars: usize,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct DocumentReference {
+    pub id: String,
+    pub source: String,
+    pub source_id: String,
+    pub title: String,
+    pub uri: Option<String>,
+    pub updated_at: String,
+    pub project: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct DocumentDetail {
     #[serde(flatten)]
     pub summary: DocumentSummary,
     pub content: String,
     pub metadata: Value,
+    pub acl: Vec<String>,
+    pub backlinks: Vec<DocumentReference>,
+    pub surrounding: Vec<DocumentReference>,
     pub truncated: bool,
 }
 
@@ -156,6 +171,10 @@ impl Store {
                updated_at TEXT NOT NULL, project TEXT NOT NULL, acl_json TEXT NOT NULL,
                metadata_json TEXT NOT NULL, content TEXT NOT NULL DEFAULT '',
                UNIQUE(source, source_id));
+             CREATE TABLE IF NOT EXISTS document_links(
+               document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+               target TEXT NOT NULL,
+               PRIMARY KEY(document_id,target));
              CREATE TABLE IF NOT EXISTS chunks(
                id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
                ordinal INTEGER NOT NULL, content TEXT NOT NULL, embedding_json TEXT NOT NULL,
@@ -184,6 +203,8 @@ impl Store {
              CREATE INDEX IF NOT EXISTS idx_documents_scope ON documents(project, source);
              CREATE INDEX IF NOT EXISTS idx_documents_browse
                ON documents(updated_at DESC,id DESC);
+             CREATE INDEX IF NOT EXISTS idx_document_links_target
+               ON document_links(target);
              CREATE INDEX IF NOT EXISTS idx_chunks_document_ordinal
                ON chunks(document_id,ordinal);
              CREATE INDEX IF NOT EXISTS idx_sync_runs_source
@@ -196,6 +217,7 @@ impl Store {
             [],
         )?;
         ensure_document_content_column(&connection)?;
+        backfill_document_links(&mut connection)?;
         migrate_embedding_blobs(&mut connection)?;
         secure_database_files(path)?;
         Ok(Self {
@@ -326,6 +348,13 @@ impl Store {
                 serde_json::to_string(&document.acl)?, document.metadata.to_string(),
                 document.content],
         )?;
+        transaction.execute("DELETE FROM document_links WHERE document_id=?1", [&id])?;
+        for target in metadata_reference_strings(&document.metadata) {
+            transaction.execute(
+                "INSERT OR IGNORE INTO document_links(document_id,target) VALUES(?1,?2)",
+                params![id, target],
+            )?;
+        }
         for (ordinal, (content, embedding)) in chunks.iter().enumerate() {
             let chunk_id = format!("{id}:{ordinal}");
             transaction.execute(
@@ -570,23 +599,27 @@ impl Store {
         &self,
         project: Option<&str>,
         source: Option<&str>,
+        query: Option<&str>,
         cursor: Option<&DocumentCursor>,
         limit: usize,
         principal_acl: &[String],
     ) -> Result<DocumentPage> {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
-            "SELECT d.id,d.source,d.title,d.uri,d.updated_at,d.project,d.acl_json,
+            "SELECT d.id,d.source,d.source_id,d.title,d.uri,d.updated_at,d.project,d.acl_json,
                     COUNT(c.id),
                     CASE WHEN length(d.content)>0 THEN length(d.content)
                          ELSE COALESCE(SUM(length(c.content)),0) END
              FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
              WHERE (?1 IS NULL OR d.project=?1)
                AND (?2 IS NULL OR d.source=?2)
-               AND (?3 IS NULL OR d.updated_at<?3 OR (d.updated_at=?3 AND d.id<?4))
+               AND (?3 IS NULL OR instr(lower(d.title),lower(?3))>0
+                    OR instr(lower(d.source),lower(?3))>0
+                    OR instr(lower(d.source_id),lower(?3))>0)
+               AND (?4 IS NULL OR d.updated_at<?4 OR (d.updated_at=?4 AND d.id<?5))
              GROUP BY d.id
              ORDER BY d.updated_at DESC,d.id DESC
-             LIMIT ?5",
+             LIMIT ?6",
         )?;
         let page_size = limit.clamp(1, 100);
         let mut scan_cursor = cursor.cloned();
@@ -598,32 +631,34 @@ impl Store {
                     params![
                         project,
                         source,
+                        query,
                         scan_cursor.as_ref().map(|value| value.updated_at.as_str()),
                         scan_cursor.as_ref().map(|value| value.id.as_str()),
                         i64::try_from(scan_limit).unwrap_or(400),
                     ],
                     |row| {
-                        let acl_json = row.get::<_, String>(6)?;
+                        let acl_json = row.get::<_, String>(7)?;
                         let acl =
                             serde_json::from_str::<Vec<String>>(&acl_json).map_err(|error| {
                                 rusqlite::Error::FromSqlConversionFailure(
-                                    6,
+                                    7,
                                     Type::Text,
                                     Box::new(error),
                                 )
                             })?;
                         let chunk_count =
-                            usize::try_from(row.get::<_, i64>(7)?).unwrap_or(usize::MAX);
-                        let content_chars =
                             usize::try_from(row.get::<_, i64>(8)?).unwrap_or(usize::MAX);
+                        let content_chars =
+                            usize::try_from(row.get::<_, i64>(9)?).unwrap_or(usize::MAX);
                         Ok((
                             DocumentSummary {
                                 id: row.get(0)?,
                                 source: row.get(1)?,
-                                title: row.get(2)?,
-                                uri: row.get(3)?,
-                                updated_at: row.get(4)?,
-                                project: row.get(5)?,
+                                source_id: row.get(2)?,
+                                title: row.get(3)?,
+                                uri: row.get(4)?,
+                                updated_at: row.get(5)?,
+                                project: row.get(6)?,
                                 chunk_count,
                                 content_chars,
                             },
@@ -666,7 +701,7 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         let record = connection
             .query_row(
-                "SELECT d.source,d.title,d.uri,d.updated_at,d.project,d.acl_json,
+                "SELECT d.source,d.source_id,d.title,d.uri,d.updated_at,d.project,d.acl_json,
                         d.metadata_json,
                         CAST(substr(CAST(d.content AS BLOB),1,?2) AS BLOB),
                         length(CAST(d.content AS BLOB)),COUNT(c.id),
@@ -682,21 +717,23 @@ impl Store {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Option<String>>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, String>(5)?,
                         row.get::<_, String>(6)?,
-                        row.get::<_, Option<Vec<u8>>>(7)?.unwrap_or_default(),
-                        row.get::<_, i64>(8)?,
+                        row.get::<_, String>(7)?,
+                        row.get::<_, Option<Vec<u8>>>(8)?.unwrap_or_default(),
                         row.get::<_, i64>(9)?,
                         row.get::<_, i64>(10)?,
+                        row.get::<_, i64>(11)?,
                     ))
                 },
             )
             .optional()?;
         let Some((
             source,
+            source_id,
             title,
             uri,
             updated_at,
@@ -716,6 +753,16 @@ impl Store {
             return Ok(None);
         }
         let metadata = serde_json::from_str(&metadata_json)?;
+        let backlinks = document_backlinks(
+            &connection,
+            id,
+            &source,
+            &source_id,
+            uri.as_deref(),
+            &project,
+            principal_acl,
+        )?;
+        let surrounding = surrounding_documents(&connection, id, &source, &project, principal_acl)?;
         let (content, truncated) = if stored_content.is_empty() {
             let legacy_fetch_limit = max_content_bytes.saturating_add(512);
             let mut statement = connection.prepare(
@@ -740,6 +787,7 @@ impl Store {
             summary: DocumentSummary {
                 id: id.to_string(),
                 source,
+                source_id,
                 title,
                 uri,
                 updated_at,
@@ -749,6 +797,9 @@ impl Store {
             },
             content,
             metadata,
+            acl,
+            backlinks,
+            surrounding,
             truncated,
         }))
     }
@@ -1274,6 +1325,214 @@ impl Store {
     }
 }
 
+fn backfill_document_links(connection: &mut Connection) -> Result<()> {
+    let indexed: Option<String> = connection
+        .query_row(
+            "SELECT value FROM meta WHERE key='document_links_version'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if indexed.as_deref() == Some("1") {
+        return Ok(());
+    }
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT OR IGNORE INTO document_links(document_id,target)
+         SELECT document_id,target FROM (
+           SELECT d.id AS document_id,j.value AS target,
+                  row_number() OVER (PARTITION BY d.id ORDER BY j.fullkey) AS ordinal
+           FROM documents d,json_tree(d.metadata_json) j
+           WHERE j.type='text' AND length(j.value) BETWEEN 1 AND 4096
+             AND (
+               lower(CAST(j.key AS TEXT)) IN (
+                 'uri','url','link','links','ref','refs','reference','references',
+                 'related','source_id','document_id','parent_uri','parent_id'
+               )
+               OR lower(j.path) IN (
+                 '$.links','$.refs','$.references','$.related'
+               )
+               OR lower(j.path) LIKE '%.links'
+               OR lower(j.path) LIKE '%.refs'
+               OR lower(j.path) LIKE '%.references'
+               OR lower(j.path) LIKE '%.related'
+             )
+         ) WHERE ordinal<=256",
+        [],
+    )?;
+    transaction.execute(
+        "INSERT INTO meta(key,value) VALUES('document_links_version','1')
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+fn document_backlinks(
+    connection: &Connection,
+    id: &str,
+    source: &str,
+    source_id: &str,
+    uri: Option<&str>,
+    project: &str,
+    principal_acl: &[String],
+) -> Result<Vec<DocumentReference>> {
+    let mut statement = connection.prepare(
+        "SELECT d.id,d.source,d.source_id,d.title,d.uri,d.updated_at,d.project,d.acl_json
+         FROM document_links l JOIN documents d ON d.id=l.document_id
+         WHERE d.id<>?1 AND d.project=?2
+           AND ((d.source=?3 AND l.target=?4) OR (?5 IS NOT NULL AND l.target=?5))
+         GROUP BY d.id
+         ORDER BY d.updated_at DESC,d.id DESC
+         LIMIT 200",
+    )?;
+    let rows = statement
+        .query_map(params![id, project, source, source_id, uri], |row| {
+            Ok((
+                DocumentReference {
+                    id: row.get(0)?,
+                    source: row.get(1)?,
+                    source_id: row.get(2)?,
+                    title: row.get(3)?,
+                    uri: row.get(4)?,
+                    updated_at: row.get(5)?,
+                    project: row.get(6)?,
+                },
+                row.get::<_, String>(7)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut references = Vec::with_capacity(12);
+    for (reference, acl_json) in rows {
+        let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+        if acl_allows(&acl, principal_acl) {
+            references.push(reference);
+            if references.len() == 12 {
+                break;
+            }
+        }
+    }
+    Ok(references)
+}
+
+fn metadata_reference_strings(value: &Value) -> Vec<String> {
+    let mut values = HashSet::new();
+    collect_metadata_reference_strings(value, &mut values);
+    let mut values = values.into_iter().collect::<Vec<_>>();
+    values.sort();
+    values
+}
+
+fn collect_metadata_reference_strings(value: &Value, values: &mut HashSet<String>) {
+    if values.len() >= 256 {
+        return;
+    }
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_metadata_reference_strings(item, values);
+            }
+        }
+        Value::Object(items) => {
+            for (key, item) in items {
+                if is_reference_metadata_key(key) {
+                    collect_reference_values(item, values);
+                } else {
+                    collect_metadata_reference_strings(item, values);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn is_reference_metadata_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "uri"
+            | "url"
+            | "link"
+            | "links"
+            | "ref"
+            | "refs"
+            | "reference"
+            | "references"
+            | "related"
+            | "source_id"
+            | "document_id"
+            | "parent_uri"
+            | "parent_id"
+    )
+}
+
+fn collect_reference_values(value: &Value, values: &mut HashSet<String>) {
+    if values.len() >= 256 {
+        return;
+    }
+    match value {
+        Value::String(value) if !value.is_empty() && value.len() <= 4096 => {
+            values.insert(value.clone());
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_reference_values(item, values);
+            }
+        }
+        Value::Object(items) => {
+            for item in items.values() {
+                collect_reference_values(item, values);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn surrounding_documents(
+    connection: &Connection,
+    id: &str,
+    source: &str,
+    project: &str,
+    principal_acl: &[String],
+) -> Result<Vec<DocumentReference>> {
+    let mut statement = connection.prepare(
+        "SELECT d.id,d.source,d.source_id,d.title,d.uri,d.updated_at,d.project,d.acl_json
+         FROM documents d
+         WHERE d.id<>?1 AND d.source=?2 AND d.project=?3
+         ORDER BY abs(julianday(d.updated_at)-julianday(
+             (SELECT updated_at FROM documents WHERE id=?1)
+         )),d.updated_at DESC,d.id DESC
+         LIMIT 64",
+    )?;
+    let rows = statement
+        .query_map(params![id, source, project], |row| {
+            Ok((
+                DocumentReference {
+                    id: row.get(0)?,
+                    source: row.get(1)?,
+                    source_id: row.get(2)?,
+                    title: row.get(3)?,
+                    uri: row.get(4)?,
+                    updated_at: row.get(5)?,
+                    project: row.get(6)?,
+                },
+                row.get::<_, String>(7)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut references = Vec::with_capacity(8);
+    for (reference, acl_json) in rows {
+        let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+        if acl_allows(&acl, principal_acl) {
+            references.push(reference);
+            if references.len() == 8 {
+                break;
+            }
+        }
+    }
+    Ok(references)
+}
+
 fn optional_write<T>(
     connection: &Connection,
     operation: impl FnOnce() -> rusqlite::Result<T>,
@@ -1630,14 +1889,29 @@ mod tests {
         work.updated_at = "2026-01-02T00:00:00Z".parse().expect("timestamp");
         let mut public = document("public", "public exact content");
         public.updated_at = "2026-01-01T00:00:00Z".parse().expect("timestamp");
+        public.metadata = serde_json::json!({
+            "references": ["work"],
+            "access_token": "do-not-index-as-a-link"
+        });
         for item in [&personal, &work, &public] {
             store
                 .upsert(item, &[(item.content.clone(), vec![1.0])])
                 .expect("insert document");
         }
+        let secret_link_count: i64 = store
+            .connection
+            .lock()
+            .expect("store lock")
+            .query_row(
+                "SELECT COUNT(*) FROM document_links WHERE target='do-not-index-as-a-link'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("secret link count");
+        assert_eq!(secret_link_count, 0);
 
         let first = store
-            .list_documents_scoped(None, None, None, 1, &["work".into()])
+            .list_documents_scoped(None, None, None, None, 1, &["work".into()])
             .expect("first page");
         assert_eq!(first.documents[0].title, "work");
         assert!(first.has_more);
@@ -1646,7 +1920,7 @@ mod tests {
             id: first.documents[0].id.clone(),
         };
         let second = store
-            .list_documents_scoped(None, None, Some(&cursor), 1, &["work".into()])
+            .list_documents_scoped(None, None, None, Some(&cursor), 1, &["work".into()])
             .expect("second page");
         assert_eq!(second.documents[0].title, "public");
         assert!(!second.has_more);
@@ -1663,7 +1937,17 @@ mod tests {
             .expect("visible detail");
         assert_eq!(detail.content, "work exa");
         assert!(detail.truncated);
+        assert_eq!(detail.summary.source_id, "work");
+        assert_eq!(detail.acl, ["work"]);
+        assert_eq!(detail.backlinks[0].source_id, "public");
+        assert_eq!(detail.surrounding[0].source_id, "public");
         assert_eq!(detail.summary.content_chars, work.content.chars().count());
+
+        let filtered = store
+            .list_documents_scoped(None, None, Some("WORK"), None, 10, &["work".into()])
+            .expect("filtered page");
+        assert_eq!(filtered.documents.len(), 1);
+        assert_eq!(filtered.documents[0].source_id, "work");
     }
 
     #[test]
@@ -1756,6 +2040,15 @@ mod tests {
                    metadata_json TEXT NOT NULL,UNIQUE(source,source_id));",
             )
             .expect("legacy schema");
+        connection
+            .execute(
+                "INSERT INTO documents(
+                   id,source,source_id,title,uri,content_hash,updated_at,project,acl_json,metadata_json
+                 ) VALUES('legacy-id','notes','legacy-source','Legacy',NULL,'hash',
+                          '2026-01-01T00:00:00Z','demo','[]','{\"ref\":\"legacy-target\"}')",
+                [],
+            )
+            .expect("legacy document");
         drop(connection);
 
         drop(Store::open(&path).expect("migrate store"));
@@ -1768,6 +2061,15 @@ mod tests {
             .collect::<rusqlite::Result<Vec<_>>>()
             .expect("column names");
         assert!(columns.iter().any(|column| column == "content"));
+        let link_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM document_links
+                 WHERE document_id='legacy-id' AND target='legacy-target'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("backfilled link");
+        assert_eq!(link_count, 1);
     }
 
     #[test]

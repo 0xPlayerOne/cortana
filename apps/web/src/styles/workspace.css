@@ -110,6 +110,26 @@
   font-size: 12px;
 }
 
+.document-labels {
+  display: flex;
+  margin-top: 12px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.document-labels span {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 4px 7px;
+  color: #64655f;
+  border: 1px solid #d6d2c8;
+  border-radius: 10px;
+  background: #f5f2e9;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rule {
   height: 1px;
   margin: 24px 0;
@@ -156,6 +176,37 @@
   font-size: 12px;
 }
 
+.document-metadata {
+  margin-top: 12px;
+  color: #575853;
+  font-size: 11px;
+}
+
+.document-metadata summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.document-metadata dl {
+  max-height: 260px;
+  margin: 8px 0;
+  overflow-y: auto;
+}
+
+.document-metadata dl > div {
+  padding: 5px 0;
+  border-top: 1px solid #dedbd3;
+}
+
+.document-metadata dt {
+  font-weight: 700;
+}
+
+.document-metadata dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
 .document-outline svg {
   display: block;
   margin: 42px auto 14px;
@@ -168,6 +219,51 @@
   font-size: 17px;
   line-height: 1.72;
   white-space: pre-wrap;
+}
+
+.document-relations {
+  display: grid;
+  margin-top: 36px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.document-relations section {
+  min-width: 0;
+}
+
+.document-relations h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.document-relations button {
+  display: grid;
+  width: 100%;
+  min-height: 36px;
+  align-items: center;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  padding: 0 6px;
+  gap: 4px;
+  color: #4c5364;
+  border: 0;
+  border-top: 1px solid #dedbd3;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.document-relations button span,
+.document-relations button small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-relations button small {
+  max-width: 90px;
+  color: #777873;
+  font-size: 10px;
 }
 
 .document-outline small {

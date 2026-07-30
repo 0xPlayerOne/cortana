@@ -1,10 +1,10 @@
-@media (max-width: 1180px) {
+@media (max-width: 1280px) {
   .shell {
     grid-template:
       'rail title title' 56px
       'rail sources workspace' minmax(0, 1fr)
       'rail status status' 40px /
-      64px 250px minmax(470px, 1fr);
+      64px var(--source-width, 250px) minmax(470px, 1fr);
   }
 
   .context-panel {
@@ -25,6 +25,24 @@
 
   .mobile-button {
     display: grid !important;
+  }
+
+  .context-resizer {
+    display: none;
+  }
+
+  .source-resizer {
+    left: calc(64px + var(--source-width, 250px) - 4px);
+  }
+}
+
+@media (max-width: 1000px) {
+  .shell {
+    --source-width: 250px !important;
+  }
+
+  .source-resizer {
+    display: none;
   }
 }
 
@@ -118,6 +136,10 @@
     transition: transform 180ms ease;
   }
 
+  .pane-resizer {
+    display: none;
+  }
+
   .source-panel.mobile-open {
     transform: translateX(0);
   }
@@ -145,6 +167,10 @@
 
   .document-outline {
     display: none;
+  }
+
+  .document-relations {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .breadcrumbs {

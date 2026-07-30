@@ -14,6 +14,7 @@ export type Evidence = {
 export type BrainDocumentSummary = {
   id: string
   source: string
+  source_id: string
   title: string
   uri: string | null
   updated_at: string
@@ -22,14 +23,43 @@ export type BrainDocumentSummary = {
   content_chars: number
 }
 
+export type BrainDocumentReference = Pick<
+  BrainDocumentSummary,
+  'id' | 'source' | 'source_id' | 'title' | 'uri' | 'updated_at' | 'project'
+>
+
 export type BrainDocument = BrainDocumentSummary & {
   content: string
   metadata: Record<string, unknown>
+  acl: string[]
+  backlinks: BrainDocumentReference[]
+  surrounding: BrainDocumentReference[]
   truncated: boolean
 }
 
 export type BrainDocumentPage = {
   documents: BrainDocumentSummary[]
+  next_cursor: string | null
+}
+
+export type BrainGraphNode = {
+  id: string
+  kind: 'workspace' | 'source' | 'document'
+  label: string
+  project: string
+  source: string | null
+  document_id: string | null
+}
+
+export type BrainGraphEdge = {
+  source: string
+  target: string
+  kind: 'contains'
+}
+
+export type BrainGraphPage = {
+  nodes: BrainGraphNode[]
+  edges: BrainGraphEdge[]
   next_cursor: string | null
 }
 
