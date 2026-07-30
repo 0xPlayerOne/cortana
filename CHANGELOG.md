@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.4.0](https://github.com/0xPlayerOne/cortana/compare/v0.3.1...v0.4.0) (2026-07-30)
+
+
+### Features
+
+* **operations:** persist source validation readiness ([14b0e31](https://github.com/0xPlayerOne/cortana/commit/14b0e317cd7d663ce09abfe4efa192825f5f28ab))
+
+
+### Bug Fixes
+
+* **query:** enforce grounded synthesis readiness ([9d4041a](https://github.com/0xPlayerOne/cortana/commit/9d4041a62586d76b035ce4af4afefa9b33a78f23))
+* **query:** enforce grounded synthesis readiness ([5beac22](https://github.com/0xPlayerOne/cortana/commit/5beac2298c9a739811c9f9c2f801fce16a323d98))
+* **release:** restore single application version ([cd97631](https://github.com/0xPlayerOne/cortana/commit/cd97631efc1cc08b9db49d6809d532ba43a7091d))
+* remove Cortana configuration overrides ([7d33cd5](https://github.com/0xPlayerOne/cortana/commit/7d33cd5c73a27defc94addcd99c810859d296a5a))
+* remove Cortana configuration overrides ([166b2cb](https://github.com/0xPlayerOne/cortana/commit/166b2cbe1c473279dc764a4f681800130b1a3fc3))
+
+
+### Maintenance
+
+* release main ([446a721](https://github.com/0xPlayerOne/cortana/commit/446a7211412b539f21a8b119918d5c5371ecdf62))
+* release main ([3b00080](https://github.com/0xPlayerOne/cortana/commit/3b00080dc654269302d38a5c2b59cb4d7a9ecc23))
+* **staging:** sync main promotion history ([15431b7](https://github.com/0xPlayerOne/cortana/commit/15431b74bd042e2340854783f32a8a6584c9e483))
+* **staging:** sync main promotion history ([fbfef79](https://github.com/0xPlayerOne/cortana/commit/fbfef79fcc8adfa18f21a8adb0f21bd050b7afe7))
+* tidy ignore configuration ([254220e](https://github.com/0xPlayerOne/cortana/commit/254220e16bba068a6dd6d4cf88beedd41c404102))
+* tidy ignore configuration ([7273f9b](https://github.com/0xPlayerOne/cortana/commit/7273f9bfe4f7901ded490846e910747f95b93191))
+
 ## [0.3.1](https://github.com/0xPlayerOne/cortana/compare/v0.3.0...v0.3.1) (2026-07-30)
 
 
