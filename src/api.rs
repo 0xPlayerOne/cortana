@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -33,6 +34,7 @@ use crate::{
 
 const MAX_DOCUMENT_CONTENT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DOCUMENT_SCOPE_LENGTH: usize = 256;
+const MAX_DOCUMENT_QUERY_LENGTH: usize = 256;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
 
 #[derive(Clone)]
@@ -154,6 +156,7 @@ struct Status {
 struct DocumentListParams {
     project: Option<String>,
     source: Option<String>,
+    query: Option<String>,
     cursor: Option<String>,
     #[serde(default = "default_document_limit")]
     limit: usize,
@@ -169,6 +172,30 @@ struct EncodedDocumentCursor {
 #[derive(Debug, Serialize)]
 struct DocumentListResponse {
     documents: Vec<DocumentSummary>,
+    next_cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct GraphNode {
+    id: String,
+    kind: &'static str,
+    label: String,
+    project: String,
+    source: Option<String>,
+    document_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct GraphEdge {
+    source: String,
+    target: String,
+    kind: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+struct GraphResponse {
+    nodes: Vec<GraphNode>,
+    edges: Vec<GraphEdge>,
     next_cursor: Option<String>,
 }
 
@@ -270,6 +297,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/status", get(status))
         .route("/v1/documents", get(list_documents))
         .route("/v1/documents/{id}", get(document))
+        .route("/v1/graph", get(graph))
         .route("/v1/search", post(search))
         .route("/v1/context", post(context))
         .route("/v1/answer", post(answer))
@@ -334,6 +362,7 @@ async fn list_documents(
 ) -> Result<Json<DocumentListResponse>, (StatusCode, String)> {
     validate_document_scope("project", params.project.as_deref())?;
     validate_document_scope("source", params.source.as_deref())?;
+    validate_document_query(params.query.as_deref())?;
     let cursor = params
         .cursor
         .as_deref()
@@ -343,6 +372,7 @@ async fn list_documents(
     let result = state.store.list_documents_scoped(
         params.project.as_deref(),
         params.source.as_deref(),
+        params.query.as_deref(),
         cursor.as_ref(),
         params.limit.clamp(1, 100),
         &principal.acl_labels(),
@@ -448,11 +478,135 @@ async fn document(
     }
 }
 
+async fn graph(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumQuery(params): AxumQuery<DocumentListParams>,
+) -> Result<Json<GraphResponse>, (StatusCode, String)> {
+    validate_document_scope("project", params.project.as_deref())?;
+    validate_document_scope("source", params.source.as_deref())?;
+    validate_document_query(params.query.as_deref())?;
+    let cursor = params
+        .cursor
+        .as_deref()
+        .map(decode_document_cursor)
+        .transpose()?;
+    let started = Instant::now();
+    let result = state.store.list_documents_scoped(
+        params.project.as_deref(),
+        params.source.as_deref(),
+        params.query.as_deref(),
+        cursor.as_ref(),
+        params.limit.clamp(1, 100),
+        &principal.acl_labels(),
+    );
+    match result {
+        Ok(page) => {
+            let next_cursor = if page.has_more {
+                page.documents
+                    .last()
+                    .map(encode_document_cursor)
+                    .transpose()?
+            } else {
+                None
+            };
+            let mut nodes = Vec::new();
+            let mut edges = Vec::new();
+            let mut workspaces = BTreeSet::new();
+            let mut sources = BTreeSet::new();
+            for document in &page.documents {
+                let workspace_id = format!("workspace:{}", serde_json::json!([document.project]));
+                let source_id = format!(
+                    "source:{}",
+                    serde_json::json!([document.project, document.source])
+                );
+                if workspaces.insert(workspace_id.clone()) {
+                    nodes.push(GraphNode {
+                        id: workspace_id.clone(),
+                        kind: "workspace",
+                        label: document.project.clone(),
+                        project: document.project.clone(),
+                        source: None,
+                        document_id: None,
+                    });
+                }
+                if sources.insert(source_id.clone()) {
+                    nodes.push(GraphNode {
+                        id: source_id.clone(),
+                        kind: "source",
+                        label: document.source.clone(),
+                        project: document.project.clone(),
+                        source: Some(document.source.clone()),
+                        document_id: None,
+                    });
+                    edges.push(GraphEdge {
+                        source: workspace_id,
+                        target: source_id.clone(),
+                        kind: "contains",
+                    });
+                }
+                nodes.push(GraphNode {
+                    id: format!("document:{}", document.id),
+                    kind: "document",
+                    label: document.title.clone(),
+                    project: document.project.clone(),
+                    source: Some(document.source.clone()),
+                    document_id: Some(document.id.clone()),
+                });
+                edges.push(GraphEdge {
+                    source: source_id,
+                    target: format!("document:{}", document.id),
+                    kind: "contains",
+                });
+            }
+            record_audit(
+                &state,
+                &principal,
+                "graph.read",
+                params.project.as_deref(),
+                params.source.as_deref(),
+                "succeeded",
+                Some(page.documents.len()),
+                started,
+            );
+            Ok(Json(GraphResponse {
+                nodes,
+                edges,
+                next_cursor,
+            }))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "graph.read",
+                params.project.as_deref(),
+                params.source.as_deref(),
+                "failed",
+                None,
+                started,
+            );
+            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            Err(internal_error(error))
+        }
+    }
+}
+
 fn validate_document_scope(name: &str, value: Option<&str>) -> Result<(), (StatusCode, String)> {
     if value.is_some_and(|value| value.is_empty() || value.len() > MAX_DOCUMENT_SCOPE_LENGTH) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("{name} must contain 1 to {MAX_DOCUMENT_SCOPE_LENGTH} bytes"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_document_query(value: Option<&str>) -> Result<(), (StatusCode, String)> {
+    if value.is_some_and(|value| value.is_empty() || value.len() > MAX_DOCUMENT_QUERY_LENGTH) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("query must contain 1 to {MAX_DOCUMENT_QUERY_LENGTH} bytes"),
         ));
     }
     Ok(())
@@ -1117,6 +1271,7 @@ mod tests {
         let first_value: serde_json::Value =
             serde_json::from_slice(&first_body).expect("list JSON");
         assert_eq!(first_value["documents"].as_array().map(Vec::len), Some(1));
+        assert_eq!(first_value["documents"][0]["source_id"], "note-0");
         let cursor = first_value["next_cursor"].as_str().expect("next cursor");
         let id = first_value["documents"][0]["id"]
             .as_str()
@@ -1153,6 +1308,52 @@ mod tests {
             serde_json::from_slice(&detail_body).expect("detail JSON");
         assert_eq!(detail_value["content"], "first body");
         assert_eq!(detail_value["metadata"]["kind"], "note");
+        assert_eq!(detail_value["source_id"], "note-0");
+        assert_eq!(detail_value["acl"], serde_json::json!([]));
+        assert_eq!(
+            detail_value["surrounding"][0]["source_id"],
+            serde_json::json!("note-1")
+        );
+
+        let filtered = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/documents?project=demo&query=Note%201&limit=10")
+                    .body(Body::empty())
+                    .expect("filtered request"),
+            )
+            .await
+            .expect("filtered response");
+        assert_eq!(filtered.status(), StatusCode::OK);
+        let filtered_body = to_bytes(filtered.into_body(), 1024 * 1024)
+            .await
+            .expect("filtered body");
+        let filtered_value: serde_json::Value =
+            serde_json::from_slice(&filtered_body).expect("filtered JSON");
+        assert_eq!(
+            filtered_value["documents"][0]["source_id"],
+            serde_json::json!("note-1")
+        );
+
+        let graph = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/graph?project=demo&limit=10")
+                    .body(Body::empty())
+                    .expect("graph request"),
+            )
+            .await
+            .expect("graph response");
+        assert_eq!(graph.status(), StatusCode::OK);
+        let graph_body = to_bytes(graph.into_body(), 1024 * 1024)
+            .await
+            .expect("graph body");
+        let graph_value: serde_json::Value =
+            serde_json::from_slice(&graph_body).expect("graph JSON");
+        assert_eq!(graph_value["nodes"].as_array().map(Vec::len), Some(4));
+        assert_eq!(graph_value["edges"].as_array().map(Vec::len), Some(3));
 
         let invalid = app
             .oneshot(
@@ -1226,6 +1427,32 @@ mod tests {
             .insert("ADMIN_TOKEN".into(), "admin-secret".into());
         let policy = AuthPolicy::from_config(&config, None).expect("auth policy");
         let app = router(state.with_config(&config, false).with_auth_policy(policy));
+        let graph = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/graph?project=demo&limit=10")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("graph request"),
+            )
+            .await
+            .expect("graph response");
+        assert_eq!(graph.status(), StatusCode::OK);
+        let graph_body = to_bytes(graph.into_body(), 1024 * 1024)
+            .await
+            .expect("graph body");
+        let graph_value: serde_json::Value =
+            serde_json::from_slice(&graph_body).expect("graph JSON");
+        let document_nodes = graph_value["nodes"]
+            .as_array()
+            .expect("graph nodes")
+            .iter()
+            .filter(|node| node["kind"] == "document")
+            .collect::<Vec<_>>();
+        assert_eq!(document_nodes.len(), 1);
+        assert_eq!(document_nodes[0]["label"], "Work note");
+
         let search = app
             .clone()
             .oneshot(

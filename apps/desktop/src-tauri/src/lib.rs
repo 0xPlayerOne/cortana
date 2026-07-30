@@ -105,6 +105,7 @@ struct RetrievalRequest {
 struct DocumentListRequest {
     project: Option<String>,
     source: Option<String>,
+    query: Option<String>,
     cursor: Option<String>,
     limit: usize,
 }
@@ -177,6 +178,37 @@ async fn brain_documents(
         }
         if let Some(source) = request.source {
             query.append_pair("source", &source);
+        }
+        if let Some(document_query) = request.query {
+            query.append_pair("query", &document_query);
+        }
+        if let Some(cursor) = request.cursor {
+            query.append_pair("cursor", &cursor);
+        }
+    }
+    backend.request_url(Method::GET, url, None).await
+}
+
+#[tauri::command]
+async fn brain_graph(
+    backend: State<'_, BackendClient>,
+    request: DocumentListRequest,
+) -> Result<Value, String> {
+    validate_document_list_request(&request)?;
+    let mut url = Url::parse(BACKEND_ORIGIN)
+        .map_err(|error| format!("invalid fixed Cortana runtime URL: {error}"))?;
+    url.set_path("/v1/graph");
+    {
+        let mut query = url.query_pairs_mut();
+        query.append_pair("limit", &request.limit.to_string());
+        if let Some(project) = request.project {
+            query.append_pair("project", &project);
+        }
+        if let Some(source) = request.source {
+            query.append_pair("source", &source);
+        }
+        if let Some(document_query) = request.query {
+            query.append_pair("query", &document_query);
         }
         if let Some(cursor) = request.cursor {
             query.append_pair("cursor", &cursor);
@@ -452,6 +484,15 @@ fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), S
         }
     }
     if request
+        .query
+        .as_ref()
+        .is_some_and(|query| query.is_empty() || query.len() > MAX_SCOPE_LENGTH)
+    {
+        return Err(format!(
+            "query must contain 1 to {MAX_SCOPE_LENGTH} bytes"
+        ));
+    }
+    if request
         .cursor
         .as_ref()
         .is_some_and(|cursor| cursor.is_empty() || cursor.len() > MAX_DOCUMENT_CURSOR_LENGTH)
@@ -565,6 +606,7 @@ pub fn run() {
             brain_context,
             brain_documents,
             brain_document,
+            brain_graph,
             brain_audit,
             desktop_audit,
             desktop_project_open,
@@ -656,6 +698,7 @@ mod tests {
         let valid = DocumentListRequest {
             project: Some("work".into()),
             source: None,
+            query: Some("release".into()),
             cursor: Some("opaque-cursor".into()),
             limit: 50,
         };
@@ -663,6 +706,14 @@ mod tests {
         assert!(
             validate_document_list_request(&DocumentListRequest { limit: 0, ..valid }).is_err()
         );
+        let invalid_query = DocumentListRequest {
+            project: None,
+            source: None,
+            query: Some("x".repeat(MAX_SCOPE_LENGTH + 1)),
+            cursor: None,
+            limit: 50,
+        };
+        assert!(validate_document_list_request(&invalid_query).is_err());
         assert!(validate_document_id(&"a".repeat(64)).is_ok());
         assert!(validate_document_id("../store.sqlite3").is_err());
     }

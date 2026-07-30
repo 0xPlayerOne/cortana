@@ -1,33 +1,44 @@
-import { Check, Copy, X } from 'lucide-react'
+import { Check, Copy, LoaderCircle, RefreshCw, X } from 'lucide-react'
 import { useState } from 'react'
 
-import type { BrainStatus, Evidence } from '../types'
+import type { AnswerResponse, BrainStatus, ContextBundle, Evidence } from '../types'
 
 export function ContextPanel({
   open,
   query,
   evidence,
+  answer,
   selected,
   status,
   context,
   contextTokens,
+  serverContext,
+  contextLoading,
+  contextError,
+  onRetrieveContext,
   onSelect,
   onClose,
 }: {
   open: boolean
   query: string
   evidence: Evidence[]
+  answer: AnswerResponse | null
   selected: number
   status: BrainStatus | null
   context: string
   contextTokens: number
+  serverContext: ContextBundle | null
+  contextLoading: boolean
+  contextError: string
+  onRetrieveContext: () => void
   onSelect: (index: number) => void
   onClose: () => void
 }) {
   const [copied, setCopied] = useState(false)
+  const copyValue = serverContext?.context ?? context
 
   async function copyContext() {
-    await navigator.clipboard.writeText(context)
+    await navigator.clipboard.writeText(copyValue)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1800)
   }
@@ -45,6 +56,34 @@ export function ContextPanel({
           <span>Query</span>
           <p>{query}</p>
         </section>
+        {answer && (
+          <section className="retrieval-diagnostics">
+            <span className="section-title">Retrieval diagnostics</span>
+            <dl>
+              <div>
+                <dt>Mode</dt>
+                <dd>{answer.mode}</dd>
+              </div>
+              <div>
+                <dt>Latency</dt>
+                <dd>{answer.cached ? 'cache hit' : `${answer.latency_ms} ms`}</dd>
+              </div>
+              <div>
+                <dt>Planned queries</dt>
+                <dd>{answer.plan.queries.length}</dd>
+              </div>
+              <div>
+                <dt>Evidence</dt>
+                <dd>{answer.evidence.length}</dd>
+              </div>
+            </dl>
+            <ol>
+              {answer.plan.queries.map((planned) => (
+                <li key={planned}>{planned}</li>
+              ))}
+            </ol>
+          </section>
+        )}
         <section className="section-label">
           <span>Retrieved evidence</span>
           <span>{evidence.length}</span>
@@ -70,11 +109,46 @@ export function ContextPanel({
             {(status?.embedding_cache_hits ?? 0).toLocaleString()} cache hits
           </p>
         </section>
+        <section className="server-context">
+          <span className="section-title">Agent integration bundle</span>
+          <p>
+            Build the exact bounded context returned by the HTTP and MCP query layer for this
+            workspace scope.
+          </p>
+          <button disabled={contextLoading} onClick={onRetrieveContext}>
+            {contextLoading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
+            {serverContext ? 'Refresh MCP-equivalent context' : 'Build MCP-equivalent context'}
+          </button>
+          {contextError && <p className="context-error">{contextError}</p>}
+          {serverContext && (
+            <dl>
+              <div>
+                <dt>Included</dt>
+                <dd>{serverContext.metrics.included}</dd>
+              </div>
+              <div>
+                <dt>Omitted</dt>
+                <dd>{serverContext.metrics.omitted}</dd>
+              </div>
+              <div>
+                <dt>Tokens</dt>
+                <dd>
+                  {serverContext.metrics.estimated_tokens.toLocaleString()} /{' '}
+                  {serverContext.metrics.max_tokens.toLocaleString()}
+                </dd>
+              </div>
+            </dl>
+          )}
+        </section>
       </div>
       <div className="copy-area">
         <button aria-label="Copy agent context" onClick={() => void copyContext()}>
           {copied ? <Check size={17} /> : <Copy size={17} />}
-          {copied ? 'Context copied' : 'Copy agent context'}
+          {copied
+            ? 'Context copied'
+            : serverContext
+              ? 'Copy MCP-equivalent context'
+              : 'Copy preview context'}
         </button>
       </div>
     </aside>

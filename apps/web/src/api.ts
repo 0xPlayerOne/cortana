@@ -6,6 +6,7 @@ import type {
   AnswerResponse,
   BrainDocument,
   BrainDocumentPage,
+  BrainGraphPage,
   BrainStatus,
   ContextBundle,
   DesktopInstallJob,
@@ -243,6 +244,7 @@ export async function getContext(
 export async function getDocuments(
   project?: string,
   source?: string,
+  query?: string,
   cursor?: string,
   signal?: AbortSignal
 ): Promise<BrainDocumentPage> {
@@ -252,6 +254,7 @@ export async function getDocuments(
       .map((item) => ({
         id: item.chunk_id.replace(/[^a-f0-9]/gi, '').padEnd(16, '0'),
         source: item.source,
+        source_id: item.source_id,
         title: item.title,
         uri: item.uri,
         updated_at: item.updated_at,
@@ -268,6 +271,7 @@ export async function getDocuments(
         request: {
           project: project || null,
           source: source || null,
+          query: query || null,
           cursor: cursor || null,
           limit: 50,
         },
@@ -278,6 +282,7 @@ export async function getDocuments(
   const params = new URLSearchParams({ limit: '50' })
   if (project) params.set('project', project)
   if (source) params.set('source', source)
+  if (query) params.set('query', query)
   if (cursor) params.set('cursor', cursor)
   const response = await authorizedFetch(`/v1/documents?${params}`, { signal })
   if (!response.ok) throw new Error(`Document list failed (${response.status})`)
@@ -293,6 +298,7 @@ export async function getDocument(id: string, signal?: AbortSignal): Promise<Bra
     return {
       id,
       source: item.source,
+      source_id: item.source_id,
       title: item.title,
       uri: item.uri,
       updated_at: item.updated_at,
@@ -301,6 +307,9 @@ export async function getDocument(id: string, signal?: AbortSignal): Promise<Bra
       content_chars: item.content.length,
       content: item.content,
       metadata: {},
+      acl: [],
+      backlinks: [],
+      surrounding: [],
       truncated: false,
     }
   }
@@ -310,6 +319,77 @@ export async function getDocument(id: string, signal?: AbortSignal): Promise<Bra
   const response = await authorizedFetch(`/v1/documents/${encodeURIComponent(id)}`, { signal })
   if (!response.ok) throw new Error(`Document read failed (${response.status})`)
   return (await response.json()) as BrainDocument
+}
+
+export async function getGraph(
+  project?: string,
+  source?: string,
+  query?: string,
+  cursor?: string,
+  signal?: AbortSignal
+): Promise<BrainGraphPage> {
+  if (isDemoMode) {
+    const page = await getDocuments(project, source, query, cursor, signal)
+    const nodes: BrainGraphPage['nodes'] = []
+    const edges: BrainGraphPage['edges'] = []
+    const seen = new Set<string>()
+    for (const document of page.documents) {
+      const workspaceId = `workspace:${JSON.stringify([document.project])}`
+      const sourceId = `source:${JSON.stringify([document.project, document.source])}`
+      if (!seen.has(workspaceId)) {
+        seen.add(workspaceId)
+        nodes.push({
+          id: workspaceId,
+          kind: 'workspace',
+          label: document.project,
+          project: document.project,
+          source: null,
+          document_id: null,
+        })
+      }
+      if (!seen.has(sourceId)) {
+        seen.add(sourceId)
+        nodes.push({
+          id: sourceId,
+          kind: 'source',
+          label: document.source,
+          project: document.project,
+          source: document.source,
+          document_id: null,
+        })
+        edges.push({ source: workspaceId, target: sourceId, kind: 'contains' })
+      }
+      const documentId = `document:${document.id}`
+      nodes.push({
+        id: documentId,
+        kind: 'document',
+        label: document.title,
+        project: document.project,
+        source: document.source,
+        document_id: document.id,
+      })
+      edges.push({ source: sourceId, target: documentId, kind: 'contains' })
+    }
+    return { nodes, edges, next_cursor: page.next_cursor }
+  }
+  const request = {
+    project: project || null,
+    source: source || null,
+    query: query || null,
+    cursor: cursor || null,
+    limit: 100,
+  }
+  if (isTauri()) {
+    return invokeDesktop<BrainGraphPage>('brain_graph', { request }, signal)
+  }
+  const params = new URLSearchParams({ limit: '100' })
+  if (project) params.set('project', project)
+  if (source) params.set('source', source)
+  if (query) params.set('query', query)
+  if (cursor) params.set('cursor', cursor)
+  const response = await authorizedFetch(`/v1/graph?${params}`, { signal })
+  if (!response.ok) throw new Error(`Graph data failed (${response.status})`)
+  return (await response.json()) as BrainGraphPage
 }
 
 export async function getAnswer(
