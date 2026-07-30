@@ -205,7 +205,7 @@ impl BrainServer {
     }
 
     #[tool(
-        description = "Search configured Gmail, Slack, and Discord evidence without invoking a language model"
+        description = "Search configured Buzz, Gmail, Slack, and Discord evidence without invoking a language model"
     )]
     async fn search_messages(&self, Parameters(params): Parameters<DomainSearchParams>) -> String {
         self.domain_search("mcp.search_messages", &self.message_sources, params)
