@@ -21,4 +21,26 @@ describe('operational source visibility', () => {
     expect(discord?.sync?.status).toBe('budget_exceeded')
     expect(sourceHealth(discord!).state).toBe('failed')
   })
+
+  test('distinguishes a validated connector from an unproven source', () => {
+    const status = structuredClone(demoStatus)
+    const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!
+    buzz.validation = {
+      source: 'buzz',
+      project: 'agents',
+      kind: 'buzz',
+      status: 'succeeded',
+      validated_at: '2026-07-30T06:00:00Z',
+      documents: 45,
+      bytes: 4096,
+      max_documents: 100,
+      max_bytes: 1_048_576,
+      max_seconds: 30,
+      error: null,
+    }
+
+    const source = operationalSources(status).find((item) => item.name === 'buzz')
+    expect(sourceHealth(source!).state).toBe('healthy')
+    expect(sourceHealth(source!).label).toContain('Connector validated')
+  })
 })

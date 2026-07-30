@@ -31,7 +31,9 @@ entries, and cache hits without logging queries or evidence.
 
 `/v1/status` also reports whether recurring ingestion is installed, the global and per-source
 safety budgets, every configured source including disabled or not-yet-indexed sources, and the
-latest persisted outcome for each source. Sync outcomes are recorded as `running`, `succeeded`,
+latest persisted validation and sync outcomes for each source. Validation proves bounded connector
+access without mutating the corpus and is shown separately from synchronization health. Sync
+outcomes are recorded as `running`, `succeeded`,
 `failed`, `cancelled`, or `budget_exceeded`. A process interruption intentionally leaves a
 `running` record behind so the workspace can distinguish an interrupted run from a source that
 never started. The workspace refreshes this status every 15 seconds and keeps query availability

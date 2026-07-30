@@ -314,6 +314,18 @@ fn source_validation_fetches_one_disabled_source_without_initializing_the_index(
         !data.join("cortana.sqlite3").exists(),
         "validation must not initialize the index"
     );
+    let validation: serde_json::Value = serde_json::from_slice(
+        &fs::read(data.join("source-validations.json")).expect("validation state"),
+    )
+    .expect("validation JSON");
+    assert_eq!(
+        validation["sources"]["external-demo"]["status"],
+        "succeeded"
+    );
+    assert_eq!(
+        validation["sources"]["external-demo"]["documents"],
+        serde_json::json!(1)
+    );
     assert_eq!(
         fs::read_dir(data.join("staging"))
             .expect("staging directory")
@@ -362,6 +374,16 @@ fn connector_live_output_bound_stops_oversized_validation() {
     assert!(
         !data.join("cortana.sqlite3").exists(),
         "failed validation must not initialize the index"
+    );
+    let validation: serde_json::Value = serde_json::from_slice(
+        &fs::read(data.join("source-validations.json")).expect("failed validation state"),
+    )
+    .expect("validation JSON");
+    assert_eq!(validation["sources"]["oversized"]["status"], "failed");
+    assert!(
+        validation["sources"]["oversized"]["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("live output safety bound"))
     );
 }
 

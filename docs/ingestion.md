@@ -103,7 +103,11 @@ cortana validate-source SOURCE_NAME \
 
 Validation can target a disabled source by exact name. It fetches only that connector snapshot,
 enforces the wall-clock and live stdout/stderr spool bounds, parses every emitted document, then
-deletes the private spool. It never opens the index, embeds content, or reconciles records.
+deletes the private spool. It never opens the index, embeds content, or reconciles records. The
+latest metadata-only outcome is written atomically to the owner-only
+`data_dir/source-validations.json` file so operators can distinguish a proven connector from one
+that is merely configured. This record contains counts, limits, timestamps, and a bounded error
+summary—never credentials, source content, or connector output.
 Filesystem validation performs the same bounded preflight walk used by sync, so start with a
 narrow root and conservative limits.
 

@@ -42,6 +42,19 @@ export type ConfiguredSourceSummary = {
   max_documents: number
   max_bytes: number
   max_duration_seconds: number
+  validation?: {
+    source: string
+    project: string
+    kind: string
+    status: 'succeeded' | 'failed'
+    validated_at: string
+    documents: number | null
+    bytes: number | null
+    max_documents: number
+    max_bytes: number
+    max_seconds: number
+    error: string | null
+  } | null
 }
 
 export type IngestionStatus = {
@@ -51,6 +64,7 @@ export type IngestionStatus = {
   max_bytes_per_source: number
   max_duration_seconds: number
   request_concurrency: number
+  validation_state_error?: string | null
   configured_sources: ConfiguredSourceSummary[]
 }
 
