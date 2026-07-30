@@ -18,9 +18,11 @@ permissions:
 jobs:
   codeql:
     name: CodeQL
-    uses: 0xPlayerOne/code-foundry/.github/workflows/codeql.yml@v0.27.17
+    uses: 0xPlayerOne/code-foundry/.github/workflows/codeql.yml@v0.31.14
     with:
       runtime-repository: 0xPlayerOne/code-foundry
-      runtime-ref: v0.27.17
+      runtime-ref: v0.31.14
       runner: ubuntu-latest
+      rust-shards: '["src","tests"]'
+      rust-threads: '6'
     secrets: inherit

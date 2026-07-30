@@ -18,49 +18,69 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 
 ## Quick start
 
-```bash
-# From an extracted GitHub release archive (binary, UI, and connector wheel).
-./install.sh
+Use the published build unless you are developing Cortana itself. Do not run both installation
+methods.
 
-# Reproducible per-user install (Rust binary, workspace, connector venv, and macOS services).
-./scripts/install-local.sh
+### Install the published build
 
-# Also install the portable Cortana skill for Codex, Hermes, OpenCode, and
-# agents that support the shared ~/.agents/skills convention.
-CORTANA_INSTALL_AGENT_INTEGRATIONS=1 ./scripts/install-local.sh
+1. Install [`uv`](https://docs.astral.sh/uv/getting-started/installation/). Cortana uses it for
+   its connector environment.
+2. Open the [Cortana releases](https://github.com/0xPlayerOne/cortana/releases) page and download
+   the `.tar.gz` file for your operating system and CPU. For example, Apple Silicon uses
+   `aarch64-apple-darwin`.
+3. Extract the downloaded file and enter the extracted directory. The directory name starts with
+   `cortana-v`.
 
-# Or run directly from a checkout.
-cargo build --release
-bun install --frozen-lockfile
-bun run build
+   ```bash
+   tar -xzf cortana-v<version>-<platform>.tar.gz
+   cd cortana-v<version>-<platform>
+   ```
 
-./target/release/cortana init
+4. Run the installer from that directory:
 
-# Verify the configured Qwen/TEI or cloud OpenAI-compatible embedding endpoint.
-./target/release/cortana doctor
+   ```bash
+   ./install.sh
+   ```
 
-# Ingest normalized documents, then retrieve structured cited evidence.
-./target/release/cortana ingest documents.jsonl
-./target/release/cortana sync
-./target/release/cortana search "how do releases work?" --project engineering
+   This installs the `cortana` command, web UI, connector environment, and initial configuration
+   under your user account. The `install.sh` file is included in release archives; it is not part
+   of a Git checkout.
 
-# Agent transport and workspace API use the identical retrieval pipeline.
-./target/release/cortana mcp
-# `bun run build` packages the Obsidian-like workspace served at this address.
-./target/release/cortana serve --address 127.0.0.1:7331
-# API-only deployments can opt out of static workspace serving.
-./target/release/cortana serve --address 127.0.0.1:7331 --no-web
+5. Configure the embedding provider and the sources you want to index in
+   `~/.config/cortana/config.toml`. Use [`config.example.toml`](config.example.toml) as the
+   reference. Cortana does not download an embedding model. The default local profile expects a
+   `text-embeddings-router` process on `127.0.0.1:6999`; alternatively configure an accessible
+   OpenAI-compatible embedding endpoint.
+6. Check the configuration and embedding endpoint:
 
-# Retrieve the same citation-ready, token-bounded bundle used by the workspace and MCP.
-curl -sS http://127.0.0.1:7331/v1/context \
-  -H 'content-type: application/json' \
-  -d '{"query":"how do releases work?","project":"engineering","max_tokens":8000}'
-```
+   ```bash
+   cortana doctor
+   ```
 
-For an existing installation, run `./scripts/install-agent-integrations.sh`.
-The script installs only skill files; MCP client configuration remains an
-explicit, one-time agent setting. Point the MCP command at the installed
-`cortana` binary with `--config <path> mcp`.
+7. Run the first ingestion manually after configuring sources:
+
+   ```bash
+   cortana sync
+   ```
+
+8. Open the workspace at <http://127.0.0.1:7331>.
+
+On macOS, the installer also starts four per-user jobs: the embedding supervisor, the API and web
+UI, ingestion every 15 minutes, and verified backups once a day. It does not configure agent MCP
+clients. On Linux, the installer installs the files but does not register background services; use
+the [Linux service instructions](docs/operations.md#linux-systemd).
+
+To install the bundled agent skill after installation, run the copy of
+`scripts/install-agent-integrations.sh` included in the extracted release directory with
+`CORTANA_INSTALL_AGENT_INTEGRATIONS=1 ./install.sh`, or configure your MCP client to run
+`cortana --config ~/.config/cortana/config.toml mcp`.
+
+### Build from a Git checkout (developers only)
+
+From the repository root, run `./scripts/install-local.sh`. It builds the Rust binary and web UI,
+creates the connector environment, initializes configuration when needed, and installs the same
+macOS background jobs. It does not install an embedding model or configure sources. Continue with
+steps 5–8 above, then use the [development commands](#development) when working on the code.
 
 Use `--offline` for a deterministic, zero-network evaluation index. Offline and production
 embeddings are intentionally fingerprinted as different index generations and cannot be mixed.

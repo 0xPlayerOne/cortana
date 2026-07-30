@@ -1,146 +1,88 @@
 # Agent Instructions
 
-These instructions are the repository-level operating contract for coding agents, including Hermes, OpenCode, and other automation.
+These instructions are the repository-level operating contract for coding agents. They complement `.github/CONTRIBUTING.md`.
 
-They complement `CONTRIBUTING.md`. More specific instructions in nested `AGENTS.md` files and project documentation take precedence for their directory.
+## Architecture
 
-## Mission
+Cortana is a local-first agent-native second brain with three language stacks:
 
-- Keep formatting, linting, type checking, builds, tests, and coverage reproducible locally and in CI.
-- Prefer the repository's configured toolchain; `toolchain: auto` uses native
-  tools unless an existing `.mise.toml` is present.
-- Do not commit secrets, generated credentials, local environment files, or machine-specific paths.
-- Add tests for behavior changes and keep coverage thresholds explicit in the project configuration.
-- Make the smallest complete, well-tested change that solves the requested problem without disturbing unrelated work.
+- **Rust** (`src/`, `Cargo.toml`): Core runtime — CLI, HTTP API, MCP server, storage (SQLite WAL + FTS5), embedding pipeline, retrieval, service supervision. Edition 2024, toolchain `1.88.0`.
+- **TypeScript** (`apps/web/`): Vite + React 19 workspace UI. Bun workspace with `@cortana/web`.
+- **Python** (`src/cortana/`): Connector SDK — integrations for Google, Slack, Discord, Apple Notes, Buzz, chat, filesystem. Packaged as a wheel with `hatchling`, exposed via `cortana-connectors` entrypoint.
 
-This repository may contain TypeScript, Rust, Python, or any combination of them. Detect the active stack from the files present; do not assume every check applies.
+The workspace and MCP server serve the same retrieval pipeline; the Vite dev server proxies `/v1` and `/healthz` to the Rust server at `127.0.0.1:7331`.
 
-## Read before acting
+## Commands
 
-Before editing:
+```bash
+# Rust
+cargo test
+cargo build --release
+./target/release/cortana doctor
+./target/release/cortana serve --address 127.0.0.1:7331
 
-1. Read this file and `.github/CONTRIBUTING.md`.
-2. Find and read any nested `AGENTS.md` that covers the files you will touch.
-3. Read the nearest README, package manifest, build configuration, and relevant tests.
-4. Inspect the current branch, worktree, remotes, and recent history:
+# Offline mode uses deterministic local embeddings — a different fingerprint from production.
+# Offline and production indexes cannot be mixed.
+./target/release/cortana --offline search "query"
 
-   ```sh
-   git status --short --branch
-   git remote -v
-   git log -5 --oneline
-   ```
+# Workspace (Bun, not npm)
+bun install --frozen-lockfile
+bun run format        # prettier --check .
+bun run format:write  # prettier --write .
+bun run lint          # eslint apps/web/src
+bun run typecheck     # tsc -b --pretty false
+bun test              # bun test (not Vitest)
+bun run build         # tsc -b && vite build
 
-5. Identify the repository's package manager, lockfile, runtime versions, test commands, deployment assumptions, and generated files.
+# Dev server (proxies API to the Rust server)
+bun run dev           # vite, listens on 127.0.0.1:4173
 
-If the worktree is dirty, preserve existing changes and avoid overlapping edits until their ownership is clear.
-
-## Priorities
-
-When instructions conflict, use this order:
-
-1. System and user instructions
-2. This repository's instructions and explicit task scope
-3. Nested directory instructions
-4. Existing project conventions
-5. General best practices
-
-Ask for clarification when a missing decision would materially change the implementation. Otherwise make the smallest reasonable assumption and document it.
-
-## Safety boundaries
-
-- Do not discard, reset, overwrite, or rewrite user-owned changes.
-- Do not expose or commit secrets, credentials, tokens, private keys, local environment files, or personal machine paths.
-- Do not modify production resources, repository settings, branch protections, secrets, deployments, or external systems unless explicitly requested.
-- Do not add organization- or product-specific details to this reusable baseline.
-- Do not change dependency managers or lockfiles unnecessarily.
-- Do not bypass hooks, tests, review requirements, or required checks to hide a failure.
-- Do not claim completion while required validation, review, deployment, or user decisions remain pending.
-- Publishing, committing, or opening a pull request requires explicit task scope or user authorization.
-
-## Standard workflow
-
-1. Restate the desired outcome and identify the files or systems in scope.
-2. Inspect before editing; preserve unrelated work.
-3. Plan the smallest coherent change.
-4. Implement with existing project patterns.
-5. Run `npx code-foundry init` for a new checkout, or `npx code-foundry doctor` to diagnose setup drift.
-6. Run focused checks while iterating.
-7. Inspect the final diff for accidental changes, secrets, formatting, and generated files.
-8. Run the broadest applicable validation available.
-9. Report what changed, exact checks and results, skipped checks with reasons, risks, and remaining work.
-
-For normal feature work, branch from `staging` and target pull requests at `staging`. Treat `main` as the protected release branch. Follow `.github/CONTRIBUTING.md` for the complete internal and external contribution flow.
-
-## Toolchain and dependencies
-
-- Follow `toolchain: auto` in `.github/code-foundry.yml`; use native tools by
-  default and reuse mise only when the repository already has `.mise.toml`.
-- If `toolchain: mise` is selected, run `mise install` before validation.
-- Use the package manager indicated by the existing lockfile:
-  - `bun.lock` or `bun.lockb` → Bun
-  - `pnpm-lock.yaml` → pnpm
-  - `yarn.lock` → Yarn
-  - `package-lock.json` → npm
-- Use the existing Python environment and dependency manifest. Prefer a project-managed virtual environment.
-- Use Cargo commands and the committed Cargo lockfile for Rust projects.
-- Do not mix package managers or regenerate lockfiles as a side effect.
-- Keep dependency additions narrowly scoped and explain security, licensing, and runtime impact.
-
-## Validation
-
-Use the shared scripts when present. They detect supported tools and skip inapplicable checks:
-
-```sh
-node src/runtime.mjs ci format
-node src/runtime.mjs ci lint
-node src/runtime.mjs ci type_check
-node src/runtime.mjs ci build
-node src/runtime.mjs ci unit
-node src/runtime.mjs ci integration
-node src/runtime.mjs ci e2e
-node src/runtime.mjs ci smoke
-Security and dependency audits run through the GitHub Security workflow.
+# Connector SDK (uv, not pip)
+uv sync --all-extras
+uv run pytest
+uv run ruff check .
+uv run mypy
 ```
 
-Run focused tests first, then the complete applicable set for release, security, workflow, dependency, and configuration changes.
+Use `--frozen-lockfile` with `bun install`. The lockfile `bun.lock` must stay in sync; do not regenerate it without cause.
 
-At minimum:
+## Validation order
 
-- TypeScript/JavaScript: Prettier formatting, ESLint linting, type-check, build, and Bun's native test runner for unit/integration tests; use the project's native browser runner for E2E tests
-- Do not add Vitest. Preserve specialized native runners such as Matchstick for The Graph and Hardhat for smart contracts.
-- Rust: default rustfmt, Clippy with warnings treated as errors, check, unit/integration tests, and dependency audit
-- Python: Ruff formatting and linting, compile or type checks, pytest, coverage, and dependency audit
-- Mixed projects: validate each active ecosystem and its integration boundaries
+```bash
+bun run format && bun run lint && bun run typecheck && bun test
+cargo fmt --check && cargo clippy -- -D warnings && cargo test
+uv run ruff check . && uv run mypy && uv run pytest
+```
 
-If a check cannot run, state the exact reason. A skipped check is not a passing check.
+CI runs these via `code-foundry` reusable workflows (`.github/code-foundry.yml`, `v0.27.17`). Do not edit CI YAML files directly — they are thin wrappers around the shared workflow.
 
-## Tests and coverage
+## Conventions that differ from defaults
 
-- Add or update tests for behavior changes and regressions.
-- Keep unit, integration, E2E, and smoke coverage in the suite where each applies.
-- Preserve project-specific coverage thresholds; do not lower them to make CI green.
-- Keep test data deterministic and remove secrets from logs and fixtures.
-- Use the narrowest test command while iterating, then run the affected package or workspace suite.
+- **No semicolons** in TS/JS/TSX. Single quotes, trailing commas in ES5 positions, print width 100 (`.prettierrc`).
+- **No Vitest.** Bun's native test runner (`bun test`) is required.
+- **Prefer `bun` over `npm`** for all package management and scripts.
+- **Rust edition 2024.** Features in `Cargo.toml` may be newer than stable defaults.
+- **SQLite WAL mode** with `bundled` feature — no external SQLite dependency.
+- **Embedding dimension** is 1024 (Qwen/Qwen3-Embedding-0.6B). Fingerprint prevents mixing vector spaces.
+- **Sync operations** acquire an exclusive `fs2` lock (`sync.lock`). Only one sync can run at a time.
+- **Embedding concurrency** is bounded to 8 requests per batch with 4 concurrent requests (half of local TEI defaults).
+- **Connector spools** are written to `$DATA_DIR/staging/connector-*.jsonl` with mode `0600` and cleaned up after use.
 
-## GitHub workflows and configuration
+## Branching and releases
 
-- Keep workflows concise, independently runnable, and safe to re-run.
-- Use `push` for `main, staging` and `pull_request` for `staging` unless a workflow has a documented event-specific reason.
-- Give workflows clear names and jobs concise names; avoid repeating the workflow name in the job name.
-- Use per-workflow concurrency groups that cancel superseded runs while allowing independent workflows to run in parallel.
-- Keep setup language-aware and cache dependency downloads by lockfile; do not cache secrets, `node_modules`, virtual environments, or broad build output without a measured reason.
-- Use least-privilege permissions and pin action versions consistently with the template.
-- Keep CI, Test, Security, CodeQL, Draft PR, Release PR, and Release concerns separated.
-- Security and CodeQL may skip when repository visibility or GitHub plan support does not permit them. Do not make an unavailable check required.
-- Optional Turborepo Remote Caching uses `TURBO_TOKEN` and `TURBO_TEAM`; do not add Vercel deployment behavior just to enable caching.
-- Update branch protection when adding or renaming required job checks; verify the actual GitHub status context.
+Branch from `staging`, target PRs at `staging`. `main` is the protected release branch. Merge strategy is `rebase`.
 
-## Documentation and generated files
+Use Conventional Commits: `fix:` → patch, `feat:` → minor, `!` or `BREAKING CHANGE:` → major. Release automation (`release-please`) runs after changes reach `main`. Release type is `rust` in `code-foundry.yml`.
 
-- Update documentation when behavior, setup, configuration, commands, or operational procedures change.
-- Keep `.env.example` limited to variable names and safe placeholders.
-- Do not commit build output, caches, coverage output, dependency directories, generated credentials, or temporary files.
-- Preserve formatting and line-ending conventions from `.editorconfig` and `.gitattributes`.
+## Gotchas
+
+- `bun install` without `--frozen-lockfile` will mutate `bun.lock`. Always use `--frozen-lockfile`.
+- `cortana init` skips if the config file already exists; it does not overwrite.
+- `migrate-hermes` refuses to replace an existing config without `--force`. It never prints credential values.
+- `import-embeddings` validates every vector's fingerprint and dimension. A truncated or invalid export cannot delete previously imported data.
+- `serve --allow-remote` requires `--api-token-env`; the token env var must be set.
+- Changing the embedding model invalidates the index fingerprint. Re-ingestion is required.
+- Python tests use `pythonpath = ["src"]` and `testpaths = ["tests"]` in pytest config. Coverage must stay at or above 85% (branch coverage).
 
 ## Completion report
 
@@ -154,5 +96,3 @@ Skipped checks:
 Risks or follow-up:
 Branch/PR:
 ```
-
-Use exact command names and outcomes. Mention external changes separately from local changes, and distinguish completed work from recommendations.
