@@ -26,6 +26,7 @@ use crate::{
     embed::Embedder,
     model::Evidence,
     retrieval,
+    source_validation::{self, SourceValidationStatus},
     store::{AuditEvent, Store, StoreStats},
 };
 
@@ -147,6 +148,7 @@ struct IngestionStatus {
     max_bytes_per_source: u64,
     max_duration_seconds: u64,
     request_concurrency: usize,
+    validation_state_error: Option<String>,
     configured_sources: Vec<ConfiguredSourceStatus>,
 }
 
@@ -166,10 +168,16 @@ struct ConfiguredSourceStatus {
     max_documents: usize,
     max_bytes: u64,
     max_duration_seconds: u64,
+    validation: Option<SourceValidationStatus>,
 }
 
 impl IngestionStatus {
     fn from_config(config: &Config, scheduled: bool) -> Self {
+        let (validations, validation_state_error) = match source_validation::load(&config.data_dir)
+        {
+            Ok(validations) => (validations, None),
+            Err(error) => (Default::default(), Some(error.to_string())),
+        };
         let configured_sources = config
             .sources
             .iter()
@@ -188,6 +196,7 @@ impl IngestionStatus {
                 max_duration_seconds: source
                     .max_duration_seconds
                     .unwrap_or(config.ingestion.max_duration_seconds),
+                validation: validations.get(&source.name).cloned(),
             })
             .collect();
         Self {
@@ -197,6 +206,7 @@ impl IngestionStatus {
             max_bytes_per_source: config.ingestion.max_bytes_per_source,
             max_duration_seconds: config.ingestion.max_duration_seconds,
             request_concurrency: config.ingestion.request_concurrency,
+            validation_state_error,
             configured_sources,
         }
     }
@@ -707,8 +717,8 @@ mod tests {
 
     #[tokio::test]
     async fn status_reports_safe_ingestion_mode_and_configured_sources() {
-        let (_directory, state) = test_state(None);
-        let config: Config = toml::from_str(
+        let (directory, state) = test_state(None);
+        let mut config: Config = toml::from_str(
             r#"
             [ingestion]
             max_documents_per_source = 25
@@ -726,6 +736,24 @@ mod tests {
             "#,
         )
         .expect("configuration");
+        config.data_dir = directory.path().to_path_buf();
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: "code".into(),
+                project: "work".into(),
+                kind: "filesystem".into(),
+                status: "succeeded".into(),
+                validated_at: chrono::Utc::now(),
+                documents: Some(7),
+                bytes: Some(512),
+                max_documents: 25,
+                max_bytes: 4096,
+                max_seconds: 45,
+                error: None,
+            },
+        )
+        .expect("validation state");
         let response = router(state.with_config(&config, false))
             .oneshot(
                 Request::builder()
@@ -749,6 +777,10 @@ mod tests {
         assert_eq!(
             value["ingestion"]["configured_sources"][0]["enabled"],
             false
+        );
+        assert_eq!(
+            value["ingestion"]["configured_sources"][0]["validation"]["status"],
+            "succeeded"
         );
         assert_eq!(value["ingestion"]["max_documents_per_source"], 25);
         assert_eq!(value["query"]["mode"], "extractive");

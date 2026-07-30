@@ -1,4 +1,4 @@
-import type { BrainStatus, SourceSyncSummary } from './types'
+import type { BrainStatus, ConfiguredSourceSummary, SourceSyncSummary } from './types'
 
 export type OperationalSource = {
   name: string
@@ -10,6 +10,7 @@ export type OperationalSource = {
   chunks: number
   latest_updated_at: string | null
   sync: SourceSyncSummary | null
+  validation?: ConfiguredSourceSummary['validation']
 }
 
 export function operationalSources(status: BrainStatus | null): OperationalSource[] {
@@ -49,7 +50,21 @@ export function operationalSources(status: BrainStatus | null): OperationalSourc
 export function sourceHealth(source: OperationalSource) {
   if (!source.enabled)
     return { state: 'disabled', label: 'Disabled; existing index remains queryable' }
-  if (!source.sync) return { state: 'never', label: 'Enabled; never synchronized' }
+  if (!source.sync) {
+    if (source.validation?.status === 'succeeded') {
+      return {
+        state: 'healthy',
+        label: `Connector validated ${new Date(source.validation.validated_at).toLocaleString()}`,
+      }
+    }
+    if (source.validation?.status === 'failed') {
+      return {
+        state: 'failed',
+        label: `Validation failed ${new Date(source.validation.validated_at).toLocaleString()}`,
+      }
+    }
+    return { state: 'never', label: 'Enabled; connector not yet validated' }
+  }
   const completed = source.sync.completed_at
     ? new Date(source.sync.completed_at).toLocaleString()
     : 'in progress'
