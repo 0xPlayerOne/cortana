@@ -42,6 +42,8 @@ bun run build
 # Plan and then run bounded ingestion; recurring background sync is opt-in.
 ./target/release/cortana ingest documents.jsonl
 ./target/release/cortana sync --source SOURCE --plan
+# Fetch and validate one source without embedding, indexing, or reconciliation.
+./target/release/cortana validate-source SOURCE --max-documents 25 --max-bytes 10485760 --max-seconds 60
 ./target/release/cortana sync --source SOURCE
 ./target/release/cortana search "how do releases work?" --project engineering
 
