@@ -10,7 +10,19 @@ use serde::{Deserialize, Serialize};
 use toml::{Table, Value};
 
 const MAX_WORKSPACES: usize = 3;
+const MAX_SOURCES: usize = 128;
 const MAX_SECRET_BYTES: usize = 16 * 1024;
+const SOURCE_KINDS: &[&str] = &[
+    "filesystem",
+    "apple-notes",
+    "buzz",
+    "google-drive",
+    "gmail",
+    "google-calendar",
+    "slack",
+    "discord",
+    "external",
+];
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -74,6 +86,29 @@ pub struct RuntimeSettings {
     pub audit_max_events: usize,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceSettings {
+    pub name: String,
+    pub kind: String,
+    pub enabled: bool,
+    pub project: String,
+    pub root: Option<String>,
+    pub source: Option<String>,
+    pub channels: Vec<String>,
+    pub token_env: Option<String>,
+    pub token_path: Option<String>,
+    pub query: Option<String>,
+    pub labels: Vec<String>,
+    pub max_content_chars: Option<usize>,
+    pub max_documents: Option<usize>,
+    pub max_bytes: Option<u64>,
+    pub max_duration_seconds: Option<u64>,
+    pub exclude: Vec<String>,
+    pub acl: Vec<String>,
+    pub editable: bool,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SecretUpdate {
@@ -87,6 +122,7 @@ pub struct SecretUpdate {
 #[serde(deny_unknown_fields)]
 pub struct SettingsUpdate {
     pub workspaces: Vec<WorkspaceSettings>,
+    pub sources: Vec<SourceSettings>,
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
     pub ingestion: IngestionSettings,
@@ -109,6 +145,7 @@ pub struct SettingsSnapshot {
     pub needs_setup: bool,
     pub restart_required: bool,
     pub workspaces: Vec<WorkspaceSettings>,
+    pub sources: Vec<SourceSettings>,
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
     pub ingestion: IngestionSettings,
@@ -122,6 +159,15 @@ pub fn load() -> Result<SettingsSnapshot, String> {
 
 pub fn save(update: SettingsUpdate) -> Result<SettingsSnapshot, String> {
     SettingsStore::default().save(update)
+}
+
+pub fn configured_source(name: &str) -> Result<SourceSettings, String> {
+    validate_source_name(name)?;
+    load()?
+        .sources
+        .into_iter()
+        .find(|source| source.name == name)
+        .ok_or_else(|| format!("configured source `{name}` was not found"))
 }
 
 #[derive(Debug, Clone)]
@@ -159,7 +205,7 @@ impl SettingsStore {
         let mut root = read_config(&self.config_path)?;
         let secret_path = secret_path(&root, &self.config_path)?;
         validate_mutable_sections(&root)?;
-        validate_source_scopes(&root, &update.workspaces)?;
+        validate_external_sources(&root, &update.sources)?;
         apply_update(&mut root, &update, &secret_path);
 
         if !update.secrets.is_empty() {
@@ -194,11 +240,17 @@ fn snapshot(
     needs_setup: bool,
 ) -> SettingsSnapshot {
     let workspaces = configured_workspaces(root);
+    let sources = configured_sources(root);
     let embedding_api_key_env = optional_string(root, "embedding", "api_key_env");
     let query_api_key_env = optional_string(root, "query", "api_key_env");
     let mut secret_names = BTreeSet::new();
     secret_names.extend(embedding_api_key_env.iter().cloned());
     secret_names.extend(query_api_key_env.iter().cloned());
+    secret_names.extend(
+        sources
+            .iter()
+            .filter_map(|source| source.token_env.as_ref().cloned()),
+    );
 
     SettingsSnapshot {
         config_path: config_path.display().to_string(),
@@ -206,6 +258,7 @@ fn snapshot(
         needs_setup,
         restart_required: false,
         workspaces,
+        sources,
         embedding: EmbeddingSettings {
             provider: provider_kind(string(
                 root,
@@ -288,6 +341,46 @@ fn snapshot(
             })
             .collect(),
     }
+}
+
+fn configured_sources(root: &Table) -> Vec<SourceSettings> {
+    root.get("sources")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_table)
+                .filter_map(|item| {
+                    let kind = item.get("kind")?.as_str()?.to_string();
+                    Some(SourceSettings {
+                        name: item.get("name")?.as_str()?.to_string(),
+                        editable: kind != "external",
+                        kind,
+                        enabled: item.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+                        project: item
+                            .get("project")
+                            .and_then(Value::as_str)
+                            .unwrap_or("default")
+                            .to_string(),
+                        root: table_optional_string(item, "root"),
+                        source: table_optional_string(item, "source"),
+                        channels: table_string_array(item, "channels"),
+                        token_env: table_optional_string(item, "token_env"),
+                        token_path: table_optional_string(item, "token"),
+                        query: table_optional_string(item, "query"),
+                        labels: table_string_array(item, "labels"),
+                        max_content_chars: table_optional_usize(item, "max_content_chars"),
+                        max_documents: table_optional_usize(item, "max_documents"),
+                        max_bytes: table_optional_u64(item, "max_bytes"),
+                        max_duration_seconds: table_optional_u64(item, "max_duration_seconds"),
+                        exclude: table_string_array(item, "exclude"),
+                        acl: table_string_array(item, "acl"),
+                    })
+                })
+                .take(MAX_SOURCES)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn configured_workspaces(root: &Table) -> Vec<WorkspaceSettings> {
@@ -385,6 +478,7 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
             return Err("workspace colors must use #RRGGBB".into());
         }
     }
+    validate_sources(&mut update.sources, &ids)?;
 
     validate_provider("embedding", &update.embedding.provider)?;
     validate_url("embedding", &update.embedding.base_url)?;
@@ -555,6 +649,7 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
                 .collect(),
         ),
     );
+    apply_sources(root, &update.sources);
 
     set_string(root, "embedding", "base_url", &update.embedding.base_url);
     set_string(root, "embedding", "model", &update.embedding.model);
@@ -685,6 +780,62 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
     }
 }
 
+fn apply_sources(root: &mut Table, sources: &[SourceSettings]) {
+    let mut existing = root
+        .get("sources")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_table)
+        .filter_map(|table| Some((table.get("name")?.as_str()?.to_string(), table.to_owned())))
+        .collect::<BTreeMap<_, _>>();
+    let rendered = sources
+        .iter()
+        .map(|source| {
+            let mut table = existing.remove(&source.name).unwrap_or_default();
+            table.insert("name".into(), Value::String(source.name.clone()));
+            table.insert("kind".into(), Value::String(source.kind.clone()));
+            table.insert("enabled".into(), Value::Boolean(source.enabled));
+            table.insert("project".into(), Value::String(source.project.clone()));
+            if source.kind != "external" {
+                set_table_optional_string(&mut table, "root", &source.root);
+                set_table_optional_string(&mut table, "source", &source.source);
+                set_table_string_array(&mut table, "channels", &source.channels);
+                set_table_optional_string(&mut table, "token_env", &source.token_env);
+                set_table_optional_string(&mut table, "token", &source.token_path);
+                set_table_optional_string(&mut table, "query", &source.query);
+                set_table_string_array(&mut table, "labels", &source.labels);
+                set_table_optional_integer(
+                    &mut table,
+                    "max_content_chars",
+                    source.max_content_chars.map(|value| value as i64),
+                );
+                set_table_optional_integer(
+                    &mut table,
+                    "max_documents",
+                    source.max_documents.map(|value| value as i64),
+                );
+                set_table_optional_integer(
+                    &mut table,
+                    "max_bytes",
+                    source.max_bytes.and_then(|value| i64::try_from(value).ok()),
+                );
+                set_table_optional_integer(
+                    &mut table,
+                    "max_duration_seconds",
+                    source
+                        .max_duration_seconds
+                        .and_then(|value| i64::try_from(value).ok()),
+                );
+                set_table_string_array(&mut table, "exclude", &source.exclude);
+                set_table_string_array(&mut table, "acl", &source.acl);
+            }
+            Value::Table(table)
+        })
+        .collect();
+    root.insert("sources".into(), Value::Array(rendered));
+}
+
 fn apply_secret_updates(
     secrets: &mut BTreeMap<String, String>,
     updates: &[SecretUpdate],
@@ -769,29 +920,219 @@ fn validate_mutable_sections(root: &Table) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_source_scopes(root: &Table, workspaces: &[WorkspaceSettings]) -> Result<(), String> {
-    let workspace_ids = workspaces
-        .iter()
-        .map(|workspace| workspace.id.as_str())
-        .collect::<BTreeSet<_>>();
-    let missing = root
+fn validate_external_sources(root: &Table, sources: &[SourceSettings]) -> Result<(), String> {
+    let existing_external = root
         .get("sources")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(Value::as_table)
-        .filter_map(|source| source.get("project"))
-        .filter_map(Value::as_str)
-        .filter(|project| !workspace_ids.contains(project))
+        .filter(|source| source.get("kind").and_then(Value::as_str) == Some("external"))
+        .filter_map(|source| source.get("name").and_then(Value::as_str))
         .collect::<BTreeSet<_>>();
-    if missing.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "configured sources still use workspace scope(s): {}",
-            missing.into_iter().collect::<Vec<_>>().join(", ")
-        ))
+    for source in sources.iter().filter(|source| source.kind == "external") {
+        if !existing_external.contains(source.name.as_str()) {
+            return Err(
+                "external command sources can be retained but not created in Cortana Desktop"
+                    .into(),
+            );
+        }
     }
+    Ok(())
+}
+
+fn validate_sources(
+    sources: &mut Vec<SourceSettings>,
+    workspace_ids: &BTreeSet<String>,
+) -> Result<(), String> {
+    if sources.len() > MAX_SOURCES {
+        return Err(format!("configure no more than {MAX_SOURCES} sources"));
+    }
+    let mut names = BTreeSet::new();
+    for source in sources {
+        source.name = source.name.trim().to_ascii_lowercase();
+        source.kind = source.kind.trim().to_ascii_lowercase();
+        source.project = source.project.trim().to_ascii_lowercase();
+        validate_source_name(&source.name)?;
+        if !names.insert(source.name.clone()) {
+            return Err(format!("source name `{}` is duplicated", source.name));
+        }
+        if !SOURCE_KINDS.contains(&source.kind.as_str()) {
+            return Err(format!("source `{}` has an unsupported kind", source.name));
+        }
+        if !workspace_ids.contains(&source.project) {
+            return Err(format!(
+                "source `{}` uses unknown workspace `{}`",
+                source.name, source.project
+            ));
+        }
+        source.editable = source.kind != "external";
+        normalize_optional_text(&mut source.root);
+        normalize_optional_text(&mut source.source);
+        normalize_optional_text(&mut source.token_env);
+        normalize_optional_text(&mut source.token_path);
+        normalize_optional_text(&mut source.query);
+        for (label, value, maximum) in [
+            ("source root", source.root.as_deref(), 4096),
+            ("source identifier", source.source.as_deref(), 128),
+            ("source token environment", source.token_env.as_deref(), 64),
+            ("source token path", source.token_path.as_deref(), 4096),
+            ("source query", source.query.as_deref(), 2048),
+        ] {
+            if let Some(value) = value {
+                bounded_text(label, value, maximum)?;
+                if value.contains(['\n', '\r']) {
+                    return Err(format!("{label} contains a line break"));
+                }
+            }
+        }
+        normalize_string_list("source channel", &mut source.channels, 100, 128)?;
+        normalize_string_list("source label", &mut source.labels, 100, 128)?;
+        normalize_string_list("source ACL", &mut source.acl, 100, 128)?;
+        normalize_string_list("source exclude", &mut source.exclude, 256, 512)?;
+        if let Some(token_env) = &source.token_env {
+            validate_env_name(token_env)?;
+        }
+        for exclude in &source.exclude {
+            let path = Path::new(exclude);
+            if path.is_absolute()
+                || path.components().any(|component| {
+                    matches!(
+                        component,
+                        std::path::Component::ParentDir
+                            | std::path::Component::RootDir
+                            | std::path::Component::Prefix(_)
+                    )
+                })
+            {
+                return Err(format!(
+                    "source `{}` excludes must be safe relative paths",
+                    source.name
+                ));
+            }
+        }
+        for (label, value, minimum, maximum) in [
+            (
+                "content characters",
+                source.max_content_chars.map(|value| value as u64),
+                1,
+                10_000_000,
+            ),
+            (
+                "documents",
+                source.max_documents.map(|value| value as u64),
+                1,
+                1_000_000,
+            ),
+            ("bytes", source.max_bytes, 1024, 1024 * 1024 * 1024 * 1024),
+            ("duration", source.max_duration_seconds, 1, 86_400),
+        ] {
+            if let Some(value) = value {
+                bounded_u64(
+                    &format!("source {} {label}", source.name),
+                    value,
+                    minimum,
+                    maximum,
+                )?;
+            }
+        }
+        validate_source_paths_and_credentials(source)?;
+    }
+    Ok(())
+}
+
+fn validate_source_paths_and_credentials(source: &SourceSettings) -> Result<(), String> {
+    if let Some(root) = &source.root {
+        validate_source_path(&source.name, "root", root)?;
+    }
+    if let Some(token_path) = &source.token_path {
+        validate_source_path(&source.name, "token", token_path)?;
+    }
+    if !source.enabled {
+        return Ok(());
+    }
+    match source.kind.as_str() {
+        "filesystem" if source.root.is_none() => {
+            Err(format!("filesystem source `{}` needs a root", source.name))
+        }
+        "slack" | "discord" if source.channels.is_empty() || source.token_env.is_none() => {
+            Err(format!(
+                "{} source `{}` needs channels and a token environment name",
+                source.kind, source.name
+            ))
+        }
+        "google-drive" | "gmail" | "google-calendar"
+            if source.token_path.is_none() && source.token_env.is_none() =>
+        {
+            Err(format!(
+                "Google source `{}` needs a token file or token environment name",
+                source.name
+            ))
+        }
+        _ => Ok(()),
+    }
+}
+
+fn validate_source_path(source: &str, label: &str, value: &str) -> Result<(), String> {
+    let path = Path::new(value);
+    if !path.is_absolute() || path.parent().is_none() {
+        return Err(format!(
+            "source `{source}` {label} must be an absolute non-root path"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_source_name(value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > 64
+        || !value.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '-' | '_')
+        })
+        || !value
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+    {
+        return Err(
+            "source names must be 1-64 lowercase letters, numbers, dashes, or underscores".into(),
+        );
+    }
+    Ok(())
+}
+
+fn normalize_optional_text(value: &mut Option<String>) {
+    if let Some(inner) = value {
+        *inner = inner.trim().to_string();
+        if inner.is_empty() {
+            *value = None;
+        }
+    }
+}
+
+fn normalize_string_list(
+    label: &str,
+    values: &mut [String],
+    maximum_items: usize,
+    maximum_bytes: usize,
+) -> Result<(), String> {
+    if values.len() > maximum_items {
+        return Err(format!("{label} has too many values"));
+    }
+    let mut unique = BTreeSet::new();
+    for value in values.iter_mut() {
+        *value = value.trim().to_string();
+        bounded_text(label, value, maximum_bytes)?;
+        if value.contains(['\n', '\r']) {
+            return Err(format!("{label} contains a line break"));
+        }
+        if !unique.insert(value.clone()) {
+            return Err(format!("{label} contains duplicate values"));
+        }
+    }
+    Ok(())
 }
 
 fn read_config(path: &Path) -> Result<Table, String> {
@@ -883,6 +1224,8 @@ fn append_audit(config_path: &Path, update: &SettingsUpdate) -> Result<(), Strin
         "at_unix_seconds": at,
         "event": "settings.updated",
         "workspace_ids": update.workspaces.iter().map(|workspace| workspace.id.as_str()).collect::<Vec<_>>(),
+        "source_names": update.sources.iter().map(|source| source.name.as_str()).collect::<Vec<_>>(),
+        "enabled_source_names": update.sources.iter().filter(|source| source.enabled).map(|source| source.name.as_str()).collect::<Vec<_>>(),
         "secret_names": secret_names,
         "secret_values_recorded": false,
     });
@@ -1094,6 +1437,35 @@ fn optional_string(root: &Table, section: &str, key: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+fn table_optional_string(table: &Table, key: &str) -> Option<String> {
+    table.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+fn table_string_array(table: &Table, key: &str) -> Vec<String> {
+    table
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn table_optional_u64(table: &Table, key: &str) -> Option<u64> {
+    table
+        .get(key)
+        .and_then(Value::as_integer)
+        .and_then(|value| u64::try_from(value).ok())
+}
+
+fn table_optional_usize(table: &Table, key: &str) -> Option<usize> {
+    table_optional_u64(table, key).and_then(|value| usize::try_from(value).ok())
+}
+
 fn usize_value(root: &Table, section: &str, key: &str, default: usize) -> usize {
     u64_value(root, section, key, default as u64) as usize
 }
@@ -1155,6 +1527,33 @@ fn insert_optional_string(table: &mut Table, key: &str, value: &Option<String>) 
     }
 }
 
+fn set_table_optional_string(table: &mut Table, key: &str, value: &Option<String>) {
+    if let Some(value) = value.as_ref().filter(|value| !value.is_empty()) {
+        table.insert(key.into(), Value::String(value.clone()));
+    } else {
+        table.remove(key);
+    }
+}
+
+fn set_table_string_array(table: &mut Table, key: &str, values: &[String]) {
+    if values.is_empty() {
+        table.remove(key);
+    } else {
+        table.insert(
+            key.into(),
+            Value::Array(values.iter().cloned().map(Value::String).collect()),
+        );
+    }
+}
+
+fn set_table_optional_integer(table: &mut Table, key: &str, value: Option<i64>) {
+    if let Some(value) = value {
+        table.insert(key.into(), Value::Integer(value));
+    } else {
+        table.remove(key);
+    }
+}
+
 fn set_integer(root: &mut Table, section: &str, key: &str, value: i64) {
     mutable_table(root, section).insert(key.into(), Value::Integer(value));
 }
@@ -1187,6 +1586,7 @@ mod tests {
                 account_label: Some("team@example.com".into()),
                 color: Some("#E8A83B".into()),
             }],
+            sources: Vec::new(),
             embedding: EmbeddingSettings {
                 provider: "local".into(),
                 base_url: "http://127.0.0.1:6999/v1".into(),
@@ -1330,15 +1730,61 @@ mod tests {
             .expect("config directory");
         fs::write(
             &store.config_path,
-            "[[sources]]\nname = \"mail\"\nkind = \"gmail\"\nproject = \"personal\"\n",
+            "[[sources]]\nname = \"mail\"\nkind = \"gmail\"\nenabled = false\nproject = \"personal\"\n",
         )
         .expect("source config");
         let mut update = valid_update(temp.path());
+        update.sources = store.load().expect("configured source").sources;
         let error = store
             .save(update.clone())
             .expect_err("source scope cannot be orphaned");
         assert!(error.contains("personal"));
         update.workspaces[0].id = "personal".into();
         store.save(update).expect("matching source scope");
+    }
+
+    #[test]
+    fn source_settings_preserve_external_commands_and_validate_credentials() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let store = SettingsStore {
+            config_path: temp.path().join("config/config.toml"),
+        };
+        fs::create_dir_all(store.config_path.parent().expect("config parent"))
+            .expect("config directory");
+        fs::write(
+            &store.config_path,
+            "[[sources]]\nname = \"custom\"\nkind = \"external\"\nenabled = false\nproject = \"work\"\ncommand = [\"/fixed/connector\", \"--jsonl\"]\n",
+        )
+        .expect("external source");
+        let mut update = valid_update(temp.path());
+        update.sources = store.load().expect("load source").sources;
+        assert!(!update.sources[0].editable);
+        store.save(update).expect("retain external source");
+        let rendered = fs::read_to_string(&store.config_path).expect("saved config");
+        assert!(rendered.contains("/fixed/connector"));
+
+        let mut update = valid_update(temp.path());
+        update.sources.push(SourceSettings {
+            name: "team-slack".into(),
+            kind: "slack".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: vec!["C012345".into()],
+            token_env: None,
+            token_path: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            acl: vec!["work".into()],
+            editable: true,
+        });
+        let error = validate_update(&mut update).expect_err("enabled Slack needs credentials");
+        assert!(error.contains("token environment"));
     }
 }

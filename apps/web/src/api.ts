@@ -10,6 +10,7 @@ import type {
   DesktopReadiness,
   DesktopSettings,
   DesktopSettingsUpdate,
+  DesktopSourceJob,
 } from './types'
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
@@ -43,6 +44,21 @@ export async function getDesktopInstaller(id: string): Promise<DesktopInstallJob
 export async function cancelDesktopInstaller(id: string): Promise<DesktopInstallJob> {
   if (!isDesktopApp) throw new Error('Installer is available in Cortana Desktop')
   return invokeDesktop<DesktopInstallJob>('desktop_installer_cancel', { id })
+}
+
+export async function startDesktopSourceValidation(source: string): Promise<DesktopSourceJob> {
+  if (!isDesktopApp) throw new Error('Source validation is available in Cortana Desktop')
+  return invokeDesktop<DesktopSourceJob>('desktop_source_validation_start', { source })
+}
+
+export async function getDesktopSourceValidation(id: string): Promise<DesktopSourceJob> {
+  if (!isDesktopApp) throw new Error('Source validation is available in Cortana Desktop')
+  return invokeDesktop<DesktopSourceJob>('desktop_source_validation_status', { id })
+}
+
+export async function cancelDesktopSourceValidation(id: string): Promise<DesktopSourceJob> {
+  if (!isDesktopApp) throw new Error('Source validation is available in Cortana Desktop')
+  return invokeDesktop<DesktopSourceJob>('desktop_source_validation_cancel', { id })
 }
 
 export async function getStatus(signal?: AbortSignal): Promise<BrainStatus> {
