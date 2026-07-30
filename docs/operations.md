@@ -145,3 +145,17 @@ HTTP clients send the token as a bearer credential. Stdio MCP clients pass only 
 variable name with `cortana mcp --token-env NAME`; Cortana resolves the value privately, maps it to
 the configured principal, and enforces the same scopes and ACLs. Omitting `--token-env` keeps the
 MCP process in the unrestricted local-owner profile and must not be used for a shared agent.
+
+Before adding the first shared principal, assign matching ACL defaults to every configured source
+in that trust domain, then preview legacy rows:
+
+```bash
+cortana acl plan --project work=work --project personal=personal
+```
+
+The plan is read-only and reports configuration mismatches. After reviewing the exact counts,
+`cortana acl apply ... --force` updates only empty/public ACL rows, increments the corpus revision
+once, and leaves already restricted documents unchanged. Apply refuses to run when any configured
+source in a mapped project has a different ACL, preventing the next sync from silently making the
+rows public again. `cortana readiness` fails whenever shared token principals coexist with public
+legacy rows.
