@@ -78,12 +78,15 @@ jobs:
           - runner: macos-14
             platform: macOS ARM64
             args: --target aarch64-apple-darwin
+            target: aarch64-apple-darwin
           - runner: ubuntu-24.04
             platform: Linux x64
             args: ''
+            target: x86_64-unknown-linux-gnu
           - runner: windows-latest
             platform: Windows x64
             args: ''
+            target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
@@ -91,6 +94,7 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      CORTANA_DESKTOP_TARGET: ${{ matrix.target }}
     steps:
       - name: Checkout release
         uses: actions/checkout@v7

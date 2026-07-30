@@ -699,7 +699,7 @@ fn apply_secret_updates(
     Ok(())
 }
 
-fn default_config_path() -> PathBuf {
+pub(crate) fn default_config_path() -> PathBuf {
     std::env::var_os("CORTANA_CONFIG")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -870,20 +870,6 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn append_audit(config_path: &Path, update: &SettingsUpdate) -> Result<(), String> {
-    let path = config_path
-        .parent()
-        .ok_or_else(|| "config path has no parent".to_string())?
-        .join("desktop-audit.jsonl");
-    let mut options = OpenOptions::new();
-    options.create(true).append(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options
-        .open(&path)
-        .map_err(|error| format!("open desktop audit log: {error}"))?;
     let at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| error.to_string())?
@@ -900,6 +886,30 @@ fn append_audit(config_path: &Path, update: &SettingsUpdate) -> Result<(), Strin
         "secret_names": secret_names,
         "secret_values_recorded": false,
     });
+    append_audit_event(config_path, &event)
+}
+
+pub(crate) fn append_audit_event(
+    config_path: &Path,
+    event: &serde_json::Value,
+) -> Result<(), String> {
+    let directory = config_path
+        .parent()
+        .ok_or_else(|| "config path has no parent".to_string())?;
+    fs::create_dir_all(directory).map_err(|error| format!("create settings directory: {error}"))?;
+    set_directory_owner_only(directory)?;
+    let path = directory.join("desktop-audit.jsonl");
+    reject_symlink(&path)?;
+    let mut options = OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(&path)
+        .map_err(|error| format!("open desktop audit log: {error}"))?;
     writeln!(file, "{event}").map_err(|error| format!("append desktop audit log: {error}"))?;
     file.sync_data()
         .map_err(|error| format!("sync desktop audit log: {error}"))?;

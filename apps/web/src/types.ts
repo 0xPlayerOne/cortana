@@ -164,6 +164,40 @@ export type DesktopSettingsUpdate = Pick<
   secrets: Array<{ name: string; value?: string; clear?: boolean }>
 }
 
+export type DesktopReadiness = {
+  scanned_at_unix_seconds: number
+  platform: string
+  tools_ready: boolean
+  core: {
+    passed: boolean
+    query_mode: string
+    checks: Array<{ name: string; passed: boolean; detail: string }>
+  } | null
+  core_error: string | null
+  tools: Array<{
+    id: string
+    label: string
+    required: boolean
+    available: boolean
+    path: string | null
+    version: string | null
+    install_supported: boolean
+    detail: string
+  }>
+}
+
+export type DesktopInstallJob = {
+  id: string
+  tool: string
+  status: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
+  summary: string
+  log: string
+  started_at_unix_seconds: number
+  completed_at_unix_seconds: number | null
+  exit_code: number | null
+  retryable: boolean
+}
+
 export type AnswerResponse = {
   query: string
   answer: string

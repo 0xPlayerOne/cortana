@@ -1,8 +1,9 @@
 # Cortana Desktop
 
 Cortana Desktop is the Tauri 2 control plane for the independently runnable Cortana runtime.
-It reuses the React/Vite workspace in `apps/web` and talks to the local owner-only API through
-narrow Rust commands. The renderer has no arbitrary shell or filesystem capability.
+It reuses the React/Vite workspace in `apps/web`, ships the matching Cortana core binary as a
+platform-specific sidecar, and talks to the local owner-only API through narrow Rust commands.
+The renderer has no arbitrary shell or filesystem capability.
 
 ## Development
 
@@ -24,9 +25,15 @@ On macOS, build an unsigned local `.app` bundle with:
 bun run desktop:bundle:mac
 ```
 
-Signed, updater-compatible DMG, AppImage/deb, and Windows installers are created only by the
-release workflow. That workflow has access to the dedicated updater signing key; local builds do
-not require release secrets.
+Updater-signed DMG/application archives, AppImage/deb, and Windows installers are created only by
+the release workflow. That workflow has access to the dedicated updater signing key; local builds
+do not require release secrets. macOS Developer ID signing and notarization require separate Apple
+credentials and are reported independently from the updater signature.
+
+The Settings **Readiness** panel runs an explicit, read-only scan. It checks the bundled runtime,
+uv, Python 3.11+, the connector environment, and the core production gates without starting an
+ingestion run. Fixed tool installers require a confirmation and native approval, expose bounded
+logs, and can be cancelled or retried.
 
 Closing the main window hides it to the tray. Use **Quit Cortana Desktop** from the tray menu to
 exit the control plane. This does not stop the independently managed Cortana services.
