@@ -13,6 +13,8 @@ pub struct Config {
     #[serde(default)]
     pub ingestion: IngestionConfig,
     #[serde(default)]
+    pub query: QueryConfig,
+    #[serde(default)]
     pub connectors: ConnectorConfig,
     #[serde(default)]
     pub runtime: RuntimeConfig,
@@ -70,6 +72,38 @@ pub struct IngestionConfig {
     pub document_batch_size: usize,
     #[serde(default = "default_ingestion_request_concurrency")]
     pub request_concurrency: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct QueryConfig {
+    #[serde(default)]
+    pub synthesis_enabled: bool,
+    #[serde(default = "default_query_model_url")]
+    pub base_url: String,
+    #[serde(default = "default_query_model")]
+    pub model: String,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
+    #[serde(default = "default_query_max_planned_queries")]
+    pub max_planned_queries: usize,
+    #[serde(default = "default_query_retrieval_limit")]
+    pub retrieval_limit: usize,
+    #[serde(default = "default_query_result_limit")]
+    pub result_limit: usize,
+    #[serde(default = "default_query_context_tokens")]
+    pub context_tokens: usize,
+    #[serde(default = "default_query_output_tokens")]
+    pub output_tokens: usize,
+    #[serde(default = "default_query_timeout")]
+    pub request_timeout_seconds: u64,
+    #[serde(default = "default_answer_timeout")]
+    pub answer_timeout_seconds: u64,
+    #[serde(default = "default_query_concurrency")]
+    pub request_concurrency: usize,
+    #[serde(default = "default_query_cache_entries")]
+    pub cache_max_entries: usize,
+    #[serde(default = "default_query_cache_ttl")]
+    pub cache_ttl_seconds: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -153,6 +187,27 @@ impl Default for IngestionConfig {
     }
 }
 
+impl Default for QueryConfig {
+    fn default() -> Self {
+        Self {
+            synthesis_enabled: false,
+            base_url: default_query_model_url(),
+            model: default_query_model(),
+            api_key_env: None,
+            max_planned_queries: default_query_max_planned_queries(),
+            retrieval_limit: default_query_retrieval_limit(),
+            result_limit: default_query_result_limit(),
+            context_tokens: default_query_context_tokens(),
+            output_tokens: default_query_output_tokens(),
+            request_timeout_seconds: default_query_timeout(),
+            answer_timeout_seconds: default_answer_timeout(),
+            request_concurrency: default_query_concurrency(),
+            cache_max_entries: default_query_cache_entries(),
+            cache_ttl_seconds: default_query_cache_ttl(),
+        }
+    }
+}
+
 impl Default for ConnectorConfig {
     fn default() -> Self {
         Self {
@@ -168,6 +223,7 @@ impl Default for Config {
             data_dir: default_data_dir(),
             embedding: EmbeddingConfig::default(),
             ingestion: IngestionConfig::default(),
+            query: QueryConfig::default(),
             connectors: ConnectorConfig::default(),
             runtime: RuntimeConfig::default(),
             sources: Vec::new(),
@@ -276,6 +332,54 @@ fn default_embedding_url() -> String {
 
 fn default_embedding_model() -> String {
     "Qwen/Qwen3-Embedding-0.6B".into()
+}
+
+fn default_query_model_url() -> String {
+    "http://127.0.0.1:8008/v1".into()
+}
+
+fn default_query_model() -> String {
+    "auto-efficient".into()
+}
+
+const fn default_query_max_planned_queries() -> usize {
+    4
+}
+
+const fn default_query_retrieval_limit() -> usize {
+    10
+}
+
+const fn default_query_result_limit() -> usize {
+    20
+}
+
+const fn default_query_context_tokens() -> usize {
+    8_000
+}
+
+const fn default_query_output_tokens() -> usize {
+    1_200
+}
+
+const fn default_query_timeout() -> u64 {
+    45
+}
+
+const fn default_answer_timeout() -> u64 {
+    55
+}
+
+const fn default_query_concurrency() -> usize {
+    4
+}
+
+const fn default_query_cache_entries() -> usize {
+    10_000
+}
+
+const fn default_query_cache_ttl() -> u64 {
+    3_600
 }
 
 fn default_dimension() -> usize {

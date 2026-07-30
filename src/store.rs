@@ -16,6 +16,15 @@ use crate::model::{Document, StoredChunk};
 const DATABASE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const SYNC_RUNS_PER_SOURCE: usize = 100;
 
+fn bump_corpus_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
+    transaction.execute(
+        "UPDATE meta SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)
+         WHERE key='corpus_revision'",
+        [],
+    )?;
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct Store {
     connection: Arc<Mutex<Connection>>,
@@ -28,6 +37,8 @@ pub struct StoreStats {
     pub embedding_fingerprint: Option<String>,
     pub embedding_cache_entries: i64,
     pub embedding_cache_hits: i64,
+    pub query_cache_entries: i64,
+    pub query_cache_hits: i64,
     pub sources: Vec<SourceStats>,
     pub sync_runs: Vec<SourceSyncStats>,
 }
@@ -106,11 +117,19 @@ impl Store {
                documents INTEGER, bytes INTEGER, deleted INTEGER,
                budget_documents INTEGER NOT NULL, budget_bytes INTEGER NOT NULL,
                budget_seconds INTEGER NOT NULL);
+             CREATE TABLE IF NOT EXISTS query_cache(
+               cache_key TEXT PRIMARY KEY, response_json TEXT NOT NULL,
+               created_at TEXT NOT NULL, last_used_at TEXT NOT NULL,
+               hits INTEGER NOT NULL DEFAULT 0);
              CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                chunk_id UNINDEXED, title, content, tokenize='unicode61');
              CREATE INDEX IF NOT EXISTS idx_documents_scope ON documents(project, source);
              CREATE INDEX IF NOT EXISTS idx_sync_runs_source
                ON sync_runs(source,project,started_at DESC);",
+        )?;
+        connection.execute(
+            "INSERT OR IGNORE INTO meta(key,value) VALUES('corpus_revision','0')",
+            [],
         )?;
         migrate_embedding_blobs(&mut connection)?;
         secure_database_files(path)?;
@@ -257,6 +276,7 @@ impl Store {
                 params![chunk_id, document.title, content],
             )?;
         }
+        bump_corpus_revision(&transaction)?;
         transaction.commit()?;
         Ok(true)
     }
@@ -277,11 +297,17 @@ impl Store {
 
     pub fn refresh_timestamp(&self, document: &Document) -> Result<()> {
         let id = stable_id(&document.source, &document.source_id);
-        let connection = self.connection.lock().expect("store lock poisoned");
-        connection.execute(
-            "UPDATE documents SET updated_at=?2 WHERE id=?1",
-            params![id, document.updated_at.to_rfc3339()],
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let updated_at = document.updated_at.to_rfc3339();
+        let changed = transaction.execute(
+            "UPDATE documents SET updated_at=?2 WHERE id=?1 AND updated_at<>?2",
+            params![id, updated_at],
         )?;
+        if changed > 0 {
+            bump_corpus_revision(&transaction)?;
+        }
+        transaction.commit()?;
         Ok(())
     }
 
@@ -326,8 +352,77 @@ impl Store {
             )?;
             transaction.execute("DELETE FROM documents WHERE id=?1", [id])?;
         }
+        if !stale.is_empty() {
+            bump_corpus_revision(&transaction)?;
+        }
         transaction.commit()?;
         Ok(stale.len())
+    }
+
+    pub fn corpus_revision(&self) -> Result<u64> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let value: String = connection.query_row(
+            "SELECT value FROM meta WHERE key='corpus_revision'",
+            [],
+            |row| row.get(0),
+        )?;
+        value.parse().context("invalid corpus revision")
+    }
+
+    pub fn cached_query(&self, cache_key: &str, ttl_seconds: u64) -> Result<Option<String>> {
+        if ttl_seconds == 0 {
+            return Ok(None);
+        }
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let value: Option<(String, String)> = connection
+            .query_row(
+                "SELECT response_json,created_at FROM query_cache WHERE cache_key=?1",
+                [cache_key],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((response, created_at)) = value else {
+            return Ok(None);
+        };
+        let created_at = DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&Utc);
+        if (Utc::now() - created_at).num_seconds() > ttl_seconds as i64 {
+            optional_write(&connection, || {
+                connection.execute("DELETE FROM query_cache WHERE cache_key=?1", [cache_key])
+            })?;
+            return Ok(None);
+        }
+        optional_write(&connection, || {
+            connection.execute(
+                "UPDATE query_cache SET hits=hits+1,last_used_at=?2 WHERE cache_key=?1",
+                params![cache_key, Utc::now().to_rfc3339()],
+            )
+        })?;
+        Ok(Some(response))
+    }
+
+    pub fn cache_query(&self, cache_key: &str, response: &str, max_entries: usize) -> Result<()> {
+        if max_entries == 0 {
+            return Ok(());
+        }
+        let now = Utc::now().to_rfc3339();
+        let connection = self.connection.lock().expect("store lock poisoned");
+        connection.execute(
+            "INSERT INTO query_cache(cache_key,response_json,created_at,last_used_at,hits)
+             VALUES(?1,?2,?3,?3,0)
+             ON CONFLICT(cache_key) DO UPDATE SET
+               response_json=excluded.response_json,created_at=excluded.created_at,
+               last_used_at=excluded.last_used_at",
+            params![cache_key, response, now],
+        )?;
+        connection.execute(
+            "DELETE FROM query_cache WHERE cache_key IN (
+               SELECT cache_key FROM query_cache
+               ORDER BY last_used_at DESC
+               LIMIT -1 OFFSET ?1
+             )",
+            [i64::try_from(max_entries).unwrap_or(i64::MAX)],
+        )?;
+        Ok(())
     }
 
     pub fn all_chunks(
@@ -474,6 +569,11 @@ impl Store {
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
+        let (query_cache_entries, query_cache_hits) = connection.query_row(
+            "SELECT COUNT(*),COALESCE(SUM(hits),0) FROM query_cache",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
         let mut statement = connection.prepare(
             "SELECT d.source,d.project,COUNT(DISTINCT d.id),COUNT(c.id),MAX(d.updated_at)
              FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
@@ -527,6 +627,8 @@ impl Store {
             embedding_fingerprint,
             embedding_cache_entries,
             embedding_cache_hits,
+            query_cache_entries,
+            query_cache_hits,
             sources,
             sync_runs,
         })
@@ -940,19 +1042,29 @@ mod tests {
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
         let first = document("one", "first");
         let second = document("two", "second");
+        assert_eq!(store.corpus_revision().expect("initial revision"), 0);
         assert!(store.needs_update(&first).expect("check first"));
         store
             .upsert(&first, &[("first".into(), vec![1.0])])
             .expect("insert first");
+        assert_eq!(store.corpus_revision().expect("first revision"), 1);
         store
             .upsert(&second, &[("second".into(), vec![1.0])])
             .expect("insert second");
+        assert_eq!(store.corpus_revision().expect("second revision"), 2);
+        assert!(
+            !store
+                .upsert(&first, &[("first".into(), vec![1.0])])
+                .expect("skip unchanged")
+        );
+        assert_eq!(store.corpus_revision().expect("unchanged revision"), 2);
         assert!(!store.needs_update(&first).expect("check unchanged"));
         let mut refreshed = first.clone();
         refreshed.updated_at += chrono::Duration::days(1);
         store
             .refresh_timestamp(&refreshed)
             .expect("refresh timestamp");
+        assert_eq!(store.corpus_revision().expect("timestamp revision"), 3);
         assert_eq!(
             store.all_chunks(None, None).expect("chunks")[0].updated_at,
             refreshed.updated_at
@@ -962,6 +1074,7 @@ mod tests {
             .reconcile("test", "demo", &["one".into()])
             .expect("reconcile");
         assert_eq!(deleted, 1);
+        assert_eq!(store.corpus_revision().expect("reconcile revision"), 4);
         assert_eq!(
             store
                 .all_chunks(Some("demo"), Some("test"))
@@ -974,6 +1087,36 @@ mod tests {
         assert_eq!(stats.chunks, 1);
         assert_eq!(stats.sources[0].source, "test");
         assert_eq!(stats.embedding_cache_entries, 0);
+    }
+
+    #[test]
+    fn query_cache_tracks_hits_ttl_bounds_and_opt_out() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store.cache_query("one", "first", 1).expect("cache first");
+        assert_eq!(
+            store.cached_query("one", 60).expect("read first"),
+            Some("first".into())
+        );
+        store.cache_query("two", "second", 1).expect("cache second");
+        assert_eq!(store.cached_query("one", 60).expect("pruned first"), None);
+        assert_eq!(
+            store.cached_query("two", 60).expect("read second"),
+            Some("second".into())
+        );
+        assert_eq!(store.cached_query("two", 0).expect("zero ttl"), None);
+        store
+            .cache_query("disabled", "ignored", 0)
+            .expect("disabled cache");
+        assert_eq!(
+            store
+                .cached_query("disabled", 60)
+                .expect("disabled cache read"),
+            None
+        );
+        let stats = store.stats().expect("cache stats");
+        assert_eq!(stats.query_cache_entries, 1);
+        assert_eq!(stats.query_cache_hits, 1);
     }
 
     #[test]

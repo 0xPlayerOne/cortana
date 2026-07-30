@@ -56,6 +56,11 @@ bun run build
 curl -sS http://127.0.0.1:7331/v1/context \
   -H 'content-type: application/json' \
   -d '{"query":"how do releases work?","project":"engineering","max_tokens":8000}'
+
+# Human-facing planned answer. This stays extractive unless [query].synthesis_enabled is true.
+curl -sS http://127.0.0.1:7331/v1/answer \
+  -H 'content-type: application/json' \
+  -d '{"query":"how do releases work?","project":"engineering"}'
 ```
 
 For an existing installation, run `./scripts/install-agent-integrations.sh`.
@@ -68,6 +73,8 @@ embeddings are intentionally fingerprinted as different index generations and ca
 See [the ingestion guide](docs/ingestion.md) and
 [`config.example.toml`](config.example.toml) for Google Drive, Gmail, Calendar, Apple Notes, Slack,
 Discord, Buzz, filesystem/code, and external adapters.
+See [the query guide](docs/query.md) for planned retrieval, cited synthesis, local model-gateway
+configuration, cloud providers, cache invalidation, and degraded operation.
 See the [operations guide](docs/operations.md) for service management, authenticated remote access,
 telemetry, backup, restore, and Linux systemd units.
 See [release history](docs/releases.md) for the automated version-PR policy and transitional
@@ -121,6 +128,12 @@ Sources -> adapters -> normalized documents -> chunk/distill -> embeddings
 The core runtime is Rust: service supervision, normalization contracts, storage, indexing,
 retrieval, HTTP, MCP, and the CLI. Python is an isolated connector SDK for integrations where
 mature vendor libraries or macOS automation are the safer boundary.
+
+The human workspace calls `/v1/answer`: a bounded planner can fan out up to eight focused searches,
+the runtime executes them concurrently, reciprocal-rank fusion deduplicates evidence, and a
+configured model produces a citation-validated answer. Every model failure degrades to a
+deterministic extractive answer. MCP intentionally exposes raw search and token-bounded context
+instead, allowing an agent to orchestrate without paying for an opaque extra synthesis call.
 
 The shipped local profile uses SQLite WAL, FTS5, content-addressed incremental updates, a persistent
 embedding cache, and an embedding index generation fingerprint. Postgres with `pgvector` is the

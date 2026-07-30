@@ -1,7 +1,7 @@
 import { FileText, History, Link2, Network, Sparkles, Star } from 'lucide-react'
 import { type CSSProperties, useState } from 'react'
 
-import type { Evidence } from '../types'
+import type { AnswerResponse, Evidence } from '../types'
 
 const tabs = [
   { id: 'answer', label: 'Answer', icon: Sparkles },
@@ -14,6 +14,7 @@ type Tab = (typeof tabs)[number]['id']
 
 export function Workspace({
   query,
+  answer,
   evidence,
   selected,
   loading,
@@ -22,6 +23,7 @@ export function Workspace({
   onRetry,
 }: {
   query: string
+  answer: AnswerResponse | null
   evidence: Evidence[]
   selected: number
   loading: boolean
@@ -29,7 +31,7 @@ export function Workspace({
   onSelect: (index: number) => void
   onRetry: () => void
 }) {
-  const [tab, setTab] = useState<Tab>('sources')
+  const [tab, setTab] = useState<Tab>('answer')
   const active = evidence[selected] ?? null
 
   return (
@@ -67,7 +69,15 @@ export function Workspace({
       ) : tab === 'timeline' ? (
         <TimelineView evidence={evidence} onSelect={onSelect} />
       ) : tab === 'answer' ? (
-        <AnswerView query={query} evidence={evidence} />
+        <AnswerView
+          query={query}
+          response={answer}
+          evidence={evidence}
+          onSelect={(index) => {
+            onSelect(index)
+            setTab('sources')
+          }}
+        />
       ) : (
         active && <DocumentView active={active} evidence={evidence} onSelect={onSelect} />
       )}
@@ -130,25 +140,69 @@ function DocumentView({
   )
 }
 
-function AnswerView({ query, evidence }: { query: string; evidence: Evidence[] }) {
+function AnswerView({
+  query,
+  response,
+  evidence,
+  onSelect,
+}: {
+  query: string
+  response: AnswerResponse | null
+  evidence: Evidence[]
+  onSelect: (index: number) => void
+}) {
   return (
     <article className="answer-view">
       <span className="eyebrow">
         <Sparkles size={15} /> Evidence brief
       </span>
       <h1>{query}</h1>
-      <p className="lead">Cortana found {evidence.length} relevant passages.</p>
+      {response && (
+        <div className="answer-meta">
+          <span>{response.mode}</span>
+          <span>{response.cached ? 'cache hit' : `${response.latency_ms} ms`}</span>
+          <span>
+            {response.plan.queries.length}{' '}
+            {response.plan.queries.length === 1 ? 'retrieval' : 'retrievals'}
+          </span>
+        </div>
+      )}
+      <div className="answer-copy">
+        {(response?.answer ?? 'Cortana found relevant evidence below.')
+          .split(/\n{2,}/)
+          .map((paragraph, index) => (
+            <p key={`${paragraph.slice(0, 24)}:${index}`}>{paragraph}</p>
+          ))}
+      </div>
+      {response && response.plan.queries.length > 1 && (
+        <details className="answer-plan">
+          <summary>Retrieval plan</summary>
+          <ol>
+            {response.plan.queries.map((plannedQuery) => (
+              <li key={plannedQuery}>{plannedQuery}</li>
+            ))}
+          </ol>
+        </details>
+      )}
+      {response?.warnings.map((warning) => (
+        <p className="answer-warning" key={warning}>
+          {warning}
+        </p>
+      ))}
+      <p className="lead">{evidence.length} cited passages</p>
       {evidence.slice(0, 4).map((item, index) => (
-        <section key={item.chunk_id}>
+        <button className="answer-source" key={item.chunk_id} onClick={() => onSelect(index)}>
           <span>[{index + 1}]</span>
           <div>
             <h2>{item.title}</h2>
             <p>{item.content}</p>
           </div>
-        </section>
+        </button>
       ))}
       <p className="answer-note">
-        Extractive mode keeps citations stable when no synthesis model is configured.
+        {response?.mode === 'synthesized'
+          ? 'Synthesized from the cited passages. Open a source to inspect the original evidence.'
+          : 'Extractive mode keeps citations stable when no synthesis model is configured.'}
       </p>
     </article>
   )
