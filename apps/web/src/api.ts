@@ -6,6 +6,8 @@ import type {
   AnswerResponse,
   BrainStatus,
   ContextBundle,
+  DesktopInstallJob,
+  DesktopReadiness,
   DesktopSettings,
   DesktopSettingsUpdate,
 } from './types'
@@ -21,6 +23,26 @@ export async function getDesktopSettings(): Promise<DesktopSettings> {
 export async function saveDesktopSettings(update: DesktopSettingsUpdate): Promise<DesktopSettings> {
   if (!isDesktopApp) throw new Error('Settings are available in Cortana Desktop')
   return invokeDesktop<DesktopSettings>('desktop_settings_save', { update })
+}
+
+export async function scanDesktopReadiness(): Promise<DesktopReadiness> {
+  if (!isDesktopApp) throw new Error('Readiness is available in Cortana Desktop')
+  return invokeDesktop<DesktopReadiness>('desktop_readiness_scan')
+}
+
+export async function startDesktopInstaller(tool: string): Promise<DesktopInstallJob> {
+  if (!isDesktopApp) throw new Error('Installer is available in Cortana Desktop')
+  return invokeDesktop<DesktopInstallJob>('desktop_installer_start', { tool, approved: true })
+}
+
+export async function getDesktopInstaller(id: string): Promise<DesktopInstallJob> {
+  if (!isDesktopApp) throw new Error('Installer is available in Cortana Desktop')
+  return invokeDesktop<DesktopInstallJob>('desktop_installer_status', { id })
+}
+
+export async function cancelDesktopInstaller(id: string): Promise<DesktopInstallJob> {
+  if (!isDesktopApp) throw new Error('Installer is available in Cortana Desktop')
+  return invokeDesktop<DesktopInstallJob>('desktop_installer_cancel', { id })
 }
 
 export async function getStatus(signal?: AbortSignal): Promise<BrainStatus> {

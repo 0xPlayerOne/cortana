@@ -288,6 +288,176 @@
   line-height: 1.5;
 }
 
+.readiness-actions {
+  display: flex;
+  align-items: center;
+  margin: 22px 0 16px;
+  gap: 12px;
+}
+
+.readiness-actions > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.readiness-summary,
+.readiness-list article,
+.core-readiness article {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+}
+
+.readiness-summary {
+  padding: 16px;
+  border: 1px solid #3c3d39;
+  background: #222321;
+}
+
+.readiness-summary div,
+.readiness-list article > div,
+.core-readiness article > div {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  flex: 1;
+  flex-direction: column;
+}
+
+.readiness-summary span,
+.readiness-list span,
+.core-readiness span,
+.core-readiness p {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.readiness-list {
+  margin-top: 12px;
+  border: 1px solid #353633;
+}
+
+.readiness-list article,
+.core-readiness article {
+  padding: 13px 15px;
+  border-bottom: 1px solid #353633;
+}
+
+.readiness-list article:last-child,
+.core-readiness article:last-child {
+  border-bottom: 0;
+}
+
+.readiness-list strong,
+.core-readiness strong {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.readiness-list strong small {
+  color: #777973;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.readiness-list code {
+  overflow: hidden;
+  color: #777973;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.readiness-list button {
+  padding: 5px 10px;
+  color: #777973;
+  border: 1px solid #444541;
+  background: transparent;
+}
+
+.installer-job {
+  margin-top: 12px;
+  padding: 13px 15px;
+  border: 1px solid #3d4e63;
+  background: #1c242d;
+}
+
+.installer-job > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.installer-job span {
+  display: flex;
+  flex: 1;
+  gap: 3px;
+  flex-direction: column;
+}
+
+.installer-job small {
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.installer-job button {
+  padding: 5px 10px;
+  color: #deddd7;
+  border: 1px solid #4b4c48;
+  background: #2a2b28;
+  cursor: pointer;
+}
+
+.installer-job pre {
+  max-height: 190px;
+  margin: 12px 0 0;
+  padding: 10px;
+  overflow: auto;
+  color: #bcbdba;
+  background: #151614;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.status-glyph {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #d9e8db;
+  border-radius: 50%;
+  background: #35613d;
+}
+
+.status-glyph.failed {
+  color: #f1c4c0;
+  background: #6a3834;
+}
+
+.status-glyph.optional {
+  color: #babbb6;
+  background: #494a46;
+}
+
+.core-readiness {
+  margin-top: 24px;
+}
+
+.core-readiness h3 {
+  margin: 0 0 9px;
+  font-size: 14px;
+}
+
+.core-readiness > p {
+  padding: 13px;
+  border: 1px solid #594829;
+  background: #262116;
+}
+
 .settings-banner {
   position: absolute;
   right: 25px;

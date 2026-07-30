@@ -13,6 +13,8 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 
+mod installer;
+mod readiness;
 mod settings;
 
 const BACKEND_ORIGIN: &str = "http://127.0.0.1:7331";
@@ -145,6 +147,36 @@ fn desktop_settings_save(
     settings::save(update)
 }
 
+#[tauri::command]
+fn desktop_installer_start(
+    installer: State<'_, installer::InstallerState>,
+    tool: String,
+    approved: bool,
+) -> Result<installer::InstallJobSnapshot, String> {
+    installer.start(&tool, approved)
+}
+
+#[tauri::command]
+fn desktop_installer_status(
+    installer: State<'_, installer::InstallerState>,
+    id: String,
+) -> Result<installer::InstallJobSnapshot, String> {
+    installer.status(&id)
+}
+
+#[tauri::command]
+fn desktop_installer_cancel(
+    installer: State<'_, installer::InstallerState>,
+    id: String,
+) -> Result<installer::InstallJobSnapshot, String> {
+    installer.cancel(&id)
+}
+
+#[tauri::command]
+async fn desktop_readiness_scan(app: AppHandle) -> readiness::ReadinessSnapshot {
+    readiness::scan(&app).await
+}
+
 fn validate_retrieval_request(request: &RetrievalRequest) -> Result<(), String> {
     let query = request.query.trim();
     if query.is_empty() {
@@ -249,15 +281,21 @@ pub fn run() {
             None,
         ))
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(backend.clone())
+        .manage(installer::InstallerState::default())
         .invoke_handler(tauri::generate_handler![
             brain_status,
             brain_answer,
             brain_context,
             desktop_info,
             desktop_settings_get,
-            desktop_settings_save
+            desktop_settings_save,
+            desktop_readiness_scan,
+            desktop_installer_start,
+            desktop_installer_status,
+            desktop_installer_cancel
         ])
         .setup(move |app| {
             let tray = install_tray(app)?;

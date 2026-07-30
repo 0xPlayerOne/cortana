@@ -1,14 +1,38 @@
-import { AlertTriangle, Check, Plus, Save, Settings2, Trash2 } from 'lucide-react'
+import {
+  AlertTriangle,
+  Check,
+  LoaderCircle,
+  Plus,
+  RefreshCw,
+  Save,
+  Settings2,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
 
-import { getDesktopSettings, isDesktopApp, saveDesktopSettings } from '../api'
-import type { DesktopSettings, DesktopSettingsUpdate, WorkspaceSettings } from '../types'
+import {
+  cancelDesktopInstaller,
+  getDesktopInstaller,
+  getDesktopSettings,
+  isDesktopApp,
+  saveDesktopSettings,
+  scanDesktopReadiness,
+  startDesktopInstaller,
+} from '../api'
+import type {
+  DesktopInstallJob,
+  DesktopReadiness,
+  DesktopSettings,
+  DesktopSettingsUpdate,
+  WorkspaceSettings,
+} from '../types'
 
-type Section = 'workspaces' | 'embedding' | 'query' | 'ingestion' | 'advanced'
+type Section = 'readiness' | 'workspaces' | 'embedding' | 'query' | 'ingestion' | 'advanced'
 
 export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings) => void }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
-  const [section, setSection] = useState<Section>('workspaces')
+  const [section, setSection] = useState<Section>('readiness')
   const [secretValues, setSecretValues] = useState<Record<string, string>>({})
   const [clearedSecrets, setClearedSecrets] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
@@ -94,23 +118,24 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
       </header>
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
-          {(['workspaces', 'embedding', 'query', 'ingestion', 'advanced'] as Section[]).map(
-            (item) => (
-              <button
-                key={item}
-                className={section === item ? 'active' : ''}
-                onClick={() => setSection(item)}
-              >
-                {item[0].toUpperCase() + item.slice(1)}
-              </button>
-            )
-          )}
+          {(
+            ['readiness', 'workspaces', 'embedding', 'query', 'ingestion', 'advanced'] as Section[]
+          ).map((item) => (
+            <button
+              key={item}
+              className={section === item ? 'active' : ''}
+              onClick={() => setSection(item)}
+            >
+              {item[0].toUpperCase() + item.slice(1)}
+            </button>
+          ))}
           <div className="settings-paths">
             <span>Config</span>
             <code title={settings.config_path}>{settings.config_path}</code>
           </div>
         </nav>
         <form id="settings-form" className="settings-form" onSubmit={submit}>
+          {section === 'readiness' && <ReadinessSection />}
           {section === 'workspaces' && <WorkspaceSection settings={settings} update={update} />}
           {section === 'embedding' && (
             <EmbeddingSection
@@ -153,6 +178,180 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
         </div>
       )}
     </main>
+  )
+}
+
+function ReadinessSection() {
+  const [readiness, setReadiness] = useState<DesktopReadiness | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [error, setError] = useState('')
+  const [job, setJob] = useState<DesktopInstallJob | null>(null)
+
+  useEffect(() => {
+    if (!job || !['running', 'cancelling'].includes(job.status)) return
+    let active = true
+    const timer = window.setTimeout(() => {
+      void getDesktopInstaller(job.id)
+        .then((next) => {
+          if (!active) return
+          setJob(next)
+          if (next.status === 'succeeded') setReadiness(null)
+        })
+        .catch((caught: unknown) => {
+          if (active) {
+            setError(caught instanceof Error ? caught.message : 'Installer status failed')
+          }
+        })
+    }, 700)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [job])
+
+  const scan = async () => {
+    setScanning(true)
+    setError('')
+    try {
+      setReadiness(await scanDesktopReadiness())
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Readiness scan failed')
+    } finally {
+      setScanning(false)
+    }
+  }
+
+  const install = async (tool: string, label: string) => {
+    if (
+      !window.confirm(
+        `Install ${label} on this computer?\n\nCortana will run its fixed, platform-specific installer. No ingestion or sync will start.`
+      )
+    ) {
+      return
+    }
+    setError('')
+    try {
+      setJob(await startDesktopInstaller(tool))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Installer failed to start')
+    }
+  }
+
+  const cancel = async () => {
+    if (!job) return
+    try {
+      setJob(await cancelDesktopInstaller(job.id))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Installer could not be cancelled')
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="System readiness"
+      description="A read-only scan checks local tools and Cortana's production gates. It never starts a connector, installs a schedule, or writes indexed data."
+    >
+      <div className="readiness-actions">
+        <button type="button" className="secondary-button" disabled={scanning} onClick={scan}>
+          {scanning ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
+          {scanning ? 'Checking system…' : readiness ? 'Run again' : 'Run readiness scan'}
+        </button>
+        {readiness && (
+          <span>
+            Last checked {new Date(readiness.scanned_at_unix_seconds * 1000).toLocaleTimeString()}
+          </span>
+        )}
+      </div>
+      {error && (
+        <div className="safety-note">
+          <AlertTriangle size={16} /> <span>{error}</span>
+        </div>
+      )}
+      {readiness && (
+        <>
+          <div className="readiness-summary">
+            <StatusGlyph passed={readiness.tools_ready} />
+            <div>
+              <strong>{readiness.tools_ready ? 'Local tools ready' : 'Setup required'}</strong>
+              <span>
+                {readiness.tools.filter((tool) => tool.required && !tool.available).length} required
+                components missing
+              </span>
+            </div>
+          </div>
+          <div className="readiness-list">
+            {readiness.tools.map((tool) => (
+              <article key={tool.id}>
+                <StatusGlyph passed={tool.available} optional={!tool.required} />
+                <div>
+                  <strong>
+                    {tool.label} {!tool.required && <small>optional</small>}
+                  </strong>
+                  <span>{tool.version || tool.detail}</span>
+                  {tool.path && <code>{tool.path}</code>}
+                </div>
+                {!tool.available && tool.install_supported && (
+                  <button
+                    type="button"
+                    disabled={job?.status === 'running' || job?.status === 'cancelling'}
+                    onClick={() => void install(tool.id, tool.label)}
+                  >
+                    Install
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+          {job && (
+            <div className={`installer-job ${job.status}`} role="status">
+              <div>
+                {['running', 'cancelling'].includes(job.status) ? (
+                  <LoaderCircle className="spin" size={16} />
+                ) : (
+                  <StatusGlyph passed={job.status === 'succeeded'} />
+                )}
+                <span>
+                  <strong>{job.summary}</strong>
+                  <small>Status: {job.status}</small>
+                </span>
+                {job.status === 'running' && (
+                  <button type="button" onClick={() => void cancel()}>
+                    Cancel
+                  </button>
+                )}
+                {job.retryable && (
+                  <button type="button" onClick={() => void install(job.tool, job.tool)}>
+                    Retry
+                  </button>
+                )}
+              </div>
+              {job.log && <pre>{job.log}</pre>}
+            </div>
+          )}
+          <div className="core-readiness">
+            <h3>Production gates</h3>
+            {readiness.core_error && <p>{readiness.core_error}</p>}
+            {readiness.core?.checks.map((check) => (
+              <article key={check.name}>
+                <StatusGlyph passed={check.passed} />
+                <div>
+                  <strong>{check.name.replaceAll('-', ' ')}</strong>
+                  <span>{check.detail}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        </>
+      )}
+    </SettingsSection>
+  )
+}
+
+function StatusGlyph({ passed, optional = false }: { passed: boolean; optional?: boolean }) {
+  return (
+    <i className={`status-glyph ${passed ? 'passed' : optional ? 'optional' : 'failed'}`}>
+      {passed ? <Check size={13} /> : <X size={13} />}
+    </i>
   )
 }
 

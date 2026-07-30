@@ -4,9 +4,9 @@
   "version": "0.4.1",
   "identifier": "ai.cortana.desktop",
   "build": {
-    "beforeDevCommand": "bun run --cwd ../web dev",
+    "beforeDevCommand": "bun run prepare:sidecar && bun run --cwd ../web dev",
     "devUrl": "http://127.0.0.1:4173",
-    "beforeBuildCommand": "bun run --cwd ../web build",
+    "beforeBuildCommand": "bun run prepare:sidecar -- --release && bun run --cwd ../web build",
     "frontendDist": "../../web/dist"
   },
   "app": {
@@ -29,6 +29,7 @@
   },
   "bundle": {
     "active": true,
+    "externalBin": ["binaries/cortana"],
     "category": "Productivity",
     "copyright": "Copyright 2026 Cortana contributors",
     "createUpdaterArtifacts": true,
