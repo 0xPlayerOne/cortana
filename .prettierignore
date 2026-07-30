@@ -1,5 +1,6 @@
 # Generated release metadata is intentionally managed by Release Please.
 CHANGELOG.md
+apps/desktop/src-tauri/tauri.conf.json
 
 # Runtime files are checked out under .github during CI.
 .github/.code-foundry
