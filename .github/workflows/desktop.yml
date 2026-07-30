@@ -1,0 +1,62 @@
+name: Desktop
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/desktop.yml'
+      - 'apps/desktop/**'
+      - 'apps/web/**'
+      - 'bun.lock'
+      - 'package.json'
+  push:
+    branches: [main, staging]
+    paths:
+      - '.github/workflows/desktop.yml'
+      - 'apps/desktop/**'
+      - 'apps/web/**'
+      - 'bun.lock'
+      - 'package.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Tauri 2 / Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Audit desktop Rust dependencies
+        run: cargo audit --file apps/desktop/src-tauri/Cargo.lock
+      - name: Check web
+        run: |
+          bun run typecheck
+          bun run build
+      - name: Test desktop
+        run: bun run desktop:test
+      - name: Lint desktop
+        run: bun run --cwd apps/desktop clippy
+      - name: Compile release desktop
+        run: bun run desktop:build

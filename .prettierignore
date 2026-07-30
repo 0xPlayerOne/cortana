@@ -6,6 +6,7 @@ CHANGELOG.md
 
 # Repository-specific rules
 apps/web/dist
+apps/desktop/src-tauri/gen
 coverage
 target
 uv.lock

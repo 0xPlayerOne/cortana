@@ -1,3 +1,5 @@
+import { invoke, isTauri } from '@tauri-apps/api/core'
+
 import { demoEvidence, demoStatus } from './demo'
 import { buildAgentContext, estimateTokens } from './context'
 import type { AnswerResponse, BrainStatus, ContextBundle } from './types'
@@ -6,6 +8,7 @@ export const isDemoMode = new URLSearchParams(window.location.search).has('demo'
 
 export async function getStatus(signal?: AbortSignal): Promise<BrainStatus> {
   if (isDemoMode) return demoStatus
+  if (isTauri()) return invokeDesktop<BrainStatus>('brain_status', undefined, signal)
   const response = await authorizedFetch('/v1/status', { signal })
   if (!response.ok) throw new Error(`Status request failed (${response.status})`)
   return (await response.json()) as BrainStatus
@@ -34,6 +37,19 @@ export async function getContext(
         max_tokens: 8000,
       },
     }
+  }
+  if (isTauri()) {
+    return invokeDesktop<ContextBundle>(
+      'brain_context',
+      {
+        request: {
+          query,
+          project: project || null,
+          source: source || null,
+        },
+      },
+      signal
+    )
   }
   const response = await authorizedFetch('/v1/context', {
     method: 'POST',
@@ -76,6 +92,19 @@ export async function getAnswer(
       warnings: [],
     }
   }
+  if (isTauri()) {
+    return invokeDesktop<AnswerResponse>(
+      'brain_answer',
+      {
+        request: {
+          query,
+          project: project || null,
+          source: source || null,
+        },
+      },
+      signal
+    )
+  }
   const response = await authorizedFetch('/v1/answer', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -88,6 +117,22 @@ export async function getAnswer(
   })
   if (!response.ok) throw new Error(`Answer request failed (${response.status})`)
   return (await response.json()) as AnswerResponse
+}
+
+async function invokeDesktop<T>(
+  command: string,
+  args?: Record<string, unknown>,
+  signal?: AbortSignal
+): Promise<T> {
+  if (signal?.aborted) throw new DOMException('Request aborted', 'AbortError')
+  try {
+    const result = await invoke<T>(command, args)
+    if (signal?.aborted) throw new DOMException('Request aborted', 'AbortError')
+    return result
+  } catch (caught) {
+    if (caught instanceof Error) throw caught
+    throw new Error(typeof caught === 'string' ? caught : 'Desktop request failed')
+  }
 }
 
 async function authorizedFetch(input: string, init: RequestInit): Promise<Response> {
