@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/0xPlayerOne/cortana/compare/v0.7.0...v0.8.0) (2026-07-30)
+
+
+### Features
+
+* **main:** promote evidence retrieval and MCP tools ([8612d9c](https://github.com/0xPlayerOne/cortana/commit/8612d9cfada215e74c8e601594a623c6499db63d))
+
 ## [0.7.0](https://github.com/0xPlayerOne/cortana/compare/v0.6.0...v0.7.0) (2026-07-30)
 
 
