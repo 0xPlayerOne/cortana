@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/0xPlayerOne/cortana/compare/v0.6.0...v0.7.0) (2026-07-30)
+
+
+### Features
+
+* **desktop:** browse canonical documents ([91e3301](https://github.com/0xPlayerOne/cortana/commit/91e33016a5b3090afcc2c011ef14656d71e42a13))
+
+
+### Bug Fixes
+
+* **release:** ignore generated Tauri metadata ([92e4bb6](https://github.com/0xPlayerOne/cortana/commit/92e4bb6ff29e0c6fff0ca1988f200734bb04bd40))
+* **security:** harden validation state files ([a410abe](https://github.com/0xPlayerOne/cortana/commit/a410abe86bf3a04e692d9f41a7c6ae80e5af754b))
+
 ## [0.6.0](https://github.com/0xPlayerOne/cortana/compare/v0.5.0...v0.6.0) (2026-07-30)
 
 
