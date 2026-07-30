@@ -8,8 +8,6 @@ on:
       - 'apps/web/**'
       - 'bun.lock'
       - 'package.json'
-      - 'scripts/verify-vendored-glib.mjs'
-      - 'third_party/glib-0.18.5/**'
   push:
     branches: [main, staging]
     paths:
@@ -18,8 +16,6 @@ on:
       - 'apps/web/**'
       - 'bun.lock'
       - 'package.json'
-      - 'scripts/verify-vendored-glib.mjs'
-      - 'third_party/glib-0.18.5/**'
 
 permissions:
   contents: read
@@ -52,10 +48,6 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Install cargo-audit
         run: cargo install cargo-audit --version 0.22.2 --locked
-      - name: Verify patched GTK dependency provenance
-        run: bun scripts/verify-vendored-glib.mjs
-      - name: Test patched GTK iterator in release mode
-        run: cargo test --manifest-path third_party/glib-0.18.5/Cargo.toml --release --lib variant_iter
       - name: Audit desktop Rust dependencies
         run: cargo audit --file apps/desktop/src-tauri/Cargo.lock
       - name: Check web

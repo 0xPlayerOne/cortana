@@ -34,8 +34,3 @@ toml = "0.9"
 
 [dev-dependencies]
 tempfile = "3.20"
-
-[patch.crates-io]
-# Tauri's GTK3 Linux stack requires glib 0.18.5. This local crate applies the exact upstream
-# VariantStrIter soundness fix while GTK3 prevents upgrading to glib 0.20.
-glib = { path = "../../../third_party/glib-0.18.5" }
