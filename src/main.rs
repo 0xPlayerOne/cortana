@@ -12,7 +12,7 @@ use cortana::connectors;
 use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbedder};
 use cortana::model::Document;
 use cortana::retrieval;
-use cortana::store::Store;
+use cortana::store::{Store, SyncRunStatus};
 use cortana::{api, mcp, migration, service, supervisor};
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -388,6 +388,7 @@ async fn main() -> Result<()> {
             max_seconds,
             exclude,
         }) => {
+            let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
             let source = ad_hoc_filesystem_source(root, source, project, &exclude);
             let limits = SourceLimits::resolve(
                 &config,
@@ -404,10 +405,32 @@ async fn main() -> Result<()> {
                 started: Instant::now(),
                 cancellation: &cancellation,
             };
+            let canonical_source = canonical_source(&source);
+            let run_id = store.begin_sync(
+                &canonical_source,
+                &source.project,
+                limits.max_documents,
+                limits.max_bytes,
+                limits.max_seconds,
+            )?;
             let result =
-                sync_source_documents(&config, &store, embedder.as_ref(), &source, &control)
-                    .await
-                    .map(|_| ());
+                sync_source_documents(&config, &store, embedder.as_ref(), &source, &control).await;
+            let result = match result {
+                Ok(scope) => {
+                    store.finish_sync(
+                        &run_id,
+                        SyncRunStatus::Succeeded,
+                        Some(scope.documents),
+                        Some(scope.bytes),
+                        Some(0),
+                    )?;
+                    Ok(())
+                }
+                Err(error) => {
+                    store.finish_sync(&run_id, failure_status(&error), None, None, None)?;
+                    Err(error)
+                }
+            };
             cancellation.stop();
             result
         }
@@ -475,7 +498,8 @@ async fn main() -> Result<()> {
             );
             let web_dir = (!no_web).then_some(web_dir);
             api::serve(
-                api::AppState::new(store, embedder, api_token),
+                api::AppState::new(store, embedder, api_token)
+                    .with_config(&config, service::sync_job_installed()),
                 &address,
                 web_dir.as_deref(),
                 allow_remote,
@@ -1231,21 +1255,41 @@ async fn sync_configured_sources(
             cancellation,
         };
         let canonical_source = canonical_source(source);
-        let seen = match sync_source_documents(config, store, embedder, source, &control).await {
-            Ok(seen) => seen,
+        let run_id = store.begin_sync(
+            &canonical_source,
+            &source.project,
+            limits.max_documents,
+            limits.max_bytes,
+            limits.max_seconds,
+        )?;
+        let result = async {
+            let scope = sync_source_documents(config, store, embedder, source, &control).await?;
+            control.check(&source.name)?;
+            let deleted = if reconcile {
+                store.reconcile(&canonical_source, &source.project, &scope.seen)?
+            } else {
+                0
+            };
+            Ok::<_, anyhow::Error>((scope, deleted))
+        }
+        .await;
+        match result {
+            Ok((scope, deleted)) => {
+                store.finish_sync(
+                    &run_id,
+                    SyncRunStatus::Succeeded,
+                    Some(scope.documents),
+                    Some(scope.bytes),
+                    Some(deleted),
+                )?;
+                println!("synced source={} deleted={deleted}", source.name);
+            }
             Err(error) => {
+                store.finish_sync(&run_id, failure_status(&error), None, None, None)?;
                 eprintln!("source sync failed: source={} error={error:#}", source.name);
                 failures.push(source.name.clone());
-                continue;
             }
-        };
-        control.check(&source.name)?;
-        let deleted = if reconcile {
-            store.reconcile(&canonical_source, &source.project, &seen)?
-        } else {
-            0
-        };
-        println!("synced source={} deleted={deleted}", source.name);
+        }
     }
     anyhow::ensure!(
         failures.is_empty(),
@@ -1253,6 +1297,17 @@ async fn sync_configured_sources(
         failures.join(", ")
     );
     Ok(())
+}
+
+fn failure_status(error: &anyhow::Error) -> SyncRunStatus {
+    let message = format!("{error:#}").to_lowercase();
+    if message.contains("cancel") {
+        SyncRunStatus::Cancelled
+    } else if message.contains("budget") || message.contains("safety bound") {
+        SyncRunStatus::BudgetExceeded
+    } else {
+        SyncRunStatus::Failed
+    }
 }
 
 fn cleanup_connector_spools(data_dir: &std::path::Path) -> Result<usize> {
@@ -1285,7 +1340,7 @@ async fn sync_source_documents(
     embedder: &dyn Embedder,
     source: &SourceConfig,
     control: &SourceControl<'_>,
-) -> Result<Vec<String>> {
+) -> Result<SyncScope> {
     if source.kind == "filesystem" {
         let root = source
             .root
@@ -1348,12 +1403,16 @@ async fn sync_source_documents(
         if !batch.is_empty() {
             ingest_documents_controlled(store, embedder, batch, &source.name, control).await?;
         }
-        return Ok(seen);
+        return Ok(SyncScope {
+            documents: seen.len(),
+            bytes: content_bytes,
+            seen,
+        });
     }
 
     let (spool, diagnostics) = run_connector_to_spool(config, source, control)?;
     let result = async {
-        validate_connector_spool(&spool, source, control)?;
+        let scope = validate_connector_spool(&spool, source, control)?;
         let reader = std::io::BufReader::new(
             std::fs::File::open(&spool)
                 .with_context(|| format!("failed to open {}", spool.display()))?,
@@ -1386,7 +1445,7 @@ async fn sync_source_documents(
         if !batch.is_empty() {
             ingest_documents_controlled(store, embedder, batch, &source.name, control).await?;
         }
-        Ok(seen)
+        Ok(SyncScope { seen, ..scope })
     }
     .await;
     let _ = std::fs::remove_file(&spool);
@@ -1394,11 +1453,17 @@ async fn sync_source_documents(
     result
 }
 
+struct SyncScope {
+    seen: Vec<String>,
+    documents: usize,
+    bytes: u64,
+}
+
 fn validate_connector_spool(
     spool: &std::path::Path,
     source: &SourceConfig,
     control: &SourceControl<'_>,
-) -> Result<()> {
+) -> Result<SyncScope> {
     let maximum_spool_bytes = control.limits.max_bytes.saturating_add(
         u64::try_from(control.limits.max_documents)
             .unwrap_or(u64::MAX)
@@ -1444,7 +1509,11 @@ fn validate_connector_spool(
         content_bytes,
         "connector source passed ingestion preflight"
     );
-    Ok(())
+    Ok(SyncScope {
+        seen: Vec::new(),
+        documents,
+        bytes: content_bytes,
+    })
 }
 
 fn run_connector_to_spool(

@@ -22,6 +22,15 @@ best-effort while another process owns SQLite's writer lock; Cortana serves the 
 instead of failing a request for cache telemetry. Canonical ingestion writes remain strict and
 use SQLite's bounded busy timeout.
 
+`/v1/status` also reports whether recurring ingestion is installed, the global and per-source
+safety budgets, every configured source including disabled or not-yet-indexed sources, and the
+latest persisted outcome for each source. Sync outcomes are recorded as `running`, `succeeded`,
+`failed`, `cancelled`, or `budget_exceeded`. A process interruption intentionally leaves a
+`running` record behind so the workspace can distinguish an interrupted run from a source that
+never started. The workspace refreshes this status every 15 seconds and keeps query availability
+separate from ingestion health. Cortana retains the newest 100 run records per source to keep this
+operational history bounded.
+
 Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
 queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
 evidence; returned rows have no `semantic_rank`, and a warning records the degraded mode. Cached

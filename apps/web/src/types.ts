@@ -19,6 +19,41 @@ export type SourceSummary = {
   latest_updated_at: string | null
 }
 
+export type SourceSyncSummary = {
+  source: string
+  project: string
+  status: 'running' | 'succeeded' | 'failed' | 'cancelled' | 'budget_exceeded'
+  started_at: string
+  completed_at: string | null
+  documents: number | null
+  bytes: number | null
+  deleted: number | null
+  budget_documents: number
+  budget_bytes: number
+  budget_seconds: number
+}
+
+export type ConfiguredSourceSummary = {
+  name: string
+  source: string
+  kind: string
+  project: string
+  enabled: boolean
+  max_documents: number
+  max_bytes: number
+  max_duration_seconds: number
+}
+
+export type IngestionStatus = {
+  mode: 'manual' | 'scheduled'
+  scheduled: boolean
+  max_documents_per_source: number
+  max_bytes_per_source: number
+  max_duration_seconds: number
+  request_concurrency: number
+  configured_sources: ConfiguredSourceSummary[]
+}
+
 export type BrainStatus = {
   status: string
   embedding_fingerprint: string | null
@@ -27,6 +62,8 @@ export type BrainStatus = {
   documents: number
   chunks: number
   sources: SourceSummary[]
+  sync_runs: SourceSyncSummary[]
+  ingestion: IngestionStatus
 }
 
 export type ContextBundle = {
