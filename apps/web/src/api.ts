@@ -2,9 +2,26 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 
 import { demoEvidence, demoStatus } from './demo'
 import { buildAgentContext, estimateTokens } from './context'
-import type { AnswerResponse, BrainStatus, ContextBundle } from './types'
+import type {
+  AnswerResponse,
+  BrainStatus,
+  ContextBundle,
+  DesktopSettings,
+  DesktopSettingsUpdate,
+} from './types'
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
+export const isDesktopApp = isTauri()
+
+export async function getDesktopSettings(): Promise<DesktopSettings> {
+  if (!isDesktopApp) throw new Error('Settings are available in Cortana Desktop')
+  return invokeDesktop<DesktopSettings>('desktop_settings_get')
+}
+
+export async function saveDesktopSettings(update: DesktopSettingsUpdate): Promise<DesktopSettings> {
+  if (!isDesktopApp) throw new Error('Settings are available in Cortana Desktop')
+  return invokeDesktop<DesktopSettings>('desktop_settings_save', { update })
+}
 
 export async function getStatus(signal?: AbortSignal): Promise<BrainStatus> {
   if (isDemoMode) return demoStatus

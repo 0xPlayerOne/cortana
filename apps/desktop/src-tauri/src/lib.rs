@@ -13,6 +13,8 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 
+mod settings;
+
 const BACKEND_ORIGIN: &str = "http://127.0.0.1:7331";
 const MAIN_WINDOW: &str = "main";
 const MAX_QUERY_LENGTH: usize = 16_384;
@@ -131,6 +133,18 @@ fn desktop_info(app: AppHandle) -> DesktopInfo {
     }
 }
 
+#[tauri::command]
+fn desktop_settings_get() -> Result<settings::SettingsSnapshot, String> {
+    settings::load()
+}
+
+#[tauri::command]
+fn desktop_settings_save(
+    update: settings::SettingsUpdate,
+) -> Result<settings::SettingsSnapshot, String> {
+    settings::save(update)
+}
+
 fn validate_retrieval_request(request: &RetrievalRequest) -> Result<(), String> {
     let query = request.query.trim();
     if query.is_empty() {
@@ -241,7 +255,9 @@ pub fn run() {
             brain_status,
             brain_answer,
             brain_context,
-            desktop_info
+            desktop_info,
+            desktop_settings_get,
+            desktop_settings_save
         ])
         .setup(move |app| {
             let tray = install_tray(app)?;

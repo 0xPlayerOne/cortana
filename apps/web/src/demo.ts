@@ -74,6 +74,11 @@ export const demoStatus: BrainStatus = {
   },
   documents: 9834,
   chunks: 128412,
+  workspaces: [
+    { id: 'personal', name: 'Personal', account_label: null, color: '#E8A83B' },
+    { id: 'work', name: 'Work', account_label: 'team@example.com', color: '#5A9BD5' },
+    { id: 'special', name: 'Special', account_label: null, color: '#A875D6' },
+  ],
   ingestion: {
     mode: 'manual',
     scheduled: false,

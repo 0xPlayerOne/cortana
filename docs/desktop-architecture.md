@@ -17,9 +17,32 @@ The default capability grants only:
 - a desktop-process restart for applying an update;
 - updater checks and installation.
 
-Secrets and source credentials remain outside the renderer. Future settings and authorization
-commands must preserve this boundary by returning redacted state and accepting named fields
-instead of filesystem paths, shell fragments, or arbitrary URLs.
+Secrets and source credentials remain outside the renderer. The settings bridge returns only
+configured/unset metadata and accepts write-only named secret updates. It refuses symlinked config
+or secret files, externally managed secret paths, insecure remote HTTP endpoints, malformed TOML
+sections, broad data roots, and unbounded inputs. It writes owner-only files atomically, keeps a
+rollback copy of the previous config, and appends metadata-only audit events.
+
+The renderer can edit typed provider, cache, timeout, ingestion-budget, workspace, and storage
+fields. It cannot edit connector command arrays or service commands because those fields cross
+directly into process execution. Source authorization and service control use separate typed
+native commands.
+
+## Workspaces and settings
+
+Workspaces are query/project scopes inside one canonical database, rather than separate indexes.
+This keeps embedding and query caches reusable while allowing agents and people to filter work,
+personal, or special context. The first desktop iteration permits one to three workspaces; the
+storage and API contract remain list-based so that limit can be raised without a data migration.
+
+Workspace metadata is exposed by `/v1/status`. Desktop search sends the selected workspace ID as
+the existing project scope, and source navigation filters to that scope. Editing a workspace may
+not orphan a configured source: source assignments must be moved before their workspace ID can be
+removed.
+
+Provider secrets are stored in Cortana's managed `secrets.env` file with mode `0600` on Unix. An
+existing external `runtime.env_file` remains readable by the runtime but is intentionally
+read-only in Desktop.
 
 ## Lifecycle
 
