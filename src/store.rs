@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::types::Type;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde::Serialize;
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::auth::acl_allows;
@@ -86,6 +87,39 @@ pub struct AuditEvent {
     pub latency_ms: i64,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct DocumentSummary {
+    pub id: String,
+    pub source: String,
+    pub title: String,
+    pub uri: Option<String>,
+    pub updated_at: String,
+    pub project: String,
+    pub chunk_count: usize,
+    pub content_chars: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DocumentDetail {
+    #[serde(flatten)]
+    pub summary: DocumentSummary,
+    pub content: String,
+    pub metadata: Value,
+    pub truncated: bool,
+}
+
+#[derive(Debug)]
+pub struct DocumentPage {
+    pub documents: Vec<DocumentSummary>,
+    pub has_more: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct DocumentCursor {
+    pub updated_at: String,
+    pub id: String,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum SyncRunStatus {
     Succeeded,
@@ -120,7 +154,8 @@ impl Store {
                id TEXT PRIMARY KEY, source TEXT NOT NULL, source_id TEXT NOT NULL,
                title TEXT NOT NULL, uri TEXT, content_hash TEXT NOT NULL,
                updated_at TEXT NOT NULL, project TEXT NOT NULL, acl_json TEXT NOT NULL,
-               metadata_json TEXT NOT NULL, UNIQUE(source, source_id));
+               metadata_json TEXT NOT NULL, content TEXT NOT NULL DEFAULT '',
+               UNIQUE(source, source_id));
              CREATE TABLE IF NOT EXISTS chunks(
                id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
                ordinal INTEGER NOT NULL, content TEXT NOT NULL, embedding_json TEXT NOT NULL,
@@ -147,6 +182,10 @@ impl Store {
              CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                chunk_id UNINDEXED, title, content, tokenize='unicode61');
              CREATE INDEX IF NOT EXISTS idx_documents_scope ON documents(project, source);
+             CREATE INDEX IF NOT EXISTS idx_documents_browse
+               ON documents(updated_at DESC,id DESC);
+             CREATE INDEX IF NOT EXISTS idx_chunks_document_ordinal
+               ON chunks(document_id,ordinal);
              CREATE INDEX IF NOT EXISTS idx_sync_runs_source
                ON sync_runs(source,project,started_at DESC);
              CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp
@@ -156,6 +195,7 @@ impl Store {
             "INSERT OR IGNORE INTO meta(key,value) VALUES('corpus_revision','0')",
             [],
         )?;
+        ensure_document_content_column(&connection)?;
         migrate_embedding_blobs(&mut connection)?;
         secure_database_files(path)?;
         Ok(Self {
@@ -256,14 +296,17 @@ impl Store {
         let id = stable_id(&document.source, &document.source_id);
         let hash = document_hash(document)?;
         let mut connection = self.connection.lock().expect("store lock poisoned");
-        let previous: Option<String> = connection
+        let previous: Option<(String, bool)> = connection
             .query_row(
-                "SELECT content_hash FROM documents WHERE id=?1",
+                "SELECT content_hash,length(content)>0 FROM documents WHERE id=?1",
                 [&id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        if previous.as_deref() == Some(&hash) {
+        if previous
+            .as_ref()
+            .is_some_and(|(previous_hash, has_content)| previous_hash == &hash && *has_content)
+        {
             return Ok(false);
         }
         let transaction = connection.transaction()?;
@@ -273,14 +316,15 @@ impl Store {
         )?;
         transaction.execute("DELETE FROM chunks WHERE document_id=?1", [&id])?;
         transaction.execute(
-            "INSERT INTO documents(id,source,source_id,title,uri,content_hash,updated_at,project,acl_json,metadata_json)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+            "INSERT INTO documents(id,source,source_id,title,uri,content_hash,updated_at,project,acl_json,metadata_json,content)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
              ON CONFLICT(id) DO UPDATE SET title=excluded.title,uri=excluded.uri,
              content_hash=excluded.content_hash,updated_at=excluded.updated_at,project=excluded.project,
-             acl_json=excluded.acl_json,metadata_json=excluded.metadata_json",
+             acl_json=excluded.acl_json,metadata_json=excluded.metadata_json,content=excluded.content",
             params![id, document.source, document.source_id, document.title, document.uri, hash,
                 document.updated_at.to_rfc3339(), document.project,
-                serde_json::to_string(&document.acl)?, document.metadata.to_string()],
+                serde_json::to_string(&document.acl)?, document.metadata.to_string(),
+                document.content],
         )?;
         for (ordinal, (content, embedding)) in chunks.iter().enumerate() {
             let chunk_id = format!("{id}:{ordinal}");
@@ -310,14 +354,16 @@ impl Store {
         let id = stable_id(&document.source, &document.source_id);
         let hash = document_hash(document)?;
         let connection = self.connection.lock().expect("store lock poisoned");
-        let previous: Option<String> = connection
+        let previous: Option<(String, bool)> = connection
             .query_row(
-                "SELECT content_hash FROM documents WHERE id=?1",
+                "SELECT content_hash,length(content)>0 FROM documents WHERE id=?1",
                 [&id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        Ok(previous.as_deref() != Some(&hash))
+        Ok(!previous
+            .as_ref()
+            .is_some_and(|(previous_hash, has_content)| previous_hash == &hash && *has_content))
     }
 
     pub fn refresh_timestamp(&self, document: &Document) -> Result<()> {
@@ -518,6 +564,193 @@ impl Store {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
+    }
+
+    pub fn list_documents_scoped(
+        &self,
+        project: Option<&str>,
+        source: Option<&str>,
+        cursor: Option<&DocumentCursor>,
+        limit: usize,
+        principal_acl: &[String],
+    ) -> Result<DocumentPage> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT d.id,d.source,d.title,d.uri,d.updated_at,d.project,d.acl_json,
+                    COUNT(c.id),
+                    CASE WHEN length(d.content)>0 THEN length(d.content)
+                         ELSE COALESCE(SUM(length(c.content)),0) END
+             FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
+             WHERE (?1 IS NULL OR d.project=?1)
+               AND (?2 IS NULL OR d.source=?2)
+               AND (?3 IS NULL OR d.updated_at<?3 OR (d.updated_at=?3 AND d.id<?4))
+             GROUP BY d.id
+             ORDER BY d.updated_at DESC,d.id DESC
+             LIMIT ?5",
+        )?;
+        let page_size = limit.clamp(1, 100);
+        let mut scan_cursor = cursor.cloned();
+        let mut documents = Vec::with_capacity(page_size.saturating_add(1));
+        loop {
+            let scan_limit = page_size.saturating_mul(4).max(64);
+            let rows = statement
+                .query_map(
+                    params![
+                        project,
+                        source,
+                        scan_cursor.as_ref().map(|value| value.updated_at.as_str()),
+                        scan_cursor.as_ref().map(|value| value.id.as_str()),
+                        i64::try_from(scan_limit).unwrap_or(400),
+                    ],
+                    |row| {
+                        let acl_json = row.get::<_, String>(6)?;
+                        let acl =
+                            serde_json::from_str::<Vec<String>>(&acl_json).map_err(|error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    6,
+                                    Type::Text,
+                                    Box::new(error),
+                                )
+                            })?;
+                        let chunk_count =
+                            usize::try_from(row.get::<_, i64>(7)?).unwrap_or(usize::MAX);
+                        let content_chars =
+                            usize::try_from(row.get::<_, i64>(8)?).unwrap_or(usize::MAX);
+                        Ok((
+                            DocumentSummary {
+                                id: row.get(0)?,
+                                source: row.get(1)?,
+                                title: row.get(2)?,
+                                uri: row.get(3)?,
+                                updated_at: row.get(4)?,
+                                project: row.get(5)?,
+                                chunk_count,
+                                content_chars,
+                            },
+                            acl,
+                        ))
+                    },
+                )?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            let scanned = rows.len();
+            for (summary, acl) in rows {
+                scan_cursor = Some(DocumentCursor {
+                    updated_at: summary.updated_at.clone(),
+                    id: summary.id.clone(),
+                });
+                if acl_allows(&acl, principal_acl) {
+                    documents.push(summary);
+                    if documents.len() > page_size {
+                        break;
+                    }
+                }
+            }
+            if documents.len() > page_size || scanned < scan_limit {
+                break;
+            }
+        }
+        let has_more = documents.len() > page_size;
+        documents.truncate(page_size);
+        Ok(DocumentPage {
+            documents,
+            has_more,
+        })
+    }
+
+    pub fn document_scoped(
+        &self,
+        id: &str,
+        principal_acl: &[String],
+        max_content_bytes: usize,
+    ) -> Result<Option<DocumentDetail>> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let record = connection
+            .query_row(
+                "SELECT d.source,d.title,d.uri,d.updated_at,d.project,d.acl_json,
+                        d.metadata_json,
+                        CAST(substr(CAST(d.content AS BLOB),1,?2) AS BLOB),
+                        length(CAST(d.content AS BLOB)),COUNT(c.id),
+                        CASE WHEN length(d.content)>0 THEN length(d.content)
+                             ELSE COALESCE(SUM(length(c.content)),0) END
+                 FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
+                 WHERE d.id=?1 GROUP BY d.id",
+                params![
+                    id,
+                    i64::try_from(max_content_bytes.saturating_add(4)).unwrap_or(i64::MAX)
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, Option<Vec<u8>>>(7)?.unwrap_or_default(),
+                        row.get::<_, i64>(8)?,
+                        row.get::<_, i64>(9)?,
+                        row.get::<_, i64>(10)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((
+            source,
+            title,
+            uri,
+            updated_at,
+            project,
+            acl_json,
+            metadata_json,
+            stored_content,
+            stored_content_bytes,
+            chunk_count,
+            content_chars,
+        )) = record
+        else {
+            return Ok(None);
+        };
+        let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+        if !acl_allows(&acl, principal_acl) {
+            return Ok(None);
+        }
+        let metadata = serde_json::from_str(&metadata_json)?;
+        let (content, truncated) = if stored_content.is_empty() {
+            let legacy_fetch_limit = max_content_bytes.saturating_add(512);
+            let mut statement = connection.prepare(
+                "SELECT CAST(substr(CAST(content AS BLOB),1,?2) AS BLOB),
+                        length(CAST(content AS BLOB))
+                 FROM chunks WHERE document_id=?1 ORDER BY ordinal",
+            )?;
+            let mut rows = statement.query(params![
+                id,
+                i64::try_from(legacy_fetch_limit).unwrap_or(i64::MAX)
+            ])?;
+            reconstruct_chunk_rows(&mut rows, max_content_bytes)?
+        } else {
+            let truncated =
+                usize::try_from(stored_content_bytes).unwrap_or(usize::MAX) > max_content_bytes;
+            (
+                bounded_utf8_bytes(stored_content, max_content_bytes),
+                truncated,
+            )
+        };
+        Ok(Some(DocumentDetail {
+            summary: DocumentSummary {
+                id: id.to_string(),
+                source,
+                title,
+                uri,
+                updated_at,
+                project,
+                chunk_count: usize::try_from(chunk_count).unwrap_or(usize::MAX),
+                content_chars: usize::try_from(content_chars).unwrap_or(usize::MAX),
+            },
+            content,
+            metadata,
+            truncated,
+        }))
     }
 
     pub fn all_chunks(
@@ -1136,6 +1369,15 @@ fn migrate_embedding_blobs(connection: &mut Connection) -> Result<()> {
     Ok(())
 }
 
+fn ensure_document_content_column(connection: &Connection) -> Result<()> {
+    ensure_column(
+        connection,
+        "documents",
+        "content",
+        "TEXT NOT NULL DEFAULT ''",
+    )
+}
+
 fn ensure_column(
     connection: &Connection,
     table: &str,
@@ -1153,6 +1395,57 @@ fn ensure_column(
         ))?;
     }
     Ok(())
+}
+
+fn reconstruct_chunk_rows(rows: &mut rusqlite::Rows<'_>, maximum: usize) -> Result<(String, bool)> {
+    let mut content = String::new();
+    while let Some(row) = rows.next()? {
+        let chunk_bytes = row.get::<_, Vec<u8>>(0)?;
+        let original_bytes = usize::try_from(row.get::<_, i64>(1)?).unwrap_or(usize::MAX);
+        let chunk = bounded_utf8_bytes(chunk_bytes, maximum.saturating_add(512));
+        append_reconstructed_chunk(&mut content, &chunk);
+        if content.len() > maximum || original_bytes > maximum.saturating_add(512) {
+            content.truncate(previous_char_boundary(&content, maximum));
+            return Ok((content, true));
+        }
+    }
+    Ok((content, false))
+}
+
+fn append_reconstructed_chunk(content: &mut String, chunk: &str) {
+    if content.is_empty() {
+        content.push_str(chunk);
+        return;
+    }
+    let maximum = content.len().min(chunk.len()).min(512);
+    let overlap = (1..=maximum)
+        .rev()
+        .find(|size| {
+            content.is_char_boundary(content.len() - size)
+                && chunk.is_char_boundary(*size)
+                && content[content.len() - size..] == chunk[..*size]
+        })
+        .unwrap_or_default();
+    if overlap == 0 {
+        content.push_str("\n\n");
+    }
+    content.push_str(&chunk[overlap..]);
+}
+
+fn bounded_utf8_bytes(mut content: Vec<u8>, maximum: usize) -> String {
+    content.truncate(maximum);
+    while std::str::from_utf8(&content).is_err() {
+        content.pop();
+    }
+    String::from_utf8(content).expect("validated UTF-8")
+}
+
+fn previous_char_boundary(content: &str, maximum: usize) -> usize {
+    let mut end = maximum.min(content.len());
+    while end > 0 && !content.is_char_boundary(end) {
+        end -= 1;
+    }
+    end
 }
 
 fn encode_embedding(embedding: &[f32]) -> Vec<u8> {
@@ -1266,6 +1559,124 @@ mod tests {
             acl: Vec::new(),
             metadata: serde_json::json!({}),
         }
+    }
+
+    #[test]
+    fn document_browser_is_acl_scoped_paginated_and_bounded() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut personal = document("personal", "personal exact content");
+        personal.acl = vec!["personal".into()];
+        personal.updated_at = "2026-01-03T00:00:00Z".parse().expect("timestamp");
+        let mut work = document("work", "work exact content");
+        work.acl = vec!["work".into()];
+        work.updated_at = "2026-01-02T00:00:00Z".parse().expect("timestamp");
+        let mut public = document("public", "public exact content");
+        public.updated_at = "2026-01-01T00:00:00Z".parse().expect("timestamp");
+        for item in [&personal, &work, &public] {
+            store
+                .upsert(item, &[(item.content.clone(), vec![1.0])])
+                .expect("insert document");
+        }
+
+        let first = store
+            .list_documents_scoped(None, None, None, 1, &["work".into()])
+            .expect("first page");
+        assert_eq!(first.documents[0].title, "work");
+        assert!(first.has_more);
+        let cursor = DocumentCursor {
+            updated_at: first.documents[0].updated_at.clone(),
+            id: first.documents[0].id.clone(),
+        };
+        let second = store
+            .list_documents_scoped(None, None, Some(&cursor), 1, &["work".into()])
+            .expect("second page");
+        assert_eq!(second.documents[0].title, "public");
+        assert!(!second.has_more);
+
+        assert!(
+            store
+                .document_scoped(&stable_id("test", "personal"), &["work".into()], 1024)
+                .expect("denied detail")
+                .is_none()
+        );
+        let detail = store
+            .document_scoped(&stable_id("test", "work"), &["work".into()], 8)
+            .expect("detail")
+            .expect("visible detail");
+        assert_eq!(detail.content, "work exa");
+        assert!(detail.truncated);
+        assert_eq!(detail.summary.content_chars, work.content.chars().count());
+    }
+
+    #[test]
+    fn legacy_document_browser_reconstructs_overlapping_chunks() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("store.sqlite3");
+        let store = Store::open(&path).expect("open store");
+        let item = document("legacy-browser", "alpha beta gamma");
+        store
+            .upsert(
+                &item,
+                &[
+                    ("alpha beta".into(), vec![1.0]),
+                    ("beta gamma".into(), vec![1.0]),
+                ],
+            )
+            .expect("insert document");
+        let connection = Connection::open(&path).expect("raw connection");
+        connection
+            .execute(
+                "UPDATE documents SET content='' WHERE id=?1",
+                [stable_id("test", "legacy-browser")],
+            )
+            .expect("simulate legacy row");
+        drop(connection);
+        assert!(
+            store
+                .needs_update(&item)
+                .expect("legacy row requires content backfill")
+        );
+
+        let detail = store
+            .document_scoped(&stable_id("test", "legacy-browser"), &["*".into()], 1024)
+            .expect("detail")
+            .expect("document");
+        assert_eq!(detail.content, "alpha beta gamma");
+        assert!(!detail.truncated);
+    }
+
+    #[test]
+    fn document_display_bound_preserves_unicode_boundaries() {
+        assert_eq!(bounded_utf8_bytes("🧠memory".as_bytes().to_vec(), 5), "🧠m");
+    }
+
+    #[test]
+    fn legacy_store_adds_canonical_content_column() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("legacy.sqlite3");
+        let connection = Connection::open(&path).expect("legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE documents(
+                   id TEXT PRIMARY KEY,source TEXT NOT NULL,source_id TEXT NOT NULL,
+                   title TEXT NOT NULL,uri TEXT,content_hash TEXT NOT NULL,
+                   updated_at TEXT NOT NULL,project TEXT NOT NULL,acl_json TEXT NOT NULL,
+                   metadata_json TEXT NOT NULL,UNIQUE(source,source_id));",
+            )
+            .expect("legacy schema");
+        drop(connection);
+
+        drop(Store::open(&path).expect("migrate store"));
+        let connection = Connection::open(&path).expect("inspect store");
+        let columns = connection
+            .prepare("PRAGMA table_info(documents)")
+            .expect("table info")
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("columns")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("column names");
+        assert!(columns.iter().any(|column| column == "content"));
     }
 
     #[test]

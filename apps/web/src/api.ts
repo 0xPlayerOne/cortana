@@ -4,6 +4,8 @@ import { demoEvidence, demoStatus } from './demo'
 import { buildAgentContext, estimateTokens } from './context'
 import type {
   AnswerResponse,
+  BrainDocument,
+  BrainDocumentPage,
   BrainStatus,
   ContextBundle,
   DesktopInstallJob,
@@ -175,6 +177,78 @@ export async function getContext(
   })
   if (!response.ok) throw new Error(`Context retrieval failed (${response.status})`)
   return (await response.json()) as ContextBundle
+}
+
+export async function getDocuments(
+  project?: string,
+  source?: string,
+  cursor?: string,
+  signal?: AbortSignal
+): Promise<BrainDocumentPage> {
+  if (isDemoMode) {
+    const documents = demoEvidence
+      .filter((item) => !source || item.source === source)
+      .map((item) => ({
+        id: item.chunk_id.replace(/[^a-f0-9]/gi, '').padEnd(16, '0'),
+        source: item.source,
+        title: item.title,
+        uri: item.uri,
+        updated_at: item.updated_at,
+        project: project || 'demo',
+        chunk_count: 1,
+        content_chars: item.content.length,
+      }))
+    return { documents, next_cursor: null }
+  }
+  if (isTauri()) {
+    return invokeDesktop<BrainDocumentPage>(
+      'brain_documents',
+      {
+        request: {
+          project: project || null,
+          source: source || null,
+          cursor: cursor || null,
+          limit: 50,
+        },
+      },
+      signal
+    )
+  }
+  const params = new URLSearchParams({ limit: '50' })
+  if (project) params.set('project', project)
+  if (source) params.set('source', source)
+  if (cursor) params.set('cursor', cursor)
+  const response = await authorizedFetch(`/v1/documents?${params}`, { signal })
+  if (!response.ok) throw new Error(`Document list failed (${response.status})`)
+  return (await response.json()) as BrainDocumentPage
+}
+
+export async function getDocument(id: string, signal?: AbortSignal): Promise<BrainDocument> {
+  if (isDemoMode) {
+    const item = demoEvidence.find(
+      (candidate) => candidate.chunk_id.replace(/[^a-f0-9]/gi, '').padEnd(16, '0') === id
+    )
+    if (!item) throw new Error('Document not found')
+    return {
+      id,
+      source: item.source,
+      title: item.title,
+      uri: item.uri,
+      updated_at: item.updated_at,
+      project: 'demo',
+      chunk_count: 1,
+      content_chars: item.content.length,
+      content: item.content,
+      metadata: {},
+      truncated: false,
+    }
+  }
+  if (isTauri()) {
+    return invokeDesktop<BrainDocument>('brain_document', { id }, signal)
+  }
+  const response = await authorizedFetch(`/v1/documents/${encodeURIComponent(id)}`, { signal })
+  if (!response.ok) throw new Error(`Document read failed (${response.status})`)
+  return (await response.json()) as BrainDocument
 }
 
 export async function getAnswer(

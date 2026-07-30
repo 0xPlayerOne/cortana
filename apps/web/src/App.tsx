@@ -1,14 +1,29 @@
 import { FileText, LoaderCircle, Search } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 
-import { getAnswer, getDesktopSettings, getStatus, isDemoMode, isDesktopApp } from './api'
+import {
+  getAnswer,
+  getDesktopSettings,
+  getDocument,
+  getDocuments,
+  getStatus,
+  isDemoMode,
+  isDesktopApp,
+} from './api'
 import { ContextPanel } from './components/ContextPanel'
 import { type AppView, Navigation, TitleActions } from './components/Navigation'
 import { SettingsView } from './components/SettingsView'
 import { SourcePanel } from './components/SourcePanel'
 import { Workspace } from './components/Workspace'
 import { buildAgentContext, estimateTokens } from './context'
-import type { AnswerResponse, BrainStatus, DesktopSettings, Evidence } from './types'
+import type {
+  AnswerResponse,
+  BrainDocument,
+  BrainDocumentSummary,
+  BrainStatus,
+  DesktopSettings,
+  Evidence,
+} from './types'
 
 export function App() {
   const [query, setQuery] = useState('How do releases work?')
@@ -26,6 +41,12 @@ export function App() {
   const [view, setView] = useState<AppView>('knowledge')
   const [workspace, setWorkspace] = useState('')
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null)
+  const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
+  const [documentCursor, setDocumentCursor] = useState<string | null>(null)
+  const [documentsLoading, setDocumentsLoading] = useState(true)
+  const [documentsError, setDocumentsError] = useState('')
+  const [activeDocument, setActiveDocument] = useState<BrainDocument | null>(null)
+  const [documentLoading, setDocumentLoading] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -35,20 +56,33 @@ export function App() {
         if (controller.signal.aborted) return
         setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
       })
-    const answerRequest = getAnswer(query, undefined, undefined, controller.signal)
-      .then((next) => {
-        setAnswer(next)
-        setEvidence(next.evidence)
-      })
-      .catch((caught: unknown) => {
-        if (controller.signal.aborted) return
-        setError(caught instanceof Error ? caught.message : 'Cortana is unavailable')
-      })
-    void Promise.allSettled([statusRequest, answerRequest]).finally(() => {
+    void statusRequest.finally(() => {
       if (!controller.signal.aborted) setLoading(false)
     })
     return () => controller.abort()
   }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    setDocumentsLoading(true)
+    setDocumentsError('')
+    setActiveDocument(null)
+    void getDocuments(workspace || undefined, source || undefined, undefined, controller.signal)
+      .then((page) => {
+        setDocuments(page.documents)
+        setDocumentCursor(page.next_cursor)
+      })
+      .catch((caught: unknown) => {
+        if (controller.signal.aborted) return
+        setDocuments([])
+        setDocumentCursor(null)
+        setDocumentsError(caught instanceof Error ? caught.message : 'Documents unavailable')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setDocumentsLoading(false)
+      })
+    return () => controller.abort()
+  }, [source, workspace])
 
   useEffect(() => {
     if (!isDesktopApp) return
@@ -109,13 +143,42 @@ export function App() {
     const value = source === next ? '' : next
     setSource(value)
     setLeftOpen(false)
-    void runSearch(query.trim() || activeQuery, value)
   }
 
   function chooseWorkspace(next: string) {
     setWorkspace(next)
     setSource('')
-    void runSearch(query.trim() || activeQuery, '', next)
+  }
+
+  async function loadMoreDocuments() {
+    if (!documentCursor || documentsLoading) return
+    setDocumentsLoading(true)
+    setDocumentsError('')
+    try {
+      const page = await getDocuments(workspace || undefined, source || undefined, documentCursor)
+      setDocuments((current) => [
+        ...current,
+        ...page.documents.filter((item) => !current.some((existing) => existing.id === item.id)),
+      ])
+      setDocumentCursor(page.next_cursor)
+    } catch (caught) {
+      setDocumentsError(caught instanceof Error ? caught.message : 'Documents unavailable')
+    } finally {
+      setDocumentsLoading(false)
+    }
+  }
+
+  async function chooseDocument(id: string) {
+    setDocumentLoading(true)
+    setDocumentsError('')
+    try {
+      setActiveDocument(await getDocument(id))
+      setLeftOpen(false)
+    } catch (caught) {
+      setDocumentsError(caught instanceof Error ? caught.message : 'Document unavailable')
+    } finally {
+      setDocumentLoading(false)
+    }
   }
 
   const workspaces = desktopSettings?.workspaces.length
@@ -161,7 +224,15 @@ export function App() {
             status={status}
             workspace={workspace}
             selected={source}
+            documents={documents}
+            selectedDocument={activeDocument?.id ?? ''}
+            documentsLoading={documentsLoading}
+            documentsError={documentsError}
+            hasMoreDocuments={Boolean(documentCursor)}
             onSelect={chooseSource}
+            onSelectDocument={(id) => void chooseDocument(id)}
+            onLoadMoreDocuments={() => void loadMoreDocuments()}
+            onOpenSettings={() => setView('settings')}
             onClose={() => setLeftOpen(false)}
           />
           <Workspace
@@ -171,6 +242,8 @@ export function App() {
             selected={selected}
             loading={loading}
             error={error}
+            document={activeDocument}
+            documentLoading={documentLoading}
             onSelect={setSelected}
             onRetry={() => void runSearch(query)}
           />
