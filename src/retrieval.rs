@@ -12,6 +12,7 @@ use crate::store::Store;
 const INTERACTIVE_EMBEDDING_TIMEOUT: Duration = Duration::from_secs(5);
 const NEIGHBOR_RADIUS: usize = 1;
 const MAX_EXPANDED_CONTENT_BYTES: usize = 16 * 1024;
+pub const MAX_QUERY_BYTES: usize = 16 * 1024;
 
 pub async fn retrieve(
     store: &Store,
@@ -64,7 +65,7 @@ pub async fn retrieve_sources_scoped(
     limit: usize,
     principal_acl: &[String],
 ) -> Result<Vec<Evidence>> {
-    anyhow::ensure!(!query.trim().is_empty(), "query must not be empty");
+    validate_query(query)?;
     let mut unique_sources = sources
         .iter()
         .map(|source| source.trim())
@@ -126,7 +127,7 @@ async fn retrieve_with_timeout(
     embedding_timeout: Duration,
     principal_acl: &[String],
 ) -> Result<Vec<Evidence>> {
-    anyhow::ensure!(!query.trim().is_empty(), "query must not be empty");
+    validate_query(query)?;
     let query_embedding = query_embedding(embedder, query, embedding_timeout).await;
     rank(
         store,
@@ -137,6 +138,15 @@ async fn retrieve_with_timeout(
         limit.min(50),
         principal_acl,
     )
+}
+
+fn validate_query(query: &str) -> Result<()> {
+    anyhow::ensure!(!query.trim().is_empty(), "query must not be empty");
+    anyhow::ensure!(
+        query.len() <= MAX_QUERY_BYTES,
+        "query exceeds {MAX_QUERY_BYTES} bytes"
+    );
+    Ok(())
 }
 
 async fn query_embedding(
@@ -605,6 +615,29 @@ mod tests {
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         assert_eq!(evidence.len(), 2);
         assert!(evidence.iter().all(|item| item.score > 0.0));
+    }
+
+    #[tokio::test]
+    async fn oversized_queries_fail_before_calling_the_embedding_provider() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let embedder: Arc<dyn Embedder> = Arc::new(CountingEmbedder(calls.clone()));
+
+        let error = retrieve_scoped(
+            &store,
+            &embedder,
+            &"x".repeat(MAX_QUERY_BYTES + 1),
+            None,
+            None,
+            10,
+            &["*".into()],
+        )
+        .await
+        .expect_err("oversized query");
+
+        assert!(error.to_string().contains("query exceeds"));
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
     }
 
     #[tokio::test]

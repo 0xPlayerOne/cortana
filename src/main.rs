@@ -735,7 +735,7 @@ fn mcp_source_groups(config: &Config) -> (Vec<String>, Vec<String>) {
         let stored_source = source.source.clone().unwrap_or_else(|| source.name.clone());
         match source.kind.as_str() {
             "filesystem" => code.push(stored_source),
-            "gmail" | "slack" | "discord" => messages.push(stored_source),
+            "buzz" | "gmail" | "slack" | "discord" => messages.push(stored_source),
             _ => {}
         }
     }
