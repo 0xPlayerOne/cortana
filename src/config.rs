@@ -165,6 +165,8 @@ pub struct SourceConfig {
     #[serde(default)]
     pub token: Option<PathBuf>,
     #[serde(default)]
+    pub oauth_client: Option<PathBuf>,
+    #[serde(default)]
     pub query: Option<String>,
     #[serde(default)]
     pub labels: Vec<String>,

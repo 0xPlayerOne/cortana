@@ -50,6 +50,20 @@ the declared sidecar command with fixed `validate-source` arguments and limits o
 cancellable. The command cannot start sync, embedding, indexing, or reconciliation, and its
 metadata-only lifecycle is appended to the Desktop audit log.
 
+Source authorization and setup are separate fixed native boundaries. For Google sources, the
+renderer can request authorization only for an exact saved source with an absolute token
+destination and Desktop OAuth client path. Native Rust invokes the bundled sidecar with the fixed
+`authorize-google SOURCE` shape. The sidecar uses Authorization Code + PKCE, a random loopback
+port and state value, fixed HTTPS Google endpoints, bounded callback and token-exchange timeouts,
+minimum read-only scopes, and owner-only atomic token writes. Tokens and authorization codes never
+enter renderer state, logs, command output, or audit records.
+
+Provider setup links are selected by native code from a fixed allowlist and opened in the system
+browser; the renderer cannot supply a URL. File and folder selection also stays native. The
+renderer requests one of three fixed picker kinds—source directory, OAuth client JSON, or Google
+token destination—and receives a validated absolute path. It has no general filesystem
+permission.
+
 ## Workspaces and settings
 
 Workspaces are query/project scopes inside one canonical database, rather than separate indexes.
@@ -69,8 +83,9 @@ read-only in Desktop.
 The source editor supports the native filesystem, Apple Notes, Buzz, Google Drive, Gmail, Google
 Calendar, Slack, and Discord connector schemas. It can retain, disable, or remove an existing
 external command connector, but cannot create or modify command arrays. Google token files and
-local roots must be absolute non-root paths; Slack and Discord require explicit channels and a
-validated environment-variable name. Saving source settings never starts ingestion.
+OAuth client files and local roots must be absolute non-root paths; Slack and Discord require
+explicit channels and a validated environment-variable name. Saving or authorizing source
+settings never starts ingestion.
 
 ## Lifecycle
 

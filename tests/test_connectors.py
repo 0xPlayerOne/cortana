@@ -760,6 +760,24 @@ def test_google_session_retries_unauthorized_response(tmp_path: Path) -> None:
     assert calls == 2
 
 
+def test_google_session_refresh_allows_desktop_client_without_secret(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    token.write_text(
+        json.dumps({"refresh_token": "refresh", "client_id": "desktop-client"}),
+        encoding="utf-8",
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert b"client_secret" not in request.content
+        return response({"access_token": "fresh"}, request=request)
+
+    with GoogleSession(
+        token,
+        httpx.Client(transport=httpx.MockTransport(handler)),
+    ) as session:
+        assert session._access_token() == "fresh"
+
+
 def test_google_helpers_normalize_html_dates_and_snippets() -> None:
     assert _plain_text("<style>x{}</style><p>Hello &amp; world</p>", "text/html") == "Hello & world"
     assert _timestamp("Tue, 29 Jul 2026 12:00:00 +0000").year == 2026

@@ -299,6 +299,7 @@ fn source(
         channels: Vec::new(),
         token_env: None,
         token: None,
+        oauth_client: None,
         query: None,
         labels: Vec::new(),
         max_content_chars: None,

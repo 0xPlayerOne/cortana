@@ -96,6 +96,7 @@ export type SourceSettings = {
   channels: string[]
   token_env: string | null
   token_path: string | null
+  oauth_client_path: string | null
   query: string | null
   labels: string[]
   max_content_chars: number | null
@@ -199,6 +200,7 @@ export type DesktopSettingsUpdate = Pick<
 
 export type DesktopSourceJob = {
   id: string
+  operation: 'validation' | 'authorization'
   source: string
   kind: string
   project: string
@@ -210,6 +212,13 @@ export type DesktopSourceJob = {
   exit_code: number | null
   retryable: boolean
   writes_indexed_data: false
+}
+
+export type DesktopSetupOpen = {
+  source: string
+  kind: string
+  url: string
+  opened: boolean
 }
 
 export type DesktopReadiness = {

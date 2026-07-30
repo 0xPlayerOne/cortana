@@ -374,6 +374,32 @@
   gap: 7px;
 }
 
+.path-input {
+  display: flex;
+  gap: 7px;
+}
+
+.path-input input {
+  min-width: 0;
+  flex: 1;
+}
+
+.path-input button {
+  display: grid;
+  width: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #d8d7d1;
+  border: 1px solid #4b4c48;
+  background: #292a27;
+  cursor: pointer;
+}
+
+.path-input button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .secret-input input {
   min-width: 0;
   flex: 1;

@@ -14,6 +14,7 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 
 mod installer;
+mod paths;
 mod readiness;
 mod settings;
 mod source_jobs;
@@ -179,7 +180,21 @@ fn desktop_source_validation_start(
     jobs: State<'_, source_jobs::SourceJobState>,
     source: String,
 ) -> Result<source_jobs::SourceJobSnapshot, String> {
-    jobs.start(&app, &source)
+    jobs.start_validation(&app, &source)
+}
+
+#[tauri::command]
+fn desktop_source_authorization_start(
+    app: AppHandle,
+    jobs: State<'_, source_jobs::SourceJobState>,
+    source: String,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.start_authorization(&app, &source)
+}
+
+#[tauri::command]
+fn desktop_source_setup_open(source: String) -> Result<source_jobs::SetupOpenOutcome, String> {
+    source_jobs::open_setup(&source)
 }
 
 #[tauri::command]
@@ -201,6 +216,11 @@ fn desktop_source_validation_cancel(
 #[tauri::command]
 async fn desktop_readiness_scan(app: AppHandle) -> readiness::ReadinessSnapshot {
     readiness::scan(&app).await
+}
+
+#[tauri::command]
+async fn desktop_path_pick(app: AppHandle, kind: String) -> Result<Option<String>, String> {
+    paths::pick(app, &kind).await
 }
 
 fn validate_retrieval_request(request: &RetrievalRequest) -> Result<(), String> {
@@ -306,6 +326,7 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -319,11 +340,14 @@ pub fn run() {
             desktop_info,
             desktop_settings_get,
             desktop_settings_save,
+            desktop_path_pick,
             desktop_readiness_scan,
             desktop_installer_start,
             desktop_installer_status,
             desktop_installer_cancel,
             desktop_source_validation_start,
+            desktop_source_authorization_start,
+            desktop_source_setup_open,
             desktop_source_validation_status,
             desktop_source_validation_cancel
         ])

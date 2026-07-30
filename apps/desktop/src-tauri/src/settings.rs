@@ -98,6 +98,7 @@ pub struct SourceSettings {
     pub channels: Vec<String>,
     pub token_env: Option<String>,
     pub token_path: Option<String>,
+    pub oauth_client_path: Option<String>,
     pub query: Option<String>,
     pub labels: Vec<String>,
     pub max_content_chars: Option<usize>,
@@ -367,6 +368,7 @@ fn configured_sources(root: &Table) -> Vec<SourceSettings> {
                         channels: table_string_array(item, "channels"),
                         token_env: table_optional_string(item, "token_env"),
                         token_path: table_optional_string(item, "token"),
+                        oauth_client_path: table_optional_string(item, "oauth_client"),
                         query: table_optional_string(item, "query"),
                         labels: table_string_array(item, "labels"),
                         max_content_chars: table_optional_usize(item, "max_content_chars"),
@@ -803,6 +805,7 @@ fn apply_sources(root: &mut Table, sources: &[SourceSettings]) {
                 set_table_string_array(&mut table, "channels", &source.channels);
                 set_table_optional_string(&mut table, "token_env", &source.token_env);
                 set_table_optional_string(&mut table, "token", &source.token_path);
+                set_table_optional_string(&mut table, "oauth_client", &source.oauth_client_path);
                 set_table_optional_string(&mut table, "query", &source.query);
                 set_table_string_array(&mut table, "labels", &source.labels);
                 set_table_optional_integer(
@@ -942,14 +945,14 @@ fn validate_external_sources(root: &Table, sources: &[SourceSettings]) -> Result
 }
 
 fn validate_sources(
-    sources: &mut Vec<SourceSettings>,
+    sources: &mut [SourceSettings],
     workspace_ids: &BTreeSet<String>,
 ) -> Result<(), String> {
     if sources.len() > MAX_SOURCES {
         return Err(format!("configure no more than {MAX_SOURCES} sources"));
     }
     let mut names = BTreeSet::new();
-    for source in sources {
+    for source in sources.iter_mut() {
         source.name = source.name.trim().to_ascii_lowercase();
         source.kind = source.kind.trim().to_ascii_lowercase();
         source.project = source.project.trim().to_ascii_lowercase();
@@ -971,12 +974,18 @@ fn validate_sources(
         normalize_optional_text(&mut source.source);
         normalize_optional_text(&mut source.token_env);
         normalize_optional_text(&mut source.token_path);
+        normalize_optional_text(&mut source.oauth_client_path);
         normalize_optional_text(&mut source.query);
         for (label, value, maximum) in [
             ("source root", source.root.as_deref(), 4096),
             ("source identifier", source.source.as_deref(), 128),
             ("source token environment", source.token_env.as_deref(), 64),
             ("source token path", source.token_path.as_deref(), 4096),
+            (
+                "source OAuth client path",
+                source.oauth_client_path.as_deref(),
+                4096,
+            ),
             ("source query", source.query.as_deref(), 2048),
         ] {
             if let Some(value) = value {
@@ -1038,6 +1047,31 @@ fn validate_sources(
         }
         validate_source_paths_and_credentials(source)?;
     }
+    let filesystem_roots = sources
+        .iter()
+        .filter(|source| source.kind == "filesystem")
+        .filter_map(|source| source.root.as_deref())
+        .map(Path::new)
+        .collect::<Vec<_>>();
+    for source in sources.iter() {
+        for (label, candidate) in [
+            ("token", source.token_path.as_deref()),
+            ("OAuth client", source.oauth_client_path.as_deref()),
+        ] {
+            let Some(candidate) = candidate.map(Path::new) else {
+                continue;
+            };
+            if filesystem_roots
+                .iter()
+                .any(|root| candidate.starts_with(root))
+            {
+                return Err(format!(
+                    "source `{}` {label} path must be outside every filesystem source root",
+                    source.name
+                ));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -1047,6 +1081,9 @@ fn validate_source_paths_and_credentials(source: &SourceSettings) -> Result<(), 
     }
     if let Some(token_path) = &source.token_path {
         validate_source_path(&source.name, "token", token_path)?;
+    }
+    if let Some(client_path) = &source.oauth_client_path {
+        validate_source_path(&source.name, "OAuth client", client_path)?;
     }
     if !source.enabled {
         return Ok(());
@@ -1075,9 +1112,20 @@ fn validate_source_paths_and_credentials(source: &SourceSettings) -> Result<(), 
 
 fn validate_source_path(source: &str, label: &str, value: &str) -> Result<(), String> {
     let path = Path::new(value);
-    if !path.is_absolute() || path.parent().is_none() {
+    if !path.is_absolute()
+        || path.parent().is_none()
+        || path
+            .parent()
+            .is_none_or(|parent| parent.parent().is_none())
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
+    {
         return Err(format!(
-            "source `{source}` {label} must be an absolute non-root path"
+            "source `{source}` {label} must be an absolute path outside the filesystem root"
         ));
     }
     Ok(())
@@ -1578,6 +1626,30 @@ fn title_case(value: &str) -> String {
 mod tests {
     use super::*;
 
+    fn source_settings(name: &str, kind: &str) -> SourceSettings {
+        SourceSettings {
+            name: name.into(),
+            kind: kind.into(),
+            enabled: false,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: None,
+            token_path: None,
+            oauth_client_path: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            acl: Vec::new(),
+            editable: true,
+        }
+    }
+
     fn valid_update(root: &Path) -> SettingsUpdate {
         SettingsUpdate {
             workspaces: vec![WorkspaceSettings {
@@ -1774,6 +1846,7 @@ mod tests {
             channels: vec!["C012345".into()],
             token_env: None,
             token_path: None,
+            oauth_client_path: None,
             query: None,
             labels: Vec::new(),
             max_content_chars: None,
@@ -1786,5 +1859,26 @@ mod tests {
         });
         let error = validate_update(&mut update).expect_err("enabled Slack needs credentials");
         assert!(error.contains("token environment"));
+    }
+
+    #[test]
+    fn source_credentials_must_stay_outside_indexed_roots() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let root = temp.path().join("documents");
+        let mut filesystem = source_settings("documents", "filesystem");
+        filesystem.root = Some(root.display().to_string());
+        let mut google = source_settings("drive", "google-drive");
+        google.token_path = Some(root.join("token.json").display().to_string());
+        google.oauth_client_path = Some(
+            temp.path()
+                .join("private/client.json")
+                .display()
+                .to_string(),
+        );
+        let mut update = valid_update(temp.path());
+        update.sources = vec![filesystem, google];
+
+        let error = validate_update(&mut update).expect_err("credential path must not be indexed");
+        assert!(error.contains("outside every filesystem source root"));
     }
 }

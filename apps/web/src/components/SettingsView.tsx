@@ -2,6 +2,9 @@ import {
   AlertTriangle,
   Check,
   CircleStop,
+  ExternalLink,
+  FolderOpen,
+  KeyRound,
   LoaderCircle,
   Play,
   Plus,
@@ -20,9 +23,12 @@ import {
   getDesktopSourceValidation,
   getDesktopSettings,
   isDesktopApp,
+  openDesktopSourceSetup,
+  pickDesktopPath,
   saveDesktopSettings,
   scanDesktopReadiness,
   startDesktopInstaller,
+  startDesktopSourceAuthorization,
   startDesktopSourceValidation,
 } from '../api'
 import type {
@@ -583,6 +589,55 @@ function SourcesSection({
     }
   }
 
+  const authorizeSource = async (source: SourceSettings) => {
+    if (!canValidate) {
+      setError(
+        'Save source changes before authorizing so the native runtime uses this exact config.'
+      )
+      return
+    }
+    if (
+      !window.confirm(
+        `Authorize ${source.name} with Google?\n\nCortana will open the system browser, listen only on a random 127.0.0.1 callback port, request read-only scopes for Google sources sharing this token, and store the resulting token in the configured private file.`
+      )
+    ) {
+      return
+    }
+    setError('')
+    try {
+      setJob(await startDesktopSourceAuthorization(source.name))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Google authorization failed to start')
+    }
+  }
+
+  const openSetup = async (source: SourceSettings) => {
+    if (!canValidate) {
+      setError('Save this source before opening its account setup page.')
+      return
+    }
+    setError('')
+    try {
+      await openDesktopSourceSetup(source.name)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Account setup page could not be opened')
+    }
+  }
+
+  const choosePath = async (
+    index: number,
+    kind: 'directory' | 'oauth-client' | 'google-token',
+    field: 'root' | 'token_path' | 'oauth_client_path'
+  ) => {
+    setError('')
+    try {
+      const path = await pickDesktopPath(kind)
+      if (path) changeSource(index, { [field]: path })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Path selection failed')
+    }
+  }
+
   const cancel = async () => {
     if (!job) return
     try {
@@ -645,6 +700,36 @@ function SourcesSection({
                   </span>
                 </label>
                 <div className="source-card-actions">
+                  {hasBrowserSetup(source.kind) && (
+                    <button
+                      type="button"
+                      disabled={!canValidate}
+                      title="Open the official provider setup page"
+                      onClick={() => void openSetup(source)}
+                    >
+                      <ExternalLink size={14} /> Setup
+                    </button>
+                  )}
+                  {isGoogleSource(source.kind) && (
+                    <button
+                      type="button"
+                      disabled={
+                        !canValidate ||
+                        !source.token_path ||
+                        !source.oauth_client_path ||
+                        Boolean(job && ['running', 'cancelling'].includes(job.status))
+                      }
+                      title="Authorize read-only Google access with PKCE"
+                      onClick={() => void authorizeSource(source)}
+                    >
+                      {runningThis && job?.operation === 'authorization' ? (
+                        <LoaderCircle className="spin" size={14} />
+                      ) : (
+                        <KeyRound size={14} />
+                      )}
+                      Authorize
+                    </button>
+                  )}
                   <button
                     type="button"
                     disabled={
@@ -658,7 +743,11 @@ function SourcesSection({
                     title={canValidate ? 'Read-only bounded validation' : 'Save changes first'}
                     onClick={() => void validateSource(source)}
                   >
-                    {runningThis ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />}
+                    {runningThis && job?.operation === 'validation' ? (
+                      <LoaderCircle className="spin" size={14} />
+                    ) : (
+                      <Play size={14} />
+                    )}
                     Validate
                   </button>
                   <button
@@ -739,15 +828,25 @@ function SourcesSection({
                     hint="absolute, non-root path"
                     wide
                   >
-                    <input
-                      value={source.root || ''}
-                      disabled={!source.editable}
-                      required={source.enabled}
-                      placeholder="/Users/you/Documents"
-                      onChange={(event) =>
-                        changeSource(index, { root: event.target.value || null })
-                      }
-                    />
+                    <div className="path-input">
+                      <input
+                        value={source.root || ''}
+                        disabled={!source.editable}
+                        required={source.enabled}
+                        placeholder="/Users/you/Documents"
+                        onChange={(event) =>
+                          changeSource(index, { root: event.target.value || null })
+                        }
+                      />
+                      <button
+                        type="button"
+                        disabled={!source.editable}
+                        aria-label="Choose source directory"
+                        onClick={() => void choosePath(index, 'directory', 'root')}
+                      >
+                        <FolderOpen size={14} />
+                      </button>
+                    </div>
                   </Field>
                 )}
                 {source.kind === 'filesystem' && (
@@ -778,18 +877,56 @@ function SourcesSection({
                   <>
                     <Field
                       label="Google OAuth token file"
-                      hint="absolute path to an installed-app OAuth token JSON"
+                      hint="private token created by Cortana after authorization"
                       wide
                     >
-                      <input
-                        value={source.token_path || ''}
-                        disabled={!source.editable}
-                        required={source.enabled && !source.token_env}
-                        placeholder="/Users/you/.config/cortana/google-token.json"
-                        onChange={(event) =>
-                          changeSource(index, { token_path: event.target.value || null })
-                        }
-                      />
+                      <div className="path-input">
+                        <input
+                          value={source.token_path || ''}
+                          disabled={!source.editable}
+                          required={source.enabled && !source.token_env}
+                          placeholder="/Users/you/.config/cortana/google-token.json"
+                          onChange={(event) =>
+                            changeSource(index, { token_path: event.target.value || null })
+                          }
+                        />
+                        <button
+                          type="button"
+                          disabled={!source.editable}
+                          aria-label="Choose Google token destination"
+                          onClick={() => void choosePath(index, 'google-token', 'token_path')}
+                        >
+                          <FolderOpen size={14} />
+                        </button>
+                      </div>
+                    </Field>
+                    <Field
+                      label="Google Desktop OAuth client JSON"
+                      hint="downloaded from Google Cloud Console; required to authorize"
+                      wide
+                    >
+                      <div className="path-input">
+                        <input
+                          value={source.oauth_client_path || ''}
+                          disabled={!source.editable}
+                          placeholder="/Users/you/Downloads/google-oauth-client.json"
+                          onChange={(event) =>
+                            changeSource(index, {
+                              oauth_client_path: event.target.value || null,
+                            })
+                          }
+                        />
+                        <button
+                          type="button"
+                          disabled={!source.editable}
+                          aria-label="Choose Google OAuth client JSON"
+                          onClick={() =>
+                            void choosePath(index, 'oauth-client', 'oauth_client_path')
+                          }
+                        >
+                          <FolderOpen size={14} />
+                        </button>
+                      </div>
                     </Field>
                     <Field label="Google query" hint="optional provider-native filter" wide>
                       <input
@@ -902,7 +1039,7 @@ function SourcesSection({
             />
             <span>
               <strong>
-                {job.source} · {job.status}
+                {job.source} · {job.operation} · {job.status}
               </strong>
               <small>{job.summary}</small>
             </span>
@@ -921,7 +1058,10 @@ function SourcesSection({
                 disabled={!canValidate}
                 onClick={() => {
                   const source = settings.sources.find((item) => item.name === job.source)
-                  if (source) void validateSource(source)
+                  if (source) {
+                    if (job.operation === 'authorization') void authorizeSource(source)
+                    else void validateSource(source)
+                  }
                 }}
               >
                 <RefreshCw size={14} /> Retry
@@ -956,6 +1096,7 @@ function newSource(settings: DesktopSettings): SourceSettings {
     channels: [],
     token_env: null,
     token_path: null,
+    oauth_client_path: null,
     query: null,
     labels: [],
     max_content_chars: null,
@@ -976,6 +1117,10 @@ function defaultTokenEnv(kind: SourceKind): string | null {
 
 function isGoogleSource(kind: SourceKind) {
   return ['google-drive', 'gmail', 'google-calendar'].includes(kind)
+}
+
+function hasBrowserSetup(kind: SourceKind) {
+  return isGoogleSource(kind) || kind === 'slack' || kind === 'discord'
 }
 
 function splitList(value: string) {
