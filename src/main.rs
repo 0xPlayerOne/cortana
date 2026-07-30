@@ -153,6 +153,16 @@ enum Command {
         #[arg(long, help = "Override the per-source wall-clock budget for this run")]
         max_seconds: Option<u64>,
     },
+    /// Fetch and validate one configured source without embedding or indexing it.
+    ValidateSource {
+        source: String,
+        #[arg(long, help = "Override the document budget for this validation")]
+        max_documents: Option<usize>,
+        #[arg(long, help = "Override the content-byte budget for this validation")]
+        max_bytes: Option<u64>,
+        #[arg(long, help = "Override the wall-clock budget for this validation")]
+        max_seconds: Option<u64>,
+    },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -342,6 +352,23 @@ async fn main() -> Result<()> {
             })
         );
         return Ok(());
+    }
+    if let Some(Command::ValidateSource {
+        source,
+        max_documents,
+        max_bytes,
+        max_seconds,
+    }) = cli.command.as_ref()
+    {
+        return validate_configured_source(
+            &config,
+            source,
+            SyncOverrides {
+                max_documents: *max_documents,
+                max_bytes: *max_bytes,
+                max_seconds: *max_seconds,
+            },
+        );
     }
     match &cli.command {
         Some(Command::Backup { output, keep }) => {
@@ -600,6 +627,7 @@ async fn main() -> Result<()> {
             Command::Init { .. }
             | Command::MigrateHermes { .. }
             | Command::Eval { .. }
+            | Command::ValidateSource { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
         ) => unreachable!(),
@@ -808,6 +836,76 @@ fn plan_configured_sources(
             })
         );
     }
+    Ok(())
+}
+
+fn validate_configured_source(
+    config: &Config,
+    selected: &str,
+    overrides: SyncOverrides,
+) -> Result<()> {
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.name == selected)
+        .with_context(|| format!("configured source {selected} was not found"))?;
+    let limits = SourceLimits::resolve(config, source, overrides)?;
+    let cancellation = Cancellation::inert();
+    let control = SourceControl {
+        limits,
+        started: Instant::now(),
+        cancellation: &cancellation,
+    };
+    let validation = (|| -> Result<serde_json::Value> {
+        if source.kind == "filesystem" {
+            let root = source
+                .root
+                .as_ref()
+                .with_context(|| format!("source {} requires root", source.name))?;
+            let scope = connectors::filesystem_plan(
+                root,
+                &source.exclude,
+                limits.max_documents,
+                limits.max_bytes,
+                control.remaining(&source.name)?,
+            )?;
+            return Ok(serde_json::json!({
+                "documents": scope.documents,
+                "bytes": scope.bytes,
+                "inspection": "filesystem preflight"
+            }));
+        }
+        cleanup_connector_spools(&config.data_dir)?;
+        let (spool, diagnostics) = run_connector_to_spool(config, source, &control)?;
+        let validation = validate_connector_spool(&spool, source, &control);
+        let _ = std::fs::remove_file(&spool);
+        let _ = std::fs::remove_file(&diagnostics);
+        let scope = validation?;
+        Ok(serde_json::json!({
+            "documents": scope.documents,
+            "bytes": scope.bytes,
+            "inspection": "connector snapshot"
+        }))
+    })();
+    cancellation.stop();
+    let result = validation?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "source": source.name,
+            "kind": source.kind,
+            "enabled": source.enabled,
+            "project": source.project,
+            "limits": limits,
+            "validated": true,
+            "writes": {
+                "documents": 0,
+                "embeddings": 0,
+                "reconciliations": 0
+            },
+            "scope": result,
+        })
+    );
     Ok(())
 }
 
@@ -1555,11 +1653,7 @@ fn validate_connector_spool(
     source: &SourceConfig,
     control: &SourceControl<'_>,
 ) -> Result<SyncScope> {
-    let maximum_spool_bytes = control.limits.max_bytes.saturating_add(
-        u64::try_from(control.limits.max_documents)
-            .unwrap_or(u64::MAX)
-            .saturating_mul(64 * 1024),
-    );
+    let maximum_spool_bytes = maximum_connector_spool_bytes(&control.limits);
     let spool_bytes = std::fs::metadata(spool)?.len();
     anyhow::ensure!(
         spool_bytes <= maximum_spool_bytes,
@@ -1639,6 +1733,8 @@ fn run_connector_to_spool(
     };
     let timeout = Duration::from_secs(config.connectors.timeout_seconds.max(1))
         .min(control.remaining(&source.name)?);
+    let maximum_spool_bytes = maximum_connector_spool_bytes(&control.limits);
+    const MAXIMUM_DIAGNOSTIC_BYTES: u64 = 16 * 1024 * 1024;
     let started = std::time::Instant::now();
     let status = loop {
         if control.cancellation.is_requested() {
@@ -1647,6 +1743,18 @@ fn run_connector_to_spool(
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!("connector {} cancelled before reconciliation", source.name);
+        }
+        let spool_bytes = std::fs::metadata(&spool).map_or(0, |metadata| metadata.len());
+        let diagnostic_bytes = std::fs::metadata(&diagnostics).map_or(0, |metadata| metadata.len());
+        if spool_bytes > maximum_spool_bytes || diagnostic_bytes > MAXIMUM_DIAGNOSTIC_BYTES {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&spool);
+            let _ = std::fs::remove_file(&diagnostics);
+            anyhow::bail!(
+                "connector {} exceeded its live output safety bound",
+                source.name
+            );
         }
         if let Some(status) = child.try_wait()? {
             break status;
@@ -1675,6 +1783,14 @@ fn run_connector_to_spool(
         );
     }
     Ok((spool, diagnostics))
+}
+
+fn maximum_connector_spool_bytes(limits: &SourceLimits) -> u64 {
+    limits.max_bytes.saturating_add(
+        u64::try_from(limits.max_documents)
+            .unwrap_or(u64::MAX)
+            .saturating_mul(64 * 1024),
+    )
 }
 
 fn private_file(path: &std::path::Path) -> Result<std::fs::File> {
