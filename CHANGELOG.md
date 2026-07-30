@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/0xPlayerOne/cortana/compare/v0.4.1...v0.5.0) (2026-07-30)
+
+
+### Features
+
+* **desktop:** add secure Tauri 2 foundation ([#117](https://github.com/0xPlayerOne/cortana/issues/117)) ([#118](https://github.com/0xPlayerOne/cortana/issues/118)) ([208f22c](https://github.com/0xPlayerOne/cortana/commit/208f22ccac3030ea35d04256274e8fdfb0370310)), closes [#116](https://github.com/0xPlayerOne/cortana/issues/116)
+
 ## [0.4.1](https://github.com/0xPlayerOne/cortana/compare/v0.4.0...v0.4.1) (2026-07-30)
 
 
