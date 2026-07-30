@@ -13,7 +13,7 @@ use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbe
 use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
-use cortana::{api, mcp, migration, service, supervisor};
+use cortana::{api, mcp, migration, service, source_validation, supervisor};
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
 use serde::Deserialize;
@@ -1022,7 +1022,48 @@ fn validate_configured_source(
         }))
     })();
     cancellation.stop();
-    let result = validation?;
+    let validated_at = chrono::Utc::now();
+    let result = match validation {
+        Ok(result) => result,
+        Err(error) => {
+            let status = source_validation::SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "failed".into(),
+                validated_at,
+                documents: None,
+                bytes: None,
+                max_documents: limits.max_documents,
+                max_bytes: limits.max_bytes,
+                max_seconds: limits.max_seconds,
+                error: Some(error.to_string()),
+            };
+            if let Err(state_error) = source_validation::record(&config.data_dir, status) {
+                eprintln!("failed to persist source validation outcome: {state_error}");
+            }
+            return Err(error);
+        }
+    };
+    source_validation::record(
+        &config.data_dir,
+        source_validation::SourceValidationStatus {
+            source: source.name.clone(),
+            project: source.project.clone(),
+            kind: source.kind.clone(),
+            status: "succeeded".into(),
+            validated_at,
+            documents: result
+                .get("documents")
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok()),
+            bytes: result.get("bytes").and_then(serde_json::Value::as_u64),
+            max_documents: limits.max_documents,
+            max_bytes: limits.max_bytes,
+            max_seconds: limits.max_seconds,
+            error: None,
+        },
+    )?;
     println!(
         "{}",
         serde_json::json!({
