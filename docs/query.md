@@ -44,8 +44,10 @@ request_concurrency = 4
 The planner returns only bounded JSON search strings. Cortana preserves the original question,
 deduplicates expansions, rejects empty/oversized output, and hard-clamps fan-out to eight.
 Retrievals run concurrently and are fused by cross-query reciprocal rank. The synthesizer sees
-only a token-bounded evidence bundle and must cite the numbered passages. Missing or out-of-range
-citations cause an extractive fallback.
+only a token-bounded evidence bundle and must cite every non-empty paragraph with numbered
+passages. Missing, out-of-range, or paragraph-incomplete citations cause an extractive fallback.
+Evidence is treated as historical unless it explicitly proves current state, so old runbooks and
+status notes cannot silently become claims about the live deployment.
 
 The default endpoint is the local model gateway on port 8008. Stable `x-session-id` values and
 stable system prefixes let a compatible gateway reuse prompt caches across planner and synthesis
@@ -92,3 +94,7 @@ insufficient-evidence response. The response always reports `mode`, `cached`, `l
 executed plan, evidence, and warnings so the workspace can make degradation visible.
 The end-to-end deadline is hard-clamped to 55 seconds so a slow planner still leaves time for a
 citation-stable fallback before the HTTP request deadline.
+
+`cortana readiness` performs a minimal grounded completion against the configured query model when
+synthesis is enabled. Configuration alone is not considered production-ready. The check fails
+closed if the endpoint is unavailable or does not follow the evidence-and-citation contract.
