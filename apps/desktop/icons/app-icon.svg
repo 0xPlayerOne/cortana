@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <radialGradient id="background" cx="35%" cy="25%" r="90%">
+      <stop offset="0" stop-color="#182850"/>
+      <stop offset="0.55" stop-color="#0b1024"/>
+      <stop offset="1" stop-color="#060913"/>
+    </radialGradient>
+    <linearGradient id="orbit" x1="180" y1="170" x2="830" y2="850">
+      <stop stop-color="#5ee7ff"/>
+      <stop offset="0.48" stop-color="#7c8cff"/>
+      <stop offset="1" stop-color="#d26bff"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" rx="220" fill="url(#background)"/>
+  <circle cx="512" cy="512" r="290" fill="none" stroke="#172548" stroke-width="64"/>
+  <path d="M760 334c-55-78-146-126-248-126-168 0-304 136-304 304s136 304 304 304c102 0 193-50 248-127"
+        fill="none" stroke="url(#orbit)" stroke-linecap="round" stroke-width="70" filter="url(#glow)"/>
+  <path d="M696 402c-35-48-91-78-154-78-105 0-190 85-190 190s85 190 190 190c63 0 119-31 154-79"
+        fill="none" stroke="#b9f6ff" stroke-linecap="round" stroke-width="24" opacity="0.92"/>
+  <g fill="#e9fbff" filter="url(#glow)">
+    <circle cx="760" cy="334" r="28"/>
+    <circle cx="208" cy="512" r="24"/>
+    <circle cx="760" cy="689" r="28"/>
+    <circle cx="542" cy="324" r="20"/>
+    <circle cx="352" cy="514" r="18"/>
+    <circle cx="542" cy="704" r="20"/>
+  </g>
+</svg>

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Cortana",
+  "version": "0.4.1",
+  "identifier": "ai.cortana.desktop",
+  "build": {
+    "beforeDevCommand": "bun run --cwd ../web dev",
+    "devUrl": "http://127.0.0.1:4173",
+    "beforeBuildCommand": "bun run --cwd ../web build",
+    "frontendDist": "../../web/dist"
+  },
+  "app": {
+    "security": {
+      "capabilities": ["desktop-owner"],
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "Cortana",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 980,
+        "minHeight": 680,
+        "center": true,
+        "resizable": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "category": "Productivity",
+    "copyright": "Copyright 2026 Cortana contributors",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "targets": "all",
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": ["https://github.com/0xPlayerOne/cortana/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMxRkU5REY3RTRENEQyQzQKUldURTB0VGs5NTMrd1pGZUEwUkVwZGVDM25oY2FPUlh2TVVMSlZsQmpaUUVQOUFvNjFVdzhISWMK",
+      "dialog": false
+    }
+  }
+}
