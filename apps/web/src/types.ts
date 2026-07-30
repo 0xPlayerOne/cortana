@@ -228,6 +228,23 @@ export type DesktopSettingsUpdate = Pick<
   secrets: Array<{ name: string; value?: string; clear?: boolean }>
 }
 
+export type DesktopPortableSettings = Omit<DesktopSettingsUpdate, 'secrets'>
+
+export type DesktopSettingsExport = {
+  path: string
+  format_version: number
+  secrets_included: false
+  omitted_external_sources: string[]
+}
+
+export type DesktopSettingsImport = {
+  path: string
+  format_version: number
+  secrets_included: false
+  preserved_external_sources: string[]
+  settings: DesktopPortableSettings
+}
+
 export type DesktopSourceJob = {
   id: string
   operation: 'validation' | 'authorization' | 'trial-sync'

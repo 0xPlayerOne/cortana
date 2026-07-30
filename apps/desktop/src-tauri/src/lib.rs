@@ -313,6 +313,26 @@ fn desktop_settings_save(
 }
 
 #[tauri::command]
+async fn desktop_settings_export(
+    app: AppHandle,
+) -> Result<Option<settings::PortableExport>, String> {
+    let Some(path) = paths::pick(app, "settings-export").await? else {
+        return Ok(None);
+    };
+    settings::export_portable(std::path::Path::new(&path)).map(Some)
+}
+
+#[tauri::command]
+async fn desktop_settings_import(
+    app: AppHandle,
+) -> Result<Option<settings::PortableImport>, String> {
+    let Some(path) = paths::pick(app, "settings-import").await? else {
+        return Ok(None);
+    };
+    settings::import_portable(std::path::Path::new(&path)).map(Some)
+}
+
+#[tauri::command]
 fn desktop_installer_start(
     installer: State<'_, installer::InstallerState>,
     tool: String,
@@ -558,6 +578,8 @@ pub fn run() {
             desktop_update_install,
             desktop_settings_get,
             desktop_settings_save,
+            desktop_settings_export,
+            desktop_settings_import,
             desktop_path_pick,
             desktop_readiness_scan,
             desktop_installer_start,

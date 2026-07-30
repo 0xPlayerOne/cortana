@@ -13,6 +13,8 @@ import type {
   DesktopReadiness,
   DesktopServiceReport,
   DesktopSettings,
+  DesktopSettingsExport,
+  DesktopSettingsImport,
   DesktopSettingsUpdate,
   DesktopSourceJob,
   DesktopUpdate,
@@ -31,6 +33,16 @@ export async function getDesktopSettings(): Promise<DesktopSettings> {
 export async function saveDesktopSettings(update: DesktopSettingsUpdate): Promise<DesktopSettings> {
   if (!isDesktopApp) throw new Error('Settings are available in Cortana Desktop')
   return invokeDesktop<DesktopSettings>('desktop_settings_save', { update })
+}
+
+export async function exportDesktopSettings(): Promise<DesktopSettingsExport | null> {
+  if (!isDesktopApp) throw new Error('Settings export is available in Cortana Desktop')
+  return invokeDesktop<DesktopSettingsExport | null>('desktop_settings_export')
+}
+
+export async function importDesktopSettings(): Promise<DesktopSettingsImport | null> {
+  if (!isDesktopApp) throw new Error('Settings import is available in Cortana Desktop')
+  return invokeDesktop<DesktopSettingsImport | null>('desktop_settings_import')
 }
 
 export async function scanDesktopReadiness(): Promise<DesktopReadiness> {

@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   Check,
   CircleStop,
+  Download,
   ExternalLink,
   FolderOpen,
   KeyRound,
@@ -12,6 +13,7 @@ import {
   Save,
   Settings2,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
@@ -20,6 +22,7 @@ import {
   cancelDesktopInstaller,
   cancelDesktopSourceValidation,
   checkDesktopUpdate,
+  exportDesktopSettings,
   getDesktopAudit,
   getDesktopInstaller,
   getDesktopInfo,
@@ -29,6 +32,7 @@ import {
   getDesktopUpdate,
   getRuntimeAudit,
   installDesktopUpdate,
+  importDesktopSettings,
   isDesktopApp,
   openDesktopSourceSetup,
   openDesktopProject,
@@ -43,6 +47,7 @@ import {
   runDesktopServiceAction,
   runDesktopServicesActionAll,
 } from '../api'
+import { buildSetupSteps } from '../setup'
 import type {
   DesktopInstallJob,
   DesktopInfo,
@@ -87,6 +92,7 @@ export function SettingsView({
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [setupReadiness, setSetupReadiness] = useState<DesktopReadiness | null>(null)
 
   useEffect(() => {
     if (!isDesktopApp) return
@@ -171,6 +177,14 @@ export function SettingsView({
           <Save size={16} /> {saving ? 'Saving…' : 'Save changes'}
         </button>
       </header>
+      {settings.needs_setup && (
+        <SetupGuide
+          settings={settings}
+          readiness={setupReadiness}
+          dirty={dirty}
+          onOpen={setSection}
+        />
+      )}
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
           {(
@@ -202,7 +216,9 @@ export function SettingsView({
           </div>
         </nav>
         <form id="settings-form" className="settings-form" onSubmit={submit}>
-          {section === 'readiness' && <ReadinessSection />}
+          {section === 'readiness' && (
+            <ReadinessSection autoScan={settings.needs_setup} onResult={setSetupReadiness} />
+          )}
           {section === 'services' && <ServicesSection />}
           {section === 'updates' && <UpdatesSection />}
           {section === 'access' && (
@@ -250,11 +266,17 @@ export function SettingsView({
             <EmbeddingSection
               settings={settings}
               secretValues={secretValues}
-              onSecret={setSecretValues}
+              onSecret={(values) => {
+                setSecretValues(values)
+                setDirty(true)
+                setSaved(false)
+              }}
               clearedSecrets={clearedSecrets}
               onClearSecret={(name) => {
                 setClearedSecrets((current) => new Set(current).add(name))
                 setSecretValues((current) => ({ ...current, [name]: '' }))
+                setDirty(true)
+                setSaved(false)
               }}
               update={update}
             />
@@ -264,17 +286,25 @@ export function SettingsView({
               settings={settings}
               secrets={settings.secrets}
               secretValues={secretValues}
-              onSecret={setSecretValues}
+              onSecret={(values) => {
+                setSecretValues(values)
+                setDirty(true)
+                setSaved(false)
+              }}
               clearedSecrets={clearedSecrets}
               onClearSecret={(name) => {
                 setClearedSecrets((current) => new Set(current).add(name))
                 setSecretValues((current) => ({ ...current, [name]: '' }))
+                setDirty(true)
+                setSaved(false)
               }}
               update={update}
             />
           )}
           {section === 'ingestion' && <IngestionSection settings={settings} update={update} />}
-          {section === 'advanced' && <AdvancedSection settings={settings} update={update} />}
+          {section === 'advanced' && (
+            <AdvancedSection settings={settings} update={update} dirty={dirty} />
+          )}
         </form>
       </div>
       {(error || saved || settings.restart_required) && (
@@ -287,6 +317,58 @@ export function SettingsView({
         </div>
       )}
     </main>
+  )
+}
+
+function SetupGuide({
+  settings,
+  readiness,
+  dirty,
+  onOpen,
+}: {
+  settings: DesktopSettings
+  readiness: DesktopReadiness | null
+  dirty: boolean
+  onOpen: (section: Section) => void
+}) {
+  const steps = buildSetupSteps(settings, readiness)
+  const complete = steps.filter((step) => step.complete).length
+  return (
+    <section className="setup-guide" aria-label="Guided setup progress">
+      <div className="setup-guide-heading">
+        <div>
+          <span className="eyebrow">First launch</span>
+          <strong>Set up Cortana safely</strong>
+          <p>
+            Review each step, then save. Nothing here starts ingestion or installs recurring sync.
+          </p>
+        </div>
+        <span>
+          {complete} of {steps.length} ready
+        </span>
+      </div>
+      <div className="setup-steps">
+        {steps.map((step, index) => (
+          <button
+            type="button"
+            key={step.section}
+            className={step.complete ? 'complete' : ''}
+            onClick={() => onOpen(step.section)}
+          >
+            <i>{step.complete ? <Check size={13} /> : index + 1}</i>
+            <span>
+              <strong>{step.label}</strong>
+              <small>{step.detail}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+      <p className="setup-save-state">
+        {dirty
+          ? 'Unsaved setup changes are ready for review.'
+          : 'The Save changes button creates an owner-only configuration with a rollback copy.'}
+      </p>
+    </section>
   )
 }
 
@@ -810,7 +892,13 @@ function AuditList({ title, events }: { title: string; events: AuditEvent[] }) {
   )
 }
 
-function ReadinessSection() {
+function ReadinessSection({
+  autoScan = false,
+  onResult,
+}: {
+  autoScan?: boolean
+  onResult?: (readiness: DesktopReadiness | null) => void
+}) {
   const [readiness, setReadiness] = useState<DesktopReadiness | null>(null)
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState('')
@@ -824,7 +912,27 @@ function ReadinessSection() {
         .then((next) => {
           if (!active) return
           setJob(next)
-          if (next.status === 'succeeded') setReadiness(null)
+          if (next.status === 'succeeded') {
+            setReadiness(null)
+            onResult?.(null)
+            setScanning(true)
+            void scanDesktopReadiness()
+              .then((scan) => {
+                if (!active) return
+                setReadiness(scan)
+                onResult?.(scan)
+              })
+              .catch((caught: unknown) => {
+                if (active) {
+                  setError(
+                    caught instanceof Error ? caught.message : 'Post-install readiness scan failed'
+                  )
+                }
+              })
+              .finally(() => {
+                if (active) setScanning(false)
+              })
+          }
         })
         .catch((caught: unknown) => {
           if (active) {
@@ -836,19 +944,45 @@ function ReadinessSection() {
       active = false
       window.clearTimeout(timer)
     }
-  }, [job])
+  }, [job, onResult])
 
   const scan = async () => {
     setScanning(true)
     setError('')
     try {
-      setReadiness(await scanDesktopReadiness())
+      const next = await scanDesktopReadiness()
+      setReadiness(next)
+      onResult?.(next)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Readiness scan failed')
     } finally {
       setScanning(false)
     }
   }
+
+  useEffect(() => {
+    if (!autoScan) return
+    let active = true
+    setScanning(true)
+    setError('')
+    void scanDesktopReadiness()
+      .then((next) => {
+        if (!active) return
+        setReadiness(next)
+        onResult?.(next)
+      })
+      .catch((caught: unknown) => {
+        if (active) {
+          setError(caught instanceof Error ? caught.message : 'Readiness scan failed')
+        }
+      })
+      .finally(() => {
+        if (active) setScanning(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [autoScan, onResult])
 
   const install = async (tool: string, label: string) => {
     if (
@@ -2128,9 +2262,57 @@ function IngestionSection({ settings, update }: SettingsSectionProps) {
   )
 }
 
-function AdvancedSection({ settings, update }: SettingsSectionProps) {
+function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { dirty: boolean }) {
+  const [portableBusy, setPortableBusy] = useState<'export' | 'import' | ''>('')
+  const [portableNotice, setPortableNotice] = useState('')
+  const [portableError, setPortableError] = useState('')
   const setRuntime = (patch: Partial<DesktopSettings['runtime']>) =>
     update((current) => ({ ...current, runtime: { ...current.runtime, ...patch } }))
+
+  const exportSettings = async () => {
+    setPortableBusy('export')
+    setPortableNotice('')
+    setPortableError('')
+    try {
+      const result = await exportDesktopSettings()
+      if (!result) return
+      const omitted = result.omitted_external_sources.length
+        ? ` Executable connectors omitted: ${result.omitted_external_sources.join(', ')}.`
+        : ''
+      setPortableNotice(`Redacted settings exported to ${result.path}.${omitted}`)
+    } catch (caught) {
+      setPortableError(caught instanceof Error ? caught.message : 'Settings export failed')
+    } finally {
+      setPortableBusy('')
+    }
+  }
+
+  const importSettings = async () => {
+    setPortableBusy('import')
+    setPortableNotice('')
+    setPortableError('')
+    try {
+      const result = await importDesktopSettings()
+      if (!result) return
+      if (
+        !window.confirm(
+          `Load the validated settings from ${result.path} into this form?\n\nSecret values are never imported. Existing executable connectors are preserved. Saving a changed principal list may remove credentials for principals you remove. Nothing is written until you choose Save changes.`
+        )
+      ) {
+        return
+      }
+      update((current) => ({ ...current, ...result.settings }))
+      const preserved = result.preserved_external_sources.length
+        ? ` Preserved executable connectors: ${result.preserved_external_sources.join(', ')}.`
+        : ''
+      setPortableNotice(`Imported settings are ready for review.${preserved}`)
+    } catch (caught) {
+      setPortableError(caught instanceof Error ? caught.message : 'Settings import failed')
+    } finally {
+      setPortableBusy('')
+    }
+  }
+
   return (
     <SettingsSection
       title="Local runtime"
@@ -2159,6 +2341,48 @@ function AdvancedSection({ settings, update }: SettingsSectionProps) {
           onChange={(audit_max_events) => setRuntime({ audit_max_events })}
         />
       </div>
+      <div className="portable-settings">
+        <div>
+          <strong>Redacted settings backup</strong>
+          <p>
+            Export configuration without secret values or executable connector commands. Import
+            validates a bounded preview and never writes until you save.
+          </p>
+        </div>
+        <div className="service-actions">
+          <button
+            type="button"
+            disabled={Boolean(portableBusy) || dirty}
+            title={dirty ? 'Save or discard draft changes before exporting' : 'Export settings'}
+            onClick={() => void exportSettings()}
+          >
+            {portableBusy === 'export' ? (
+              <LoaderCircle className="spin" size={14} />
+            ) : (
+              <Download size={14} />
+            )}
+            Export
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(portableBusy)}
+            onClick={() => void importSettings()}
+          >
+            {portableBusy === 'import' ? (
+              <LoaderCircle className="spin" size={14} />
+            ) : (
+              <Upload size={14} />
+            )}
+            Import preview
+          </button>
+        </div>
+      </div>
+      {(portableNotice || portableError) && (
+        <div className={`safety-note ${portableError ? 'error' : ''}`} role="status">
+          {portableError ? <AlertTriangle size={16} /> : <Check size={16} />}
+          <span>{portableError || portableNotice}</span>
+        </div>
+      )}
     </SettingsSection>
   )
 }
