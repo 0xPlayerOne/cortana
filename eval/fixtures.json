@@ -51,6 +51,39 @@
       "project": "reference",
       "acl": [],
       "metadata": {}
+    },
+    {
+      "source": "handbook",
+      "source_id": "cortana-ingestion-safety",
+      "title": "Cortana ingestion safety",
+      "content": "Cortana ingestion uses a safe bounded validation command before sync is enabled. Start with a single source, small document and byte limits, and manual query-only operation.",
+      "uri": "https://example.invalid/handbook/cortana-ingestion",
+      "updated_at": "2026-01-05T00:00:00Z",
+      "project": "engineering",
+      "acl": ["work"],
+      "metadata": {}
+    },
+    {
+      "source": "code",
+      "source_id": "vulnerability-distractor",
+      "title": "Vulnerability writeup skill",
+      "content": "The exploitability analysis should be thoughtful and run only safe probes in a disposable lab.",
+      "uri": "https://example.invalid/code/security-skill",
+      "updated_at": "2026-01-06T00:00:00Z",
+      "project": "engineering",
+      "acl": ["work"],
+      "metadata": {}
+    },
+    {
+      "source": "notes",
+      "source_id": "stale-cortana-status",
+      "title": "Old Cortana status",
+      "content": "Cortana is under active initial development and runtime commands will arrive later.",
+      "uri": "https://example.invalid/notes/old-status",
+      "updated_at": "2025-01-01T00:00:00Z",
+      "project": "engineering",
+      "acl": ["work"],
+      "metadata": {}
     }
   ],
   "retrieval_cases": [
@@ -78,12 +111,22 @@
       "acl": ["work"],
       "expected_source_ids": [],
       "forbidden_source_ids": ["private-journal"]
+    },
+    {
+      "name": "real-shaped stopword distractor",
+      "query": "How should Cortana ingestion be run safely?",
+      "project": "engineering",
+      "top_k": 1,
+      "acl": ["work"],
+      "expected_source_ids": ["cortana-ingestion-safety"],
+      "forbidden_source_ids": ["vulnerability-distractor"]
     }
   ],
   "answer_case": {
-    "query": "What checklist is used to deploy Orchid?",
+    "query": "How should Cortana ingestion be run safely?",
     "project": "engineering",
     "acl": ["work"],
-    "expected_source_id": "deploy-runbook"
+    "expected_source_id": "cortana-ingestion-safety",
+    "forbidden_source_ids": ["vulnerability-distractor", "stale-cortana-status"]
   }
 }

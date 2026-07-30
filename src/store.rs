@@ -1,5 +1,5 @@
 use std::cmp::{Ordering, Reverse};
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -655,16 +655,21 @@ impl Store {
         principal_acl: &[String],
     ) -> Result<Vec<String>> {
         let connection = self.connection.lock().expect("store lock poisoned");
-        let safe_query = query
-            .split_whitespace()
-            .map(|token| token.replace('"', ""))
-            .filter(|token| !token.is_empty())
-            .map(|token| format!("\"{token}\""))
-            .collect::<Vec<_>>()
-            .join(" OR ");
-        if safe_query.is_empty() {
+        let terms = lexical_query_terms(query);
+        if terms.is_empty() {
             return Ok(Vec::new());
         }
+        let disjunction = terms.join(" OR ");
+        let mut searches = Vec::new();
+        if terms.len() > 1 {
+            if terms.len() > 2 {
+                searches.push(terms.join(" AND "));
+            }
+            for right in 1..terms.len().min(12) {
+                searches.push(format!("{} AND {}", terms[0], terms[right]));
+            }
+        }
+        searches.push(disjunction);
         let mut statement = connection.prepare(
             "SELECT f.chunk_id,d.acl_json FROM chunks_fts f
              JOIN chunks c ON c.id=f.chunk_id
@@ -675,18 +680,21 @@ impl Store {
              ORDER BY bm25(chunks_fts) LIMIT ?4",
         )?;
         let candidate_limit = limit.saturating_mul(8).max(limit);
-        let rows = statement.query_map(
-            params![safe_query, project, source, candidate_limit as i64],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-        )?;
         let mut allowed = Vec::new();
-        for row in rows {
-            let (id, acl) = row?;
-            let acl: Vec<String> = serde_json::from_str(&acl)?;
-            if acl_allows(&acl, principal_acl) {
-                allowed.push(id);
-                if allowed.len() == limit {
-                    break;
+        let mut seen = HashSet::new();
+        for safe_query in searches {
+            let rows = statement.query_map(
+                params![safe_query, project, source, candidate_limit as i64],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            )?;
+            for row in rows {
+                let (id, acl) = row?;
+                let acl: Vec<String> = serde_json::from_str(&acl)?;
+                if acl_allows(&acl, principal_acl) && seen.insert(id.clone()) {
+                    allowed.push(id);
+                    if allowed.len() == limit {
+                        return Ok(allowed);
+                    }
                 }
             }
         }
@@ -1161,6 +1169,43 @@ fn document_hash(document: &Document) -> Result<String> {
     Ok(hex_digest(&value))
 }
 
+fn lexical_query_terms(query: &str) -> Vec<String> {
+    const STOPWORDS: [&str; 30] = [
+        "a", "an", "and", "are", "be", "can", "did", "do", "does", "for", "from", "how", "i", "in",
+        "is", "it", "my", "of", "on", "or", "our", "should", "the", "this", "to", "was", "were",
+        "what", "when", "with",
+    ];
+    let raw = query
+        .split_whitespace()
+        .map(|token| {
+            token
+                .trim_matches(|character: char| {
+                    !character.is_alphanumeric()
+                        && character != '_'
+                        && character != '-'
+                        && character != '.'
+                })
+                .replace('"', "")
+                .to_lowercase()
+        })
+        .filter(|token| !token.is_empty())
+        .collect::<Vec<_>>();
+    let meaningful = raw
+        .iter()
+        .filter(|token| !STOPWORDS.contains(&token.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    let selected = if meaningful.is_empty() {
+        raw
+    } else {
+        meaningful
+    };
+    selected
+        .into_iter()
+        .map(|token| format!("\"{token}\""))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
@@ -1263,6 +1308,46 @@ mod tests {
         let stats = store.stats().expect("cache stats");
         assert_eq!(stats.query_cache_entries, 1);
         assert_eq!(stats.query_cache_hits, 1);
+    }
+
+    #[test]
+    fn lexical_search_prioritizes_meaningful_multi_term_matches_over_stopwords() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .upsert(
+                &document(
+                    "relevant",
+                    "Cortana ingestion uses bounded validation before a sync is enabled.",
+                ),
+                &[(
+                    "Cortana ingestion uses bounded validation before a sync is enabled.".into(),
+                    vec![1.0],
+                )],
+            )
+            .expect("relevant document");
+        store
+            .upsert(
+                &document(
+                    "distractor",
+                    "The analysis should be thoughtful and run only safe probes.",
+                ),
+                &[(
+                    "The analysis should be thoughtful and run only safe probes.".into(),
+                    vec![1.0],
+                )],
+            )
+            .expect("distractor document");
+
+        let ids = store
+            .lexical_ids(
+                "How should Cortana ingestion be run safely?",
+                Some("demo"),
+                None,
+                10,
+            )
+            .expect("lexical search");
+        assert_eq!(ids[0], format!("{}:0", stable_id("test", "relevant")));
     }
 
     #[test]
