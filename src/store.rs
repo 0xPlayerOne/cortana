@@ -1,5 +1,5 @@
 use std::cmp::{Ordering, Reverse};
-use std::collections::{BinaryHeap, HashSet};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -875,6 +875,63 @@ impl Store {
         .map_err(Into::into)
     }
 
+    pub fn neighboring_content_scoped(
+        &self,
+        ids: &[String],
+        radius: usize,
+        max_content_bytes: usize,
+        principal_acl: &[String],
+    ) -> Result<HashMap<String, String>> {
+        if ids.is_empty() || max_content_bytes == 0 {
+            return Ok(HashMap::new());
+        }
+        let radius = radius.min(4);
+        let maximum = max_content_bytes.min(64 * 1024);
+        let placeholders = std::iter::repeat_n("?", ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT seed.id,n.content,d.acl_json
+             FROM chunks seed
+             JOIN chunks n ON n.document_id=seed.document_id
+             JOIN documents d ON d.id=seed.document_id
+             WHERE seed.id IN ({placeholders})
+               AND n.ordinal BETWEEN seed.ordinal-{radius} AND seed.ordinal+{radius}
+             ORDER BY seed.id,n.ordinal"
+        );
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(&sql)?;
+        let rows = statement.query_map(params_from_iter(ids), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut expanded = HashMap::<String, String>::new();
+        let mut complete = HashSet::<String>::new();
+        for row in rows {
+            let (seed_id, content, acl_json) = row?;
+            if complete.contains(&seed_id) {
+                continue;
+            }
+            let acl = serde_json::from_str::<Vec<String>>(&acl_json).map_err(|error| {
+                rusqlite::Error::FromSqlConversionFailure(2, Type::Text, Box::new(error))
+            })?;
+            if !acl_allows(&acl, principal_acl) {
+                complete.insert(seed_id);
+                continue;
+            }
+            let value = expanded.entry(seed_id.clone()).or_default();
+            append_reconstructed_chunk(value, &content);
+            if value.len() > maximum {
+                value.truncate(previous_char_boundary(value, maximum));
+                complete.insert(seed_id);
+            }
+        }
+        Ok(expanded)
+    }
+
     pub fn lexical_ids(
         &self,
         query: &str,
@@ -1644,6 +1701,40 @@ mod tests {
             .expect("document");
         assert_eq!(detail.content, "alpha beta gamma");
         assert!(!detail.truncated);
+    }
+
+    #[test]
+    fn neighboring_content_is_acl_scoped_overlap_aware_and_bounded() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut item = document("neighbor-context", "alpha beta gamma delta");
+        item.acl = vec!["work".into()];
+        store
+            .upsert(
+                &item,
+                &[
+                    ("alpha beta".into(), vec![1.0]),
+                    ("beta gamma".into(), vec![1.0]),
+                    ("gamma delta".into(), vec![1.0]),
+                ],
+            )
+            .expect("insert document");
+        let seed = format!("{}:1", stable_id("test", "neighbor-context"));
+
+        let denied = store
+            .neighboring_content_scoped(std::slice::from_ref(&seed), 1, 1024, &["personal".into()])
+            .expect("denied context");
+        assert!(denied.is_empty());
+
+        let expanded = store
+            .neighboring_content_scoped(std::slice::from_ref(&seed), 1, 1024, &["work".into()])
+            .expect("expanded context");
+        assert_eq!(expanded[&seed], "alpha beta gamma delta");
+
+        let bounded = store
+            .neighboring_content_scoped(&[seed.clone()], 1, 12, &["work".into()])
+            .expect("bounded context");
+        assert_eq!(bounded[&seed], "alpha beta g");
     }
 
     #[test]

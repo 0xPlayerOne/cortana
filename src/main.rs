@@ -693,6 +693,7 @@ async fn main() -> Result<()> {
             .await
         }
         Some(Command::Mcp { token_env }) => {
+            let (code_sources, message_sources) = mcp_source_groups(&config);
             let principal = if let Some(name) = token_env {
                 let token = config
                     .environment_value(&name)
@@ -706,7 +707,8 @@ async fn main() -> Result<()> {
             mcp::serve(
                 mcp::BrainServer::new(store, embedder)
                     .with_principal(principal)
-                    .with_audit_limit(config.auth.audit_max_events),
+                    .with_audit_limit(config.auth.audit_max_events)
+                    .with_source_groups(code_sources, message_sources),
             )
             .await
         }
@@ -724,6 +726,20 @@ async fn main() -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn mcp_source_groups(config: &Config) -> (Vec<String>, Vec<String>) {
+    let mut code = Vec::new();
+    let mut messages = Vec::new();
+    for source in config.sources.iter().filter(|source| source.enabled) {
+        let stored_source = source.source.clone().unwrap_or_else(|| source.name.clone());
+        match source.kind.as_str() {
+            "filesystem" => code.push(stored_source),
+            "buzz" | "gmail" | "slack" | "discord" => messages.push(stored_source),
+            _ => {}
+        }
+    }
+    (code, messages)
 }
 
 struct SyncLock {

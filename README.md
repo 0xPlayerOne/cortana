@@ -143,6 +143,9 @@ the runtime executes them concurrently, reciprocal-rank fusion deduplicates evid
 configured model produces a citation-validated answer. Every model failure degrades to a
 deterministic extractive answer. MCP intentionally exposes raw search and token-bounded context
 instead, allowing an agent to orchestrate without paying for an opaque extra synthesis call.
+Task-specific `search_code`, `search_messages`, and `who_knows` tools reuse one query embedding
+across their configured source group. Ranked passages receive one ACL-checked neighboring chunk
+on either side, capped at 16 KiB per result before the independent context-token budget.
 
 The shipped local profile uses SQLite WAL, FTS5, content-addressed incremental updates, a persistent
 embedding cache, and an embedding index generation fingerprint. Postgres with `pgvector` is the
