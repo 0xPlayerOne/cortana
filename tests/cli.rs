@@ -2,6 +2,7 @@ use std::fs;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use rusqlite::Connection;
 use tempfile::tempdir;
 
 #[test]
@@ -231,6 +232,127 @@ fn connector_wall_clock_timeout_is_enforced() {
         .stderr(predicate::str::contains(
             "connector wedged timed out after 1 seconds",
         ));
+}
+
+#[test]
+fn sync_plan_is_read_only_and_can_inspect_a_disabled_source() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let source = directory.path().join("source");
+    fs::create_dir(&source).expect("source directory");
+    fs::write(source.join("one.rs"), "fn one() {}").expect("source file");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n\
+             [[sources]]\nname = \"code\"\nkind = \"filesystem\"\nenabled = false\n\
+             project = \"demo\"\nroot = {source:?}\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["sync", "--source", "code", "--plan"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"documents\":1"))
+        .stdout(predicate::str::contains("\"enabled\":false"));
+
+    assert!(
+        !data.exists(),
+        "plan mode must not initialize or modify the index"
+    );
+}
+
+#[test]
+fn source_budget_rejects_snapshot_before_partial_ingestion() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let input = directory.path().join("external.jsonl");
+    fs::write(
+        &input,
+        concat!(
+            "{\"source\":\"upstream\",\"source_id\":\"one\",\"title\":\"One\",",
+            "\"content\":\"first document\",\"project\":\"demo\"}\n",
+            "{\"source\":\"upstream\",\"source_id\":\"two\",\"title\":\"Two\",",
+            "\"content\":\"second document\",\"project\":\"demo\"}\n"
+        ),
+    )
+    .expect("write external source");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n\
+             [ingestion]\nmax_documents_per_source = 1\n\
+             [[sources]]\nname = \"external-demo\"\nkind = \"external\"\nproject = \"demo\"\n\
+             command = [\"/bin/cat\", {input:?}]\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["sync", "--source", "external-demo"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "source external-demo exceeds the 1 document budget",
+        ));
+
+    let connection =
+        Connection::open(data.join("cortana.sqlite3")).expect("open initialized index");
+    let documents: i64 = connection
+        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        .expect("document count");
+    assert_eq!(
+        documents, 0,
+        "a failed preflight must not partially ingest the snapshot"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn sync_terminates_connector_on_shutdown_signal() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n\
+             [[sources]]\nname = \"slow\"\nkind = \"external\"\nproject = \"demo\"\n\
+             command = [\"/bin/sleep\", \"30\"]\n"
+        ),
+    )
+    .expect("write config");
+
+    let mut command = std::process::Command::new(assert_cmd::cargo::cargo_bin!("cortana"));
+    command
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["sync", "--source", "slow"]);
+    let started = std::time::Instant::now();
+    let mut child = command.spawn().expect("start sync");
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let signal = std::process::Command::new("/bin/kill")
+        .args(["-TERM", &child.id().to_string()])
+        .status()
+        .expect("send terminate signal");
+    assert!(signal.success(), "terminate signal must be delivered");
+    let status = child.wait().expect("wait for cancelled sync");
+
+    assert!(!status.success(), "cancelled sync must report failure");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "connector cancellation must not wait for its normal timeout"
+    );
 }
 
 #[test]

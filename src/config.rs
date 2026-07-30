@@ -11,6 +11,8 @@ pub struct Config {
     #[serde(default)]
     pub embedding: EmbeddingConfig,
     #[serde(default)]
+    pub ingestion: IngestionConfig,
+    #[serde(default)]
     pub connectors: ConnectorConfig,
     #[serde(default)]
     pub runtime: RuntimeConfig,
@@ -57,6 +59,20 @@ pub struct EmbeddingServiceConfig {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct IngestionConfig {
+    #[serde(default = "default_ingestion_max_documents")]
+    pub max_documents_per_source: usize,
+    #[serde(default = "default_ingestion_max_bytes")]
+    pub max_bytes_per_source: u64,
+    #[serde(default = "default_ingestion_max_duration")]
+    pub max_duration_seconds: u64,
+    #[serde(default = "default_ingestion_document_batch_size")]
+    pub document_batch_size: usize,
+    #[serde(default = "default_ingestion_request_concurrency")]
+    pub request_concurrency: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ConnectorConfig {
     #[serde(default = "default_connector_command")]
     pub command: Vec<String>,
@@ -89,6 +105,12 @@ pub struct SourceConfig {
     #[serde(default)]
     pub max_content_chars: Option<usize>,
     #[serde(default)]
+    pub max_documents: Option<usize>,
+    #[serde(default)]
+    pub max_bytes: Option<u64>,
+    #[serde(default)]
+    pub max_duration_seconds: Option<u64>,
+    #[serde(default)]
     pub exclude: Vec<String>,
     #[serde(default)]
     pub command: Vec<String>,
@@ -119,6 +141,18 @@ impl Default for EmbeddingServiceConfig {
     }
 }
 
+impl Default for IngestionConfig {
+    fn default() -> Self {
+        Self {
+            max_documents_per_source: default_ingestion_max_documents(),
+            max_bytes_per_source: default_ingestion_max_bytes(),
+            max_duration_seconds: default_ingestion_max_duration(),
+            document_batch_size: default_ingestion_document_batch_size(),
+            request_concurrency: default_ingestion_request_concurrency(),
+        }
+    }
+}
+
 impl Default for ConnectorConfig {
     fn default() -> Self {
         Self {
@@ -133,6 +167,7 @@ impl Default for Config {
         Self {
             data_dir: default_data_dir(),
             embedding: EmbeddingConfig::default(),
+            ingestion: IngestionConfig::default(),
             connectors: ConnectorConfig::default(),
             runtime: RuntimeConfig::default(),
             sources: Vec::new(),
@@ -267,6 +302,26 @@ fn default_embedding_memory_limit() -> u64 {
     4_096
 }
 
+fn default_ingestion_max_documents() -> usize {
+    2_000
+}
+
+fn default_ingestion_max_bytes() -> u64 {
+    128 * 1024 * 1024
+}
+
+fn default_ingestion_max_duration() -> u64 {
+    15 * 60
+}
+
+fn default_ingestion_document_batch_size() -> usize {
+    16
+}
+
+fn default_ingestion_request_concurrency() -> usize {
+    1
+}
+
 fn default_connector_command() -> Vec<String> {
     vec![
         "uv".into(),
@@ -302,6 +357,9 @@ mod tests {
             kind = "apple-notes"
             project = "personal"
             max_content_chars = 12345
+            max_documents = 100
+            max_bytes = 2048
+            max_duration_seconds = 30
 
             [[sources]]
             name = "code"
@@ -315,7 +373,13 @@ mod tests {
         assert_eq!(config.sources.len(), 2);
         assert!(config.sources[0].enabled);
         assert_eq!(config.sources[0].max_content_chars, Some(12_345));
+        assert_eq!(config.sources[0].max_documents, Some(100));
+        assert_eq!(config.sources[0].max_bytes, Some(2_048));
+        assert_eq!(config.sources[0].max_duration_seconds, Some(30));
         assert_eq!(config.sources[1].source.as_deref(), Some("code"));
+        assert_eq!(config.ingestion.max_documents_per_source, 2_000);
+        assert_eq!(config.ingestion.max_bytes_per_source, 128 * 1024 * 1024);
+        assert_eq!(config.ingestion.request_concurrency, 1);
     }
 
     #[test]

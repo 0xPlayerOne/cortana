@@ -56,8 +56,9 @@ recovery path.
 
 ## macOS launchd
 
-Build the release binary and workspace first, then install four per-user jobs: local embedding
-supervision, the API/workspace, 15-minute ingestion, and daily verified backups.
+Build the release binary and workspace first, then install three per-user jobs: local embedding
+supervision, the API/workspace, and daily verified backups. Recurring ingestion is intentionally
+opt-in so installing or upgrading Cortana cannot unexpectedly start a large first sync.
 
 ```bash
 cargo build --release
@@ -70,6 +71,17 @@ bun run build
 Use `--no-embedding-service` for a cloud embedding provider. Logs are written beneath
 `data_dir/logs`. `service uninstall` stops and removes only Cortana's four launchd jobs; it does not
 delete configuration, data, logs, or backups.
+
+After planning each enabled source and choosing explicit budgets, opt in to the recurring job:
+
+```bash
+cortana --config ~/.config/cortana/config.toml sync --source SOURCE --plan
+cortana --config ~/.config/cortana/config.toml service install \
+  --web-dir /path/to/web --enable-sync-service
+```
+
+Re-running `service install` without `--enable-sync-service` removes any prior recurring sync job
+and leaves Cortana in query-only mode.
 
 The generated Qwen/TEI profile keeps `max-batch-tokens=512`, which was faster than larger batches
 in the macOS Metal benchmark, and admits up to 128 queued inputs so background ingestion can share

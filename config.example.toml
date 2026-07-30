@@ -26,6 +26,16 @@ request_concurrency = 4
 startup_timeout_seconds = 120
 memory_limit_mb = 4096
 
+[ingestion]
+# Every source must pass a complete preflight before Cortana embeds or reconciles it.
+# These conservative defaults bound first-run and unexpectedly expanded snapshots.
+max_documents_per_source = 2000
+max_bytes_per_source = 134217728
+max_duration_seconds = 900
+document_batch_size = 16
+# Keep ingestion below query capacity so agents retain responsive retrieval.
+request_concurrency = 1
+
 [connectors]
 # Change this when Cortana is installed into a dedicated virtual environment.
 command = ["uv", "run", "python", "-m", "cortana.connectors"]
@@ -40,6 +50,10 @@ root = "/absolute/path/to/code"
 source = "work-code"
 # Relative paths to omit from this source. Generated directories are always skipped.
 exclude = ["second-brain"]
+# Optional tighter or larger source-specific budgets.
+# max_documents = 1000
+# max_bytes = 67108864
+# max_duration_seconds = 600
 
 [[sources]]
 name = "personal-notes"
