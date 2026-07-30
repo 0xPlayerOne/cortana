@@ -55,6 +55,66 @@ pub async fn retrieve_scoped(
     .await
 }
 
+pub async fn retrieve_sources_scoped(
+    store: &Store,
+    embedder: &Arc<dyn Embedder>,
+    query: &str,
+    project: Option<&str>,
+    sources: &[String],
+    limit: usize,
+    principal_acl: &[String],
+) -> Result<Vec<Evidence>> {
+    anyhow::ensure!(!query.trim().is_empty(), "query must not be empty");
+    let mut unique_sources = sources
+        .iter()
+        .map(|source| source.trim())
+        .filter(|source| !source.is_empty())
+        .collect::<Vec<_>>();
+    unique_sources.sort_unstable();
+    unique_sources.dedup();
+    unique_sources.truncate(32);
+    if unique_sources.is_empty() {
+        return Ok(Vec::new());
+    }
+    let query_embedding = query_embedding(embedder, query, INTERACTIVE_EMBEDDING_TIMEOUT).await;
+    let result_limit = limit.min(50);
+    let mut fused = HashMap::<String, (Evidence, f32)>::new();
+    for source in unique_sources {
+        let rows = rank(
+            store,
+            query,
+            query_embedding.as_deref(),
+            project,
+            Some(source),
+            result_limit,
+            principal_acl,
+        )?;
+        for (rank, evidence) in rows.into_iter().enumerate() {
+            let key = evidence_dedupe_key(&evidence);
+            let reciprocal_rank = 1.0 / (60.0 + rank as f32 + 1.0);
+            fused
+                .entry(key)
+                .and_modify(|(_, score)| *score += reciprocal_rank)
+                .or_insert((evidence, reciprocal_rank));
+        }
+    }
+    let mut rows = fused
+        .into_values()
+        .map(|(mut evidence, fused_score)| {
+            evidence.score = fused_score;
+            evidence
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .score
+            .total_cmp(&left.score)
+            .then_with(|| left.chunk_id.cmp(&right.chunk_id))
+    });
+    rows.truncate(result_limit);
+    Ok(rows)
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn retrieve_with_timeout(
     store: &Store,
@@ -67,21 +127,7 @@ async fn retrieve_with_timeout(
     principal_acl: &[String],
 ) -> Result<Vec<Evidence>> {
     anyhow::ensure!(!query.trim().is_empty(), "query must not be empty");
-    let query_embedding =
-        match tokio::time::timeout(embedding_timeout, embedder.embed(&[query.to_string()])).await {
-            Ok(Ok(vectors)) => vectors.into_iter().next(),
-            Ok(Err(error)) => {
-                tracing::warn!(%error, "query embedding unavailable; using lexical retrieval");
-                None
-            }
-            Err(_) => {
-                tracing::warn!(
-                    timeout_seconds = embedding_timeout.as_secs_f32(),
-                    "query embedding saturated; using lexical retrieval"
-                );
-                None
-            }
-        };
+    let query_embedding = query_embedding(embedder, query, embedding_timeout).await;
     rank(
         store,
         query,
@@ -91,6 +137,27 @@ async fn retrieve_with_timeout(
         limit.min(50),
         principal_acl,
     )
+}
+
+async fn query_embedding(
+    embedder: &Arc<dyn Embedder>,
+    query: &str,
+    embedding_timeout: Duration,
+) -> Option<Vec<f32>> {
+    match tokio::time::timeout(embedding_timeout, embedder.embed(&[query.to_string()])).await {
+        Ok(Ok(vectors)) => vectors.into_iter().next(),
+        Ok(Err(error)) => {
+            tracing::warn!(%error, "query embedding unavailable; using lexical retrieval");
+            None
+        }
+        Err(_) => {
+            tracing::warn!(
+                timeout_seconds = embedding_timeout.as_secs_f32(),
+                "query embedding saturated; using lexical retrieval"
+            );
+            None
+        }
+    }
 }
 
 pub fn search(
@@ -212,6 +279,14 @@ fn dedupe_key(chunk: &StoredChunk) -> (&str, &str) {
     )
 }
 
+fn evidence_dedupe_key(evidence: &Evidence) -> String {
+    format!(
+        "{}\u{0}{}",
+        evidence.source,
+        evidence.uri.as_deref().unwrap_or(&evidence.source_id)
+    )
+}
+
 fn idf_overlap(query: &str, chunks: &[StoredChunk]) -> HashMap<String, f32> {
     let query_terms = tokenize(query);
     if query_terms.is_empty() || chunks.is_empty() {
@@ -300,6 +375,8 @@ fn evidence(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use anyhow::bail;
     use async_trait::async_trait;
     use chrono::Utc;
@@ -311,6 +388,7 @@ mod tests {
 
     struct UnavailableEmbedder;
     struct SlowEmbedder;
+    struct CountingEmbedder(Arc<AtomicUsize>);
 
     #[async_trait]
     impl Embedder for UnavailableEmbedder {
@@ -332,6 +410,18 @@ mod tests {
         async fn embed(&self, _input: &[String]) -> Result<Vec<Vec<f32>>> {
             tokio::time::sleep(Duration::from_secs(60)).await;
             Ok(vec![vec![1.0, 0.0]])
+        }
+    }
+
+    #[async_trait]
+    impl Embedder for CountingEmbedder {
+        fn fingerprint(&self) -> String {
+            "counting:2".into()
+        }
+
+        async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            Ok(input.iter().map(|_| vec![1.0, 0.0]).collect())
         }
     }
 
@@ -458,6 +548,63 @@ mod tests {
             evidence[0].content,
             "before context\n\ndecision phrase\n\nafter context"
         );
+    }
+
+    #[tokio::test]
+    async fn multi_source_retrieval_embeds_once_and_fuses_scoped_results() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        for source in ["code-work", "code-personal"] {
+            let document = Document {
+                source: source.into(),
+                source_id: format!("{source}-runbook"),
+                title: format!("{source} runbook"),
+                content: "shared symbol implementation".into(),
+                uri: Some(format!("file:///{source}/runbook.rs")),
+                updated_at: Utc::now(),
+                project: "cortana".into(),
+                acl: vec!["work".into()],
+                metadata: json!({}),
+            };
+            store
+                .upsert(
+                    &document,
+                    &[("shared symbol implementation".into(), vec![1.0, 0.0])],
+                )
+                .expect("upsert");
+        }
+        let calls = Arc::new(AtomicUsize::new(0));
+        let embedder: Arc<dyn Embedder> = Arc::new(CountingEmbedder(calls.clone()));
+
+        let empty = retrieve_sources_scoped(
+            &store,
+            &embedder,
+            "shared symbol",
+            Some("cortana"),
+            &[],
+            10,
+            &["work".into()],
+        )
+        .await
+        .expect("empty source group");
+        assert!(empty.is_empty());
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
+
+        let evidence = retrieve_sources_scoped(
+            &store,
+            &embedder,
+            "shared symbol",
+            Some("cortana"),
+            &["code-personal".into(), "code-work".into()],
+            10,
+            &["work".into()],
+        )
+        .await
+        .expect("multi-source retrieval");
+
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert_eq!(evidence.len(), 2);
+        assert!(evidence.iter().all(|item| item.score > 0.0));
     }
 
     #[tokio::test]
