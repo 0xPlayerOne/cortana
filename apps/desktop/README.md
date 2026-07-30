@@ -5,6 +5,11 @@ It reuses the React/Vite workspace in `apps/web`, ships the matching Cortana cor
 platform-specific sidecar, and talks to the local owner-only API through narrow Rust commands.
 The renderer has no arbitrary shell or filesystem capability.
 
+Source setup is explicit and non-ingesting. The source editor can open fixed official provider
+setup pages, pick source/token/client paths through native dialogs, authorize saved Google sources
+through the bundled sidecar, and run bounded validation. Provider credentials never pass through
+the webview.
+
 ## Development
 
 Start the installed Cortana services, then run:

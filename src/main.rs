@@ -13,7 +13,7 @@ use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbe
 use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
-use cortana::{api, mcp, migration, service, source_validation, supervisor};
+use cortana::{api, google_oauth, mcp, migration, service, source_validation, supervisor};
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
 use serde::Deserialize;
@@ -168,6 +168,8 @@ enum Command {
         #[arg(long, help = "Override the wall-clock budget for this validation")]
         max_seconds: Option<u64>,
     },
+    /// Authorize a configured Google source in the system browser without reading source data.
+    AuthorizeGoogle { source: String },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -390,6 +392,11 @@ async fn main() -> Result<()> {
                 max_seconds: *max_seconds,
             },
         );
+    }
+    if let Some(Command::AuthorizeGoogle { source }) = cli.command.as_ref() {
+        let outcome = google_oauth::authorize(&config, source).await?;
+        println!("{}", serde_json::to_string(&outcome)?);
+        return Ok(());
     }
     match &cli.command {
         Some(Command::Backup { output, keep }) => {
@@ -652,6 +659,7 @@ async fn main() -> Result<()> {
             Command::Init { .. }
             | Command::MigrateHermes { .. }
             | Command::Eval { .. }
+            | Command::AuthorizeGoogle { .. }
             | Command::ValidateSource { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
@@ -1100,6 +1108,7 @@ fn ad_hoc_filesystem_source(
         channels: Vec::new(),
         token_env: None,
         token: None,
+        oauth_client: None,
         query: None,
         labels: Vec::new(),
         max_content_chars: None,

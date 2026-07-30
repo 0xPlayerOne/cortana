@@ -26,6 +26,7 @@ static NEXT_JOB: AtomicU64 = AtomicU64::new(1);
 #[derive(Debug, Clone, Serialize)]
 pub struct SourceJobSnapshot {
     pub id: String,
+    pub operation: &'static str,
     pub source: String,
     pub kind: String,
     pub project: String,
@@ -39,6 +40,14 @@ pub struct SourceJobSnapshot {
     pub writes_indexed_data: bool,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SetupOpenOutcome {
+    pub source: String,
+    pub kind: String,
+    pub url: &'static str,
+    pub opened: bool,
+}
+
 struct SourceJob {
     snapshot: SourceJobSnapshot,
     child: Option<CommandChild>,
@@ -50,17 +59,65 @@ pub struct SourceJobState {
 }
 
 impl SourceJobState {
-    pub fn start(&self, app: &AppHandle, source_name: &str) -> Result<SourceJobSnapshot, String> {
+    pub fn start_validation(
+        &self,
+        app: &AppHandle,
+        source_name: &str,
+    ) -> Result<SourceJobSnapshot, String> {
         let source = settings::configured_source(source_name)?;
+        self.start(
+            app,
+            source,
+            "validation",
+            validation_args(source_name),
+            "Read-only connector validation is running with a 25 document, 5 MiB, 60 second limit.",
+        )
+    }
+
+    pub fn start_authorization(
+        &self,
+        app: &AppHandle,
+        source_name: &str,
+    ) -> Result<SourceJobSnapshot, String> {
+        let source = settings::configured_source(source_name)?;
+        if !matches!(
+            source.kind.as_str(),
+            "google-drive" | "gmail" | "google-calendar"
+        ) {
+            return Err("browser authorization is available only for Google sources".into());
+        }
+        if source.token_path.is_none() || source.oauth_client_path.is_none() {
+            return Err(
+                "save both the Google token destination and Desktop OAuth client paths first"
+                    .into(),
+            );
+        }
+        self.start(
+            app,
+            source,
+            "authorization",
+            authorization_args(source_name),
+            "Waiting for Google authorization in the system browser. No source data is being read.",
+        )
+    }
+
+    fn start(
+        &self,
+        app: &AppHandle,
+        source: settings::SourceSettings,
+        operation: &'static str,
+        args: Vec<String>,
+        summary: &'static str,
+    ) -> Result<SourceJobSnapshot, String> {
         let mut jobs = self
             .jobs
             .lock()
-            .map_err(|_| "source validation state is unavailable".to_string())?;
+            .map_err(|_| "source job state is unavailable".to_string())?;
         if jobs
             .values()
             .any(|job| matches!(job.snapshot.status, "running" | "cancelling"))
         {
-            return Err("another source validation is already running".into());
+            return Err("another source operation is already running".into());
         }
         prune_jobs(&mut jobs);
 
@@ -68,10 +125,10 @@ impl SourceJobState {
             .shell()
             .sidecar("cortana")
             .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
-            .args(validation_args(&source.name));
+            .args(args);
         let (mut receiver, child) = command
             .spawn()
-            .map_err(|error| format!("start source validation: {error}"))?;
+            .map_err(|error| format!("start source {operation}: {error}"))?;
         let started_at = now();
         let id = format!(
             "source-{started_at}-{}",
@@ -79,11 +136,12 @@ impl SourceJobState {
         );
         let snapshot = SourceJobSnapshot {
             id: id.clone(),
+            operation,
             source: source.name,
             kind: source.kind,
             project: source.project,
             status: "running",
-            summary: "Read-only connector validation is running with a 25 document, 5 MiB, 60 second limit.".into(),
+            summary: summary.into(),
             log: String::new(),
             started_at_unix_seconds: started_at,
             completed_at_unix_seconds: None,
@@ -119,10 +177,10 @@ impl SourceJobState {
         validate_job_id(id)?;
         self.jobs
             .lock()
-            .map_err(|_| "source validation state is unavailable".to_string())?
+            .map_err(|_| "source job state is unavailable".to_string())?
             .get(id)
             .map(|job| job.snapshot.clone())
-            .ok_or_else(|| "source validation job was not found".into())
+            .ok_or_else(|| "source job was not found".into())
     }
 
     pub fn cancel(&self, id: &str) -> Result<SourceJobSnapshot, String> {
@@ -130,19 +188,20 @@ impl SourceJobState {
         let mut jobs = self
             .jobs
             .lock()
-            .map_err(|_| "source validation state is unavailable".to_string())?;
+            .map_err(|_| "source job state is unavailable".to_string())?;
         let job = jobs
             .get_mut(id)
-            .ok_or_else(|| "source validation job was not found".to_string())?;
+            .ok_or_else(|| "source job was not found".to_string())?;
         if job.snapshot.status != "running" {
             return Ok(job.snapshot.clone());
         }
         job.snapshot.status = "cancelling";
-        job.snapshot.summary = "Cancelling read-only source validation…".into();
+        job.snapshot.summary = format!("Cancelling source {}…", job.snapshot.operation);
         if let Some(child) = job.child.take() {
             if let Err(error) = child.kill() {
                 job.snapshot.status = "failed";
-                job.snapshot.summary = "Source validation could not be cancelled.".into();
+                job.snapshot.summary =
+                    format!("Source {} could not be cancelled.", job.snapshot.operation);
                 job.snapshot.log = sanitize_log(&error.to_string());
                 job.snapshot.completed_at_unix_seconds = Some(now());
                 job.snapshot.retryable = true;
@@ -176,13 +235,8 @@ impl SourceJobState {
                 } else {
                     "failed"
                 };
-                job.snapshot.summary = match job.snapshot.status {
-                    "succeeded" => "Source validation passed. No documents were indexed.".into(),
-                    "cancelled" => {
-                        "Source validation was cancelled. No documents were indexed.".into()
-                    }
-                    _ => "Source validation failed. No documents were indexed.".into(),
-                };
+                job.snapshot.summary =
+                    terminal_summary(job.snapshot.operation, job.snapshot.status, false);
                 job.snapshot.retryable = matches!(job.snapshot.status, "failed" | "cancelled");
                 audit(&job.snapshot, "completed");
             }
@@ -207,14 +261,39 @@ impl SourceJobState {
         } else {
             "failed"
         };
-        job.snapshot.summary = if job.snapshot.status == "cancelled" {
-            "Source validation was cancelled. No documents were indexed.".into()
-        } else {
-            "Source validation ended without a process result. No documents were indexed.".into()
-        };
+        job.snapshot.summary = terminal_summary(job.snapshot.operation, job.snapshot.status, true);
         job.snapshot.retryable = true;
         audit(&job.snapshot, "completed");
     }
+}
+
+pub fn open_setup(source_name: &str) -> Result<SetupOpenOutcome, String> {
+    let source = settings::configured_source(source_name)?;
+    let url = match source.kind.as_str() {
+        "google-drive" | "gmail" | "google-calendar" => {
+            "https://console.cloud.google.com/apis/credentials"
+        }
+        "slack" => "https://api.slack.com/apps",
+        "discord" => "https://discord.com/developers/applications",
+        _ => return Err("this source does not have a browser-based account setup page".into()),
+    };
+    open::that_detached(url).map_err(|error| format!("open source setup page: {error}"))?;
+    let event = serde_json::json!({
+        "at_unix_seconds": now(),
+        "event": "source.setup.opened",
+        "source": &source.name,
+        "kind": &source.kind,
+        "project": &source.project,
+        "url_origin": reqwest::Url::parse(url).ok().and_then(|url| url.host_str().map(str::to_string)),
+        "secret_values_recorded": false,
+    });
+    let _ = settings::append_audit_event(&settings::default_config_path(), &event);
+    Ok(SetupOpenOutcome {
+        source: source.name,
+        kind: source.kind,
+        url,
+        opened: true,
+    })
 }
 
 fn prune_jobs(jobs: &mut BTreeMap<String, SourceJob>) {
@@ -245,6 +324,30 @@ fn validation_args(source: &str) -> Vec<String> {
     .into_iter()
     .map(str::to_string)
     .collect()
+}
+
+fn authorization_args(source: &str) -> Vec<String> {
+    ["authorize-google", source]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
+fn terminal_summary(operation: &str, status: &str, disconnected: bool) -> String {
+    match (operation, status, disconnected) {
+        ("authorization", "succeeded", _) => {
+            "Google authorization completed and the token was stored privately.".into()
+        }
+        ("authorization", "cancelled", _) => "Google authorization was cancelled.".into(),
+        ("authorization", _, true) => "Google authorization ended without a process result.".into(),
+        ("authorization", _, false) => "Google authorization failed.".into(),
+        (_, "succeeded", _) => "Source validation passed. No documents were indexed.".into(),
+        (_, "cancelled", _) => "Source validation was cancelled. No documents were indexed.".into(),
+        (_, _, true) => {
+            "Source validation ended without a process result. No documents were indexed.".into()
+        }
+        _ => "Source validation failed. No documents were indexed.".into(),
+    }
 }
 
 fn validate_job_id(id: &str) -> Result<(), String> {
@@ -290,7 +393,7 @@ fn sanitize_log(value: &str) -> String {
 fn audit(snapshot: &SourceJobSnapshot, phase: &str) {
     let event = serde_json::json!({
         "at_unix_seconds": now(),
-        "event": format!("source.validation.{phase}"),
+        "event": format!("source.{}.{phase}", snapshot.operation),
         "job_id": snapshot.id,
         "source": snapshot.source,
         "kind": snapshot.kind,
@@ -345,6 +448,14 @@ mod tests {
                 "--max-seconds",
                 "60",
             ]
+        );
+    }
+
+    #[test]
+    fn authorization_command_accepts_only_the_configured_source_name() {
+        assert_eq!(
+            authorization_args("personal-drive"),
+            ["authorize-google", "personal-drive"]
         );
     }
 }

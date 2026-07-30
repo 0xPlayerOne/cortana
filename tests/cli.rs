@@ -6,6 +6,38 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 #[test]
+fn google_authorization_fails_closed_before_opening_browser() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let token = directory.path().join("token.json");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [[sources]]\n\
+             name = \"personal-drive\"\n\
+             kind = \"google-drive\"\n\
+             project = \"personal\"\n\
+             token = {token:?}\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["authorize-google", "personal-drive"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "Google source personal-drive requires OAuth client path",
+        ))
+        .stderr(predicate::str::contains("CORTANA_AUTHORIZATION_URL").not());
+}
+
+#[test]
 fn offline_ingest_and_search_round_trip() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

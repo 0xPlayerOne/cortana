@@ -11,6 +11,7 @@ import type {
   DesktopSettings,
   DesktopSettingsUpdate,
   DesktopSourceJob,
+  DesktopSetupOpen,
 } from './types'
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
@@ -49,6 +50,23 @@ export async function cancelDesktopInstaller(id: string): Promise<DesktopInstall
 export async function startDesktopSourceValidation(source: string): Promise<DesktopSourceJob> {
   if (!isDesktopApp) throw new Error('Source validation is available in Cortana Desktop')
   return invokeDesktop<DesktopSourceJob>('desktop_source_validation_start', { source })
+}
+
+export async function startDesktopSourceAuthorization(source: string): Promise<DesktopSourceJob> {
+  if (!isDesktopApp) throw new Error('Source authorization is available in Cortana Desktop')
+  return invokeDesktop<DesktopSourceJob>('desktop_source_authorization_start', { source })
+}
+
+export async function openDesktopSourceSetup(source: string): Promise<DesktopSetupOpen> {
+  if (!isDesktopApp) throw new Error('Source setup is available in Cortana Desktop')
+  return invokeDesktop<DesktopSetupOpen>('desktop_source_setup_open', { source })
+}
+
+export async function pickDesktopPath(
+  kind: 'directory' | 'oauth-client' | 'google-token'
+): Promise<string | null> {
+  if (!isDesktopApp) throw new Error('Native path selection is available in Cortana Desktop')
+  return invokeDesktop<string | null>('desktop_path_pick', { kind })
 }
 
 export async function getDesktopSourceValidation(id: string): Promise<DesktopSourceJob> {

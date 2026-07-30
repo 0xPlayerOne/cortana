@@ -6,6 +6,7 @@ pub mod connectors;
 pub mod context;
 pub mod embed;
 pub mod evaluation;
+pub mod google_oauth;
 pub mod mcp;
 pub mod migration;
 pub mod model;
