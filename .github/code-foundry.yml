@@ -29,6 +29,6 @@ merge_strategy: rebase
 post_release: false
 post_release_workflow:
 post_release_mode: auto
-opencode_security: true
+opencode_security: false
 sync_mode: overlay
 custom_workflows: preserve
