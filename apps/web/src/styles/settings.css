@@ -767,6 +767,134 @@
   font-size: 11px;
 }
 
+.update-card,
+.principal-card,
+.audit-list article {
+  padding: 16px;
+  border: 1px solid #343632;
+  background: #1b1c1a;
+}
+
+.update-card,
+.update-card > div,
+.principal-card header,
+.scope-options,
+.audit-list article > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.update-card {
+  justify-content: space-between;
+}
+
+.update-card > div:first-child {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.update-progress {
+  position: relative;
+  height: 24px;
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid #3b4a3c;
+  background: #171916;
+}
+
+.update-progress i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #315839;
+}
+
+.update-progress span {
+  position: relative;
+  display: grid;
+  height: 100%;
+  place-items: center;
+  font-size: 11px;
+}
+
+.release-notes {
+  margin-top: 18px;
+}
+
+.release-notes pre,
+.audit-list pre {
+  max-height: 300px;
+  padding: 12px;
+  overflow: auto;
+  color: #c5c7c1;
+  background: #141513;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.principal-list,
+.audit-list {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.principal-card header {
+  margin-bottom: 14px;
+}
+
+.principal-card header button {
+  margin-left: auto;
+}
+
+.scope-options {
+  margin-top: 12px;
+}
+
+.scope-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: capitalize;
+}
+
+.audit-list {
+  margin-top: 20px;
+}
+
+.audit-list h3 {
+  margin-bottom: 0;
+}
+
+.audit-list article {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+}
+
+.audit-list article time {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.audit-list article pre {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+}
+
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 14px;
+  padding: 0;
+  gap: 5px;
+  color: #9fc8a5;
+  border: 0;
+  background: transparent;
+}
+
 @media (max-width: 900px) {
   .settings-layout {
     grid-template-columns: 150px minmax(0, 1fr);

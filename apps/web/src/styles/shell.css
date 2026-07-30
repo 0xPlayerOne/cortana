@@ -384,6 +384,18 @@
   white-space: nowrap;
 }
 
+.status-link {
+  padding: 0;
+  color: var(--muted);
+  border: 0;
+  background: transparent;
+  font: inherit;
+}
+
+.status-link:hover {
+  color: var(--text);
+}
+
 .health i {
   width: 8px;
   height: 8px;

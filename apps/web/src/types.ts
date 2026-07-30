@@ -185,6 +185,13 @@ export type QuerySettings = ProviderSettings & {
   cache_ttl_seconds: number
 }
 
+export type AuthPrincipalSettings = {
+  principal: string
+  token_env: string
+  scopes: Array<'query' | 'status' | 'admin'>
+  acl: string[]
+}
+
 export type DesktopSettings = {
   config_path: string
   secret_file_path: string
@@ -192,6 +199,7 @@ export type DesktopSettings = {
   restart_required: boolean
   workspaces: WorkspaceSettings[]
   sources: SourceSettings[]
+  auth_principals: AuthPrincipalSettings[]
   embedding: EmbeddingSettings
   query: QuerySettings
   ingestion: {
@@ -215,7 +223,7 @@ export type DesktopSettings = {
 
 export type DesktopSettingsUpdate = Pick<
   DesktopSettings,
-  'workspaces' | 'sources' | 'embedding' | 'query' | 'ingestion' | 'runtime'
+  'workspaces' | 'sources' | 'auth_principals' | 'embedding' | 'query' | 'ingestion' | 'runtime'
 > & {
   secrets: Array<{ name: string; value?: string; clear?: boolean }>
 }
@@ -297,6 +305,30 @@ export type DesktopInstallJob = {
   exit_code: number | null
   retryable: boolean
 }
+
+export type DesktopUpdate = {
+  current_version: string
+  available_version: string | null
+  release_date: string | null
+  release_notes: string | null
+  changelog: string
+  github_url: string
+  phase:
+    | 'idle'
+    | 'checking'
+    | 'current'
+    | 'available'
+    | 'downloading'
+    | 'installing'
+    | 'installed'
+    | 'failed'
+  downloaded_bytes: number
+  total_bytes: number | null
+  error: string | null
+  restart_required: boolean
+}
+
+export type AuditEvent = Record<string, unknown>
 
 export type AnswerResponse = {
   query: string
