@@ -2,6 +2,8 @@ use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::process::{Command as ProcessCommand, Stdio};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -99,6 +101,19 @@ enum Command {
         source: String,
         #[arg(long, default_value = "default")]
         project: String,
+        #[arg(
+            long,
+            help = "Inspect filesystem scope and budgets without writing data"
+        )]
+        plan: bool,
+        #[arg(long, help = "Override the document budget for this run")]
+        max_documents: Option<usize>,
+        #[arg(long, help = "Override the content-byte budget for this run")]
+        max_bytes: Option<u64>,
+        #[arg(long, help = "Override the wall-clock budget for this run")]
+        max_seconds: Option<u64>,
+        #[arg(long, help = "Relative path to exclude; may be repeated")]
+        exclude: Vec<String>,
     },
     /// Synchronize enabled sources declared in the configuration.
     Sync {
@@ -106,6 +121,20 @@ enum Command {
         source: Option<String>,
         #[arg(long, help = "Keep records missing from a completed source snapshot")]
         no_reconcile: bool,
+        #[arg(
+            long,
+            help = "Inspect source scope and budgets without fetching or writing data"
+        )]
+        plan: bool,
+        #[arg(long, help = "Override the per-source document budget for this run")]
+        max_documents: Option<usize>,
+        #[arg(
+            long,
+            help = "Override the per-source content-byte budget for this run"
+        )]
+        max_bytes: Option<u64>,
+        #[arg(long, help = "Override the per-source wall-clock budget for this run")]
+        max_seconds: Option<u64>,
     },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
@@ -162,6 +191,11 @@ enum ServiceAction {
         backup_seconds: u64,
         #[arg(long)]
         no_embedding_service: bool,
+        #[arg(
+            long,
+            help = "Install the recurring sync job (disabled by default for safe query-only operation)"
+        )]
+        enable_sync_service: bool,
     },
     /// Print current background service states.
     Status,
@@ -217,6 +251,66 @@ async fn main() -> Result<()> {
     let config_path = cli.config.clone().unwrap_or_else(default_config_path);
     let mut config = Config::load(Some(&config_path))?;
     config.load_environment()?;
+    if let Some(Command::Sync {
+        source,
+        plan: true,
+        max_documents,
+        max_bytes,
+        max_seconds,
+        ..
+    }) = cli.command.as_ref()
+    {
+        return plan_configured_sources(
+            &config,
+            source.as_deref(),
+            SyncOverrides {
+                max_documents: *max_documents,
+                max_bytes: *max_bytes,
+                max_seconds: *max_seconds,
+            },
+        );
+    }
+    if let Some(Command::SyncFiles {
+        root,
+        source,
+        project,
+        plan: true,
+        max_documents,
+        max_bytes,
+        max_seconds,
+        exclude,
+    }) = cli.command.as_ref()
+    {
+        let source =
+            ad_hoc_filesystem_source(root.clone(), source.clone(), project.clone(), exclude);
+        let limits = SourceLimits::resolve(
+            &config,
+            &source,
+            SyncOverrides {
+                max_documents: *max_documents,
+                max_bytes: *max_bytes,
+                max_seconds: *max_seconds,
+            },
+        )?;
+        let scope = connectors::filesystem_plan(
+            root,
+            exclude,
+            limits.max_documents,
+            limits.max_bytes,
+            Duration::from_secs(limits.max_seconds),
+        )?;
+        println!(
+            "{}",
+            serde_json::json!({
+                "source": source.name,
+                "kind": "filesystem",
+                "project": source.project,
+                "limits": limits,
+                "scope": scope,
+            })
+        );
+        return Ok(());
+    }
     match &cli.command {
         Some(Command::Backup { output, keep }) => {
             return backup_database(&config, output.as_deref(), *keep);
@@ -288,23 +382,61 @@ async fn main() -> Result<()> {
             root,
             source,
             project,
+            plan: false,
+            max_documents,
+            max_bytes,
+            max_seconds,
+            exclude,
         }) => {
-            let documents = connectors::filesystem_documents(&root, &source, &project)?;
-            ingest_documents(&store, embedder.as_ref(), documents).await
+            let source = ad_hoc_filesystem_source(root, source, project, &exclude);
+            let limits = SourceLimits::resolve(
+                &config,
+                &source,
+                SyncOverrides {
+                    max_documents,
+                    max_bytes,
+                    max_seconds,
+                },
+            )?;
+            let cancellation = Cancellation::install();
+            let control = SourceControl {
+                limits,
+                started: Instant::now(),
+                cancellation: &cancellation,
+            };
+            let result =
+                sync_source_documents(&config, &store, embedder.as_ref(), &source, &control)
+                    .await
+                    .map(|_| ());
+            cancellation.stop();
+            result
         }
         Some(Command::Sync {
             source,
             no_reconcile,
+            plan: false,
+            max_documents,
+            max_bytes,
+            max_seconds,
         }) => {
             let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
-            sync_configured_sources(
+            let cancellation = Cancellation::install();
+            let result = sync_configured_sources(
                 &config,
                 &store,
                 embedder.as_ref(),
                 source.as_deref(),
                 !no_reconcile,
+                SyncOverrides {
+                    max_documents,
+                    max_bytes,
+                    max_seconds,
+                },
+                &cancellation,
             )
-            .await
+            .await;
+            cancellation.stop();
+            result
         }
         Some(Command::Search {
             query,
@@ -351,7 +483,12 @@ async fn main() -> Result<()> {
             .await
         }
         Some(Command::Mcp) => mcp::serve(mcp::BrainServer::new(store, embedder)).await,
-        Some(Command::Init { .. } | Command::MigrateHermes { .. }) => unreachable!(),
+        Some(
+            Command::Init { .. }
+            | Command::MigrateHermes { .. }
+            | Command::Sync { plan: true, .. }
+            | Command::SyncFiles { plan: true, .. },
+        ) => unreachable!(),
         None => {
             println!("cortana {}", env!("CARGO_PKG_VERSION"));
             Ok(())
@@ -361,6 +498,230 @@ async fn main() -> Result<()> {
 
 struct SyncLock {
     _file: std::fs::File,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct SyncOverrides {
+    max_documents: Option<usize>,
+    max_bytes: Option<u64>,
+    max_seconds: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+struct SourceLimits {
+    max_documents: usize,
+    max_bytes: u64,
+    max_seconds: u64,
+    document_batch_size: usize,
+    request_concurrency: usize,
+}
+
+impl SourceLimits {
+    fn resolve(config: &Config, source: &SourceConfig, overrides: SyncOverrides) -> Result<Self> {
+        let limits = Self {
+            max_documents: overrides
+                .max_documents
+                .or(source.max_documents)
+                .unwrap_or(config.ingestion.max_documents_per_source),
+            max_bytes: overrides
+                .max_bytes
+                .or(source.max_bytes)
+                .unwrap_or(config.ingestion.max_bytes_per_source),
+            max_seconds: overrides
+                .max_seconds
+                .or(source.max_duration_seconds)
+                .unwrap_or(config.ingestion.max_duration_seconds),
+            document_batch_size: config.ingestion.document_batch_size,
+            request_concurrency: config
+                .ingestion
+                .request_concurrency
+                .min(config.embedding.request_concurrency),
+        };
+        anyhow::ensure!(
+            limits.max_documents > 0,
+            "source {} requires a positive document budget",
+            source.name
+        );
+        anyhow::ensure!(
+            limits.max_bytes > 0,
+            "source {} requires a positive byte budget",
+            source.name
+        );
+        anyhow::ensure!(
+            limits.max_seconds > 0,
+            "source {} requires a positive duration budget",
+            source.name
+        );
+        anyhow::ensure!(
+            limits.document_batch_size > 0,
+            "ingestion document_batch_size must be positive"
+        );
+        anyhow::ensure!(
+            limits.request_concurrency > 0,
+            "ingestion request_concurrency and embedding request_concurrency must be positive"
+        );
+        Ok(limits)
+    }
+}
+
+struct Cancellation {
+    requested: Arc<AtomicBool>,
+    listener: tokio::task::JoinHandle<()>,
+}
+
+impl Cancellation {
+    fn install() -> Self {
+        let requested = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&requested);
+        let listener = tokio::spawn(async move {
+            wait_for_shutdown_signal().await;
+            signal.store(true, Ordering::Release);
+            tracing::warn!("ingestion cancellation requested");
+        });
+        Self {
+            requested,
+            listener,
+        }
+    }
+
+    fn inert() -> Self {
+        Self {
+            requested: Arc::new(AtomicBool::new(false)),
+            listener: tokio::spawn(std::future::pending()),
+        }
+    }
+
+    fn is_requested(&self) -> bool {
+        self.requested.load(Ordering::Acquire)
+    }
+
+    fn stop(self) {
+        self.listener.abort();
+    }
+}
+
+async fn wait_for_shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        if let Ok(mut signal) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            signal.recv().await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
+}
+
+struct SourceControl<'a> {
+    limits: SourceLimits,
+    started: Instant,
+    cancellation: &'a Cancellation,
+}
+
+impl SourceControl<'_> {
+    fn check(&self, source: &str) -> Result<()> {
+        anyhow::ensure!(
+            !self.cancellation.is_requested(),
+            "source {source} cancelled before reconciliation"
+        );
+        anyhow::ensure!(
+            self.started.elapsed() <= Duration::from_secs(self.limits.max_seconds),
+            "source {source} exceeded the {} second budget before reconciliation",
+            self.limits.max_seconds
+        );
+        Ok(())
+    }
+
+    fn remaining(&self, source: &str) -> Result<Duration> {
+        self.check(source)?;
+        Ok(Duration::from_secs(self.limits.max_seconds).saturating_sub(self.started.elapsed()))
+    }
+}
+
+fn plan_configured_sources(
+    config: &Config,
+    selected: Option<&str>,
+    overrides: SyncOverrides,
+) -> Result<()> {
+    let sources = config
+        .sources
+        .iter()
+        .filter(|source| selected.map_or(source.enabled, |name| source.name == name))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        !sources.is_empty(),
+        "no configured sources matched the selection"
+    );
+    for source in sources {
+        let limits = SourceLimits::resolve(config, source, overrides)?;
+        let scope = if source.kind == "filesystem" {
+            let root = source
+                .root
+                .as_ref()
+                .with_context(|| format!("source {} requires root", source.name))?;
+            serde_json::to_value(connectors::filesystem_plan(
+                root,
+                &source.exclude,
+                limits.max_documents,
+                limits.max_bytes,
+                Duration::from_secs(limits.max_seconds),
+            )?)?
+        } else {
+            serde_json::json!({
+                "inspection": "deferred",
+                "reason": "plan mode never calls external connectors"
+            })
+        };
+        println!(
+            "{}",
+            serde_json::json!({
+                "source": source.name,
+                "kind": source.kind,
+                "enabled": source.enabled,
+                "project": source.project,
+                "limits": limits,
+                "scope": scope,
+            })
+        );
+    }
+    Ok(())
+}
+
+fn ad_hoc_filesystem_source(
+    root: PathBuf,
+    source: String,
+    project: String,
+    exclude: &[String],
+) -> SourceConfig {
+    SourceConfig {
+        name: source.clone(),
+        kind: "filesystem".into(),
+        enabled: true,
+        project,
+        root: Some(root),
+        source: Some(source),
+        channels: Vec::new(),
+        token_env: None,
+        token: None,
+        query: None,
+        labels: Vec::new(),
+        max_content_chars: None,
+        max_documents: None,
+        max_bytes: None,
+        max_duration_seconds: None,
+        exclude: exclude.to_vec(),
+        command: Vec::new(),
+    }
 }
 
 impl SyncLock {
@@ -400,6 +761,7 @@ fn manage_service(
             sync_seconds,
             backup_seconds,
             no_embedding_service,
+            enable_sync_service,
         } => {
             let web_dir = web_dir.canonicalize().with_context(|| {
                 format!("workspace directory does not exist: {}", web_dir.display())
@@ -418,6 +780,7 @@ fn manage_service(
                     backup_seconds: *backup_seconds,
                     install_embedding: !no_embedding_service
                         && supervisor::uses_local_service(config),
+                    install_sync: *enable_sync_service,
                 },
             )
         }
@@ -705,11 +1068,37 @@ async fn ingest_documents(
     embedder: &dyn Embedder,
     documents: Vec<Document>,
 ) -> Result<()> {
+    let cancellation = Cancellation::inert();
+    let control = SourceControl {
+        limits: SourceLimits {
+            max_documents: usize::MAX,
+            max_bytes: u64::MAX,
+            max_seconds: 24 * 60 * 60,
+            document_batch_size: usize::MAX,
+            request_concurrency: embedder.request_concurrency().max(1),
+        },
+        started: Instant::now(),
+        cancellation: &cancellation,
+    };
+    let result =
+        ingest_documents_controlled(store, embedder, documents, "direct-ingest", &control).await;
+    cancellation.stop();
+    result
+}
+
+async fn ingest_documents_controlled(
+    store: &Store,
+    embedder: &dyn Embedder,
+    documents: Vec<Document>,
+    source: &str,
+    control: &SourceControl<'_>,
+) -> Result<()> {
     let mut changed = 0;
     let mut unchanged = 0;
     let mut pending = Vec::new();
     let mut pending_chunks = 0;
     for document in documents {
+        control.check(source)?;
         if !store.needs_update(&document)? {
             store.refresh_timestamp(&document)?;
             unchanged += 1;
@@ -718,12 +1107,30 @@ async fn ingest_documents(
         let texts = chunk(&document.content);
         pending_chunks += texts.len();
         pending.push((document, texts));
-        if pending_chunks >= EMBEDDING_REQUEST_SIZE * embedder.request_concurrency() {
-            flush_ingest_batch(store, embedder, &mut pending, &mut changed, &mut unchanged).await?;
+        if pending_chunks >= EMBEDDING_REQUEST_SIZE * control.limits.request_concurrency {
+            flush_ingest_batch(
+                store,
+                embedder,
+                &mut pending,
+                &mut changed,
+                &mut unchanged,
+                source,
+                control,
+            )
+            .await?;
             pending_chunks = 0;
         }
     }
-    flush_ingest_batch(store, embedder, &mut pending, &mut changed, &mut unchanged).await?;
+    flush_ingest_batch(
+        store,
+        embedder,
+        &mut pending,
+        &mut changed,
+        &mut unchanged,
+        source,
+        control,
+    )
+    .await?;
     println!("ingested changed={changed} unchanged={unchanged}");
     Ok(())
 }
@@ -734,19 +1141,33 @@ async fn flush_ingest_batch(
     pending: &mut Vec<(Document, Vec<String>)>,
     changed: &mut usize,
     unchanged: &mut usize,
+    source: &str,
+    control: &SourceControl<'_>,
 ) -> Result<()> {
     if pending.is_empty() {
         return Ok(());
     }
+    control.check(source)?;
     let input = pending
         .iter()
         .flat_map(|(_, texts)| texts.iter().cloned())
         .collect::<Vec<_>>();
-    let batches = stream::iter(input.chunks(EMBEDDING_REQUEST_SIZE))
+    let embedding_requests = stream::iter(input.chunks(EMBEDDING_REQUEST_SIZE))
         .map(|request| embedder.embed(request))
-        .buffered(embedder.request_concurrency())
-        .try_collect::<Vec<_>>()
-        .await?;
+        .buffered(control.limits.request_concurrency)
+        .try_collect::<Vec<_>>();
+    let remaining = control.remaining(source)?;
+    let cancellation = wait_for_cancellation(control.cancellation);
+    let batches = tokio::select! {
+        result = tokio::time::timeout(remaining, embedding_requests) => {
+            result
+                .with_context(|| format!("source {source} exceeded its duration budget during embedding"))??
+        }
+        () = cancellation => {
+            anyhow::bail!("source {source} cancelled during embedding before reconciliation")
+        }
+    };
+    control.check(source)?;
     let all_vectors = batches.into_iter().flatten().collect::<Vec<_>>();
     let mut vectors = all_vectors.into_iter();
     for (document, texts) in pending.drain(..) {
@@ -777,12 +1198,20 @@ async fn flush_ingest_batch(
     Ok(())
 }
 
+async fn wait_for_cancellation(cancellation: &Cancellation) {
+    while !cancellation.is_requested() {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 async fn sync_configured_sources(
     config: &Config,
     store: &Store,
     embedder: &dyn Embedder,
     selected: Option<&str>,
     reconcile: bool,
+    overrides: SyncOverrides,
+    cancellation: &Cancellation,
 ) -> Result<()> {
     cleanup_connector_spools(&config.data_dir)?;
     let sources = config
@@ -791,13 +1220,18 @@ async fn sync_configured_sources(
         .filter(|source| source.enabled && selected.is_none_or(|name| source.name == name))
         .collect::<Vec<_>>();
     if sources.is_empty() {
-        println!("no enabled configured sources matched the selection");
-        return Ok(());
+        anyhow::bail!("no enabled configured sources matched the selection");
     }
     let mut failures = Vec::new();
     for source in sources {
+        let limits = SourceLimits::resolve(config, source, overrides)?;
+        let control = SourceControl {
+            limits,
+            started: Instant::now(),
+            cancellation,
+        };
         let canonical_source = canonical_source(source);
-        let seen = match sync_source_documents(config, store, embedder, source).await {
+        let seen = match sync_source_documents(config, store, embedder, source, &control).await {
             Ok(seen) => seen,
             Err(error) => {
                 eprintln!("source sync failed: source={} error={error:#}", source.name);
@@ -805,6 +1239,7 @@ async fn sync_configured_sources(
                 continue;
             }
         };
+        control.check(&source.name)?;
         let deleted = if reconcile {
             store.reconcile(&canonical_source, &source.project, &seen)?
         } else {
@@ -849,13 +1284,27 @@ async fn sync_source_documents(
     store: &Store,
     embedder: &dyn Embedder,
     source: &SourceConfig,
+    control: &SourceControl<'_>,
 ) -> Result<Vec<String>> {
-    const DOCUMENT_BATCH_SIZE: usize = 64;
     if source.kind == "filesystem" {
         let root = source
             .root
             .as_ref()
             .with_context(|| format!("source {} requires root", source.name))?;
+        let plan = connectors::filesystem_plan(
+            root,
+            &source.exclude,
+            control.limits.max_documents,
+            control.limits.max_bytes,
+            control.remaining(&source.name)?,
+        )?;
+        tracing::info!(
+            source = source.name,
+            documents = plan.documents,
+            bytes = plan.bytes,
+            "filesystem source passed ingestion preflight"
+        );
+        control.check(&source.name)?;
         let documents = connectors::filesystem_document_iter(
             root,
             source.source.as_deref().unwrap_or(&source.name),
@@ -863,31 +1312,56 @@ async fn sync_source_documents(
             &source.exclude,
         )?;
         let mut seen = Vec::new();
-        let mut batch = Vec::with_capacity(DOCUMENT_BATCH_SIZE);
+        let mut batch = Vec::with_capacity(control.limits.document_batch_size);
+        let mut content_bytes = 0_u64;
         for document in documents {
+            control.check(&source.name)?;
             let mut document = document?;
             normalize_documents(std::slice::from_mut(&mut document), source);
+            content_bytes = content_bytes
+                .saturating_add(u64::try_from(document.content.len()).unwrap_or(u64::MAX));
+            anyhow::ensure!(
+                seen.len() < control.limits.max_documents,
+                "source {} exceeds the {} document budget",
+                source.name,
+                control.limits.max_documents
+            );
+            anyhow::ensure!(
+                content_bytes <= control.limits.max_bytes,
+                "source {} exceeds the {} byte budget",
+                source.name,
+                control.limits.max_bytes
+            );
             seen.push(document.source_id.clone());
             batch.push(document);
-            if batch.len() >= DOCUMENT_BATCH_SIZE {
-                ingest_documents(store, embedder, std::mem::take(&mut batch)).await?;
+            if batch.len() >= control.limits.document_batch_size {
+                ingest_documents_controlled(
+                    store,
+                    embedder,
+                    std::mem::take(&mut batch),
+                    &source.name,
+                    control,
+                )
+                .await?;
             }
         }
         if !batch.is_empty() {
-            ingest_documents(store, embedder, batch).await?;
+            ingest_documents_controlled(store, embedder, batch, &source.name, control).await?;
         }
         return Ok(seen);
     }
 
-    let (spool, diagnostics) = run_connector_to_spool(config, source)?;
+    let (spool, diagnostics) = run_connector_to_spool(config, source, control)?;
     let result = async {
+        validate_connector_spool(&spool, source, control)?;
         let reader = std::io::BufReader::new(
             std::fs::File::open(&spool)
                 .with_context(|| format!("failed to open {}", spool.display()))?,
         );
         let mut seen = Vec::new();
-        let mut batch = Vec::with_capacity(DOCUMENT_BATCH_SIZE);
+        let mut batch = Vec::with_capacity(control.limits.document_batch_size);
         for line in reader.lines() {
+            control.check(&source.name)?;
             let line = line?;
             if line.trim().is_empty() {
                 continue;
@@ -898,12 +1372,19 @@ async fn sync_source_documents(
             normalize_documents(std::slice::from_mut(&mut document), source);
             seen.push(document.source_id.clone());
             batch.push(document);
-            if batch.len() >= DOCUMENT_BATCH_SIZE {
-                ingest_documents(store, embedder, std::mem::take(&mut batch)).await?;
+            if batch.len() >= control.limits.document_batch_size {
+                ingest_documents_controlled(
+                    store,
+                    embedder,
+                    std::mem::take(&mut batch),
+                    &source.name,
+                    control,
+                )
+                .await?;
             }
         }
         if !batch.is_empty() {
-            ingest_documents(store, embedder, batch).await?;
+            ingest_documents_controlled(store, embedder, batch, &source.name, control).await?;
         }
         Ok(seen)
     }
@@ -913,7 +1394,64 @@ async fn sync_source_documents(
     result
 }
 
-fn run_connector_to_spool(config: &Config, source: &SourceConfig) -> Result<(PathBuf, PathBuf)> {
+fn validate_connector_spool(
+    spool: &std::path::Path,
+    source: &SourceConfig,
+    control: &SourceControl<'_>,
+) -> Result<()> {
+    let maximum_spool_bytes = control.limits.max_bytes.saturating_add(
+        u64::try_from(control.limits.max_documents)
+            .unwrap_or(u64::MAX)
+            .saturating_mul(64 * 1024),
+    );
+    let spool_bytes = std::fs::metadata(spool)?.len();
+    anyhow::ensure!(
+        spool_bytes <= maximum_spool_bytes,
+        "source {} spool exceeds the {} byte safety bound",
+        source.name,
+        maximum_spool_bytes
+    );
+    let reader = std::io::BufReader::new(std::fs::File::open(spool)?);
+    let mut documents = 0_usize;
+    let mut content_bytes = 0_u64;
+    for line in reader.lines() {
+        control.check(&source.name)?;
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let document: Document = serde_json::from_str(&line)
+            .with_context(|| format!("connector {} emitted invalid Document JSONL", source.name))?;
+        documents = documents.saturating_add(1);
+        content_bytes =
+            content_bytes.saturating_add(u64::try_from(document.content.len()).unwrap_or(u64::MAX));
+        anyhow::ensure!(
+            documents <= control.limits.max_documents,
+            "source {} exceeds the {} document budget",
+            source.name,
+            control.limits.max_documents
+        );
+        anyhow::ensure!(
+            content_bytes <= control.limits.max_bytes,
+            "source {} exceeds the {} byte budget",
+            source.name,
+            control.limits.max_bytes
+        );
+    }
+    tracing::info!(
+        source = source.name,
+        documents,
+        content_bytes,
+        "connector source passed ingestion preflight"
+    );
+    Ok(())
+}
+
+fn run_connector_to_spool(
+    config: &Config,
+    source: &SourceConfig,
+    control: &SourceControl<'_>,
+) -> Result<(PathBuf, PathBuf)> {
     let staging = config.data_dir.join("staging");
     std::fs::create_dir_all(&staging)?;
     let identifier = uuid::Uuid::new_v4();
@@ -939,9 +1477,17 @@ fn run_connector_to_spool(config: &Config, source: &SourceConfig) -> Result<(Pat
             return Err(error);
         }
     };
-    let timeout = std::time::Duration::from_secs(config.connectors.timeout_seconds.max(1));
+    let timeout = Duration::from_secs(config.connectors.timeout_seconds.max(1))
+        .min(control.remaining(&source.name)?);
     let started = std::time::Instant::now();
     let status = loop {
+        if control.cancellation.is_requested() {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&spool);
+            let _ = std::fs::remove_file(&diagnostics);
+            anyhow::bail!("connector {} cancelled before reconciliation", source.name);
+        }
         if let Some(status) = child.try_wait()? {
             break status;
         }

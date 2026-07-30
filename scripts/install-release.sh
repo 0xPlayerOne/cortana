@@ -12,6 +12,7 @@ Environment:
   CORTANA_INSTALL_PREFIX             Installation prefix (default: ~/.local)
   CORTANA_CONFIG                     Config path (default: ~/.config/cortana/config.toml)
   CORTANA_INSTALL_SERVICE            Install macOS launchd jobs (default: 1)
+  CORTANA_ENABLE_SYNC_SERVICE        Opt in to recurring ingestion (default: 0)
   CORTANA_INSTALL_AGENT_INTEGRATIONS Install bundled agent skills (default: 0)
 EOF
 }
@@ -72,9 +73,14 @@ if [[ ! -f "$config_path" ]]; then
 fi
 
 if [[ "$(uname -s)" == "Darwin" && "${CORTANA_INSTALL_SERVICE:-1}" == "1" ]]; then
+  service_args=()
+  if [[ "${CORTANA_ENABLE_SYNC_SERVICE:-0}" == "1" ]]; then
+    service_args+=(--enable-sync-service)
+  fi
   "$bin_dir/cortana" --config "$config_path" service install \
     --web-dir "$web_dir" \
-    --working-directory "$share_dir"
+    --working-directory "$share_dir" \
+    "${service_args[@]}"
 fi
 
 if [[ "${CORTANA_INSTALL_AGENT_INTEGRATIONS:-0}" == "1" ]]; then
