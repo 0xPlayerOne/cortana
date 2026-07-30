@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.3.0](https://github.com/0xPlayerOne/cortana/compare/v0.2.0...v0.3.0) (2026-07-30)
+
+
+### Features
+
+* **agent:** enforce scoped MCP principals ([7a9965f](https://github.com/0xPlayerOne/cortana/commit/7a9965f8797fc9168a52e0b6d367fa1bc0caba43))
+* **ingestion:** add bounded no-write source validation ([0cda813](https://github.com/0xPlayerOne/cortana/commit/0cda813406bd25f07155f99e26fdcd0e3e0a4db3))
+* **security:** enforce scoped access and query audit ([2f57306](https://github.com/0xPlayerOne/cortana/commit/2f57306a3364478366c2aa1d5229464a9434fddc))
+* **security:** guard shared mode ACL migration ([7742a7b](https://github.com/0xPlayerOne/cortana/commit/7742a7b375926aba8d0a331c00da32b3acf45099))
+
+
+### Bug Fixes
+
+* **ci:** pin reusable workflow runtime ([34b2191](https://github.com/0xPlayerOne/cortana/commit/34b2191b5b6bb27b05d24de140dbcec6e3688f57))
+* **query:** suppress stopword-driven evidence ([bcdc030](https://github.com/0xPlayerOne/cortana/commit/bcdc03080824d99109b62e2cbb078194b0d57119))
+
+
+### Tests
+
+* **eval:** add deterministic quality and readiness gates ([993632b](https://github.com/0xPlayerOne/cortana/commit/993632b939f80c2f0456b2f4940c24796d1a582f))
+
+
+### Maintenance
+
+* **code-foundry:** upgrade runtime to v0.31.12 ([59d2f16](https://github.com/0xPlayerOne/cortana/commit/59d2f16ddaed721bc21fa112de755ac66c229312))
+* **staging:** sync main promotion history ([4e5562c](https://github.com/0xPlayerOne/cortana/commit/4e5562c7dc73b053fc381267f4ffcc2e60943605))
+* **staging:** sync main promotion history ([9626477](https://github.com/0xPlayerOne/cortana/commit/9626477bed7d4499a017e56628800a02af0f7dd5))
+* **staging:** sync v0.2.0 release metadata ([1a6ca48](https://github.com/0xPlayerOne/cortana/commit/1a6ca48a84a70959676a159759fb36a997736625))
+* **staging:** sync v0.2.0 release metadata ([c314c9c](https://github.com/0xPlayerOne/cortana/commit/c314c9c4d2abc2733b88e2cf2a3630b2aa1c2e71))
+
 ## [0.2.0](https://github.com/0xPlayerOne/cortana/compare/v0.1.8...v0.2.0) (2026-07-30)
 
 
