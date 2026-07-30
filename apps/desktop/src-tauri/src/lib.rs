@@ -16,6 +16,7 @@ use tauri_plugin_autostart::ManagerExt;
 mod installer;
 mod readiness;
 mod settings;
+mod source_jobs;
 
 const BACKEND_ORIGIN: &str = "http://127.0.0.1:7331";
 const MAIN_WINDOW: &str = "main";
@@ -173,6 +174,31 @@ fn desktop_installer_cancel(
 }
 
 #[tauri::command]
+fn desktop_source_validation_start(
+    app: AppHandle,
+    jobs: State<'_, source_jobs::SourceJobState>,
+    source: String,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.start(&app, &source)
+}
+
+#[tauri::command]
+fn desktop_source_validation_status(
+    jobs: State<'_, source_jobs::SourceJobState>,
+    id: String,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.status(&id)
+}
+
+#[tauri::command]
+fn desktop_source_validation_cancel(
+    jobs: State<'_, source_jobs::SourceJobState>,
+    id: String,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.cancel(&id)
+}
+
+#[tauri::command]
 async fn desktop_readiness_scan(app: AppHandle) -> readiness::ReadinessSnapshot {
     readiness::scan(&app).await
 }
@@ -285,6 +311,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(backend.clone())
         .manage(installer::InstallerState::default())
+        .manage(source_jobs::SourceJobState::default())
         .invoke_handler(tauri::generate_handler![
             brain_status,
             brain_answer,
@@ -295,7 +322,10 @@ pub fn run() {
             desktop_readiness_scan,
             desktop_installer_start,
             desktop_installer_status,
-            desktop_installer_cancel
+            desktop_installer_cancel,
+            desktop_source_validation_start,
+            desktop_source_validation_status,
+            desktop_source_validation_cancel
         ])
         .setup(move |app| {
             let tray = install_tray(app)?;

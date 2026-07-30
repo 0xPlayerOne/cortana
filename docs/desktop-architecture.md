@@ -43,6 +43,13 @@ platform-specific command, permits one job at a time, bounds and sanitizes retur
 cancellation, and writes metadata-only audit events beside the active Cortana config. Arbitrary
 programs and arguments are never accepted from the renderer.
 
+Source validation is a third native boundary. The renderer sends only an exact configured source
+name. Native Rust reloads the owner-local configuration, rejects an unknown name, then constructs
+the declared sidecar command with fixed `validate-source` arguments and limits of 25 documents,
+5 MiB, and 60 seconds. Only one validation runs at a time; progress is bounded, sanitized, and
+cancellable. The command cannot start sync, embedding, indexing, or reconciliation, and its
+metadata-only lifecycle is appended to the Desktop audit log.
+
 ## Workspaces and settings
 
 Workspaces are query/project scopes inside one canonical database, rather than separate indexes.
@@ -58,6 +65,12 @@ removed.
 Provider secrets are stored in Cortana's managed `secrets.env` file with mode `0600` on Unix. An
 existing external `runtime.env_file` remains readable by the runtime but is intentionally
 read-only in Desktop.
+
+The source editor supports the native filesystem, Apple Notes, Buzz, Google Drive, Gmail, Google
+Calendar, Slack, and Discord connector schemas. It can retain, disable, or remove an existing
+external command connector, but cannot create or modify command arrays. Google token files and
+local roots must be absolute non-root paths; Slack and Discord require explicit channels and a
+validated environment-variable name. Saving source settings never starts ingestion.
 
 ## Lifecycle
 

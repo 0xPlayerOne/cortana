@@ -75,6 +75,38 @@ export type WorkspaceSettings = {
   color: string | null
 }
 
+export type SourceKind =
+  | 'filesystem'
+  | 'apple-notes'
+  | 'buzz'
+  | 'google-drive'
+  | 'gmail'
+  | 'google-calendar'
+  | 'slack'
+  | 'discord'
+  | 'external'
+
+export type SourceSettings = {
+  name: string
+  kind: SourceKind
+  enabled: boolean
+  project: string
+  root: string | null
+  source: string | null
+  channels: string[]
+  token_env: string | null
+  token_path: string | null
+  query: string | null
+  labels: string[]
+  max_content_chars: number | null
+  max_documents: number | null
+  max_bytes: number | null
+  max_duration_seconds: number | null
+  exclude: string[]
+  acl: string[]
+  editable: boolean
+}
+
 export type BrainStatus = {
   status: string
   embedding_fingerprint: string | null
@@ -136,6 +168,7 @@ export type DesktopSettings = {
   needs_setup: boolean
   restart_required: boolean
   workspaces: WorkspaceSettings[]
+  sources: SourceSettings[]
   embedding: EmbeddingSettings
   query: QuerySettings
   ingestion: {
@@ -159,9 +192,24 @@ export type DesktopSettings = {
 
 export type DesktopSettingsUpdate = Pick<
   DesktopSettings,
-  'workspaces' | 'embedding' | 'query' | 'ingestion' | 'runtime'
+  'workspaces' | 'sources' | 'embedding' | 'query' | 'ingestion' | 'runtime'
 > & {
   secrets: Array<{ name: string; value?: string; clear?: boolean }>
+}
+
+export type DesktopSourceJob = {
+  id: string
+  source: string
+  kind: string
+  project: string
+  status: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
+  summary: string
+  log: string
+  started_at_unix_seconds: number
+  completed_at_unix_seconds: number | null
+  exit_code: number | null
+  retryable: boolean
+  writes_indexed_data: false
 }
 
 export type DesktopReadiness = {

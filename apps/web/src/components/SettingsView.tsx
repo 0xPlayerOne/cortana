@@ -1,7 +1,9 @@
 import {
   AlertTriangle,
   Check,
+  CircleStop,
   LoaderCircle,
+  Play,
   Plus,
   RefreshCw,
   Save,
@@ -13,22 +15,29 @@ import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
 
 import {
   cancelDesktopInstaller,
+  cancelDesktopSourceValidation,
   getDesktopInstaller,
+  getDesktopSourceValidation,
   getDesktopSettings,
   isDesktopApp,
   saveDesktopSettings,
   scanDesktopReadiness,
   startDesktopInstaller,
+  startDesktopSourceValidation,
 } from '../api'
 import type {
   DesktopInstallJob,
   DesktopReadiness,
   DesktopSettings,
   DesktopSettingsUpdate,
+  DesktopSourceJob,
+  SourceKind,
+  SourceSettings,
   WorkspaceSettings,
 } from '../types'
 
-type Section = 'readiness' | 'workspaces' | 'embedding' | 'query' | 'ingestion' | 'advanced'
+type Section =
+  'readiness' | 'workspaces' | 'sources' | 'embedding' | 'query' | 'ingestion' | 'advanced'
 
 export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings) => void }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
@@ -38,6 +47,7 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
+  const [dirty, setDirty] = useState(false)
 
   useEffect(() => {
     if (!isDesktopApp) return
@@ -51,6 +61,7 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
   const update = (change: (draft: DesktopSettings) => DesktopSettings) => {
     setSettings((current) => (current ? change(current) : current))
     setSaved(false)
+    setDirty(true)
   }
 
   async function submit(event: FormEvent) {
@@ -61,6 +72,7 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
     try {
       const payload: DesktopSettingsUpdate = {
         workspaces: settings.workspaces,
+        sources: settings.sources,
         embedding: settings.embedding,
         query: settings.query,
         ingestion: settings.ingestion,
@@ -77,6 +89,7 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
       setSecretValues({})
       setClearedSecrets(new Set())
       setSaved(true)
+      setDirty(false)
       onSaved(next)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to save settings')
@@ -119,7 +132,15 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
           {(
-            ['readiness', 'workspaces', 'embedding', 'query', 'ingestion', 'advanced'] as Section[]
+            [
+              'readiness',
+              'workspaces',
+              'sources',
+              'embedding',
+              'query',
+              'ingestion',
+              'advanced',
+            ] as Section[]
           ).map((item) => (
             <button
               key={item}
@@ -137,6 +158,26 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
         <form id="settings-form" className="settings-form" onSubmit={submit}>
           {section === 'readiness' && <ReadinessSection />}
           {section === 'workspaces' && <WorkspaceSection settings={settings} update={update} />}
+          {section === 'sources' && (
+            <SourcesSection
+              settings={settings}
+              update={update}
+              canValidate={!dirty && !saving}
+              secretValues={secretValues}
+              onSecret={(values) => {
+                setSecretValues(values)
+                setDirty(true)
+                setSaved(false)
+              }}
+              clearedSecrets={clearedSecrets}
+              onClearSecret={(name) => {
+                setClearedSecrets((current) => new Set(current).add(name))
+                setSecretValues((current) => ({ ...current, [name]: '' }))
+                setDirty(true)
+                setSaved(false)
+              }}
+            />
+          )}
           {section === 'embedding' && (
             <EmbeddingSection
               settings={settings}
@@ -455,6 +496,497 @@ function WorkspaceSection({
       </button>
     </SettingsSection>
   )
+}
+
+const SOURCE_KINDS: Array<{ value: SourceKind; label: string }> = [
+  { value: 'filesystem', label: 'Files and code' },
+  { value: 'apple-notes', label: 'Apple Notes' },
+  { value: 'buzz', label: 'Buzz' },
+  { value: 'google-drive', label: 'Google Drive' },
+  { value: 'gmail', label: 'Gmail' },
+  { value: 'google-calendar', label: 'Google Calendar' },
+  { value: 'slack', label: 'Slack' },
+  { value: 'discord', label: 'Discord' },
+]
+
+function SourcesSection({
+  settings,
+  update,
+  canValidate,
+  secretValues,
+  onSecret,
+  clearedSecrets,
+  onClearSecret,
+}: SettingsSectionProps & {
+  canValidate: boolean
+  secretValues: Record<string, string>
+  onSecret: (values: Record<string, string>) => void
+  clearedSecrets: Set<string>
+  onClearSecret: (name: string) => void
+}) {
+  const [job, setJob] = useState<DesktopSourceJob | null>(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!job || !['running', 'cancelling'].includes(job.status)) return
+    let active = true
+    const timer = window.setTimeout(() => {
+      void getDesktopSourceValidation(job.id)
+        .then((next) => {
+          if (active) setJob(next)
+        })
+        .catch((caught: unknown) => {
+          if (active) {
+            setError(caught instanceof Error ? caught.message : 'Source validation status failed')
+          }
+        })
+    }, 700)
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [job])
+
+  const changeSource = (index: number, patch: Partial<SourceSettings>) =>
+    update((current) => ({
+      ...current,
+      sources: current.sources.map((source, position) =>
+        position === index ? { ...source, ...patch } : source
+      ),
+    }))
+
+  const addSource = () =>
+    update((current) => ({
+      ...current,
+      sources: [...current.sources, newSource(current)],
+    }))
+
+  const validateSource = async (source: SourceSettings) => {
+    if (!canValidate) {
+      setError(
+        'Save source changes before validating so the native runtime uses this exact config.'
+      )
+      return
+    }
+    if (
+      !window.confirm(
+        `Validate ${source.name} now?\n\nCortana may read up to 25 documents or 5 MiB for at most 60 seconds. It will not embed, index, reconcile, or start a sync.`
+      )
+    ) {
+      return
+    }
+    setError('')
+    try {
+      setJob(await startDesktopSourceValidation(source.name))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Source validation failed to start')
+    }
+  }
+
+  const cancel = async () => {
+    if (!job) return
+    try {
+      setJob(await cancelDesktopSourceValidation(job.id))
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : 'Source validation could not be cancelled'
+      )
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="Ingestion sources"
+      description="Configure local and account-backed sources per workspace. Saving only updates configuration; validation is a separate, read-only bounded action and full sync remains disabled."
+    >
+      <div className="source-settings-toolbar">
+        <span>
+          {settings.sources.filter((source) => source.enabled).length} enabled ·{' '}
+          {settings.sources.length} configured
+        </span>
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={settings.sources.length >= 128}
+          onClick={addSource}
+        >
+          <Plus size={15} /> Add source
+        </button>
+      </div>
+
+      <div className="source-settings-list">
+        {settings.sources.length === 0 && (
+          <div className="empty-source-settings">
+            <strong>No sources configured</strong>
+            <span>Add a source, assign its workspace, then save and run bounded validation.</span>
+          </div>
+        )}
+        {settings.sources.map((source, index) => {
+          const secret = source.token_env
+            ? settings.secrets.find((item) => item.name === source.token_env)
+            : undefined
+          const runningThis =
+            job?.source === source.name && ['running', 'cancelling'].includes(job.status)
+          return (
+            <article className="source-settings-card" key={`${source.name}:${index}`}>
+              <header>
+                <label className="source-enable">
+                  <input
+                    type="checkbox"
+                    checked={source.enabled}
+                    onChange={(event) => changeSource(index, { enabled: event.target.checked })}
+                  />
+                  <span>
+                    <strong>{source.name || 'New source'}</strong>
+                    <small>
+                      {SOURCE_KINDS.find((kind) => kind.value === source.kind)?.label ||
+                        'External connector'}
+                    </small>
+                  </span>
+                </label>
+                <div className="source-card-actions">
+                  <button
+                    type="button"
+                    disabled={
+                      !canValidate ||
+                      Boolean(
+                        job &&
+                        runningThis === false &&
+                        ['running', 'cancelling'].includes(job.status)
+                      )
+                    }
+                    title={canValidate ? 'Read-only bounded validation' : 'Save changes first'}
+                    onClick={() => void validateSource(source)}
+                  >
+                    {runningThis ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />}
+                    Validate
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Remove ${source.name}`}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Remove ${source.name} from configuration? Existing indexed data is not deleted.`
+                        )
+                      ) {
+                        update((current) => ({
+                          ...current,
+                          sources: current.sources.filter((_, position) => position !== index),
+                        }))
+                      }
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </header>
+
+              {!source.editable && (
+                <div className="source-managed-note">
+                  This external command is managed in the TOML file. Desktop can retain, disable, or
+                  remove it, but cannot edit or create shell commands.
+                </div>
+              )}
+
+              <div className="form-grid source-form-grid">
+                <Field label="Source name" hint="stable lowercase identifier">
+                  <input
+                    value={source.name}
+                    disabled={!source.editable}
+                    required
+                    maxLength={64}
+                    pattern="[a-z0-9][a-z0-9_-]*"
+                    onChange={(event) => changeSource(index, { name: event.target.value })}
+                  />
+                </Field>
+                <Field label="Connector">
+                  <select
+                    value={source.kind}
+                    disabled={!source.editable}
+                    onChange={(event) =>
+                      changeSource(index, {
+                        kind: event.target.value as SourceKind,
+                        token_env: defaultTokenEnv(event.target.value as SourceKind),
+                      })
+                    }
+                  >
+                    {source.kind === 'external' && (
+                      <option value="external">External command</option>
+                    )}
+                    {SOURCE_KINDS.map((kind) => (
+                      <option key={kind.value} value={kind.value}>
+                        {kind.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Workspace">
+                  <select
+                    value={source.project}
+                    onChange={(event) => changeSource(index, { project: event.target.value })}
+                  >
+                    {settings.workspaces.map((workspace) => (
+                      <option key={workspace.id} value={workspace.id}>
+                        {workspace.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                {(source.kind === 'filesystem' || source.kind === 'buzz') && (
+                  <Field
+                    label={source.kind === 'buzz' ? 'Buzz data directory' : 'Root directory'}
+                    hint="absolute, non-root path"
+                    wide
+                  >
+                    <input
+                      value={source.root || ''}
+                      disabled={!source.editable}
+                      required={source.enabled}
+                      placeholder="/Users/you/Documents"
+                      onChange={(event) =>
+                        changeSource(index, { root: event.target.value || null })
+                      }
+                    />
+                  </Field>
+                )}
+                {source.kind === 'filesystem' && (
+                  <>
+                    <Field label="Source label" hint="identifier stored on indexed documents">
+                      <input
+                        value={source.source || ''}
+                        disabled={!source.editable}
+                        maxLength={128}
+                        placeholder={source.name}
+                        onChange={(event) =>
+                          changeSource(index, { source: event.target.value || null })
+                        }
+                      />
+                    </Field>
+                    <Field label="Excluded paths" hint="comma or line separated, relative paths">
+                      <input
+                        value={source.exclude.join(', ')}
+                        disabled={!source.editable}
+                        onChange={(event) =>
+                          changeSource(index, { exclude: splitList(event.target.value) })
+                        }
+                      />
+                    </Field>
+                  </>
+                )}
+                {isGoogleSource(source.kind) && (
+                  <>
+                    <Field
+                      label="Google OAuth token file"
+                      hint="absolute path to an installed-app OAuth token JSON"
+                      wide
+                    >
+                      <input
+                        value={source.token_path || ''}
+                        disabled={!source.editable}
+                        required={source.enabled && !source.token_env}
+                        placeholder="/Users/you/.config/cortana/google-token.json"
+                        onChange={(event) =>
+                          changeSource(index, { token_path: event.target.value || null })
+                        }
+                      />
+                    </Field>
+                    <Field label="Google query" hint="optional provider-native filter" wide>
+                      <input
+                        value={source.query || ''}
+                        disabled={!source.editable}
+                        maxLength={2048}
+                        placeholder={source.kind === 'gmail' ? 'newer_than:1y' : ''}
+                        onChange={(event) =>
+                          changeSource(index, { query: event.target.value || null })
+                        }
+                      />
+                    </Field>
+                  </>
+                )}
+                {(source.kind === 'slack' || source.kind === 'discord') && (
+                  <>
+                    <Field label="Channel IDs" hint="comma or line separated" wide>
+                      <input
+                        value={source.channels.join(', ')}
+                        disabled={!source.editable}
+                        required={source.enabled}
+                        onChange={(event) =>
+                          changeSource(index, { channels: splitList(event.target.value) })
+                        }
+                      />
+                    </Field>
+                    <Field
+                      label="Token variable"
+                      hint={
+                        secret?.configured && !clearedSecrets.has(secret.name)
+                          ? `Configured via ${secret.source}`
+                          : 'stored in Cortana owner-only secret file'
+                      }
+                    >
+                      <input
+                        value={source.token_env || ''}
+                        disabled={!source.editable}
+                        required={source.enabled}
+                        pattern="[A-Z_][A-Z0-9_]*"
+                        onChange={(event) =>
+                          changeSource(index, { token_env: event.target.value || null })
+                        }
+                      />
+                    </Field>
+                    <Field label="New token" hint="write-only; leave blank to keep existing">
+                      <div className="secret-input">
+                        <input
+                          type="password"
+                          autoComplete="new-password"
+                          disabled={!source.editable || !source.token_env}
+                          value={source.token_env ? secretValues[source.token_env] || '' : ''}
+                          onChange={(event) => {
+                            if (source.token_env) {
+                              onSecret({ ...secretValues, [source.token_env]: event.target.value })
+                            }
+                          }}
+                        />
+                        {source.token_env &&
+                          secret?.configured &&
+                          !clearedSecrets.has(secret.name) && (
+                            <button type="button" onClick={() => onClearSecret(source.token_env!)}>
+                              Clear
+                            </button>
+                          )}
+                      </div>
+                    </Field>
+                  </>
+                )}
+                {source.editable && (
+                  <>
+                    <Field label="Document limit" hint="blank uses global budget">
+                      <input
+                        type="number"
+                        min={1}
+                        max={1000000}
+                        value={source.max_documents ?? ''}
+                        onChange={(event) =>
+                          changeSource(index, {
+                            max_documents: optionalNumber(event.target.value),
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Content limit (bytes)" hint="blank uses global budget">
+                      <input
+                        type="number"
+                        min={1024}
+                        max={1099511627776}
+                        value={source.max_bytes ?? ''}
+                        onChange={(event) =>
+                          changeSource(index, { max_bytes: optionalNumber(event.target.value) })
+                        }
+                      />
+                    </Field>
+                  </>
+                )}
+              </div>
+            </article>
+          )
+        })}
+      </div>
+
+      {error && <div className="safety-note">{error}</div>}
+      {job && (
+        <div className={`source-validation-job ${job.status}`}>
+          <div>
+            <StatusGlyph
+              passed={job.status === 'succeeded'}
+              optional={job.status === 'cancelled'}
+            />
+            <span>
+              <strong>
+                {job.source} · {job.status}
+              </strong>
+              <small>{job.summary}</small>
+            </span>
+            {['running', 'cancelling'].includes(job.status) && (
+              <button
+                type="button"
+                disabled={job.status === 'cancelling'}
+                onClick={() => void cancel()}
+              >
+                <CircleStop size={14} /> Cancel
+              </button>
+            )}
+            {job.retryable && (
+              <button
+                type="button"
+                disabled={!canValidate}
+                onClick={() => {
+                  const source = settings.sources.find((item) => item.name === job.source)
+                  if (source) void validateSource(source)
+                }}
+              >
+                <RefreshCw size={14} /> Retry
+              </button>
+            )}
+          </div>
+          {job.log && <pre>{job.log}</pre>}
+        </div>
+      )}
+
+      <div className="safety-note">
+        <AlertTriangle size={16} />
+        <span>
+          Source validation fetches a deliberately small sample but writes only metadata about the
+          outcome. Full ingestion requires a separate reviewed sync action, which is not enabled
+          here.
+        </span>
+      </div>
+    </SettingsSection>
+  )
+}
+
+function newSource(settings: DesktopSettings): SourceSettings {
+  const index = settings.sources.length + 1
+  return {
+    name: `source-${index}`,
+    kind: 'filesystem',
+    enabled: false,
+    project: settings.workspaces[0]?.id || 'personal',
+    root: null,
+    source: null,
+    channels: [],
+    token_env: null,
+    token_path: null,
+    query: null,
+    labels: [],
+    max_content_chars: null,
+    max_documents: null,
+    max_bytes: null,
+    max_duration_seconds: null,
+    exclude: [],
+    acl: [],
+    editable: true,
+  }
+}
+
+function defaultTokenEnv(kind: SourceKind): string | null {
+  if (kind === 'slack') return 'SLACK_BOT_TOKEN'
+  if (kind === 'discord') return 'DISCORD_BOT_TOKEN'
+  return null
+}
+
+function isGoogleSource(kind: SourceKind) {
+  return ['google-drive', 'gmail', 'google-calendar'].includes(kind)
+}
+
+function splitList(value: string) {
+  return value
+    .split(/[,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function optionalNumber(value: string): number | null {
+  return value === '' ? null : Number(value)
 }
 
 type ProviderValue = DesktopSettings['embedding'] | DesktopSettings['query']

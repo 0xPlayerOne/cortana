@@ -35,5 +35,12 @@ uv, Python 3.11+, the connector environment, and the core production gates witho
 ingestion run. Fixed tool installers require a confirmation and native approval, expose bounded
 logs, and can be cancelled or retried.
 
+The Settings **Sources** panel edits typed connector configuration, workspace assignments,
+credential references, and per-source safety budgets. Secret values are write-only. External
+command connectors remain read-only because their command arrays cross the native process
+boundary. After saving, **Validate** runs the bundled runtime with fixed limits of 25 documents,
+5 MiB, and 60 seconds. It can be cancelled, never embeds or indexes content, and records only a
+metadata outcome.
+
 Closing the main window hides it to the tray. Use **Quit Cortana Desktop** from the tray menu to
 exit the control plane. This does not stop the independently managed Cortana services.
