@@ -19,13 +19,19 @@ import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
 import {
   cancelDesktopInstaller,
   cancelDesktopSourceValidation,
+  checkDesktopUpdate,
+  getDesktopAudit,
   getDesktopInstaller,
   getDesktopInfo,
   getDesktopServices,
   getDesktopSourceValidation,
   getDesktopSettings,
+  getDesktopUpdate,
+  getRuntimeAudit,
+  installDesktopUpdate,
   isDesktopApp,
   openDesktopSourceSetup,
+  openDesktopProject,
   pickDesktopPath,
   saveDesktopSettings,
   scanDesktopReadiness,
@@ -35,6 +41,7 @@ import {
   startDesktopSourceTrialSync,
   startDesktopSourceValidation,
   runDesktopServiceAction,
+  runDesktopServicesActionAll,
 } from '../api'
 import type {
   DesktopInstallJob,
@@ -44,6 +51,9 @@ import type {
   DesktopSettings,
   DesktopSettingsUpdate,
   DesktopSourceJob,
+  DesktopUpdate,
+  AuditEvent,
+  AuthPrincipalSettings,
   SourceKind,
   SourceSettings,
   WorkspaceSettings,
@@ -52,6 +62,9 @@ import type {
 type Section =
   | 'readiness'
   | 'services'
+  | 'updates'
+  | 'access'
+  | 'audit'
   | 'workspaces'
   | 'sources'
   | 'embedding'
@@ -59,9 +72,15 @@ type Section =
   | 'ingestion'
   | 'advanced'
 
-export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings) => void }) {
+export function SettingsView({
+  onSaved,
+  initialSection = 'readiness',
+}: {
+  onSaved: (settings: DesktopSettings) => void
+  initialSection?: 'readiness' | 'updates'
+}) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
-  const [section, setSection] = useState<Section>('readiness')
+  const [section, setSection] = useState<Section>(initialSection)
   const [secretValues, setSecretValues] = useState<Record<string, string>>({})
   const [clearedSecrets, setClearedSecrets] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
@@ -78,6 +97,8 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
       )
   }, [])
 
+  useEffect(() => setSection(initialSection), [initialSection])
+
   const update = (change: (draft: DesktopSettings) => DesktopSettings) => {
     setSettings((current) => (current ? change(current) : current))
     setSaved(false)
@@ -93,6 +114,7 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
       const payload: DesktopSettingsUpdate = {
         workspaces: settings.workspaces,
         sources: settings.sources,
+        auth_principals: settings.auth_principals,
         embedding: settings.embedding,
         query: settings.query,
         ingestion: settings.ingestion,
@@ -155,6 +177,9 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
             [
               'readiness',
               'services',
+              'updates',
+              'access',
+              'audit',
               'workspaces',
               'sources',
               'embedding',
@@ -179,6 +204,27 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
         <form id="settings-form" className="settings-form" onSubmit={submit}>
           {section === 'readiness' && <ReadinessSection />}
           {section === 'services' && <ServicesSection />}
+          {section === 'updates' && <UpdatesSection />}
+          {section === 'access' && (
+            <AccessSection
+              settings={settings}
+              update={update}
+              secretValues={secretValues}
+              onSecret={(values) => {
+                setSecretValues(values)
+                setDirty(true)
+                setSaved(false)
+              }}
+              clearedSecrets={clearedSecrets}
+              onClearSecret={(name) => {
+                setClearedSecrets((current) => new Set(current).add(name))
+                setSecretValues((current) => ({ ...current, [name]: '' }))
+                setDirty(true)
+                setSaved(false)
+              }}
+            />
+          )}
+          {section === 'audit' && <AuditSection />}
           {section === 'workspaces' && <WorkspaceSection settings={settings} update={update} />}
           {section === 'sources' && (
             <SourcesSection
@@ -299,6 +345,25 @@ function ServicesSection() {
     }
   }
 
+  const groupAction = async (action: 'start' | 'stop' | 'restart') => {
+    if (
+      !window.confirm(
+        `${action} the Cortana server and embedding services?\n\nRecurring sync and backup are explicitly excluded.`
+      )
+    ) {
+      return
+    }
+    setBusy(`all:${action}`)
+    setError('')
+    try {
+      setReport(await runDesktopServicesActionAll(action))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Whole-app service action failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
   return (
     <SettingsSection
       title="Services"
@@ -328,9 +393,24 @@ function ServicesSection() {
               ? `Runtime service control is not supported on ${report.platform}`
               : 'Checking services…'}
         </span>
-        <button type="button" className="secondary-button" onClick={() => void refresh()}>
-          <RefreshCw size={14} /> Refresh
-        </button>
+        <div className="service-actions">
+          <button type="button" disabled={Boolean(busy)} onClick={() => void groupAction('start')}>
+            <Play size={14} /> Start all
+          </button>
+          <button type="button" disabled={Boolean(busy)} onClick={() => void groupAction('stop')}>
+            <CircleStop size={14} /> Stop all
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(busy)}
+            onClick={() => void groupAction('restart')}
+          >
+            <RefreshCw size={14} /> Restart all
+          </button>
+          <button type="button" className="secondary-button" onClick={() => void refresh()}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+        </div>
       </div>
       {error && <div className="safety-note">{error}</div>}
       <div className="service-grid">
@@ -385,6 +465,348 @@ function ServicesSection() {
         Starting the server, embedding, or backup service does not run ingestion.
       </p>
     </SettingsSection>
+  )
+}
+
+function UpdatesSection() {
+  const [update, setUpdate] = useState<DesktopUpdate | null>(null)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    void getDesktopUpdate()
+      .then(setUpdate)
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (busy !== 'install') return
+    const timer = window.setInterval(() => void getDesktopUpdate().then(setUpdate), 400)
+    return () => window.clearInterval(timer)
+  }, [busy])
+
+  const check = async () => {
+    setBusy('check')
+    setError('')
+    try {
+      setUpdate(await checkDesktopUpdate())
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Update check failed')
+      setUpdate(await getDesktopUpdate())
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const install = async () => {
+    if (!update?.available_version) return
+    if (
+      !window.confirm(
+        `Install signed Cortana ${update.available_version} and restart the Desktop app?\n\nThe native updater will verify the release signature before installation.`
+      )
+    ) {
+      return
+    }
+    setBusy('install')
+    setError('')
+    try {
+      setUpdate(await installDesktopUpdate(update.available_version, true))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Update installation failed')
+      setUpdate(await getDesktopUpdate())
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const percent =
+    update?.total_bytes && update.total_bytes > 0
+      ? Math.min(100, Math.round((update.downloaded_bytes / update.total_bytes) * 100))
+      : null
+
+  return (
+    <SettingsSection
+      title="Updates"
+      description="Cortana checks the fixed GitHub release feed and verifies signed Tauri artifacts in the native process before installation."
+    >
+      <div className="update-card">
+        <div>
+          <span className="eyebrow">Installed version</span>
+          <strong>{update?.current_version || 'Checking…'}</strong>
+          <small>
+            {update?.available_version
+              ? `Version ${update.available_version} is available`
+              : update?.phase === 'current'
+                ? 'You are up to date'
+                : `Updater status: ${update?.phase || 'idle'}`}
+          </small>
+        </div>
+        <div className="service-actions">
+          <button type="button" disabled={Boolean(busy)} onClick={() => void check()}>
+            {busy === 'check' ? (
+              <LoaderCircle className="spin" size={14} />
+            ) : (
+              <RefreshCw size={14} />
+            )}
+            Check now
+          </button>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={!update?.available_version || Boolean(busy)}
+            onClick={() => void install()}
+          >
+            {busy === 'install' ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />}
+            Install and restart
+          </button>
+        </div>
+      </div>
+      {percent !== null && (
+        <div className="update-progress" role="progressbar" aria-valuenow={percent}>
+          <i style={{ width: `${percent}%` }} />
+          <span>{percent}% downloaded</span>
+        </div>
+      )}
+      {(error || update?.error) && (
+        <div className="safety-note">
+          <AlertTriangle size={16} /> <span>{error || update?.error}</span>
+        </div>
+      )}
+      {update?.release_notes && (
+        <div className="release-notes">
+          <h3>Version {update.available_version}</h3>
+          <pre>{update.release_notes}</pre>
+        </div>
+      )}
+      <div className="release-notes">
+        <h3>Installed changelog</h3>
+        <pre>{update?.changelog || 'Loading changelog…'}</pre>
+      </div>
+      {update && (
+        <button type="button" className="link-button" onClick={() => void openDesktopProject()}>
+          View Cortana source on GitHub <ExternalLink size={13} />
+        </button>
+      )}
+    </SettingsSection>
+  )
+}
+
+function AccessSection({
+  settings,
+  update,
+  secretValues,
+  onSecret,
+  clearedSecrets,
+  onClearSecret,
+}: SettingsSectionProps & {
+  secretValues: Record<string, string>
+  onSecret: (values: Record<string, string>) => void
+  clearedSecrets: Set<string>
+  onClearSecret: (name: string) => void
+}) {
+  const change = (index: number, patch: Partial<AuthPrincipalSettings>) =>
+    update((current) => ({
+      ...current,
+      auth_principals: current.auth_principals.map((principal, position) =>
+        position === index ? { ...principal, ...patch } : principal
+      ),
+    }))
+  const add = () =>
+    update((current) => {
+      const number = current.auth_principals.length + 1
+      return {
+        ...current,
+        auth_principals: [
+          ...current.auth_principals,
+          {
+            principal: `agent-${number}`,
+            token_env: `CORTANA_AGENT_${number}_TOKEN`,
+            scopes: ['query', 'status'],
+            acl: current.workspaces.map((workspace) => workspace.id),
+          },
+        ],
+      }
+    })
+
+  return (
+    <SettingsSection
+      title="Agent access"
+      description="Create named bearer principals with least-privilege scopes and workspace ACL labels. Token values are write-only and never return to the renderer."
+    >
+      <div className="principal-list">
+        {settings.auth_principals.map((principal, index) => {
+          const secret = settings.secrets.find((item) => item.name === principal.token_env)
+          return (
+            <article className="principal-card" key={`${principal.principal}:${index}`}>
+              <header>
+                <KeyRound size={16} />
+                <strong>{principal.principal || `Principal ${index + 1}`}</strong>
+                <button
+                  type="button"
+                  aria-label={`Remove ${principal.principal}`}
+                  onClick={() =>
+                    update((current) => ({
+                      ...current,
+                      auth_principals: current.auth_principals.filter(
+                        (_, position) => position !== index
+                      ),
+                    }))
+                  }
+                >
+                  <Trash2 size={15} />
+                </button>
+              </header>
+              <div className="form-grid">
+                <Field label="Principal name">
+                  <input
+                    value={principal.principal}
+                    maxLength={128}
+                    required
+                    onChange={(event) => change(index, { principal: event.target.value })}
+                  />
+                </Field>
+                <Field label="Token environment name">
+                  <input
+                    value={principal.token_env}
+                    maxLength={128}
+                    pattern="[A-Za-z_][A-Za-z0-9_]*"
+                    required
+                    onChange={(event) => change(index, { token_env: event.target.value })}
+                  />
+                </Field>
+                <Field label="New bearer token" hint="write-only; leave blank to retain">
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={secretValues[principal.token_env] || ''}
+                    onChange={(event) =>
+                      onSecret({ ...secretValues, [principal.token_env]: event.target.value })
+                    }
+                  />
+                  {secret?.configured && !clearedSecrets.has(principal.token_env) && (
+                    <button type="button" onClick={() => onClearSecret(principal.token_env)}>
+                      Clear stored token
+                    </button>
+                  )}
+                </Field>
+                <Field label="ACL labels" hint="comma-separated workspace IDs; * grants all">
+                  <input
+                    value={principal.acl.join(', ')}
+                    onChange={(event) =>
+                      change(index, {
+                        acl: event.target.value
+                          .split(',')
+                          .map((value) => value.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+              <div className="scope-options">
+                {(['query', 'status', 'admin'] as const).map((scope) => (
+                  <label key={scope}>
+                    <input
+                      type="checkbox"
+                      checked={principal.scopes.includes(scope)}
+                      onChange={(event) =>
+                        change(index, {
+                          scopes: event.target.checked
+                            ? [...principal.scopes, scope]
+                            : principal.scopes.filter((value) => value !== scope),
+                        })
+                      }
+                    />
+                    {scope}
+                  </label>
+                ))}
+              </div>
+            </article>
+          )
+        })}
+      </div>
+      <button type="button" className="secondary-button" onClick={add}>
+        <Plus size={15} /> Add principal
+      </button>
+      <p className="settings-note">
+        Settings take effect after the server restarts. Desktop requests select a matching private
+        native credential by scope without exposing it to web content.
+      </p>
+    </SettingsSection>
+  )
+}
+
+function AuditSection() {
+  const [runtime, setRuntime] = useState<AuditEvent[]>([])
+  const [desktop, setDesktop] = useState<AuditEvent[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const refresh = async () => {
+    setLoading(true)
+    setError('')
+    const [runtimeResult, desktopResult] = await Promise.allSettled([
+      getRuntimeAudit(100),
+      getDesktopAudit(100),
+    ])
+    if (runtimeResult.status === 'fulfilled') setRuntime(runtimeResult.value)
+    if (desktopResult.status === 'fulfilled') setDesktop(desktopResult.value)
+    const errors = [runtimeResult, desktopResult]
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map((result) =>
+        result.reason instanceof Error ? result.reason.message : 'Audit source unavailable'
+      )
+    setError(errors.join(' · '))
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    void refresh()
+  }, [])
+
+  return (
+    <SettingsSection
+      title="Audit trail"
+      description="Bounded metadata-only runtime and Desktop events. Queries, document contents, bearer tokens, and secret values are excluded."
+    >
+      <div className="source-settings-toolbar">
+        <span>
+          {runtime.length} runtime · {desktop.length} Desktop events
+        </span>
+        <button type="button" disabled={loading} onClick={() => void refresh()}>
+          {loading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}
+          Refresh
+        </button>
+      </div>
+      {error && <div className="safety-note">{error}</div>}
+      <AuditList title="Runtime retrieval" events={runtime} />
+      <AuditList title="Desktop actions" events={desktop} />
+    </SettingsSection>
+  )
+}
+
+function AuditList({ title, events }: { title: string; events: AuditEvent[] }) {
+  return (
+    <div className="audit-list">
+      <h3>{title}</h3>
+      {events.length === 0 ? (
+        <p>No events available.</p>
+      ) : (
+        events.map((event, index) => (
+          <article key={`${String(event.id || event.at_unix_seconds || 'event')}:${index}`}>
+            <strong>{String(event.event || event.action || 'event')}</strong>
+            <time>
+              {event.timestamp
+                ? new Date(String(event.timestamp)).toLocaleString()
+                : event.at_unix_seconds
+                  ? new Date(Number(event.at_unix_seconds) * 1000).toLocaleString()
+                  : ''}
+            </time>
+            <pre>{JSON.stringify(event, null, 2)}</pre>
+          </article>
+        ))
+      )}
+    </div>
   )
 }
 

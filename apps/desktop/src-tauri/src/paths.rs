@@ -45,9 +45,7 @@ fn file_path(path: FilePath) -> Result<String, String> {
 fn validate_path(path: &Path) -> Result<(), String> {
     if !path.is_absolute()
         || path.parent().is_none()
-        || path
-            .parent()
-            .is_none_or(|parent| parent.parent().is_none())
+        || path.parent().is_none_or(|parent| parent.parent().is_none())
     {
         return Err("select an absolute path outside the filesystem root".into());
     }

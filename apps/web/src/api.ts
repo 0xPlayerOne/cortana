@@ -15,6 +15,8 @@ import type {
   DesktopSettings,
   DesktopSettingsUpdate,
   DesktopSourceJob,
+  DesktopUpdate,
+  AuditEvent,
   DesktopSetupOpen,
 } from './types'
 
@@ -61,6 +63,53 @@ export async function runDesktopServiceAction(
     action,
     approved: true,
   })
+}
+
+export async function runDesktopServicesActionAll(
+  action: 'start' | 'stop' | 'restart'
+): Promise<DesktopServiceReport> {
+  if (!isDesktopApp) throw new Error('Service control is available in Cortana Desktop')
+  return invokeDesktop<DesktopServiceReport>('desktop_services_action_all', {
+    action,
+    approved: true,
+  })
+}
+
+export async function getDesktopUpdate(): Promise<DesktopUpdate> {
+  if (!isDesktopApp) throw new Error('Updates are available in Cortana Desktop')
+  return invokeDesktop<DesktopUpdate>('desktop_update_status')
+}
+
+export async function checkDesktopUpdate(): Promise<DesktopUpdate> {
+  if (!isDesktopApp) throw new Error('Updates are available in Cortana Desktop')
+  return invokeDesktop<DesktopUpdate>('desktop_update_check')
+}
+
+export async function installDesktopUpdate(
+  expectedVersion: string,
+  restart: boolean
+): Promise<DesktopUpdate> {
+  if (!isDesktopApp) throw new Error('Updates are available in Cortana Desktop')
+  return invokeDesktop<DesktopUpdate>('desktop_update_install', {
+    expectedVersion,
+    approved: true,
+    restart,
+  })
+}
+
+export async function getRuntimeAudit(limit = 100): Promise<AuditEvent[]> {
+  if (!isDesktopApp) throw new Error('Audit is available in Cortana Desktop')
+  return invokeDesktop<AuditEvent[]>('brain_audit', { limit })
+}
+
+export async function getDesktopAudit(limit = 100): Promise<AuditEvent[]> {
+  if (!isDesktopApp) throw new Error('Audit is available in Cortana Desktop')
+  return invokeDesktop<AuditEvent[]>('desktop_audit', { limit })
+}
+
+export async function openDesktopProject(): Promise<void> {
+  if (!isDesktopApp) throw new Error('Project links are available in Cortana Desktop')
+  return invokeDesktop<void>('desktop_project_open')
 }
 
 export async function startDesktopInstaller(tool: string): Promise<DesktopInstallJob> {

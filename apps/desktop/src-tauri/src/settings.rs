@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -11,7 +11,9 @@ use toml::{Table, Value};
 
 const MAX_WORKSPACES: usize = 3;
 const MAX_SOURCES: usize = 128;
+const MAX_AUTH_PRINCIPALS: usize = 64;
 const MAX_SECRET_BYTES: usize = 16 * 1024;
+const MAX_AUDIT_READ_BYTES: u64 = 2 * 1024 * 1024;
 const SOURCE_KINDS: &[&str] = &[
     "filesystem",
     "apple-notes",
@@ -110,6 +112,15 @@ pub struct SourceSettings {
     pub editable: bool,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuthPrincipalSettings {
+    pub principal: String,
+    pub token_env: String,
+    pub scopes: Vec<String>,
+    pub acl: Vec<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SecretUpdate {
@@ -124,6 +135,7 @@ pub struct SecretUpdate {
 pub struct SettingsUpdate {
     pub workspaces: Vec<WorkspaceSettings>,
     pub sources: Vec<SourceSettings>,
+    pub auth_principals: Vec<AuthPrincipalSettings>,
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
     pub ingestion: IngestionSettings,
@@ -147,6 +159,7 @@ pub struct SettingsSnapshot {
     pub restart_required: bool,
     pub workspaces: Vec<WorkspaceSettings>,
     pub sources: Vec<SourceSettings>,
+    pub auth_principals: Vec<AuthPrincipalSettings>,
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
     pub ingestion: IngestionSettings,
@@ -169,6 +182,97 @@ pub fn configured_source(name: &str) -> Result<SourceSettings, String> {
         .into_iter()
         .find(|source| source.name == name)
         .ok_or_else(|| format!("configured source `{name}` was not found"))
+}
+
+pub(crate) fn bearer_for_scope(scope: &str) -> Result<Option<String>, String> {
+    bearer_for_scope_at(&default_config_path(), scope)
+}
+
+fn bearer_for_scope_at(config_path: &Path, scope: &str) -> Result<Option<String>, String> {
+    if !matches!(scope, "query" | "status" | "admin") {
+        return Err("unsupported desktop bearer scope".into());
+    }
+    let root = read_config(config_path)?;
+    let principals = configured_auth_principals(&root);
+    if principals.is_empty() {
+        return Ok(None);
+    }
+    let secret_path = secret_path(&root, config_path)?;
+    let secrets = read_secret_map(&secret_path)?;
+    for principal in principals
+        .iter()
+        .filter(|principal| principal.scopes.iter().any(|value| value == scope))
+    {
+        if let Some(value) = secrets
+            .get(&principal.token_env)
+            .cloned()
+            .or_else(|| std::env::var(&principal.token_env).ok())
+            .filter(|value| !value.is_empty())
+        {
+            return Ok(Some(value));
+        }
+    }
+    Err(format!(
+        "no configured desktop auth principal provides the `{scope}` scope"
+    ))
+}
+
+pub fn desktop_audit_events(limit: usize) -> Result<Vec<serde_json::Value>, String> {
+    desktop_audit_events_at(&default_config_path(), limit)
+}
+
+fn desktop_audit_events_at(
+    config_path: &Path,
+    limit: usize,
+) -> Result<Vec<serde_json::Value>, String> {
+    if !(1..=500).contains(&limit) {
+        return Err("desktop audit limit must be between 1 and 500".into());
+    }
+    let directory = config_path
+        .parent()
+        .ok_or_else(|| "config path has no parent".to_string())?;
+    let path = directory.join("desktop-audit.jsonl");
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(format!("refusing to use symlinked file {}", path.display()));
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("inspect desktop audit log: {error}")),
+    }
+    let mut file = OpenOptions::new()
+        .read(true)
+        .open(&path)
+        .map_err(|error| format!("open desktop audit log: {error}"))?;
+    let length = file
+        .metadata()
+        .map_err(|error| format!("inspect desktop audit log: {error}"))?
+        .len();
+    let offset = length.saturating_sub(MAX_AUDIT_READ_BYTES);
+    file.seek(SeekFrom::Start(offset))
+        .map_err(|error| format!("seek desktop audit log: {error}"))?;
+    let mut bytes = Vec::new();
+    file.take(MAX_AUDIT_READ_BYTES)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("read desktop audit log: {error}"))?;
+    let body = String::from_utf8_lossy(&bytes);
+    let mut lines = body.lines();
+    if offset > 0 {
+        let _ = lines.next();
+    }
+    Ok(lines
+        .rev()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|event| {
+            event.is_object()
+                && event
+                    .get("secret_values_recorded")
+                    .and_then(serde_json::Value::as_bool)
+                    == Some(false)
+        })
+        .take(limit)
+        .collect())
 }
 
 #[derive(Debug, Clone)]
@@ -205,14 +309,30 @@ impl SettingsStore {
 
         let mut root = read_config(&self.config_path)?;
         let secret_path = secret_path(&root, &self.config_path)?;
+        let previous_auth_tokens = configured_auth_principals(&root)
+            .into_iter()
+            .map(|principal| principal.token_env)
+            .collect::<BTreeSet<_>>();
+        let next_auth_tokens = update
+            .auth_principals
+            .iter()
+            .map(|principal| principal.token_env.clone())
+            .collect::<BTreeSet<_>>();
+        let removed_auth_tokens = previous_auth_tokens
+            .difference(&next_auth_tokens)
+            .cloned()
+            .collect::<Vec<_>>();
         validate_mutable_sections(&root)?;
         validate_external_sources(&root, &update.sources)?;
         apply_update(&mut root, &update, &secret_path);
 
-        if !update.secrets.is_empty() {
+        if !update.secrets.is_empty() || !removed_auth_tokens.is_empty() {
             ensure_managed_secret_path(&secret_path, &self.config_path)?;
             let mut secrets = read_secret_map(&secret_path)?;
             apply_secret_updates(&mut secrets, &update.secrets)?;
+            for name in &removed_auth_tokens {
+                secrets.remove(name);
+            }
             atomic_write(&secret_path, render_secrets(&secrets).as_bytes())?;
         }
 
@@ -242,6 +362,7 @@ fn snapshot(
 ) -> SettingsSnapshot {
     let workspaces = configured_workspaces(root);
     let sources = configured_sources(root);
+    let auth_principals = configured_auth_principals(root);
     let embedding_api_key_env = optional_string(root, "embedding", "api_key_env");
     let query_api_key_env = optional_string(root, "query", "api_key_env");
     let mut secret_names = BTreeSet::new();
@@ -252,6 +373,11 @@ fn snapshot(
             .iter()
             .filter_map(|source| source.token_env.as_ref().cloned()),
     );
+    secret_names.extend(
+        auth_principals
+            .iter()
+            .map(|principal| principal.token_env.clone()),
+    );
 
     SettingsSnapshot {
         config_path: config_path.display().to_string(),
@@ -260,6 +386,7 @@ fn snapshot(
         restart_required: false,
         workspaces,
         sources,
+        auth_principals,
         embedding: EmbeddingSettings {
             provider: provider_kind(string(
                 root,
@@ -342,6 +469,28 @@ fn snapshot(
             })
             .collect(),
     }
+}
+
+fn configured_auth_principals(root: &Table) -> Vec<AuthPrincipalSettings> {
+    table(root, "auth")
+        .and_then(|auth| auth.get("tokens"))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_table)
+                .filter_map(|item| {
+                    Some(AuthPrincipalSettings {
+                        principal: item.get("principal")?.as_str()?.to_string(),
+                        token_env: item.get("token_env")?.as_str()?.to_string(),
+                        scopes: table_string_array(item, "scopes"),
+                        acl: table_string_array(item, "acl"),
+                    })
+                })
+                .take(MAX_AUTH_PRINCIPALS)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn configured_sources(root: &Table) -> Vec<SourceSettings> {
@@ -481,6 +630,7 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
         }
     }
     validate_sources(&mut update.sources, &ids)?;
+    validate_auth_principals(&mut update.auth_principals)?;
 
     validate_provider("embedding", &update.embedding.provider)?;
     validate_url("embedding", &update.embedding.base_url)?;
@@ -652,6 +802,7 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
         ),
     );
     apply_sources(root, &update.sources);
+    apply_auth_principals(root, &update.auth_principals);
 
     set_string(root, "embedding", "base_url", &update.embedding.base_url);
     set_string(root, "embedding", "model", &update.embedding.model);
@@ -780,6 +931,79 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
             &secret_path.display().to_string(),
         );
     }
+}
+
+fn apply_auth_principals(root: &mut Table, principals: &[AuthPrincipalSettings]) {
+    let rendered = principals
+        .iter()
+        .map(|principal| {
+            let mut table = Table::new();
+            table.insert(
+                "principal".into(),
+                Value::String(principal.principal.clone()),
+            );
+            table.insert(
+                "token_env".into(),
+                Value::String(principal.token_env.clone()),
+            );
+            set_table_string_array(&mut table, "scopes", &principal.scopes);
+            set_table_string_array(&mut table, "acl", &principal.acl);
+            Value::Table(table)
+        })
+        .collect();
+    mutable_table(root, "auth").insert("tokens".into(), Value::Array(rendered));
+}
+
+fn validate_auth_principals(principals: &mut [AuthPrincipalSettings]) -> Result<(), String> {
+    if principals.len() > MAX_AUTH_PRINCIPALS {
+        return Err(format!(
+            "configure no more than {MAX_AUTH_PRINCIPALS} auth principals"
+        ));
+    }
+    let mut names = BTreeSet::new();
+    let mut token_envs = BTreeSet::new();
+    for principal in principals {
+        principal.principal = principal.principal.trim().to_string();
+        principal.token_env = principal.token_env.trim().to_string();
+        if principal.principal.is_empty()
+            || principal.principal.len() > 128
+            || !principal.principal.chars().all(|character| {
+                character.is_ascii_alphanumeric()
+                    || matches!(character, '-' | '_' | '.' | '@' | ':')
+            })
+        {
+            return Err(
+                "auth principal names must use 1-128 letters, numbers, or . _ @ : -".into(),
+            );
+        }
+        if !names.insert(principal.principal.clone()) {
+            return Err(format!(
+                "auth principal `{}` is duplicated",
+                principal.principal
+            ));
+        }
+        validate_env_name(&principal.token_env)?;
+        if !token_envs.insert(principal.token_env.clone()) {
+            return Err(format!(
+                "auth token environment `{}` is reused",
+                principal.token_env
+            ));
+        }
+        normalize_string_list("auth scope", &mut principal.scopes, 3, 16)?;
+        if principal.scopes.is_empty()
+            || principal
+                .scopes
+                .iter()
+                .any(|scope| !matches!(scope.as_str(), "query" | "status" | "admin"))
+        {
+            return Err(format!(
+                "auth principal `{}` must have query, status, or admin scopes",
+                principal.principal
+            ));
+        }
+        normalize_string_list("auth ACL", &mut principal.acl, 100, 128)?;
+    }
+    Ok(())
 }
 
 fn apply_sources(root: &mut Table, sources: &[SourceSettings]) {
@@ -1114,9 +1338,7 @@ fn validate_source_path(source: &str, label: &str, value: &str) -> Result<(), St
     let path = Path::new(value);
     if !path.is_absolute()
         || path.parent().is_none()
-        || path
-            .parent()
-            .is_none_or(|parent| parent.parent().is_none())
+        || path.parent().is_none_or(|parent| parent.parent().is_none())
         || path.components().any(|component| {
             matches!(
                 component,
@@ -1274,6 +1496,8 @@ fn append_audit(config_path: &Path, update: &SettingsUpdate) -> Result<(), Strin
         "workspace_ids": update.workspaces.iter().map(|workspace| workspace.id.as_str()).collect::<Vec<_>>(),
         "source_names": update.sources.iter().map(|source| source.name.as_str()).collect::<Vec<_>>(),
         "enabled_source_names": update.sources.iter().filter(|source| source.enabled).map(|source| source.name.as_str()).collect::<Vec<_>>(),
+        "auth_principal_names": update.auth_principals.iter().map(|principal| principal.principal.as_str()).collect::<Vec<_>>(),
+        "auth_token_environment_names": update.auth_principals.iter().map(|principal| principal.token_env.as_str()).collect::<Vec<_>>(),
         "secret_names": secret_names,
         "secret_values_recorded": false,
     });
@@ -1659,6 +1883,12 @@ mod tests {
                 color: Some("#E8A83B".into()),
             }],
             sources: Vec::new(),
+            auth_principals: vec![AuthPrincipalSettings {
+                principal: "work-agent".into(),
+                token_env: "CORTANA_WORK_AGENT_TOKEN".into(),
+                scopes: vec!["query".into(), "status".into()],
+                acl: vec!["work".into()],
+            }],
             embedding: EmbeddingSettings {
                 provider: "local".into(),
                 base_url: "http://127.0.0.1:6999/v1".into(),
@@ -1700,11 +1930,18 @@ mod tests {
                 connector_timeout_seconds: 3600,
                 audit_max_events: 10_000,
             },
-            secrets: vec![SecretUpdate {
-                name: "CORTANA_QUERY_API_KEY".into(),
-                value: Some("not-returned".into()),
-                clear: false,
-            }],
+            secrets: vec![
+                SecretUpdate {
+                    name: "CORTANA_QUERY_API_KEY".into(),
+                    value: Some("not-returned".into()),
+                    clear: false,
+                },
+                SecretUpdate {
+                    name: "CORTANA_WORK_AGENT_TOKEN".into(),
+                    value: Some("private-bearer".into()),
+                    clear: false,
+                },
+            ],
         }
     }
 
@@ -1718,9 +1955,30 @@ mod tests {
             .save(valid_update(temp.path()))
             .expect("save settings");
         assert_eq!(state.workspaces[0].id, "work");
+        assert_eq!(state.auth_principals[0].principal, "work-agent");
         assert!(!format!("{state:?}").contains("not-returned"));
+        assert!(!format!("{state:?}").contains("private-bearer"));
         let secret_body =
             fs::read_to_string(temp.path().join("config/secrets.env")).expect("secret file");
+        assert!(secret_body.contains("CORTANA_QUERY_API_KEY=not-returned"));
+        assert!(secret_body.contains("CORTANA_WORK_AGENT_TOKEN=private-bearer"));
+        assert_eq!(
+            bearer_for_scope_at(&store.config_path, "query").expect("query bearer"),
+            Some("private-bearer".into())
+        );
+        assert!(bearer_for_scope_at(&store.config_path, "admin").is_err());
+        let audit = desktop_audit_events_at(&store.config_path, 10).expect("desktop audit");
+        assert_eq!(audit.len(), 1);
+        assert_eq!(audit[0]["event"], "settings.updated");
+        assert_eq!(audit[0]["secret_values_recorded"], false);
+
+        let mut removal = valid_update(temp.path());
+        removal.auth_principals.clear();
+        removal.secrets.clear();
+        store.save(removal).expect("remove auth principal");
+        let secret_body =
+            fs::read_to_string(temp.path().join("config/secrets.env")).expect("secret file");
+        assert!(!secret_body.contains("CORTANA_WORK_AGENT_TOKEN"));
         assert!(secret_body.contains("CORTANA_QUERY_API_KEY=not-returned"));
         assert!(temp.path().join("config/desktop-audit.jsonl").is_file());
         #[cfg(unix)]
@@ -1750,6 +2008,10 @@ mod tests {
 
         let mut update = valid_update(temp.path());
         update.secrets[0].value = Some("secret\nINJECTED=yes".into());
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.auth_principals[0].scopes = vec!["root".into()];
         assert!(validate_update(&mut update).is_err());
     }
 

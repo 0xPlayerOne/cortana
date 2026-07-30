@@ -58,3 +58,9 @@ exit the control plane. This does not stop the independently managed Cortana ser
 The **Services** panel shows structured launchd state and controls installed embedding, server,
 backup, and (only when explicitly installed elsewhere) sync jobs through fixed native actions.
 Desktop-at-login controls only the tray application and never installs or starts ingestion.
+
+Aggregate service actions control only embedding and server; recurring sync and backup are always
+excluded. **Updates** uses the fixed signed GitHub feed, reports download progress, and requires
+confirmation before native signature verification, installation, and restart. **Access** manages
+named scopes and ACL labels with write-only bearer values. **Audit** displays bounded metadata-only
+runtime and Desktop events without queries, content, command logs, or credentials.

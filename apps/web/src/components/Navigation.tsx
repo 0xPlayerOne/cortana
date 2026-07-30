@@ -30,10 +30,10 @@ export function TitleActions({
   if (context) {
     return (
       <div className="title-actions">
-        <button aria-label="Filter results">
+        <button aria-label="Filter results" title="Result filters are coming later" disabled>
           <Filter size={18} />
         </button>
-        <button aria-label="Search history">
+        <button aria-label="Search history" title="Search history is coming later" disabled>
           <Clock3 size={18} />
         </button>
         <button className="mobile-button" aria-label="Open agent context" onClick={onOpenContext}>
@@ -110,8 +110,9 @@ function RailButton({
     <button
       className={`rail-button ${active ? 'active' : ''}`}
       aria-label={label}
-      title={label}
+      title={onClick ? label : `${label} (coming later)`}
       onClick={onClick}
+      disabled={!onClick}
     >
       <Icon size={20} />
     </button>

@@ -3,6 +3,7 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react'
 
 import {
   getAnswer,
+  getDesktopInfo,
   getDesktopSettings,
   getDocument,
   getDocuments,
@@ -22,6 +23,7 @@ import type {
   BrainDocumentSummary,
   BrainStatus,
   DesktopSettings,
+  DesktopInfo,
   Evidence,
 } from './types'
 
@@ -41,6 +43,8 @@ export function App() {
   const [view, setView] = useState<AppView>('knowledge')
   const [workspace, setWorkspace] = useState('')
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null)
+  const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null)
+  const [settingsSection, setSettingsSection] = useState<'readiness' | 'updates'>('readiness')
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
   const [documentsLoading, setDocumentsLoading] = useState(true)
@@ -86,11 +90,13 @@ export function App() {
 
   useEffect(() => {
     if (!isDesktopApp) return
-    void getDesktopSettings()
-      .then((next) => {
-        setDesktopSettings(next)
-        if (next.needs_setup) setView('settings')
-      })
+    void getDesktopSettings().then((next) => {
+      setDesktopSettings(next)
+      if (next.needs_setup) setView('settings')
+    })
+    void getDesktopInfo()
+      .then(setDesktopInfo)
+      .catch(() => {})
       .catch(() => {
         // The settings view will surface the local configuration error.
       })
@@ -210,6 +216,7 @@ export function App() {
       <Navigation view={view} onNavigate={setView} />
       {view === 'settings' ? (
         <SettingsView
+          initialSection={settingsSection}
           onSaved={(next) => {
             setDesktopSettings(next)
             if (workspace && !next.workspaces.some((item) => item.id === workspace)) {
@@ -272,6 +279,18 @@ export function App() {
         <IngestionIndicator status={status} />
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
+        {isDesktopApp && (
+          <button
+            type="button"
+            className="status-link"
+            onClick={() => {
+              setSettingsSection('updates')
+              setView('settings')
+            }}
+          >
+            Cortana {desktopInfo?.desktop_version || '—'} · Updates
+          </button>
+        )}
         <label className="workspace-select">
           Workspace:
           <select value={workspace} onChange={(event) => chooseWorkspace(event.target.value)}>
