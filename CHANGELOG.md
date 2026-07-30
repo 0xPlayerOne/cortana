@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/0xPlayerOne/cortana/compare/v0.1.8...v0.2.0) (2026-07-30)
+
+
+### Features
+
+* **query:** add planned cited answer pipeline ([df4c967](https://github.com/0xPlayerOne/cortana/commit/df4c967879754359a12b51b69672ac6127bb17d7))
+
 ## [0.1.8](https://github.com/0xPlayerOne/cortana/compare/v0.1.7...v0.1.8) (2026-07-30)
 
 
