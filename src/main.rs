@@ -184,7 +184,13 @@ enum Command {
         api_token_env: Option<String>,
     },
     /// Serve retrieval tools over MCP stdio.
-    Mcp,
+    Mcp {
+        #[arg(
+            long,
+            help = "Environment variable containing a configured scoped agent token"
+        )]
+        token_env: Option<String>,
+    },
     /// Supervise the configured local OpenAI-compatible embedding process.
     EmbeddingService,
     /// Install, inspect, or remove the per-user background services.
@@ -572,9 +578,20 @@ async fn main() -> Result<()> {
             )
             .await
         }
-        Some(Command::Mcp) => {
+        Some(Command::Mcp { token_env }) => {
+            let principal = if let Some(name) = token_env {
+                let token = config
+                    .environment_value(&name)
+                    .with_context(|| format!("MCP token environment variable {name} is not set"))?;
+                let auth = cortana::auth::AuthPolicy::from_config(&config, None)?;
+                auth.authenticate(&token)
+                    .context("MCP token does not match a configured [[auth.tokens]] principal")?
+            } else {
+                cortana::auth::Principal::local("local-mcp")
+            };
             mcp::serve(
                 mcp::BrainServer::new(store, embedder)
+                    .with_principal(principal)
                     .with_audit_limit(config.auth.audit_max_events),
             )
             .await
