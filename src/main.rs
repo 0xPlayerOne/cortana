@@ -492,9 +492,10 @@ async fn main() -> Result<()> {
                     })
                 })
                 .transpose()?;
+            let auth = cortana::auth::AuthPolicy::from_config(&config, api_token)?;
             anyhow::ensure!(
-                !allow_remote || api_token.is_some(),
-                "--allow-remote requires --api-token-env"
+                !allow_remote || auth.requires_token(),
+                "--allow-remote requires --api-token-env or [[auth.tokens]]"
             );
             let web_dir = (!no_web).then_some(web_dir);
             let query_api_key = config
@@ -515,16 +516,23 @@ async fn main() -> Result<()> {
                 config.query.clone(),
             );
             api::serve(
-                api::AppState::new(store, embedder, api_token)
+                api::AppState::new(store, embedder, None)
                     .with_config(&config, service::sync_job_installed())
-                    .with_answer_engine(answer),
+                    .with_answer_engine(answer)
+                    .with_auth_policy(auth),
                 &address,
                 web_dir.as_deref(),
                 allow_remote,
             )
             .await
         }
-        Some(Command::Mcp) => mcp::serve(mcp::BrainServer::new(store, embedder)).await,
+        Some(Command::Mcp) => {
+            mcp::serve(
+                mcp::BrainServer::new(store, embedder)
+                    .with_audit_limit(config.auth.audit_max_events),
+            )
+            .await
+        }
         Some(
             Command::Init { .. }
             | Command::MigrateHermes { .. }
@@ -763,6 +771,7 @@ fn ad_hoc_filesystem_source(
         max_duration_seconds: None,
         exclude: exclude.to_vec(),
         command: Vec::new(),
+        acl: Vec::new(),
     }
 }
 
@@ -1656,6 +1665,9 @@ fn normalize_documents(documents: &mut [Document], source: &SourceConfig) {
         let connector_kind = document.source.clone();
         document.source.clone_from(&canonical);
         document.project.clone_from(&source.project);
+        if document.acl.is_empty() {
+            document.acl.clone_from(&source.acl);
+        }
         if !document.metadata.is_object() {
             document.metadata = serde_json::json!({});
         }

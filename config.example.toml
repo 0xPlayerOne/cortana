@@ -49,6 +49,18 @@ request_concurrency = 4
 cache_max_entries = 10000
 cache_ttl_seconds = 3600
 
+[auth]
+# Query audit stores metadata only (never query text, evidence, or tokens).
+audit_max_events = 10000
+
+# Optional multi-principal bearer tokens. Values come only from the environment/private env file.
+# When no tokens are configured, the loopback-only server uses an implicit local owner.
+# [[auth.tokens]]
+# principal = "shared-agent"
+# token_env = "CORTANA_SHARED_AGENT_TOKEN"
+# scopes = ["query", "status"]
+# acl = ["work", "shared"]
+
 [ingestion]
 # Every source must pass a complete preflight before Cortana embeds or reconciles it.
 # These conservative defaults bound first-run and unexpectedly expanded snapshots.
@@ -71,6 +83,7 @@ kind = "filesystem"
 project = "work"
 root = "/absolute/path/to/code"
 source = "work-code"
+acl = ["work"]
 # Relative paths to omit from this source. Generated directories are always skipped.
 exclude = ["second-brain"]
 # Optional tighter or larger source-specific budgets.
