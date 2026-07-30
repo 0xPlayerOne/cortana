@@ -85,6 +85,69 @@
   font-size: 11px;
 }
 
+.retrieval-diagnostics dl,
+.server-context dl {
+  display: grid;
+  margin: 10px 0 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.retrieval-diagnostics dl > div,
+.server-context dl > div {
+  padding: 7px;
+  background: #252623;
+}
+
+.retrieval-diagnostics dt,
+.server-context dt {
+  color: #8f918b;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.retrieval-diagnostics dd,
+.server-context dd {
+  margin: 3px 0 0;
+  color: #dddcd6;
+  font-size: 11px;
+}
+
+.retrieval-diagnostics ol {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: #b6b7b2;
+  font-size: 10px;
+}
+
+.server-context p {
+  color: #b6b7b2;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.server-context > button {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #e0b35e;
+  border: 1px solid #59503e;
+  background: #29271f;
+  cursor: pointer;
+}
+
+.server-context > button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.server-context .context-error {
+  color: #d69a80;
+}
+
 .copy-area {
   padding: 12px 16px;
   border-top: 1px solid var(--line);

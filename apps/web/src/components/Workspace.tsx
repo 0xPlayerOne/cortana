@@ -23,6 +23,7 @@ export function Workspace({
   document,
   documentLoading,
   onSelect,
+  onSelectDocument,
   onRetry,
 }: {
   query: string
@@ -34,6 +35,7 @@ export function Workspace({
   document: BrainDocument | null
   documentLoading: boolean
   onSelect: (index: number) => void
+  onSelectDocument: (id: string) => void
   onRetry: () => void
 }) {
   const [tab, setTab] = useState<Tab>('document')
@@ -66,7 +68,7 @@ export function Workspace({
       {documentLoading ? (
         <EmptyState title="Opening document" detail="Loading the canonical indexed content…" />
       ) : tab === 'document' && document ? (
-        <BrainDocumentView document={document} />
+        <BrainDocumentView document={document} onSelectDocument={onSelectDocument} />
       ) : tab === 'document' ? (
         <EmptyState
           title="Choose a document"
@@ -106,7 +108,14 @@ export function Workspace({
   )
 }
 
-function BrainDocumentView({ document }: { document: BrainDocument }) {
+function BrainDocumentView({
+  document,
+  onSelectDocument,
+}: {
+  document: BrainDocument
+  onSelectDocument: (id: string) => void
+}) {
+  const metadata = Object.entries(document.metadata).slice(0, 24)
   return (
     <article className="document canonical-document">
       <div className="breadcrumbs">
@@ -132,6 +141,13 @@ function BrainDocumentView({ document }: { document: BrainDocument }) {
             {document.project} · {document.source} ·{' '}
             {new Date(document.updated_at).toLocaleString()} · {document.chunk_count} indexed chunks
           </p>
+          <div className="document-labels" aria-label="Document security and provenance">
+            <span>Workspace: {document.project}</span>
+            <span>Source ID: {document.source_id}</span>
+            {(document.acl.length ? document.acl : ['public']).map((label) => (
+              <span key={label}>ACL: {label}</span>
+            ))}
+          </div>
           <div className="rule" />
           <div className="canonical-content">
             {document.content.split(/\n{2,}/).map((paragraph, index) => (
@@ -144,18 +160,68 @@ function BrainDocumentView({ document }: { document: BrainDocument }) {
               the original source for the complete content.
             </p>
           )}
+          {(document.backlinks.length > 0 || document.surrounding.length > 0) && (
+            <div className="document-relations">
+              {document.backlinks.length > 0 && (
+                <section>
+                  <h2>Backlinks</h2>
+                  {document.backlinks.map((related) => (
+                    <button key={related.id} onClick={() => onSelectDocument(related.id)}>
+                      <Link2 size={14} />
+                      <span>{related.title}</span>
+                      <small>{related.source}</small>
+                    </button>
+                  ))}
+                </section>
+              )}
+              {document.surrounding.length > 0 && (
+                <section>
+                  <h2>Surrounding documents</h2>
+                  {document.surrounding.map((related) => (
+                    <button key={related.id} onClick={() => onSelectDocument(related.id)}>
+                      <FileText size={14} />
+                      <span>{related.title}</span>
+                      <small>{new Date(related.updated_at).toLocaleDateString()}</small>
+                    </button>
+                  ))}
+                </section>
+              )}
+            </div>
+          )}
         </div>
         <aside className="document-outline">
           <strong>Indexed document</strong>
           <span>{document.content_chars.toLocaleString()} characters</span>
           <span>{document.chunk_count.toLocaleString()} retrieval chunks</span>
           <span>{document.source}</span>
+          <span title={document.source_id}>{document.source_id}</span>
+          {metadata.length > 0 && (
+            <details className="document-metadata">
+              <summary>Metadata ({metadata.length})</summary>
+              <dl>
+                {metadata.map(([key, value]) => (
+                  <div key={key}>
+                    <dt>{key}</dt>
+                    <dd>{formatMetadata(value)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          )}
           <BookOpen size={56} />
           <small>Canonical content protected by workspace ACLs</small>
         </aside>
       </div>
     </article>
   )
+}
+
+function formatMetadata(value: unknown) {
+  if (value === null) return 'null'
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  const serialized = JSON.stringify(value)
+  return serialized.length > 300 ? `${serialized.slice(0, 297)}…` : serialized
 }
 
 function DocumentView({

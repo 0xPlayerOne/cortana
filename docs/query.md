@@ -21,20 +21,33 @@ unbounded corpus read. The later context builder applies its independent token b
 
 The Obsidian-style sidebar uses the canonical index rather than search results:
 
-- `GET /v1/documents` returns at most 100 document summaries with project/source filters and an
-  opaque keyset cursor. The default page size is 50.
+- `GET /v1/documents` returns at most 100 document summaries with project/source filters, an
+  optional case-insensitive `query` filter over title/source/source ID, and an opaque keyset
+  cursor. The desktop requests 50 at a time and virtualizes the visible rows.
 - `GET /v1/documents/{id}` returns one ACL-authorized canonical document, its safe metadata, and
-  display bounds. Missing and unauthorized IDs deliberately share the same `404` response.
+  display bounds. It also includes the stable source ID, ACL labels, up to 12 explicit metadata
+  backlinks, and up to eight nearby documents from the same source. All relations are ACL-filtered
+  before serialization. Missing and unauthorized IDs deliberately share the same `404` response.
+- `GET /v1/graph` exposes the bounded, paginated graph contract used by the future corpus graph. A
+  page contains workspace, source, and document nodes plus `contains` edges; it accepts the same
+  filters and cursor as the document list and never materializes the corpus at once.
 - Every list and read is filtered by the authenticated principal's ACL labels and recorded in the
   metadata-only audit trail. Document content and query strings are never written to audit events.
 
 New ingestion stores exact canonical content alongside retrieval chunks. Existing indexes remain
 compatible: a document read reconstructs legacy content while removing chunk overlap, and the
-next ordinary refresh backfills exact content. A single display response is capped at 2 MiB and
+next ordinary refresh backfills exact content. On first open after upgrade, Cortana builds the
+backlink lookup once from bounded values under explicit relationship fields such as `references`,
+`links`, and source/document IDs. Unrelated metadata and credential fields are not indexed. The
+upgrade does not read document bodies, run embeddings, or contact any source. Subsequent document
+reads use the indexed lookup rather than a corpus scan. A single display response is capped at 2 MiB and
 reports `truncated=true`; the original source link remains available for unusually large records.
 Pagination is deterministic by update timestamp and stable document ID, so browsing does not load
-the whole corpus into memory. Opening the app, changing workspace, and expanding sources do not run
-embeddings or a language model; retrieval begins only when the user submits a search.
+the whole corpus into memory. The sidebar keeps workspace selection visible, supports collapsed
+project/source nodes, filters on the server, and renders a fixed-height virtual document window.
+Opening the app, changing workspace, expanding sources, and reading graph pages do not run
+embeddings or a language model; retrieval begins only when the user submits a search or explicitly
+builds an agent context bundle.
 
 ## Safe default
 
