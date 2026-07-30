@@ -92,6 +92,21 @@ injection.
 
 ## Connector contract
 
+Before the first sync of any configured source, validate it with explicit small bounds:
+
+```bash
+cortana validate-source SOURCE_NAME \
+  --max-documents 25 \
+  --max-bytes 10485760 \
+  --max-seconds 60
+```
+
+Validation can target a disabled source by exact name. It fetches only that connector snapshot,
+enforces the wall-clock and live stdout/stderr spool bounds, parses every emitted document, then
+deletes the private spool. It never opens the index, embeds content, or reconciles records.
+Filesystem validation performs the same bounded preflight walk used by sync, so start with a
+narrow root and conservative limits.
+
 External connectors must emit one JSON object per line:
 
 ```json
