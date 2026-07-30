@@ -200,7 +200,7 @@ export type DesktopSettingsUpdate = Pick<
 
 export type DesktopSourceJob = {
   id: string
-  operation: 'validation' | 'authorization'
+  operation: 'validation' | 'authorization' | 'trial-sync'
   source: string
   kind: string
   project: string
@@ -211,7 +211,7 @@ export type DesktopSourceJob = {
   completed_at_unix_seconds: number | null
   exit_code: number | null
   retryable: boolean
-  writes_indexed_data: false
+  writes_indexed_data: boolean
 }
 
 export type DesktopSetupOpen = {
@@ -240,6 +240,27 @@ export type DesktopReadiness = {
     version: string | null
     install_supported: boolean
     detail: string
+  }>
+}
+
+export type DesktopInfo = {
+  desktop_version: string
+  backend_origin: string
+  autostart_enabled: boolean
+  platform: string
+}
+
+export type DesktopServiceReport = {
+  platform: string
+  supported: boolean
+  services: Array<{
+    name: 'embedding' | 'server' | 'sync' | 'backup'
+    label: string
+    installed: boolean
+    loaded: boolean
+    state: string | null
+    pid: number | null
+    last_exit_status: number | null
   }>
 }
 

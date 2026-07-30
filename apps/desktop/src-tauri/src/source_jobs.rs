@@ -21,6 +21,7 @@ const MAX_JOBS: usize = 20;
 const VALIDATION_MAX_DOCUMENTS: &str = "25";
 const VALIDATION_MAX_BYTES: &str = "5242880";
 const VALIDATION_MAX_SECONDS: &str = "60";
+const TRIAL_SYNC_MAX_SECONDS: &str = "300";
 static NEXT_JOB: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Serialize)]
@@ -71,6 +72,7 @@ impl SourceJobState {
             "validation",
             validation_args(source_name),
             "Read-only connector validation is running with a 25 document, 5 MiB, 60 second limit.",
+            false,
         )
     }
 
@@ -98,6 +100,30 @@ impl SourceJobState {
             "authorization",
             authorization_args(source_name),
             "Waiting for Google authorization in the system browser. No source data is being read.",
+            false,
+        )
+    }
+
+    pub fn start_trial_sync(
+        &self,
+        app: &AppHandle,
+        source_name: &str,
+        approved: bool,
+    ) -> Result<SourceJobSnapshot, String> {
+        if !approved {
+            return Err("trial sync requires explicit approval".into());
+        }
+        let source = settings::configured_source(source_name)?;
+        if !source.enabled {
+            return Err("save and enable this source before a trial sync".into());
+        }
+        self.start(
+            app,
+            source,
+            "trial-sync",
+            trial_sync_args(source_name),
+            "Guarded trial sync may index up to 25 documents or 5 MiB for at most 5 minutes. Reconciliation is disabled.",
+            true,
         )
     }
 
@@ -108,6 +134,7 @@ impl SourceJobState {
         operation: &'static str,
         args: Vec<String>,
         summary: &'static str,
+        writes_indexed_data: bool,
     ) -> Result<SourceJobSnapshot, String> {
         let mut jobs = self
             .jobs
@@ -147,7 +174,7 @@ impl SourceJobState {
             completed_at_unix_seconds: None,
             exit_code: None,
             retryable: false,
-            writes_indexed_data: false,
+            writes_indexed_data,
         };
         jobs.insert(
             id.clone(),
@@ -333,8 +360,39 @@ fn authorization_args(source: &str) -> Vec<String> {
         .collect()
 }
 
+fn trial_sync_args(source: &str) -> Vec<String> {
+    [
+        "sync",
+        "--source",
+        source,
+        "--require-validation",
+        "--no-reconcile",
+        "--max-documents",
+        VALIDATION_MAX_DOCUMENTS,
+        "--max-bytes",
+        VALIDATION_MAX_BYTES,
+        "--max-seconds",
+        TRIAL_SYNC_MAX_SECONDS,
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
 fn terminal_summary(operation: &str, status: &str, disconnected: bool) -> String {
     match (operation, status, disconnected) {
+        ("trial-sync", "succeeded", _) => {
+            "Guarded trial sync completed without deletion reconciliation.".into()
+        }
+        ("trial-sync", "cancelled", _) => {
+            "Guarded trial sync was cancelled. Committed batches remain indexed; reconciliation did not run.".into()
+        }
+        ("trial-sync", _, true) => {
+            "Guarded trial sync ended without a process result; reconciliation did not run.".into()
+        }
+        ("trial-sync", _, false) => {
+            "Guarded trial sync failed; deletion reconciliation did not run.".into()
+        }
         ("authorization", "succeeded", _) => {
             "Google authorization completed and the token was stored privately.".into()
         }
@@ -400,7 +458,7 @@ fn audit(snapshot: &SourceJobSnapshot, phase: &str) {
         "project": snapshot.project,
         "status": snapshot.status,
         "exit_code": snapshot.exit_code,
-        "writes_indexed_data": false,
+        "writes_indexed_data": snapshot.writes_indexed_data,
         "source_content_recorded": false,
         "secret_values_recorded": false,
     });
@@ -456,6 +514,26 @@ mod tests {
         assert_eq!(
             authorization_args("personal-drive"),
             ["authorize-google", "personal-drive"]
+        );
+    }
+
+    #[test]
+    fn trial_sync_is_validation_gated_bounded_and_never_reconciles() {
+        assert_eq!(
+            trial_sync_args("personal-drive"),
+            [
+                "sync",
+                "--source",
+                "personal-drive",
+                "--require-validation",
+                "--no-reconcile",
+                "--max-documents",
+                "25",
+                "--max-bytes",
+                "5242880",
+                "--max-seconds",
+                "300",
+            ]
         );
     }
 }

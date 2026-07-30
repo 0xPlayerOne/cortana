@@ -49,3 +49,7 @@ metadata outcome.
 
 Closing the main window hides it to the tray. Use **Quit Cortana Desktop** from the tray menu to
 exit the control plane. This does not stop the independently managed Cortana services.
+
+The **Services** panel shows structured launchd state and controls installed embedding, server,
+backup, and (only when explicitly installed elsewhere) sync jobs through fixed native actions.
+Desktop-at-login controls only the tray application and never installs or starts ingestion.

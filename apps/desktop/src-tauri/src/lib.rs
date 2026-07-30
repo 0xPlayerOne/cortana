@@ -16,6 +16,7 @@ use tauri_plugin_autostart::ManagerExt;
 mod installer;
 mod paths;
 mod readiness;
+mod services;
 mod settings;
 mod source_jobs;
 
@@ -138,6 +139,45 @@ fn desktop_info(app: AppHandle) -> DesktopInfo {
 }
 
 #[tauri::command]
+fn desktop_autostart_set(app: AppHandle, enabled: bool) -> Result<DesktopInfo, String> {
+    if enabled {
+        app.autolaunch()
+            .enable()
+            .map_err(|error| format!("enable Desktop at login: {error}"))?;
+    } else {
+        app.autolaunch()
+            .disable()
+            .map_err(|error| format!("disable Desktop at login: {error}"))?;
+    }
+    let event = serde_json::json!({
+        "at_unix_seconds": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        "event": "desktop.autostart.changed",
+        "enabled": enabled,
+        "secret_values_recorded": false,
+    });
+    let _ = settings::append_audit_event(&settings::default_config_path(), &event);
+    Ok(desktop_info(app))
+}
+
+#[tauri::command]
+async fn desktop_services_status(app: AppHandle) -> Result<services::ServiceReport, String> {
+    services::status(&app).await
+}
+
+#[tauri::command]
+async fn desktop_service_action(
+    app: AppHandle,
+    service: String,
+    action: String,
+    approved: bool,
+) -> Result<services::ServiceReport, String> {
+    services::action(&app, &service, &action, approved).await
+}
+
+#[tauri::command]
 fn desktop_settings_get() -> Result<settings::SettingsSnapshot, String> {
     settings::load()
 }
@@ -190,6 +230,16 @@ fn desktop_source_authorization_start(
     source: String,
 ) -> Result<source_jobs::SourceJobSnapshot, String> {
     jobs.start_authorization(&app, &source)
+}
+
+#[tauri::command]
+fn desktop_source_trial_sync_start(
+    app: AppHandle,
+    jobs: State<'_, source_jobs::SourceJobState>,
+    source: String,
+    approved: bool,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.start_trial_sync(&app, &source, approved)
 }
 
 #[tauri::command]
@@ -338,6 +388,9 @@ pub fn run() {
             brain_answer,
             brain_context,
             desktop_info,
+            desktop_autostart_set,
+            desktop_services_status,
+            desktop_service_action,
             desktop_settings_get,
             desktop_settings_save,
             desktop_path_pick,
@@ -347,6 +400,7 @@ pub fn run() {
             desktop_installer_cancel,
             desktop_source_validation_start,
             desktop_source_authorization_start,
+            desktop_source_trial_sync_start,
             desktop_source_setup_open,
             desktop_source_validation_status,
             desktop_source_validation_cancel

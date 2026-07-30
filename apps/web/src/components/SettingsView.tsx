@@ -20,6 +20,8 @@ import {
   cancelDesktopInstaller,
   cancelDesktopSourceValidation,
   getDesktopInstaller,
+  getDesktopInfo,
+  getDesktopServices,
   getDesktopSourceValidation,
   getDesktopSettings,
   isDesktopApp,
@@ -27,13 +29,18 @@ import {
   pickDesktopPath,
   saveDesktopSettings,
   scanDesktopReadiness,
+  setDesktopAutostart,
   startDesktopInstaller,
   startDesktopSourceAuthorization,
+  startDesktopSourceTrialSync,
   startDesktopSourceValidation,
+  runDesktopServiceAction,
 } from '../api'
 import type {
   DesktopInstallJob,
+  DesktopInfo,
   DesktopReadiness,
+  DesktopServiceReport,
   DesktopSettings,
   DesktopSettingsUpdate,
   DesktopSourceJob,
@@ -43,7 +50,14 @@ import type {
 } from '../types'
 
 type Section =
-  'readiness' | 'workspaces' | 'sources' | 'embedding' | 'query' | 'ingestion' | 'advanced'
+  | 'readiness'
+  | 'services'
+  | 'workspaces'
+  | 'sources'
+  | 'embedding'
+  | 'query'
+  | 'ingestion'
+  | 'advanced'
 
 export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings) => void }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
@@ -140,6 +154,7 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
           {(
             [
               'readiness',
+              'services',
               'workspaces',
               'sources',
               'embedding',
@@ -163,6 +178,7 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
         </nav>
         <form id="settings-form" className="settings-form" onSubmit={submit}>
           {section === 'readiness' && <ReadinessSection />}
+          {section === 'services' && <ServicesSection />}
           {section === 'workspaces' && <WorkspaceSection settings={settings} update={update} />}
           {section === 'sources' && (
             <SourcesSection
@@ -225,6 +241,150 @@ export function SettingsView({ onSaved }: { onSaved: (settings: DesktopSettings)
         </div>
       )}
     </main>
+  )
+}
+
+function ServicesSection() {
+  const [report, setReport] = useState<DesktopServiceReport | null>(null)
+  const [info, setInfo] = useState<DesktopInfo | null>(null)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+
+  const refresh = async () => {
+    setError('')
+    try {
+      const [nextReport, nextInfo] = await Promise.all([getDesktopServices(), getDesktopInfo()])
+      setReport(nextReport)
+      setInfo(nextInfo)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Service status could not be loaded')
+    }
+  }
+
+  useEffect(() => {
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 15_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  const serviceAction = async (
+    service: DesktopServiceReport['services'][number],
+    action: 'start' | 'stop' | 'restart'
+  ) => {
+    const warning =
+      service.name === 'sync'
+        ? '\n\nThis controls only an already installed recurring sync job. Cortana will not install one automatically.'
+        : ''
+    if (!window.confirm(`${action} ${service.label}?${warning}`)) return
+    setBusy(`${service.name}:${action}`)
+    setError('')
+    try {
+      setReport(await runDesktopServiceAction(service.name, action))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Service action failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const toggleAutostart = async (enabled: boolean) => {
+    setBusy('autostart')
+    setError('')
+    try {
+      setInfo(await setDesktopAutostart(enabled))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Desktop autostart could not be changed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="Services"
+      description="Inspect and control installed Cortana runtime services. Service actions never install or enable recurring ingestion."
+    >
+      <div className="service-autostart">
+        <label className="source-enable">
+          <input
+            type="checkbox"
+            checked={info?.autostart_enabled || false}
+            disabled={!info || busy === 'autostart'}
+            onChange={(event) => void toggleAutostart(event.target.checked)}
+          />
+          <span>
+            <strong>Open Cortana Desktop at login</strong>
+            <small>
+              The window may be closed while the tray and runtime continue independently.
+            </small>
+          </span>
+        </label>
+      </div>
+      <div className="source-settings-toolbar">
+        <span>
+          {report?.supported
+            ? `${report.services.filter((service) => service.loaded).length} loaded`
+            : report
+              ? `Runtime service control is not supported on ${report.platform}`
+              : 'Checking services…'}
+        </span>
+        <button type="button" className="secondary-button" onClick={() => void refresh()}>
+          <RefreshCw size={14} /> Refresh
+        </button>
+      </div>
+      {error && <div className="safety-note">{error}</div>}
+      <div className="service-grid">
+        {report?.services.map((service) => {
+          const running = service.loaded && service.state === 'running'
+          return (
+            <article className="service-card" key={service.name}>
+              <header>
+                <i className={`service-state ${running ? 'ready' : ''}`} />
+                <div>
+                  <strong>{service.name[0].toUpperCase() + service.name.slice(1)}</strong>
+                  <small>{service.label}</small>
+                </div>
+              </header>
+              <p>
+                {!service.installed
+                  ? 'Not installed'
+                  : service.loaded
+                    ? service.state || 'Loaded'
+                    : 'Installed, not loaded'}
+                {service.pid ? ` · PID ${service.pid}` : ''}
+              </p>
+              <div className="service-actions">
+                <button
+                  type="button"
+                  disabled={!report.supported || !service.installed || running || Boolean(busy)}
+                  onClick={() => void serviceAction(service, 'start')}
+                >
+                  <Play size={14} /> Start
+                </button>
+                <button
+                  type="button"
+                  disabled={!report.supported || !service.loaded || Boolean(busy)}
+                  onClick={() => void serviceAction(service, 'stop')}
+                >
+                  <CircleStop size={14} /> Stop
+                </button>
+                <button
+                  type="button"
+                  disabled={!report.supported || !service.installed || Boolean(busy)}
+                  onClick={() => void serviceAction(service, 'restart')}
+                >
+                  <RefreshCw size={14} /> Restart
+                </button>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+      <p className="settings-note">
+        The sync service remains absent unless it was installed explicitly outside this screen.
+        Starting the server, embedding, or backup service does not run ingestion.
+      </p>
+    </SettingsSection>
   )
 }
 
@@ -611,6 +771,26 @@ function SourcesSection({
     }
   }
 
+  const trialSyncSource = async (source: SourceSettings) => {
+    if (!canValidate) {
+      setError('Save source changes before syncing so the native runtime uses this exact config.')
+      return
+    }
+    if (
+      !window.confirm(
+        `Run a guarded trial sync for ${source.name}?\n\nThis requires a matching successful validation. It may embed and index at most 25 documents or 5 MiB for up to 5 minutes. It will not delete or reconcile existing records. Committed batches remain indexed if you cancel.`
+      )
+    ) {
+      return
+    }
+    setError('')
+    try {
+      setJob(await startDesktopSourceTrialSync(source.name))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Trial sync failed to start')
+    }
+  }
+
   const openSetup = async (source: SourceSettings) => {
     if (!canValidate) {
       setError('Save this source before opening its account setup page.')
@@ -652,7 +832,7 @@ function SourcesSection({
   return (
     <SettingsSection
       title="Ingestion sources"
-      description="Configure local and account-backed sources per workspace. Saving only updates configuration; validation is a separate, read-only bounded action and full sync remains disabled."
+      description="Configure local and account-backed sources per workspace. Saving never ingests data; validation and a deliberately small no-reconcile trial sync are separate confirmed actions."
     >
       <div className="source-settings-toolbar">
         <span>
@@ -749,6 +929,23 @@ function SourcesSection({
                       <Play size={14} />
                     )}
                     Validate
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !canValidate ||
+                      !source.enabled ||
+                      Boolean(job && ['running', 'cancelling'].includes(job.status))
+                    }
+                    title="Validation-gated trial sync; max 25 documents, 5 MiB, no reconciliation"
+                    onClick={() => void trialSyncSource(source)}
+                  >
+                    {runningThis && job?.operation === 'trial-sync' ? (
+                      <LoaderCircle className="spin" size={14} />
+                    ) : (
+                      <Play size={14} />
+                    )}
+                    Trial sync
                   </button>
                   <button
                     type="button"
@@ -1060,6 +1257,7 @@ function SourcesSection({
                   const source = settings.sources.find((item) => item.name === job.source)
                   if (source) {
                     if (job.operation === 'authorization') void authorizeSource(source)
+                    else if (job.operation === 'trial-sync') void trialSyncSource(source)
                     else void validateSource(source)
                   }
                 }}
@@ -1075,9 +1273,9 @@ function SourcesSection({
       <div className="safety-note">
         <AlertTriangle size={16} />
         <span>
-          Source validation fetches a deliberately small sample but writes only metadata about the
-          outcome. Full ingestion requires a separate reviewed sync action, which is not enabled
-          here.
+          Source validation checks a bounded snapshot and writes only metadata about the outcome.
+          Trial sync is separately confirmed, requires an exact successful validation, limits work
+          to 25 documents and 5 MiB, and never performs deletion reconciliation.
         </span>
       </div>
     </SettingsSection>
