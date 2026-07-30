@@ -324,6 +324,7 @@ dependencies = [
  "fs2",
  "futures-util",
  "ignore",
+ "libc",
  "open",
  "predicates",
  "reqwest",

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -15,6 +15,7 @@ use crate::config::SourceConfig;
 const STATE_FILE: &str = "source-validations.json";
 const LOCK_FILE: &str = "source-validations.lock";
 const MAX_ERROR_CHARS: usize = 500;
+const MAX_STATE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SourceValidationStatus {
@@ -40,18 +41,32 @@ struct ValidationState {
 
 pub fn load(data_dir: &Path) -> Result<BTreeMap<String, SourceValidationStatus>> {
     let path = data_dir.join(STATE_FILE);
-    if !path.exists() {
-        return Ok(BTreeMap::new());
+    match std::fs::symlink_metadata(&path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(BTreeMap::new());
+        }
+        Err(error) => return Err(error.into()),
     }
-    let bytes = std::fs::read(&path)
+    validate_data_directory(data_dir, false)?;
+    let input = open_existing_file(&path)
+        .with_context(|| format!("failed to open source validation state {}", path.display()))?;
+    let mut bytes = Vec::new();
+    input
+        .take(MAX_STATE_BYTES + 1)
+        .read_to_end(&mut bytes)
         .with_context(|| format!("failed to read source validation state {}", path.display()))?;
+    anyhow::ensure!(
+        bytes.len() as u64 <= MAX_STATE_BYTES,
+        "source validation state exceeds {MAX_STATE_BYTES} bytes"
+    );
     let state: ValidationState = serde_json::from_slice(&bytes)
         .with_context(|| format!("invalid source validation state {}", path.display()))?;
     Ok(state.sources)
 }
 
 pub fn record(data_dir: &Path, mut status: SourceValidationStatus) -> Result<()> {
-    std::fs::create_dir_all(data_dir)?;
+    validate_data_directory(data_dir, true)?;
     status.error = status.error.map(sanitize_error);
     let lock_path = data_dir.join(LOCK_FILE);
     let lock = owner_only_file(&lock_path)?;
@@ -64,8 +79,7 @@ pub fn record(data_dir: &Path, mut status: SourceValidationStatus) -> Result<()>
     let path = data_dir.join(STATE_FILE);
     let temporary = temporary_path(&path);
     let result = (|| -> Result<()> {
-        let mut output = owner_only_file(&temporary)?;
-        output.set_len(0)?;
+        let mut output = create_owner_only_file(&temporary)?;
         output.write_all(&serde_json::to_vec_pretty(&state)?)?;
         output.sync_all()?;
         std::fs::rename(&temporary, &path)?;
@@ -118,22 +132,128 @@ pub fn require_success(
 fn owner_only_file(path: &Path) -> Result<File> {
     let mut options = OpenOptions::new();
     options.create(true).read(true).write(true);
+    configure_no_follow(&mut options);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    reject_symlink(path)?;
+    let file = options.open(path)?;
+    validate_open_file(&file, path)?;
+    set_owner_only(&file)?;
+    Ok(file)
+}
+
+fn create_owner_only_file(path: &Path) -> Result<File> {
+    let mut options = OpenOptions::new();
+    options.create_new(true).read(true).write(true);
+    configure_no_follow(&mut options);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
     let file = options.open(path)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
-    }
+    validate_open_file(&file, path)?;
+    set_owner_only(&file)?;
     Ok(file)
 }
 
+fn open_existing_file(path: &Path) -> Result<File> {
+    reject_symlink(path)?;
+    let mut options = OpenOptions::new();
+    options.read(true);
+    configure_no_follow(&mut options);
+    let file = options.open(path)?;
+    validate_open_file(&file, path)?;
+    Ok(file)
+}
+
+fn reject_symlink(path: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => anyhow::ensure!(
+            !metadata.file_type().is_symlink(),
+            "refusing to use symlinked validation path {}",
+            path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
+}
+
+fn validate_data_directory(path: &Path, create: bool) -> Result<()> {
+    reject_symlink(path)?;
+    if create {
+        std::fs::create_dir_all(path)?;
+        reject_symlink(path)?;
+    }
+    let metadata = std::fs::metadata(path)?;
+    anyhow::ensure!(
+        metadata.is_dir(),
+        "validation data path is not a directory: {}",
+        path.display()
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        anyhow::ensure!(
+            metadata.uid() == unsafe { libc::geteuid() },
+            "validation data directory is not owned by the current user: {}",
+            path.display()
+        );
+        if create {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_open_file(file: &File, path: &Path) -> Result<()> {
+    let metadata = file.metadata()?;
+    anyhow::ensure!(
+        metadata.is_file(),
+        "validation path is not a regular file: {}",
+        path.display()
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        anyhow::ensure!(
+            metadata.uid() == unsafe { libc::geteuid() },
+            "validation file is not owned by the current user: {}",
+            path.display()
+        );
+        anyhow::ensure!(
+            metadata.nlink() == 1,
+            "validation file has multiple hard links: {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn set_owner_only(file: &File) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn configure_no_follow(options: &mut OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt;
+    options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+}
+
+#[cfg(not(unix))]
+fn configure_no_follow(_options: &mut OpenOptions) {}
+
 fn temporary_path(path: &Path) -> PathBuf {
-    path.with_extension(format!("tmp-{}", std::process::id()))
+    path.with_extension(format!("tmp-{}", uuid::Uuid::new_v4()))
 }
 
 fn sanitize_error(error: String) -> String {
@@ -235,5 +355,55 @@ mod tests {
         let mut changed = source;
         changed.query = Some("from:someone@example.com".into());
         assert!(require_success(directory.path(), &changed, 25, 1024).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_validation_state_without_reading_target() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let target = directory.path().join("target.json");
+        std::fs::write(&target, r#"{"sources":{}}"#).expect("write target");
+        symlink(&target, directory.path().join(STATE_FILE)).expect("create symlink");
+
+        let error = load(directory.path()).expect_err("symlink must be rejected");
+        assert!(format!("{error:#}").contains("symlinked validation path"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_lock_without_modifying_target() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let target = directory.path().join("target.txt");
+        std::fs::write(&target, "unchanged").expect("write target");
+        symlink(&target, directory.path().join(LOCK_FILE)).expect("create symlink");
+
+        let error = record(
+            directory.path(),
+            SourceValidationStatus {
+                source: "drive".into(),
+                project: "work".into(),
+                kind: "google-drive".into(),
+                status: "succeeded".into(),
+                validated_at: Utc::now(),
+                documents: Some(1),
+                bytes: Some(8),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 30,
+                configuration_fingerprint: None,
+                error: None,
+            },
+        )
+        .expect_err("symlink must be rejected");
+
+        assert!(error.to_string().contains("symlinked validation path"));
+        assert_eq!(
+            std::fs::read_to_string(target).expect("read target"),
+            "unchanged"
+        );
     }
 }
