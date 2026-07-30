@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "thresholds": {
+    "min_recall_at_k": 1.0,
+    "min_mrr": 1.0,
+    "min_case_pass_rate": 1.0,
+    "min_citation_validity": 1.0,
+    "max_latency_ms": 1000
+  },
+  "documents": [
+    {
+      "source": "handbook",
+      "source_id": "deploy-runbook",
+      "title": "Orchid deployment runbook",
+      "content": "The Orchid service production deployment uses the bluejay checklist and verifies the canary before promotion.",
+      "uri": "https://example.invalid/handbook/deploy",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "project": "engineering",
+      "acl": ["work"],
+      "metadata": {}
+    },
+    {
+      "source": "notes",
+      "source_id": "meeting-notes",
+      "title": "Orchid planning notes",
+      "content": "The Orchid planning meeting assigned documentation review to Rowan and scheduled the next review for Thursday.",
+      "uri": "https://example.invalid/notes/orchid",
+      "updated_at": "2026-01-02T00:00:00Z",
+      "project": "engineering",
+      "acl": ["work"],
+      "metadata": {}
+    },
+    {
+      "source": "notes",
+      "source_id": "private-journal",
+      "title": "Private journal",
+      "content": "The private cedar phrase is reserved for a synthetic ACL denial test.",
+      "uri": "https://example.invalid/notes/private",
+      "updated_at": "2026-01-03T00:00:00Z",
+      "project": "personal",
+      "acl": ["personal"],
+      "metadata": {}
+    },
+    {
+      "source": "public",
+      "source_id": "public-cedar",
+      "title": "Public cedar guide",
+      "content": "Cedar trees are evergreen conifers used here only as harmless public evaluation text.",
+      "uri": "https://example.invalid/public/cedar",
+      "updated_at": "2026-01-04T00:00:00Z",
+      "project": "reference",
+      "acl": [],
+      "metadata": {}
+    },
+    {
+      "source": "handbook",
+      "source_id": "cortana-ingestion-safety",
+      "title": "Cortana ingestion safety",
+      "content": "Cortana ingestion uses a safe bounded validation command before sync is enabled. Start with a single source, small document and byte limits, and manual query-only operation.",
+      "uri": "https://example.invalid/handbook/cortana-ingestion",
+      "updated_at": "2026-01-05T00:00:00Z",
+      "project": "engineering",
+      "acl": ["work"],
+      "metadata": {}
+    },
+    {
+      "source": "code",
+      "source_id": "vulnerability-distractor",
+      "title": "Vulnerability writeup skill",
+      "content": "The exploitability analysis should be thoughtful and run only safe probes in a disposable lab.",
+      "uri": "https://example.invalid/code/security-skill",
+      "updated_at": "2026-01-06T00:00:00Z",
+      "project": "engineering",
+      "acl": ["work"],
+      "metadata": {}
+    },
+    {
+      "source": "notes",
+      "source_id": "stale-cortana-status",
+      "title": "Old Cortana status",
+      "content": "Cortana is under active initial development and runtime commands will arrive later.",
+      "uri": "https://example.invalid/notes/old-status",
+      "updated_at": "2025-01-01T00:00:00Z",
+      "project": "engineering",
+      "acl": ["work"],
+      "metadata": {}
+    }
+  ],
+  "retrieval_cases": [
+    {
+      "name": "hybrid exact-term recall",
+      "query": "bluejay checklist canary promotion",
+      "project": "engineering",
+      "top_k": 3,
+      "acl": ["work"],
+      "expected_source_ids": ["deploy-runbook"]
+    },
+    {
+      "name": "source-scoped retrieval",
+      "query": "Orchid Rowan Thursday",
+      "project": "engineering",
+      "source": "notes",
+      "top_k": 3,
+      "acl": ["work"],
+      "expected_source_ids": ["meeting-notes"]
+    },
+    {
+      "name": "ACL denial",
+      "query": "private cedar phrase",
+      "top_k": 5,
+      "acl": ["work"],
+      "expected_source_ids": [],
+      "forbidden_source_ids": ["private-journal"]
+    },
+    {
+      "name": "real-shaped stopword distractor",
+      "query": "How should Cortana ingestion be run safely?",
+      "project": "engineering",
+      "top_k": 1,
+      "acl": ["work"],
+      "expected_source_ids": ["cortana-ingestion-safety"],
+      "forbidden_source_ids": ["vulnerability-distractor"]
+    }
+  ],
+  "answer_case": {
+    "query": "How should Cortana ingestion be run safely?",
+    "project": "engineering",
+    "acl": ["work"],
+    "expected_source_id": "cortana-ingestion-safety",
+    "forbidden_source_ids": ["vulnerability-distractor", "stale-cortana-status"]
+  }
+}

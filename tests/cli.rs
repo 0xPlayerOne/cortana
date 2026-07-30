@@ -269,6 +269,163 @@ fn sync_plan_is_read_only_and_can_inspect_a_disabled_source() {
 }
 
 #[test]
+fn source_validation_fetches_one_disabled_source_without_initializing_the_index() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let input = directory.path().join("external.jsonl");
+    fs::write(
+        &input,
+        r#"{"source":"upstream","source_id":"one","title":"External","content":"Synthetic validation document.","project":"demo"}"#,
+    )
+    .expect("write external source");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n\
+             [[sources]]\nname = \"external-demo\"\nkind = \"external\"\nenabled = false\n\
+             project = \"demo\"\ncommand = [\"/bin/cat\", {input:?}]\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args([
+            "validate-source",
+            "external-demo",
+            "--max-documents",
+            "2",
+            "--max-bytes",
+            "4096",
+            "--max-seconds",
+            "5",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"validated\":true"))
+        .stdout(predicate::str::contains("\"documents\":0"))
+        .stdout(predicate::str::contains("\"embeddings\":0"))
+        .stdout(predicate::str::contains("\"reconciliations\":0"));
+
+    assert!(
+        !data.join("cortana.sqlite3").exists(),
+        "validation must not initialize the index"
+    );
+    assert_eq!(
+        fs::read_dir(data.join("staging"))
+            .expect("staging directory")
+            .count(),
+        0,
+        "validation spools must be removed"
+    );
+}
+
+#[test]
+fn connector_live_output_bound_stops_oversized_validation() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let input = directory.path().join("oversized.jsonl");
+    fs::write(&input, "x".repeat(100_000)).expect("write oversized source");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n\
+             [[sources]]\nname = \"oversized\"\nkind = \"external\"\nproject = \"demo\"\n\
+             command = [\"/bin/cat\", {input:?}]\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args([
+            "validate-source",
+            "oversized",
+            "--max-documents",
+            "1",
+            "--max-bytes",
+            "1",
+            "--max-seconds",
+            "5",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "connector oversized exceeded its live output safety bound",
+        ));
+    assert!(
+        !data.join("cortana.sqlite3").exists(),
+        "failed validation must not initialize the index"
+    );
+}
+
+#[test]
+fn acl_backfill_requires_matching_source_defaults_and_force() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 256\n\
+             [[sources]]\nname = \"demo-source\"\nkind = \"external\"\nenabled = false\n\
+             project = \"demo\"\nacl = [\"work\"]\ncommand = [\"/usr/bin/false\"]\n"
+        ),
+    )
+    .expect("write config");
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(
+            r#"{"source":"demo-source","source_id":"legacy","title":"Legacy","content":"legacy public row","project":"demo"}"#,
+        )
+        .assert()
+        .success();
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["acl", "plan", "--project", "demo=work"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"applied\":false"))
+        .stdout(predicate::str::contains("\"documents\":1"))
+        .stdout(predicate::str::contains("\"source_alignment_errors\":[]"));
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["acl", "apply", "--project", "demo=work"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("ACL apply requires --force"));
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["acl", "apply", "--project", "demo=work", "--force"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"documents_changed\":1"));
+
+    let connection =
+        Connection::open(data.join("cortana.sqlite3")).expect("open initialized index");
+    let acl: String = connection
+        .query_row("SELECT acl_json FROM documents", [], |row| row.get(0))
+        .expect("document ACL");
+    assert_eq!(acl, r#"["work"]"#);
+}
+
+#[test]
 fn source_budget_rejects_snapshot_before_partial_ingestion() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

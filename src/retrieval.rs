@@ -19,6 +19,27 @@ pub async fn retrieve(
     source: Option<&str>,
     limit: usize,
 ) -> Result<Vec<Evidence>> {
+    retrieve_scoped(
+        store,
+        embedder,
+        query,
+        project,
+        source,
+        limit,
+        &["*".into()],
+    )
+    .await
+}
+
+pub async fn retrieve_scoped(
+    store: &Store,
+    embedder: &Arc<dyn Embedder>,
+    query: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+    limit: usize,
+    principal_acl: &[String],
+) -> Result<Vec<Evidence>> {
     retrieve_with_timeout(
         store,
         embedder,
@@ -27,10 +48,12 @@ pub async fn retrieve(
         source,
         limit,
         INTERACTIVE_EMBEDDING_TIMEOUT,
+        principal_acl,
     )
     .await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn retrieve_with_timeout(
     store: &Store,
     embedder: &Arc<dyn Embedder>,
@@ -39,6 +62,7 @@ async fn retrieve_with_timeout(
     source: Option<&str>,
     limit: usize,
     embedding_timeout: Duration,
+    principal_acl: &[String],
 ) -> Result<Vec<Evidence>> {
     anyhow::ensure!(!query.trim().is_empty(), "query must not be empty");
     let query_embedding =
@@ -63,6 +87,7 @@ async fn retrieve_with_timeout(
         project,
         source,
         limit.min(50),
+        principal_acl,
     )
 }
 
@@ -74,7 +99,15 @@ pub fn search(
     source: Option<&str>,
     limit: usize,
 ) -> Result<Vec<Evidence>> {
-    rank(store, query, Some(query_embedding), project, source, limit)
+    rank(
+        store,
+        query,
+        Some(query_embedding),
+        project,
+        source,
+        limit,
+        &["*".into()],
+    )
 }
 
 fn rank(
@@ -84,13 +117,17 @@ fn rank(
     project: Option<&str>,
     source: Option<&str>,
     limit: usize,
+    principal_acl: &[String],
 ) -> Result<Vec<Evidence>> {
     let candidate_limit = limit.saturating_mul(8).max(32);
     let semantic = query_embedding.map_or_else(
         || Ok(Vec::new()),
-        |embedding| store.semantic_ids(embedding, project, source, candidate_limit),
+        |embedding| {
+            store.semantic_ids_scoped(embedding, project, source, candidate_limit, principal_acl)
+        },
     )?;
-    let lexical = store.lexical_ids(query, project, source, candidate_limit)?;
+    let lexical =
+        store.lexical_ids_scoped(query, project, source, candidate_limit, principal_acl)?;
     let candidate_ids = semantic
         .iter()
         .map(|(id, _)| id.clone())
@@ -98,7 +135,7 @@ fn rank(
         .collect::<HashSet<_>>()
         .into_iter()
         .collect::<Vec<_>>();
-    let chunks = store.chunks_by_ids(&candidate_ids)?;
+    let chunks = store.chunks_by_ids_scoped(&candidate_ids, principal_acl)?;
     let semantic_ranks = semantic
         .iter()
         .enumerate()
@@ -131,7 +168,7 @@ fn rank(
             let recency = 1.0 / (1.0 + age_days / 180.0);
             let semantic = semantic_scores.get(&id).copied().unwrap_or_default();
             let idf = idf_scores.get(&id).copied().unwrap_or_default();
-            let reranked = score + 0.01 * semantic.max(0.0) + 0.015 * idf;
+            let reranked = score + 0.01 * semantic.max(0.0) + 0.08 * idf;
             Some((chunk, reranked * (0.9 + 0.1 * recency)))
         })
         .collect::<Vec<_>>();
@@ -195,10 +232,23 @@ fn idf_overlap(query: &str, chunks: &[StoredChunk]) -> HashMap<String, f32> {
 }
 
 fn tokenize(value: &str) -> HashSet<String> {
+    const STOPWORDS: [&str; 32] = [
+        "a", "an", "and", "are", "be", "can", "did", "do", "does", "for", "from", "how", "i", "in",
+        "is", "it", "my", "of", "on", "or", "our", "should", "the", "this", "to", "was", "were",
+        "what", "when", "with", "you", "your",
+    ];
     value
         .split(|character: char| !character.is_alphanumeric() && character != '_')
         .filter(|token| token.len() > 1)
         .map(str::to_lowercase)
+        .filter(|token| !STOPWORDS.contains(&token.as_str()))
+        .map(|token| {
+            if token.len() > 4 && token.ends_with("ly") {
+                token[..token.len() - 2].to_string()
+            } else {
+                token
+            }
+        })
         .collect()
 }
 
@@ -267,6 +317,7 @@ mod tests {
             title: title.into(),
             uri: None,
             content: content.into(),
+            acl: Vec::new(),
             embedding: vec![1.0, 0.0],
             updated_at: Utc::now(),
         }
@@ -371,6 +422,7 @@ mod tests {
             None,
             10,
             Duration::from_millis(1),
+            &["*".into()],
         )
         .await
         .expect("timeout fallback");
@@ -378,5 +430,65 @@ mod tests {
         assert_eq!(evidence.len(), 1);
         assert_eq!(evidence[0].semantic_rank, None);
         assert_eq!(evidence[0].lexical_rank, Some(1));
+    }
+
+    #[tokio::test]
+    async fn scoped_retrieval_filters_both_semantic_and_lexical_candidates() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let mut private = Document {
+            source: "notes".into(),
+            source_id: "private".into(),
+            title: "Private launch".into(),
+            content: "private launch sequence".into(),
+            uri: None,
+            updated_at: Utc::now(),
+            project: "demo".into(),
+            acl: vec!["personal".into()],
+            metadata: json!({}),
+        };
+        store
+            .upsert(
+                &private,
+                &[("private launch sequence".into(), vec![1.0, 0.0])],
+            )
+            .expect("private document");
+        private.source_id = "public".into();
+        private.title = "Public launch".into();
+        private.content = "public launch checklist".into();
+        private.acl.clear();
+        store
+            .upsert(
+                &private,
+                &[("public launch checklist".into(), vec![1.0, 0.0])],
+            )
+            .expect("public document");
+
+        let work = retrieve_scoped(
+            &store,
+            &(Arc::new(UnavailableEmbedder) as Arc<dyn Embedder>),
+            "launch",
+            Some("demo"),
+            None,
+            10,
+            &["work".into()],
+        )
+        .await
+        .expect("work retrieval");
+        assert_eq!(work.len(), 1);
+        assert_eq!(work[0].source_id, "public");
+
+        let personal = retrieve_scoped(
+            &store,
+            &(Arc::new(UnavailableEmbedder) as Arc<dyn Embedder>),
+            "launch",
+            Some("demo"),
+            None,
+            10,
+            &["personal".into()],
+        )
+        .await
+        .expect("personal retrieval");
+        assert_eq!(personal.len(), 2);
     }
 }

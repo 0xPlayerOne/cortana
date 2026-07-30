@@ -65,6 +65,28 @@ enum Command {
     },
     /// Validate configuration, storage, and the embedding provider.
     Doctor,
+    /// Run deterministic retrieval and answer quality gates in an isolated temporary index.
+    Eval {
+        #[arg(long, help = "Use a custom synthetic evaluation fixture")]
+        fixture: Option<PathBuf>,
+    },
+    /// Check production dependencies without starting or scheduling ingestion.
+    Readiness {
+        #[arg(long, default_value = "http://127.0.0.1:7331")]
+        api_url: String,
+        #[arg(long, default_value_t = 48)]
+        max_backup_age_hours: u64,
+        #[arg(
+            long,
+            help = "Acknowledge an explicitly installed recurring sync service"
+        )]
+        allow_sync_service: bool,
+    },
+    /// Inspect or migrate legacy public document ACLs.
+    Acl {
+        #[command(subcommand)]
+        action: AclAction,
+    },
     /// Create and verify an online SQLite snapshot.
     Backup {
         output: Option<PathBuf>,
@@ -136,6 +158,16 @@ enum Command {
         #[arg(long, help = "Override the per-source wall-clock budget for this run")]
         max_seconds: Option<u64>,
     },
+    /// Fetch and validate one configured source without embedding or indexing it.
+    ValidateSource {
+        source: String,
+        #[arg(long, help = "Override the document budget for this validation")]
+        max_documents: Option<usize>,
+        #[arg(long, help = "Override the content-byte budget for this validation")]
+        max_bytes: Option<u64>,
+        #[arg(long, help = "Override the wall-clock budget for this validation")]
+        max_seconds: Option<u64>,
+    },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -167,7 +199,13 @@ enum Command {
         api_token_env: Option<String>,
     },
     /// Serve retrieval tools over MCP stdio.
-    Mcp,
+    Mcp {
+        #[arg(
+            long,
+            help = "Environment variable containing a configured scoped agent token"
+        )]
+        token_env: Option<String>,
+    },
     /// Supervise the configured local OpenAI-compatible embedding process.
     EmbeddingService,
     /// Install, inspect, or remove the per-user background services.
@@ -201,6 +239,22 @@ enum ServiceAction {
     Status,
     /// Stop and remove Cortana's per-user background services.
     Uninstall,
+}
+
+#[derive(Debug, Subcommand)]
+enum AclAction {
+    /// Report public rows and preview explicit project-to-label mappings.
+    Plan {
+        #[arg(long = "project", value_name = "PROJECT=LABEL[,LABEL]")]
+        projects: Vec<String>,
+    },
+    /// Apply explicit project ACLs after source defaults agree.
+    Apply {
+        #[arg(long = "project", value_name = "PROJECT=LABEL[,LABEL]")]
+        projects: Vec<String>,
+        #[arg(long, help = "Confirm mutation of legacy public ACL rows")]
+        force: bool,
+    },
 }
 
 #[tokio::main]
@@ -246,6 +300,15 @@ async fn main() -> Result<()> {
         })
         .map_err(|_| anyhow::anyhow!("Hermes migration failed"))?;
         println!("migrated Hermes configuration");
+        return Ok(());
+    }
+    if let Some(Command::Eval { fixture }) = cli.command.as_ref() {
+        let report = match fixture {
+            Some(path) => cortana::evaluation::run(path).await?,
+            None => cortana::evaluation::run_default().await?,
+        };
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        anyhow::ensure!(report.passed, "deterministic evaluation thresholds failed");
         return Ok(());
     }
     let config_path = cli.config.clone().unwrap_or_else(default_config_path);
@@ -311,6 +374,23 @@ async fn main() -> Result<()> {
         );
         return Ok(());
     }
+    if let Some(Command::ValidateSource {
+        source,
+        max_documents,
+        max_bytes,
+        max_seconds,
+    }) = cli.command.as_ref()
+    {
+        return validate_configured_source(
+            &config,
+            source,
+            SyncOverrides {
+                max_documents: *max_documents,
+                max_bytes: *max_bytes,
+                max_seconds: *max_seconds,
+            },
+        );
+    }
     match &cli.command {
         Some(Command::Backup { output, keep }) => {
             return backup_database(&config, output.as_deref(), *keep);
@@ -329,6 +409,9 @@ async fn main() -> Result<()> {
         _ => {}
     }
     let store = Store::open(&config.database_path())?;
+    if let Some(Command::Acl { action }) = cli.command.as_ref() {
+        return manage_acl(&config, &store, action);
+    }
     let cache_max_entries = config.embedding.cache_max_entries;
     let base_embedder: Arc<dyn Embedder> = if cli.offline {
         Arc::new(DeterministicEmbedder::new(256))
@@ -345,6 +428,25 @@ async fn main() -> Result<()> {
             .transpose()?;
         Arc::new(OpenAiEmbedder::new(config.embedding.clone(), api_key)?)
     };
+    if let Some(Command::Readiness {
+        api_url,
+        max_backup_age_hours,
+        allow_sync_service,
+    }) = cli.command.as_ref()
+    {
+        let report = cortana::readiness::run(
+            &config,
+            &store,
+            base_embedder.as_ref(),
+            api_url,
+            *max_backup_age_hours,
+            *allow_sync_service,
+        )
+        .await;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        anyhow::ensure!(report.passed, "production readiness checks failed");
+        return Ok(());
+    }
     store.ensure_fingerprint(&base_embedder.fingerprint())?;
     let embedder: Arc<dyn Embedder> = Arc::new(CachedEmbedder::with_limit(
         store.clone(),
@@ -359,7 +461,9 @@ async fn main() -> Result<()> {
             | Command::Verify { .. }
             | Command::Restore { .. }
             | Command::EmbeddingService
-            | Command::Service { .. },
+            | Command::Service { .. }
+            | Command::Readiness { .. }
+            | Command::Acl { .. },
         ) => {
             unreachable!()
         }
@@ -492,9 +596,10 @@ async fn main() -> Result<()> {
                     })
                 })
                 .transpose()?;
+            let auth = cortana::auth::AuthPolicy::from_config(&config, api_token)?;
             anyhow::ensure!(
-                !allow_remote || api_token.is_some(),
-                "--allow-remote requires --api-token-env"
+                !allow_remote || auth.requires_token(),
+                "--allow-remote requires --api-token-env or [[auth.tokens]]"
             );
             let web_dir = (!no_web).then_some(web_dir);
             let query_api_key = config
@@ -515,19 +620,39 @@ async fn main() -> Result<()> {
                 config.query.clone(),
             );
             api::serve(
-                api::AppState::new(store, embedder, api_token)
+                api::AppState::new(store, embedder, None)
                     .with_config(&config, service::sync_job_installed())
-                    .with_answer_engine(answer),
+                    .with_answer_engine(answer)
+                    .with_auth_policy(auth),
                 &address,
                 web_dir.as_deref(),
                 allow_remote,
             )
             .await
         }
-        Some(Command::Mcp) => mcp::serve(mcp::BrainServer::new(store, embedder)).await,
+        Some(Command::Mcp { token_env }) => {
+            let principal = if let Some(name) = token_env {
+                let token = config
+                    .environment_value(&name)
+                    .with_context(|| format!("MCP token environment variable {name} is not set"))?;
+                let auth = cortana::auth::AuthPolicy::from_config(&config, None)?;
+                auth.authenticate(&token)
+                    .context("MCP token does not match a configured [[auth.tokens]] principal")?
+            } else {
+                cortana::auth::Principal::local("local-mcp")
+            };
+            mcp::serve(
+                mcp::BrainServer::new(store, embedder)
+                    .with_principal(principal)
+                    .with_audit_limit(config.auth.audit_max_events),
+            )
+            .await
+        }
         Some(
             Command::Init { .. }
             | Command::MigrateHermes { .. }
+            | Command::Eval { .. }
+            | Command::ValidateSource { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
         ) => unreachable!(),
@@ -739,6 +864,185 @@ fn plan_configured_sources(
     Ok(())
 }
 
+fn manage_acl(config: &Config, store: &Store, action: &AclAction) -> Result<()> {
+    let (values, apply, force) = match action {
+        AclAction::Plan { projects } => (projects, false, false),
+        AclAction::Apply { projects, force } => (projects, true, *force),
+    };
+    let mappings = parse_project_acl_mappings(values)?;
+    let public = store.public_acl_summary()?;
+    let alignment_errors = acl_alignment_errors(config, &mappings);
+    if apply {
+        anyhow::ensure!(force, "ACL apply requires --force");
+        anyhow::ensure!(
+            !mappings.is_empty(),
+            "ACL apply requires --project mappings"
+        );
+        anyhow::ensure!(
+            alignment_errors.is_empty(),
+            "configured source ACLs do not match the requested migration: {}",
+            alignment_errors.join("; ")
+        );
+        let changed = store.backfill_project_acls(&mappings)?;
+        println!(
+            "{}",
+            serde_json::json!({
+                "applied": true,
+                "documents_changed": changed,
+                "corpus_revision": store.corpus_revision()?,
+                "remaining_public": store.public_acl_summary()?,
+            })
+        );
+        return Ok(());
+    }
+    let proposed = mappings
+        .iter()
+        .map(|(project, labels)| {
+            let documents = public
+                .iter()
+                .find(|summary| &summary.project == project)
+                .map_or(0, |summary| summary.documents);
+            serde_json::json!({
+                "project": project,
+                "labels": labels,
+                "documents": documents,
+            })
+        })
+        .collect::<Vec<_>>();
+    println!(
+        "{}",
+        serde_json::json!({
+            "applied": false,
+            "public": public,
+            "proposed": proposed,
+            "source_alignment_errors": alignment_errors,
+        })
+    );
+    Ok(())
+}
+
+fn parse_project_acl_mappings(values: &[String]) -> Result<Vec<(String, Vec<String>)>> {
+    let mut mappings = Vec::new();
+    for value in values {
+        let (project, labels) = value.split_once('=').with_context(|| {
+            format!("invalid ACL mapping {value}; expected PROJECT=LABEL[,LABEL]")
+        })?;
+        let project = project.trim();
+        anyhow::ensure!(!project.is_empty(), "ACL project must not be empty");
+        anyhow::ensure!(
+            !mappings.iter().any(|(existing, _)| existing == project),
+            "duplicate ACL project mapping {project}"
+        );
+        let mut labels = labels
+            .split(',')
+            .map(str::trim)
+            .filter(|label| !label.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        labels.sort();
+        labels.dedup();
+        anyhow::ensure!(!labels.is_empty(), "ACL labels must not be empty");
+        anyhow::ensure!(
+            !labels.iter().any(|label| label == "*"),
+            "ACL migration cannot assign the reserved owner wildcard"
+        );
+        mappings.push((project.to_string(), labels));
+    }
+    Ok(mappings)
+}
+
+fn acl_alignment_errors(config: &Config, mappings: &[(String, Vec<String>)]) -> Vec<String> {
+    let mut errors = Vec::new();
+    for source in &config.sources {
+        let Some((_, expected)) = mappings
+            .iter()
+            .find(|(project, _)| project == &source.project)
+        else {
+            continue;
+        };
+        let mut configured = source.acl.clone();
+        configured.sort();
+        configured.dedup();
+        if &configured != expected {
+            errors.push(format!(
+                "{} has acl={configured:?}, expected {expected:?}",
+                source.name
+            ));
+        }
+    }
+    errors
+}
+
+fn validate_configured_source(
+    config: &Config,
+    selected: &str,
+    overrides: SyncOverrides,
+) -> Result<()> {
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.name == selected)
+        .with_context(|| format!("configured source {selected} was not found"))?;
+    let limits = SourceLimits::resolve(config, source, overrides)?;
+    let cancellation = Cancellation::inert();
+    let control = SourceControl {
+        limits,
+        started: Instant::now(),
+        cancellation: &cancellation,
+    };
+    let validation = (|| -> Result<serde_json::Value> {
+        if source.kind == "filesystem" {
+            let root = source
+                .root
+                .as_ref()
+                .with_context(|| format!("source {} requires root", source.name))?;
+            let scope = connectors::filesystem_plan(
+                root,
+                &source.exclude,
+                limits.max_documents,
+                limits.max_bytes,
+                control.remaining(&source.name)?,
+            )?;
+            return Ok(serde_json::json!({
+                "documents": scope.documents,
+                "bytes": scope.bytes,
+                "inspection": "filesystem preflight"
+            }));
+        }
+        cleanup_connector_spools(&config.data_dir)?;
+        let (spool, diagnostics) = run_connector_to_spool(config, source, &control)?;
+        let validation = validate_connector_spool(&spool, source, &control);
+        let _ = std::fs::remove_file(&spool);
+        let _ = std::fs::remove_file(&diagnostics);
+        let scope = validation?;
+        Ok(serde_json::json!({
+            "documents": scope.documents,
+            "bytes": scope.bytes,
+            "inspection": "connector snapshot"
+        }))
+    })();
+    cancellation.stop();
+    let result = validation?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "source": source.name,
+            "kind": source.kind,
+            "enabled": source.enabled,
+            "project": source.project,
+            "limits": limits,
+            "validated": true,
+            "writes": {
+                "documents": 0,
+                "embeddings": 0,
+                "reconciliations": 0
+            },
+            "scope": result,
+        })
+    );
+    Ok(())
+}
+
 fn ad_hoc_filesystem_source(
     root: PathBuf,
     source: String,
@@ -763,6 +1067,7 @@ fn ad_hoc_filesystem_source(
         max_duration_seconds: None,
         exclude: exclude.to_vec(),
         command: Vec::new(),
+        acl: Vec::new(),
     }
 }
 
@@ -1482,11 +1787,7 @@ fn validate_connector_spool(
     source: &SourceConfig,
     control: &SourceControl<'_>,
 ) -> Result<SyncScope> {
-    let maximum_spool_bytes = control.limits.max_bytes.saturating_add(
-        u64::try_from(control.limits.max_documents)
-            .unwrap_or(u64::MAX)
-            .saturating_mul(64 * 1024),
-    );
+    let maximum_spool_bytes = maximum_connector_spool_bytes(&control.limits);
     let spool_bytes = std::fs::metadata(spool)?.len();
     anyhow::ensure!(
         spool_bytes <= maximum_spool_bytes,
@@ -1566,6 +1867,8 @@ fn run_connector_to_spool(
     };
     let timeout = Duration::from_secs(config.connectors.timeout_seconds.max(1))
         .min(control.remaining(&source.name)?);
+    let maximum_spool_bytes = maximum_connector_spool_bytes(&control.limits);
+    const MAXIMUM_DIAGNOSTIC_BYTES: u64 = 16 * 1024 * 1024;
     let started = std::time::Instant::now();
     let status = loop {
         if control.cancellation.is_requested() {
@@ -1574,6 +1877,18 @@ fn run_connector_to_spool(
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!("connector {} cancelled before reconciliation", source.name);
+        }
+        let spool_bytes = std::fs::metadata(&spool).map_or(0, |metadata| metadata.len());
+        let diagnostic_bytes = std::fs::metadata(&diagnostics).map_or(0, |metadata| metadata.len());
+        if spool_bytes > maximum_spool_bytes || diagnostic_bytes > MAXIMUM_DIAGNOSTIC_BYTES {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_file(&spool);
+            let _ = std::fs::remove_file(&diagnostics);
+            anyhow::bail!(
+                "connector {} exceeded its live output safety bound",
+                source.name
+            );
         }
         if let Some(status) = child.try_wait()? {
             break status;
@@ -1602,6 +1917,14 @@ fn run_connector_to_spool(
         );
     }
     Ok((spool, diagnostics))
+}
+
+fn maximum_connector_spool_bytes(limits: &SourceLimits) -> u64 {
+    limits.max_bytes.saturating_add(
+        u64::try_from(limits.max_documents)
+            .unwrap_or(u64::MAX)
+            .saturating_mul(64 * 1024),
+    )
 }
 
 fn private_file(path: &std::path::Path) -> Result<std::fs::File> {
@@ -1656,6 +1979,9 @@ fn normalize_documents(documents: &mut [Document], source: &SourceConfig) {
         let connector_kind = document.source.clone();
         document.source.clone_from(&canonical);
         document.project.clone_from(&source.project);
+        if document.acl.is_empty() {
+            document.acl.clone_from(&source.acl);
+        }
         if !document.metadata.is_object() {
             document.metadata = serde_json::json!({});
         }

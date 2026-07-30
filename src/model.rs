@@ -41,6 +41,7 @@ pub struct StoredChunk {
     pub title: String,
     pub uri: Option<String>,
     pub content: String,
+    pub acl: Vec<String>,
     pub embedding: Vec<f32>,
     pub updated_at: DateTime<Utc>,
 }

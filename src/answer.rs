@@ -194,10 +194,18 @@ impl AnswerEngine {
     }
 
     pub async fn answer(&self, request: AnswerRequest) -> Result<AnswerResponse> {
+        self.answer_scoped(request, &["*".into()]).await
+    }
+
+    pub async fn answer_scoped(
+        &self,
+        request: AnswerRequest,
+        principal_acl: &[String],
+    ) -> Result<AnswerResponse> {
         anyhow::ensure!(!request.query.trim().is_empty(), "query must not be empty");
         let started = Instant::now();
         let revision = self.store.corpus_revision()?;
-        let cache_key = self.cache_key(&request, revision)?;
+        let cache_key = self.cache_key(&request, revision, principal_acl)?;
         if let Some(cached) = self
             .store
             .cached_query(&cache_key, self.config.cache_ttl_seconds)?
@@ -227,13 +235,14 @@ impl AnswerEngine {
             }
         };
         let searches = plan.queries.iter().map(|query| {
-            retrieval::retrieve(
+            retrieval::retrieve_scoped(
                 &self.store,
                 &self.embedder,
                 query,
                 request.project.as_deref(),
                 request.source.as_deref(),
                 self.config.retrieval_limit.min(50),
+                principal_acl,
             )
         });
         let results = join_all(searches).await;
@@ -254,7 +263,10 @@ impl AnswerEngine {
             Ok(answer) => answer,
             Err(_) => {
                 warnings.push("synthesis fallback: answer deadline reached".into());
-                (extractive_answer(&evidence), "extractive".into())
+                (
+                    extractive_answer(&request.query, &evidence),
+                    "extractive".into(),
+                )
             }
         };
         let response = AnswerResponse {
@@ -321,7 +333,7 @@ impl AnswerEngine {
             );
         }
         let Some(model) = &self.model else {
-            return (extractive_answer(evidence), "extractive".into());
+            return (extractive_answer(query, evidence), "extractive".into());
         };
         let bundle = context::build(query, evidence, self.config.context_tokens);
         match model
@@ -338,16 +350,24 @@ impl AnswerEngine {
             }
             Ok(_) => {
                 warnings.push("synthesis fallback: invalid or missing citations".into());
-                (extractive_answer(evidence), "extractive".into())
+                (extractive_answer(query, evidence), "extractive".into())
             }
             Err(error) => {
                 warnings.push(format!("synthesis unavailable: {error}"));
-                (extractive_answer(evidence), "extractive".into())
+                (extractive_answer(query, evidence), "extractive".into())
             }
         }
     }
 
-    fn cache_key(&self, request: &AnswerRequest, revision: u64) -> Result<String> {
+    fn cache_key(
+        &self,
+        request: &AnswerRequest,
+        revision: u64,
+        principal_acl: &[String],
+    ) -> Result<String> {
+        let mut principal_acl = principal_acl.to_vec();
+        principal_acl.sort();
+        principal_acl.dedup();
         let material = serde_json::to_vec(&serde_json::json!({
             "contract": CONTRACT_VERSION,
             "revision": revision,
@@ -357,6 +377,7 @@ impl AnswerEngine {
             "query": request.query.trim(),
             "project": request.project,
             "source": request.source,
+            "acl": principal_acl,
             "max_planned_queries": self.config.max_planned_queries,
             "retrieval_limit": self.config.retrieval_limit,
             "result_limit": self.config.result_limit,
@@ -423,17 +444,52 @@ fn fuse(result_sets: Vec<Vec<Evidence>>, limit: usize) -> Vec<Evidence> {
         .collect()
 }
 
-fn extractive_answer(evidence: &[Evidence]) -> String {
-    evidence
+fn extractive_answer(query: &str, evidence: &[Evidence]) -> String {
+    let query_terms = meaningful_terms(query);
+    let scored = evidence
         .iter()
-        .take(4)
         .enumerate()
         .map(|(index, item)| {
+            let terms = meaningful_terms(&format!("{} {}", item.title, item.content));
+            let overlap = query_terms.intersection(&terms).count();
+            (index, item, overlap)
+        })
+        .collect::<Vec<_>>();
+    let maximum_overlap = scored
+        .iter()
+        .map(|(_, _, overlap)| *overlap)
+        .max()
+        .unwrap_or_default();
+    scored
+        .into_iter()
+        .filter(|(_, _, overlap)| maximum_overlap < 2 || *overlap == maximum_overlap)
+        .take(4)
+        .map(|(index, item, _)| {
             let excerpt = item.content.chars().take(700).collect::<String>();
             format!("{} [{index}]", excerpt.trim(), index = index + 1)
         })
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+fn meaningful_terms(value: &str) -> HashSet<String> {
+    const STOPWORDS: [&str; 32] = [
+        "a", "an", "and", "are", "be", "can", "did", "do", "does", "for", "from", "how", "i", "in",
+        "is", "it", "my", "of", "on", "or", "our", "should", "the", "this", "to", "was", "were",
+        "what", "when", "with", "you", "your",
+    ];
+    value
+        .split(|character: char| !character.is_alphanumeric() && character != '_')
+        .map(str::to_lowercase)
+        .filter(|token| token.len() > 1 && !STOPWORDS.contains(&token.as_str()))
+        .map(|token| {
+            if token.len() > 4 && token.ends_with("ly") {
+                token[..token.len() - 2].to_string()
+            } else {
+                token
+            }
+        })
+        .collect()
 }
 
 fn valid_citations(answer: &str, evidence_count: usize) -> bool {
@@ -566,6 +622,69 @@ mod tests {
         assert!(valid_citations("The release is ready [1].", 2));
         assert!(!valid_citations("The release is ready.", 2));
         assert!(!valid_citations("The release is ready [3].", 2));
+    }
+
+    #[test]
+    fn extractive_answer_omits_lower_coverage_stopword_distractors() {
+        let evidence = [
+            (
+                "Cortana ingestion safety",
+                "Cortana ingestion uses safe bounded validation before sync.",
+            ),
+            (
+                "Vulnerability writeup",
+                "The analysis should be thoughtful and run only safe probes.",
+            ),
+            (
+                "Old Cortana status",
+                "Cortana is under active initial development.",
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (title, content))| Evidence {
+            chunk_id: index.to_string(),
+            source: "test".into(),
+            source_id: index.to_string(),
+            title: title.into(),
+            uri: None,
+            content: content.into(),
+            score: 1.0,
+            semantic_rank: None,
+            lexical_rank: Some(index + 1),
+            updated_at: Utc::now(),
+        })
+        .collect::<Vec<_>>();
+
+        let answer = extractive_answer("How should Cortana ingestion be run safely?", &evidence);
+        assert!(answer.contains("bounded validation"));
+        assert!(answer.contains("[1]"));
+        assert!(!answer.contains("thoughtful"));
+        assert!(!answer.contains("initial development"));
+    }
+
+    #[test]
+    fn answer_cache_keys_are_isolated_by_acl_scope() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let engine = AnswerEngine::new(
+            store,
+            Arc::new(DeterministicEmbedder::new(16)),
+            None,
+            QueryConfig::default(),
+        );
+        let request = AnswerRequest {
+            query: "release".into(),
+            project: None,
+            source: None,
+        };
+        let work = engine
+            .cache_key(&request, 1, &["work".into()])
+            .expect("work key");
+        let personal = engine
+            .cache_key(&request, 1, &["personal".into()])
+            .expect("personal key");
+        assert_ne!(work, personal);
     }
 
     #[tokio::test]

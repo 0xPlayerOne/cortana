@@ -1,12 +1,15 @@
 pub mod answer;
 pub mod api;
+pub mod auth;
 pub mod config;
 pub mod connectors;
 pub mod context;
 pub mod embed;
+pub mod evaluation;
 pub mod mcp;
 pub mod migration;
 pub mod model;
+pub mod readiness;
 pub mod retrieval;
 pub mod service;
 pub mod store;

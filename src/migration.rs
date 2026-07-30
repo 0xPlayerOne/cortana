@@ -307,6 +307,7 @@ fn source(
         max_duration_seconds: None,
         exclude: Vec::new(),
         command: Vec::new(),
+        acl: Vec::new(),
     }
 }
 

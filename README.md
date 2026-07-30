@@ -42,6 +42,8 @@ bun run build
 # Plan and then run bounded ingestion; recurring background sync is opt-in.
 ./target/release/cortana ingest documents.jsonl
 ./target/release/cortana sync --source SOURCE --plan
+# Fetch and validate one source without embedding, indexing, or reconciliation.
+./target/release/cortana validate-source SOURCE --max-documents 25 --max-bytes 10485760 --max-seconds 60
 ./target/release/cortana sync --source SOURCE
 ./target/release/cortana search "how do releases work?" --project engineering
 
@@ -77,6 +79,8 @@ See [the query guide](docs/query.md) for planned retrieval, cited synthesis, loc
 configuration, cloud providers, cache invalidation, and degraded operation.
 See the [operations guide](docs/operations.md) for service management, authenticated remote access,
 telemetry, backup, restore, and Linux systemd units.
+Run the isolated [evaluation and readiness gates](docs/evaluation.md) before enabling synthesis or
+recurring ingestion.
 See [release history](docs/releases.md) for the automated version-PR policy and transitional
 release notes.
 
