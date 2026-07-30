@@ -142,6 +142,8 @@ struct Status {
 
 #[derive(Clone, Debug, Serialize)]
 struct IngestionStatus {
+    #[serde(skip)]
+    data_dir: std::path::PathBuf,
     mode: &'static str,
     scheduled: bool,
     max_documents_per_source: usize,
@@ -173,11 +175,6 @@ struct ConfiguredSourceStatus {
 
 impl IngestionStatus {
     fn from_config(config: &Config, scheduled: bool) -> Self {
-        let (validations, validation_state_error) = match source_validation::load(&config.data_dir)
-        {
-            Ok(validations) => (validations, None),
-            Err(error) => (Default::default(), Some(error.to_string())),
-        };
         let configured_sources = config
             .sources
             .iter()
@@ -196,19 +193,40 @@ impl IngestionStatus {
                 max_duration_seconds: source
                     .max_duration_seconds
                     .unwrap_or(config.ingestion.max_duration_seconds),
-                validation: validations.get(&source.name).cloned(),
+                validation: None,
             })
             .collect();
         Self {
+            data_dir: config.data_dir.clone(),
             mode: if scheduled { "scheduled" } else { "manual" },
             scheduled,
             max_documents_per_source: config.ingestion.max_documents_per_source,
             max_bytes_per_source: config.ingestion.max_bytes_per_source,
             max_duration_seconds: config.ingestion.max_duration_seconds,
             request_concurrency: config.ingestion.request_concurrency,
-            validation_state_error,
+            validation_state_error: None,
             configured_sources,
         }
+        .refreshed()
+    }
+
+    fn refreshed(&self) -> Self {
+        let mut status = self.clone();
+        match source_validation::load(&self.data_dir) {
+            Ok(validations) => {
+                status.validation_state_error = None;
+                for source in &mut status.configured_sources {
+                    source.validation = validations.get(&source.name).cloned();
+                }
+            }
+            Err(error) => {
+                status.validation_state_error = Some(error.to_string());
+                for source in &mut status.configured_sources {
+                    source.validation = None;
+                }
+            }
+        }
+        status
     }
 }
 
@@ -310,7 +328,7 @@ async fn status(
                 answers_total: state.metrics.answers.load(Ordering::Relaxed),
                 errors_total: state.metrics.errors.load(Ordering::Relaxed),
                 query: state.answer.status(),
-                ingestion: (*state.ingestion).clone(),
+                ingestion: state.ingestion.refreshed(),
                 stats,
             })
         })
@@ -737,6 +755,7 @@ mod tests {
         )
         .expect("configuration");
         config.data_dir = directory.path().to_path_buf();
+        let state = state.with_config(&config, false);
         source_validation::record(
             &config.data_dir,
             SourceValidationStatus {
@@ -754,7 +773,7 @@ mod tests {
             },
         )
         .expect("validation state");
-        let response = router(state.with_config(&config, false))
+        let response = router(state)
             .oneshot(
                 Request::builder()
                     .uri("/v1/status")
