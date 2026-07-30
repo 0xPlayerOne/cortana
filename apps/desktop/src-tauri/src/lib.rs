@@ -19,6 +19,7 @@ mod readiness;
 mod services;
 mod settings;
 mod source_jobs;
+mod updater;
 
 const BACKEND_ORIGIN: &str = "http://127.0.0.1:7331";
 const MAIN_WINDOW: &str = "main";
@@ -26,6 +27,7 @@ const MAX_QUERY_LENGTH: usize = 16_384;
 const MAX_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_CURSOR_LENGTH: usize = 1024;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
+const PROJECT_URL: &str = "https://github.com/0xPlayerOne/cortana";
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
@@ -60,7 +62,15 @@ impl BackendClient {
         url: Url,
         body: Option<Value>,
     ) -> Result<Value, String> {
+        let scope = match url.path() {
+            "/metrics" | "/v1/audit" => "admin",
+            "/v1/status" => "status",
+            _ => "query",
+        };
         let mut request = self.http.request(method, url);
+        if let Some(token) = settings::bearer_for_scope(scope)? {
+            request = request.bearer_auth(token);
+        }
         if let Some(body) = body {
             request = request.json(&body);
         }
@@ -176,14 +186,34 @@ async fn brain_documents(
 }
 
 #[tauri::command]
-async fn brain_document(
-    backend: State<'_, BackendClient>,
-    id: String,
-) -> Result<Value, String> {
+async fn brain_document(backend: State<'_, BackendClient>, id: String) -> Result<Value, String> {
     validate_document_id(&id)?;
     backend
         .request(Method::GET, &format!("/v1/documents/{id}"), None)
         .await
+}
+
+#[tauri::command]
+async fn brain_audit(backend: State<'_, BackendClient>, limit: usize) -> Result<Value, String> {
+    if !(1..=500).contains(&limit) {
+        return Err("runtime audit limit must be between 1 and 500".into());
+    }
+    let mut url = Url::parse(BACKEND_ORIGIN)
+        .map_err(|error| format!("invalid fixed Cortana runtime URL: {error}"))?;
+    url.set_path("/v1/audit");
+    url.query_pairs_mut()
+        .append_pair("limit", &limit.to_string());
+    backend.request_url(Method::GET, url, None).await
+}
+
+#[tauri::command]
+fn desktop_audit(limit: usize) -> Result<Vec<Value>, String> {
+    settings::desktop_audit_events(limit)
+}
+
+#[tauri::command]
+fn desktop_project_open() -> Result<(), String> {
+    open::that(PROJECT_URL).map_err(|error| format!("open Cortana project page: {error}"))
 }
 
 #[tauri::command]
@@ -233,6 +263,41 @@ async fn desktop_service_action(
     approved: bool,
 ) -> Result<services::ServiceReport, String> {
     services::action(&app, &service, &action, approved).await
+}
+
+#[tauri::command]
+async fn desktop_services_action_all(
+    app: AppHandle,
+    action: String,
+    approved: bool,
+) -> Result<services::ServiceReport, String> {
+    services::action_all(&app, &action, approved).await
+}
+
+#[tauri::command]
+fn desktop_update_status(updater: State<'_, updater::UpdaterState>) -> updater::UpdateSnapshot {
+    updater.status()
+}
+
+#[tauri::command]
+async fn desktop_update_check(
+    app: AppHandle,
+    updater: State<'_, updater::UpdaterState>,
+) -> Result<updater::UpdateSnapshot, String> {
+    updater.check(&app).await
+}
+
+#[tauri::command]
+async fn desktop_update_install(
+    app: AppHandle,
+    updater: State<'_, updater::UpdaterState>,
+    expected_version: String,
+    approved: bool,
+    restart: bool,
+) -> Result<updater::UpdateSnapshot, String> {
+    updater
+        .install(&app, &expected_version, approved, restart)
+        .await
 }
 
 #[tauri::command]
@@ -363,9 +428,7 @@ fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), S
         ("source", request.source.as_deref()),
     ] {
         if value.is_some_and(|value| value.is_empty() || value.len() > MAX_SCOPE_LENGTH) {
-            return Err(format!(
-                "{name} must contain 1 to {MAX_SCOPE_LENGTH} bytes"
-            ));
+            return Err(format!("{name} must contain 1 to {MAX_SCOPE_LENGTH} bytes"));
         }
     }
     if request
@@ -475,16 +538,24 @@ pub fn run() {
         .manage(backend.clone())
         .manage(installer::InstallerState::default())
         .manage(source_jobs::SourceJobState::default())
+        .manage(updater::UpdaterState::default())
         .invoke_handler(tauri::generate_handler![
             brain_status,
             brain_answer,
             brain_context,
             brain_documents,
             brain_document,
+            brain_audit,
+            desktop_audit,
+            desktop_project_open,
             desktop_info,
             desktop_autostart_set,
             desktop_services_status,
             desktop_service_action,
+            desktop_services_action_all,
+            desktop_update_status,
+            desktop_update_check,
+            desktop_update_install,
             desktop_settings_get,
             desktop_settings_save,
             desktop_path_pick,
@@ -568,11 +639,7 @@ mod tests {
         };
         assert!(validate_document_list_request(&valid).is_ok());
         assert!(
-            validate_document_list_request(&DocumentListRequest {
-                limit: 0,
-                ..valid
-            })
-            .is_err()
+            validate_document_list_request(&DocumentListRequest { limit: 0, ..valid }).is_err()
         );
         assert!(validate_document_id(&"a".repeat(64)).is_ok());
         assert!(validate_document_id("../store.sqlite3").is_err());

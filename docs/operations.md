@@ -104,6 +104,8 @@ uninstalled job. Stop unloads the job but preserves its plist so it can be start
 Desktop Services panel uses this same fixed command boundary, shows loaded state, PID, and last
 exit status, and records metadata-only action audits. It never installs the recurring sync job.
 Desktop-at-login is a separate setting: enabling it starts the tray/control plane, not ingestion.
+Desktop **Start all**, **Stop all**, and **Restart all** operate only on the embedding and server
+jobs. Sync and backup are deliberately excluded from those aggregate actions.
 
 After planning each enabled source and choosing explicit budgets, opt in to the recurring job:
 
@@ -162,6 +164,11 @@ HTTP clients send the token as a bearer credential. Stdio MCP clients pass only 
 variable name with `cortana mcp --token-env NAME`; Cortana resolves the value privately, maps it to
 the configured principal, and enforces the same scopes and ACLs. Omitting `--token-env` keeps the
 MCP process in the unrestricted local-owner profile and must not be used for a shared agent.
+
+Cortana Desktop can create and edit these principals from **Settings → Access**. Token values are
+write-only and stored in the managed owner-only secret file. The native process selects a matching
+credential by scope for its fixed loopback requests; the webview never receives the value.
+**Settings → Audit** shows at most 100 runtime and 100 Desktop events per refresh.
 
 Before adding the first shared principal, assign matching ACL defaults to every configured source
 in that trust domain, then preview legacy rows:

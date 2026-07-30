@@ -118,6 +118,21 @@ Every action requires an explicit confirmation and is audited without command ou
 An uninstalled sync job remains uninstalled and cannot be enabled from this panel. Desktop
 autostart is managed separately and does not change runtime-service or ingestion state.
 
+Start All, Stop All, and Restart All are narrower than the individual controls: they operate only
+on `embedding` and `server`, in dependency-safe order. They always exclude `sync` and `backup`, so
+a whole-app action cannot schedule ingestion or trigger a backup.
+
+Desktop manages named bearer principals without exposing credentials to the renderer. The webview
+edits only principal names, environment-variable references, scopes, and ACL labels. Write-only
+values go to the owner-only managed secret file. Native loopback requests resolve a matching
+private credential for `query`, `status`, or `admin` immediately before sending the request;
+bearer values never enter IPC responses or renderer state.
+
+The Audit panel combines the API's bounded metadata-only retrieval events with a bounded tail of
+the owner-only Desktop action log. Runtime unavailability does not prevent local action events
+from being inspected. Both views exclude query text, document content, command output, and secret
+values.
+
 ## Releases
 
 Desktop Rust has its own lockfile so platform WebKit dependencies do not enter the core Rust
@@ -135,6 +150,12 @@ bun run desktop:build
 Updater signing authenticates the downloaded update payload; it is distinct from operating-system
 publisher trust. Until Apple Developer ID credentials and notarization are configured, macOS
 artifacts remain ad-hoc code-signed and Gatekeeper does not treat them as notarized applications.
+
+Update checks, downloads, signature verification, installation, and restart requests run in native
+Rust. The renderer can display version metadata, release notes, the compiled changelog, and bounded
+download progress, but cannot override the feed URL, signature key, download URL, or expected
+version. Installation requires explicit confirmation and verifies the announced signature before
+replacing the app.
 
 On macOS, an unsigned local application bundle can be produced separately:
 
