@@ -6,12 +6,13 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use axum::{
     Json, Router,
-    extract::{DefaultBodyLimit, Extension, Query as AxumQuery, State},
+    extract::{DefaultBodyLimit, Extension, Path as AxumPath, Query as AxumQuery, State},
     http::{Request, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::timeout::TimeoutLayer;
@@ -27,8 +28,12 @@ use crate::{
     model::Evidence,
     retrieval,
     source_validation::{self, SourceValidationStatus},
-    store::{AuditEvent, Store, StoreStats},
+    store::{AuditEvent, DocumentCursor, DocumentSummary, Store, StoreStats},
 };
+
+const MAX_DOCUMENT_CONTENT_BYTES: usize = 2 * 1024 * 1024;
+const MAX_DOCUMENT_SCOPE_LENGTH: usize = 256;
+const MAX_DOCUMENT_ID_LENGTH: usize = 128;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -144,6 +149,29 @@ struct Status {
     stats: StoreStats,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentListParams {
+    project: Option<String>,
+    source: Option<String>,
+    cursor: Option<String>,
+    #[serde(default = "default_document_limit")]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EncodedDocumentCursor {
+    updated_at: String,
+    id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct DocumentListResponse {
+    documents: Vec<DocumentSummary>,
+    next_cursor: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct IngestionStatus {
     #[serde(skip)]
@@ -240,6 +268,8 @@ pub fn router(state: AppState) -> Router {
         .route("/readyz", get(ready))
         .route("/metrics", get(metrics))
         .route("/v1/status", get(status))
+        .route("/v1/documents", get(list_documents))
+        .route("/v1/documents/{id}", get(document))
         .route("/v1/search", post(search))
         .route("/v1/context", post(context))
         .route("/v1/answer", post(answer))
@@ -295,6 +325,173 @@ async fn authorize(
     }
     request.extensions_mut().insert(principal);
     next.run(request).await
+}
+
+async fn list_documents(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumQuery(params): AxumQuery<DocumentListParams>,
+) -> Result<Json<DocumentListResponse>, (StatusCode, String)> {
+    validate_document_scope("project", params.project.as_deref())?;
+    validate_document_scope("source", params.source.as_deref())?;
+    let cursor = params
+        .cursor
+        .as_deref()
+        .map(decode_document_cursor)
+        .transpose()?;
+    let started = Instant::now();
+    let result = state.store.list_documents_scoped(
+        params.project.as_deref(),
+        params.source.as_deref(),
+        cursor.as_ref(),
+        params.limit.clamp(1, 100),
+        &principal.acl_labels(),
+    );
+    match result {
+        Ok(page) => {
+            let next_cursor = if page.has_more {
+                page.documents
+                    .last()
+                    .map(encode_document_cursor)
+                    .transpose()?
+            } else {
+                None
+            };
+            record_audit(
+                &state,
+                &principal,
+                "documents.list",
+                params.project.as_deref(),
+                params.source.as_deref(),
+                "succeeded",
+                Some(page.documents.len()),
+                started,
+            );
+            Ok(Json(DocumentListResponse {
+                documents: page.documents,
+                next_cursor,
+            }))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "documents.list",
+                params.project.as_deref(),
+                params.source.as_deref(),
+                "failed",
+                None,
+                started,
+            );
+            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            Err(internal_error(error))
+        }
+    }
+}
+
+async fn document(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<crate::store::DocumentDetail>, (StatusCode, String)> {
+    if id.is_empty()
+        || id.len() > MAX_DOCUMENT_ID_LENGTH
+        || !id.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid document id".into()));
+    }
+    let started = Instant::now();
+    match state
+        .store
+        .document_scoped(&id, &principal.acl_labels(), MAX_DOCUMENT_CONTENT_BYTES)
+    {
+        Ok(Some(document)) => {
+            record_audit(
+                &state,
+                &principal,
+                "documents.read",
+                Some(&document.summary.project),
+                Some(&document.summary.source),
+                "succeeded",
+                Some(1),
+                started,
+            );
+            Ok(Json(document))
+        }
+        Ok(None) => {
+            record_audit(
+                &state,
+                &principal,
+                "documents.read",
+                None,
+                None,
+                "not_found",
+                Some(0),
+                started,
+            );
+            Err((StatusCode::NOT_FOUND, "document not found".into()))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "documents.read",
+                None,
+                None,
+                "failed",
+                None,
+                started,
+            );
+            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            Err(internal_error(error))
+        }
+    }
+}
+
+fn validate_document_scope(name: &str, value: Option<&str>) -> Result<(), (StatusCode, String)> {
+    if value.is_some_and(|value| value.is_empty() || value.len() > MAX_DOCUMENT_SCOPE_LENGTH) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("{name} must contain 1 to {MAX_DOCUMENT_SCOPE_LENGTH} bytes"),
+        ));
+    }
+    Ok(())
+}
+
+fn decode_document_cursor(value: &str) -> Result<DocumentCursor, (StatusCode, String)> {
+    let bytes = URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid document cursor".into()))?;
+    if bytes.len() > 512 {
+        return Err((StatusCode::BAD_REQUEST, "invalid document cursor".into()));
+    }
+    let cursor: EncodedDocumentCursor = serde_json::from_slice(&bytes)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid document cursor".into()))?;
+    if cursor.id.is_empty()
+        || cursor.id.len() > MAX_DOCUMENT_ID_LENGTH
+        || !cursor.id.bytes().all(|byte| byte.is_ascii_hexdigit())
+        || cursor.updated_at.len() > 64
+        || chrono::DateTime::parse_from_rfc3339(&cursor.updated_at).is_err()
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid document cursor".into()));
+    }
+    Ok(DocumentCursor {
+        updated_at: cursor.updated_at,
+        id: cursor.id,
+    })
+}
+
+fn encode_document_cursor(document: &DocumentSummary) -> Result<String, (StatusCode, String)> {
+    serde_json::to_vec(&EncodedDocumentCursor {
+        updated_at: document.updated_at.clone(),
+        id: document.id.clone(),
+    })
+    .map(|value| URL_SAFE_NO_PAD.encode(value))
+    .map_err(|error| internal_error(error.into()))
+}
+
+fn default_document_limit() -> usize {
+    50
 }
 
 async fn ready(State(state): State<AppState>) -> impl IntoResponse {
@@ -851,6 +1048,96 @@ mod tests {
             serde_json::json!(["unknown topic"])
         );
         assert_eq!(value["evidence"], serde_json::json!([]));
+    }
+
+    #[tokio::test]
+    async fn document_routes_page_content_and_reject_invalid_cursors() {
+        let (_directory, state) = test_state(None);
+        for (index, content) in ["first body", "second body"].into_iter().enumerate() {
+            state
+                .store
+                .upsert(
+                    &Document {
+                        source: "notes".into(),
+                        source_id: format!("note-{index}"),
+                        title: format!("Note {index}"),
+                        content: content.into(),
+                        uri: Some(format!("https://example.test/{index}")),
+                        updated_at: chrono::Utc::now()
+                            - chrono::Duration::seconds(i64::try_from(index).unwrap_or_default()),
+                        project: "demo".into(),
+                        acl: Vec::new(),
+                        metadata: serde_json::json!({"kind": "note"}),
+                    },
+                    &[(content.into(), vec![1.0; 16])],
+                )
+                .expect("document");
+        }
+        let app = router(state);
+        let first = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/documents?project=demo&limit=1")
+                    .body(Body::empty())
+                    .expect("list request"),
+            )
+            .await
+            .expect("list response");
+        assert_eq!(first.status(), StatusCode::OK);
+        let first_body = to_bytes(first.into_body(), 1024 * 1024)
+            .await
+            .expect("list body");
+        let first_value: serde_json::Value =
+            serde_json::from_slice(&first_body).expect("list JSON");
+        assert_eq!(first_value["documents"].as_array().map(Vec::len), Some(1));
+        let cursor = first_value["next_cursor"].as_str().expect("next cursor");
+        let id = first_value["documents"][0]["id"]
+            .as_str()
+            .expect("document id");
+
+        let second = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/v1/documents?project=demo&limit=1&cursor={cursor}"
+                    ))
+                    .body(Body::empty())
+                    .expect("second request"),
+            )
+            .await
+            .expect("second response");
+        assert_eq!(second.status(), StatusCode::OK);
+        let detail = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/documents/{id}"))
+                    .body(Body::empty())
+                    .expect("detail request"),
+            )
+            .await
+            .expect("detail response");
+        assert_eq!(detail.status(), StatusCode::OK);
+        let detail_body = to_bytes(detail.into_body(), 1024 * 1024)
+            .await
+            .expect("detail body");
+        let detail_value: serde_json::Value =
+            serde_json::from_slice(&detail_body).expect("detail JSON");
+        assert_eq!(detail_value["content"], "first body");
+        assert_eq!(detail_value["metadata"]["kind"], "note");
+
+        let invalid = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/documents?cursor=not-valid-base64")
+                    .body(Body::empty())
+                    .expect("invalid request"),
+            )
+            .await
+            .expect("invalid response");
+        assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

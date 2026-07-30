@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Code2,
   Database,
+  FileText,
   Folder,
   Mail,
   MessageCircle,
@@ -11,10 +12,10 @@ import {
   StickyNote,
   X,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { operationalSources, sourceHealth, type OperationalSource } from '../operations'
-import type { BrainStatus } from '../types'
+import type { BrainDocumentSummary, BrainStatus } from '../types'
 
 const sourceIcons: Record<string, typeof Folder> = {
   code: Code2,
@@ -36,16 +37,33 @@ export function SourcePanel({
   status,
   workspace,
   selected,
+  documents,
+  selectedDocument,
+  documentsLoading,
+  documentsError,
+  hasMoreDocuments,
   onSelect,
+  onSelectDocument,
+  onLoadMoreDocuments,
+  onOpenSettings,
   onClose,
 }: {
   open: boolean
   status: BrainStatus | null
   workspace: string
   selected: string
+  documents: BrainDocumentSummary[]
+  selectedDocument: string
+  documentsLoading: boolean
+  documentsError: string
+  hasMoreDocuments: boolean
   onSelect: (source: string) => void
+  onSelectDocument: (id: string) => void
+  onLoadMoreDocuments: () => void
+  onOpenSettings: () => void
   onClose: () => void
 }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const sources = useMemo(
     () => operationalSources(status).filter((item) => !workspace || item.project === workspace),
     [status, workspace]
@@ -68,8 +86,10 @@ export function SourcePanel({
         <button className="mobile-close" aria-label="Close sources" onClick={onClose}>
           <X size={17} />
         </button>
-        <button aria-label="Add source">+</button>
-        <button aria-label="Source settings">
+        <button aria-label="Add source" onClick={onOpenSettings}>
+          +
+        </button>
+        <button aria-label="Source settings" onClick={onOpenSettings}>
           <Settings size={16} />
         </button>
       </div>
@@ -96,23 +116,73 @@ export function SourcePanel({
               {items.map((item) => {
                 const Icon = sourceIcon(item.source)
                 const health = sourceHealth(item)
+                const key = `${item.project}:${item.source}`
+                const itemDocuments = documents.filter(
+                  (document) => document.project === item.project && document.source === item.source
+                )
+                const isCollapsed = collapsed.has(key)
                 return (
-                  <button
-                    key={`${item.project}:${item.name}`}
-                    className={selected === item.source ? 'selected' : ''}
-                    onClick={() => onSelect(item.source)}
-                    title={health.label}
-                  >
-                    <ChevronRight size={13} />
-                    <Icon size={17} />
-                    <span>{item.name}</span>
-                    <i className={`source-health ${health.state}`} />
-                    <small>{item.documents.toLocaleString()}</small>
-                  </button>
+                  <div className="source-node" key={key}>
+                    <div className="source-row">
+                      <button
+                        className="tree-toggle"
+                        aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
+                        onClick={() => {
+                          setCollapsed((current) => {
+                            const next = new Set(current)
+                            if (next.has(key)) next.delete(key)
+                            else next.add(key)
+                            return next
+                          })
+                        }}
+                      >
+                        {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                      </button>
+                      <button
+                        className={`source-select ${selected === item.source ? 'selected' : ''}`}
+                        onClick={() => onSelect(item.source)}
+                        title={health.label}
+                      >
+                        <Icon size={17} />
+                        <span>{item.name}</span>
+                        <i className={`source-health ${health.state}`} />
+                        <small>{item.documents.toLocaleString()}</small>
+                      </button>
+                    </div>
+                    {!isCollapsed && (
+                      <div className="document-tree">
+                        {itemDocuments.map((document) => (
+                          <button
+                            key={document.id}
+                            className={selectedDocument === document.id ? 'selected-document' : ''}
+                            onClick={() => onSelectDocument(document.id)}
+                            title={document.title}
+                          >
+                            <FileText size={14} />
+                            <span>{document.title}</span>
+                          </button>
+                        ))}
+                        {!documentsLoading && !documentsError && itemDocuments.length === 0 && (
+                          <span className="document-tree-empty">
+                            {selected && selected !== item.source
+                              ? 'Select source to load documents'
+                              : 'No documents in this page'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )
               })}
             </section>
           ))}
+          {documentsError && <p className="document-list-error">{documentsError}</p>}
+          {documentsLoading && <p className="document-list-state">Loading documents…</p>}
+          {hasMoreDocuments && !documentsLoading && (
+            <button className="load-more-documents" onClick={onLoadMoreDocuments}>
+              Load more documents
+            </button>
+          )}
         </div>
       )}
     </aside>

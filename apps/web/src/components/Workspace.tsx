@@ -1,11 +1,12 @@
-import { FileText, History, Link2, Network, Sparkles, Star } from 'lucide-react'
-import { type CSSProperties, useState } from 'react'
+import { BookOpen, FileText, History, Link2, Network, Sparkles, Star } from 'lucide-react'
+import { type CSSProperties, useEffect, useState } from 'react'
 
-import type { AnswerResponse, Evidence } from '../types'
+import type { AnswerResponse, BrainDocument, Evidence } from '../types'
 
 const tabs = [
   { id: 'answer', label: 'Answer', icon: Sparkles },
-  { id: 'sources', label: 'Sources', icon: FileText },
+  { id: 'document', label: 'Document', icon: BookOpen },
+  { id: 'sources', label: 'Evidence', icon: FileText },
   { id: 'graph', label: 'Graph', icon: Network },
   { id: 'timeline', label: 'Timeline', icon: History },
 ] as const
@@ -19,6 +20,8 @@ export function Workspace({
   selected,
   loading,
   error,
+  document,
+  documentLoading,
   onSelect,
   onRetry,
 }: {
@@ -28,11 +31,19 @@ export function Workspace({
   selected: number
   loading: boolean
   error: string
+  document: BrainDocument | null
+  documentLoading: boolean
   onSelect: (index: number) => void
   onRetry: () => void
 }) {
-  const [tab, setTab] = useState<Tab>('answer')
+  const [tab, setTab] = useState<Tab>('document')
   const active = evidence[selected] ?? null
+  useEffect(() => {
+    if (document) setTab('document')
+  }, [document])
+  useEffect(() => {
+    if (answer) setTab('answer')
+  }, [answer])
 
   return (
     <main className="workspace">
@@ -47,11 +58,21 @@ export function Workspace({
           >
             <Icon size={15} />
             {label}
+            {id === 'document' && document && <span className="count-pill">1</span>}
             {id === 'sources' && <span className="count-pill">{evidence.length}</span>}
           </button>
         ))}
       </div>
-      {error ? (
+      {documentLoading ? (
+        <EmptyState title="Opening document" detail="Loading the canonical indexed content…" />
+      ) : tab === 'document' && document ? (
+        <BrainDocumentView document={document} />
+      ) : tab === 'document' ? (
+        <EmptyState
+          title="Choose a document"
+          detail="Open a workspace and source in the sidebar, then select any indexed document."
+        />
+      ) : error ? (
         <EmptyState
           title="Cortana could not reach the brain"
           detail={`${error}. Start the Rust API or add ?demo=1 to preview the workspace.`}
@@ -82,6 +103,58 @@ export function Workspace({
         active && <DocumentView active={active} evidence={evidence} onSelect={onSelect} />
       )}
     </main>
+  )
+}
+
+function BrainDocumentView({ document }: { document: BrainDocument }) {
+  return (
+    <article className="document canonical-document">
+      <div className="breadcrumbs">
+        <span>Brain</span> / <span>{document.project}</span> / <span>{document.source}</span> /{' '}
+        <strong>{document.title}</strong>
+        <div>
+          {document.uri && (
+            <a
+              href={document.uri}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open original source"
+            >
+              <Link2 size={17} />
+            </a>
+          )}
+        </div>
+      </div>
+      <div className="document-grid">
+        <div className="document-body">
+          <h1>{document.title}</h1>
+          <p className="byline">
+            {document.project} · {document.source} ·{' '}
+            {new Date(document.updated_at).toLocaleString()} · {document.chunk_count} indexed chunks
+          </p>
+          <div className="rule" />
+          <div className="canonical-content">
+            {document.content.split(/\n{2,}/).map((paragraph, index) => (
+              <p key={`${document.id}:${index}`}>{paragraph}</p>
+            ))}
+          </div>
+          {document.truncated && (
+            <p className="answer-warning">
+              This unusually large document was safely truncated at the desktop display limit. Open
+              the original source for the complete content.
+            </p>
+          )}
+        </div>
+        <aside className="document-outline">
+          <strong>Indexed document</strong>
+          <span>{document.content_chars.toLocaleString()} characters</span>
+          <span>{document.chunk_count.toLocaleString()} retrieval chunks</span>
+          <span>{document.source}</span>
+          <BookOpen size={56} />
+          <small>Canonical content protected by workspace ACLs</small>
+        </aside>
+      </div>
+    </article>
   )
 }
 

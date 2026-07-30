@@ -8,6 +8,25 @@ Cortana separates agent retrieval from human-facing answers.
 - Both paths share the same project/source filters and hybrid lexical, semantic, IDF, and recency
   ranking.
 
+## Canonical document browser
+
+The Obsidian-style sidebar uses the canonical index rather than search results:
+
+- `GET /v1/documents` returns at most 100 document summaries with project/source filters and an
+  opaque keyset cursor. The default page size is 50.
+- `GET /v1/documents/{id}` returns one ACL-authorized canonical document, its safe metadata, and
+  display bounds. Missing and unauthorized IDs deliberately share the same `404` response.
+- Every list and read is filtered by the authenticated principal's ACL labels and recorded in the
+  metadata-only audit trail. Document content and query strings are never written to audit events.
+
+New ingestion stores exact canonical content alongside retrieval chunks. Existing indexes remain
+compatible: a document read reconstructs legacy content while removing chunk overlap, and the
+next ordinary refresh backfills exact content. A single display response is capped at 2 MiB and
+reports `truncated=true`; the original source link remains available for unusually large records.
+Pagination is deterministic by update timestamp and stable document ID, so browsing does not load
+the whole corpus into memory. Opening the app, changing workspace, and expanding sources do not run
+embeddings or a language model; retrieval begins only when the user submits a search.
+
 ## Safe default
 
 `[query].synthesis_enabled` defaults to `false`. The answer endpoint still works: it performs one

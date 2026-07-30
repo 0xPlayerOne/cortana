@@ -33,6 +33,12 @@ fields. It cannot edit connector command arrays or service commands because thos
 directly into process execution. Source authorization and service control use separate typed
 native commands.
 
+Corpus browsing also stays behind typed native commands. The renderer may send only bounded
+project/source filters, an opaque pagination cursor, or a hex document ID. Native Rust constructs
+the fixed loopback URLs and performs the request; the renderer cannot select a host, port, path, or
+database file. The core API applies the same bearer scope and document ACL policy as retrieval,
+bounds pages to 100 summaries and content to 2 MiB, and records metadata-only list/read audits.
+
 Readiness is user-triggered and read-only. It performs bounded version checks for uv and Python
 3.11+, locates the managed connector environment, and runs `cortana readiness` through the bundled
 sidecar. It rejects oversized or malformed reports and never starts a connector or sync.
@@ -79,9 +85,10 @@ personal, or special context. The first desktop iteration permits one to three w
 storage and API contract remain list-based so that limit can be raised without a data migration.
 
 Workspace metadata is exposed by `/v1/status`. Desktop search sends the selected workspace ID as
-the existing project scope, and source navigation filters to that scope. Editing a workspace may
-not orphan a configured source: source assignments must be moved before their workspace ID can be
-removed.
+the existing project scope, and source navigation plus canonical document pagination filter to
+that scope. The sidebar groups paginated documents under workspace and source nodes; selecting a
+document opens canonical content rather than a retrieved chunk. Editing a workspace may not orphan
+a configured source: source assignments must be moved before their workspace ID can be removed.
 
 Provider secrets are stored in Cortana's managed `secrets.env` file with mode `0600` on Unix. An
 existing external `runtime.env_file` remains readable by the runtime but is intentionally
