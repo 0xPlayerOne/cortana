@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Cortana",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "identifier": "ai.cortana.desktop",
   "build": {
     "beforeDevCommand": "bun run --cwd ../web dev",
@@ -11,7 +11,9 @@
   },
   "app": {
     "security": {
-      "capabilities": ["desktop-owner"],
+      "capabilities": [
+        "desktop-owner"
+      ],
       "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     },
     "windows": [
@@ -46,7 +48,9 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": ["https://github.com/0xPlayerOne/cortana/releases/latest/download/latest.json"],
+      "endpoints": [
+        "https://github.com/0xPlayerOne/cortana/releases/latest/download/latest.json"
+      ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMxRkU5REY3RTRENEQyQzQKUldURTB0VGs5NTMrd1pGZUEwUkVwZGVDM25oY2FPUlh2TVVMSlZsQmpaUUVQOUFvNjFVdzhISWMK",
       "dialog": false
     }
