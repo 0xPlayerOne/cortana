@@ -10,6 +10,8 @@ use crate::model::{Evidence, StoredChunk};
 use crate::store::Store;
 
 const INTERACTIVE_EMBEDDING_TIMEOUT: Duration = Duration::from_secs(5);
+const NEIGHBOR_RADIUS: usize = 1;
+const MAX_EXPANDED_CONTENT_BYTES: usize = 16 * 1024;
 
 pub async fn retrieve(
     store: &Store,
@@ -174,11 +176,32 @@ fn rank(
         .collect::<Vec<_>>();
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
     let mut seen_documents = HashSet::new();
-    Ok(ranked
+    let selected = ranked
         .into_iter()
         .filter(|(chunk, _)| seen_documents.insert(dedupe_key(chunk)))
         .take(limit)
-        .map(|(chunk, score)| evidence(chunk, score, &semantic_ranks, &lexical_ranks))
+        .collect::<Vec<_>>();
+    let selected_ids = selected
+        .iter()
+        .map(|(chunk, _)| chunk.id.clone())
+        .collect::<Vec<_>>();
+    let neighboring_content = store.neighboring_content_scoped(
+        &selected_ids,
+        NEIGHBOR_RADIUS,
+        MAX_EXPANDED_CONTENT_BYTES,
+        principal_acl,
+    )?;
+    Ok(selected
+        .into_iter()
+        .map(|(chunk, score)| {
+            evidence(
+                chunk,
+                neighboring_content.get(&chunk.id),
+                score,
+                &semantic_ranks,
+                &lexical_ranks,
+            )
+        })
         .collect())
 }
 
@@ -254,6 +277,7 @@ fn tokenize(value: &str) -> HashSet<String> {
 
 fn evidence(
     chunk: &StoredChunk,
+    expanded_content: Option<&String>,
     score: f32,
     semantic: &HashMap<String, usize>,
     lexical: &HashMap<String, usize>,
@@ -264,7 +288,9 @@ fn evidence(
         source_id: chunk.source_id.clone(),
         title: chunk.title.clone(),
         uri: chunk.uri.clone(),
-        content: chunk.content.clone(),
+        content: expanded_content
+            .cloned()
+            .unwrap_or_else(|| chunk.content.clone()),
         score,
         semantic_rank: semantic.get(&chunk.id).copied(),
         lexical_rank: lexical.get(&chunk.id).copied(),
@@ -387,6 +413,51 @@ mod tests {
         assert_eq!(evidence[0].title, "Qwen runbook");
         assert_eq!(evidence[0].semantic_rank, None);
         assert_eq!(evidence[0].lexical_rank, Some(1));
+    }
+
+    #[tokio::test]
+    async fn selected_evidence_includes_bounded_neighboring_context() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let document = Document {
+            source: "notes".into(),
+            source_id: "decision-record".into(),
+            title: "Architecture decision".into(),
+            content: "before context decision phrase after context".into(),
+            uri: None,
+            updated_at: Utc::now(),
+            project: "cortana".into(),
+            acl: vec!["work".into()],
+            metadata: json!({}),
+        };
+        store
+            .upsert(
+                &document,
+                &[
+                    ("before context".into(), vec![1.0, 0.0]),
+                    ("decision phrase".into(), vec![1.0, 0.0]),
+                    ("after context".into(), vec![1.0, 0.0]),
+                ],
+            )
+            .expect("upsert");
+
+        let evidence = retrieve_scoped(
+            &store,
+            &(Arc::new(UnavailableEmbedder) as Arc<dyn Embedder>),
+            "decision phrase",
+            Some("cortana"),
+            None,
+            10,
+            &["work".into()],
+        )
+        .await
+        .expect("expanded lexical evidence");
+
+        assert_eq!(evidence.len(), 1);
+        assert_eq!(
+            evidence[0].content,
+            "before context\n\ndecision phrase\n\nafter context"
+        );
     }
 
     #[tokio::test]
