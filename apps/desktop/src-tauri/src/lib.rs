@@ -194,10 +194,7 @@ async fn brain_document(backend: State<'_, BackendClient>, id: String) -> Result
 }
 
 #[tauri::command]
-async fn brain_audit(
-    backend: State<'_, BackendClient>,
-    limit: usize,
-) -> Result<Value, String> {
+async fn brain_audit(backend: State<'_, BackendClient>, limit: usize) -> Result<Value, String> {
     if !(1..=500).contains(&limit) {
         return Err("runtime audit limit must be between 1 and 500".into());
     }

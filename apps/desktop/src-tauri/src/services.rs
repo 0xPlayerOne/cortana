@@ -57,21 +57,27 @@ pub async fn action(
     let output = match sidecar_output(app, &["service", action, service]).await {
         Ok(output) => output,
         Err(error) => {
-            audit_action("service.action", action, &[service], "failed", Some(service));
+            audit_action(
+                "service.action",
+                action,
+                &[service],
+                "failed",
+                Some(service),
+            );
             return Err(error);
         }
     };
     if !output.status.success() {
-        audit_action("service.action", action, &[service], "failed", Some(service));
+        audit_action(
+            "service.action",
+            action,
+            &[service],
+            "failed",
+            Some(service),
+        );
         return Err(bounded_error(&output.stderr));
     }
-    audit_action(
-        "service.action",
-        action,
-        &[service],
-        "completed",
-        None,
-    );
+    audit_action("service.action", action, &[service], "completed", None);
     status(app).await
 }
 
