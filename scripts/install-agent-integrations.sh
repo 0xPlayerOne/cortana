@@ -45,3 +45,4 @@ done
 echo "Configure agent MCP clients with:"
 echo "  command: $binary_path"
 echo "  args:    --config $config_path mcp"
+echo "For shared agents, append: --token-env <configured [[auth.tokens]] environment name>"
