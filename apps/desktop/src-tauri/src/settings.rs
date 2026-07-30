@@ -14,6 +14,8 @@ const MAX_SOURCES: usize = 128;
 const MAX_AUTH_PRINCIPALS: usize = 64;
 const MAX_SECRET_BYTES: usize = 16 * 1024;
 const MAX_AUDIT_READ_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_PORTABLE_SETTINGS_BYTES: u64 = 2 * 1024 * 1024;
+const PORTABLE_SETTINGS_VERSION: u32 = 1;
 const SOURCE_KINDS: &[&str] = &[
     "filesystem",
     "apple-notes",
@@ -167,12 +169,57 @@ pub struct SettingsSnapshot {
     pub secrets: Vec<SecretState>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct PortableSettings {
+    pub workspaces: Vec<WorkspaceSettings>,
+    pub sources: Vec<SourceSettings>,
+    pub auth_principals: Vec<AuthPrincipalSettings>,
+    pub embedding: EmbeddingSettings,
+    pub query: QuerySettings,
+    pub ingestion: IngestionSettings,
+    pub runtime: RuntimeSettings,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct PortableSettingsFile {
+    format_version: u32,
+    secrets_included: bool,
+    settings: PortableSettings,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PortableExport {
+    pub path: String,
+    pub format_version: u32,
+    pub secrets_included: bool,
+    pub omitted_external_sources: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PortableImport {
+    pub path: String,
+    pub format_version: u32,
+    pub secrets_included: bool,
+    pub preserved_external_sources: Vec<String>,
+    pub settings: PortableSettings,
+}
+
 pub fn load() -> Result<SettingsSnapshot, String> {
     SettingsStore::default().load()
 }
 
 pub fn save(update: SettingsUpdate) -> Result<SettingsSnapshot, String> {
     SettingsStore::default().save(update)
+}
+
+pub fn export_portable(path: &Path) -> Result<PortableExport, String> {
+    export_portable_at(&default_config_path(), path)
+}
+
+pub fn import_portable(path: &Path) -> Result<PortableImport, String> {
+    import_portable_at(&default_config_path(), path)
 }
 
 pub fn configured_source(name: &str) -> Result<SourceSettings, String> {
@@ -350,6 +397,151 @@ impl SettingsStore {
             state.restart_required = true;
             state
         })
+    }
+}
+
+fn export_portable_at(config_path: &Path, path: &Path) -> Result<PortableExport, String> {
+    validate_portable_path(path, false)?;
+    let store = SettingsStore {
+        config_path: config_path.to_path_buf(),
+    };
+    let snapshot = store.load()?;
+    let omitted_external_sources = snapshot
+        .sources
+        .iter()
+        .filter(|source| source.kind == "external")
+        .map(|source| source.name.clone())
+        .collect::<Vec<_>>();
+    let settings = PortableSettings {
+        workspaces: snapshot.workspaces,
+        sources: snapshot
+            .sources
+            .into_iter()
+            .filter(|source| source.kind != "external")
+            .collect(),
+        auth_principals: snapshot.auth_principals,
+        embedding: snapshot.embedding,
+        query: snapshot.query,
+        ingestion: snapshot.ingestion,
+        runtime: snapshot.runtime,
+    };
+    let file = PortableSettingsFile {
+        format_version: PORTABLE_SETTINGS_VERSION,
+        secrets_included: false,
+        settings,
+    };
+    let rendered = serde_json::to_vec_pretty(&file)
+        .map_err(|error| format!("serialize portable settings: {error}"))?;
+    if rendered.len() as u64 > MAX_PORTABLE_SETTINGS_BYTES {
+        return Err("portable settings exceed the 2 MiB export limit".into());
+    }
+    write_portable_file(path, &rendered)?;
+    append_portable_audit(
+        config_path,
+        "settings.exported",
+        omitted_external_sources.len(),
+    )?;
+    Ok(PortableExport {
+        path: path.display().to_string(),
+        format_version: PORTABLE_SETTINGS_VERSION,
+        secrets_included: false,
+        omitted_external_sources,
+    })
+}
+
+fn import_portable_at(config_path: &Path, path: &Path) -> Result<PortableImport, String> {
+    validate_portable_path(path, true)?;
+    let metadata =
+        fs::metadata(path).map_err(|error| format!("inspect portable settings: {error}"))?;
+    if !metadata.is_file() {
+        return Err("portable settings must be a regular file".into());
+    }
+    if metadata.len() > MAX_PORTABLE_SETTINGS_BYTES {
+        return Err("portable settings exceed the 2 MiB import limit".into());
+    }
+    let bytes = fs::read(path).map_err(|error| format!("read portable settings: {error}"))?;
+    let file: PortableSettingsFile = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("parse portable settings: {error}"))?;
+    if file.format_version != PORTABLE_SETTINGS_VERSION {
+        return Err(format!(
+            "portable settings format {} is unsupported; expected {}",
+            file.format_version, PORTABLE_SETTINGS_VERSION
+        ));
+    }
+    if file.secrets_included {
+        return Err("portable settings must never contain secret values".into());
+    }
+    if file
+        .settings
+        .sources
+        .iter()
+        .any(|source| source.kind == "external")
+    {
+        return Err(
+            "portable settings cannot add executable external connectors; retain them locally"
+                .into(),
+        );
+    }
+
+    let store = SettingsStore {
+        config_path: config_path.to_path_buf(),
+    };
+    let current = store.load()?;
+    let preserved_external_sources = current
+        .sources
+        .iter()
+        .filter(|source| source.kind == "external")
+        .map(|source| source.name.clone())
+        .collect::<Vec<_>>();
+    let mut update = file.settings.into_update();
+    update.sources.extend(
+        current
+            .sources
+            .into_iter()
+            .filter(|source| source.kind == "external"),
+    );
+    validate_update(&mut update)?;
+    let root = read_config(config_path)?;
+    validate_external_sources(&root, &update.sources)?;
+    let settings = PortableSettings::from_update(update);
+    append_portable_audit(
+        config_path,
+        "settings.import.previewed",
+        preserved_external_sources.len(),
+    )?;
+    Ok(PortableImport {
+        path: path.display().to_string(),
+        format_version: PORTABLE_SETTINGS_VERSION,
+        secrets_included: false,
+        preserved_external_sources,
+        settings,
+    })
+}
+
+impl PortableSettings {
+    fn into_update(self) -> SettingsUpdate {
+        SettingsUpdate {
+            workspaces: self.workspaces,
+            sources: self.sources,
+            auth_principals: self.auth_principals,
+            embedding: self.embedding,
+            query: self.query,
+            ingestion: self.ingestion,
+            runtime: self.runtime,
+            secrets: Vec::new(),
+        }
+    }
+
+    fn from_update(update: SettingsUpdate) -> Self {
+        Self {
+            workspaces: update.workspaces,
+            sources: update.sources,
+            auth_principals: update.auth_principals,
+            embedding: update.embedding,
+            query: update.query,
+            ingestion: update.ingestion,
+            runtime: update.runtime,
+        }
     }
 }
 
@@ -1480,6 +1672,102 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     set_owner_only(path)
 }
 
+fn validate_portable_path(path: &Path, must_exist: bool) -> Result<(), String> {
+    if !path.is_absolute()
+        || path.parent().is_none()
+        || path.parent().is_none_or(|parent| parent.parent().is_none())
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
+    {
+        return Err("portable settings require an absolute non-root path".into());
+    }
+    if path.extension().and_then(|value| value.to_str()) != Some("json") {
+        return Err("portable settings must use a .json file".into());
+    }
+    reject_symlink(path)?;
+    if must_exist && !path.exists() {
+        return Err("portable settings file does not exist".into());
+    }
+    Ok(())
+}
+
+fn write_portable_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "portable settings path has no parent".to_string())?;
+    if !parent.is_dir() {
+        return Err("portable settings parent directory does not exist".into());
+    }
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_nanos();
+    let temp = parent.join(format!(
+        ".cortana-portable-{}-{nonce}.tmp",
+        std::process::id()
+    ));
+    let mut options = OpenOptions::new();
+    options.create_new(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let write_result = (|| {
+        let mut file = options
+            .open(&temp)
+            .map_err(|error| format!("create portable settings: {error}"))?;
+        file.write_all(bytes)
+            .and_then(|()| file.sync_all())
+            .map_err(|error| format!("write portable settings: {error}"))?;
+        let backup = if path.exists() {
+            let backup = path.with_extension("json.backup");
+            reject_symlink(&backup)?;
+            fs::copy(path, &backup)
+                .map_err(|error| format!("back up portable settings: {error}"))?;
+            set_owner_only(&backup)?;
+            fs::remove_file(path).map_err(|error| format!("replace portable settings: {error}"))?;
+            Some(backup)
+        } else {
+            None
+        };
+        if let Err(error) = fs::rename(&temp, path) {
+            if let Some(backup) = backup {
+                let _ = fs::copy(backup, path);
+                let _ = set_owner_only(path);
+            }
+            return Err(format!("install portable settings: {error}"));
+        }
+        set_owner_only(path)
+    })();
+    if write_result.is_err() && temp.exists() {
+        let _ = fs::remove_file(&temp);
+    }
+    write_result
+}
+
+fn append_portable_audit(
+    config_path: &Path,
+    event: &str,
+    external_source_count: usize,
+) -> Result<(), String> {
+    let value = serde_json::json!({
+        "at_unix_seconds": SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_secs(),
+        "event": event,
+        "format_version": PORTABLE_SETTINGS_VERSION,
+        "external_source_count": external_source_count,
+        "secret_values_recorded": false,
+    });
+    append_audit_event(config_path, &value)
+}
+
 fn append_audit(config_path: &Path, update: &SettingsUpdate) -> Result<(), String> {
     let at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -2142,5 +2430,117 @@ mod tests {
 
         let error = validate_update(&mut update).expect_err("credential path must not be indexed");
         assert!(error.contains("outside every filesystem source root"));
+    }
+
+    #[test]
+    fn portable_settings_redact_secrets_and_preserve_external_connectors() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let config_path = temp.path().join("config/config.toml");
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
+        fs::write(
+            &config_path,
+            "[[sources]]\nname = \"custom\"\nkind = \"external\"\nenabled = false\nproject = \"work\"\ncommand = [\"/fixed/private-connector\", \"--jsonl\"]\n",
+        )
+        .expect("external source");
+        let store = SettingsStore {
+            config_path: config_path.clone(),
+        };
+        let mut update = valid_update(temp.path());
+        update.sources = store.load().expect("load external source").sources;
+        store.save(update).expect("save settings with secrets");
+
+        let portable_path = temp.path().join("cortana-settings.json");
+        let exported =
+            export_portable_at(&config_path, &portable_path).expect("export portable settings");
+        assert_eq!(exported.omitted_external_sources, vec!["custom"]);
+        assert!(!exported.secrets_included);
+        let body = fs::read_to_string(&portable_path).expect("portable settings body");
+        assert!(!body.contains("not-returned"));
+        assert!(!body.contains("private-bearer"));
+        assert!(!body.contains("/fixed/private-connector"));
+        assert!(!body.contains("\"kind\": \"external\""));
+
+        export_portable_at(&config_path, &portable_path).expect("replace portable settings");
+        let portable_backup = temp.path().join("cortana-settings.json.backup");
+        assert!(portable_backup.is_file());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            for path in [&portable_path, &portable_backup] {
+                assert_eq!(
+                    fs::metadata(path)
+                        .expect("portable settings metadata")
+                        .permissions()
+                        .mode()
+                        & 0o777,
+                    0o600
+                );
+            }
+        }
+        let imported =
+            import_portable_at(&config_path, &portable_path).expect("import portable settings");
+        assert_eq!(imported.preserved_external_sources, vec!["custom"]);
+        assert!(
+            imported
+                .settings
+                .sources
+                .iter()
+                .any(|source| source.name == "custom" && source.kind == "external")
+        );
+        assert!(!format!("{imported:?}").contains("private-bearer"));
+        assert!(!format!("{imported:?}").contains("not-returned"));
+    }
+
+    #[test]
+    fn portable_settings_reject_secrets_oversize_and_symlinks() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let config_path = temp.path().join("config/config.toml");
+        let store = SettingsStore {
+            config_path: config_path.clone(),
+        };
+        store
+            .save(valid_update(temp.path()))
+            .expect("save source settings");
+        let portable_path = temp.path().join("cortana-settings.json");
+        export_portable_at(&config_path, &portable_path).expect("export portable settings");
+
+        let body = fs::read_to_string(&portable_path)
+            .expect("portable settings")
+            .replacen(
+                "\"secrets_included\": false",
+                "\"secrets_included\": true",
+                1,
+            );
+        fs::write(&portable_path, body).expect("write unsafe portable settings");
+        assert!(
+            import_portable_at(&config_path, &portable_path)
+                .expect_err("secret-bearing settings must fail")
+                .contains("never contain secret values")
+        );
+
+        fs::write(
+            &portable_path,
+            vec![b' '; MAX_PORTABLE_SETTINGS_BYTES as usize + 1],
+        )
+        .expect("write oversized portable settings");
+        assert!(
+            import_portable_at(&config_path, &portable_path)
+                .expect_err("oversized settings must fail")
+                .contains("2 MiB")
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::symlink;
+            let target = temp.path().join("target.json");
+            fs::write(&target, "{}").expect("symlink target");
+            let linked = temp.path().join("linked.json");
+            symlink(&target, &linked).expect("portable settings symlink");
+            assert!(
+                import_portable_at(&config_path, &linked)
+                    .expect_err("symlinked settings must fail")
+                    .contains("symlinked")
+            );
+        }
     }
 }

@@ -46,6 +46,105 @@
   text-transform: uppercase;
 }
 
+.setup-guide {
+  padding: 16px 34px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(232, 168, 59, 0.08), transparent 70%);
+}
+
+.setup-guide-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.setup-guide-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.setup-guide-heading strong {
+  color: #f0efe9;
+  font-size: 15px;
+}
+
+.setup-guide-heading p,
+.setup-save-state {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.setup-guide-heading > span {
+  color: var(--amber);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.setup-steps {
+  display: grid;
+  margin-top: 12px;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.setup-steps button {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 10px;
+  gap: 9px;
+  color: #bbbcb6;
+  border: 1px solid #383a36;
+  background: #222320;
+  cursor: pointer;
+  text-align: left;
+}
+
+.setup-steps button:hover,
+.setup-steps button.complete {
+  border-color: #596a55;
+  background: #262b25;
+}
+
+.setup-steps button > i {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: #d2d1cb;
+  border: 1px solid #4a4c47;
+  border-radius: 50%;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.setup-steps button.complete > i {
+  color: #b9e1bf;
+  border-color: #5c8062;
+  background: #2d4933;
+}
+
+.setup-steps button > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.setup-steps small {
+  overflow: hidden;
+  color: #898b85;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-save-state {
+  margin-top: 9px;
+}
+
 .settings-layout {
   display: grid;
   min-height: 0;
@@ -229,9 +328,46 @@
   gap: 5px;
 }
 
+.portable-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24px;
+  padding: 16px;
+  gap: 18px;
+  border: 1px solid #343632;
+  background: #20211f;
+}
+
+.portable-settings > div:first-child {
+  min-width: 0;
+}
+
+.portable-settings strong {
+  color: #e4e3dd;
+  font-size: 13px;
+}
+
+.portable-settings p {
+  max-width: 560px;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 @media (max-width: 760px) {
   .service-grid {
     grid-template-columns: 1fr;
+  }
+
+  .setup-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portable-settings {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

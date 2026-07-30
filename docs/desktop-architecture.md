@@ -101,6 +101,17 @@ OAuth client files and local roots must be absolute non-root paths; Slack and Di
 explicit channels and a validated environment-variable name. Saving or authorizing source
 settings never starts ingestion.
 
+First launch enters a guided checklist and automatically runs only the read-only readiness scan.
+Missing tool installers remain fixed native jobs that require explicit approval and expose bounded
+progress, cancellation, and retry state.
+
+Settings portability uses a versioned, size-bounded JSON envelope selected through the native file
+dialog. Exports exclude secret values and executable connector commands. Imports reject unknown
+fields, embedded-secret declarations, unsupported versions, oversized files, symlinks, and
+unvalidated values. They return an unsaved preview to the renderer, preserve locally configured
+external connectors, and rely on the existing owner-only backup-and-replace path only after the
+user saves.
+
 ## Lifecycle
 
 There are two distinct lifecycles:
