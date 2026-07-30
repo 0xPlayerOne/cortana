@@ -39,9 +39,10 @@ bun run build
 # Verify the configured Qwen/TEI or cloud OpenAI-compatible embedding endpoint.
 ./target/release/cortana doctor
 
-# Ingest normalized documents, then retrieve structured cited evidence.
+# Plan and then run bounded ingestion; recurring background sync is opt-in.
 ./target/release/cortana ingest documents.jsonl
-./target/release/cortana sync
+./target/release/cortana sync --source SOURCE --plan
+./target/release/cortana sync --source SOURCE
 ./target/release/cortana search "how do releases work?" --project engineering
 
 # Agent transport and workspace API use the identical retrieval pipeline.

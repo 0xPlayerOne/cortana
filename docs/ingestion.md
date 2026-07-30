@@ -14,6 +14,15 @@ sources, and exits nonzero after the run so supervisors still detect the partial
 Connector subprocesses also have a configurable wall-clock timeout (six hours by default), which
 prevents a wedged upstream API from holding the cross-process sync lock indefinitely.
 
+Every source also has a fail-closed safety preflight. The default ceiling is 2,000 documents,
+128 MiB of searchable content, and 15 minutes per source. Filesystem preflight walks metadata
+without reading file contents; connector preflight validates the completed owner-only spool before
+the first embedding or index write. A source that exceeds any ceiling fails without reconciliation.
+Set global defaults in `[ingestion]`, tighter source-specific `max_documents`, `max_bytes`, and
+`max_duration_seconds` values on `[[sources]]`, or one-run overrides on the command line.
+Ingestion uses one embedding request at a time by default even when interactive queries allow more
+concurrency.
+
 Configured source names are index namespaces. This prevents two Gmail accounts, Drive accounts, or
 Slack workspaces from deleting or colliding with one another. The original adapter kind is retained
 in metadata for provenance.
@@ -26,10 +35,21 @@ Start from [`config.example.toml`](../config.example.toml), then run:
 cargo run -- sync
 cargo run -- sync --source personal-drive
 cargo run -- sync --source work-code --no-reconcile
+cargo run -- sync --source work-code --plan
+cargo run -- sync --source work-code --max-documents 250 --max-bytes 33554432
 ```
 
 `--no-reconcile` is useful for an intentionally partial external snapshot. Regular complete
 snapshots should reconcile so removed source records do not remain searchable.
+`--plan` never starts an external connector or opens the index. For filesystem sources it reports
+the metadata-only document and byte scope; for remote connectors it reports the configured budgets
+and marks inspection as deferred. An explicitly named disabled source can be planned safely before
+it is enabled.
+
+`SIGINT` and `SIGTERM` cancel an active source before reconciliation. In-flight connector
+subprocesses are terminated, and embedding work is interrupted at a bounded polling interval.
+Already committed incremental batches remain valid searchable data, but a cancelled or
+budget-exceeded snapshot never deletes records from the prior complete snapshot.
 
 The Python adapter process writes only normalized JSON Lines to stdout. Counts and diagnostics go
 to stderr, which makes the boundary safe to pipe into `cortana ingest` or supervise independently.

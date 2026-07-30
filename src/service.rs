@@ -21,6 +21,7 @@ pub struct InstallOptions<'a> {
     pub sync_seconds: u64,
     pub backup_seconds: u64,
     pub install_embedding: bool,
+    pub install_sync: bool,
 }
 
 pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
@@ -45,43 +46,14 @@ pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
         "--config".into(),
         options.config.display().to_string(),
     ];
-    let mut jobs = Vec::new();
-    if options.install_embedding {
-        jobs.push(Job {
-            label: "ai.cortana.embedding",
-            arguments: [common.clone(), vec!["embedding-service".into()]].concat(),
-            schedule: Schedule::KeepAlive,
-        });
-    }
-    jobs.extend([
-        Job {
-            label: "ai.cortana.server",
-            arguments: [
-                common.clone(),
-                vec![
-                    "serve".into(),
-                    "--web-dir".into(),
-                    options.web_dir.display().to_string(),
-                ],
-            ]
-            .concat(),
-            schedule: Schedule::KeepAlive,
-        },
-        Job {
-            label: "ai.cortana.sync",
-            arguments: [common.clone(), vec!["sync".into()]].concat(),
-            schedule: Schedule::Interval(options.sync_seconds),
-        },
-        Job {
-            label: "ai.cortana.backup",
-            arguments: [
-                common.clone(),
-                vec!["backup".into(), "--keep".into(), "14".into()],
-            ]
-            .concat(),
-            schedule: Schedule::Interval(options.backup_seconds),
-        },
-    ]);
+    let jobs = configured_jobs(
+        &common,
+        options.web_dir,
+        options.sync_seconds,
+        options.backup_seconds,
+        options.install_embedding,
+        options.install_sync,
+    );
 
     for label in LABELS {
         bootout(label)?;
@@ -99,6 +71,54 @@ pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
         println!("installed {}", job.label);
     }
     Ok(())
+}
+
+fn configured_jobs(
+    common: &[String],
+    web_dir: &Path,
+    sync_seconds: u64,
+    backup_seconds: u64,
+    install_embedding: bool,
+    install_sync: bool,
+) -> Vec<Job> {
+    let mut jobs = Vec::new();
+    if install_embedding {
+        jobs.push(Job {
+            label: "ai.cortana.embedding",
+            arguments: [common.to_vec(), vec!["embedding-service".into()]].concat(),
+            schedule: Schedule::KeepAlive,
+        });
+    }
+    jobs.push(Job {
+        label: "ai.cortana.server",
+        arguments: [
+            common.to_vec(),
+            vec![
+                "serve".into(),
+                "--web-dir".into(),
+                web_dir.display().to_string(),
+            ],
+        ]
+        .concat(),
+        schedule: Schedule::KeepAlive,
+    });
+    if install_sync {
+        jobs.push(Job {
+            label: "ai.cortana.sync",
+            arguments: [common.to_vec(), vec!["sync".into()]].concat(),
+            schedule: Schedule::Interval(sync_seconds),
+        });
+    }
+    jobs.push(Job {
+        label: "ai.cortana.backup",
+        arguments: [
+            common.to_vec(),
+            vec!["backup".into(), "--keep".into(), "14".into()],
+        ]
+        .concat(),
+        schedule: Schedule::Interval(backup_seconds),
+    });
+    jobs
 }
 
 pub fn uninstall() -> Result<()> {
@@ -321,5 +341,20 @@ mod tests {
                 .expect("write plist");
             assert!(child.wait().expect("plutil").success());
         }
+    }
+
+    #[test]
+    fn recurring_sync_job_requires_explicit_opt_in() {
+        let common = vec!["cortana".into(), "--config".into(), "config.toml".into()];
+        let safe = configured_jobs(&common, Path::new("/tmp/web"), 900, 86_400, true, false);
+        assert!(
+            safe.iter().all(|job| job.label != "ai.cortana.sync"),
+            "safe installation must be query-only by default"
+        );
+        let scheduled = configured_jobs(&common, Path::new("/tmp/web"), 900, 86_400, true, true);
+        assert!(
+            scheduled.iter().any(|job| job.label == "ai.cortana.sync"),
+            "explicit opt-in must install the recurring sync job"
+        );
     }
 }

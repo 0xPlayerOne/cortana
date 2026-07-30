@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -12,6 +13,67 @@ const TEXT_EXTENSIONS: &[&str] = &[
     "md", "mdx", "mjs", "py", "rb", "rs", "rst", "sh", "sol", "sql", "swift", "toml", "ts", "tsx",
     "txt", "xml", "yaml", "yml", "zsh",
 ];
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct FilesystemPlan {
+    pub documents: usize,
+    pub bytes: u64,
+}
+
+pub fn filesystem_plan(
+    root: &Path,
+    excludes: &[String],
+    max_documents: usize,
+    max_bytes: u64,
+    max_duration: Duration,
+) -> Result<FilesystemPlan> {
+    let canonical_root = root
+        .canonicalize()
+        .with_context(|| format!("source root does not exist: {}", root.display()))?;
+    let filter_root = canonical_root.clone();
+    let filter_excludes = excludes.to_vec();
+    let started = Instant::now();
+    let mut plan = FilesystemPlan {
+        documents: 0,
+        bytes: 0,
+    };
+    for entry in WalkBuilder::new(&canonical_root)
+        .hidden(false)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .filter_entry(move |entry| {
+            !is_generated(entry.path())
+                && !is_excluded(entry.path(), &filter_root, &filter_excludes)
+        })
+        .build()
+    {
+        anyhow::ensure!(
+            started.elapsed() <= max_duration,
+            "filesystem planning exceeded the {} second source budget",
+            max_duration.as_secs()
+        );
+        let entry = entry?;
+        if !entry.file_type().is_some_and(|kind| kind.is_file()) || !is_text(entry.path()) {
+            continue;
+        }
+        let bytes = entry.metadata()?.len();
+        if bytes == 0 || bytes > 2_000_000 {
+            continue;
+        }
+        plan.documents = plan.documents.saturating_add(1);
+        plan.bytes = plan.bytes.saturating_add(bytes);
+        anyhow::ensure!(
+            plan.documents <= max_documents,
+            "filesystem source exceeds the {max_documents} document budget"
+        );
+        anyhow::ensure!(
+            plan.bytes <= max_bytes,
+            "filesystem source exceeds the {max_bytes} byte budget"
+        );
+    }
+    Ok(plan)
+}
 
 pub fn filesystem_documents(root: &Path, source: &str, project: &str) -> Result<Vec<Document>> {
     filesystem_documents_with_excludes(root, source, project, &[])
@@ -119,6 +181,7 @@ fn is_text(path: &Path) -> bool {
 fn is_generated(path: &Path) -> bool {
     const SKIP: &[&str] = &[
         ".git",
+        ".worktrees",
         ".venv",
         "Library",
         "build",
@@ -153,6 +216,13 @@ mod tests {
             "generated",
         )
         .expect("generated file");
+        std::fs::create_dir_all(directory.path().join(".worktrees/feature"))
+            .expect("worktree directory");
+        std::fs::write(
+            directory.path().join(".worktrees/feature/duplicate.rs"),
+            "fn duplicate() {}",
+        )
+        .expect("worktree file");
 
         let documents = filesystem_documents_with_excludes(
             directory.path(),
@@ -164,5 +234,16 @@ mod tests {
 
         assert_eq!(documents.len(), 1);
         assert_eq!(documents[0].source_id, "keep.rs");
+    }
+
+    #[test]
+    fn filesystem_plan_stops_before_an_unsafe_scan() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        std::fs::write(directory.path().join("one.rs"), "fn one() {}").expect("first file");
+        std::fs::write(directory.path().join("two.rs"), "fn two() {}").expect("second file");
+
+        let error = filesystem_plan(directory.path(), &[], 1, 1_000, Duration::from_secs(5))
+            .expect_err("document budget");
+        assert!(error.to_string().contains("1 document budget"));
     }
 }
