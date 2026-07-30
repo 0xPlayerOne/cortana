@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "thresholds": {
+    "min_recall_at_k": 1.0,
+    "min_mrr": 1.0,
+    "min_case_pass_rate": 1.0,
+    "min_citation_validity": 1.0,
+    "max_latency_ms": 1000
+  },
+  "documents": [
+    {
+      "source": "handbook",
+      "source_id": "deploy-runbook",
+      "title": "Orchid deployment runbook",
+      "content": "The Orchid service production deployment uses the bluejay checklist and verifies the canary before promotion.",
+      "uri": "https://example.invalid/handbook/deploy",
+      "updated_at": "2026-01-01T00:00:00Z",
+      "project": "engineering",
+      "acl": ["work"],
+      "metadata": {}
+    },
+    {
+      "source": "notes",
+      "source_id": "meeting-notes",
+      "title": "Orchid planning notes",
+      "content": "The Orchid planning meeting assigned documentation review to Rowan and scheduled the next review for Thursday.",
+      "uri": "https://example.invalid/notes/orchid",
+      "updated_at": "2026-01-02T00:00:00Z",
+      "project": "engineering",
+      "acl": ["work"],
+      "metadata": {}
+    },
+    {
+      "source": "notes",
+      "source_id": "private-journal",
+      "title": "Private journal",
+      "content": "The private cedar phrase is reserved for a synthetic ACL denial test.",
+      "uri": "https://example.invalid/notes/private",
+      "updated_at": "2026-01-03T00:00:00Z",
+      "project": "personal",
+      "acl": ["personal"],
+      "metadata": {}
+    },
+    {
+      "source": "public",
+      "source_id": "public-cedar",
+      "title": "Public cedar guide",
+      "content": "Cedar trees are evergreen conifers used here only as harmless public evaluation text.",
+      "uri": "https://example.invalid/public/cedar",
+      "updated_at": "2026-01-04T00:00:00Z",
+      "project": "reference",
+      "acl": [],
+      "metadata": {}
+    }
+  ],
+  "retrieval_cases": [
+    {
+      "name": "hybrid exact-term recall",
+      "query": "bluejay checklist canary promotion",
+      "project": "engineering",
+      "top_k": 3,
+      "acl": ["work"],
+      "expected_source_ids": ["deploy-runbook"]
+    },
+    {
+      "name": "source-scoped retrieval",
+      "query": "Orchid Rowan Thursday",
+      "project": "engineering",
+      "source": "notes",
+      "top_k": 3,
+      "acl": ["work"],
+      "expected_source_ids": ["meeting-notes"]
+    },
+    {
+      "name": "ACL denial",
+      "query": "private cedar phrase",
+      "top_k": 5,
+      "acl": ["work"],
+      "expected_source_ids": [],
+      "forbidden_source_ids": ["private-journal"]
+    }
+  ],
+  "answer_case": {
+    "query": "What checklist is used to deploy Orchid?",
+    "project": "engineering",
+    "acl": ["work"],
+    "expected_source_id": "deploy-runbook"
+  }
+}

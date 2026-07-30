@@ -65,6 +65,23 @@ enum Command {
     },
     /// Validate configuration, storage, and the embedding provider.
     Doctor,
+    /// Run deterministic retrieval and answer quality gates in an isolated temporary index.
+    Eval {
+        #[arg(long, help = "Use a custom synthetic evaluation fixture")]
+        fixture: Option<PathBuf>,
+    },
+    /// Check production dependencies without starting or scheduling ingestion.
+    Readiness {
+        #[arg(long, default_value = "http://127.0.0.1:7331")]
+        api_url: String,
+        #[arg(long, default_value_t = 48)]
+        max_backup_age_hours: u64,
+        #[arg(
+            long,
+            help = "Acknowledge an explicitly installed recurring sync service"
+        )]
+        allow_sync_service: bool,
+    },
     /// Create and verify an online SQLite snapshot.
     Backup {
         output: Option<PathBuf>,
@@ -248,6 +265,15 @@ async fn main() -> Result<()> {
         println!("migrated Hermes configuration");
         return Ok(());
     }
+    if let Some(Command::Eval { fixture }) = cli.command.as_ref() {
+        let report = match fixture {
+            Some(path) => cortana::evaluation::run(path).await?,
+            None => cortana::evaluation::run_default().await?,
+        };
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        anyhow::ensure!(report.passed, "deterministic evaluation thresholds failed");
+        return Ok(());
+    }
     let config_path = cli.config.clone().unwrap_or_else(default_config_path);
     let mut config = Config::load(Some(&config_path))?;
     config.load_environment()?;
@@ -345,6 +371,25 @@ async fn main() -> Result<()> {
             .transpose()?;
         Arc::new(OpenAiEmbedder::new(config.embedding.clone(), api_key)?)
     };
+    if let Some(Command::Readiness {
+        api_url,
+        max_backup_age_hours,
+        allow_sync_service,
+    }) = cli.command.as_ref()
+    {
+        let report = cortana::readiness::run(
+            &config,
+            &store,
+            base_embedder.as_ref(),
+            api_url,
+            *max_backup_age_hours,
+            *allow_sync_service,
+        )
+        .await;
+        println!("{}", serde_json::to_string_pretty(&report)?);
+        anyhow::ensure!(report.passed, "production readiness checks failed");
+        return Ok(());
+    }
     store.ensure_fingerprint(&base_embedder.fingerprint())?;
     let embedder: Arc<dyn Embedder> = Arc::new(CachedEmbedder::with_limit(
         store.clone(),
@@ -359,7 +404,8 @@ async fn main() -> Result<()> {
             | Command::Verify { .. }
             | Command::Restore { .. }
             | Command::EmbeddingService
-            | Command::Service { .. },
+            | Command::Service { .. }
+            | Command::Readiness { .. },
         ) => {
             unreachable!()
         }
@@ -536,6 +582,7 @@ async fn main() -> Result<()> {
         Some(
             Command::Init { .. }
             | Command::MigrateHermes { .. }
+            | Command::Eval { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
         ) => unreachable!(),

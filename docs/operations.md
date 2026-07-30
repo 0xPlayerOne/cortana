@@ -120,6 +120,13 @@ systemctl --user enable --now cortana-sync.timer cortana-backup.timer
 For cloud embeddings, omit `cortana-embedding.service`. Adjust `ReadWritePaths` when `data_dir`
 differs from the XDG default.
 
+## Read-only production readiness
+
+Run `cortana readiness` to check API liveness, embedding availability, database integrity, backup
+freshness, query mode, and recurring-sync state. The command does not call connectors or mutate
+the corpus. Recurring sync fails the safe default unless the operator explicitly supplies
+`--allow-sync-service`; see the [evaluation guide](evaluation.md).
+
 ## Secrets
 
 An optional `[runtime].env_file` supplies connector, cloud-provider, and HTTP-token environment

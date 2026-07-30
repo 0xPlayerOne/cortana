@@ -77,6 +77,8 @@ See [the query guide](docs/query.md) for planned retrieval, cited synthesis, loc
 configuration, cloud providers, cache invalidation, and degraded operation.
 See the [operations guide](docs/operations.md) for service management, authenticated remote access,
 telemetry, backup, restore, and Linux systemd units.
+Run the isolated [evaluation and readiness gates](docs/evaluation.md) before enabling synthesis or
+recurring ingestion.
 See [release history](docs/releases.md) for the automated version-PR policy and transitional
 release notes.
 
