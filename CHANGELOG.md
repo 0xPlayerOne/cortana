@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.10.0](https://github.com/0xPlayerOne/cortana/compare/v0.9.0...v0.10.0) (2026-07-30)
+
+
+### Features
+
+* **desktop:** add guided setup and portable settings ([133e9eb](https://github.com/0xPlayerOne/cortana/commit/133e9eb10b2b36c3309dff883e1b72b31465f76e))
+
+
+### Bug Fixes
+
+* **ci:** use Code Foundry 0.31.18 ([255010d](https://github.com/0xPlayerOne/cortana/commit/255010d61625089f69fc74b8041f69b335322d37))
+
+
+### CI
+
+* update Code Foundry runtime to v0.31.17 ([3b79e75](https://github.com/0xPlayerOne/cortana/commit/3b79e755185a9163308a47a9c8fd49a3888c17c1))
+
 ## [0.9.0](https://github.com/0xPlayerOne/cortana/compare/v0.8.0...v0.9.0) (2026-07-30)
 
 
