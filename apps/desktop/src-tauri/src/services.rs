@@ -54,19 +54,24 @@ pub async fn action(
     if !ACTIONS.contains(&action) {
         return Err("unsupported Cortana service action".into());
     }
-    let output = sidecar_output(app, &["service", action, service]).await?;
+    let output = match sidecar_output(app, &["service", action, service]).await {
+        Ok(output) => output,
+        Err(error) => {
+            audit_action("service.action", action, &[service], "failed", Some(service));
+            return Err(error);
+        }
+    };
     if !output.status.success() {
+        audit_action("service.action", action, &[service], "failed", Some(service));
         return Err(bounded_error(&output.stderr));
     }
-    let event = serde_json::json!({
-        "at_unix_seconds": now(),
-        "event": "service.action",
-        "service": service,
-        "action": action,
-        "approved": true,
-        "secret_values_recorded": false,
-    });
-    let _ = settings::append_audit_event(&settings::default_config_path(), &event);
+    audit_action(
+        "service.action",
+        action,
+        &[service],
+        "completed",
+        None,
+    );
     status(app).await
 }
 
@@ -87,22 +92,58 @@ pub async fn action_all(
         CORE_SERVICE_NAMES.to_vec()
     };
     for service in services {
-        let output = sidecar_output(app, &["service", action, service]).await?;
+        let output = match sidecar_output(app, &["service", action, service]).await {
+            Ok(output) => output,
+            Err(error) => {
+                audit_action(
+                    "service.action_all",
+                    action,
+                    &CORE_SERVICE_NAMES,
+                    "failed",
+                    Some(service),
+                );
+                return Err(error);
+            }
+        };
         if !output.status.success() {
+            audit_action(
+                "service.action_all",
+                action,
+                &CORE_SERVICE_NAMES,
+                "failed",
+                Some(service),
+            );
             return Err(format!("{service}: {}", bounded_error(&output.stderr)));
         }
     }
+    audit_action(
+        "service.action_all",
+        action,
+        &CORE_SERVICE_NAMES,
+        "completed",
+        None,
+    );
+    status(app).await
+}
+
+fn audit_action(
+    event_name: &str,
+    action: &str,
+    services: &[&str],
+    outcome: &str,
+    failed_service: Option<&str>,
+) {
     let event = serde_json::json!({
         "at_unix_seconds": now(),
-        "event": "service.action_all",
-        "services": CORE_SERVICE_NAMES,
-        "excluded_services": ["sync", "backup"],
+        "event": event_name,
+        "services": services,
+        "failed_service": failed_service,
         "action": action,
+        "outcome": outcome,
         "approved": true,
         "secret_values_recorded": false,
     });
     let _ = settings::append_audit_event(&settings::default_config_path(), &event);
-    status(app).await
 }
 
 async fn sidecar_output(
