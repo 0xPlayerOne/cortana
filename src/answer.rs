@@ -263,7 +263,10 @@ impl AnswerEngine {
             Ok(answer) => answer,
             Err(_) => {
                 warnings.push("synthesis fallback: answer deadline reached".into());
-                (extractive_answer(&evidence), "extractive".into())
+                (
+                    extractive_answer(&request.query, &evidence),
+                    "extractive".into(),
+                )
             }
         };
         let response = AnswerResponse {
@@ -330,7 +333,7 @@ impl AnswerEngine {
             );
         }
         let Some(model) = &self.model else {
-            return (extractive_answer(evidence), "extractive".into());
+            return (extractive_answer(query, evidence), "extractive".into());
         };
         let bundle = context::build(query, evidence, self.config.context_tokens);
         match model
@@ -347,11 +350,11 @@ impl AnswerEngine {
             }
             Ok(_) => {
                 warnings.push("synthesis fallback: invalid or missing citations".into());
-                (extractive_answer(evidence), "extractive".into())
+                (extractive_answer(query, evidence), "extractive".into())
             }
             Err(error) => {
                 warnings.push(format!("synthesis unavailable: {error}"));
-                (extractive_answer(evidence), "extractive".into())
+                (extractive_answer(query, evidence), "extractive".into())
             }
         }
     }
@@ -441,17 +444,52 @@ fn fuse(result_sets: Vec<Vec<Evidence>>, limit: usize) -> Vec<Evidence> {
         .collect()
 }
 
-fn extractive_answer(evidence: &[Evidence]) -> String {
-    evidence
+fn extractive_answer(query: &str, evidence: &[Evidence]) -> String {
+    let query_terms = meaningful_terms(query);
+    let scored = evidence
         .iter()
-        .take(4)
         .enumerate()
         .map(|(index, item)| {
+            let terms = meaningful_terms(&format!("{} {}", item.title, item.content));
+            let overlap = query_terms.intersection(&terms).count();
+            (index, item, overlap)
+        })
+        .collect::<Vec<_>>();
+    let maximum_overlap = scored
+        .iter()
+        .map(|(_, _, overlap)| *overlap)
+        .max()
+        .unwrap_or_default();
+    scored
+        .into_iter()
+        .filter(|(_, _, overlap)| maximum_overlap < 2 || *overlap == maximum_overlap)
+        .take(4)
+        .map(|(index, item, _)| {
             let excerpt = item.content.chars().take(700).collect::<String>();
             format!("{} [{index}]", excerpt.trim(), index = index + 1)
         })
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+fn meaningful_terms(value: &str) -> HashSet<String> {
+    const STOPWORDS: [&str; 32] = [
+        "a", "an", "and", "are", "be", "can", "did", "do", "does", "for", "from", "how", "i", "in",
+        "is", "it", "my", "of", "on", "or", "our", "should", "the", "this", "to", "was", "were",
+        "what", "when", "with", "you", "your",
+    ];
+    value
+        .split(|character: char| !character.is_alphanumeric() && character != '_')
+        .map(str::to_lowercase)
+        .filter(|token| token.len() > 1 && !STOPWORDS.contains(&token.as_str()))
+        .map(|token| {
+            if token.len() > 4 && token.ends_with("ly") {
+                token[..token.len() - 2].to_string()
+            } else {
+                token
+            }
+        })
+        .collect()
 }
 
 fn valid_citations(answer: &str, evidence_count: usize) -> bool {
@@ -584,6 +622,45 @@ mod tests {
         assert!(valid_citations("The release is ready [1].", 2));
         assert!(!valid_citations("The release is ready.", 2));
         assert!(!valid_citations("The release is ready [3].", 2));
+    }
+
+    #[test]
+    fn extractive_answer_omits_lower_coverage_stopword_distractors() {
+        let evidence = [
+            (
+                "Cortana ingestion safety",
+                "Cortana ingestion uses safe bounded validation before sync.",
+            ),
+            (
+                "Vulnerability writeup",
+                "The analysis should be thoughtful and run only safe probes.",
+            ),
+            (
+                "Old Cortana status",
+                "Cortana is under active initial development.",
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(index, (title, content))| Evidence {
+            chunk_id: index.to_string(),
+            source: "test".into(),
+            source_id: index.to_string(),
+            title: title.into(),
+            uri: None,
+            content: content.into(),
+            score: 1.0,
+            semantic_rank: None,
+            lexical_rank: Some(index + 1),
+            updated_at: Utc::now(),
+        })
+        .collect::<Vec<_>>();
+
+        let answer = extractive_answer("How should Cortana ingestion be run safely?", &evidence);
+        assert!(answer.contains("bounded validation"));
+        assert!(answer.contains("[1]"));
+        assert!(!answer.contains("thoughtful"));
+        assert!(!answer.contains("initial development"));
     }
 
     #[test]

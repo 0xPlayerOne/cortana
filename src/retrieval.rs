@@ -168,7 +168,7 @@ fn rank(
             let recency = 1.0 / (1.0 + age_days / 180.0);
             let semantic = semantic_scores.get(&id).copied().unwrap_or_default();
             let idf = idf_scores.get(&id).copied().unwrap_or_default();
-            let reranked = score + 0.01 * semantic.max(0.0) + 0.015 * idf;
+            let reranked = score + 0.01 * semantic.max(0.0) + 0.08 * idf;
             Some((chunk, reranked * (0.9 + 0.1 * recency)))
         })
         .collect::<Vec<_>>();
@@ -232,10 +232,23 @@ fn idf_overlap(query: &str, chunks: &[StoredChunk]) -> HashMap<String, f32> {
 }
 
 fn tokenize(value: &str) -> HashSet<String> {
+    const STOPWORDS: [&str; 32] = [
+        "a", "an", "and", "are", "be", "can", "did", "do", "does", "for", "from", "how", "i", "in",
+        "is", "it", "my", "of", "on", "or", "our", "should", "the", "this", "to", "was", "were",
+        "what", "when", "with", "you", "your",
+    ];
     value
         .split(|character: char| !character.is_alphanumeric() && character != '_')
         .filter(|token| token.len() > 1)
         .map(str::to_lowercase)
+        .filter(|token| !STOPWORDS.contains(&token.as_str()))
+        .map(|token| {
+            if token.len() > 4 && token.ends_with("ly") {
+                token[..token.len() - 2].to_string()
+            } else {
+                token
+            }
+        })
         .collect()
 }
 

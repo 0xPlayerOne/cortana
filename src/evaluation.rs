@@ -60,6 +60,8 @@ pub struct AnswerCase {
     #[serde(default)]
     pub acl: Vec<String>,
     pub expected_source_id: String,
+    #[serde(default)]
+    pub forbidden_source_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -98,6 +100,7 @@ pub struct AnswerEvaluation {
     pub planner_bounded: bool,
     pub citations_valid: bool,
     pub expected_evidence_present: bool,
+    pub forbidden_citations_absent: bool,
     pub cache_hit: bool,
     pub cache_invalidated_after_update: bool,
 }
@@ -251,6 +254,17 @@ async fn evaluate_answer(
         .evidence
         .iter()
         .any(|item| item.source_id == fixture.answer_case.expected_source_id);
+    let forbidden_citations_absent = first
+        .evidence
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| {
+            fixture
+                .answer_case
+                .forbidden_source_ids
+                .contains(&item.source_id)
+        })
+        .all(|(index, _)| !first.answer.contains(&format!("[{}]", index + 1)));
 
     let mut updated = fixture
         .documents
@@ -281,12 +295,14 @@ async fn evaluate_answer(
             && planner_bounded
             && citations_valid
             && expected_evidence_present
+            && forbidden_citations_absent
             && cache_hit
             && cache_invalidated_after_update,
         fallback_mode,
         planner_bounded,
         citations_valid,
         expected_evidence_present,
+        forbidden_citations_absent,
         cache_hit,
         cache_invalidated_after_update,
     })
