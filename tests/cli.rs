@@ -315,6 +315,14 @@ fn source_budget_rejects_snapshot_before_partial_ingestion() {
         documents, 0,
         "a failed preflight must not partially ingest the snapshot"
     );
+    let sync_status: String = connection
+        .query_row(
+            "SELECT status FROM sync_runs WHERE source='external-demo'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("sync status");
+    assert_eq!(sync_status, "budget_exceeded");
 }
 
 #[cfg(unix)]

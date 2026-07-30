@@ -13,7 +13,8 @@ import {
 } from 'lucide-react'
 import { useMemo } from 'react'
 
-import type { SourceSummary } from '../types'
+import { operationalSources, sourceHealth, type OperationalSource } from '../operations'
+import type { BrainStatus } from '../types'
 
 const sourceIcons: Record<string, typeof Folder> = {
   code: Code2,
@@ -32,21 +33,22 @@ function sourceIcon(source: string) {
 
 export function SourcePanel({
   open,
-  sources,
+  status,
   selected,
   onSelect,
   onClose,
 }: {
   open: boolean
-  sources: SourceSummary[]
+  status: BrainStatus | null
   selected: string
   onSelect: (source: string) => void
   onClose: () => void
 }) {
+  const sources = useMemo(() => operationalSources(status), [status])
   const projects = useMemo(
     () =>
       Object.entries(
-        sources.reduce<Record<string, SourceSummary[]>>((groups, source) => {
+        sources.reduce<Record<string, OperationalSource[]>>((groups, source) => {
           ;(groups[source.project] ??= []).push(source)
           return groups
         }, {})
@@ -66,6 +68,10 @@ export function SourcePanel({
           <Settings size={16} />
         </button>
       </div>
+      <div className={`source-mode ${status?.ingestion.scheduled ? 'scheduled' : 'manual'}`}>
+        <i />
+        Ingestion {status?.ingestion.scheduled ? 'scheduled' : 'paused · manual only'}
+      </div>
       {!projects.length ? (
         <div className="source-empty">
           <Database size={20} />
@@ -84,15 +90,18 @@ export function SourcePanel({
               </div>
               {items.map((item) => {
                 const Icon = sourceIcon(item.source)
+                const health = sourceHealth(item)
                 return (
                   <button
-                    key={item.source}
+                    key={`${item.project}:${item.name}`}
                     className={selected === item.source ? 'selected' : ''}
                     onClick={() => onSelect(item.source)}
+                    title={health.label}
                   >
                     <ChevronRight size={13} />
                     <Icon size={17} />
-                    <span>{item.source}</span>
+                    <span>{item.name}</span>
+                    <i className={`source-health ${health.state}`} />
                     <small>{item.documents.toLocaleString()}</small>
                   </button>
                 )
