@@ -21,6 +21,8 @@ pub struct Config {
     #[serde(default)]
     pub runtime: RuntimeConfig,
     #[serde(default)]
+    pub workspaces: Vec<WorkspaceConfig>,
+    #[serde(default)]
     pub sources: Vec<SourceConfig>,
     #[serde(skip)]
     pub environment: HashMap<String, String>,
@@ -30,6 +32,16 @@ pub struct Config {
 pub struct RuntimeConfig {
     #[serde(default)]
     pub env_file: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct WorkspaceConfig {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub account_label: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -258,6 +270,7 @@ impl Default for Config {
             auth: AuthConfig::default(),
             connectors: ConnectorConfig::default(),
             runtime: RuntimeConfig::default(),
+            workspaces: Vec::new(),
             sources: Vec::new(),
             environment: HashMap::new(),
         }
@@ -529,6 +542,33 @@ mod tests {
     #[test]
     fn reserves_enough_memory_for_the_default_local_embedding_model() {
         assert_eq!(Config::default().embedding.service.memory_limit_mb, 4_096);
+    }
+
+    #[test]
+    fn parses_workspace_metadata_without_changing_source_scopes() {
+        let config: Config = toml::from_str(
+            r##"
+            [[workspaces]]
+            id = "personal"
+            name = "Personal"
+            account_label = "me@example.com"
+            color = "#E8A83B"
+
+            [[sources]]
+            name = "mail"
+            kind = "gmail"
+            project = "personal"
+            "##,
+        )
+        .expect("valid workspace configuration");
+
+        assert_eq!(config.workspaces.len(), 1);
+        assert_eq!(config.workspaces[0].id, "personal");
+        assert_eq!(
+            config.workspaces[0].account_label.as_deref(),
+            Some("me@example.com")
+        );
+        assert_eq!(config.sources[0].project, "personal");
     }
 
     #[cfg(unix)]

@@ -34,17 +34,22 @@ function sourceIcon(source: string) {
 export function SourcePanel({
   open,
   status,
+  workspace,
   selected,
   onSelect,
   onClose,
 }: {
   open: boolean
   status: BrainStatus | null
+  workspace: string
   selected: string
   onSelect: (source: string) => void
   onClose: () => void
 }) {
-  const sources = useMemo(() => operationalSources(status), [status])
+  const sources = useMemo(
+    () => operationalSources(status).filter((item) => !workspace || item.project === workspace),
+    [status, workspace]
+  )
   const projects = useMemo(
     () =>
       Object.entries(

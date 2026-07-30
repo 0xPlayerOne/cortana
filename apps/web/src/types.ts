@@ -68,6 +68,13 @@ export type IngestionStatus = {
   configured_sources: ConfiguredSourceSummary[]
 }
 
+export type WorkspaceSettings = {
+  id: string
+  name: string
+  account_label: string | null
+  color: string | null
+}
+
 export type BrainStatus = {
   status: string
   embedding_fingerprint: string | null
@@ -90,6 +97,71 @@ export type BrainStatus = {
   sources: SourceSummary[]
   sync_runs: SourceSyncSummary[]
   ingestion: IngestionStatus
+  workspaces: WorkspaceSettings[]
+}
+
+export type ProviderSettings = {
+  provider: 'local' | 'cloud'
+  base_url: string
+  model: string
+  api_key_env: string | null
+}
+
+export type EmbeddingSettings = ProviderSettings & {
+  dimension: number
+  cache_max_entries: number
+  request_timeout_seconds: number
+  request_concurrency: number
+  startup_timeout_seconds: number
+  memory_limit_mb: number
+}
+
+export type QuerySettings = ProviderSettings & {
+  synthesis_enabled: boolean
+  max_planned_queries: number
+  retrieval_limit: number
+  result_limit: number
+  context_tokens: number
+  output_tokens: number
+  request_timeout_seconds: number
+  answer_timeout_seconds: number
+  request_concurrency: number
+  cache_max_entries: number
+  cache_ttl_seconds: number
+}
+
+export type DesktopSettings = {
+  config_path: string
+  secret_file_path: string
+  needs_setup: boolean
+  restart_required: boolean
+  workspaces: WorkspaceSettings[]
+  embedding: EmbeddingSettings
+  query: QuerySettings
+  ingestion: {
+    max_documents_per_source: number
+    max_bytes_per_source: number
+    max_duration_seconds: number
+    document_batch_size: number
+    request_concurrency: number
+  }
+  runtime: {
+    data_dir: string
+    connector_timeout_seconds: number
+    audit_max_events: number
+  }
+  secrets: Array<{
+    name: string
+    configured: boolean
+    source: 'secret-file' | 'environment' | 'unset'
+  }>
+}
+
+export type DesktopSettingsUpdate = Pick<
+  DesktopSettings,
+  'workspaces' | 'embedding' | 'query' | 'ingestion' | 'runtime'
+> & {
+  secrets: Array<{ name: string; value?: string; clear?: boolean }>
 }
 
 export type AnswerResponse = {
