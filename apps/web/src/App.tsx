@@ -1,19 +1,20 @@
 import { FileText, LoaderCircle, Search } from 'lucide-react'
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 
-import { getContext, getStatus, isDemoMode } from './api'
+import { getAnswer, getStatus, isDemoMode } from './api'
 import { ContextPanel } from './components/ContextPanel'
 import { Navigation, TitleActions } from './components/Navigation'
 import { SourcePanel } from './components/SourcePanel'
 import { Workspace } from './components/Workspace'
-import type { BrainStatus, ContextBundle, Evidence } from './types'
+import { buildAgentContext, estimateTokens } from './context'
+import type { AnswerResponse, BrainStatus, Evidence } from './types'
 
 export function App() {
   const [query, setQuery] = useState('How do releases work?')
   const [activeQuery, setActiveQuery] = useState(query)
   const [status, setStatus] = useState<BrainStatus | null>(null)
   const [evidence, setEvidence] = useState<Evidence[]>([])
-  const [bundle, setBundle] = useState<ContextBundle | null>(null)
+  const [answer, setAnswer] = useState<AnswerResponse | null>(null)
   const [selected, setSelected] = useState(0)
   const [source, setSource] = useState('')
   const [loading, setLoading] = useState(true)
@@ -30,20 +31,25 @@ export function App() {
         if (controller.signal.aborted) return
         setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
       })
-    const contextRequest = getContext(query, undefined, undefined, controller.signal)
+    const answerRequest = getAnswer(query, undefined, undefined, controller.signal)
       .then((next) => {
-        setBundle(next)
+        setAnswer(next)
         setEvidence(next.evidence)
       })
       .catch((caught: unknown) => {
         if (controller.signal.aborted) return
         setError(caught instanceof Error ? caught.message : 'Cortana is unavailable')
       })
-    void Promise.allSettled([statusRequest, contextRequest]).finally(() => {
+    void Promise.allSettled([statusRequest, answerRequest]).finally(() => {
       if (!controller.signal.aborted) setLoading(false)
     })
     return () => controller.abort()
   }, [])
+
+  const agentContext = useMemo(
+    () => buildAgentContext(activeQuery, evidence),
+    [activeQuery, evidence]
+  )
 
   useEffect(() => {
     const refresh = () => {
@@ -64,14 +70,14 @@ export function App() {
     setLoading(true)
     setError('')
     try {
-      const next = await getContext(value, undefined, nextSource || undefined)
-      setBundle(next)
+      const next = await getAnswer(value, undefined, nextSource || undefined)
+      setAnswer(next)
       setEvidence(next.evidence)
       setActiveQuery(value)
       setSelected(0)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Search failed')
-      setBundle(null)
+      setAnswer(null)
       setEvidence([])
     } finally {
       setLoading(false)
@@ -115,6 +121,7 @@ export function App() {
       />
       <Workspace
         query={activeQuery}
+        answer={answer}
         evidence={evidence}
         selected={selected}
         loading={loading}
@@ -128,8 +135,8 @@ export function App() {
         evidence={evidence}
         selected={selected}
         status={status}
-        context={bundle?.context ?? ''}
-        contextTokens={bundle?.metrics.estimated_tokens ?? 0}
+        context={agentContext}
+        contextTokens={estimateTokens(agentContext)}
         onSelect={setSelected}
         onClose={() => setRightOpen(false)}
       />
@@ -138,6 +145,7 @@ export function App() {
           <i /> Index {statusError ? 'offline' : status ? 'online' : 'checking'}
         </span>
         <span>Embedding: {status?.embedding_fingerprint?.split(':')[1] ?? '—'}</span>
+        <span>Query: {status?.query.mode ?? '—'}</span>
         <span>
           <FileText size={13} /> Docs: {(status?.documents ?? 0).toLocaleString()}
         </span>

@@ -1,6 +1,6 @@
 import { demoEvidence, demoStatus } from './demo'
 import { buildAgentContext, estimateTokens } from './context'
-import type { BrainStatus, ContextBundle } from './types'
+import type { AnswerResponse, BrainStatus, ContextBundle } from './types'
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
 
@@ -49,6 +49,45 @@ export async function getContext(
   })
   if (!response.ok) throw new Error(`Context retrieval failed (${response.status})`)
   return (await response.json()) as ContextBundle
+}
+
+export async function getAnswer(
+  query: string,
+  project?: string,
+  source?: string,
+  signal?: AbortSignal
+): Promise<AnswerResponse> {
+  if (isDemoMode) {
+    const evidence = demoEvidence
+      .filter((item) => !source || item.source === source)
+      .sort((left, right) => right.score - left.score)
+    return {
+      query,
+      answer:
+        'Promote short-lived changes through staging after the full test and security suite passes, then monitor the release and roll back if health regresses [1]. Keep an explicit rollback owner in the checklist [2].',
+      evidence,
+      plan: {
+        queries: [query, 'release promotion staging checks', 'rollback owner health regression'],
+        model_generated: true,
+      },
+      mode: 'synthesized',
+      cached: false,
+      latency_ms: 184,
+      warnings: [],
+    }
+  }
+  const response = await authorizedFetch('/v1/answer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query,
+      project: project || null,
+      source: source || null,
+    }),
+    signal,
+  })
+  if (!response.ok) throw new Error(`Answer request failed (${response.status})`)
+  return (await response.json()) as AnswerResponse
 }
 
 async function authorizedFetch(input: string, init: RequestInit): Promise<Response> {

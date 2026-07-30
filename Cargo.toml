@@ -24,7 +24,7 @@ schemars = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10"
-tokio = { version = "1.47", features = ["macros", "net", "process", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "1.47", features = ["macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 toml = "0.9"
 tower-http = { version = "0.6", features = ["fs", "timeout", "trace"] }
 tracing = "0.1"

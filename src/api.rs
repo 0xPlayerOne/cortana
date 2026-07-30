@@ -19,6 +19,7 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
 use crate::{
+    answer::{AnswerEngine, AnswerRequest, AnswerResponse, QueryRuntimeStatus},
     config::Config,
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
@@ -34,21 +35,34 @@ pub struct AppState {
     metrics: Arc<RuntimeMetrics>,
     api_token: Option<Arc<str>>,
     ingestion: Arc<IngestionStatus>,
+    answer: AnswerEngine,
 }
 
 impl AppState {
     pub fn new(store: Store, embedder: Arc<dyn Embedder>, api_token: Option<String>) -> Self {
+        let answer = AnswerEngine::new(
+            store.clone(),
+            embedder.clone(),
+            None,
+            crate::config::QueryConfig::default(),
+        );
         Self {
             store,
             embedder,
             metrics: Arc::new(RuntimeMetrics::new()),
             api_token: api_token.map(Arc::from),
             ingestion: Arc::new(IngestionStatus::default()),
+            answer,
         }
     }
 
     pub fn with_config(mut self, config: &Config, scheduled: bool) -> Self {
         self.ingestion = Arc::new(IngestionStatus::from_config(config, scheduled));
+        self
+    }
+
+    pub fn with_answer_engine(mut self, answer: AnswerEngine) -> Self {
+        self.answer = answer;
         self
     }
 }
@@ -57,6 +71,7 @@ struct RuntimeMetrics {
     started: Instant,
     searches: AtomicU64,
     contexts: AtomicU64,
+    answers: AtomicU64,
     errors: AtomicU64,
 }
 
@@ -66,6 +81,7 @@ impl RuntimeMetrics {
             started: Instant::now(),
             searches: AtomicU64::new(0),
             contexts: AtomicU64::new(0),
+            answers: AtomicU64::new(0),
             errors: AtomicU64::new(0),
         }
     }
@@ -106,7 +122,9 @@ struct Status {
     uptime_seconds: u64,
     searches_total: u64,
     contexts_total: u64,
+    answers_total: u64,
     errors_total: u64,
+    query: QueryRuntimeStatus,
     ingestion: IngestionStatus,
     #[serde(flatten)]
     stats: StoreStats,
@@ -183,6 +201,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/status", get(status))
         .route("/v1/search", post(search))
         .route("/v1/context", post(context))
+        .route("/v1/answer", post(answer))
         .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
@@ -254,12 +273,31 @@ async fn status(State(state): State<AppState>) -> Result<Json<Status>, (StatusCo
                 uptime_seconds: state.metrics.uptime_seconds(),
                 searches_total: state.metrics.searches.load(Ordering::Relaxed),
                 contexts_total: state.metrics.contexts.load(Ordering::Relaxed),
+                answers_total: state.metrics.answers.load(Ordering::Relaxed),
                 errors_total: state.metrics.errors.load(Ordering::Relaxed),
+                query: state.answer.status(),
                 ingestion: (*state.ingestion).clone(),
                 stats,
             })
         })
         .map_err(internal_error)
+}
+
+async fn answer(
+    State(state): State<AppState>,
+    Json(request): Json<AnswerRequest>,
+) -> Result<Json<AnswerResponse>, (StatusCode, String)> {
+    validate_query(&request.query)?;
+    state.metrics.answers.fetch_add(1, Ordering::Relaxed);
+    state
+        .answer
+        .answer(request)
+        .await
+        .map(Json)
+        .map_err(|error| {
+            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            internal_error(error)
+        })
 }
 
 async fn search(
@@ -330,12 +368,21 @@ async fn metrics(State(state): State<AppState>) -> Result<impl IntoResponse, (St
          # HELP cortana_embedding_cache_hits_total Persisted embedding cache hits.\n\
          # TYPE cortana_embedding_cache_hits_total counter\n\
          cortana_embedding_cache_hits_total {}\n\
+         # HELP cortana_query_cache_entries Persisted planned-answer cache entries.\n\
+         # TYPE cortana_query_cache_entries gauge\n\
+         cortana_query_cache_entries {}\n\
+         # HELP cortana_query_cache_hits_total Persisted planned-answer cache hits.\n\
+         # TYPE cortana_query_cache_hits_total counter\n\
+         cortana_query_cache_hits_total {}\n\
          # HELP cortana_search_requests_total Raw evidence search requests.\n\
          # TYPE cortana_search_requests_total counter\n\
          cortana_search_requests_total {}\n\
          # HELP cortana_context_requests_total Context bundle requests.\n\
          # TYPE cortana_context_requests_total counter\n\
          cortana_context_requests_total {}\n\
+         # HELP cortana_answer_requests_total Planned answer requests.\n\
+         # TYPE cortana_answer_requests_total counter\n\
+         cortana_answer_requests_total {}\n\
          # HELP cortana_query_errors_total Query pipeline errors.\n\
          # TYPE cortana_query_errors_total counter\n\
          cortana_query_errors_total {}\n",
@@ -344,8 +391,11 @@ async fn metrics(State(state): State<AppState>) -> Result<impl IntoResponse, (St
         stats.chunks,
         stats.embedding_cache_entries,
         stats.embedding_cache_hits,
+        stats.query_cache_entries,
+        stats.query_cache_hits,
         state.metrics.searches.load(Ordering::Relaxed),
         state.metrics.contexts.load(Ordering::Relaxed),
+        state.metrics.answers.load(Ordering::Relaxed),
         state.metrics.errors.load(Ordering::Relaxed),
     );
     Ok(([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], body))
@@ -553,6 +603,40 @@ mod tests {
             false
         );
         assert_eq!(value["ingestion"]["max_documents_per_source"], 25);
+        assert_eq!(value["query"]["mode"], "extractive");
+        assert_eq!(value["query"]["max_planned_queries"], 4);
+        assert_eq!(value["query_cache_entries"], 0);
         assert_eq!(value["sync_runs"], serde_json::json!([]));
+    }
+
+    #[tokio::test]
+    async fn answer_returns_a_bounded_extractive_fallback_without_a_model() {
+        let (_directory, state) = test_state(None);
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/answer")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"unknown topic","project":null,"source":null}"#,
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("answer response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("answer body");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("answer JSON");
+        assert_eq!(value["mode"], "extractive");
+        assert_eq!(value["cached"], false);
+        assert_eq!(value["plan"]["model_generated"], false);
+        assert_eq!(
+            value["plan"]["queries"],
+            serde_json::json!(["unknown topic"])
+        );
+        assert_eq!(value["evidence"], serde_json::json!([]));
     }
 }
