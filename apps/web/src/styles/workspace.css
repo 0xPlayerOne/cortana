@@ -149,10 +149,25 @@
   border-left-color: var(--amber);
 }
 
+.document-outline > span {
+  display: block;
+  padding: 5px 0;
+  color: #62635f;
+  font-size: 12px;
+}
+
 .document-outline svg {
   display: block;
   margin: 42px auto 14px;
   color: var(--amber);
+}
+
+.canonical-content p {
+  margin: 0 0 20px;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 17px;
+  line-height: 1.72;
+  white-space: pre-wrap;
 }
 
 .document-outline small {

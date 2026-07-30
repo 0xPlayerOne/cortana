@@ -63,6 +63,9 @@ curl -sS http://127.0.0.1:7331/v1/context \
 curl -sS http://127.0.0.1:7331/v1/answer \
   -H 'content-type: application/json' \
   -d '{"query":"how do releases work?","project":"engineering"}'
+
+# ACL-filtered canonical documents use bounded keyset pagination.
+curl -sS 'http://127.0.0.1:7331/v1/documents?project=engineering&limit=50'
 ```
 
 For an existing installation, run `./scripts/install-agent-integrations.sh`.

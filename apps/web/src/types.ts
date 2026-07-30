@@ -11,6 +11,28 @@ export type Evidence = {
   updated_at: string
 }
 
+export type BrainDocumentSummary = {
+  id: string
+  source: string
+  title: string
+  uri: string | null
+  updated_at: string
+  project: string
+  chunk_count: number
+  content_chars: number
+}
+
+export type BrainDocument = BrainDocumentSummary & {
+  content: string
+  metadata: Record<string, unknown>
+  truncated: boolean
+}
+
+export type BrainDocumentPage = {
+  documents: BrainDocumentSummary[]
+  next_cursor: string | null
+}
+
 export type SourceSummary = {
   source: string
   project: string

@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use reqwest::{Client, Method};
+use reqwest::{Client, Method, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{
@@ -24,6 +24,8 @@ const BACKEND_ORIGIN: &str = "http://127.0.0.1:7331";
 const MAIN_WINDOW: &str = "main";
 const MAX_QUERY_LENGTH: usize = 16_384;
 const MAX_SCOPE_LENGTH: usize = 256;
+const MAX_DOCUMENT_CURSOR_LENGTH: usize = 1024;
+const MAX_DOCUMENT_ID_LENGTH: usize = 128;
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
@@ -44,10 +46,21 @@ impl BackendClient {
     async fn request(
         &self,
         method: Method,
-        path: &'static str,
+        path: &str,
         body: Option<Value>,
     ) -> Result<Value, String> {
-        let mut request = self.http.request(method, format!("{BACKEND_ORIGIN}{path}"));
+        let url = Url::parse(&format!("{BACKEND_ORIGIN}{path}"))
+            .map_err(|error| format!("invalid fixed Cortana runtime URL: {error}"))?;
+        self.request_url(method, url, body).await
+    }
+
+    async fn request_url(
+        &self,
+        method: Method,
+        url: Url,
+        body: Option<Value>,
+    ) -> Result<Value, String> {
+        let mut request = self.http.request(method, url);
         if let Some(body) = body {
             request = request.json(&body);
         }
@@ -75,6 +88,15 @@ struct RetrievalRequest {
     query: String,
     project: Option<String>,
     source: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DocumentListRequest {
+    project: Option<String>,
+    source: Option<String>,
+    cursor: Option<String>,
+    limit: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,6 +147,42 @@ async fn brain_context(
     object.insert("max_tokens".into(), 8_000.into());
     backend
         .request(Method::POST, "/v1/context", Some(value))
+        .await
+}
+
+#[tauri::command]
+async fn brain_documents(
+    backend: State<'_, BackendClient>,
+    request: DocumentListRequest,
+) -> Result<Value, String> {
+    validate_document_list_request(&request)?;
+    let mut url = Url::parse(BACKEND_ORIGIN)
+        .map_err(|error| format!("invalid fixed Cortana runtime URL: {error}"))?;
+    url.set_path("/v1/documents");
+    {
+        let mut query = url.query_pairs_mut();
+        query.append_pair("limit", &request.limit.to_string());
+        if let Some(project) = request.project {
+            query.append_pair("project", &project);
+        }
+        if let Some(source) = request.source {
+            query.append_pair("source", &source);
+        }
+        if let Some(cursor) = request.cursor {
+            query.append_pair("cursor", &cursor);
+        }
+    }
+    backend.request_url(Method::GET, url, None).await
+}
+
+#[tauri::command]
+async fn brain_document(
+    backend: State<'_, BackendClient>,
+    id: String,
+) -> Result<Value, String> {
+    validate_document_id(&id)?;
+    backend
+        .request(Method::GET, &format!("/v1/documents/{id}"), None)
         .await
 }
 
@@ -296,6 +354,40 @@ fn validate_retrieval_request(request: &RetrievalRequest) -> Result<(), String> 
     Ok(())
 }
 
+fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), String> {
+    if !(1..=100).contains(&request.limit) {
+        return Err("document page limit must be between 1 and 100".into());
+    }
+    for (name, value) in [
+        ("project", request.project.as_deref()),
+        ("source", request.source.as_deref()),
+    ] {
+        if value.is_some_and(|value| value.is_empty() || value.len() > MAX_SCOPE_LENGTH) {
+            return Err(format!(
+                "{name} must contain 1 to {MAX_SCOPE_LENGTH} bytes"
+            ));
+        }
+    }
+    if request
+        .cursor
+        .as_ref()
+        .is_some_and(|cursor| cursor.is_empty() || cursor.len() > MAX_DOCUMENT_CURSOR_LENGTH)
+    {
+        return Err("invalid document cursor".into());
+    }
+    Ok(())
+}
+
+fn validate_document_id(id: &str) -> Result<(), String> {
+    if id.is_empty()
+        || id.len() > MAX_DOCUMENT_ID_LENGTH
+        || !id.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err("invalid document id".into());
+    }
+    Ok(())
+}
+
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
         let _ = window.show();
@@ -387,6 +479,8 @@ pub fn run() {
             brain_status,
             brain_answer,
             brain_context,
+            brain_documents,
+            brain_document,
             desktop_info,
             desktop_autostart_set,
             desktop_services_status,
@@ -462,5 +556,25 @@ mod tests {
                 .unwrap_err()
                 .contains("desktop safety limit")
         );
+    }
+
+    #[test]
+    fn document_requests_enforce_fixed_bounded_identifiers() {
+        let valid = DocumentListRequest {
+            project: Some("work".into()),
+            source: None,
+            cursor: Some("opaque-cursor".into()),
+            limit: 50,
+        };
+        assert!(validate_document_list_request(&valid).is_ok());
+        assert!(
+            validate_document_list_request(&DocumentListRequest {
+                limit: 0,
+                ..valid
+            })
+            .is_err()
+        );
+        assert!(validate_document_id(&"a".repeat(64)).is_ok());
+        assert!(validate_document_id("../store.sqlite3").is_err());
     }
 }

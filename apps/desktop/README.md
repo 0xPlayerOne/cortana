@@ -10,6 +10,11 @@ setup pages, pick source/token/client paths through native dialogs, authorize sa
 through the bundled sidecar, and run bounded validation. Provider credentials never pass through
 the webview.
 
+The knowledge view provides a workspace/source/document tree backed by ACL-filtered, keyset
+pagination. Selecting a document opens bounded canonical content and its original-source link.
+The webview reaches this data only through fixed typed loopback commands; it cannot open the index
+database or select a backend URL.
+
 ## Development
 
 Start the installed Cortana services, then run:
