@@ -1,13 +1,14 @@
 import { FileText, LoaderCircle, Search } from 'lucide-react'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 
-import { getAnswer, getStatus, isDemoMode } from './api'
+import { getAnswer, getDesktopSettings, getStatus, isDemoMode, isDesktopApp } from './api'
 import { ContextPanel } from './components/ContextPanel'
-import { Navigation, TitleActions } from './components/Navigation'
+import { type AppView, Navigation, TitleActions } from './components/Navigation'
+import { SettingsView } from './components/SettingsView'
 import { SourcePanel } from './components/SourcePanel'
 import { Workspace } from './components/Workspace'
 import { buildAgentContext, estimateTokens } from './context'
-import type { AnswerResponse, BrainStatus, Evidence } from './types'
+import type { AnswerResponse, BrainStatus, DesktopSettings, Evidence } from './types'
 
 export function App() {
   const [query, setQuery] = useState('How do releases work?')
@@ -22,6 +23,9 @@ export function App() {
   const [statusError, setStatusError] = useState('')
   const [leftOpen, setLeftOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(false)
+  const [view, setView] = useState<AppView>('knowledge')
+  const [workspace, setWorkspace] = useState('')
+  const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -46,6 +50,18 @@ export function App() {
     return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    if (!isDesktopApp) return
+    void getDesktopSettings()
+      .then((next) => {
+        setDesktopSettings(next)
+        if (next.needs_setup) setView('settings')
+      })
+      .catch(() => {
+        // The settings view will surface the local configuration error.
+      })
+  }, [])
+
   const agentContext = useMemo(
     () => buildAgentContext(activeQuery, evidence),
     [activeQuery, evidence]
@@ -66,11 +82,11 @@ export function App() {
     return () => window.clearInterval(interval)
   }, [])
 
-  async function runSearch(value: string, nextSource = source) {
+  async function runSearch(value: string, nextSource = source, nextWorkspace = workspace) {
     setLoading(true)
     setError('')
     try {
-      const next = await getAnswer(value, undefined, nextSource || undefined)
+      const next = await getAnswer(value, nextWorkspace || undefined, nextSource || undefined)
       setAnswer(next)
       setEvidence(next.evidence)
       setActiveQuery(value)
@@ -96,6 +112,23 @@ export function App() {
     void runSearch(query.trim() || activeQuery, value)
   }
 
+  function chooseWorkspace(next: string) {
+    setWorkspace(next)
+    setSource('')
+    void runSearch(query.trim() || activeQuery, '', next)
+  }
+
+  const workspaces = desktopSettings?.workspaces.length
+    ? desktopSettings.workspaces
+    : status?.workspaces.length
+      ? status.workspaces
+      : Array.from(new Set(status?.sources.map((item) => item.project) ?? [])).map((id) => ({
+          id,
+          name: id[0]?.toUpperCase() + id.slice(1),
+          account_label: null,
+          color: null,
+        }))
+
   return (
     <div className="shell">
       <header className="titlebar">
@@ -111,35 +144,49 @@ export function App() {
         </form>
         <TitleActions context onOpenContext={() => setRightOpen(true)} />
       </header>
-      <Navigation />
-      <SourcePanel
-        open={leftOpen}
-        status={status}
-        selected={source}
-        onSelect={chooseSource}
-        onClose={() => setLeftOpen(false)}
-      />
-      <Workspace
-        query={activeQuery}
-        answer={answer}
-        evidence={evidence}
-        selected={selected}
-        loading={loading}
-        error={error}
-        onSelect={setSelected}
-        onRetry={() => void runSearch(query)}
-      />
-      <ContextPanel
-        open={rightOpen}
-        query={activeQuery}
-        evidence={evidence}
-        selected={selected}
-        status={status}
-        context={agentContext}
-        contextTokens={estimateTokens(agentContext)}
-        onSelect={setSelected}
-        onClose={() => setRightOpen(false)}
-      />
+      <Navigation view={view} onNavigate={setView} />
+      {view === 'settings' ? (
+        <SettingsView
+          onSaved={(next) => {
+            setDesktopSettings(next)
+            if (workspace && !next.workspaces.some((item) => item.id === workspace)) {
+              setWorkspace('')
+            }
+          }}
+        />
+      ) : (
+        <>
+          <SourcePanel
+            open={leftOpen}
+            status={status}
+            workspace={workspace}
+            selected={source}
+            onSelect={chooseSource}
+            onClose={() => setLeftOpen(false)}
+          />
+          <Workspace
+            query={activeQuery}
+            answer={answer}
+            evidence={evidence}
+            selected={selected}
+            loading={loading}
+            error={error}
+            onSelect={setSelected}
+            onRetry={() => void runSearch(query)}
+          />
+          <ContextPanel
+            open={rightOpen}
+            query={activeQuery}
+            evidence={evidence}
+            selected={selected}
+            status={status}
+            context={agentContext}
+            contextTokens={estimateTokens(agentContext)}
+            onSelect={setSelected}
+            onClose={() => setRightOpen(false)}
+          />
+        </>
+      )}
       <footer className="statusbar">
         <span className={statusError ? 'health error' : 'health'}>
           <i /> Index {statusError ? 'offline' : status ? 'online' : 'checking'}
@@ -152,7 +199,17 @@ export function App() {
         <IngestionIndicator status={status} />
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
-        <span>Workspace: All</span>
+        <label className="workspace-select">
+          Workspace:
+          <select value={workspace} onChange={(event) => chooseWorkspace(event.target.value)}>
+            <option value="">All</option>
+            {workspaces.map((item) => (
+              <option value={item.id} key={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
       </footer>
     </div>
   )

@@ -4,6 +4,9 @@ CHANGELOG.md
 # Runtime files are checked out under .github during CI.
 .github/.code-foundry
 
+# Preserve checksum-verified upstream source exactly; its local delta has a dedicated verifier.
+third_party/
+
 # Repository-specific rules
 apps/web/dist
 apps/desktop/src-tauri/gen

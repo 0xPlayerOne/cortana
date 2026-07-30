@@ -4,6 +4,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use serde::Serialize;
 
 use crate::config::Config;
 
@@ -13,6 +14,24 @@ const LABELS: [&str; 4] = [
     "ai.cortana.sync",
     "ai.cortana.backup",
 ];
+
+#[derive(Debug, Serialize)]
+pub struct ServiceReport {
+    pub platform: &'static str,
+    pub supported: bool,
+    pub services: Vec<ServiceStatus>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ServiceStatus {
+    pub name: &'static str,
+    pub label: &'static str,
+    pub installed: bool,
+    pub loaded: bool,
+    pub state: Option<String>,
+    pub pid: Option<u32>,
+    pub last_exit_status: Option<i32>,
+}
 
 pub struct InstallOptions<'a> {
     pub config: &'a Path,
@@ -135,25 +154,81 @@ pub fn uninstall() -> Result<()> {
     Ok(())
 }
 
-pub fn status() -> Result<()> {
-    require_macos()?;
+pub fn status() -> Result<ServiceReport> {
+    if !cfg!(target_os = "macos") {
+        return Ok(ServiceReport {
+            platform: std::env::consts::OS,
+            supported: false,
+            services: managed_services()
+                .map(|(name, label)| ServiceStatus {
+                    name,
+                    label,
+                    installed: false,
+                    loaded: false,
+                    state: None,
+                    pid: None,
+                    last_exit_status: None,
+                })
+                .collect(),
+        });
+    }
     let domain = launch_domain()?;
-    for label in LABELS {
+    let launch_agents = launch_agents_directory()?;
+    let mut services = Vec::new();
+    for (name, label) in managed_services() {
         let output = Command::new("launchctl")
             .args(["print", &format!("{domain}/{label}")])
             .output()?;
-        let state = if output.status.success() {
-            String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .find_map(|line| line.trim().strip_prefix("state = "))
-                .unwrap_or("loaded")
-                .to_string()
+        let loaded = output.status.success();
+        let body = String::from_utf8_lossy(&output.stdout);
+        let (state, pid, last_exit_status) = if loaded {
+            parse_launchctl_status(&body)
         } else {
-            "not loaded".into()
+            (None, None, None)
         };
-        println!("{label}: {state}");
+        services.push(ServiceStatus {
+            name,
+            label,
+            installed: launch_agents.join(format!("{label}.plist")).is_file(),
+            loaded,
+            state: state.or_else(|| loaded.then(|| "loaded".into())),
+            pid,
+            last_exit_status,
+        });
     }
-    Ok(())
+    Ok(ServiceReport {
+        platform: std::env::consts::OS,
+        supported: true,
+        services,
+    })
+}
+
+pub fn start(name: &str) -> Result<()> {
+    require_macos()?;
+    let label = service_label(name)?;
+    let path = installed_plist(label)?;
+    if !launchctl_job_loaded(&launch_domain()?, label)? {
+        enable(label)?;
+        bootstrap(&path)?;
+    }
+    kickstart(label, false)
+}
+
+pub fn stop(name: &str) -> Result<()> {
+    require_macos()?;
+    let label = service_label(name)?;
+    installed_plist(label)?;
+    bootout(label)
+}
+
+pub fn restart(name: &str) -> Result<()> {
+    require_macos()?;
+    let label = service_label(name)?;
+    let path = installed_plist(label)?;
+    bootout(label)?;
+    enable(label)?;
+    bootstrap(&path)?;
+    kickstart(label, true)
 }
 
 pub fn sync_job_installed() -> bool {
@@ -252,6 +327,18 @@ fn bootstrap(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn kickstart(label: &str, restart: bool) -> Result<()> {
+    let mut arguments = vec!["kickstart"];
+    if restart {
+        arguments.push("-k");
+    }
+    let target = format!("{}/{label}", launch_domain()?);
+    arguments.push(&target);
+    let status = Command::new("launchctl").args(arguments).status()?;
+    anyhow::ensure!(status.success(), "launchctl kickstart failed for {label}");
+    Ok(())
+}
+
 fn enable(label: &str) -> Result<()> {
     let status = Command::new("launchctl")
         .args(["enable", &format!("{}/{label}", launch_domain()?)])
@@ -297,6 +384,41 @@ fn launch_agents_directory() -> Result<PathBuf> {
     dirs::home_dir()
         .map(|home| home.join("Library/LaunchAgents"))
         .context("home directory is unavailable")
+}
+
+fn installed_plist(label: &str) -> Result<PathBuf> {
+    let path = launch_agents_directory()?.join(format!("{label}.plist"));
+    anyhow::ensure!(path.is_file(), "Cortana service is not installed: {label}");
+    Ok(path)
+}
+
+fn managed_services() -> impl Iterator<Item = (&'static str, &'static str)> {
+    [
+        ("embedding", LABELS[0]),
+        ("server", LABELS[1]),
+        ("sync", LABELS[2]),
+        ("backup", LABELS[3]),
+    ]
+    .into_iter()
+}
+
+fn service_label(name: &str) -> Result<&'static str> {
+    managed_services()
+        .find_map(|(candidate, label)| (candidate == name).then_some(label))
+        .with_context(|| format!("unsupported Cortana service: {name}"))
+}
+
+fn parse_launchctl_status(body: &str) -> (Option<String>, Option<u32>, Option<i32>) {
+    let value = |prefix: &str| {
+        body.lines()
+            .find_map(|line| line.trim().strip_prefix(prefix))
+            .map(str::trim)
+    };
+    (
+        value("state = ").map(str::to_string),
+        value("pid = ").and_then(|value| value.parse().ok()),
+        value("last exit code = ").and_then(|value| value.parse().ok()),
+    )
 }
 
 fn require_macos() -> Result<()> {
@@ -368,6 +490,16 @@ mod tests {
         assert!(
             scheduled.iter().any(|job| job.label == "ai.cortana.sync"),
             "explicit opt-in must install the recurring sync job"
+        );
+    }
+
+    #[test]
+    fn service_names_are_fixed_and_launchctl_status_is_structured() {
+        assert_eq!(service_label("server").unwrap(), "ai.cortana.server");
+        assert!(service_label("../server").is_err());
+        assert_eq!(
+            parse_launchctl_status("state = running\n\tpid = 123\n\tlast exit code = 0\n"),
+            (Some("running".into()), Some(123), Some(0))
         );
     }
 }

@@ -101,6 +101,7 @@ name = "personal-drive"
 kind = "google-drive"
 project = "personal"
 token = "/secure/path/google-token.json"
+oauth_client = "/secure/path/google-desktop-client.json"
 query = "trashed = false"
 # Sample the beginning and end of very large exports instead of embedding them verbatim.
 max_content_chars = 50000

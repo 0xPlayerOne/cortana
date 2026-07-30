@@ -6,14 +6,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use cortana::config::{Config, SourceConfig, default_config_path};
 use cortana::connectors;
 use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbedder};
 use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
-use cortana::{api, mcp, migration, service, source_validation, supervisor};
+use cortana::{api, google_oauth, mcp, migration, service, source_validation, supervisor};
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
 use serde::Deserialize;
@@ -157,6 +157,12 @@ enum Command {
         max_bytes: Option<u64>,
         #[arg(long, help = "Override the per-source wall-clock budget for this run")]
         max_seconds: Option<u64>,
+        #[arg(
+            long,
+            requires = "source",
+            help = "Require a matching successful validation at equal or larger limits"
+        )]
+        require_validation: bool,
     },
     /// Fetch and validate one configured source without embedding or indexing it.
     ValidateSource {
@@ -168,6 +174,8 @@ enum Command {
         #[arg(long, help = "Override the wall-clock budget for this validation")]
         max_seconds: Option<u64>,
     },
+    /// Authorize a configured Google source in the system browser without reading source data.
+    AuthorizeGoogle { source: String },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -236,9 +244,37 @@ enum ServiceAction {
         enable_sync_service: bool,
     },
     /// Print current background service states.
-    Status,
+    Status {
+        #[arg(long, help = "Print a machine-readable service report")]
+        json: bool,
+    },
+    /// Start one installed background service.
+    Start { service: ServiceName },
+    /// Stop one background service without removing its configuration.
+    Stop { service: ServiceName },
+    /// Restart one installed background service.
+    Restart { service: ServiceName },
     /// Stop and remove Cortana's per-user background services.
     Uninstall,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ServiceName {
+    Embedding,
+    Server,
+    Sync,
+    Backup,
+}
+
+impl ServiceName {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Embedding => "embedding",
+            Self::Server => "server",
+            Self::Sync => "sync",
+            Self::Backup => "backup",
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -390,6 +426,31 @@ async fn main() -> Result<()> {
                 max_seconds: *max_seconds,
             },
         );
+    }
+    if let Some(Command::AuthorizeGoogle { source }) = cli.command.as_ref() {
+        let outcome = google_oauth::authorize(&config, source).await?;
+        println!("{}", serde_json::to_string(&outcome)?);
+        return Ok(());
+    }
+    if let Some(Command::Sync {
+        source,
+        plan: false,
+        max_documents,
+        max_bytes,
+        max_seconds,
+        require_validation: true,
+        ..
+    }) = cli.command.as_ref()
+    {
+        require_sync_validation(
+            &config,
+            source.as_deref(),
+            SyncOverrides {
+                max_documents: *max_documents,
+                max_bytes: *max_bytes,
+                max_seconds: *max_seconds,
+            },
+        )?;
     }
     match &cli.command {
         Some(Command::Backup { output, keep }) => {
@@ -545,6 +606,7 @@ async fn main() -> Result<()> {
             max_documents,
             max_bytes,
             max_seconds,
+            require_validation: _,
         }) => {
             let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
             let cancellation = Cancellation::install();
@@ -652,6 +714,7 @@ async fn main() -> Result<()> {
             Command::Init { .. }
             | Command::MigrateHermes { .. }
             | Command::Eval { .. }
+            | Command::AuthorizeGoogle { .. }
             | Command::ValidateSource { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
@@ -1037,6 +1100,8 @@ fn validate_configured_source(
                 max_documents: limits.max_documents,
                 max_bytes: limits.max_bytes,
                 max_seconds: limits.max_seconds,
+                configuration_fingerprint: source_validation::configuration_fingerprint(source)
+                    .ok(),
                 error: Some(error.to_string()),
             };
             if let Err(state_error) = source_validation::record(&config.data_dir, status) {
@@ -1061,6 +1126,7 @@ fn validate_configured_source(
             max_documents: limits.max_documents,
             max_bytes: limits.max_bytes,
             max_seconds: limits.max_seconds,
+            configuration_fingerprint: Some(source_validation::configuration_fingerprint(source)?),
             error: None,
         },
     )?;
@@ -1084,6 +1150,30 @@ fn validate_configured_source(
     Ok(())
 }
 
+fn require_sync_validation(
+    config: &Config,
+    selected: Option<&str>,
+    overrides: SyncOverrides,
+) -> Result<()> {
+    let selected = selected.context("--require-validation requires --source")?;
+    let source = config
+        .sources
+        .iter()
+        .find(|candidate| candidate.name == selected)
+        .with_context(|| format!("configured source {selected} was not found"))?;
+    anyhow::ensure!(
+        source.enabled,
+        "source {selected} must be enabled before sync"
+    );
+    let limits = SourceLimits::resolve(config, source, overrides)?;
+    source_validation::require_success(
+        &config.data_dir,
+        source,
+        limits.max_documents,
+        limits.max_bytes,
+    )
+}
+
 fn ad_hoc_filesystem_source(
     root: PathBuf,
     source: String,
@@ -1100,6 +1190,7 @@ fn ad_hoc_filesystem_source(
         channels: Vec::new(),
         token_env: None,
         token: None,
+        oauth_client: None,
         query: None,
         labels: Vec::new(),
         max_content_chars: None,
@@ -1172,7 +1263,28 @@ fn manage_service(
                 },
             )
         }
-        ServiceAction::Status => service::status(),
+        ServiceAction::Status { json } => {
+            let report = service::status()?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                for item in report.services {
+                    println!(
+                        "{}: {}",
+                        item.label,
+                        item.state.as_deref().unwrap_or(if item.installed {
+                            "not loaded"
+                        } else {
+                            "not installed"
+                        })
+                    );
+                }
+            }
+            Ok(())
+        }
+        ServiceAction::Start { service: name } => service::start(name.as_str()),
+        ServiceAction::Stop { service: name } => service::stop(name.as_str()),
+        ServiceAction::Restart { service: name } => service::restart(name.as_str()),
         ServiceAction::Uninstall => service::uninstall(),
     }
 }

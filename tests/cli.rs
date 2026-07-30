@@ -6,6 +6,83 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 #[test]
+fn google_authorization_fails_closed_before_opening_browser() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let token = directory.path().join("token.json");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [[sources]]\n\
+             name = \"personal-drive\"\n\
+             kind = \"google-drive\"\n\
+             project = \"personal\"\n\
+             token = {token:?}\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["authorize-google", "personal-drive"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "Google source personal-drive requires OAuth client path",
+        ))
+        .stderr(predicate::str::contains("CORTANA_AUTHORIZATION_URL").not());
+}
+
+#[test]
+fn guarded_sync_fails_before_opening_the_index_without_validation() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n\
+             [embedding]\n\
+             dimension = 256\n\
+             [[sources]]\n\
+             name = \"safe-source\"\n\
+             kind = \"external\"\n\
+             project = \"personal\"\n\
+             command = [\"/usr/bin/false\"]\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args([
+            "sync",
+            "--source",
+            "safe-source",
+            "--require-validation",
+            "--max-documents",
+            "25",
+            "--max-bytes",
+            "5242880",
+            "--max-seconds",
+            "300",
+            "--no-reconcile",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "source safe-source has not been validated",
+        ));
+    assert!(!data.join("cortana.sqlite3").exists());
+}
+
+#[test]
 fn offline_ingest_and_search_round_trip() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

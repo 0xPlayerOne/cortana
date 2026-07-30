@@ -21,7 +21,7 @@ use tracing::Level;
 use crate::{
     answer::{AnswerEngine, AnswerRequest, AnswerResponse, QueryRuntimeStatus},
     auth::{ADMIN_SCOPE, AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE},
-    config::Config,
+    config::{Config, WorkspaceConfig},
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
     model::Evidence,
@@ -37,6 +37,7 @@ pub struct AppState {
     metrics: Arc<RuntimeMetrics>,
     auth: AuthPolicy,
     ingestion: Arc<IngestionStatus>,
+    workspaces: Arc<Vec<WorkspaceConfig>>,
     answer: AnswerEngine,
     audit_max_events: usize,
 }
@@ -55,6 +56,7 @@ impl AppState {
             metrics: Arc::new(RuntimeMetrics::new()),
             auth: AuthPolicy::legacy(api_token),
             ingestion: Arc::new(IngestionStatus::default()),
+            workspaces: Arc::new(Vec::new()),
             answer,
             audit_max_events: crate::config::AuthConfig::default().audit_max_events,
         }
@@ -62,6 +64,7 @@ impl AppState {
 
     pub fn with_config(mut self, config: &Config, scheduled: bool) -> Self {
         self.ingestion = Arc::new(IngestionStatus::from_config(config, scheduled));
+        self.workspaces = Arc::new(config.workspaces.clone());
         self.audit_max_events = config.auth.audit_max_events;
         self
     }
@@ -136,6 +139,7 @@ struct Status {
     errors_total: u64,
     query: QueryRuntimeStatus,
     ingestion: IngestionStatus,
+    workspaces: Vec<WorkspaceConfig>,
     #[serde(flatten)]
     stats: StoreStats,
 }
@@ -329,6 +333,7 @@ async fn status(
                 errors_total: state.metrics.errors.load(Ordering::Relaxed),
                 query: state.answer.status(),
                 ingestion: state.ingestion.refreshed(),
+                workspaces: state.workspaces.as_ref().clone(),
                 stats,
             })
         })
@@ -737,12 +742,18 @@ mod tests {
     async fn status_reports_safe_ingestion_mode_and_configured_sources() {
         let (directory, state) = test_state(None);
         let mut config: Config = toml::from_str(
-            r#"
+            r##"
             [ingestion]
             max_documents_per_source = 25
             max_bytes_per_source = 4096
             max_duration_seconds = 45
             request_concurrency = 1
+
+            [[workspaces]]
+            id = "work"
+            name = "Work"
+            account_label = "team@example.com"
+            color = "#5A9BD5"
 
             [[sources]]
             name = "code"
@@ -751,7 +762,7 @@ mod tests {
             project = "work"
             source = "work-code"
             root = "/tmp/code"
-            "#,
+            "##,
         )
         .expect("configuration");
         config.data_dir = directory.path().to_path_buf();
@@ -769,6 +780,7 @@ mod tests {
                 max_documents: 25,
                 max_bytes: 4096,
                 max_seconds: 45,
+                configuration_fingerprint: None,
                 error: None,
             },
         )
@@ -806,6 +818,8 @@ mod tests {
         assert_eq!(value["query"]["max_planned_queries"], 4);
         assert_eq!(value["query_cache_entries"], 0);
         assert_eq!(value["sync_runs"], serde_json::json!([]));
+        assert_eq!(value["workspaces"][0]["id"], "work");
+        assert_eq!(value["workspaces"][0]["account_label"], "team@example.com");
     }
 
     #[tokio::test]

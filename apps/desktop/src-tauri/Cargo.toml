@@ -19,12 +19,25 @@ path = "src/main.rs"
 tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
+dirs = "6.0"
+open = "5.4"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tauri = { version = "2.11.5", features = ["image-png", "tray-icon"] }
 tauri-plugin-autostart = "2.5.1"
+tauri-plugin-dialog = "2.7.2"
 tauri-plugin-process = "2.3.1"
+tauri-plugin-shell = "2.3.5"
 tauri-plugin-single-instance = "2.4.3"
 tauri-plugin-updater = { version = "2.10.1", features = ["rustls-tls"] }
-tokio = { version = "1.47", features = ["time"] }
+tokio = { version = "1.47", features = ["io-util", "macros", "process", "time"] }
+toml = "0.9"
+
+[dev-dependencies]
+tempfile = "3.20"
+
+[patch.crates-io]
+# Tauri's GTK3 Linux stack requires glib 0.18.5. This local crate applies the exact upstream
+# VariantStrIter soundness fix while GTK3 prevents upgrading to glib 0.20.
+glib = { path = "../../../third_party/glib-0.18.5" }

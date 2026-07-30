@@ -81,14 +81,47 @@ reconciliation.
 ## Credentials
 
 - Slack and Discord tokens are read only from the configured environment-variable name.
-- Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Refresh data is updated
-  atomically and the token file is forced to mode `0600`.
+- Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Desktop authorization uses a
+  Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
+  and the minimum read-only scopes required by the Google sources that share that token. Refresh
+  data is updated atomically and the token file is forced to mode `0600`.
 - Apple Notes uses the local macOS Notes automation permission and stores no credential.
 - Buzz opens the retention database read-only.
 
 Never place secret values in `config.toml`, logs, or the repository. Use a secret manager,
 launchd/systemd environment file with restrictive permissions, or the host platform's secret
 injection.
+
+### Authorize Google sources
+
+Create a Desktop app OAuth client in Google Cloud, enable only the APIs the selected sources need,
+then configure both absolute paths:
+
+```toml
+[[sources]]
+name = "personal-drive"
+kind = "google-drive"
+project = "personal"
+token = "/Users/example/.config/cortana/google-personal-token.json"
+oauth_client = "/Users/example/.config/cortana/google-desktop-client.json"
+```
+
+Save the source before choosing **Authorize** in Desktop, or run:
+
+```bash
+cortana authorize-google personal-drive
+```
+
+Cortana opens Google's consent page in the system browser and waits up to five minutes for the
+loopback callback. The command never prints tokens. Sources sharing the same token file are
+authorized together so the stored grant contains the union of their minimum read-only scopes.
+Use separate token paths for different Google accounts or trust domains. The OAuth client file is
+configuration, not a user token, but Cortana still rejects symlinks and oversized client files.
+The token destination must be outside a filesystem source root.
+
+Authorization does not validate, sync, embed, index, or reconcile the source. After consent,
+run the bounded validation described below. Google may not return a new refresh token on a later
+grant; Cortana preserves the existing refresh token in that case.
 
 ## Connector contract
 
@@ -110,6 +143,23 @@ that is merely configured. This record contains counts, limits, timestamps, and 
 summary—never credentials, source content, or connector output.
 Filesystem validation performs the same bounded preflight walk used by sync, so start with a
 narrow root and conservative limits.
+
+Desktop exposes a separately confirmed guarded trial sync after validation. It invokes the fixed
+equivalent of:
+
+```bash
+cortana sync --source SOURCE \
+  --require-validation --no-reconcile \
+  --max-documents 25 --max-bytes 5242880 --max-seconds 300
+```
+
+`--require-validation` fails before opening the index or embedding provider unless the selected
+source is enabled and its latest validation succeeded for the exact current source configuration
+at equal or larger document and byte limits. The validation record stores only a one-way
+configuration fingerprint. Trial sync may embed and index committed batches, but it never deletes
+records absent from the bounded snapshot. Cancellation preserves already committed batches.
+Larger initial syncs remain a CLI/operator workflow that must be planned and assigned explicit
+budgets; Desktop does not silently escalate beyond the trial limits.
 
 External connectors must emit one JSON object per line:
 

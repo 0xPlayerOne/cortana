@@ -79,18 +79,20 @@ class GoogleSession:
         return token
 
     def _refresh(self) -> None:
-        required = ("refresh_token", "client_id", "client_secret")
+        required = ("refresh_token", "client_id")
         missing = [key for key in required if not self.credentials.get(key)]
         if missing:
             raise RuntimeError(f"Google credentials cannot refresh; missing {', '.join(missing)}")
+        data = {
+            "grant_type": "refresh_token",
+            "refresh_token": self.credentials["refresh_token"],
+            "client_id": self.credentials["client_id"],
+        }
+        if self.credentials.get("client_secret"):
+            data["client_secret"] = self.credentials["client_secret"]
         response = self.client.post(
             str(self.credentials.get("token_uri") or "https://oauth2.googleapis.com/token"),
-            data={
-                "grant_type": "refresh_token",
-                "refresh_token": self.credentials["refresh_token"],
-                "client_id": self.credentials["client_id"],
-                "client_secret": self.credentials["client_secret"],
-            },
+            data=data,
         )
         response.raise_for_status()
         refreshed: dict[str, Any] = response.json()

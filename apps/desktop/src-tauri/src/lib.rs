@@ -13,6 +13,13 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 
+mod installer;
+mod paths;
+mod readiness;
+mod services;
+mod settings;
+mod source_jobs;
+
 const BACKEND_ORIGIN: &str = "http://127.0.0.1:7331";
 const MAIN_WINDOW: &str = "main";
 const MAX_QUERY_LENGTH: usize = 16_384;
@@ -131,6 +138,141 @@ fn desktop_info(app: AppHandle) -> DesktopInfo {
     }
 }
 
+#[tauri::command]
+fn desktop_autostart_set(app: AppHandle, enabled: bool) -> Result<DesktopInfo, String> {
+    if enabled {
+        app.autolaunch()
+            .enable()
+            .map_err(|error| format!("enable Desktop at login: {error}"))?;
+    } else {
+        app.autolaunch()
+            .disable()
+            .map_err(|error| format!("disable Desktop at login: {error}"))?;
+    }
+    let event = serde_json::json!({
+        "at_unix_seconds": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        "event": "desktop.autostart.changed",
+        "enabled": enabled,
+        "secret_values_recorded": false,
+    });
+    let _ = settings::append_audit_event(&settings::default_config_path(), &event);
+    Ok(desktop_info(app))
+}
+
+#[tauri::command]
+async fn desktop_services_status(app: AppHandle) -> Result<services::ServiceReport, String> {
+    services::status(&app).await
+}
+
+#[tauri::command]
+async fn desktop_service_action(
+    app: AppHandle,
+    service: String,
+    action: String,
+    approved: bool,
+) -> Result<services::ServiceReport, String> {
+    services::action(&app, &service, &action, approved).await
+}
+
+#[tauri::command]
+fn desktop_settings_get() -> Result<settings::SettingsSnapshot, String> {
+    settings::load()
+}
+
+#[tauri::command]
+fn desktop_settings_save(
+    update: settings::SettingsUpdate,
+) -> Result<settings::SettingsSnapshot, String> {
+    settings::save(update)
+}
+
+#[tauri::command]
+fn desktop_installer_start(
+    installer: State<'_, installer::InstallerState>,
+    tool: String,
+    approved: bool,
+) -> Result<installer::InstallJobSnapshot, String> {
+    installer.start(&tool, approved)
+}
+
+#[tauri::command]
+fn desktop_installer_status(
+    installer: State<'_, installer::InstallerState>,
+    id: String,
+) -> Result<installer::InstallJobSnapshot, String> {
+    installer.status(&id)
+}
+
+#[tauri::command]
+fn desktop_installer_cancel(
+    installer: State<'_, installer::InstallerState>,
+    id: String,
+) -> Result<installer::InstallJobSnapshot, String> {
+    installer.cancel(&id)
+}
+
+#[tauri::command]
+fn desktop_source_validation_start(
+    app: AppHandle,
+    jobs: State<'_, source_jobs::SourceJobState>,
+    source: String,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.start_validation(&app, &source)
+}
+
+#[tauri::command]
+fn desktop_source_authorization_start(
+    app: AppHandle,
+    jobs: State<'_, source_jobs::SourceJobState>,
+    source: String,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.start_authorization(&app, &source)
+}
+
+#[tauri::command]
+fn desktop_source_trial_sync_start(
+    app: AppHandle,
+    jobs: State<'_, source_jobs::SourceJobState>,
+    source: String,
+    approved: bool,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.start_trial_sync(&app, &source, approved)
+}
+
+#[tauri::command]
+fn desktop_source_setup_open(source: String) -> Result<source_jobs::SetupOpenOutcome, String> {
+    source_jobs::open_setup(&source)
+}
+
+#[tauri::command]
+fn desktop_source_validation_status(
+    jobs: State<'_, source_jobs::SourceJobState>,
+    id: String,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.status(&id)
+}
+
+#[tauri::command]
+fn desktop_source_validation_cancel(
+    jobs: State<'_, source_jobs::SourceJobState>,
+    id: String,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.cancel(&id)
+}
+
+#[tauri::command]
+async fn desktop_readiness_scan(app: AppHandle) -> readiness::ReadinessSnapshot {
+    readiness::scan(&app).await
+}
+
+#[tauri::command]
+async fn desktop_path_pick(app: AppHandle, kind: String) -> Result<Option<String>, String> {
+    paths::pick(app, &kind).await
+}
+
 fn validate_retrieval_request(request: &RetrievalRequest) -> Result<(), String> {
     let query = request.query.trim();
     if query.is_empty() {
@@ -234,14 +376,34 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(backend.clone())
+        .manage(installer::InstallerState::default())
+        .manage(source_jobs::SourceJobState::default())
         .invoke_handler(tauri::generate_handler![
             brain_status,
             brain_answer,
             brain_context,
-            desktop_info
+            desktop_info,
+            desktop_autostart_set,
+            desktop_services_status,
+            desktop_service_action,
+            desktop_settings_get,
+            desktop_settings_save,
+            desktop_path_pick,
+            desktop_readiness_scan,
+            desktop_installer_start,
+            desktop_installer_status,
+            desktop_installer_cancel,
+            desktop_source_validation_start,
+            desktop_source_authorization_start,
+            desktop_source_trial_sync_start,
+            desktop_source_setup_open,
+            desktop_source_validation_status,
+            desktop_source_validation_cancel
         ])
         .setup(move |app| {
             let tray = install_tray(app)?;

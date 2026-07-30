@@ -41,6 +41,49 @@
     display: none;
   }
 
+  .settings-view {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .settings-header {
+    padding: 18px;
+  }
+
+  .settings-header p {
+    display: none;
+  }
+
+  .settings-layout {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .settings-nav {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+    display: flex;
+    padding: 7px 10px;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    background: #1b1c1a;
+  }
+
+  .settings-nav > button {
+    flex: 0 0 auto;
+  }
+
+  .settings-paths {
+    display: none;
+  }
+
+  .settings-form {
+    overflow: visible;
+  }
+
   .titlebar {
     padding: 0 9px;
     gap: 8px;

@@ -55,14 +55,27 @@ export function TitleActions({
   )
 }
 
-export function Navigation() {
+export type AppView = 'knowledge' | 'settings'
+
+export function Navigation({
+  view,
+  onNavigate,
+}: {
+  view: AppView
+  onNavigate: (view: AppView) => void
+}) {
   return (
     <nav className="rail" aria-label="Primary">
       <div className="brand-mark" aria-label="Cortana">
         <Sparkles size={24} />
       </div>
       <RailButton icon={Search} label="Search" />
-      <RailButton icon={BookOpenText} label="Knowledge" active />
+      <RailButton
+        icon={BookOpenText}
+        label="Knowledge"
+        active={view === 'knowledge'}
+        onClick={() => onNavigate('knowledge')}
+      />
       <RailButton icon={GitFork} label="Graph" />
       <RailButton icon={Inbox} label="Inbox" />
       <RailButton icon={MessageCircle} label="Conversations" />
@@ -70,7 +83,12 @@ export function Navigation() {
       <RailButton icon={CalendarDays} label="Timeline" />
       <RailButton icon={Database} label="Index" />
       <div className="rail-spacer" />
-      <RailButton icon={Settings} label="Settings" />
+      <RailButton
+        icon={Settings}
+        label="Settings"
+        active={view === 'settings'}
+        onClick={() => onNavigate('settings')}
+      />
       <RailButton icon={CircleHelp} label="Help" />
       <div className="avatar">AC</div>
     </nav>
@@ -81,13 +99,20 @@ function RailButton({
   icon: Icon,
   label,
   active = false,
+  onClick,
 }: {
   icon: typeof Search
   label: string
   active?: boolean
+  onClick?: () => void
 }) {
   return (
-    <button className={`rail-button ${active ? 'active' : ''}`} aria-label={label} title={label}>
+    <button
+      className={`rail-button ${active ? 'active' : ''}`}
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+    >
       <Icon size={20} />
     </button>
   )
