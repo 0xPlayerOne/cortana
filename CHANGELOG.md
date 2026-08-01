@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/0xPlayerOne/cortana/compare/v0.15.1...v0.15.2) (2026-08-01)
+
+
+### CI
+
+* **desktop:** parallelize dependency audit ([#199](https://github.com/0xPlayerOne/cortana/issues/199)) ([b359ce3](https://github.com/0xPlayerOne/cortana/commit/b359ce33b7a998905e9ea49fefbde78d8fcf5816))
+
 ## [0.15.1](https://github.com/0xPlayerOne/cortana/compare/v0.15.0...v0.15.1) (2026-08-01)
 
 
