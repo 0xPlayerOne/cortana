@@ -33,6 +33,11 @@ The desktop pipeline follows a staged audit policy:
 - **Manual workflow dispatch is the final audit path.** Dispatching
   `desktop.yml` on any branch reruns all three jobs unconditionally,
   independent of pull request state.
+- **Audit tooling is warm-cached.** The `audit` job caches the exact
+  `cargo-audit` 0.22.2 binary in `~/.cargo/bin` under a stable per-OS/arch
+  key, so repeated final audits restore the pinned binary and skip
+  `cargo install`; on a cache miss the install stays locked to 0.22.2, and
+  the audit itself still fails on any vulnerability.
 
 The aggregate fails on any dependency failure or cancellation rather than
 silently skipping, so a real regression can never hide behind the release-please
