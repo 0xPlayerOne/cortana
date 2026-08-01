@@ -28,7 +28,11 @@ expected="$(awk 'NF { print $1; exit }' "$checksum")"
 actual="$(sha256 "$archive")"
 expected_lower="$(printf '%s' "$expected" | tr '[:upper:]' '[:lower:]')"
 actual_lower="$(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]')"
-if [[ ! "$expected" =~ ^[[:xdigit:]]{64}$ || "$expected_lower" != "$actual_lower" ]]; then
+if [[ ! "$expected" =~ ^[[:xdigit:]]{64}$ ]]; then
+  echo "release checksum file is not a 64-character hexadecimal digest: $checksum" >&2
+  exit 1
+fi
+if [[ "$expected_lower" != "$actual_lower" ]]; then
   echo "release checksum mismatch for $archive" >&2
   exit 1
 fi
@@ -41,7 +45,7 @@ if [[ -z "$root" || "$root" == .* || "$root" == /* ]]; then
 fi
 while IFS= read -r entry; do
   [[ -n "$entry" ]] || continue
-  if [[ "$entry" == /* || "$entry" == *'../'* || "$entry" == '../'* || "$entry" == *'/..' ]]; then
+  if [[ "$entry" == ".." || "$entry" == /* || "$entry" == *'../'* || "$entry" == '../'* || "$entry" == *'/..' ]]; then
     echo "release archive contains an unsafe path: $entry" >&2
     exit 1
   fi
@@ -71,7 +75,7 @@ done
   echo "release binary is not executable" >&2
   exit 1
 }
-wheel="$(find "$package/dist" -maxdepth 1 -type f -name '*.whl' -print -quit)"
+wheel="$(find "$package/dist" -maxdepth 1 -type f -name '*.whl' -print -quit 2>/dev/null || true)"
 [[ -n "$wheel" ]] || {
   echo "release archive has no connector wheel" >&2
   exit 1
