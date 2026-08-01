@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0](https://github.com/0xPlayerOne/cortana/compare/v0.13.0...v0.14.0) (2026-08-01)
+
+
+### Features
+
+* add owner-local context CLI and release audit guard ([6737f94](https://github.com/0xPlayerOne/cortana/commit/6737f949c8ead9853c794eaff9bc61aa5149c702))
+
 ## [0.13.0](https://github.com/0xPlayerOne/cortana/compare/v0.12.1...v0.13.0) (2026-08-01)
 
 
