@@ -1,5 +1,5 @@
 import { BookOpen, FileText, History, Link2, Network, Sparkles, Star } from 'lucide-react'
-import { type CSSProperties, useEffect, useState } from 'react'
+import { type CSSProperties, useEffect } from 'react'
 
 import type { AnswerResponse, BrainDocument, Evidence } from '../types'
 
