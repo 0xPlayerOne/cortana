@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.15.1](https://github.com/0xPlayerOne/cortana/compare/v0.15.0...v0.15.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **desktop:** import favorite state hook ([fc6b31f](https://github.com/0xPlayerOne/cortana/commit/fc6b31fc947bf6c13e316b8e4ae32125cec5d65c))
+* **desktop:** make document favorite actionable ([59225b0](https://github.com/0xPlayerOne/cortana/commit/59225b054fbdbfe60d45c62643eae5f865ab0653))
+* **desktop:** wire titlebar controls ([#193](https://github.com/0xPlayerOne/cortana/issues/193)) ([f461a0d](https://github.com/0xPlayerOne/cortana/commit/f461a0d1ad30b0b9c71646a371408ba7e6d4ae5c))
+
+
+### CI
+
+* **release:** verify binary archives before upload ([#194](https://github.com/0xPlayerOne/cortana/issues/194)) ([b9c7874](https://github.com/0xPlayerOne/cortana/commit/b9c78748efd3bcb79acc2a37e9844a3e7d5a3b53))
+
 ## [0.15.0](https://github.com/0xPlayerOne/cortana/compare/v0.14.1...v0.15.0) (2026-08-01)
 
 
