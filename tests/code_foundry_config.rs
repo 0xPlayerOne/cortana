@@ -430,3 +430,26 @@ fn desktop_audit_caches_cargo_audit_binary() {
         "install must stay locked to cargo-audit 0.22.2:\n{install_block}"
     );
 }
+
+#[test]
+fn release_callers_cancel_superseded_reconciliation_runs() {
+    let release = read(".github/workflows/release.yml");
+    assert!(
+        release.contains("group: cortana-release-${{ github.ref }}"),
+        "main release caller must coalesce runs by ref:\n{release}"
+    );
+    assert!(
+        release.contains("cancel-in-progress: true"),
+        "a newer main push must cancel an obsolete release reconciliation:\n{release}"
+    );
+
+    let release_pr = read(".github/workflows/release-pr.yml");
+    assert!(
+        release_pr.contains("group: cortana-release-pr-${{ github.ref }}"),
+        "staging release-PR caller must coalesce runs by ref:\n{release_pr}"
+    );
+    assert!(
+        release_pr.contains("cancel-in-progress: true"),
+        "a newer staging push must cancel an obsolete release-PR reconciliation:\n{release_pr}"
+    );
+}
