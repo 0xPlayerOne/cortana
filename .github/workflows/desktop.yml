@@ -2,6 +2,7 @@ name: Desktop
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - '.github/workflows/desktop.yml'
       - 'apps/desktop/**'
@@ -10,16 +11,9 @@ on:
       - 'package.json'
       - 'scripts/verify-vendored-glib.mjs'
       - 'third_party/glib-0.18.5/**'
-  push:
-    branches: [main, staging]
-    paths:
-      - '.github/workflows/desktop.yml'
-      - 'apps/desktop/**'
-      - 'apps/web/**'
-      - 'bun.lock'
-      - 'package.json'
-      - 'scripts/verify-vendored-glib.mjs'
-      - 'third_party/glib-0.18.5/**'
+  # Explicit manual final audit path: dispatch this workflow to force the
+  # Linux release compilation on any branch, independent of PR state.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,6 +25,10 @@ concurrency:
 jobs:
   validate:
     name: Tauri 2 / Linux
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -50,13 +48,41 @@ jobs:
           bun-version: 1.3.14
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Cache Rust build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+            third_party/glib-0.18.5/target
+          key: >-
+            ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-${{ hashFiles('third_party/glib-0.18.5/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
+            ${{ runner.os }}-rust-
       - name: Install cargo-audit
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.base.ref == 'main' &&
+           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
         run: cargo install cargo-audit --version 0.22.2 --locked
       - name: Verify patched GTK dependency provenance
         run: bun scripts/verify-vendored-glib.mjs
       - name: Test patched GTK iterator in release mode
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.base.ref == 'main' &&
+           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
         run: cargo test --manifest-path third_party/glib-0.18.5/Cargo.toml --release --lib variant_iter
       - name: Audit desktop Rust dependencies
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.base.ref == 'main' &&
+           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
         run: cargo audit --file apps/desktop/src-tauri/Cargo.lock
       - name: Check web
         run: |
@@ -66,7 +92,18 @@ jobs:
         run: bun run desktop:test
       - name: Lint desktop
         run: bun run --cwd apps/desktop clippy
+      # Linux release compilation is reserved for PRs targeting main and explicit
+      # manual final audits (workflow_dispatch). It is intentionally skipped on
+      # staging PRs, ordinary feature PRs, and Release Please version-only PRs.
       - name: Compile release desktop
+        # Final gate: run only for PRs targeting main and manual dispatch,
+        # excluding release-please version PRs. This skips final audit steps
+        # for staging and feature PRs while preserving manual audits.
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.base.ref == 'main' &&
+           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
         env:
           CORTANA_DESKTOP_TARGET: x86_64-unknown-linux-gnu
         run: bun run desktop:build

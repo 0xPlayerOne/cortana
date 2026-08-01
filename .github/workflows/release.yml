@@ -15,9 +15,13 @@ permissions:
 jobs:
   release:
     name: Release
-    uses: 0xPlayerOne/code-foundry/.github/workflows/release.yml@v0.32.3
+    uses: 0xPlayerOne/code-foundry/.github/workflows/release.yml@v0.34.0
     with:
       runner: ubuntu-slim
       runtime-repository: 0xPlayerOne/code-foundry
-      runtime-ref: v0.32.3
-    secrets: inherit
+      runtime-ref: v0.34.0
+    secrets:
+      CODE_FOUNDRY_TOKEN: ${{ secrets.CODE_FOUNDRY_TOKEN }}
+      RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      STAGING_DEPLOY_KEY: ${{ secrets.STAGING_DEPLOY_KEY }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
