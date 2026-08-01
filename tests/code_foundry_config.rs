@@ -148,7 +148,13 @@ fn job_block<'a>(workflow: &'a str, job_id: &str) -> &'a str {
         .unwrap_or_else(|| panic!("desktop workflow must keep the `{job_id}` job"));
     let tail = &workflow[start + 1..];
     let mut end = workflow.len();
-    for other in ["audit", "quality", "release", "aggregate"] {
+    for other in [
+        "gtk_provenance",
+        "security_audit",
+        "quality",
+        "release",
+        "aggregate",
+    ] {
         if other != job_id {
             if let Some(pos) = tail.find(&format!("\n  {other}:")) {
                 end = end.min(start + 1 + pos);
@@ -163,9 +169,9 @@ fn job_header(block: &str) -> &str {
     &block[..block.find("    steps:").unwrap_or(block.len())]
 }
 
-/// The desktop workflow splits the former single sequential job into three
-/// independent parallel jobs (audit/provenance, web+desktop quality, release
-/// compilation) plus a fast aggregate job that keeps the stable
+/// The desktop workflow splits the former single sequential audit path into
+/// four independent parallel jobs (provenance, Rust dependency audit,
+/// web+desktop quality, release compilation) plus a fast aggregate job that keeps the stable
 /// "Tauri 2 / Linux" required-check name. The workflow stays scoped to
 /// main-targeted promotion PRs and manual dispatch, skipping release-please
 /// version PRs at job level; final-audit steps keep the same gate, and the
@@ -188,10 +194,11 @@ fn desktop_linux_release_compile_is_gated() {
         "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
     ];
 
-    // The three parallel jobs: independent names, runners, timeouts, and a
+    // The four parallel jobs: independent names, runners, timeouts, and a
     // job-level release-please guard so version-only PRs never start them.
     let parallel_jobs = [
-        ("audit", "Audit / Provenance"),
+        ("gtk_provenance", "GTK Provenance + Release Test"),
+        ("security_audit", "Security Audit (cargo-audit)"),
         ("quality", "Web + Desktop Quality"),
         ("release", "Release Compilation"),
     ];
@@ -228,8 +235,8 @@ fn desktop_linux_release_compile_is_gated() {
         "aggregate job must keep the stable `Tauri 2 / Linux` required-check name:\n{aggregate}"
     );
     assert!(
-        aggregate.contains("needs: [audit, quality, release]"),
-        "aggregate job must depend on all three parallel jobs:\n{aggregate}"
+        aggregate.contains("needs: [gtk_provenance, security_audit, quality, release]"),
+        "aggregate job must depend on all four parallel jobs:\n{aggregate}"
     );
     assert!(
         aggregate.contains("if: ${{ !cancelled() }}"),
@@ -240,8 +247,10 @@ fn desktop_linux_release_compile_is_gated() {
         "aggregate job must define a timeout:\n{aggregate}"
     );
     for token in [
-        "needs.audit.result == 'failure'",
-        "needs.audit.result == 'cancelled'",
+        "needs.gtk_provenance.result == 'failure'",
+        "needs.gtk_provenance.result == 'cancelled'",
+        "needs.security_audit.result == 'failure'",
+        "needs.security_audit.result == 'cancelled'",
         "needs.quality.result == 'failure'",
         "needs.quality.result == 'cancelled'",
         "needs.release.result == 'failure'",
@@ -257,27 +266,28 @@ fn desktop_linux_release_compile_is_gated() {
         "aggregate must treat skipped dependencies as acceptable, not fail on them:\n{aggregate}"
     );
 
-    // Final-audit steps keep the release-please exclusion and main-only gate.
+    // Final-audit jobs keep the release-please exclusion and main-only gate;
+    // individual steps no longer repeat the same condition after the split.
+    for job_id in ["gtk_provenance", "security_audit", "quality", "release"] {
+        let header = job_header(job_block(&desktop, job_id));
+        for required in &final_audit_gate {
+            assert!(
+                header.contains(required),
+                "`{job_id}` must apply the final-audit gate at job level with `{required}`"
+            );
+        }
+    }
     for step in [
-        "Install cargo-audit",
+        "Verify patched GTK dependency provenance",
         "Test patched GTK iterator in release mode",
+        "Install cargo-audit",
         "Audit desktop Rust dependencies",
         "Compile release desktop",
     ] {
-        let start = desktop
-            .find(&format!("- name: {step}"))
-            .unwrap_or_else(|| panic!("desktop workflow must keep the `{step}` step"));
-        let step_block = &desktop[start
-            ..desktop[start + 1..]
-                .find("\n      - name: ")
-                .map_or(desktop.len(), |next| start + 1 + next)];
-
-        for required in &final_audit_gate {
-            assert!(
-                step_block.contains(required),
-                "`{step}` must use the final-audit gate with `{required}`"
-            );
-        }
+        assert!(
+            desktop.contains(&format!("- name: {step}")),
+            "desktop workflow must keep the `{step}` step"
+        );
     }
 
     // Verify rust cache action and lockfile-driven key and target paths.
@@ -338,7 +348,7 @@ fn desktop_linux_release_compile_is_gated() {
     );
 }
 
-/// The audit job warm-caches the exact cargo-audit 0.22.2 binary with the
+/// The dependency-audit job warm-caches the exact cargo-audit 0.22.2 binary with the
 /// actions cache instead of recompiling it on every final audit. The cache
 /// path holds only the pinned binary, the key is stable and versioned by
 /// runner OS/arch plus the pinned version (never a lockfile hash), and the
@@ -390,8 +400,8 @@ fn desktop_audit_caches_cargo_audit_binary() {
         "cargo-audit cache key must be stable, not lockfile-derived:\n{cache_block}"
     );
 
-    // The cache-hit guard skips installation while the final-audit gate and
-    // the pinned install command stay intact.
+    // The cache-hit guard skips installation while the job-level final-audit
+    // gate and the pinned install command stay intact.
     let install_block = &desktop[install_start
         ..desktop[install_start + 1..]
             .find("\n      - name: ")
@@ -407,12 +417,39 @@ fn desktop_audit_caches_cargo_audit_binary() {
         "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
     ] {
         assert!(
-            install_block.contains(required),
-            "install must keep the final-audit gate with `{required}`"
+            job_header(job_block(&desktop, "security_audit")).contains(required),
+            "security_audit job must keep the final-audit gate with `{required}`"
         );
     }
     assert!(
+        !install_block.contains("github.event_name == 'workflow_dispatch'"),
+        "cargo-audit install should rely on its job-level final-audit gate:\n{install_block}"
+    );
+    assert!(
         install_block.contains("run: cargo install cargo-audit --version 0.22.2 --locked"),
         "install must stay locked to cargo-audit 0.22.2:\n{install_block}"
+    );
+}
+
+#[test]
+fn release_callers_cancel_superseded_reconciliation_runs() {
+    let release = read(".github/workflows/release.yml");
+    assert!(
+        release.contains("group: cortana-release-${{ github.ref }}"),
+        "main release caller must coalesce runs by ref:\n{release}"
+    );
+    assert!(
+        release.contains("cancel-in-progress: true"),
+        "a newer main push must cancel an obsolete release reconciliation:\n{release}"
+    );
+
+    let release_pr = read(".github/workflows/release-pr.yml");
+    assert!(
+        release_pr.contains("group: cortana-release-pr-${{ github.ref }}"),
+        "staging release-PR caller must coalesce runs by ref:\n{release_pr}"
+    );
+    assert!(
+        release_pr.contains("cancel-in-progress: true"),
+        "a newer staging push must cancel an obsolete release-PR reconciliation:\n{release_pr}"
     );
 }

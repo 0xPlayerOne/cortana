@@ -12,6 +12,13 @@ permissions:
   pull-requests: write
   id-token: write
 
+# A newer main commit supersedes an older release reconciliation run. This is
+# especially important when Release Please merges a version PR: the merge
+# creates a second push while the first run may still be waiting on that PR.
+concurrency:
+  group: cortana-release-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     name: Release
