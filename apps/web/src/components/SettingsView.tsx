@@ -86,9 +86,11 @@ type Section =
 export function SettingsView({
   onSaved,
   initialSection = 'readiness',
+  onJob,
 }: {
   onSaved: (settings: DesktopSettings) => void
   initialSection?: Section
+  onJob?: (job: DesktopSourceJob) => void
 }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
   const [section, setSection] = useState<Section>(initialSection)
@@ -266,6 +268,7 @@ export function SettingsView({
                 setDirty(true)
                 setSaved(false)
               }}
+              onJob={onJob}
             />
           )}
           {section === 'embedding' && (
@@ -1245,14 +1248,20 @@ function SourcesSection({
   onSecret,
   clearedSecrets,
   onClearSecret,
+  onJob,
 }: SettingsSectionProps & {
   canValidate: boolean
   secretValues: Record<string, string>
   onSecret: (values: Record<string, string>) => void
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
+  onJob?: (job: DesktopSourceJob) => void
 }) {
   const [job, setJob] = useState<DesktopSourceJob | null>(null)
+  const applyJob = (next: DesktopSourceJob) => {
+    setJob(next)
+    onJob?.(next)
+  }
   const [error, setError] = useState('')
   const [initialSync, setInitialSync] = useState<{
     source: string
@@ -1269,7 +1278,7 @@ function SourcesSection({
       void getDesktopSourceValidation(job.id)
         .then((next) => {
           if (!active) return
-          setJob(next)
+          applyJob(next)
           if (
             next.status === 'succeeded' &&
             job.operation === 'validation' &&
@@ -1288,8 +1297,7 @@ function SourcesSection({
       active = false
       window.clearTimeout(timer)
     }
-  }, [job, initialSync])
-
+  }, [job, initialSync, onJob])
   const requestPlan = async (source: string, budget: InitialSyncBudget) => {
     setInitialSync((current) =>
       current && current.source === source
@@ -1346,7 +1354,7 @@ function SourcesSection({
     }
     setError('')
     try {
-      setJob(await startDesktopSourceValidation(source.name, budget))
+      applyJob(await startDesktopSourceValidation(source.name, budget))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Budget validation failed to start')
     }
@@ -1368,7 +1376,7 @@ function SourcesSection({
     setError('')
     try {
       const next = await startDesktopInitialSync(source.name, plan.budget, plan.plan_id)
-      setJob(next)
+      applyJob(next)
       setInitialSync(null)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Initial sync failed to start')
@@ -1405,7 +1413,7 @@ function SourcesSection({
     }
     setError('')
     try {
-      setJob(await startDesktopSourceValidation(source.name))
+      applyJob(await startDesktopSourceValidation(source.name))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Source validation failed to start')
     }
@@ -1427,7 +1435,7 @@ function SourcesSection({
     }
     setError('')
     try {
-      setJob(await startDesktopSourceAuthorization(source.name))
+      applyJob(await startDesktopSourceAuthorization(source.name))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Google authorization failed to start')
     }
@@ -1447,7 +1455,7 @@ function SourcesSection({
     }
     setError('')
     try {
-      setJob(await startDesktopSourceTrialSync(source.name))
+      applyJob(await startDesktopSourceTrialSync(source.name))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Trial sync failed to start')
     }
@@ -1483,7 +1491,7 @@ function SourcesSection({
   const cancel = async () => {
     if (!job) return
     try {
-      setJob(await cancelDesktopSourceValidation(job.id))
+      applyJob(await cancelDesktopSourceValidation(job.id))
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : 'Source validation could not be cancelled'

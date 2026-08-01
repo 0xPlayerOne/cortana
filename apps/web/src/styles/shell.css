@@ -232,6 +232,35 @@
   background: #55b966;
 }
 
+.source-jobs-strip {
+  display: flex;
+  padding: 8px 14px;
+  gap: 6px;
+  flex-direction: column;
+  border-bottom: 1px solid var(--line);
+  background: #1c242d;
+}
+
+.source-job-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: #a9c4d8;
+  font-size: 11px;
+}
+
+.source-job-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-job-item .spin {
+  flex: 0 0 auto;
+  color: #589bd8;
+}
+
 .source-health.running,
 .ingestion-health.running i {
   background: #589bd8;
@@ -625,6 +654,14 @@
 
 .health.error i {
   background: #d55b51;
+}
+
+.source-jobs {
+  color: #9fc3e0;
+}
+
+.source-jobs .spin {
+  color: #589bd8;
 }
 
 .status-spacer {
