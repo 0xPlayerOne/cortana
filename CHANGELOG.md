@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.14.1](https://github.com/0xPlayerOne/cortana/compare/v0.14.0...v0.14.1) (2026-08-01)
+
+
+### CI
+
+* drop duplicate web typecheck/build from desktop quality job ([#189](https://github.com/0xPlayerOne/cortana/issues/189)) ([4863bd1](https://github.com/0xPlayerOne/cortana/commit/4863bd11312cc0307d5033088ad8508572a5f9c1))
+* migrate Code Foundry caller to v0.34.2 ([#188](https://github.com/0xPlayerOne/cortana/issues/188)) ([a545c21](https://github.com/0xPlayerOne/cortana/commit/a545c214504b818c2360075a18ec77b656c03499))
+* warm-cache the cargo-audit binary in the desktop audit job ([#185](https://github.com/0xPlayerOne/cortana/issues/185)) ([73e737c](https://github.com/0xPlayerOne/cortana/commit/73e737c57182f3340e5300e0109774fb5a6eee48))
+
 ## [0.14.0](https://github.com/0xPlayerOne/cortana/compare/v0.13.0...v0.14.0) (2026-08-01)
 
 
