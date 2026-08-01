@@ -32,9 +32,9 @@ post_release_mode: auto
 opencode_security: false
 sync_mode: overlay
 custom_workflows: preserve
-# Keep all while Rust remains split across standalone Cargo manifests; retain
-# this until a shared Cargo workspace exists.
-codeql_rust_shards: '["all"]'
+# Shard Rust CodeQL by manifest path; parallel shards cut wall-clock time at
+# the cost of extra concurrent runners.
+codeql_rust_shards: '["src","apps/desktop/src-tauri","third_party/glib-0.18.5"]'
 codeql_rust_threads: 2
-codeql_rust_max_parallel: 1
+codeql_rust_max_parallel: 3
 release_merge_strategy: squash
