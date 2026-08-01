@@ -158,12 +158,19 @@ fn job_block<'a>(workflow: &'a str, job_id: &str) -> &'a str {
     &workflow[start..end]
 }
 
+/// Extract the job header (up to its first step), where job-level keys live.
+fn job_header(block: &str) -> &str {
+    &block[..block.find("    steps:").unwrap_or(block.len())]
+}
+
 /// The desktop workflow splits the former single sequential job into three
 /// independent parallel jobs (audit/provenance, web+desktop quality, release
 /// compilation) plus a fast aggregate job that keeps the stable
 /// "Tauri 2 / Linux" required-check name. The workflow stays scoped to
 /// main-targeted promotion PRs and manual dispatch, skipping release-please
-/// PRs; final-audit steps share the same gate, and every job defines a timeout.
+/// version PRs at job level; final-audit steps keep the same gate, and the
+/// aggregate always runs after needs, treating skipped jobs as acceptable
+/// and failing only on failure or cancellation.
 #[test]
 fn desktop_linux_release_compile_is_gated() {
     let desktop = read(".github/workflows/desktop.yml");
@@ -181,7 +188,8 @@ fn desktop_linux_release_compile_is_gated() {
         "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
     ];
 
-    // The three parallel jobs: independent names, runners, and timeouts.
+    // The three parallel jobs: independent names, runners, timeouts, and a
+    // job-level release-please guard so version-only PRs never start them.
     let parallel_jobs = [
         ("audit", "Audit / Provenance"),
         ("quality", "Web + Desktop Quality"),
@@ -201,10 +209,19 @@ fn desktop_linux_release_compile_is_gated() {
             block.contains("timeout-minutes:"),
             "`{job_id}` job must define a timeout:\n{block}"
         );
+        let header = job_header(block);
+        for required in &final_audit_gate {
+            assert!(
+                header.contains(required),
+                "`{job_id}` job must apply the release-please guard at job level with `{required}`"
+            );
+        }
     }
 
     // The fast aggregate keeps the stable required-check name and fans out to
-    // every parallel job.
+    // every parallel job. It always runs after needs (`!cancelled()`), fails
+    // only on dependency failure or cancellation, and treats skipped
+    // dependencies (release-please version PRs) as acceptable.
     let aggregate = job_block(&desktop, "aggregate");
     assert!(
         aggregate.contains("name: Tauri 2 / Linux"),
@@ -215,8 +232,29 @@ fn desktop_linux_release_compile_is_gated() {
         "aggregate job must depend on all three parallel jobs:\n{aggregate}"
     );
     assert!(
+        aggregate.contains("if: ${{ !cancelled() }}"),
+        "aggregate job must always run after needs, even when dependencies are skipped:\n{aggregate}"
+    );
+    assert!(
         aggregate.contains("timeout-minutes:"),
         "aggregate job must define a timeout:\n{aggregate}"
+    );
+    for token in [
+        "needs.audit.result == 'failure'",
+        "needs.audit.result == 'cancelled'",
+        "needs.quality.result == 'failure'",
+        "needs.quality.result == 'cancelled'",
+        "needs.release.result == 'failure'",
+        "needs.release.result == 'cancelled'",
+    ] {
+        assert!(
+            aggregate.contains(token),
+            "aggregate fail step must check `{token}`:\n{aggregate}"
+        );
+    }
+    assert!(
+        !aggregate.contains("!= 'success'"),
+        "aggregate must treat skipped dependencies as acceptable, not fail on them:\n{aggregate}"
     );
 
     // Final-audit steps keep the release-please exclusion and main-only gate.
