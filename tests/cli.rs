@@ -117,6 +117,73 @@ fn offline_ingest_and_search_round_trip() {
 }
 
 #[test]
+fn offline_context_emits_cited_bundle_and_enforces_bounds() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n\
+             [query]\ncontext_tokens = 4096\n"
+        ),
+    )
+    .expect("write config");
+    let document = r#"{"source":"test","source_id":"one","title":"Runbook","content":"The deployment uses a blue green release process.","project":"demo"}"#;
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(document)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("changed=1"));
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["context", "blue green", "--project", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"context\""))
+        .stdout(predicate::str::contains("### [1] Runbook"))
+        .stdout(predicate::str::contains("\"max_tokens\": 4096"))
+        .stdout(predicate::str::contains("\"metrics\""));
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args([
+            "context",
+            "blue green",
+            "--project",
+            "demo",
+            "--limit",
+            "3",
+            "--max-tokens",
+            "512",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"max_tokens\": 512"))
+        .stdout(predicate::str::contains("\"retrieved\": 1"))
+        .stdout(predicate::str::contains("\"included\": 1"));
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["context", "blue green", "--limit", "51"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("is not in 1..=50"));
+}
+
+#[test]
 fn preembedded_import_validates_and_searches_without_provider_calls() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

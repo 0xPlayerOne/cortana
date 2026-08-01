@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use cortana::config::{Config, SourceConfig, default_config_path};
 use cortana::connectors;
+use cortana::context::{self, ContextBundle};
 use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbedder};
 use cortana::model::Document;
 use cortana::retrieval;
@@ -20,6 +21,8 @@ use serde::Deserialize;
 
 // Leave half of the default local TEI permits available for interactive agents.
 const EMBEDDING_REQUEST_SIZE: usize = 8;
+// The CLI context command mirrors the HTTP/MCP context contract defaults.
+const DEFAULT_CONTEXT_LIMIT: usize = 10;
 
 #[derive(Debug, Parser)]
 #[command(name = "cortana", version, about = "Agent-native second brain")]
@@ -185,6 +188,27 @@ enum Command {
         source: Option<String>,
         #[arg(short = 'n', long, default_value_t = 10)]
         limit: usize,
+    },
+    /// Build a token-bounded, citation-ready context bundle for agents.
+    Context {
+        query: String,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(
+            long,
+            default_value_t = DEFAULT_CONTEXT_LIMIT,
+            value_parser = clap::builder::RangedU64ValueParser::<usize>::new()
+                .range(1u64..=retrieval::MAX_RESULT_LIMIT as u64)
+        )]
+        limit: usize,
+        #[arg(
+            long,
+            value_parser = clap::builder::RangedU64ValueParser::<usize>::new()
+                .range(context::MIN_CONTEXT_TOKENS as u64..=context::MAX_CONTEXT_TOKENS as u64)
+        )]
+        max_tokens: Option<usize>,
     },
     /// Serve the HTTP query API.
     Serve {
@@ -642,6 +666,28 @@ async fn main() -> Result<()> {
                 limit,
             )
             .await
+        }
+        Some(Command::Context {
+            query,
+            project,
+            source,
+            limit,
+            max_tokens,
+        }) => {
+            let bundle = context_bundle(
+                &store,
+                &embedder,
+                &query,
+                project.as_deref(),
+                source.as_deref(),
+                limit,
+                max_tokens.unwrap_or(config.query.context_tokens),
+            )
+            .await?;
+            let mut stdout = std::io::BufWriter::new(std::io::stdout());
+            serde_json::to_writer_pretty(&mut stdout, &bundle)?;
+            writeln!(stdout)?;
+            Ok(())
         }
         Some(Command::Serve {
             address,
@@ -2227,6 +2273,19 @@ async fn search(
     Ok(())
 }
 
+async fn context_bundle(
+    store: &Store,
+    embedder: &Arc<dyn Embedder>,
+    query: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+    limit: usize,
+    max_tokens: usize,
+) -> Result<ContextBundle> {
+    let evidence = retrieval::retrieve(store, embedder, query, project, source, limit).await?;
+    Ok(context::build(query, &evidence, max_tokens))
+}
+
 fn chunk(content: &str) -> Vec<String> {
     const TARGET: usize = 1_600;
     const OVERLAP: usize = 200;
@@ -2277,15 +2336,20 @@ fn chunk(content: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
     use anyhow::Result;
     use async_trait::async_trait;
     use chrono::Utc;
+    use clap::Parser;
 
-    use super::{SyncLock, chunk, cleanup_connector_spools, ingest_documents, private_file};
-    use cortana::embed::Embedder;
+    use super::{
+        Cli, Command, DEFAULT_CONTEXT_LIMIT, SyncLock, chunk, cleanup_connector_spools,
+        context_bundle, ingest_documents, private_file,
+    };
+    use cortana::embed::{DeterministicEmbedder, Embedder};
     use cortana::model::Document;
     use cortana::store::Store;
 
@@ -2438,5 +2502,139 @@ mod tests {
         assert!(SyncLock::acquire(&path).is_err());
         drop(first);
         SyncLock::acquire(&path).expect("lock after release");
+    }
+
+    #[test]
+    fn context_command_parses_scopes_and_explicit_bounds() {
+        let cli = Cli::try_parse_from([
+            "cortana",
+            "context",
+            "how do releases work?",
+            "--project",
+            "engineering",
+            "--source",
+            "runbooks",
+            "--limit",
+            "5",
+            "--max-tokens",
+            "4096",
+        ])
+        .expect("context command");
+        match cli.command {
+            Some(Command::Context {
+                query,
+                project,
+                source,
+                limit,
+                max_tokens,
+            }) => {
+                assert_eq!(query, "how do releases work?");
+                assert_eq!(project.as_deref(), Some("engineering"));
+                assert_eq!(source.as_deref(), Some("runbooks"));
+                assert_eq!(limit, 5);
+                assert_eq!(max_tokens, Some(4096));
+            }
+            _ => panic!("expected the context subcommand"),
+        }
+    }
+
+    #[test]
+    fn context_command_applies_contract_defaults() {
+        let cli = Cli::try_parse_from(["cortana", "context", "releases"]).expect("context command");
+        match cli.command {
+            Some(Command::Context {
+                query,
+                project,
+                source,
+                limit,
+                max_tokens,
+            }) => {
+                assert_eq!(query, "releases");
+                assert_eq!(project, None);
+                assert_eq!(source, None);
+                assert_eq!(limit, DEFAULT_CONTEXT_LIMIT);
+                assert_eq!(max_tokens, None);
+            }
+            _ => panic!("expected the context subcommand"),
+        }
+    }
+
+    #[test]
+    fn context_command_rejects_out_of_contract_bounds() {
+        for limit in ["0", "51"] {
+            let error = Cli::try_parse_from(["cortana", "context", "query", "--limit", limit])
+                .expect_err("out-of-range limit");
+            assert!(error.to_string().contains("is not in 1..=50"));
+        }
+        for tokens in ["255", "64001"] {
+            let error =
+                Cli::try_parse_from(["cortana", "context", "query", "--max-tokens", tokens])
+                    .expect_err("out-of-range max tokens");
+            assert!(error.to_string().contains("is not in 256..=64000"));
+        }
+    }
+
+    #[tokio::test]
+    async fn context_bundle_output_is_stable_cited_json() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        store
+            .ensure_fingerprint(&embedder.fingerprint())
+            .expect("fingerprint");
+        let content = "Deploy after validation.".to_string();
+        let vector = embedder
+            .embed(std::slice::from_ref(&content))
+            .await
+            .expect("embedding")
+            .remove(0);
+        store
+            .upsert(
+                &Document {
+                    source: "notes".into(),
+                    source_id: "runbook".into(),
+                    title: "Release runbook".into(),
+                    content: content.clone(),
+                    uri: Some("file:///runbook.md".into()),
+                    updated_at: Utc::now(),
+                    project: "engineering".into(),
+                    acl: Vec::new(),
+                    metadata: serde_json::json!({}),
+                },
+                &[(content, vector)],
+            )
+            .expect("upsert");
+
+        let bundle = context_bundle(
+            &store,
+            &embedder,
+            "deploy",
+            Some("engineering"),
+            None,
+            10,
+            2_000,
+        )
+        .await
+        .expect("context bundle");
+        assert!(bundle.context.contains("### [1] Release runbook"));
+        assert!(bundle.context.contains("Cite sources with [n]"));
+        assert_eq!(bundle.evidence.len(), 1);
+        assert_eq!(bundle.metrics.retrieved, 1);
+        assert_eq!(bundle.metrics.included, 1);
+        assert_eq!(bundle.metrics.omitted, 0);
+        assert_eq!(bundle.metrics.max_tokens, 2_000);
+
+        let json = serde_json::to_string_pretty(&bundle).expect("serialized bundle");
+        for field in [
+            "\"query\"",
+            "\"context\"",
+            "\"evidence\"",
+            "\"metrics\"",
+            "\"estimated_tokens\"",
+            "\"max_tokens\"",
+        ] {
+            assert!(json.contains(field), "missing {field} in {json}");
+        }
+        assert!(json.contains("### [1] Release runbook"));
     }
 }

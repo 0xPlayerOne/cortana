@@ -13,6 +13,8 @@ const INTERACTIVE_EMBEDDING_TIMEOUT: Duration = Duration::from_secs(5);
 const NEIGHBOR_RADIUS: usize = 1;
 const MAX_EXPANDED_CONTENT_BYTES: usize = 16 * 1024;
 pub const MAX_QUERY_BYTES: usize = 16 * 1024;
+/// The public retrieval result cap shared by MCP, HTTP, and the CLI.
+pub const MAX_RESULT_LIMIT: usize = 50;
 
 pub async fn retrieve(
     store: &Store,
@@ -78,7 +80,7 @@ pub async fn retrieve_sources_scoped(
         return Ok(Vec::new());
     }
     let query_embedding = query_embedding(embedder, query, INTERACTIVE_EMBEDDING_TIMEOUT).await;
-    let result_limit = limit.min(50);
+    let result_limit = limit.min(MAX_RESULT_LIMIT);
     let mut fused = HashMap::<String, (Evidence, f32)>::new();
     for source in unique_sources {
         let rows = rank(
@@ -135,7 +137,7 @@ async fn retrieve_with_timeout(
         query_embedding.as_deref(),
         project,
         source,
-        limit.min(50),
+        limit.min(MAX_RESULT_LIMIT),
         principal_acl,
     )
 }

@@ -3,8 +3,8 @@ use serde::Serialize;
 use crate::model::Evidence;
 
 const CHARS_PER_TOKEN: usize = 4;
-const MIN_CONTEXT_TOKENS: usize = 256;
-const MAX_CONTEXT_TOKENS: usize = 64_000;
+pub const MIN_CONTEXT_TOKENS: usize = 256;
+pub const MAX_CONTEXT_TOKENS: usize = 64_000;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ContextBundle {
