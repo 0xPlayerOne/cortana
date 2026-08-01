@@ -277,7 +277,7 @@ export type DesktopSettingsImport = {
 
 export type DesktopSourceJob = {
   id: string
-  operation: 'validation' | 'authorization' | 'trial-sync'
+  operation: 'validation' | 'authorization' | 'trial-sync' | 'initial-sync'
   source: string
   kind: string
   project: string
@@ -289,7 +289,39 @@ export type DesktopSourceJob = {
   exit_code: number | null
   retryable: boolean
   writes_indexed_data: boolean
+  budget: string | null
 }
+
+export type InitialSyncBudget = 'small' | 'medium' | 'large'
+
+export const INITIAL_SYNC_BUDGETS: Array<{
+  budget: InitialSyncBudget
+  documents: number
+  bytes: number
+  seconds: number
+}> = [
+  { budget: 'small', documents: 100, bytes: 26_214_400, seconds: 900 },
+  { budget: 'medium', documents: 500, bytes: 67_108_864, seconds: 1_800 },
+  { budget: 'large', documents: 2_000, bytes: 134_217_728, seconds: 3_600 },
+]
+
+export type DesktopInitialSyncPlan = {
+  source: string
+  kind: string
+  project: string
+  enabled: boolean
+  budget: InitialSyncBudget
+  budget_documents: number
+  budget_bytes: number
+  budget_seconds: number
+  writes_indexed_data: boolean
+  requires_validation: boolean
+  validation_covers_budget: boolean | null
+  plan_id: string
+}
+
+export type DesktopInitialSyncOutcome =
+  (DesktopInitialSyncPlan & { outcome: 'plan' }) | (DesktopSourceJob & { outcome: 'job' })
 
 export type DesktopSetupOpen = {
   source: string

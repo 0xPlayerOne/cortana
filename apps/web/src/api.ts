@@ -9,6 +9,8 @@ import type {
   BrainGraphPage,
   BrainStatus,
   ContextBundle,
+  DesktopInitialSyncOutcome,
+  DesktopInitialSyncPlan,
   DesktopInstallJob,
   DesktopInfo,
   DesktopReadiness,
@@ -21,6 +23,7 @@ import type {
   DesktopUpdate,
   AuditEvent,
   DesktopSetupOpen,
+  InitialSyncBudget,
 } from './types'
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
@@ -140,9 +143,15 @@ export async function cancelDesktopInstaller(id: string): Promise<DesktopInstall
   return invokeDesktop<DesktopInstallJob>('desktop_installer_cancel', { id })
 }
 
-export async function startDesktopSourceValidation(source: string): Promise<DesktopSourceJob> {
+export async function startDesktopSourceValidation(
+  source: string,
+  budget?: InitialSyncBudget
+): Promise<DesktopSourceJob> {
   if (!isDesktopApp) throw new Error('Source validation is available in Cortana Desktop')
-  return invokeDesktop<DesktopSourceJob>('desktop_source_validation_start', { source })
+  return invokeDesktop<DesktopSourceJob>(
+    'desktop_source_validation_start',
+    budget ? { source, budget } : { source }
+  )
 }
 
 export async function startDesktopSourceAuthorization(source: string): Promise<DesktopSourceJob> {
@@ -178,6 +187,43 @@ export async function getDesktopSourceValidation(id: string): Promise<DesktopSou
 export async function cancelDesktopSourceValidation(id: string): Promise<DesktopSourceJob> {
   if (!isDesktopApp) throw new Error('Source validation is available in Cortana Desktop')
   return invokeDesktop<DesktopSourceJob>('desktop_source_validation_cancel', { id })
+}
+
+export async function planDesktopInitialSync(
+  source: string,
+  budget: InitialSyncBudget
+): Promise<DesktopInitialSyncPlan> {
+  if (!isDesktopApp) throw new Error('Initial sync is available in Cortana Desktop')
+  const outcome = await invokeDesktop<DesktopInitialSyncOutcome>('desktop_source_initial_sync', {
+    source,
+    budget,
+    operation: 'plan',
+    planId: '',
+    approved: false,
+  })
+  if (outcome.outcome !== 'plan') {
+    throw new Error('Initial sync plan request returned an unexpected result')
+  }
+  return outcome
+}
+
+export async function startDesktopInitialSync(
+  source: string,
+  budget: InitialSyncBudget,
+  planId: string
+): Promise<DesktopSourceJob> {
+  if (!isDesktopApp) throw new Error('Initial sync is available in Cortana Desktop')
+  const outcome = await invokeDesktop<DesktopInitialSyncOutcome>('desktop_source_initial_sync', {
+    source,
+    budget,
+    operation: 'execute',
+    planId,
+    approved: true,
+  })
+  if (outcome.outcome !== 'job') {
+    throw new Error('Initial sync execution returned an unexpected result')
+  }
+  return outcome
 }
 
 export async function getStatus(signal?: AbortSignal): Promise<BrainStatus> {

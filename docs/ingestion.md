@@ -142,7 +142,10 @@ latest metadata-only outcome is written atomically to the owner-only
 that is merely configured. This record contains counts, limits, timestamps, and a bounded error
 summary—never credentials, source content, or connector output.
 Filesystem validation performs the same bounded preflight walk used by sync, so start with a
-narrow root and conservative limits.
+narrow root and conservative limits. Desktop can also run this read-only validation at one of the
+guided initial-sync budget tiers (100, 500, or 2,000 documents with matching byte and duration
+limits) so the resulting record covers a subsequent initial sync; the limits shown in
+`source-validations.json` always reflect the validation that actually ran.
 
 Desktop exposes a separately confirmed guarded trial sync after validation. It invokes the fixed
 equivalent of:
@@ -158,8 +161,26 @@ source is enabled and its latest validation succeeded for the exact current sour
 at equal or larger document and byte limits. The validation record stores only a one-way
 configuration fingerprint. Trial sync may embed and index committed batches, but it never deletes
 records absent from the bounded snapshot. Cancellation preserves already committed batches.
-Larger initial syncs remain a CLI/operator workflow that must be planned and assigned explicit
-budgets; Desktop does not silently escalate beyond the trial limits.
+
+Desktop adds a guided initial sync on top of the same boundary for first-time ingestion. It offers
+exactly three fixed budget tiers — 100 documents/25 MiB/15 minutes, 500/64 MiB/30 minutes, or
+2,000/128 MiB/60 minutes — and the renderer can select only the tier enum, never raw flags or
+numbers. The flow is plan-then-confirm: a read-only plan request resolves the saved source and
+returns the exact limits that execution will enforce, and execution requires that plan plus an
+explicit confirmation and a successful validation recorded at equal or larger limits (run
+`validate-source` with the same budget, or use the Desktop **Validate for this budget** action).
+Execution invokes the fixed equivalent of:
+
+```bash
+cortana sync --source SOURCE \
+  --require-validation --no-reconcile \
+  --max-documents 100 --max-bytes 26214400 --max-seconds 900
+```
+
+with the numbers of the selected tier. It runs under the same single-job lock with cancellation
+and metadata-only audit events that include the tier, and it never escalates beyond the selected
+budget. Desktop initial syncs and trial syncs never reconcile deletions; a complete CLI or
+scheduled sync remains the reconciliation path.
 
 External connectors must emit one JSON object per line:
 

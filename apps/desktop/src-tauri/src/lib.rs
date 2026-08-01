@@ -394,8 +394,9 @@ fn desktop_source_validation_start(
     app: AppHandle,
     jobs: State<'_, source_jobs::SourceJobState>,
     source: String,
+    budget: Option<source_jobs::InitialSyncBudget>,
 ) -> Result<source_jobs::SourceJobSnapshot, String> {
-    jobs.start_validation(&app, &source)
+    jobs.start_validation(&app, &source, budget)
 }
 
 #[tauri::command]
@@ -420,6 +421,26 @@ fn desktop_source_trial_sync_start(
 #[tauri::command]
 fn desktop_source_setup_open(source: String) -> Result<source_jobs::SetupOpenOutcome, String> {
     source_jobs::open_setup(&source)
+}
+
+#[tauri::command]
+fn desktop_source_initial_sync(
+    app: AppHandle,
+    jobs: State<'_, source_jobs::SourceJobState>,
+    source: String,
+    budget: source_jobs::InitialSyncBudget,
+    operation: source_jobs::InitialSyncOperation,
+    plan_id: String,
+    approved: bool,
+) -> Result<source_jobs::InitialSyncOutcome, String> {
+    match operation {
+        source_jobs::InitialSyncOperation::Plan => jobs
+            .plan_initial_sync(&source, budget)
+            .map(source_jobs::InitialSyncOutcome::Plan),
+        source_jobs::InitialSyncOperation::Execute => jobs
+            .execute_initial_sync(&app, &source, budget, &plan_id, approved)
+            .map(source_jobs::InitialSyncOutcome::Job),
+    }
 }
 
 #[tauri::command]
@@ -488,9 +509,7 @@ fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), S
         .as_ref()
         .is_some_and(|query| query.is_empty() || query.len() > MAX_SCOPE_LENGTH)
     {
-        return Err(format!(
-            "query must contain 1 to {MAX_SCOPE_LENGTH} bytes"
-        ));
+        return Err(format!("query must contain 1 to {MAX_SCOPE_LENGTH} bytes"));
     }
     if request
         .cursor
@@ -631,6 +650,7 @@ pub fn run() {
             desktop_source_authorization_start,
             desktop_source_trial_sync_start,
             desktop_source_setup_open,
+            desktop_source_initial_sync,
             desktop_source_validation_status,
             desktop_source_validation_cancel
         ])

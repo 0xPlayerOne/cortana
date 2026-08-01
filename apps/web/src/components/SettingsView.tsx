@@ -15,6 +15,7 @@ import {
   Trash2,
   Upload,
   X,
+  Zap,
 } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
 
@@ -37,9 +38,11 @@ import {
   openDesktopSourceSetup,
   openDesktopProject,
   pickDesktopPath,
+  planDesktopInitialSync,
   saveDesktopSettings,
   scanDesktopReadiness,
   setDesktopAutostart,
+  startDesktopInitialSync,
   startDesktopInstaller,
   startDesktopSourceAuthorization,
   startDesktopSourceTrialSync,
@@ -48,7 +51,9 @@ import {
   runDesktopServicesActionAll,
 } from '../api'
 import { buildSetupSteps } from '../setup'
+import { INITIAL_SYNC_BUDGETS } from '../types'
 import type {
+  DesktopInitialSyncPlan,
   DesktopInstallJob,
   DesktopInfo,
   DesktopReadiness,
@@ -59,6 +64,7 @@ import type {
   DesktopUpdate,
   AuditEvent,
   AuthPrincipalSettings,
+  InitialSyncBudget,
   SourceKind,
   SourceSettings,
   WorkspaceSettings,
@@ -82,7 +88,7 @@ export function SettingsView({
   initialSection = 'readiness',
 }: {
   onSaved: (settings: DesktopSettings) => void
-  initialSection?: 'readiness' | 'updates'
+  initialSection?: Section
 }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
   const [section, setSection] = useState<Section>(initialSection)
@@ -1248,6 +1254,13 @@ function SourcesSection({
 }) {
   const [job, setJob] = useState<DesktopSourceJob | null>(null)
   const [error, setError] = useState('')
+  const [initialSync, setInitialSync] = useState<{
+    source: string
+    budget: InitialSyncBudget
+    plan: DesktopInitialSyncPlan | null
+    planning: boolean
+    flowError: string
+  } | null>(null)
 
   useEffect(() => {
     if (!job || !['running', 'cancelling'].includes(job.status)) return
@@ -1255,7 +1268,15 @@ function SourcesSection({
     const timer = window.setTimeout(() => {
       void getDesktopSourceValidation(job.id)
         .then((next) => {
-          if (active) setJob(next)
+          if (!active) return
+          setJob(next)
+          if (
+            next.status === 'succeeded' &&
+            job.operation === 'validation' &&
+            initialSync?.source === job.source
+          ) {
+            void requestPlan(job.source, initialSync.budget)
+          }
         })
         .catch((caught: unknown) => {
           if (active) {
@@ -1267,7 +1288,92 @@ function SourcesSection({
       active = false
       window.clearTimeout(timer)
     }
-  }, [job])
+  }, [job, initialSync])
+
+  const requestPlan = async (source: string, budget: InitialSyncBudget) => {
+    setInitialSync((current) =>
+      current && current.source === source
+        ? { ...current, budget, plan: null, planning: true, flowError: '' }
+        : current
+    )
+    try {
+      const plan = await planDesktopInitialSync(source, budget)
+      setInitialSync((current) =>
+        current && current.source === source && current.budget === budget
+          ? { ...current, plan, planning: false, flowError: '' }
+          : current
+      )
+    } catch (caught) {
+      setInitialSync((current) =>
+        current && current.source === source
+          ? {
+              ...current,
+              planning: false,
+              flowError:
+                caught instanceof Error ? caught.message : 'Initial sync plan request failed',
+            }
+          : current
+      )
+    }
+  }
+
+  const openInitialSync = (source: SourceSettings, budget: InitialSyncBudget = 'small') => {
+    setInitialSync({
+      source: source.name,
+      budget,
+      plan: null,
+      planning: false,
+      flowError: '',
+    })
+    void requestPlan(source.name, budget)
+  }
+
+  const validateInitialSyncBudget = async (source: SourceSettings) => {
+    if (!initialSync) return
+    if (!canValidate) {
+      setError(
+        'Save source changes before validating so the native runtime uses this exact config.'
+      )
+      return
+    }
+    const budget = initialSync.budget
+    if (
+      !window.confirm(
+        `Validate ${source.name} for an initial sync budget?\n\nCortana may read up to ${budgetLabel(budget)} without embedding, indexing, reconciling, or starting a sync.`
+      )
+    ) {
+      return
+    }
+    setError('')
+    try {
+      setJob(await startDesktopSourceValidation(source.name, budget))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Budget validation failed to start')
+    }
+  }
+
+  const startInitialSync = async (source: SourceSettings) => {
+    if (!initialSync?.plan) return
+    const plan = initialSync.plan
+    if (
+      !window.confirm(
+        `Start a guarded initial sync for ${source.name}?\n\n` +
+          `It may embed and index at most ${plan.budget_documents} documents or ${mebibytes(plan.budget_bytes)} MiB for up to ${minutes(plan.budget_seconds)} minutes. ` +
+          `It requires a matching successful validation, and it will not delete or reconcile existing records. ` +
+          `Committed batches remain indexed if you cancel.`
+      )
+    ) {
+      return
+    }
+    setError('')
+    try {
+      const next = await startDesktopInitialSync(source.name, plan.budget, plan.plan_id)
+      setJob(next)
+      setInitialSync(null)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Initial sync failed to start')
+    }
+  }
 
   const changeSource = (index: number, patch: Partial<SourceSettings>) =>
     update((current) => ({
@@ -1388,7 +1494,7 @@ function SourcesSection({
   return (
     <SettingsSection
       title="Ingestion sources"
-      description="Configure local and account-backed sources per workspace. Saving never ingests data; validation and a deliberately small no-reconcile trial sync are separate confirmed actions."
+      description="Configure local and account-backed sources per workspace. Saving never ingests data; validation, a deliberately small no-reconcile trial sync, and a fixed-budget guided initial sync are separate confirmed actions."
     >
       <div className="source-settings-toolbar">
         <span>
@@ -1502,6 +1608,23 @@ function SourcesSection({
                       <Play size={14} />
                     )}
                     Trial sync
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !canValidate ||
+                      !source.enabled ||
+                      Boolean(job && ['running', 'cancelling'].includes(job.status))
+                    }
+                    title="Guided initial sync; fixed budget, validation-gated, no reconciliation"
+                    onClick={() => openInitialSync(source)}
+                  >
+                    {runningThis && job?.operation === 'initial-sync' ? (
+                      <LoaderCircle className="spin" size={14} />
+                    ) : (
+                      <Zap size={14} />
+                    )}
+                    Initial sync
                   </button>
                   <button
                     type="button"
@@ -1782,6 +1905,18 @@ function SourcesSection({
         })}
       </div>
 
+      {initialSync && settings.sources.find((item) => item.name === initialSync.source) && (
+        <InitialSyncFlow
+          source={settings.sources.find((item) => item.name === initialSync.source)!}
+          flow={initialSync}
+          busy={Boolean(job && ['running', 'cancelling'].includes(job.status)) || !canValidate}
+          onBudget={(budget) => void requestPlan(initialSync.source, budget)}
+          onValidate={() => void validateInitialSyncBudget(sourceOf(settings, initialSync.source))}
+          onStart={() => void startInitialSync(sourceOf(settings, initialSync.source))}
+          onClose={() => setInitialSync(null)}
+        />
+      )}
+
       {error && <div className="safety-note">{error}</div>}
       {job && (
         <div className={`source-validation-job ${job.status}`}>
@@ -1814,7 +1949,12 @@ function SourcesSection({
                   if (source) {
                     if (job.operation === 'authorization') void authorizeSource(source)
                     else if (job.operation === 'trial-sync') void trialSyncSource(source)
-                    else void validateSource(source)
+                    else if (job.operation === 'initial-sync') {
+                      void openInitialSync(
+                        source,
+                        (job.budget as InitialSyncBudget | null) || 'small'
+                      )
+                    } else void validateSource(source)
                   }
                 }}
               >
@@ -1831,10 +1971,159 @@ function SourcesSection({
         <span>
           Source validation checks a bounded snapshot and writes only metadata about the outcome.
           Trial sync is separately confirmed, requires an exact successful validation, limits work
-          to 25 documents and 5 MiB, and never performs deletion reconciliation.
+          to 25 documents and 5 MiB, and never performs deletion reconciliation. Initial sync is
+          planned first, uses one of three fixed budgets (up to 2,000 documents, 128 MiB, 60
+          minutes), requires validation at equal or larger limits, and never escalates beyond the
+          selected budget.
         </span>
       </div>
     </SettingsSection>
+  )
+}
+
+function sourceOf(settings: DesktopSettings, name: string): SourceSettings {
+  return settings.sources.find((item) => item.name === name)!
+}
+
+function budgetLabel(budget: InitialSyncBudget) {
+  const tier = INITIAL_SYNC_BUDGETS.find((item) => item.budget === budget)
+  return tier
+    ? `${tier.documents.toLocaleString()} documents or ${mebibytes(tier.bytes)} MiB for up to ${minutes(tier.seconds)} minutes`
+    : budget
+}
+
+function mebibytes(bytes: number) {
+  return Math.round(bytes / 1048576)
+}
+
+function minutes(seconds: number) {
+  return Math.round(seconds / 60)
+}
+
+function InitialSyncFlow({
+  source,
+  flow,
+  busy,
+  onBudget,
+  onValidate,
+  onStart,
+  onClose,
+}: {
+  source: SourceSettings
+  flow: {
+    source: string
+    budget: InitialSyncBudget
+    plan: DesktopInitialSyncPlan | null
+    planning: boolean
+    flowError: string
+  }
+  busy: boolean
+  onBudget: (budget: InitialSyncBudget) => void
+  onValidate: () => void
+  onStart: () => void
+  onClose: () => void
+}) {
+  const plan = flow.plan
+  return (
+    <section className="initial-sync-flow" aria-label={`Initial sync plan for ${source.name}`}>
+      <header>
+        <div>
+          <span className="eyebrow">Guided initial sync</span>
+          <strong>{source.name}</strong>
+        </div>
+        <button type="button" aria-label="Close initial sync plan" onClick={onClose}>
+          <X size={15} />
+        </button>
+      </header>
+      <div className="initial-sync-budgets" role="radiogroup" aria-label="Initial sync budget">
+        {INITIAL_SYNC_BUDGETS.map((tier) => (
+          <label key={tier.budget} className={flow.budget === tier.budget ? 'selected' : ''}>
+            <input
+              type="radio"
+              name="initial-sync-budget"
+              value={tier.budget}
+              checked={flow.budget === tier.budget}
+              disabled={flow.planning || busy}
+              onChange={() => onBudget(tier.budget)}
+            />
+            <span>
+              <strong>{tier.budget[0].toUpperCase() + tier.budget.slice(1)}</strong>
+              <small>{budgetLabel(tier.budget)}</small>
+            </span>
+          </label>
+        ))}
+      </div>
+      {flow.planning && <p className="initial-sync-state">Requesting a native plan…</p>}
+      {flow.flowError && <div className="safety-note">{flow.flowError}</div>}
+      {plan && (
+        <>
+          <dl className="initial-sync-plan">
+            <div>
+              <dt>Source</dt>
+              <dd>
+                {plan.source} · {plan.kind} · {plan.project}
+              </dd>
+            </div>
+            <div>
+              <dt>Selected budget</dt>
+              <dd>
+                {plan.budget_documents.toLocaleString()} documents · {mebibytes(plan.budget_bytes)}{' '}
+                MiB · {minutes(plan.budget_seconds)} minutes
+              </dd>
+            </div>
+            <div>
+              <dt>Validation gate</dt>
+              <dd>{plan.requires_validation ? 'Required at equal or larger limits' : 'None'}</dd>
+            </div>
+            <div>
+              <dt>Deletion reconciliation</dt>
+              <dd>Disabled</dd>
+            </div>
+            <div>
+              <dt>Writes indexed data</dt>
+              <dd>Yes — committed batches become searchable</dd>
+            </div>
+          </dl>
+          {!plan.enabled && (
+            <div className="safety-note">
+              <AlertTriangle size={16} />
+              <span>Enable this source and save before an initial sync.</span>
+            </div>
+          )}
+          {plan.validation_covers_budget !== true && (
+            <div className="safety-note">
+              <AlertTriangle size={16} />
+              <span>
+                {plan.validation_covers_budget === false
+                  ? 'The latest validation used smaller limits. Run a read-only validation with this budget before syncing.'
+                  : 'This source has no validation record. Run a read-only validation with this budget before syncing.'}
+              </span>
+              {!busy && (
+                <button type="button" onClick={onValidate}>
+                  Validate for this budget
+                </button>
+              )}
+            </div>
+          )}
+          <div className="initial-sync-actions">
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                !plan.enabled || plan.validation_covers_budget !== true || busy || flow.planning
+              }
+              onClick={onStart}
+            >
+              <Zap size={15} /> Start initial sync
+            </button>
+            <span>
+              Execution requires explicit confirmation and reuses the native validation-gated,
+              no-reconcile source-job boundary.
+            </span>
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 
