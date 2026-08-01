@@ -1,5 +1,5 @@
 import { BookOpen, FileText, History, Link2, Network, Sparkles, Star } from 'lucide-react'
-import { type CSSProperties, useEffect, useState } from 'react'
+import { type CSSProperties, useEffect } from 'react'
 
 import type { AnswerResponse, BrainDocument, Evidence } from '../types'
 
@@ -11,7 +11,7 @@ const tabs = [
   { id: 'timeline', label: 'Timeline', icon: History },
 ] as const
 
-type Tab = (typeof tabs)[number]['id']
+export type WorkspaceTab = (typeof tabs)[number]['id']
 
 export function Workspace({
   query,
@@ -22,6 +22,8 @@ export function Workspace({
   error,
   document,
   documentLoading,
+  tab,
+  onTabChange,
   onSelect,
   onSelectDocument,
   onRetry,
@@ -34,18 +36,19 @@ export function Workspace({
   error: string
   document: BrainDocument | null
   documentLoading: boolean
+  tab: WorkspaceTab
+  onTabChange: (tab: WorkspaceTab) => void
   onSelect: (index: number) => void
   onSelectDocument: (id: string) => void
   onRetry: () => void
 }) {
-  const [tab, setTab] = useState<Tab>('document')
   const active = evidence[selected] ?? null
   useEffect(() => {
-    if (document) setTab('document')
-  }, [document])
+    if (document) onTabChange('document')
+  }, [document, onTabChange])
   useEffect(() => {
-    if (answer) setTab('answer')
-  }, [answer])
+    if (answer) onTabChange('answer')
+  }, [answer, onTabChange])
 
   return (
     <main className="workspace">
@@ -56,7 +59,7 @@ export function Workspace({
             role="tab"
             aria-selected={tab === id}
             className={tab === id ? 'active' : ''}
-            onClick={() => setTab(id)}
+            onClick={() => onTabChange(id)}
           >
             <Icon size={15} />
             {label}
@@ -98,7 +101,7 @@ export function Workspace({
           evidence={evidence}
           onSelect={(index) => {
             onSelect(index)
-            setTab('sources')
+            onTabChange('sources')
           }}
         />
       ) : (
