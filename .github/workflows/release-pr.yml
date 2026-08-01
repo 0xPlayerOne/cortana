@@ -9,6 +9,12 @@ permissions:
   contents: read
   pull-requests: write
 
+# Coalesce rapid staging updates into one release-PR reconciliation. The
+# newest staging commit is the only one that should drive Release Please.
+concurrency:
+  group: cortana-release-pr-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release-pr:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
