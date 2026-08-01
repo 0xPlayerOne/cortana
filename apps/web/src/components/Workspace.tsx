@@ -1,5 +1,5 @@
 import { BookOpen, FileText, History, Link2, Network, Sparkles, Star } from 'lucide-react'
-import { type CSSProperties, useEffect } from 'react'
+import { type CSSProperties, useEffect, useState } from 'react'
 
 import type { AnswerResponse, BrainDocument, Evidence } from '../types'
 
@@ -118,6 +118,7 @@ function BrainDocumentView({
   document: BrainDocument
   onSelectDocument: (id: string) => void
 }) {
+  const [favorite, setFavorite] = useState(false)
   const metadata = Object.entries(document.metadata).slice(0, 24)
   return (
     <article className="document canonical-document">
@@ -125,6 +126,15 @@ function BrainDocumentView({
         <span>Brain</span> / <span>{document.project}</span> / <span>{document.source}</span> /{' '}
         <strong>{document.title}</strong>
         <div>
+          <button
+            type="button"
+            aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
+            aria-pressed={favorite}
+            title={favorite ? 'Remove favorite' : 'Add favorite'}
+            onClick={() => setFavorite((current) => !current)}
+          >
+            <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
+          </button>
           {document.uri && (
             <a
               href={document.uri}
@@ -236,13 +246,21 @@ function DocumentView({
   evidence: Evidence[]
   onSelect: (index: number) => void
 }) {
+  const [favorite, setFavorite] = useState(false)
+
   return (
     <article className="document">
       <div className="breadcrumbs">
         <span>Brain</span> / <span>{active.source}</span> / <strong>{active.title}</strong>
         <div>
-          <button aria-label="Favorite">
-            <Star size={17} />
+          <button
+            type="button"
+            aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
+            aria-pressed={favorite}
+            title={favorite ? 'Remove favorite' : 'Add favorite'}
+            onClick={() => setFavorite((current) => !current)}
+          >
+            <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
           </button>
           {active.uri && (
             <a href={active.uri} target="_blank" rel="noreferrer" aria-label="Open original source">
