@@ -69,16 +69,16 @@ export function Workspace({
         <EmptyState title="Opening document" detail="Loading the canonical indexed content…" />
       ) : tab === 'document' && document ? (
         <BrainDocumentView document={document} onSelectDocument={onSelectDocument} />
-      ) : tab === 'document' ? (
-        <EmptyState
-          title="Choose a document"
-          detail="Open a workspace and source in the sidebar, then select any indexed document."
-        />
       ) : error ? (
         <EmptyState
           title="Cortana could not reach the brain"
           detail={`${error}. Start the Rust API or add ?demo=1 to preview the workspace.`}
           action={onRetry}
+        />
+      ) : tab === 'document' ? (
+        <EmptyState
+          title="Choose a document"
+          detail="Open a workspace and source in the sidebar, then select any indexed document."
         />
       ) : loading && evidence.length === 0 ? (
         <EmptyState
