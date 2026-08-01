@@ -46,8 +46,10 @@ bun run build
 ./target/release/cortana validate-source SOURCE --max-documents 25 --max-bytes 10485760 --max-seconds 60
 ./target/release/cortana sync --source SOURCE
 ./target/release/cortana search "how do releases work?" --project engineering
+# Same citation-ready, token-bounded bundle as MCP/HTTP, without a running server.
+./target/release/cortana context "how do releases work?" --project engineering
 
-# Agent transport and workspace API use the identical retrieval pipeline.
+# Agent transport, the workspace API, and the CLI use the identical retrieval pipeline.
 ./target/release/cortana mcp
 # `bun run build` packages the Obsidian-like workspace served at this address.
 ./target/release/cortana serve --address 127.0.0.1:7331

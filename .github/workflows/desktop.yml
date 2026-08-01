@@ -25,9 +25,18 @@ concurrency:
 jobs:
   # The former sequential job is split into independent jobs: parallel
   # execution cuts wall-clock time, but every job repeats setup, so total
-  # runner minutes rise.
+  # runner minutes rise. Release Please version-only PRs skip the three long
+  # jobs entirely at job level; manual dispatch and ordinary main-targeted
+  # code PRs still run all of them.
   audit:
     name: Audit / Provenance
+    # Job-level final-audit gate: run only for PRs targeting main and manual
+    # dispatch, excluding release-please version PRs.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.base.ref == 'main' &&
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -86,6 +95,13 @@ jobs:
 
   quality:
     name: Web + Desktop Quality
+    # Job-level final-audit gate: run only for PRs targeting main and manual
+    # dispatch, excluding release-please version PRs.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.base.ref == 'main' &&
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -129,6 +145,13 @@ jobs:
 
   release:
     name: Release Compilation
+    # Job-level final-audit gate: run only for PRs targeting main and manual
+    # dispatch, excluding release-please version PRs.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.base.ref == 'main' &&
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -177,8 +200,10 @@ jobs:
           CORTANA_DESKTOP_TARGET: x86_64-unknown-linux-gnu
         run: bun run desktop:build
 
-  # Fast aggregate carrying the stable required check name. It runs even when
-  # a dependency fails so the check turns red instead of silently skipping.
+  # Fast aggregate carrying the stable required check name. It always runs
+  # after its dependencies so the check turns red on failure or cancellation
+  # instead of silently skipping. Skipped dependencies (release-please
+  # version-only PRs) are acceptable and leave the check green.
   aggregate:
     name: Tauri 2 / Linux
     needs: [audit, quality, release]
@@ -186,11 +211,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Fail if any desktop job failed
+      - name: Fail if any desktop job failed or was cancelled
         if: >-
-          needs.audit.result != 'success' ||
-          needs.quality.result != 'success' ||
-          needs.release.result != 'success'
+          needs.audit.result == 'failure' || needs.audit.result == 'cancelled' ||
+          needs.quality.result == 'failure' || needs.quality.result == 'cancelled' ||
+          needs.release.result == 'failure' || needs.release.result == 'cancelled'
         run: exit 1
-      - name: All desktop jobs passed
-        run: echo "audit/provenance, web+desktop quality, and release compilation all passed"
+      - name: All desktop jobs passed or were skipped
+        run: echo "audit/provenance, web+desktop quality, and release compilation passed or were skipped"

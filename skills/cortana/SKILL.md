@@ -5,11 +5,16 @@ description: Retrieve durable personal, project, communication, calendar, email,
 
 # Cortana retrieval
 
-Use the configured Cortana MCP server first. If the client has no MCP integration, call the local
-HTTP API at `http://127.0.0.1:7331/v1/context`; use `cortana search` only as a raw-evidence fallback.
+Use the configured Cortana MCP server first. If the client has no MCP integration, prefer the CLI
+fallback `cortana context "<concrete question>"` — optionally `--project`, `--source`, `--limit`
+(1–50), and `--max-tokens` (256–64,000, defaulting to the configured context budget) — which
+returns the same citation-ready bundle as the MCP/HTTP endpoints without a running server. The
+local HTTP API at `http://127.0.0.1:7331/v1/context` is equivalent. Use `cortana search` only as a
+raw-evidence fallback.
 
-1. Start with `context` using the user's concrete terms and the current project when known. Its
-   token-bounded Markdown is ready to place directly into the working context and cite with `[n]`.
+1. Start with `context` (MCP, CLI, or HTTP) using the user's concrete terms and the current project
+   when known. Its token-bounded Markdown is ready to place directly into the working context and
+   cite with `[n]`.
 2. Use `search_code` for repository and filesystem evidence, `search_messages` for Gmail, Slack,
    Discord, and Buzz evidence, and `who_knows` when identifying source-backed expertise. Use generic
    `search` only for another focused pass, an explicit source, or exact debugging details.
@@ -67,3 +72,20 @@ For an HTTP-only client, send:
   }
 }
 ```
+
+For a CLI-only client (no MCP integration and no server running), run:
+
+```bash
+cortana context "the concrete question" --project optional-project --max-tokens 4000
+```
+
+The command prints stable JSON containing the Markdown context (with `[n]` citations), the
+included evidence rows, and retrieval/metrics fields (`retrieved`, `included`, `omitted`,
+`estimated_tokens`, `max_tokens`). Omit `--max-tokens` to use the configured `[query].context_tokens`
+budget. Use `--offline` for the deterministic embedding path.
+
+The CLI fallback is owner-local: it carries no bearer credentials, so it cannot enforce scoped
+`[[auth.tokens]]` principals or document ACL labels. Shared or narrowly scoped agents must use the
+MCP server with `--token-env` or the bearer-authenticated HTTP API. CLI `context` calls are
+recorded in the metadata-only audit trail under the `local-cli` principal (action
+`local-cli/context`); query text and evidence content are never stored.

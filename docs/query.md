@@ -2,8 +2,8 @@
 
 Cortana separates agent retrieval from human-facing answers.
 
-- MCP, CLI search, `/v1/search`, and `/v1/context` are low-latency evidence primitives. They never
-  require a language model.
+- MCP, CLI `search`/`context`, `/v1/search`, and `/v1/context` are low-latency evidence
+  primitives. They never require a language model.
 - MCP also exposes `search_code`, `search_messages`, and `who_knows`. These tools search only the
   enabled source groups derived from configuration, embed the query once across the group, and
   return evidence rather than inferred people profiles.
@@ -48,6 +48,38 @@ project/source nodes, filters on the server, and renders a fixed-height virtual 
 Opening the app, changing workspace, expanding sources, and reading graph pages do not run
 embeddings or a language model; retrieval begins only when the user submits a search or explicitly
 builds an agent context bundle.
+
+## CLI context bundle
+
+`cortana context QUERY` returns the same citation-ready, token-bounded bundle as the MCP `context`
+tool and `POST /v1/context`, through the identical local retrieval pipeline and context builder.
+It is the CLI fallback for agents without MCP or HTTP access and needs no running server:
+
+```bash
+cortana context "how do releases work?" --project engineering --source runbooks
+```
+
+The subcommand accepts the same optional filters and strict bounds as the API contracts:
+
+- `--project` and `--source` scope retrieval exactly like the HTTP and MCP endpoints.
+- `--limit` defaults to 10 and is strictly bounded to 1–50, the pipeline's shared result cap.
+- `--max-tokens` defaults to the configured `[query].context_tokens` budget (8,000 by default)
+  and is strictly bounded to 256–64,000, the context builder's clamp range.
+- Queries must be non-empty and at most 16 KiB, matching the shared `MAX_QUERY_BYTES` bound.
+
+Out-of-contract values are rejected at parse time. Output is stable JSON with the same shape as
+`/v1/context`: the assembled `context` Markdown with numbered `[n]` citations, the included
+`evidence` rows, and `metrics` (`retrieved`, `included`, `omitted`, `estimated_tokens`, and the
+applied token budget). Like every other command, it runs against the local index only; use
+`--offline` for the deterministic embedding path when the index generation matches.
+
+The CLI fallback is owner-local: it runs as the local machine user with no bearer credentials, so
+it cannot enforce `[[auth.tokens]]` principals or document ACL labels. Shared or narrowly scoped
+agents must use the MCP server with `--token-env` or the bearer-authenticated HTTP API instead.
+Every successful or failed `cortana context` call records a metadata-only audit event under the
+`local-cli` principal with action `local-cli/context` — project/source scope, outcome, result
+count, and latency only. Query text and evidence content are never written to audit events, and an
+unavailable audit store never fails the command.
 
 ## Safe default
 
