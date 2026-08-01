@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/0xPlayerOne/cortana/compare/v0.12.1...v0.13.0) (2026-08-01)
+
+
+### Features
+
+* **desktop:** surface source job progress across views ([#180](https://github.com/0xPlayerOne/cortana/issues/180)) ([680f7de](https://github.com/0xPlayerOne/cortana/commit/680f7deb460f8d37fea5b3ac70b0332adcb896c1))
+
 ## [0.12.1](https://github.com/0xPlayerOne/cortana/compare/v0.12.0...v0.12.1) (2026-08-01)
 
 
