@@ -5,6 +5,7 @@ import {
   Code2,
   Database,
   Folder,
+  LoaderCircle,
   Mail,
   MessageCircle,
   Search,
@@ -14,8 +15,14 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
+import { activeJobs } from '../sourceJobs'
 import { operationalSources, sourceHealth, type OperationalSource } from '../operations'
-import type { BrainDocumentSummary, BrainStatus, WorkspaceSettings } from '../types'
+import type {
+  BrainDocumentSummary,
+  BrainStatus,
+  DesktopSourceJob,
+  WorkspaceSettings,
+} from '../types'
 import { VirtualDocumentList } from './VirtualDocumentList'
 
 const sourceIcons: Record<string, typeof Folder> = {
@@ -52,6 +59,7 @@ export function SourcePanel({
   onLoadMoreDocuments,
   onOpenSettings,
   onClose,
+  jobs = [],
 }: {
   open: boolean
   status: BrainStatus | null
@@ -71,6 +79,7 @@ export function SourcePanel({
   onLoadMoreDocuments: () => void
   onOpenSettings: () => void
   onClose: () => void
+  jobs?: DesktopSourceJob[]
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set())
@@ -88,6 +97,7 @@ export function SourcePanel({
       ),
     [sources]
   )
+  const active = activeJobs(jobs)
 
   return (
     <aside className={`source-panel ${open ? 'mobile-open' : ''}`}>
@@ -119,6 +129,18 @@ export function SourcePanel({
         <i />
         Ingestion {status?.ingestion.scheduled ? 'scheduled' : 'paused · manual only'}
       </div>
+      {active.length > 0 && (
+        <div className="source-jobs-strip" aria-label="Active source jobs">
+          {active.map((job) => (
+            <div className="source-job-item" key={job.id}>
+              <LoaderCircle className="spin" size={12} />
+              <span>
+                {job.source} · {job.operation} · {job.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       {!projects.length ? (
         <div className="source-empty">
           <Database size={20} />

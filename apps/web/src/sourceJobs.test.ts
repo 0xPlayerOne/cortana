@@ -1,0 +1,180 @@
+import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
+import { act, cleanup, renderHook } from '@testing-library/react'
+
+import type { DesktopSourceJob } from './types'
+
+afterEach(cleanup)
+
+function jobOf(
+  id: string,
+  status: DesktopSourceJob['status'],
+  overrides: Partial<DesktopSourceJob> = {}
+): DesktopSourceJob {
+  return {
+    id,
+    operation: 'validation',
+    source: 'work-code',
+    kind: 'filesystem',
+    project: 'work',
+    status,
+    summary: `${id} summary`,
+    log: '',
+    started_at_unix_seconds: 1785000000,
+    completed_at_unix_seconds: status === 'running' ? null : 1785000100,
+    exit_code: status === 'running' ? null : 0,
+    retryable: status === 'failed' || status === 'cancelled',
+    writes_indexed_data: false,
+    budget: null,
+    ...overrides,
+  }
+}
+
+// Capture the real api module, then register a mock so the hook polls the
+// exact native status boundary like the Tauri bridge would.
+const realApi = await import('./api')
+
+const state = {
+  statusCalls: [] as string[],
+  polled: new Map<string, DesktopSourceJob | Error>(),
+}
+
+beforeEach(() => {
+  state.statusCalls = []
+  state.polled.clear()
+})
+
+mock.module('./api', () => ({
+  ...realApi,
+  isDesktopApp: true,
+  getDesktopSourceValidation: (id: string) => {
+    state.statusCalls.push(id)
+    const result = state.polled.get(id)
+    if (result instanceof Error) return Promise.reject(result)
+    if (!result) return Promise.reject(new Error('source job was not found'))
+    return Promise.resolve(result)
+  },
+}))
+
+const {
+  activeJobIds,
+  activeJobs,
+  describeSourceJob,
+  dropJob,
+  isActiveJob,
+  isMissingJobError,
+  MAX_SOURCE_JOB_SNAPSHOTS,
+  upsertJob,
+  useSourceJobs,
+} = await import('./sourceJobs')
+
+test('upsertJob prepends new ids and replaces existing snapshots in place', () => {
+  const first = jobOf('a', 'running')
+  const second = jobOf('b', 'running')
+  const updated = jobOf('a', 'succeeded', { summary: 'done' })
+
+  const withNew = upsertJob([], first)
+  expect(withNew.map((job) => job.id)).toEqual(['a'])
+
+  const withSecond = upsertJob(withNew, second)
+  expect(withSecond.map((job) => job.id)).toEqual(['b', 'a'])
+
+  const replaced = upsertJob(withSecond, updated)
+  expect(replaced.map((job) => job.id)).toEqual(['a', 'b'])
+  expect(replaced[0]).toEqual(updated)
+})
+
+test('upsertJob keeps the snapshot list bounded to the newest entries', () => {
+  let jobs: DesktopSourceJob[] = []
+  for (let index = 0; index < MAX_SOURCE_JOB_SNAPSHOTS + 3; index += 1) {
+    jobs = upsertJob(jobs, jobOf(`job-${index}`, 'succeeded'))
+  }
+  expect(jobs).toHaveLength(MAX_SOURCE_JOB_SNAPSHOTS)
+  expect(jobs[0]?.id).toBe(`job-${MAX_SOURCE_JOB_SNAPSHOTS + 2}`)
+  expect(jobs.some((job) => job.id === 'job-0')).toBe(false)
+})
+
+test('dropJob removes only the requested id', () => {
+  const jobs = [jobOf('a', 'running'), jobOf('b', 'succeeded'), jobOf('c', 'running')]
+  const dropped = dropJob(jobs, 'b')
+  expect(dropped.map((job) => job.id)).toEqual(['a', 'c'])
+  expect(dropped).not.toBe(jobs)
+})
+
+test('activeJobs and activeJobIds filter to running and cancelling only', () => {
+  const jobs = [
+    jobOf('running', 'running'),
+    jobOf('cancelling', 'cancelling'),
+    jobOf('succeeded', 'succeeded'),
+    jobOf('failed', 'failed'),
+    jobOf('cancelled', 'cancelled'),
+  ]
+  expect(activeJobs(jobs).map((job) => job.id)).toEqual(['running', 'cancelling'])
+  expect(activeJobIds(jobs)).toEqual(['running', 'cancelling'])
+  expect(activeJobs([])).toEqual([])
+  expect(isActiveJob(jobOf('x', 'running'))).toBe(true)
+  expect(isActiveJob(jobOf('x', 'cancelling'))).toBe(true)
+  expect(isActiveJob(jobOf('x', 'succeeded'))).toBe(false)
+})
+
+test('isMissingJobError matches only the native missing-job message', () => {
+  expect(isMissingJobError(new Error('source job was not found'))).toBe(true)
+  expect(isMissingJobError(new Error('backend offline'))).toBe(false)
+  expect(isMissingJobError('source job was not found')).toBe(false)
+  expect(isMissingJobError(null)).toBe(false)
+})
+
+test('describeSourceJob includes the source operation and current state', () => {
+  expect(describeSourceJob(jobOf('job-1', 'running'))).toBe('work-code · validation · running')
+})
+
+test('the hook polls only active ids and keeps the latest snapshot', async () => {
+  const running = jobOf('job-1', 'running')
+  state.polled.set('job-1', running)
+  const { result } = renderHook(() => useSourceJobs())
+
+  // A terminal snapshot must be remembered but never polled.
+  act(() => {
+    result.current.remember(running)
+    result.current.remember(jobOf('job-2', 'succeeded'))
+  })
+  expect(result.current.jobs).toHaveLength(2)
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+  })
+  expect(state.statusCalls).toContain('job-1')
+  expect(state.statusCalls).not.toContain('job-2')
+
+  // The next poll replaces the retained snapshot in place.
+  state.polled.set('job-1', { ...running, status: 'cancelling', summary: 'cancelling now' })
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+  })
+  expect(result.current.jobs[0]?.status).toBe('cancelling')
+  expect(result.current.jobs[0]?.summary).toBe('cancelling now')
+  expect(result.current.jobs).toHaveLength(2)
+})
+
+test('the hook drops an id on a missing-job error and retains snapshots on transient errors', async () => {
+  state.polled.set('job-1', jobOf('job-1', 'running'))
+  const { result } = renderHook(() => useSourceJobs())
+  act(() => {
+    result.current.remember(jobOf('job-1', 'running'))
+  })
+
+  // A transient status failure keeps the last snapshot.
+  state.polled.set('job-1', new Error('backend offline'))
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+  })
+  expect(result.current.jobs.map((job) => job.id)).toEqual(['job-1'])
+
+  // The native missing-job error drops the id entirely.
+  state.polled.set('job-1', new Error('source job was not found'))
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+  })
+  expect(result.current.jobs).toEqual([])
+  // After the drop there are no active ids left, so polling stops.
+  expect(state.statusCalls).toEqual(['job-1', 'job-1'])
+})

@@ -26,6 +26,7 @@ import { SettingsView } from './components/SettingsView'
 import { SourcePanel } from './components/SourcePanel'
 import { Workspace } from './components/Workspace'
 import { buildAgentContext, estimateTokens } from './context'
+import { activeJobs, useSourceJobs } from './sourceJobs'
 import type {
   AnswerResponse,
   BrainDocument,
@@ -34,6 +35,7 @@ import type {
   ContextBundle,
   DesktopSettings,
   DesktopInfo,
+  DesktopSourceJob,
   Evidence,
 } from './types'
 
@@ -70,6 +72,7 @@ export function App() {
   const [contextLoading, setContextLoading] = useState(false)
   const [contextError, setContextError] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+  const sourceJobs = useSourceJobs()
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
   const documentScopeRef = useRef(documentScope)
   const documentPageLoadingRef = useRef(false)
@@ -370,6 +373,7 @@ export function App() {
       {view === 'settings' ? (
         <SettingsView
           initialSection={settingsSection}
+          onJob={sourceJobs.remember}
           onSaved={(next) => {
             setDesktopSettings(next)
             if (workspace && !next.workspaces.some((item) => item.id === workspace)) {
@@ -398,6 +402,7 @@ export function App() {
             onLoadMoreDocuments={() => void loadMoreDocuments()}
             onOpenSettings={() => setView('settings')}
             onClose={() => setLeftOpen(false)}
+            jobs={sourceJobs.jobs}
           />
           <div
             className="pane-resizer source-resizer"
@@ -541,6 +546,7 @@ export function App() {
           <FileText size={13} /> Docs: {(status?.documents ?? 0).toLocaleString()}
         </span>
         <IngestionIndicator status={status} />
+        <ActiveSourceJobs jobs={sourceJobs.jobs} />
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
         {isDesktopApp && (
@@ -583,6 +589,18 @@ function IngestionIndicator({ status }: { status: BrainStatus | null }) {
   return (
     <span className={`ingestion-health ${state}`}>
       <i /> Ingestion: {label}
+    </span>
+  )
+}
+
+function ActiveSourceJobs({ jobs }: { jobs: DesktopSourceJob[] }) {
+  const active = activeJobs(jobs)
+  if (active.length === 0) return null
+  const detail = active.map((job) => `${job.source} · ${job.operation}`).join(', ')
+  return (
+    <span className="source-jobs" role="status" title={detail}>
+      <LoaderCircle className="spin" size={13} /> {active.length} active source job
+      {active.length === 1 ? '' : 's'}
     </span>
   )
 }
