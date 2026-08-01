@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/0xPlayerOne/cortana/compare/v0.11.4...v0.12.0) (2026-08-01)
+
+
+### Features
+
+* **desktop:** add guided initial sync with fixed plan-confirm budgets ([#174](https://github.com/0xPlayerOne/cortana/issues/174)) ([41647ee](https://github.com/0xPlayerOne/cortana/commit/41647eef01bbba6c41fa1fbfdd29661f23e5720b))
+
 ## [0.11.4](https://github.com/0xPlayerOne/cortana/compare/v0.11.3...v0.11.4) (2026-08-01)
 
 
