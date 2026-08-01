@@ -1,0 +1,5 @@
+[test]
+# Registers the happy-dom browser globals before any test file loads so that
+# React component tests (apps/web) can use @testing-library/react. Pure
+# unit tests are unaffected by the presence of the mocked browser globals.
+preload = ["./apps/web/src/test/harness.ts"]
