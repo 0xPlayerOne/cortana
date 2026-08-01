@@ -74,9 +74,9 @@ jobs:
       unit-runner: ubuntu-latest
       security-runner: ubuntu-slim
       codeql-runner: ubuntu-latest
-      rust-shards: '["all"]'
+      rust-shards: '["src","apps/desktop/src-tauri","third_party/glib-0.18.5"]'
       rust-threads: '2'
-      rust-max-parallel: 1
+      rust-max-parallel: 3
     secrets:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}

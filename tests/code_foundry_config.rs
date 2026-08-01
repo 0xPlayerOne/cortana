@@ -2,11 +2,9 @@
 //!
 //! These tests pin the repository-level Code Foundry configuration so CI can
 //! detect drift between `.github/code-foundry.yml`, the generated workflows,
-//! and the Cargo layout they are based on. They deliberately assert the safe
-//! single-pass fallback for Rust CodeQL: the repository has no Cargo
-//! workspace (the root package is the only workspace member and
-//! `apps/desktop/src-tauri` is a standalone package with its own lockfile),
-//! so no shardable package list exists to shard on.
+//! and the Cargo layout they are based on. Rust CodeQL is sharded across the
+//! standalone Cargo manifests (root package, desktop Tauri app, vendored
+//! glib) with a bounded parallelism cap.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,7 +22,7 @@ fn read(path: &str) -> String {
         .unwrap_or_else(|error| panic!("failed to read {}: {error}", full.display()))
 }
 
-/// Assert the single-package Cargo layout that justifies the safe fallback.
+/// Assert the standalone-manifest Cargo layout the shard list is based on.
 #[test]
 fn cargo_layout_has_no_workspace_to_shard() {
     let root_cargo = read("Cargo.toml");
@@ -66,21 +64,28 @@ fn config_pins_runtime_ref() {
     );
 }
 
-/// No shardable workspace packages exist, so CodeQL stays on the documented
-/// single-pass fallback: one "all" shard, two CodeQL threads, one concurrent job.
+/// Rust CodeQL shards across the three standalone Cargo manifests: the root
+/// package, the desktop Tauri app, and the vendored glib. Two CodeQL threads
+/// per shard and three shards in parallel cut wall-clock time while capping
+/// total runner cost.
 #[test]
-fn rust_codeql_uses_safe_single_pass_fallback() {
-    assert_eq!(config_value("codeql_rust_shards"), "'[\"all\"]'");
+fn rust_codeql_shards_standalone_manifests() {
+    assert_eq!(
+        config_value("codeql_rust_shards"),
+        "'[\"src\",\"apps/desktop/src-tauri\",\"third_party/glib-0.18.5\"]'"
+    );
     assert_eq!(config_value("codeql_rust_threads"), "2");
-    assert_eq!(config_value("codeql_rust_max_parallel"), "1");
+    assert_eq!(config_value("codeql_rust_max_parallel"), "3");
 
     let caller = read(".github/workflows/validation.yml");
     assert!(
-        caller.contains("rust-shards: '[\"all\"]'"),
-        "validation caller must forward the single-shard fallback:\n{caller}"
+        caller.contains(
+            "rust-shards: '[\"src\",\"apps/desktop/src-tauri\",\"third_party/glib-0.18.5\"]'"
+        ),
+        "validation caller must forward the shard list:\n{caller}"
     );
     assert!(caller.contains("rust-threads: '2'"), "{caller}");
-    assert!(caller.contains("rust-max-parallel: 1"), "{caller}");
+    assert!(caller.contains("rust-max-parallel: 3"), "{caller}");
 }
 
 /// The tiered validation caller is the single canonical validation entry
@@ -134,9 +139,31 @@ fn validation_caller_pins_runtime_and_has_no_push_trigger() {
     }
 }
 
-/// The desktop workflow is intentionally scoped to main-targeted promotion PRs
-/// and manual dispatch, skipping release-please PRs, staging/feature PRs, and push
-/// reruns after promotion. Final-audit steps share the same gate.
+/// Extract a top-level job block, from its `  <job_id>:` line up to the next
+/// job id (or end of file). Job-level keys share the two-space indent, so the
+/// scan stops only at known job ids.
+fn job_block<'a>(workflow: &'a str, job_id: &str) -> &'a str {
+    let start = workflow
+        .find(&format!("\n  {job_id}:"))
+        .unwrap_or_else(|| panic!("desktop workflow must keep the `{job_id}` job"));
+    let tail = &workflow[start + 1..];
+    let mut end = workflow.len();
+    for other in ["audit", "quality", "release", "aggregate"] {
+        if other != job_id {
+            if let Some(pos) = tail.find(&format!("\n  {other}:")) {
+                end = end.min(start + 1 + pos);
+            }
+        }
+    }
+    &workflow[start..end]
+}
+
+/// The desktop workflow splits the former single sequential job into three
+/// independent parallel jobs (audit/provenance, web+desktop quality, release
+/// compilation) plus a fast aggregate job that keeps the stable
+/// "Tauri 2 / Linux" required-check name. The workflow stays scoped to
+/// main-targeted promotion PRs and manual dispatch, skipping release-please
+/// PRs; final-audit steps share the same gate, and every job defines a timeout.
 #[test]
 fn desktop_linux_release_compile_is_gated() {
     let desktop = read(".github/workflows/desktop.yml");
@@ -147,27 +174,6 @@ fn desktop_linux_release_compile_is_gated() {
     assert!(!desktop.contains("\n  push:"));
     assert!(desktop.contains("workflow_dispatch:"));
 
-    let final_audit_job_gate = [
-        "github.event_name == 'workflow_dispatch'",
-        "github.event_name == 'pull_request'",
-        "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
-    ];
-
-    let validate_start = desktop
-        .find("  validate:")
-        .unwrap_or_else(|| panic!("desktop workflow must keep validate job"));
-    let validate_block = &desktop[validate_start
-        ..desktop[validate_start + 1..]
-            .find("\n  #")
-            .map_or(desktop.len(), |next| validate_start + 1 + next)];
-
-    for required in &final_audit_job_gate {
-        assert!(
-            validate_block.contains(required),
-            "validate job must gate on `{required}` to skip release-please and non-targeted runs"
-        );
-    }
-
     let final_audit_gate = [
         "github.event_name == 'workflow_dispatch'",
         "(github.event_name == 'pull_request' &&",
@@ -175,6 +181,45 @@ fn desktop_linux_release_compile_is_gated() {
         "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
     ];
 
+    // The three parallel jobs: independent names, runners, and timeouts.
+    let parallel_jobs = [
+        ("audit", "Audit / Provenance"),
+        ("quality", "Web + Desktop Quality"),
+        ("release", "Release Compilation"),
+    ];
+    for (job_id, job_name) in parallel_jobs {
+        let block = job_block(&desktop, job_id);
+        assert!(
+            block.contains(&format!("name: {job_name}")),
+            "`{job_id}` job must be named `{job_name}`:\n{block}"
+        );
+        assert!(
+            block.contains("runs-on: ubuntu-24.04"),
+            "`{job_id}` job must run on ubuntu-24.04:\n{block}"
+        );
+        assert!(
+            block.contains("timeout-minutes:"),
+            "`{job_id}` job must define a timeout:\n{block}"
+        );
+    }
+
+    // The fast aggregate keeps the stable required-check name and fans out to
+    // every parallel job.
+    let aggregate = job_block(&desktop, "aggregate");
+    assert!(
+        aggregate.contains("name: Tauri 2 / Linux"),
+        "aggregate job must keep the stable `Tauri 2 / Linux` required-check name:\n{aggregate}"
+    );
+    assert!(
+        aggregate.contains("needs: [audit, quality, release]"),
+        "aggregate job must depend on all three parallel jobs:\n{aggregate}"
+    );
+    assert!(
+        aggregate.contains("timeout-minutes:"),
+        "aggregate job must define a timeout:\n{aggregate}"
+    );
+
+    // Final-audit steps keep the release-please exclusion and main-only gate.
     for step in [
         "Install cargo-audit",
         "Test patched GTK iterator in release mode",
@@ -209,12 +254,6 @@ fn desktop_linux_release_compile_is_gated() {
     );
     assert!(desktop.contains("apps/desktop/src-tauri/target"));
     assert!(desktop.contains("third_party/glib-0.18.5/target"));
-
-    // Explicit manual final audit path must exist.
-    assert!(
-        desktop.contains("workflow_dispatch:"),
-        "desktop workflow must expose workflow_dispatch for manual final audits"
-    );
 
     // Fast checks must remain present.
     for fast_check in [
