@@ -19,12 +19,14 @@ import {
   getStatus,
   isDemoMode,
   isDesktopApp,
+  openDesktopProject,
 } from './api'
 import { ContextPanel } from './components/ContextPanel'
 import { type AppView, Navigation, TitleActions } from './components/Navigation'
 import { SettingsView } from './components/SettingsView'
 import { SourcePanel } from './components/SourcePanel'
-import { Workspace } from './components/Workspace'
+import { UtilityView } from './components/UtilityView'
+import { Workspace, type WorkspaceTab } from './components/Workspace'
 import { buildAgentContext, estimateTokens } from './context'
 import { activeJobs, useSourceJobs } from './sourceJobs'
 import type {
@@ -54,6 +56,7 @@ export function App() {
   const [rightOpen, setRightOpen] = useState(false)
   const [view, setView] = useState<AppView>('knowledge')
   const [workspace, setWorkspace] = useState('')
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('document')
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null)
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null)
   const [settingsSection, setSettingsSection] = useState<'readiness' | 'updates'>('readiness')
@@ -306,6 +309,27 @@ export function App() {
     }
   }
 
+  function navigate(next: AppView) {
+    setView(next)
+    if (next === 'knowledge') setWorkspaceTab('document')
+  }
+
+  function focusSearch() {
+    setView('knowledge')
+    searchRef.current?.focus()
+    searchRef.current?.select()
+  }
+
+  function openGraph() {
+    setView('knowledge')
+    setWorkspaceTab('graph')
+  }
+
+  function openTimeline() {
+    setView('knowledge')
+    setWorkspaceTab('timeline')
+  }
+
   function maximumPaneWidth(side: 'source' | 'context') {
     if (window.innerWidth <= 1280) return 520
     return Math.max(
@@ -369,7 +393,13 @@ export function App() {
         </form>
         <TitleActions context onOpenContext={() => setRightOpen(true)} />
       </header>
-      <Navigation view={view} onNavigate={setView} />
+      <Navigation
+        view={view}
+        onNavigate={navigate}
+        onSearch={focusSearch}
+        onOpenGraph={openGraph}
+        onOpenTimeline={openTimeline}
+      />
       {view === 'settings' ? (
         <SettingsView
           initialSection={settingsSection}
@@ -381,7 +411,7 @@ export function App() {
             }
           }}
         />
-      ) : (
+      ) : view === 'knowledge' ? (
         <>
           <SourcePanel
             open={leftOpen}
@@ -431,6 +461,8 @@ export function App() {
             error={error}
             document={activeDocument}
             documentLoading={documentLoading}
+            tab={workspaceTab}
+            onTabChange={setWorkspaceTab}
             onSelect={setSelected}
             onSelectDocument={(id) => void chooseDocument(id)}
             onRetry={() => void runSearch(query)}
@@ -471,6 +503,26 @@ export function App() {
             }}
           />
         </>
+      ) : (
+        <UtilityView
+          kind={view}
+          status={status}
+          sourceJobs={sourceJobs.jobs}
+          query={activeQuery}
+          answer={answer}
+          evidence={evidence}
+          loading={loading}
+          error={error}
+          contextBundle={contextBundle}
+          contextLoading={contextLoading}
+          contextError={contextError}
+          contextTokens={estimateTokens(agentContext)}
+          desktopAvailable={isDesktopApp}
+          onSearchFocus={focusSearch}
+          onRetrieveContext={() => void retrieveAgentContext()}
+          onOpenSettings={() => setView('settings')}
+          onOpenProject={() => void openDesktopProject()}
+        />
       )}
       {commandPaletteOpen && (
         <div
