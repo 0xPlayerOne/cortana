@@ -83,3 +83,9 @@ The command prints stable JSON containing the Markdown context (with `[n]` citat
 included evidence rows, and retrieval/metrics fields (`retrieved`, `included`, `omitted`,
 `estimated_tokens`, `max_tokens`). Omit `--max-tokens` to use the configured `[query].context_tokens`
 budget. Use `--offline` for the deterministic embedding path.
+
+The CLI fallback is owner-local: it carries no bearer credentials, so it cannot enforce scoped
+`[[auth.tokens]]` principals or document ACL labels. Shared or narrowly scoped agents must use the
+MCP server with `--token-env` or the bearer-authenticated HTTP API. CLI `context` calls are
+recorded in the metadata-only audit trail under the `local-cli` principal (action
+`local-cli/context`); query text and evidence content are never stored.

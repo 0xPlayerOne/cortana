@@ -674,20 +674,48 @@ async fn main() -> Result<()> {
             limit,
             max_tokens,
         }) => {
-            let bundle = context_bundle(
+            let started = Instant::now();
+            let project = project.as_deref();
+            let source = source.as_deref();
+            let result = context_bundle(
                 &store,
                 &embedder,
                 &query,
-                project.as_deref(),
-                source.as_deref(),
+                project,
+                source,
                 limit,
                 max_tokens.unwrap_or(config.query.context_tokens),
             )
-            .await?;
-            let mut stdout = std::io::BufWriter::new(std::io::stdout());
-            serde_json::to_writer_pretty(&mut stdout, &bundle)?;
-            writeln!(stdout)?;
-            Ok(())
+            .await;
+            match result {
+                Ok(bundle) => {
+                    record_cli_context_audit(
+                        &store,
+                        config.auth.audit_max_events,
+                        project,
+                        source,
+                        "succeeded",
+                        Some(bundle.evidence.len()),
+                        started,
+                    );
+                    let mut stdout = std::io::BufWriter::new(std::io::stdout());
+                    serde_json::to_writer_pretty(&mut stdout, &bundle)?;
+                    writeln!(stdout)?;
+                    Ok(())
+                }
+                Err(error) => {
+                    record_cli_context_audit(
+                        &store,
+                        config.auth.audit_max_events,
+                        project,
+                        source,
+                        "failed",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
         }
         Some(Command::Serve {
             address,
@@ -2284,6 +2312,32 @@ async fn context_bundle(
 ) -> Result<ContextBundle> {
     let evidence = retrieval::retrieve(store, embedder, query, project, source, limit).await?;
     Ok(context::build(query, &evidence, max_tokens))
+}
+
+/// Metadata-only audit trail for CLI context requests. The query text and
+/// evidence content are never written, and an unavailable audit store never
+/// fails the command.
+fn record_cli_context_audit(
+    store: &Store,
+    max_events: usize,
+    project: Option<&str>,
+    source: Option<&str>,
+    outcome: &str,
+    result_count: Option<usize>,
+    started: Instant,
+) {
+    if let Err(error) = store.record_audit(
+        "local-cli",
+        "local-cli/context",
+        project,
+        source,
+        outcome,
+        result_count,
+        u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        max_events,
+    ) {
+        tracing::warn!(%error, "CLI context audit write failed");
+    }
 }
 
 fn chunk(content: &str) -> Vec<String> {

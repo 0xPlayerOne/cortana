@@ -1,6 +1,7 @@
 use std::fs;
 
 use assert_cmd::Command;
+use cortana::retrieval;
 use predicates::prelude::*;
 use rusqlite::Connection;
 use tempfile::tempdir;
@@ -172,6 +173,74 @@ fn offline_context_emits_cited_bundle_and_enforces_bounds() {
         .stdout(predicate::str::contains("\"max_tokens\": 512"))
         .stdout(predicate::str::contains("\"retrieved\": 1"))
         .stdout(predicate::str::contains("\"included\": 1"));
+
+    // Every CLI context call records a metadata-only audit row under the
+    // owner-local principal; query text and evidence content are never written.
+    let connection =
+        Connection::open(data.join("cortana.sqlite3")).expect("open initialized index");
+    let columns = connection
+        .prepare("PRAGMA table_info(audit_events)")
+        .expect("prepare audit schema")
+        .query_map([], |row| row.get::<_, String>(1))
+        .expect("audit columns")
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .expect("audit column names");
+    for forbidden in ["query", "content"] {
+        assert!(
+            !columns.iter().any(|name| name.contains(forbidden)),
+            "audit_events must never store {forbidden} text"
+        );
+    }
+    let (principal, action, outcome, project, result_count, latency_ms): (
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<i64>,
+        i64,
+    ) = connection
+        .query_row(
+            "SELECT principal, action, outcome, project, result_count, latency_ms
+             FROM audit_events WHERE action = 'local-cli/context' ORDER BY id DESC LIMIT 1",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )
+        .expect("context audit row");
+    assert_eq!(principal, "local-cli");
+    assert_eq!(action, "local-cli/context");
+    assert_eq!(outcome, "succeeded");
+    assert_eq!(project.as_deref(), Some("demo"));
+    assert_eq!(result_count, Some(1));
+    assert!(latency_ms >= 0);
+
+    // A runtime failure still records a failed audit row before returning.
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["context", &"x".repeat(retrieval::MAX_QUERY_BYTES + 1)])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("query exceeds"));
+    let (outcome, result_count): (String, Option<i64>) = connection
+        .query_row(
+            "SELECT outcome, result_count FROM audit_events
+             WHERE action = 'local-cli/context' ORDER BY id DESC LIMIT 1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("failed context audit row");
+    assert_eq!(outcome, "failed");
+    assert_eq!(result_count, None);
 
     Command::cargo_bin("cortana")
         .expect("binary exists")

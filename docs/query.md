@@ -73,6 +73,14 @@ Out-of-contract values are rejected at parse time. Output is stable JSON with th
 applied token budget). Like every other command, it runs against the local index only; use
 `--offline` for the deterministic embedding path when the index generation matches.
 
+The CLI fallback is owner-local: it runs as the local machine user with no bearer credentials, so
+it cannot enforce `[[auth.tokens]]` principals or document ACL labels. Shared or narrowly scoped
+agents must use the MCP server with `--token-env` or the bearer-authenticated HTTP API instead.
+Every successful or failed `cortana context` call records a metadata-only audit event under the
+`local-cli` principal with action `local-cli/context` — project/source scope, outcome, result
+count, and latency only. Query text and evidence content are never written to audit events, and an
+unavailable audit store never fails the command.
+
 ## Safe default
 
 `[query].synthesis_enabled` defaults to `false`. The answer endpoint still works: it performs one
