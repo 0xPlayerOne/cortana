@@ -54,7 +54,9 @@ name. Native Rust reloads the owner-local configuration, rejects an unknown name
 the declared sidecar command with fixed `validate-source` arguments and limits of 25 documents,
 5 MiB, and 60 seconds. Only one validation runs at a time; progress is bounded, sanitized, and
 cancellable. The command cannot start sync, embedding, indexing, or reconciliation, and its
-metadata-only lifecycle is appended to the Desktop audit log.
+metadata-only lifecycle is appended to the Desktop audit log. The same command can optionally
+validate at one of the fixed initial-sync budget tiers so a later validation-gated initial sync
+has a record at equal or larger limits; validation stays read-only and bounded in every tier.
 
 Guarded trial sync reuses the source-job boundary but is intentionally distinct from validation.
 It requires explicit confirmation and a matching successful validation fingerprint, then invokes
@@ -62,6 +64,21 @@ only the fixed `sync --source NAME --require-validation --no-reconcile` shape wi
 documents, 5 MiB, and five minutes. It may write embeddings and documents, so the UI and audit
 record say so explicitly. It cannot reconcile deletions, expand its limits, select multiple
 sources, or install a recurring sync job.
+
+Guided initial sync is the next tier of the same source-job boundary and stays a two-step native
+protocol. The renderer sends only a configured source name, one of three fixed budget enum values
+(100 documents/25 MiB/15 minutes, 500/64 MiB/30 minutes, or 2,000/128 MiB/60 minutes), and a
+plan/execute operation; it can never supply CLI flags, raw numbers, or credentials. A plan
+request is read-only: native Rust resolves the saved source, returns the exact budget limits that
+execution will enforce, reports whether the latest validation record covers that budget, and
+issues a short-lived one-shot plan id. Execution requires that plan id plus an explicit approval,
+an enabled source, and a successful validation record at equal or larger limits; it then runs the
+fixed `sync --source NAME --require-validation --no-reconcile --max-documents N --max-bytes B
+--max-seconds S` shape for the selected tier. It reuses the existing single-job lock,
+cancellation, bounded sanitized logs, and metadata-only audit lifecycle (including the selected
+budget tier), and it never silently escalates beyond the chosen tier. The sidecar's own
+`--require-validation` gate remains authoritative even if the Desktop-side coverage hint is
+stale or missing.
 
 Source authorization and setup are separate fixed native boundaries. For Google sources, the
 renderer can request authorization only for an exact saved source with an absolute token
