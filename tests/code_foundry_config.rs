@@ -158,9 +158,10 @@ fn desktop_linux_release_compile_is_gated() {
         let start = desktop
             .find(&format!("- name: {step}"))
             .unwrap_or_else(|| panic!("desktop workflow must keep the `{step}` step"));
-        let step_block = &desktop[start..desktop[start + 1..]
-            .find("\n      - name: ")
-            .map_or(desktop.len(), |next| start + 1 + next)];
+        let step_block = &desktop[start
+            ..desktop[start + 1..]
+                .find("\n      - name: ")
+                .map_or(desktop.len(), |next| start + 1 + next)];
 
         for required in &final_audit_gate {
             assert!(
