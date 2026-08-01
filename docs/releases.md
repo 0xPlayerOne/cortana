@@ -22,9 +22,13 @@ The desktop pipeline follows a staged audit policy:
   targeting `main` and on manual dispatch, so staging integration never waits
   on the desktop build.
 - **Main code PRs require the desktop aggregate.** Ordinary main-targeted pull
-  requests run the `audit` (provenance), `quality` (web + desktop), and
-  `release` (Linux release compilation) jobs; the stable `Tauri 2 / Linux`
+  requests run the `audit` (provenance), `quality` (desktop tests + clippy),
+  and `release` (Linux release compilation) jobs; the stable `Tauri 2 / Linux`
   aggregate check must pass before merge.
+- **Web quality is owned by Code Foundry Validation / CI.** The `quality` job
+  does not rerun `bun run typecheck` or `bun run build`: Code Foundry
+  Validation / CI already runs both on the same main-targeting PR SHA, so the
+  desktop pipeline only repeats desktop-specific fast checks.
 - **Version-only release PRs are intentionally lightweight.** Release Please
   pull requests (`release-please--branches--main` head refs) skip the three
   long desktop jobs entirely at job level. The `Tauri 2 / Linux` aggregate
