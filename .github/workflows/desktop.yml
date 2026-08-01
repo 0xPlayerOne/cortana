@@ -20,6 +20,9 @@ on:
       - 'package.json'
       - 'scripts/verify-vendored-glib.mjs'
       - 'third_party/glib-0.18.5/**'
+  # Explicit manual final audit path: dispatch this workflow to force the
+  # Linux release compilation on any branch, independent of PR state.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -66,7 +69,18 @@ jobs:
         run: bun run desktop:test
       - name: Lint desktop
         run: bun run --cwd apps/desktop clippy
+      # Linux release compilation is reserved for main-bound promotion PRs,
+      # merged main, and explicit manual final audits (workflow_dispatch). It
+      # is intentionally skipped on staging PRs, ordinary feature PRs, and
+      # Release Please version-only PRs; those runs keep the fast desktop
+      # checks above.
       - name: Compile release desktop
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.base.ref == 'main' &&
+           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
         env:
           CORTANA_DESKTOP_TARGET: x86_64-unknown-linux-gnu
         run: bun run desktop:build
