@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.4](https://github.com/0xPlayerOne/cortana/compare/v0.11.3...v0.11.4) (2026-08-01)
+
+
+### Tests
+
+* add hermetic MCP protocol-contract test ([#170](https://github.com/0xPlayerOne/cortana/issues/170)) ([#172](https://github.com/0xPlayerOne/cortana/issues/172)) ([c7b990a](https://github.com/0xPlayerOne/cortana/commit/c7b990a1b3cbbc1749bbc6ffae5840d1be45d4c0))
+
 ## [0.11.3](https://github.com/0xPlayerOne/cortana/compare/v0.11.2...v0.11.3) (2026-08-01)
 
 
