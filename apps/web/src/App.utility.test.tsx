@@ -125,6 +125,35 @@ test('Graph and Timeline rail buttons route to the existing workspace tabs', asy
   expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
 })
 
+test('graph and timeline evidence actions open the selected source', async () => {
+  state.answer = () => Promise.resolve(answerResponse)
+  await renderApp()
+
+  const input = screen.getByLabelText('Search your knowledge')
+  fireEvent.change(input, { target: { value: 'release cadence' } })
+  fireEvent.submit(input.closest('form')!)
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'release cadence' })).toBeTruthy()
+  )
+
+  for (const rail of ['Graph', 'Timeline']) {
+    fireEvent.click(railButton(rail))
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: rail }).getAttribute('aria-selected')).toBe('true')
+    )
+    const evidenceButton = screen.getByRole('button', {
+      name: new RegExp(`${rail} evidence: Deployment playbook`),
+    })
+    fireEvent.click(evidenceButton)
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /Evidence/ }).getAttribute('aria-selected')).toBe(
+        'true'
+      )
+    )
+    expect(screen.getByRole('heading', { level: 1, name: 'Deployment playbook' })).toBeTruthy()
+  }
+})
+
 test('Inbox renders current sync attention and a truthful idle empty state', async () => {
   // The demo status contains a budget-exceeded sync run that needs attention.
   await renderApp()
