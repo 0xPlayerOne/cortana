@@ -144,10 +144,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-rust-
-      - name: Check web
-        run: |
-          bun run typecheck
-          bun run build
+      # Web typecheck/build is owned by Code Foundry Validation / CI, which
+      # already runs `bun run typecheck` and `bun run build` on the same
+      # main-targeting PR SHA. The quality job keeps only desktop-specific
+      # fast checks: tests and clippy.
       - name: Test desktop
         run: bun run desktop:test
       - name: Lint desktop

@@ -295,7 +295,6 @@ fn desktop_linux_release_compile_is_gated() {
 
     // Fast checks must remain present.
     for fast_check in [
-        "- name: Check web",
         "- name: Test desktop",
         "- name: Lint desktop",
         "- name: Verify patched GTK dependency provenance",
@@ -305,6 +304,38 @@ fn desktop_linux_release_compile_is_gated() {
             "fast desktop check `{fast_check}` must be retained"
         );
     }
+
+    // Web typecheck/build is owned by Code Foundry Validation / CI, which
+    // already runs `bun run typecheck` and `bun run build` on the same
+    // main-targeting PR SHA. The desktop quality job must not duplicate it:
+    // after the shared setup steps it runs exactly the two desktop-specific
+    // fast checks (tests + clippy) and no other steps.
+    let quality = job_block(&desktop, "quality");
+    assert!(
+        !quality.contains("- name: Check web"),
+        "quality job must not duplicate the Code Foundry web typecheck/build step:\n{quality}"
+    );
+    let cache_start = quality
+        .find("- name: Cache Rust build artifacts")
+        .expect("quality job must keep the rust cache step");
+    let tail_start = quality[cache_start + 1..]
+        .find("\n      - name: ")
+        .map_or(quality.len(), |next| cache_start + 1 + next);
+    let tail = &quality[tail_start..];
+    assert_eq!(
+        tail.matches("- name: ").count(),
+        2,
+        "quality job must run exactly the two desktop fast checks after setup:\n{quality}"
+    );
+    assert!(
+        tail.contains("- name: Test desktop") && tail.contains("run: bun run desktop:test"),
+        "quality job must keep the desktop test step:\n{quality}"
+    );
+    assert!(
+        tail.contains("- name: Lint desktop")
+            && tail.contains("run: bun run --cwd apps/desktop clippy"),
+        "quality job must keep the desktop clippy step:\n{quality}"
+    );
 }
 
 /// The audit job warm-caches the exact cargo-audit 0.22.2 binary with the
