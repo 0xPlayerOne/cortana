@@ -23,13 +23,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The former sequential job is split into independent jobs: parallel
-  # execution cuts wall-clock time, but every job repeats setup, so total
-  # runner minutes rise. Release Please version-only PRs skip the three long
-  # jobs entirely at job level; manual dispatch and ordinary main-targeted
-  # code PRs still run all of them.
-  audit:
-    name: Audit / Provenance
+  # The former sequential audit path is split into independent jobs. The
+  # provenance checks and cargo-audit security scan do not depend on each
+  # other, so cargo-audit installation cannot delay the GTK test. Release
+  # Please version-only PRs skip all long jobs at job level; manual dispatch
+  # and ordinary main-targeted code PRs still run the full final audit.
+  gtk_provenance:
+    name: GTK Provenance + Release Test
     # Job-level final-audit gate: run only for PRs targeting main and manual
     # dispatch, excluding release-please version PRs.
     if: >-
@@ -69,9 +69,43 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-rust-
+      - name: Verify patched GTK dependency provenance
+        run: bun scripts/verify-vendored-glib.mjs
+      - name: Test patched GTK iterator in release mode
+        run: cargo test --manifest-path third_party/glib-0.18.5/Cargo.toml --release --lib variant_iter
+
+  security_audit:
+    name: Security Audit (cargo-audit)
+    # Keep the dependency scan independent from the provenance and build
+    # setup. It needs only the lockfile and the pinned cargo-audit binary;
+    # the Rust cache accelerates cold cargo-audit compiles.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.base.ref == 'main' &&
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      # Compiling cargo-audit from source on a cold binary-cache miss needs
+      # the same Rust registry cache as the other jobs, so reuse it here.
+      - name: Cache Rust build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            apps/desktop/src-tauri/target
+            third_party/glib-0.18.5/target
+          key: >-
+            ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-${{ hashFiles('third_party/glib-0.18.5/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
+            ${{ runner.os }}-rust-
       # Warm the exact pinned binary under a stable per-OS/arch key so
       # repeated final audits restore cargo-audit without recompiling it.
-      # The job-level gate above already limits this job to final audits.
       - name: Cache cargo-audit binary
         id: cache-cargo-audit
         uses: actions/cache@v4
@@ -79,28 +113,9 @@ jobs:
           path: ~/.cargo/bin/cargo-audit
           key: ${{ runner.os }}-${{ runner.arch }}-cargo-audit-0.22.2
       - name: Install cargo-audit
-        if: >-
-          (github.event_name == 'workflow_dispatch' ||
-           (github.event_name == 'pull_request' &&
-            github.event.pull_request.base.ref == 'main' &&
-            !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))) &&
-          steps.cache-cargo-audit.outputs.cache-hit != 'true'
+        if: steps.cache-cargo-audit.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --version 0.22.2 --locked
-      - name: Verify patched GTK dependency provenance
-        run: bun scripts/verify-vendored-glib.mjs
-      - name: Test patched GTK iterator in release mode
-        if: >-
-          github.event_name == 'workflow_dispatch' ||
-          (github.event_name == 'pull_request' &&
-           github.event.pull_request.base.ref == 'main' &&
-           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
-        run: cargo test --manifest-path third_party/glib-0.18.5/Cargo.toml --release --lib variant_iter
       - name: Audit desktop Rust dependencies
-        if: >-
-          github.event_name == 'workflow_dispatch' ||
-          (github.event_name == 'pull_request' &&
-           github.event.pull_request.base.ref == 'main' &&
-           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
         run: cargo audit --file apps/desktop/src-tauri/Cargo.lock
 
   quality:
@@ -216,16 +231,17 @@ jobs:
   # version-only PRs) are acceptable and leave the check green.
   aggregate:
     name: Tauri 2 / Linux
-    needs: [audit, quality, release]
+    needs: [gtk_provenance, security_audit, quality, release]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Fail if any desktop job failed or was cancelled
         if: >-
-          needs.audit.result == 'failure' || needs.audit.result == 'cancelled' ||
+          needs.gtk_provenance.result == 'failure' || needs.gtk_provenance.result == 'cancelled' ||
+          needs.security_audit.result == 'failure' || needs.security_audit.result == 'cancelled' ||
           needs.quality.result == 'failure' || needs.quality.result == 'cancelled' ||
           needs.release.result == 'failure' || needs.release.result == 'cancelled'
         run: exit 1
       - name: All desktop jobs passed or were skipped
-        run: echo "audit/provenance, web+desktop quality, and release compilation passed or were skipped"
+        run: echo "security audit, GTK provenance, web+desktop quality, and release compilation passed or were skipped"
