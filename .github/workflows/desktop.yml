@@ -69,12 +69,22 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-rust-
+      # Warm the exact pinned binary under a stable per-OS/arch key so
+      # repeated final audits restore cargo-audit without recompiling it.
+      # The job-level gate above already limits this job to final audits.
+      - name: Cache cargo-audit binary
+        id: cache-cargo-audit
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-audit-0.22.2
       - name: Install cargo-audit
         if: >-
-          github.event_name == 'workflow_dispatch' ||
-          (github.event_name == 'pull_request' &&
-           github.event.pull_request.base.ref == 'main' &&
-           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
+          (github.event_name == 'workflow_dispatch' ||
+           (github.event_name == 'pull_request' &&
+            github.event.pull_request.base.ref == 'main' &&
+            !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))) &&
+          steps.cache-cargo-audit.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --version 0.22.2 --locked
       - name: Verify patched GTK dependency provenance
         run: bun scripts/verify-vendored-glib.mjs

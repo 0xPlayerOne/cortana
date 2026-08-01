@@ -306,3 +306,82 @@ fn desktop_linux_release_compile_is_gated() {
         );
     }
 }
+
+/// The audit job warm-caches the exact cargo-audit 0.22.2 binary with the
+/// actions cache instead of recompiling it on every final audit. The cache
+/// path holds only the pinned binary, the key is stable and versioned by
+/// runner OS/arch plus the pinned version (never a lockfile hash), and the
+/// install step keeps the final-audit gate while skipping on an exact cache
+/// hit.
+#[test]
+fn desktop_audit_caches_cargo_audit_binary() {
+    let desktop = read(".github/workflows/desktop.yml");
+
+    // The cache step must restore the binary before the install check runs.
+    let cache_start = desktop
+        .find("- name: Cache cargo-audit binary")
+        .unwrap_or_else(|| panic!("desktop workflow must warm-cache the cargo-audit binary"));
+    let install_start = desktop
+        .find("- name: Install cargo-audit")
+        .unwrap_or_else(|| panic!("desktop workflow must keep the `Install cargo-audit` step"));
+    assert!(
+        cache_start < install_start,
+        "cargo-audit cache step must run before the install step"
+    );
+
+    // The cache exists and holds only the exact pinned binary.
+    let cache_block = &desktop[cache_start
+        ..desktop[cache_start + 1..]
+            .find("\n      - name: ")
+            .map_or(desktop.len(), |next| cache_start + 1 + next)];
+    assert!(
+        cache_block.contains("uses: actions/cache@v4"),
+        "cargo-audit cache must use actions/cache@v4:\n{cache_block}"
+    );
+    assert!(
+        cache_block.contains("id: cache-cargo-audit"),
+        "cargo-audit cache step must expose an id for the cache-hit guard:\n{cache_block}"
+    );
+    assert!(
+        cache_block.contains("path: ~/.cargo/bin/cargo-audit"),
+        "cargo-audit cache must hold exactly the binary in ~/.cargo/bin:\n{cache_block}"
+    );
+
+    // The key is stable and versioned by runner OS/arch plus the pinned
+    // version; a lockfile-derived key would miss on every run and defeat
+    // the warm cache.
+    assert!(
+        cache_block.contains("${{ runner.os }}-${{ runner.arch }}-cargo-audit-0.22.2"),
+        "cargo-audit cache key must pin runner OS/arch and version 0.22.2:\n{cache_block}"
+    );
+    assert!(
+        !cache_block.contains("hashFiles"),
+        "cargo-audit cache key must be stable, not lockfile-derived:\n{cache_block}"
+    );
+
+    // The cache-hit guard skips installation while the final-audit gate and
+    // the pinned install command stay intact.
+    let install_block = &desktop[install_start
+        ..desktop[install_start + 1..]
+            .find("\n      - name: ")
+            .map_or(desktop.len(), |next| install_start + 1 + next)];
+    assert!(
+        install_block.contains("steps.cache-cargo-audit.outputs.cache-hit != 'true'"),
+        "install must be skipped on an exact cargo-audit cache hit:\n{install_block}"
+    );
+    for required in [
+        "github.event_name == 'workflow_dispatch'",
+        "(github.event_name == 'pull_request' &&",
+        "github.event.pull_request.base.ref == 'main' &&",
+        "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
+    ] {
+        assert!(
+            install_block.contains(required),
+            "install must keep the final-audit gate with `{required}`"
+        );
+    }
+    assert!(
+        install_block.contains("run: cargo install cargo-audit --version 0.22.2 --locked"),
+        "install must stay locked to cargo-audit 0.22.2:\n{install_block}"
+    );
+}
