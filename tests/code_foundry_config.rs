@@ -134,13 +134,39 @@ fn validation_caller_pins_runtime_and_has_no_push_trigger() {
     }
 }
 
-/// The desktop Tauri workflow gates the expensive Linux release compilation:
-/// it runs for promotion PRs to main and manual audits, but
-/// never for staging PRs, ordinary feature PRs, or Release Please version PRs.
-/// The fast desktop checks above it stay unchanged.
+/// The desktop workflow is intentionally scoped to main-targeted promotion PRs
+/// and manual dispatch, skipping release-please PRs, staging/feature PRs, and push
+/// reruns after promotion. Final-audit steps share the same gate.
 #[test]
 fn desktop_linux_release_compile_is_gated() {
     let desktop = read(".github/workflows/desktop.yml");
+
+    // Workflow topology assertions.
+    assert!(desktop.contains("pull_request:"));
+    assert!(desktop.contains("branches: [main]"));
+    assert!(!desktop.contains("\n  push:"));
+    assert!(desktop.contains("workflow_dispatch:"));
+
+    let final_audit_job_gate = [
+        "github.event_name == 'workflow_dispatch'",
+        "github.event_name == 'pull_request'",
+        "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
+    ];
+
+    let validate_start = desktop
+        .find("  validate:")
+        .unwrap_or_else(|| panic!("desktop workflow must keep validate job"));
+    let validate_block = &desktop[validate_start
+        ..desktop[validate_start + 1..]
+            .find("\n  #")
+            .map_or(desktop.len(), |next| validate_start + 1 + next)];
+
+    for required in &final_audit_job_gate {
+        assert!(
+            validate_block.contains(required),
+            "validate job must gate on `{required}` to skip release-please and non-targeted runs"
+        );
+    }
 
     let final_audit_gate = [
         "github.event_name == 'workflow_dispatch'",
@@ -170,6 +196,19 @@ fn desktop_linux_release_compile_is_gated() {
             );
         }
     }
+
+    // Verify rust cache action and lockfile-driven key and target paths.
+    assert!(
+        desktop.contains("- name: Cache Rust build artifacts"),
+        "desktop workflow should cache rust artifacts before rust checks"
+    );
+    assert!(
+        desktop.contains("hashFiles('apps/desktop/src-tauri/Cargo.lock')")
+            && desktop.contains("hashFiles('third_party/glib-0.18.5/Cargo.toml')"),
+        "rust cache should be lockfile-derived for desktop and glib inputs"
+    );
+    assert!(desktop.contains("apps/desktop/src-tauri/target"));
+    assert!(desktop.contains("third_party/glib-0.18.5/target"));
 
     // Explicit manual final audit path must exist.
     assert!(
