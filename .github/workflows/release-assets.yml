@@ -64,6 +64,7 @@ jobs:
           "${archive}/install.sh" --help
           tar -czf "${archive}.tar.gz" "${archive}"
           shasum -a 256 "${archive}.tar.gz" > "${archive}.tar.gz.sha256"
+          scripts/verify-release.sh "${archive}.tar.gz" "${archive}.tar.gz.sha256"
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
