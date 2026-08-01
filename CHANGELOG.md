@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.1](https://github.com/0xPlayerOne/cortana/compare/v0.12.0...v0.12.1) (2026-08-01)
+
+
+### CI
+
+* parallelize desktop Tauri jobs and shard Rust CodeQL ([#177](https://github.com/0xPlayerOne/cortana/issues/177)) ([9617e4b](https://github.com/0xPlayerOne/cortana/commit/9617e4bff146781b75ffdeb5154c0f4241672594))
+
 ## [0.12.0](https://github.com/0xPlayerOne/cortana/compare/v0.11.4...v0.12.0) (2026-08-01)
 
 
