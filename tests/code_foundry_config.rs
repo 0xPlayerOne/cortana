@@ -67,11 +67,11 @@ fn config_pins_runtime_ref() {
 }
 
 /// No shardable workspace packages exist, so CodeQL stays on the documented
-/// single-pass fallback: one "all" shard, one thread, one concurrent job.
+/// single-pass fallback: one "all" shard, two CodeQL threads, one concurrent job.
 #[test]
 fn rust_codeql_uses_safe_single_pass_fallback() {
     assert_eq!(config_value("codeql_rust_shards"), "'[\"all\"]'");
-    assert_eq!(config_value("codeql_rust_threads"), "1");
+    assert_eq!(config_value("codeql_rust_threads"), "2");
     assert_eq!(config_value("codeql_rust_max_parallel"), "1");
 
     let caller = read(".github/workflows/validation.yml");
@@ -79,7 +79,7 @@ fn rust_codeql_uses_safe_single_pass_fallback() {
         caller.contains("rust-shards: '[\"all\"]'"),
         "validation caller must forward the single-shard fallback:\n{caller}"
     );
-    assert!(caller.contains("rust-threads: '1'"), "{caller}");
+    assert!(caller.contains("rust-threads: '2'"), "{caller}");
     assert!(caller.contains("rust-max-parallel: 1"), "{caller}");
 }
 
@@ -135,7 +135,7 @@ fn validation_caller_pins_runtime_and_has_no_push_trigger() {
 }
 
 /// The desktop Tauri workflow gates the expensive Linux release compilation:
-/// it runs for promotion PRs to main, merged main, and manual audits, but
+/// it runs for promotion PRs to main and manual audits, but
 /// never for staging PRs, ordinary feature PRs, or Release Please version PRs.
 /// The fast desktop checks above it stay unconditional.
 #[test]
@@ -148,7 +148,6 @@ fn desktop_linux_release_compile_is_gated() {
 
     for required in [
         "github.event_name == 'workflow_dispatch'",
-        "(github.event_name == 'push' && github.ref == 'refs/heads/main')",
         "(github.event_name == 'pull_request' &&",
         "github.event.pull_request.base.ref == 'main' &&",
         "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
@@ -158,6 +157,10 @@ fn desktop_linux_release_compile_is_gated() {
             "compile gate must include `{required}`"
         );
     }
+    assert!(
+        !step.contains("github.event_name == 'push' && github.ref == 'refs/heads/main'"),
+        "release compilation must not rerun on main push after the promotion PR"
+    );
     // Explicit manual final audit path must exist.
     assert!(
         desktop.contains("workflow_dispatch:"),

@@ -75,7 +75,7 @@ jobs:
       security-runner: ubuntu-slim
       codeql-runner: ubuntu-latest
       rust-shards: '["all"]'
-      rust-threads: '1'
+      rust-threads: '2'
       rust-max-parallel: 1
     secrets:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
