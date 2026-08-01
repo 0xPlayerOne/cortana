@@ -482,6 +482,141 @@
   background: #1c242d;
 }
 
+.initial-sync-flow {
+  display: flex;
+  margin-top: 16px;
+  padding: 15px 17px;
+  gap: 13px;
+  flex-direction: column;
+  border: 1px solid #4b4538;
+  background: #27241d;
+}
+
+.initial-sync-flow > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.initial-sync-flow > header > div {
+  display: flex;
+  gap: 3px;
+  flex-direction: column;
+}
+
+.initial-sync-flow > header strong {
+  color: #eeede8;
+  font-size: 13px;
+}
+
+.initial-sync-flow > header button {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  color: #bebdb7;
+  border: 1px solid #4b4c48;
+  background: #292a27;
+  cursor: pointer;
+}
+
+.initial-sync-budgets {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.initial-sync-budgets label {
+  display: flex;
+  align-items: flex-start;
+  padding: 10px 11px;
+  gap: 9px;
+  color: #c9c8c2;
+  border: 1px solid #393a37;
+  background: #20211f;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.initial-sync-budgets label.selected {
+  border-color: #8a6d2f;
+  background: #2c2617;
+}
+
+.initial-sync-budgets label > span {
+  display: flex;
+  gap: 3px;
+  flex-direction: column;
+}
+
+.initial-sync-budgets strong {
+  color: #eeede8;
+  font-size: 11px;
+}
+
+.initial-sync-budgets small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.initial-sync-state {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.initial-sync-plan {
+  display: grid;
+  margin: 0;
+  gap: 7px 18px;
+  grid-template-columns: max-content 1fr;
+}
+
+.initial-sync-plan > div {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.initial-sync-plan dt {
+  color: var(--muted);
+}
+
+.initial-sync-plan dd {
+  margin: 0;
+  color: #d6d5cf;
+}
+
+.initial-sync-flow .safety-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.initial-sync-flow .safety-note button {
+  margin-left: auto;
+  padding: 5px 9px;
+  color: #d8d7d1;
+  border: 1px solid #4b4c48;
+  background: #292a27;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.initial-sync-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.initial-sync-actions span {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
 .source-validation-job.succeeded {
   border-color: #3d6945;
   background: #1d2b20;

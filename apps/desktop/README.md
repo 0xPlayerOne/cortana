@@ -51,7 +51,12 @@ credential references, and per-source safety budgets. Secret values are write-on
 command connectors remain read-only because their command arrays cross the native process
 boundary. After saving, **Validate** runs the bundled runtime with fixed limits of 25 documents,
 5 MiB, and 60 seconds. It can be cancelled, never embeds or indexes content, and records only a
-metadata outcome.
+metadata outcome. **Initial sync** plans first: it resolves one of three fixed budgets (100
+documents/25 MiB/15 minutes, 500/64 MiB/30 minutes, or 2,000/128 MiB/60 minutes), requires a
+read-only validation at equal or larger limits (with a **Validate for this budget** action when
+the latest record is smaller), and then runs a separately confirmed, validation-gated,
+no-reconcile sync through the same cancellable source-job boundary with visible progress and
+metadata-only audit events.
 
 Closing the main window hides it to the tray. Use **Quit Cortana Desktop** from the tray menu to
 exit the control plane. This does not stop the independently managed Cortana services.
