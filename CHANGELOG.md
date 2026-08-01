@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/0xPlayerOne/cortana/compare/v0.11.1...v0.11.2) (2026-08-01)
+
+
+### Maintenance
+
+* adopt Code Foundry v0.34.0 tiered validation ([#165](https://github.com/0xPlayerOne/cortana/issues/165)) ([#166](https://github.com/0xPlayerOne/cortana/issues/166)) ([ed3f45a](https://github.com/0xPlayerOne/cortana/commit/ed3f45a282d5781e6452b7638171a476e65fddd1))
+
 ## [0.11.1](https://github.com/0xPlayerOne/cortana/compare/v0.11.0...v0.11.1) (2026-08-01)
 
 
