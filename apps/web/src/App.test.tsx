@@ -158,6 +158,14 @@ test('keyset pagination appends the next page and document selection opens the c
   expect(screen.getByText(/Canonical content protected by workspace ACLs/)).toBeTruthy()
   // Document tabs switch to the canonical document view.
   expect(screen.getByRole('tab', { name: /Document/ })).toBeTruthy()
+
+  // The document action is local and explicit rather than a dead decorative button.
+  const favorite = screen.getByRole('button', { name: 'Add favorite' })
+  expect(favorite.getAttribute('aria-pressed')).toBe('false')
+  fireEvent.click(favorite)
+  expect(screen.getByRole('button', { name: 'Remove favorite' }).getAttribute('aria-pressed')).toBe(
+    'true'
+  )
 })
 
 test('settings navigation explains the desktop-only view in web mode', async () => {
