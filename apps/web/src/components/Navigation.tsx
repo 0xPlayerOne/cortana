@@ -22,18 +22,22 @@ export function TitleActions({
   context = false,
   onOpenSources,
   onOpenContext,
+  onOpenFilters,
+  onOpenHistory,
 }: {
   context?: boolean
   onOpenSources?: () => void
   onOpenContext?: () => void
+  onOpenFilters?: () => void
+  onOpenHistory?: () => void
 }) {
   if (context) {
     return (
       <div className="title-actions">
-        <button aria-label="Filter results" title="Result filters are coming later" disabled>
+        <button aria-label="Filter documents" title="Filter documents" onClick={onOpenFilters}>
           <Filter size={18} />
         </button>
-        <button aria-label="Search history" title="Search history is coming later" disabled>
+        <button aria-label="Open conversations" title="Open conversations" onClick={onOpenHistory}>
           <Clock3 size={18} />
         </button>
         <button className="mobile-button" aria-label="Open agent context" onClick={onOpenContext}>
