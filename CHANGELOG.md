@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/0xPlayerOne/cortana/compare/v0.11.0...v0.11.1) (2026-08-01)
+
+
+### Maintenance
+
+* bump runtime to v0.32.3 with squash release merges ([2a3569d](https://github.com/0xPlayerOne/cortana/commit/2a3569d05e9eb1fe73d3653a3ba0c52d95660a11))
+
 ## [0.11.0](https://github.com/0xPlayerOne/cortana/compare/v0.10.0...v0.11.0) (2026-07-30)
 
 
