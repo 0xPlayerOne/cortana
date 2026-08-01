@@ -55,33 +55,60 @@ export function TitleActions({
   )
 }
 
-export type AppView = 'knowledge' | 'settings'
+export type AppView =
+  'knowledge' | 'settings' | 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
 
 export function Navigation({
   view,
   onNavigate,
+  onSearch,
+  onOpenGraph,
+  onOpenTimeline,
 }: {
   view: AppView
   onNavigate: (view: AppView) => void
+  onSearch: () => void
+  onOpenGraph: () => void
+  onOpenTimeline: () => void
 }) {
   return (
     <nav className="rail" aria-label="Primary">
       <div className="brand-mark" aria-label="Cortana">
         <Sparkles size={24} />
       </div>
-      <RailButton icon={Search} label="Search" />
+      <RailButton icon={Search} label="Search" onClick={onSearch} />
       <RailButton
         icon={BookOpenText}
         label="Knowledge"
         active={view === 'knowledge'}
         onClick={() => onNavigate('knowledge')}
       />
-      <RailButton icon={GitFork} label="Graph" />
-      <RailButton icon={Inbox} label="Inbox" />
-      <RailButton icon={MessageCircle} label="Conversations" />
-      <RailButton icon={TerminalSquare} label="Agent tools" />
-      <RailButton icon={CalendarDays} label="Timeline" />
-      <RailButton icon={Database} label="Index" />
+      <RailButton icon={GitFork} label="Graph" onClick={onOpenGraph} />
+      <RailButton
+        icon={Inbox}
+        label="Inbox"
+        active={view === 'inbox'}
+        onClick={() => onNavigate('inbox')}
+      />
+      <RailButton
+        icon={MessageCircle}
+        label="Conversations"
+        active={view === 'conversations'}
+        onClick={() => onNavigate('conversations')}
+      />
+      <RailButton
+        icon={TerminalSquare}
+        label="Agent tools"
+        active={view === 'agent-tools'}
+        onClick={() => onNavigate('agent-tools')}
+      />
+      <RailButton icon={CalendarDays} label="Timeline" onClick={onOpenTimeline} />
+      <RailButton
+        icon={Database}
+        label="Index"
+        active={view === 'index'}
+        onClick={() => onNavigate('index')}
+      />
       <div className="rail-spacer" />
       <RailButton
         icon={Settings}
@@ -89,7 +116,12 @@ export function Navigation({
         active={view === 'settings'}
         onClick={() => onNavigate('settings')}
       />
-      <RailButton icon={CircleHelp} label="Help" />
+      <RailButton
+        icon={CircleHelp}
+        label="Help"
+        active={view === 'help'}
+        onClick={() => onNavigate('help')}
+      />
       <div className="avatar">AC</div>
     </nav>
   )
@@ -104,15 +136,14 @@ function RailButton({
   icon: typeof Search
   label: string
   active?: boolean
-  onClick?: () => void
+  onClick: () => void
 }) {
   return (
     <button
       className={`rail-button ${active ? 'active' : ''}`}
       aria-label={label}
-      title={onClick ? label : `${label} (coming later)`}
+      title={label}
       onClick={onClick}
-      disabled={!onClick}
     >
       <Icon size={20} />
     </button>
