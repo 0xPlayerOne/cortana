@@ -26,7 +26,7 @@ const contextBundle: ContextBundle = {
 
 const state = {
   status: demoStatus as BrainStatus | null,
-  answer: null as (() => Promise<AnswerResponse>) | null,
+  answer: null as ((query?: string) => Promise<AnswerResponse>) | null,
   context: null as ContextBundle | null,
 }
 
@@ -36,8 +36,8 @@ mock.module('./api', () => ({
   isDemoMode: false,
   getStatus: () => Promise.resolve(state.status),
   getDocuments: () => Promise.resolve({ documents: [], next_cursor: null }),
-  getAnswer: () =>
-    state.answer ? state.answer() : Promise.reject(new Error('Answer request failed (503)')),
+  getAnswer: (query?: string) =>
+    state.answer ? state.answer(query) : Promise.reject(new Error('Answer request failed (503)')),
   getDocument: () => Promise.reject(new Error('Document unavailable')),
   getContext: () =>
     state.context
@@ -89,6 +89,7 @@ test('every rail button is enabled and Search focuses the query input', async ()
 })
 
 test('titlebar controls perform real navigation actions', async () => {
+  state.answer = () => Promise.resolve(answerResponse)
   await renderApp()
 
   fireEvent.click(screen.getByRole('button', { name: 'Filter documents' }))
@@ -214,7 +215,50 @@ test('Conversations shows the session state and offers search focus', async () =
   expect(screen.getByText('How do releases work?')).toBeTruthy()
 })
 
+test('search history arrows navigate previous and next queries', async () => {
+  state.answer = (query?: string) =>
+    Promise.resolve({
+      ...answerResponse,
+      query: query || answerResponse.query,
+      answer: `Answer for ${query || answerResponse.query}`,
+    })
+  render(<App />)
+
+  const input = screen.getByLabelText('Search your knowledge')
+  const submit = (value: string) => {
+    fireEvent.change(input, { target: { value } })
+    fireEvent.submit(input.closest('form')!)
+  }
+
+  submit('release cadence')
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'release cadence' })).toBeTruthy()
+  )
+  submit('desktop status')
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'desktop status' })).toBeTruthy()
+  )
+
+  const previous = screen.getByRole('button', { name: 'Previous search query' })
+  const next = screen.getByRole('button', { name: 'Next search query' })
+  expect(previous.getAttribute('disabled')).toBeNull()
+  expect(next.getAttribute('disabled')).not.toBeNull()
+
+  fireEvent.click(previous)
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'release cadence' })).toBeTruthy()
+  )
+  expect((input as HTMLInputElement).value).toBe('release cadence')
+  expect(next.getAttribute('disabled')).toBeNull()
+
+  fireEvent.click(next)
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'desktop status' })).toBeTruthy()
+  )
+})
+
 test('Help lists the real keyboard shortcuts and project links', async () => {
+  state.answer = () => Promise.resolve(answerResponse)
   await renderApp()
   fireEvent.click(railButton('Help'))
   await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Help' })).toBeTruthy())

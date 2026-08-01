@@ -74,6 +74,8 @@ export function App() {
   const [contextBundle, setContextBundle] = useState<ContextBundle | null>(null)
   const [contextLoading, setContextLoading] = useState(false)
   const [contextError, setContextError] = useState('')
+  const [queryHistory, setQueryHistory] = useState<string[]>([])
+  const [queryHistoryIndex, setQueryHistoryIndex] = useState(-1)
   const searchRef = useRef<HTMLInputElement>(null)
   const sourceJobs = useSourceJobs()
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
@@ -216,7 +218,19 @@ export function App() {
     return () => window.clearInterval(interval)
   }, [])
 
-  async function runSearch(value: string, nextSource = source, nextWorkspace = workspace) {
+  async function runSearch(
+    value: string,
+    nextSource = source,
+    nextWorkspace = workspace,
+    recordHistory = true
+  ) {
+    if (recordHistory) {
+      const sliced = queryHistory.slice(0, queryHistoryIndex + 1)
+      const nextHistory = sliced.at(-1) === value ? sliced : [...sliced, value]
+      setQueryHistory(nextHistory)
+      setQueryHistoryIndex(nextHistory.length - 1)
+    }
+
     setLoading(true)
     setError('')
     try {
@@ -386,7 +400,27 @@ export function App() {
       }
     >
       <header className="titlebar">
-        <TitleActions onOpenSources={() => setLeftOpen(true)} />
+        <TitleActions
+          onOpenSources={() => setLeftOpen(true)}
+          canGoBack={queryHistoryIndex > 0}
+          canGoForward={queryHistoryIndex >= 0 && queryHistoryIndex < queryHistory.length - 1}
+          onHistoryBack={() => {
+            const nextIndex = queryHistoryIndex - 1
+            if (nextIndex < 0) return
+            const next = queryHistory[nextIndex]
+            setQueryHistoryIndex(nextIndex)
+            setQuery(next)
+            void runSearch(next, source, workspace, false)
+          }}
+          onHistoryForward={() => {
+            const nextIndex = queryHistoryIndex + 1
+            if (nextIndex >= queryHistory.length) return
+            const next = queryHistory[nextIndex]
+            setQueryHistoryIndex(nextIndex)
+            setQuery(next)
+            void runSearch(next, source, workspace, false)
+          }}
+        />
         <form className="search-form" onSubmit={submit}>
           <Search size={18} />
           <input
