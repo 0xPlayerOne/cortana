@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.3](https://github.com/0xPlayerOne/cortana/compare/v0.11.2...v0.11.3) (2026-08-01)
+
+
+### Tests
+
+* web-component-harness ([#168](https://github.com/0xPlayerOne/cortana/issues/168)) ([#169](https://github.com/0xPlayerOne/cortana/issues/169)) ([eb7cab7](https://github.com/0xPlayerOne/cortana/commit/eb7cab78c3554bde2ff644a9ab79e458dff4ccc2))
+
 ## [0.11.2](https://github.com/0xPlayerOne/cortana/compare/v0.11.1...v0.11.2) (2026-08-01)
 
 
