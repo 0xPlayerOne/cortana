@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/0xPlayerOne/cortana/compare/v0.14.1...v0.15.0) (2026-08-01)
+
+
+### Features
+
+* **desktop:** make navigation actions actionable ([#191](https://github.com/0xPlayerOne/cortana/issues/191)) ([ca504ed](https://github.com/0xPlayerOne/cortana/commit/ca504eda9b28844b58385767e0da4eb4df70e4c8))
+
 ## [0.14.1](https://github.com/0xPlayerOne/cortana/compare/v0.14.0...v0.14.1) (2026-08-01)
 
 
