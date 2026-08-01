@@ -46,3 +46,17 @@ The desktop pipeline follows a staged audit policy:
 The aggregate fails on any dependency failure or cancellation rather than
 silently skipping, so a real regression can never hide behind the release-please
 fast path.
+
+## Binary archive verification
+
+Before uploading a binary archive, the release workflow runs
+`scripts/verify-release.sh`. It checks the SHA-256 sidecar, rejects absolute or
+path-traversal entries, requires the executable, web workspace, connector wheel,
+example config, and Cortana skill, and executes the packaged binary's version
+command. To verify a downloaded archive locally:
+
+```bash
+./scripts/verify-release.sh \
+  cortana-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz \
+  cortana-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz.sha256
+```
