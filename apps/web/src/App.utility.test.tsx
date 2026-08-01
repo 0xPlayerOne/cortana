@@ -88,6 +88,17 @@ test('every rail button is enabled and Search focuses the query input', async ()
   )
 })
 
+test('titlebar controls perform real navigation actions', async () => {
+  await renderApp()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Filter documents' }))
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Filter documents' }))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Open conversations' }))
+  expect(screen.getByRole('heading', { level: 1, name: 'Conversations' })).toBeTruthy()
+})
+
 test('Graph and Timeline rail buttons route to the existing workspace tabs', async () => {
   await renderApp()
 
