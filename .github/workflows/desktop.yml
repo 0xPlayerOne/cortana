@@ -75,9 +75,11 @@ jobs:
       # Release Please version-only PRs; those runs keep the fast desktop
       # checks above.
       - name: Compile release desktop
+        # Final gate: run only for PRs targeting main (excluding release-please
+        # version PRs) and manual dispatch. This keeps feature PRs/staging PRs
+        # from running Linux release compilation while preserving manual audits.
         if: >-
           github.event_name == 'workflow_dispatch' ||
-          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
           (github.event_name == 'pull_request' &&
            github.event.pull_request.base.ref == 'main' &&
            !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
