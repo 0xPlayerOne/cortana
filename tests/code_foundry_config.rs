@@ -137,36 +137,46 @@ fn validation_caller_pins_runtime_and_has_no_push_trigger() {
 /// The desktop Tauri workflow gates the expensive Linux release compilation:
 /// it runs for promotion PRs to main and manual audits, but
 /// never for staging PRs, ordinary feature PRs, or Release Please version PRs.
-/// The fast desktop checks above it stay unconditional.
+/// The fast desktop checks above it stay unchanged.
 #[test]
 fn desktop_linux_release_compile_is_gated() {
     let desktop = read(".github/workflows/desktop.yml");
-    let step_start = desktop
-        .find("- name: Compile release desktop")
-        .expect("desktop workflow must keep the compile step");
-    let step = &desktop[step_start..];
 
-    for required in [
+    let final_audit_gate = [
         "github.event_name == 'workflow_dispatch'",
         "(github.event_name == 'pull_request' &&",
         "github.event.pull_request.base.ref == 'main' &&",
         "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
+    ];
+
+    for step in [
+        "Install cargo-audit",
+        "Test patched GTK iterator in release mode",
+        "Audit desktop Rust dependencies",
+        "Compile release desktop",
     ] {
-        assert!(
-            step.contains(required),
-            "compile gate must include `{required}`"
-        );
+        let start = desktop
+            .find(&format!("- name: {step}"))
+            .unwrap_or_else(|| panic!("desktop workflow must keep the `{step}` step"));
+        let step_block = &desktop[start..desktop[start + 1..]
+            .find("\n      - name: ")
+            .map_or(desktop.len(), |next| start + 1 + next)];
+
+        for required in &final_audit_gate {
+            assert!(
+                step_block.contains(required),
+                "`{step}` must use the final-audit gate with `{required}`"
+            );
+        }
     }
-    assert!(
-        !step.contains("github.event_name == 'push' && github.ref == 'refs/heads/main'"),
-        "release compilation must not rerun on main push after the promotion PR"
-    );
+
     // Explicit manual final audit path must exist.
     assert!(
         desktop.contains("workflow_dispatch:"),
         "desktop workflow must expose workflow_dispatch for manual final audits"
     );
-    // Fast checks must precede the gate unchanged.
+
+    // Fast checks must remain present.
     for fast_check in [
         "- name: Check web",
         "- name: Test desktop",

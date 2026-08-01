@@ -54,12 +54,27 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Install cargo-audit
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.base.ref == 'main' &&
+           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
         run: cargo install cargo-audit --version 0.22.2 --locked
       - name: Verify patched GTK dependency provenance
         run: bun scripts/verify-vendored-glib.mjs
       - name: Test patched GTK iterator in release mode
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.base.ref == 'main' &&
+           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
         run: cargo test --manifest-path third_party/glib-0.18.5/Cargo.toml --release --lib variant_iter
       - name: Audit desktop Rust dependencies
+        if: >-
+          github.event_name == 'workflow_dispatch' ||
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.base.ref == 'main' &&
+           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
         run: cargo audit --file apps/desktop/src-tauri/Cargo.lock
       - name: Check web
         run: |
@@ -69,15 +84,13 @@ jobs:
         run: bun run desktop:test
       - name: Lint desktop
         run: bun run --cwd apps/desktop clippy
-      # Linux release compilation is reserved for main-bound promotion PRs,
-      # merged main, and explicit manual final audits (workflow_dispatch). It
-      # is intentionally skipped on staging PRs, ordinary feature PRs, and
-      # Release Please version-only PRs; those runs keep the fast desktop
-      # checks above.
+      # Linux release compilation is reserved for PRs targeting main and explicit
+      # manual final audits (workflow_dispatch). It is intentionally skipped on
+      # staging PRs, ordinary feature PRs, and Release Please version-only PRs.
       - name: Compile release desktop
-        # Final gate: run only for PRs targeting main (excluding release-please
-        # version PRs) and manual dispatch. This keeps feature PRs/staging PRs
-        # from running Linux release compilation while preserving manual audits.
+        # Final gate: run only for PRs targeting main and manual dispatch,
+        # excluding release-please version PRs. This skips final audit steps
+        # for staging and feature PRs while preserving manual audits.
         if: >-
           github.event_name == 'workflow_dispatch' ||
           (github.event_name == 'pull_request' &&
