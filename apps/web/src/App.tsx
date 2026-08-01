@@ -320,6 +320,12 @@ export function App() {
     searchRef.current?.select()
   }
 
+  function focusDocumentFilter() {
+    setView('knowledge')
+    setLeftOpen(true)
+    window.setTimeout(() => document.getElementById('document-filter')?.focus(), 0)
+  }
+
   function openGraph() {
     setView('knowledge')
     setWorkspaceTab('graph')
@@ -391,7 +397,12 @@ export function App() {
           />
           {loading ? <LoaderCircle className="spin" size={16} /> : <kbd>⌘ K</kbd>}
         </form>
-        <TitleActions context onOpenContext={() => setRightOpen(true)} />
+        <TitleActions
+          context
+          onOpenContext={() => setRightOpen(true)}
+          onOpenFilters={focusDocumentFilter}
+          onOpenHistory={() => setView('conversations')}
+        />
       </header>
       <Navigation
         view={view}
