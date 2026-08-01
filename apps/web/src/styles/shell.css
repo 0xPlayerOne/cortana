@@ -24,8 +24,29 @@
 
 .history-buttons {
   display: flex;
-  gap: 18px;
+  gap: 8px;
   color: #8e908b;
+}
+
+.history-buttons button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+}
+
+.history-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.history-buttons button:hover:enabled {
+  color: #e5e4de;
 }
 
 .search-form {

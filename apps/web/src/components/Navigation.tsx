@@ -24,12 +24,20 @@ export function TitleActions({
   onOpenContext,
   onOpenFilters,
   onOpenHistory,
+  onHistoryBack,
+  onHistoryForward,
+  canGoBack,
+  canGoForward,
 }: {
   context?: boolean
   onOpenSources?: () => void
   onOpenContext?: () => void
   onOpenFilters?: () => void
   onOpenHistory?: () => void
+  onHistoryBack?: () => void
+  onHistoryForward?: () => void
+  canGoBack?: boolean
+  canGoForward?: boolean
 }) {
   if (context) {
     return (
@@ -51,9 +59,25 @@ export function TitleActions({
       <button className="mobile-button" aria-label="Open sources" onClick={onOpenSources}>
         <Menu size={19} />
       </button>
-      <div className="history-buttons" aria-hidden="true">
-        <ArrowLeft size={18} />
-        <ArrowRight size={18} />
+      <div className="history-buttons" role="group" aria-label="Search history">
+        <button
+          aria-label="Previous search query"
+          title="Previous search query"
+          disabled={!canGoBack}
+          onClick={onHistoryBack}
+          type="button"
+        >
+          <ArrowLeft size={18} />
+        </button>
+        <button
+          aria-label="Next search query"
+          title="Next search query"
+          disabled={!canGoForward}
+          onClick={onHistoryForward}
+          type="button"
+        >
+          <ArrowRight size={18} />
+        </button>
       </div>
     </>
   )
