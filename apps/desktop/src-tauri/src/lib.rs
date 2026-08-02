@@ -28,6 +28,7 @@ const MAX_QUERY_LENGTH: usize = 16_384;
 const MAX_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_CURSOR_LENGTH: usize = 1024;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
+const MAX_BACKEND_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 const PROJECT_URL: &str = "https://github.com/0xPlayerOne/cortana";
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
@@ -75,7 +76,7 @@ impl BackendClient {
         if let Some(body) = body {
             request = request.json(&body);
         }
-        let response = request
+        let mut response = request
             .send()
             .await
             .map_err(|error| format!("Cortana runtime is unavailable: {error}"))?;
@@ -86,9 +87,28 @@ impl BackendClient {
                 status.as_u16()
             ));
         }
-        response
-            .json()
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_BACKEND_RESPONSE_BYTES as u64)
+        {
+            return Err(format!(
+                "Cortana runtime response exceeded the {MAX_BACKEND_RESPONSE_BYTES} byte Desktop safety limit"
+            ));
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
             .await
+            .map_err(|error| format!("read Cortana runtime response: {error}"))?
+        {
+            if body.len().saturating_add(chunk.len()) > MAX_BACKEND_RESPONSE_BYTES {
+                return Err(format!(
+                    "Cortana runtime response exceeded the {MAX_BACKEND_RESPONSE_BYTES} byte Desktop safety limit"
+                ));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        serde_json::from_slice(&body)
             .map_err(|error| format!("Cortana runtime returned an invalid response: {error}"))
     }
 }
