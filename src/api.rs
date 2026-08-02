@@ -226,6 +226,7 @@ struct ConfiguredSourceStatus {
     kind: String,
     project: String,
     enabled: bool,
+    acl: Vec<String>,
     max_documents: usize,
     max_bytes: u64,
     max_duration_seconds: u64,
@@ -243,6 +244,7 @@ impl IngestionStatus {
                 kind: source.kind.clone(),
                 project: source.project.clone(),
                 enabled: source.enabled,
+                acl: source.acl.clone(),
                 max_documents: source
                     .max_documents
                     .unwrap_or(config.ingestion.max_documents_per_source),
@@ -1247,6 +1249,7 @@ mod tests {
             enabled = false
             project = "work"
             source = "work-code"
+            acl = ["work", "admin"]
             root = "/tmp/code"
             "##,
         )
@@ -1298,6 +1301,10 @@ mod tests {
         assert_eq!(
             value["ingestion"]["configured_sources"][0]["validation"]["status"],
             "succeeded"
+        );
+        assert_eq!(
+            value["ingestion"]["configured_sources"][0]["acl"],
+            serde_json::json!(["work", "admin"])
         );
         assert_eq!(value["ingestion"]["max_documents_per_source"], 25);
         assert_eq!(value["query"]["mode"], "extractive");
