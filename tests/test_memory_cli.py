@@ -59,6 +59,7 @@ def test_memory_sync_drains_honcho_outbox_without_printing_credentials(
             [
                 "--provider",
                 "honcho",
+                "--allow-append-only",
                 "--outbox",
                 str(outbox_path),
                 "--token-env",
@@ -105,6 +106,22 @@ def test_memory_sync_requires_a_token_without_revealing_its_value(
     )
     assert result == 1
     assert "MISSING_TOKEN is not set" in capsys.readouterr().err
+
+
+def test_memory_sync_requires_explicit_honcho_append_ack(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setenv("HONCHO_TOKEN", "secret-token")
+    result = cli.main(
+        [
+            "--provider",
+            "honcho",
+            "--outbox",
+            str(tmp_path / "memory.sqlite3"),
+            "--token-env",
+            "HONCHO_TOKEN",
+        ]
+    )
+    assert result == 1
+    assert "--allow-append-only" in capsys.readouterr().err
 
 
 def test_memory_sync_rejects_invalid_token_environment_names(monkeypatch) -> None:

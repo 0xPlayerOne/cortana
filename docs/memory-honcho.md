@@ -23,6 +23,11 @@ Message content is capped at 128,000 characters with a deterministic head/tail t
 Remote endpoints must use HTTPS; local HTTP is accepted only for loopback hosts. Tokens are sent
 only as bearer headers and never appear in diagnostics or provider errors.
 
+Honcho messages are append-only in this adapter: re-retaining the same document adds another
+message to its session because the v3 contract has no document-level replacement endpoint. Treat
+Honcho as an experimental, curated episode sink until a versioned replacement/idempotence gate is
+completed. Hindsight remains the suitable optional provider for canonical-document replacement.
+
 ## Enablement boundary
 
 Construct the provider only from an explicit operator-selected memory configuration and drain the
@@ -40,6 +45,7 @@ To drain a deliberately populated outbox, use the explicit operator command:
 export CORTANA_HONCHO_TOKEN='…'
 cortana-memory-sync \
   --provider honcho \
+  --allow-append-only \
   --outbox /absolute/path/to/memory-outbox.sqlite3 \
   --workspace-id personal \
   --peer-id cortana-agent

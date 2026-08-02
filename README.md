@@ -158,7 +158,7 @@ providers interchangeable without mixing vector spaces inside an index generatio
 Hindsight is retained as an optional derived memory adapter for temporal/reflection workflows, and
 Honcho now has a bounded session adapter behind the same durable outbox. Neither is the system of
 record: source evidence, provenance, permissions, and retrieval remain native to Cortana. Both
-remain disabled until the versioned evaluation and deletion/ACL gates pass; see the [Hindsight
+remain disabled until the versioned evaluation, replacement, and deletion/ACL gates pass; see the [Hindsight
 outbox guide](docs/memory-hindsight-outbox.md) and [Honcho adapter contract](docs/memory-honcho.md).
 
 ## Development

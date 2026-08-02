@@ -28,6 +28,11 @@ def parser() -> argparse.ArgumentParser:
     )
     root.add_argument("--provider", choices=("hindsight", "honcho"), required=True)
     root.add_argument(
+        "--allow-append-only",
+        action="store_true",
+        help="acknowledge Honcho's append-only retain behavior",
+    )
+    root.add_argument(
         "--token-env", default=None, help="environment variable containing the bearer token"
     )
     root.add_argument("--base-url", default=None)
@@ -45,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
     provider: MemoryProvider | None = None
     try:
+        if arguments.provider == "honcho" and not arguments.allow_append_only:
+            raise MemoryArgumentError("Honcho sync requires explicit --allow-append-only")
         provider = _build_provider(arguments)
         with Outbox(arguments.outbox) as outbox:
             processed = MemorySyncWorker(
