@@ -159,6 +159,9 @@ export function describeSourceJobProgress(
 export function useSourceJobs() {
   const [jobs, setJobs] = useState<DesktopSourceJob[]>([])
   const [error, setError] = useState('')
+  const [foreground, setForeground] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
+  )
   const jobsRef = useRef(jobs)
   const pollingRef = useRef(false)
   jobsRef.current = jobs
@@ -169,7 +172,25 @@ export function useSourceJobs() {
   }, [])
 
   useEffect(() => {
-    if (!isDesktopApp) return
+    const markForeground = () => setForeground(true)
+    const markBackground = () => setForeground(false)
+    const syncVisibility = () => setForeground(document.visibilityState !== 'hidden')
+    window.addEventListener('focus', markForeground)
+    window.addEventListener('blur', markBackground)
+    document.addEventListener('visibilitychange', syncVisibility)
+    return () => {
+      window.removeEventListener('focus', markForeground)
+      window.removeEventListener('blur', markBackground)
+      document.removeEventListener('visibilitychange', syncVisibility)
+    }
+  }, [])
+
+  useEffect(() => {
+    // Source jobs continue in the native process while the window is hidden;
+    // only their renderer snapshot polling pauses. Re-entering the foreground
+    // starts with a native recovery read so the UI does not resume from stale
+    // progress.
+    if (!isDesktopApp || !foreground) return
     let disposed = false
     void getDesktopSourceJobs()
       .then((next) => {
@@ -223,7 +244,7 @@ export function useSourceJobs() {
       disposed = true
       window.clearInterval(timer)
     }
-  }, [])
+  }, [foreground])
 
   return { jobs, remember, track: remember, error }
 }

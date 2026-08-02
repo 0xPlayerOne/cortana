@@ -190,8 +190,8 @@ Closing the main window hides it. The tray continues to report runtime, corpus, 
 and source-job status (active work or the latest terminal attention per source). Quitting from the
 tray exits only the desktop process; it does not
 silently stop the runtime or start a sync. A second desktop launch focuses the existing window.
-When the webview is backgrounded or loses native window focus, passive status, service, and
-optional-sidecar polling pauses; the tray and long-running installer/source/update jobs continue
+When the webview is backgrounded or loses native window focus, passive status, service, source-job,
+and optional-sidecar polling pauses; the tray and long-running installer/source/update jobs continue
 independently. The shell performs an immediate health refresh when the window becomes visible or
 focused again, avoiding background traffic without hiding active work.
 

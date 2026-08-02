@@ -288,6 +288,33 @@ test('the hook polls only active ids and keeps the latest snapshot', async () =>
   expect(result.current.jobs).toHaveLength(2)
 })
 
+test('the hook pauses renderer polling in the background and recovers on focus', async () => {
+  const running = jobOf('background-job', 'running')
+  state.polled.set(running.id, running)
+  const { result, unmount } = renderHook(() => useSourceJobs())
+  act(() => result.current.remember(running))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+  })
+  expect(state.statusCalls).toContain(running.id)
+
+  state.statusCalls = []
+  act(() => window.dispatchEvent(new Event('blur')))
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+  })
+  expect(state.statusCalls).toEqual([])
+
+  act(() => window.dispatchEvent(new Event('focus')))
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+  })
+  expect(state.statusCalls).toContain(running.id)
+  expect(result.current.jobs[0]?.id).toBe(running.id)
+  unmount()
+})
+
 test('the hook recovers native source-job snapshots on mount', async () => {
   state.recovered = [jobOf('recovered-running', 'running'), jobOf('recovered-done', 'succeeded')]
   const { result, unmount } = renderHook(() => useSourceJobs())
