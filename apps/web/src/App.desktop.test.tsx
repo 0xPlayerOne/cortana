@@ -18,7 +18,11 @@ import type {
 } from './types'
 
 afterEach(cleanup)
-afterEach(() => window.localStorage.removeItem('cortana.workspace-selection.v1'))
+afterEach(() => {
+  window.localStorage.removeItem('cortana.workspace-selection.v1')
+  window.localStorage.removeItem('cortana.source-selection.v1')
+  state.getDocumentsCalls = []
+})
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
 // info, and audit sources so the settings/audit navigation is exercised.
@@ -66,6 +70,12 @@ const state = {
   settings: desktopSettings as DesktopSettings,
   sourceJob: null as DesktopSourceJob | null,
   authorizationCalls: [] as string[],
+  getDocumentsCalls: [] as Array<{
+    workspace: string | undefined
+    source: string | undefined
+    query: string | undefined
+    cursor: string | null | undefined
+  }>,
   statusCalls: 0,
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
@@ -134,7 +144,15 @@ mock.module('./api', () => ({
     state.statusCalls += 1
     return Promise.resolve(demoStatus)
   },
-  getDocuments: () => Promise.resolve({ documents: [], next_cursor: null }),
+  getDocuments: (workspace?: string, source?: string, query?: string, cursor?: string | null) => {
+    state.getDocumentsCalls.push({
+      workspace,
+      source,
+      query,
+      cursor,
+    })
+    return Promise.resolve({ documents: [], next_cursor: null })
+  },
   getAnswer: () => Promise.reject(new Error('Answer request failed (503)')),
   getDocument: () => Promise.reject(new Error('Document unavailable')),
   getContext: () => Promise.reject(new Error('Context retrieval failed (503)')),
@@ -284,13 +302,23 @@ mock.module('./api', () => ({
 
 const { App, ServiceHealthIndicator } = await import('./App')
 
-test('desktop shell restores a workspace scope and clears stale selections', async () => {
+test('desktop shell restores workspace and source scope and clears stale selections', async () => {
   window.localStorage.setItem('cortana.workspace-selection.v1', 'work')
+  window.localStorage.setItem('cortana.source-selection.v1', 'work-code')
   render(<App />)
   await waitFor(() => {
     expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('work')
+    expect(state.getDocumentsCalls.at(-1)?.source).toBe('work-code')
   })
-  expect(screen.queryByRole('button', { name: /^personal-drive/ })).toBeNull()
+
+  cleanup()
+  window.localStorage.setItem('cortana.workspace-selection.v1', 'work')
+  window.localStorage.setItem('cortana.source-selection.v1', 'missing')
+  render(<App />)
+  await waitFor(() => {
+    expect(state.getDocumentsCalls.at(-1)?.source).toBeUndefined()
+    expect(window.localStorage.getItem('cortana.source-selection.v1')).toBeNull()
+  })
 
   cleanup()
   window.localStorage.setItem('cortana.workspace-selection.v1', 'missing')
@@ -298,6 +326,15 @@ test('desktop shell restores a workspace scope and clears stale selections', asy
   await waitFor(() => {
     expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('')
     expect(window.localStorage.getItem('cortana.workspace-selection.v1')).toBeNull()
+  })
+})
+
+test('desktop shell ignores malformed persisted source scope', async () => {
+  window.localStorage.setItem('cortana.workspace-selection.v1', 'work')
+  window.localStorage.setItem('cortana.source-selection.v1', '   ')
+  render(<App />)
+  await waitFor(() => {
+    expect(state.getDocumentsCalls.at(-1)?.source).toBeUndefined()
   })
 })
 

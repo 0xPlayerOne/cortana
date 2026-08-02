@@ -38,7 +38,12 @@ import { UtilityView } from './components/UtilityView'
 import { Workspace, type WorkspaceTab } from './components/Workspace'
 import { buildAgentContext, estimateTokens } from './context'
 import { embeddingLabel } from './operations'
-import { readWorkspacePreference, writeWorkspacePreference } from './workspacePreference'
+import {
+  readSourceSelectionPreference,
+  readWorkspacePreference,
+  writeSourceSelectionPreference,
+  writeWorkspacePreference,
+} from './workspacePreference'
 import {
   activeJobs,
   describeSourceJobProgress,
@@ -76,7 +81,7 @@ export function App() {
   const [evidence, setEvidence] = useState<Evidence[]>([])
   const [answer, setAnswer] = useState<AnswerResponse | null>(null)
   const [selected, setSelected] = useState(0)
-  const [source, setSource] = useState('')
+  const [source, setSource] = useState(() => (isDesktopApp ? readSourceSelectionPreference() : ''))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [statusError, setStatusError] = useState('')
@@ -689,7 +694,10 @@ export function App() {
     scopeSources(nextWorkspace, nextSource)
     if (project) {
       setWorkspace(project)
-      if (isDesktopApp) writeWorkspacePreference(project)
+      if (isDesktopApp) {
+        writeWorkspacePreference(project)
+        writeSourceSelectionPreference(nextSource)
+      }
     }
     setSource(nextSource)
     setLeftOpen(false)
@@ -706,7 +714,10 @@ export function App() {
     scopeSources(nextWorkspace, nextSource)
     setWorkspace(nextWorkspace)
     setSource(nextSource)
-    if (isDesktopApp) writeWorkspacePreference(nextWorkspace)
+    if (isDesktopApp) {
+      writeWorkspacePreference(nextWorkspace)
+      writeSourceSelectionPreference(nextSource)
+    }
   }
 
   async function loadMoreDocuments() {
@@ -910,12 +921,42 @@ export function App() {
           color: null,
         }))
 
+  const configuredSourcesForWorkspace = workspace
+    ? Array.from(
+        new Set([
+          ...(desktopSettings?.sources ?? [])
+            .filter((item) => item.project === workspace)
+            .map((item) => item.name),
+          ...(status?.ingestion.configured_sources ?? [])
+            .filter((item) => item.project === workspace)
+            .map((item) => item.source),
+          ...(status?.sources ?? [])
+            .filter((item) => item.project === workspace)
+            .map((item) => item.source),
+        ])
+      )
+    : []
+  // Settings may arrive before the runtime status call. An empty settings
+  // source list is not enough evidence to evict a persisted source because
+  // the runtime may still report configured/indexed sources shortly after
+  // launch. Treat the inventory as authoritative once status is available,
+  // or once non-empty saved source settings are present.
+  const sourceInventoryReady = status !== null || (desktopSettings?.sources.length ?? 0) > 0
+
   const workspaceScope = workspaces.map((item) => item.id).join('\u0000')
   useEffect(() => {
     if (!workspace || !workspaceScope) return
     if (workspaces.some((item) => item.id === workspace)) return
     chooseWorkspace('')
   }, [workspace, workspaceScope])
+
+  useEffect(() => {
+    if (!isDesktopApp || !workspace || !sourceInventoryReady) return
+    if (configuredSourcesForWorkspace.includes(source)) return
+    writeSourceSelectionPreference('')
+    setSource('')
+    scopeSources(workspace, '')
+  }, [workspace, source, sourceInventoryReady, configuredSourcesForWorkspace.join('\u0000')])
 
   return (
     <div
