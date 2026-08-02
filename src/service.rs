@@ -280,7 +280,12 @@ pub fn sync_job_installed() -> bool {
     #[cfg(target_os = "linux")]
     {
         systemd_unit_path("sync")
-            .map(|path| path.is_file())
+            .and_then(|path| {
+                let timer = path
+                    .parent()
+                    .map(|directory| directory.join(systemd_timer_unit("sync")))?;
+                Ok(path.is_file() && timer.is_file())
+            })
             .unwrap_or(false)
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
