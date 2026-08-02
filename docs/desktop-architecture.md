@@ -192,8 +192,9 @@ tray exits only the desktop process; it does not
 silently stop the runtime or start a sync. A second desktop launch focuses the existing window.
 When the webview is backgrounded or loses native window focus, passive status, service, source-job,
 and optional-sidecar polling pauses; the tray and long-running installer/source/update jobs continue
-independently. The shell performs an immediate health refresh when the window becomes visible or
-focused again, avoiding background traffic without hiding active work.
+independently. This boundary also applies to the standalone Settings fallback observers used before
+the shell has populated shared snapshots. The shell performs an immediate health refresh when the
+window becomes visible or focused again, avoiding background traffic without hiding active work.
 
 The shell and Services panel read a bounded structured report from the bundled sidecar; the shell
 keeps a compact core-health indicator while the panel provides the full per-service controls. The
