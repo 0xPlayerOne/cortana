@@ -59,6 +59,7 @@ const googleSource: SourceSettings = {
 const state = {
   settings: desktopSettings as DesktopSettings,
   sourceJob: null as DesktopSourceJob | null,
+  authorizationCalls: [] as string[],
   statusCalls: 0,
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
@@ -223,6 +224,28 @@ mock.module('./api', () => ({
       acl: ['work'],
       status: 'running',
       summary: 'Validating source work-code…',
+      log: '',
+      started_at_unix_seconds: 1785000000,
+      completed_at_unix_seconds: null,
+      exit_code: null,
+      retryable: false,
+      writes_indexed_data: false,
+      budget: null,
+    }
+    state.sourceJob = job
+    return Promise.resolve(job)
+  },
+  startDesktopSourceAuthorization: (source: string) => {
+    state.authorizationCalls.push(source)
+    const job: DesktopSourceJob = {
+      id: 'job-authorize-1',
+      operation: 'authorization',
+      source,
+      kind: 'google-drive',
+      project: 'personal',
+      acl: ['personal'],
+      status: 'running',
+      summary: 'Waiting for Google authorization in the system browser.',
       log: '',
       started_at_unix_seconds: 1785000000,
       completed_at_unix_seconds: null,
@@ -777,6 +800,31 @@ test('Google source settings expose env-backed token credentials', async () => {
     expect(screen.getByText('Google token path value')).toBeTruthy()
   } finally {
     state.settings = desktopSettings
+  }
+})
+
+test('Google source authorization action starts a tracked browser job', async () => {
+  const originalSettings = state.settings
+  const originalConfirm = window.confirm
+  state.settings = { ...desktopSettings, sources: [googleSource] }
+  state.authorizationCalls = []
+  window.confirm = () => true
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Authorize' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Authorize' }))
+    await waitFor(() => expect(state.authorizationCalls).toEqual(['personal-drive']))
+    expect(screen.getByText('personal-drive · authorization · running')).toBeTruthy()
+    expect(screen.getByText(/Waiting for Google authorization/)).toBeTruthy()
+  } finally {
+    state.settings = originalSettings
+    state.sourceJob = null
+    state.authorizationCalls = []
+    window.confirm = originalConfirm
   }
 })
 

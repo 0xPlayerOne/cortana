@@ -263,6 +263,12 @@ function InboxView({
                       {job.project} · {job.summary} · started {started.toLocaleString()} ·{' '}
                       {duration}
                     </span>
+                    {job.log && (
+                      <details className="utility-job-log">
+                        <summary>View job log</summary>
+                        <pre>{job.log}</pre>
+                      </details>
+                    )}
                   </div>
                   <StatusPill status={terminalStatus} />
                 </div>

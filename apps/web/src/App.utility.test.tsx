@@ -342,6 +342,8 @@ test('Inbox retains terminal source-job history after the job stops running', ()
   expect(screen.getByText('work-code · validation')).toBeTruthy()
   expect(screen.getByText('Failed')).toBeTruthy()
   expect(screen.getByText(/Connector validation failed/)).toBeTruthy()
+  fireEvent.click(screen.getByText('View job log'))
+  expect(screen.getByText('permission denied')).toBeTruthy()
   expect(screen.getByRole('alert').textContent).toBe('Source job cancellation failed')
 })
 
