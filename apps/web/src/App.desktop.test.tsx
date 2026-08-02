@@ -310,6 +310,16 @@ test('desktop settings navigation opens the audit trail and renders both event s
   await waitFor(() => expect(screen.getByText('2 runtime · 1 Desktop events')).toBeTruthy())
 })
 
+test('desktop shell surfaces optional sidecar health without opening settings', async () => {
+  render(<App />)
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Open Hindsight status' })).toBeTruthy()
+  )
+  expect(screen.getByRole('button', { name: 'Open Honcho status' })).toBeTruthy()
+  expect(screen.getByText('Hindsight: disabled')).toBeTruthy()
+  expect(screen.getByText('Honcho: disabled')).toBeTruthy()
+})
+
 test('query number fields keep drafts inside native bounds', async () => {
   render(<App />)
   await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())

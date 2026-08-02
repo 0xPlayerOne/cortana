@@ -12,8 +12,10 @@ import {
 
 import {
   getAnswer,
+  getDesktopHindsightStatus,
   getDesktopInfo,
   getDesktopInstaller,
+  getDesktopHonchoStatus,
   getDesktopSettings,
   getDesktopUpdate,
   getDocument,
@@ -119,6 +121,7 @@ export function App() {
   const installerPollingRef = useRef(false)
   const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
   const updatePollingRef = useRef(false)
+  const sidecarPollingRef = useRef(false)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
   const documentScopeRef = useRef(documentScope)
@@ -347,8 +350,65 @@ export function App() {
       .then(setDesktopUpdate)
       .catch(() => {
         // The Updates section will surface a more specific updater error.
-      })
+    })
   }, [])
+
+  useEffect(() => {
+    if (!isDesktopApp || !desktopSettings) return
+    let disposed = false
+    const refresh = () => {
+      if (disposed || sidecarPollingRef.current) return
+      sidecarPollingRef.current = true
+      void Promise.allSettled([getDesktopHindsightStatus(), getDesktopHonchoStatus()])
+        .then(([hindsight, honcho]) => {
+          if (disposed) return
+          if (hindsight.status === 'fulfilled') {
+            setHindsightStatus(hindsight.value)
+          } else {
+            setHindsightStatus({
+              enabled: desktopSettings.hindsight.enabled,
+              configured: false,
+              reachable: false,
+              state: 'unreachable',
+              endpoint: desktopSettings.hindsight.base_url,
+              bank: desktopSettings.hindsight.bank,
+              token_configured: false,
+              detail:
+                hindsight.reason instanceof Error
+                  ? hindsight.reason.message
+                  : 'Hindsight status is unavailable',
+            })
+          }
+          if (honcho.status === 'fulfilled') {
+            setHonchoStatus(honcho.value)
+          } else {
+            setHonchoStatus({
+              enabled: desktopSettings.honcho.enabled,
+              configured: false,
+              reachable: false,
+              state: 'unreachable',
+              endpoint: desktopSettings.honcho.base_url,
+              workspace_id: desktopSettings.honcho.workspace_id,
+              peer_id: desktopSettings.honcho.peer_id,
+              token_configured: false,
+              detail:
+                honcho.reason instanceof Error
+                  ? honcho.reason.message
+                  : 'Honcho status is unavailable',
+            })
+          }
+        })
+        .finally(() => {
+          sidecarPollingRef.current = false
+        })
+    }
+    refresh()
+    const timer = window.setInterval(refresh, STATUS_REFRESH_MS)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+    }
+  }, [desktopSettings])
 
   useEffect(() => {
     if (!isDesktopApp) return
