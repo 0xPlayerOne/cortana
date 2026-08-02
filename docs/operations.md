@@ -130,8 +130,29 @@ provider has a stricter rate limit.
 
 ## Linux systemd
 
-Templates live in [`packaging/systemd`](../packaging/systemd). Install the binary, built workspace,
-and user-unit files at the paths shown in the templates, then run:
+The core `service install` command and Cortana Desktop generate per-user systemd units under
+`~/.config/systemd/user`, so no root access is required. Install the bundled query-only services
+with:
+
+```bash
+cortana --config ~/.config/cortana/config.toml service install --no-web
+```
+
+Then inspect or control them through the same fixed service IDs used on macOS:
+
+```bash
+cortana service status --json
+cortana service start server
+cortana service stop embedding
+```
+
+The checked-in templates in [`packaging/systemd`](../packaging/systemd) remain useful for manual
+package-manager installs and hardened deployments. The generated units use the current executable,
+config path, working directory, and data directory, and recurring sync remains disabled unless
+`--enable-sync-service` is explicitly supplied. For a cloud embedding provider, pass
+`--no-embedding-service`.
+
+The generated user units can also be managed directly:
 
 ```bash
 systemctl --user daemon-reload

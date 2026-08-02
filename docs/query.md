@@ -28,9 +28,11 @@ The Obsidian-style sidebar uses the canonical index rather than search results:
   display bounds. It also includes the stable source ID, ACL labels, up to 12 explicit metadata
   backlinks, and up to eight nearby documents from the same source. All relations are ACL-filtered
   before serialization. Missing and unauthorized IDs deliberately share the same `404` response.
-- `GET /v1/graph` exposes the bounded, paginated graph contract used by the future corpus graph. A
+- `GET /v1/graph` exposes the bounded, paginated graph contract used by the Desktop graph view. A
   page contains workspace, source, and document nodes plus `contains` edges; it accepts the same
-  filters and cursor as the document list and never materializes the corpus at once.
+  filters and cursor as the document list and never materializes the corpus at once. The Desktop
+  renders a bounded overview of the returned document nodes and keeps graph loading separate from
+  retrieval and embedding work.
 - Every list and read is filtered by the authenticated principal's ACL labels and recorded in the
   metadata-only audit trail. Document content and query strings are never written to audit events.
 

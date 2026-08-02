@@ -250,7 +250,7 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum ServiceAction {
-    /// Install and immediately bootstrap macOS launchd jobs.
+    /// Install and immediately bootstrap per-user macOS launchd or Linux systemd jobs.
     Install {
         #[arg(long, default_value = "apps/web/dist")]
         web_dir: PathBuf,
@@ -2628,8 +2628,10 @@ mod tests {
     #[tokio::test]
     async fn connector_polling_does_not_block_other_async_tasks() {
         let directory = tempfile::tempdir().expect("temporary directory");
-        let mut config = Config::default();
-        config.data_dir = directory.path().to_path_buf();
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
         config.connectors.timeout_seconds = 2;
         let source = SourceConfig {
             name: "slow-external".into(),

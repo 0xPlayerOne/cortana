@@ -2671,16 +2671,14 @@ mod tests {
         symlink(&backup_target, &backup_link).expect("backup symlink");
         let backup_error = store
             .backup(&backup_link)
-            .err()
-            .expect("backup symlink must fail");
+            .expect_err("backup symlink must fail");
         assert!(backup_error.to_string().contains("symlinked database path"));
 
         let restore_target = directory.path().join("restore.sqlite3");
         let restore_link = directory.path().join("restore-link.sqlite3");
         symlink(&restore_target, &restore_link).expect("restore symlink");
-        let restore_error = Store::restore(&restore_link, &database, None)
-            .err()
-            .expect("restore symlink must fail");
+        let restore_error =
+            Store::restore(&restore_link, &database, None).expect_err("restore symlink must fail");
         assert!(
             restore_error
                 .to_string()

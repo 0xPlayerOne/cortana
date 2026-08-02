@@ -45,6 +45,16 @@ pub struct InstallOptions<'a> {
 }
 
 pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
+    if cfg!(target_os = "macos") {
+        return install_launchd(config, options);
+    }
+    if cfg!(target_os = "linux") {
+        return install_systemd(config, options);
+    }
+    Err(anyhow::anyhow!(unsupported_service_manager()))
+}
+
+fn install_launchd(config: &Config, options: InstallOptions<'_>) -> Result<()> {
     require_macos()?;
     anyhow::ensure!(
         options.config.is_file(),
@@ -155,6 +165,9 @@ fn configured_jobs(
 }
 
 pub fn uninstall() -> Result<()> {
+    if cfg!(target_os = "linux") {
+        return uninstall_systemd();
+    }
     require_macos()?;
     let launch_agents = launch_agents_directory()?;
     for label in LABELS {
@@ -169,6 +182,9 @@ pub fn uninstall() -> Result<()> {
 }
 
 pub fn status() -> Result<ServiceReport> {
+    if cfg!(target_os = "linux") {
+        return status_systemd();
+    }
     if !cfg!(target_os = "macos") {
         return Ok(ServiceReport {
             platform: std::env::consts::OS,
@@ -218,6 +234,9 @@ pub fn status() -> Result<ServiceReport> {
 }
 
 pub fn start(name: &str) -> Result<()> {
+    if cfg!(target_os = "linux") {
+        return systemd_action(name, "start");
+    }
     require_macos()?;
     let label = service_label(name)?;
     let path = installed_plist(label)?;
@@ -229,6 +248,9 @@ pub fn start(name: &str) -> Result<()> {
 }
 
 pub fn stop(name: &str) -> Result<()> {
+    if cfg!(target_os = "linux") {
+        return systemd_action(name, "stop");
+    }
     require_macos()?;
     let label = service_label(name)?;
     installed_plist(label)?;
@@ -236,6 +258,9 @@ pub fn stop(name: &str) -> Result<()> {
 }
 
 pub fn restart(name: &str) -> Result<()> {
+    if cfg!(target_os = "linux") {
+        return systemd_action(name, "restart");
+    }
     require_macos()?;
     let label = service_label(name)?;
     let path = installed_plist(label)?;
@@ -252,7 +277,13 @@ pub fn sync_job_installed() -> bool {
             .map(|directory| directory.join("ai.cortana.sync.plist").is_file())
             .unwrap_or(false)
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        systemd_unit_path("sync")
+            .map(|path| path.is_file())
+            .unwrap_or(false)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         false
     }
@@ -435,10 +466,408 @@ fn parse_launchctl_status(body: &str) -> (Option<String>, Option<u32>, Option<i3
     )
 }
 
+const SYSTEMD_SERVICE_UNITS: [&str; 4] = [
+    "cortana-embedding.service",
+    "cortana.service",
+    "cortana-sync.service",
+    "cortana-backup.service",
+];
+const SYSTEMD_TIMER_UNITS: [&str; 2] = ["cortana-sync.timer", "cortana-backup.timer"];
+
+fn install_systemd(config: &Config, options: InstallOptions<'_>) -> Result<()> {
+    ensure_systemd_available()?;
+    anyhow::ensure!(
+        options.config.is_file(),
+        "configuration file does not exist"
+    );
+    if !options.no_web {
+        let web_dir = options
+            .web_dir
+            .context("workspace directory is required unless --no-web is used")?;
+        anyhow::ensure!(
+            web_dir.join("index.html").is_file(),
+            "workspace build is missing: {}",
+            web_dir.display()
+        );
+    }
+    let executable = std::env::current_exe()?.canonicalize()?;
+    let unit_directory = systemd_unit_directory()?;
+    let logs = config.data_dir.join("logs");
+    std::fs::create_dir_all(&unit_directory)?;
+    std::fs::create_dir_all(&logs)?;
+
+    let common = vec![
+        executable.display().to_string(),
+        "--config".into(),
+        options.config.display().to_string(),
+    ];
+    let jobs = configured_jobs(
+        &common,
+        options.web_dir,
+        options.sync_seconds,
+        options.backup_seconds,
+        options.install_embedding,
+        options.install_sync,
+        options.no_web,
+    );
+
+    for unit in SYSTEMD_SERVICE_UNITS
+        .iter()
+        .chain(SYSTEMD_TIMER_UNITS.iter())
+    {
+        let _ = systemd_run(&["disable", "--now", unit]);
+        let path = unit_directory.join(unit);
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+    }
+    for job in &jobs {
+        let name = systemd_job_name(job.label)
+            .with_context(|| format!("unsupported Cortana service label: {}", job.label))?;
+        let path = unit_directory.join(systemd_service_unit(name));
+        let body = systemd_service_unit_body(config, job, name, options.working_directory);
+        atomic_write(&path, body.as_bytes())?;
+        if matches!(name, "sync" | "backup") {
+            let seconds = match name {
+                "sync" => options.sync_seconds,
+                "backup" => options.backup_seconds,
+                _ => unreachable!(),
+            };
+            let timer_path = unit_directory.join(systemd_timer_unit(name));
+            let timer_body = systemd_timer_unit_body(name, seconds);
+            atomic_write(&timer_path, timer_body.as_bytes())?;
+        }
+    }
+    systemd_run(&["daemon-reload"])?;
+    for job in &jobs {
+        let name = systemd_job_name(job.label).expect("validated service label");
+        let unit = if matches!(name, "sync" | "backup") {
+            systemd_timer_unit(name)
+        } else {
+            systemd_service_unit(name)
+        };
+        systemd_run(&["enable", "--now", unit])?;
+    }
+    Ok(())
+}
+
+fn uninstall_systemd() -> Result<()> {
+    let unit_directory = systemd_unit_directory()?;
+    for unit in SYSTEMD_SERVICE_UNITS
+        .iter()
+        .chain(SYSTEMD_TIMER_UNITS.iter())
+    {
+        let _ = systemd_run(&["disable", "--now", unit]);
+        let path = unit_directory.join(unit);
+        if path.exists() {
+            std::fs::remove_file(path)?;
+        }
+    }
+    if systemd_user_available() {
+        systemd_run(&["daemon-reload"])?;
+    }
+    Ok(())
+}
+
+fn status_systemd() -> Result<ServiceReport> {
+    if !systemd_user_available() {
+        return Ok(ServiceReport {
+            platform: std::env::consts::OS,
+            supported: false,
+            services: unsupported_services(),
+        });
+    }
+    let unit_directory = systemd_unit_directory()?;
+    let services = managed_services()
+        .map(|(name, label)| systemd_service_status(name, label, &unit_directory))
+        .collect::<Vec<_>>();
+    Ok(ServiceReport {
+        platform: std::env::consts::OS,
+        supported: true,
+        services,
+    })
+}
+
+fn systemd_service_status(
+    name: &'static str,
+    label: &'static str,
+    unit_directory: &Path,
+) -> ServiceStatus {
+    let service_unit = systemd_service_unit(name);
+    let control_unit = if matches!(name, "sync" | "backup") {
+        systemd_timer_unit(name)
+    } else {
+        service_unit
+    };
+    let installed = unit_directory.join(service_unit).is_file()
+        && (!matches!(name, "sync" | "backup")
+            || unit_directory.join(systemd_timer_unit(name)).is_file());
+    let control = systemd_show(control_unit);
+    let service = systemd_show(service_unit);
+    let (state, pid, _) = control
+        .as_ref()
+        .map(|(_, body)| parse_systemd_status(body))
+        .unwrap_or((None, None, None));
+    let last_exit_status = service
+        .as_ref()
+        .and_then(|(_, body)| parse_systemd_status(body).2);
+    ServiceStatus {
+        name,
+        label,
+        installed,
+        loaded: control.as_ref().is_some_and(|(success, _)| *success),
+        state: state.or_else(|| installed.then(|| "not loaded".into())),
+        pid,
+        last_exit_status,
+    }
+}
+
+fn systemd_action(name: &str, action: &str) -> Result<()> {
+    ensure_systemd_available()?;
+    let unit = match name {
+        "sync" | "backup" => systemd_timer_unit(name),
+        _ => systemd_service_unit(name),
+    };
+    anyhow::ensure!(
+        systemd_unit_path(name)?.is_file(),
+        "Cortana service is not installed: {name}"
+    );
+    systemd_run(&[action, unit])
+}
+
+fn ensure_systemd_available() -> Result<()> {
+    anyhow::ensure!(
+        systemd_user_available(),
+        "Linux service management requires a running systemd user manager"
+    );
+    Ok(())
+}
+
+fn systemd_user_available() -> bool {
+    Command::new("systemctl")
+        .args(["--user", "show-environment"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn systemd_run(args: &[&str]) -> Result<()> {
+    let output = Command::new("systemctl")
+        .arg("--user")
+        .args(args)
+        .output()
+        .with_context(|| format!("run systemctl --user {}", args.join(" ")))?;
+    anyhow::ensure!(
+        output.status.success(),
+        "systemctl --user {} failed: {}",
+        args.join(" "),
+        bounded_command_error(&output.stderr)
+    );
+    Ok(())
+}
+
+fn systemd_show(unit: &str) -> Option<(bool, String)> {
+    let output = Command::new("systemctl")
+        .args([
+            "--user",
+            "show",
+            "--no-page",
+            "--property=ActiveState,SubState,MainPID,ExecMainStatus",
+            unit,
+        ])
+        .output()
+        .ok()?;
+    Some((
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+    ))
+}
+
+fn parse_systemd_status(body: &str) -> (Option<String>, Option<u32>, Option<i32>) {
+    let mut active = None;
+    let mut sub = None;
+    let mut pid = None;
+    let mut exit = None;
+    for line in body.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        match key {
+            "ActiveState" => active = Some(value.to_string()),
+            "SubState" => sub = Some(value.to_string()),
+            "MainPID" => pid = value.parse::<u32>().ok().filter(|value| *value > 0),
+            "ExecMainStatus" => exit = value.parse::<i32>().ok(),
+            _ => {}
+        }
+    }
+    let state = active.map(|active| {
+        if active == "active" {
+            sub.unwrap_or(active)
+        } else {
+            active
+        }
+    });
+    (state, pid, exit)
+}
+
+fn systemd_unit_directory() -> Result<PathBuf> {
+    let root = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
+        .context("home directory is unavailable")?;
+    Ok(root.join("systemd/user"))
+}
+
+fn systemd_unit_path(name: &str) -> Result<PathBuf> {
+    Ok(systemd_unit_directory()?.join(systemd_service_unit(name)))
+}
+
+fn systemd_service_unit(name: &str) -> &'static str {
+    match name {
+        "embedding" => "cortana-embedding.service",
+        "server" => "cortana.service",
+        "sync" => "cortana-sync.service",
+        "backup" => "cortana-backup.service",
+        _ => "cortana-invalid.service",
+    }
+}
+
+fn systemd_timer_unit(name: &str) -> &'static str {
+    match name {
+        "sync" => "cortana-sync.timer",
+        "backup" => "cortana-backup.timer",
+        _ => "cortana-invalid.timer",
+    }
+}
+
+fn systemd_job_name(label: &str) -> Option<&'static str> {
+    match label {
+        "ai.cortana.embedding" => Some("embedding"),
+        "ai.cortana.server" => Some("server"),
+        "ai.cortana.sync" => Some("sync"),
+        "ai.cortana.backup" => Some("backup"),
+        _ => None,
+    }
+}
+
+fn systemd_service_unit_body(
+    config: &Config,
+    job: &Job,
+    name: &str,
+    working_directory: &Path,
+) -> String {
+    let arguments = job
+        .arguments
+        .iter()
+        .map(|argument| systemd_quote(argument))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let description = match name {
+        "embedding" => "Cortana local embedding supervisor",
+        "server" => "Cortana second-brain API",
+        "sync" => "Cortana knowledge source synchronization",
+        "backup" => "Cortana verified backup",
+        _ => "Cortana service",
+    };
+    let service_type = if matches!(name, "sync" | "backup") {
+        "oneshot"
+    } else {
+        "simple"
+    };
+    let after = if name == "server" {
+        "network-online.target cortana-embedding.service"
+    } else if name == "sync" {
+        "cortana-embedding.service"
+    } else {
+        "network-online.target"
+    };
+    let restart = if service_type == "simple" {
+        "Restart=on-failure\nRestartSec=5\n"
+    } else {
+        ""
+    };
+    let home_cache = dirs::home_dir()
+        .map(|home| home.join(".cache/huggingface"))
+        .map(|path| systemd_quote(&path.display().to_string()))
+        .unwrap_or_default();
+    format!(
+        "[Unit]\nDescription={description}\nAfter={after}\n\n[Service]\nType={service_type}\nExecStart={arguments}\nWorkingDirectory={}\n{restart}UMask=0077\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths={}{}\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\n{}",
+        systemd_quote(&working_directory.display().to_string()),
+        systemd_quote(&config.data_dir.display().to_string()),
+        if home_cache.is_empty() {
+            String::new()
+        } else {
+            format!(" {home_cache}")
+        },
+        if service_type == "simple" {
+            "\n[Install]\nWantedBy=default.target\n"
+        } else {
+            ""
+        }
+    )
+}
+
+fn systemd_timer_unit_body(name: &str, seconds: u64) -> String {
+    let description = if name == "sync" {
+        "Synchronize Cortana knowledge sources"
+    } else {
+        "Back up Cortana"
+    };
+    let service = systemd_service_unit(name);
+    format!(
+        "[Unit]\nDescription={description}\n\n[Timer]\nOnBootSec=5m\nOnUnitActiveSec={}s\nPersistent=true\nRandomizedDelaySec=30\nUnit={service}\n\n[Install]\nWantedBy=timers.target\n",
+        seconds.max(60)
+    )
+}
+
+fn systemd_quote(value: &str) -> String {
+    let escaped = value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('%', "%%")
+        .replace('$', "$$")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r");
+    format!("\"{escaped}\"")
+}
+
+fn bounded_command_error(bytes: &[u8]) -> String {
+    let end = bytes.len().min(2048);
+    let value = String::from_utf8_lossy(&bytes[..end])
+        .chars()
+        .filter(|character| !character.is_control() || *character == '\n' || *character == '\t')
+        .collect::<String>();
+    let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if value.is_empty() {
+        "no diagnostic output".into()
+    } else {
+        value
+    }
+}
+
+fn unsupported_services() -> Vec<ServiceStatus> {
+    managed_services()
+        .map(|(name, label)| ServiceStatus {
+            name,
+            label,
+            installed: false,
+            loaded: false,
+            state: None,
+            pid: None,
+            last_exit_status: None,
+        })
+        .collect()
+}
+
+fn unsupported_service_manager() -> &'static str {
+    "service management supports macOS launchd and Linux systemd user services"
+}
+
 fn require_macos() -> Result<()> {
     anyhow::ensure!(
         cfg!(target_os = "macos"),
-        "service management currently supports macOS launchd; use packaging/cortana.service on Linux"
+        "service management supports macOS launchd and Linux systemd user services"
     );
     Ok(())
 }
@@ -545,5 +974,36 @@ mod tests {
             parse_launchctl_status("state = running\n\tpid = 123\n\tlast exit code = 0\n"),
             (Some("running".into()), Some(123), Some(0))
         );
+    }
+
+    #[test]
+    fn systemd_units_and_status_are_fixed_and_structured() {
+        assert_eq!(
+            systemd_service_unit("embedding"),
+            "cortana-embedding.service"
+        );
+        assert_eq!(systemd_service_unit("server"), "cortana.service");
+        assert_eq!(systemd_timer_unit("sync"), "cortana-sync.timer");
+        assert_eq!(systemd_job_name("ai.cortana.backup"), Some("backup"));
+        assert_eq!(systemd_job_name("arbitrary"), None);
+        assert_eq!(
+            parse_systemd_status(
+                "ActiveState=active\nSubState=running\nMainPID=123\nExecMainStatus=0\n"
+            ),
+            (Some("running".into()), Some(123), Some(0))
+        );
+        assert_eq!(
+            parse_systemd_status(
+                "ActiveState=failed\nSubState=failed\nMainPID=0\nExecMainStatus=1\n"
+            ),
+            (Some("failed".into()), None, Some(1))
+        );
+    }
+
+    #[test]
+    fn systemd_timer_and_argument_rendering_escape_paths_and_bound_intervals() {
+        assert!(systemd_timer_unit_body("sync", 1).contains("OnUnitActiveSec=60s"));
+        assert!(systemd_timer_unit_body("backup", 86_400).contains("OnUnitActiveSec=86400s"));
+        assert_eq!(systemd_quote("/tmp/a b%$\"c"), "\"/tmp/a b%%$$\\\"c\"");
     }
 }
