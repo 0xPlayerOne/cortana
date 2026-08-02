@@ -890,9 +890,10 @@ function ServicesSection({
     })
     try {
       const next = await installDesktopServices()
-      if (!mountedRef.current) return
-      setReport(next)
-      onServicesError?.('')
+      if (mountedRef.current || onServices) {
+        setReport(next)
+        onServicesError?.('')
+      }
       onServiceActivity?.({
         target: 'core services',
         action: 'install',
@@ -902,7 +903,7 @@ function ServicesSection({
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : 'Cortana services could not be installed'
-      setLocalError(message)
+      if (mountedRef.current) setLocalError(message)
       onServiceActivity?.({
         target: 'core services',
         action: 'install',
@@ -911,7 +912,7 @@ function ServicesSection({
       })
     } finally {
       actionInFlightRef.current = false
-      setBusy('')
+      if (mountedRef.current) setBusy('')
     }
   }
 
@@ -958,10 +959,11 @@ function ServicesSection({
     })
     try {
       const next = await installDesktopSyncService()
-      if (!mountedRef.current) return
-      setReport(next)
-      setScheduleApplyPending(false)
-      onServicesError?.('')
+      if (mountedRef.current || onServices) {
+        setReport(next)
+        if (mountedRef.current) setScheduleApplyPending(false)
+        onServicesError?.('')
+      }
       onServiceActivity?.({
         target: 'recurring sync',
         action: 'install',
@@ -971,7 +973,7 @@ function ServicesSection({
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : 'Recurring sync could not be installed'
-      setLocalError(message)
+      if (mountedRef.current) setLocalError(message)
       onServiceActivity?.({
         target: 'recurring sync',
         action: 'install',
@@ -980,7 +982,7 @@ function ServicesSection({
       })
     } finally {
       actionInFlightRef.current = false
-      setBusy('')
+      if (mountedRef.current) setBusy('')
     }
   }
 
