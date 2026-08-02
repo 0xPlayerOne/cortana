@@ -1,7 +1,9 @@
 import {
   AlertTriangle,
   BookOpen,
+  Check,
   CircleStop,
+  Copy,
   Database,
   ExternalLink,
   FileText,
@@ -13,7 +15,9 @@ import {
   Sparkles,
   TerminalSquare,
 } from 'lucide-react'
+import { useState } from 'react'
 
+import { writeClipboardText } from '../clipboard'
 import type {
   AnswerResponse,
   BrainStatus,
@@ -404,6 +408,22 @@ function AgentToolsView({
   contextTokens: number
   onRetrieveContext: () => void
 }) {
+  const [copied, setCopied] = useState(false)
+  const [copyError, setCopyError] = useState('')
+
+  async function copyContext() {
+    if (!contextBundle) return
+    setCopyError('')
+    try {
+      await writeClipboardText(contextBundle.context)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch (caught) {
+      setCopied(false)
+      setCopyError(caught instanceof Error ? caught.message : 'Unable to copy context')
+    }
+  }
+
   return (
     <>
       <section className="utility-section">
@@ -444,6 +464,22 @@ function AgentToolsView({
                 ))}
               </div>
             )}
+            <div className="utility-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                aria-label="Copy MCP-equivalent context"
+                onClick={() => void copyContext()}
+              >
+                {copied ? <Check size={15} /> : <Copy size={15} />}
+                {copied ? 'Context copied' : 'Copy MCP-equivalent context'}
+              </button>
+              {copyError && (
+                <p className="utility-error" role="alert">
+                  {copyError}
+                </p>
+              )}
+            </div>
           </>
         ) : (
           <UtilityEmpty

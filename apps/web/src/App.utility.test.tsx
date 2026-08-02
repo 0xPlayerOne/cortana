@@ -390,6 +390,50 @@ test('Agent tools prompts retrieval and then shows the generated context metrics
   expect(screen.getByText('How do releases work?')).toBeTruthy()
 })
 
+test('Agent tools copies the exact generated context bundle for local agent handoff', async () => {
+  let copiedText = ''
+  const originalClipboard = navigator.clipboard
+  Object.defineProperty(navigator, 'clipboard', {
+    value: {
+      writeText: (value: string) => {
+        copiedText = value
+        return Promise.resolve()
+      },
+    },
+    configurable: true,
+  })
+
+  try {
+    render(
+      <UtilityView
+        kind="agent-tools"
+        status={demoStatus}
+        sourceJobs={[]}
+        query={contextBundle.query}
+        answer={answerResponse}
+        evidence={contextBundle.evidence}
+        loading={false}
+        error=""
+        contextBundle={contextBundle}
+        contextLoading={false}
+        contextError=""
+        contextTokens={contextBundle.metrics.estimated_tokens}
+        desktopAvailable={false}
+        onSearchFocus={() => {}}
+        onRetrieveContext={() => {}}
+        onOpenSettings={() => {}}
+        onOpenProject={() => {}}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy MCP-equivalent context' }))
+    await waitFor(() => expect(screen.getByText('Context copied')).toBeTruthy())
+    expect(copiedText).toBe(contextBundle.context)
+  } finally {
+    Object.defineProperty(navigator, 'clipboard', { value: originalClipboard, configurable: true })
+  }
+})
+
 test('Conversations shows the session state and offers search focus', async () => {
   await renderApp()
   fireEvent.click(railButton('Conversations'))
