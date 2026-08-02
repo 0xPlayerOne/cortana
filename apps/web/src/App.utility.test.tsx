@@ -182,6 +182,15 @@ test('graph and timeline evidence actions open the selected source', async () =>
     )
     expect(screen.getByRole('heading', { level: 1, name: 'Deployment playbook' })).toBeTruthy()
   }
+
+  expect(screen.getByRole('link', { name: 'Retrieved passage' }).getAttribute('href')).toBe(
+    '#passage'
+  )
+  expect(screen.getByRole('link', { name: 'Related evidence' }).getAttribute('href')).toBe(
+    '#related'
+  )
+  expect(document.getElementById('passage')).toBeTruthy()
+  expect(document.getElementById('related')).toBeTruthy()
 })
 
 test('graph view renders indexed document nodes when the graph endpoint responds', async () => {

@@ -335,10 +335,12 @@ function DocumentView({
             Retrieved from {active.source} · {new Date(active.updated_at).toLocaleString()}
           </p>
           <div className="rule" />
-          {active.content.split(/\n{2,}/).map((paragraph, index) => (
-            <p key={`${active.chunk_id}:${index}`}>{paragraph}</p>
-          ))}
-          <div className="evidence-footer">
+          <div id="passage">
+            {active.content.split(/\n{2,}/).map((paragraph, index) => (
+              <p key={`${active.chunk_id}:${index}`}>{paragraph}</p>
+            ))}
+          </div>
+          <div id="related" className="evidence-footer">
             <h2>Related evidence</h2>
             {evidence.slice(0, 6).map((item, index) => (
               <button key={item.chunk_id} onClick={() => onSelect(index)}>
