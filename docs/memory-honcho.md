@@ -39,6 +39,11 @@ agent memory interface and keep Honcho disabled.
 
 The implementation uses Cortana's existing `httpx` dependency; no hosted SDK is required.
 
+Desktop's optional Honcho panel can run a bounded reachability check without sending or displaying
+message content. It requests the configured base URL with the bearer token, records only response
+metadata, and distinguishes a reachable endpoint from a successful health response; this avoids
+assuming one health path across hosted and self-hosted Honcho deployments.
+
 To drain a deliberately populated outbox, use the explicit operator command:
 
 ```bash
