@@ -107,6 +107,8 @@ export function SettingsView({
   onDesktopUpdate,
   serviceActivity,
   onServiceActivity,
+  hindsightStatus: externalHindsightStatus,
+  onHindsightStatus,
 }: {
   onSaved: (settings: DesktopSettings) => void
   onDirtyChange?: (dirty: boolean) => void
@@ -136,6 +138,9 @@ export function SettingsView({
   /** Shell-owned service action status shared across Settings mounts. */
   serviceActivity?: DesktopServiceActivity | null
   onServiceActivity?: (activity: DesktopServiceActivity | null) => void
+  /** Shell-owned Hindsight health snapshot shared across Settings mounts. */
+  hindsightStatus?: DesktopHindsightStatus | null
+  onHindsightStatus?: (status: DesktopHindsightStatus | null) => void
 }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
   const [section, setSection] = useState<Section>(initialSection)
@@ -417,6 +422,8 @@ export function SettingsView({
                 setSaved(false)
               }}
               update={update}
+              hindsightStatus={externalHindsightStatus}
+              onHindsightStatus={onHindsightStatus}
             />
           )}
           {section === 'honcho' && (
@@ -1010,14 +1017,20 @@ function HindsightSection({
   onSecret,
   clearedSecrets,
   onClearSecret,
+  hindsightStatus: externalStatus,
+  onHindsightStatus,
 }: SettingsSectionProps & {
   settings: DesktopSettings
   secretValues: Record<string, string>
   onSecret: (values: Record<string, string>) => void
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
+  hindsightStatus?: DesktopHindsightStatus | null
+  onHindsightStatus?: (status: DesktopHindsightStatus | null) => void
 }) {
-  const [status, setStatus] = useState<DesktopHindsightStatus | null>(null)
+  const [localStatus, setLocalStatus] = useState<DesktopHindsightStatus | null>(null)
+  const status = externalStatus === undefined ? localStatus : externalStatus
+  const setStatus = onHindsightStatus ?? setLocalStatus
   const [checking, setChecking] = useState(false)
   const setHindsight = (hindsight: DesktopSettings['hindsight']) =>
     update((current) => ({ ...current, hindsight }))
@@ -1090,6 +1103,12 @@ function HindsightSection({
           <RefreshCw size={14} /> {checking ? 'Checking…' : 'Check connection'}
         </button>
       </div>
+      {externalStatus !== undefined && (
+        <p className="settings-note">
+          This health snapshot is retained while you move between Desktop settings sections. It
+          reads the last saved Hindsight configuration; save changes before checking again.
+        </p>
+      )}
       <Field label="Provider" hint="Hindsight currently supports only this provider.">
         <select
           value={settings.hindsight.provider}
@@ -3438,6 +3457,18 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
       description="Storage and audit configuration for this machine. Moving the data directory requires a restart and does not copy existing data."
     >
       <div className="form-grid">
+        <Field
+          label="Effective secret file"
+          hint="Owner-only path used for provider, connector, and agent tokens"
+          wide
+        >
+          <input
+            value={settings.secret_file_path}
+            title={settings.secret_file_path}
+            readOnly
+            aria-readonly="true"
+          />
+        </Field>
         <Field label="Data directory" wide>
           <input
             value={settings.runtime.data_dir}

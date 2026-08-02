@@ -829,6 +829,15 @@ test('hindsight status section remains explicit about being optional', async () 
   expect(screen.getByLabelText('Enabled')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Check connection' }))
   await waitFor(() => expect(screen.getByText(/Health: disabled/)).toBeTruthy())
+
+  // The shell retains the native health result when Settings is unmounted.
+  fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
+  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Hindsight' }))
+  await waitFor(() => expect(screen.getByText(/Health: disabled/)).toBeTruthy())
+  expect(screen.getByText(/health snapshot is retained/i)).toBeTruthy()
 })
 
 test('honcho settings section exposes a disabled-by-default session sidecar', async () => {
