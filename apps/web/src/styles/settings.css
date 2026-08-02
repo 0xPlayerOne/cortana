@@ -22,6 +22,14 @@
   flex: 1;
 }
 
+.settings-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .settings-header h1 {
   margin: 2px 0 7px;
   color: #f0efe9;

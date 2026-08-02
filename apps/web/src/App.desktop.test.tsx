@@ -412,6 +412,30 @@ test('settings warns before discarding dirty changes', async () => {
   }
 })
 
+test('settings can discard a draft without leaving the control plane', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    const displayName = screen.getAllByLabelText('Display name')[0] as HTMLInputElement
+    fireEvent.change(displayName, { target: { value: 'Draft work' } })
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
+    await waitFor(() =>
+      expect((screen.getAllByLabelText('Display name')[0] as HTMLInputElement).value).toBe('Work')
+    )
+    expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Save changes' }).hasAttribute('disabled')).toBe(true)
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
 test('the footer updates shortcut opens the updates section directly', async () => {
   render(<App />)
   await waitFor(() =>

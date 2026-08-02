@@ -178,6 +178,25 @@ export function SettingsView({
     setDirty(true)
   }
 
+  const discard = async () => {
+    if (!dirty || saving) return
+    if (!window.confirm('Discard unsaved Cortana settings changes?')) return
+    setSaving(true)
+    setError('')
+    try {
+      const next = await getDesktopSettings()
+      setSettings(next)
+      setSecretValues({})
+      setClearedSecrets(new Set())
+      setSaved(false)
+      setDirty(false)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to discard settings changes')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault()
     if (!settings) return
@@ -242,14 +261,26 @@ export function SettingsView({
           <h1>Settings</h1>
           <p>Changes are written locally and audited. Secret values never return to this window.</p>
         </div>
-        <button
-          className="primary-button"
-          form="settings-form"
-          disabled={saving || !dirty}
-          title={dirty ? undefined : 'Make a change before saving'}
-        >
-          <Save size={16} /> {saving ? 'Saving…' : 'Save changes'}
-        </button>
+        <div className="settings-header-actions">
+          {dirty && (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => void discard()}
+            >
+              <X size={15} /> Discard
+            </button>
+          )}
+          <button
+            className="primary-button"
+            form="settings-form"
+            disabled={saving || !dirty}
+            title={dirty ? undefined : 'Make a change before saving'}
+          >
+            <Save size={16} /> {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
       </header>
       {settings.needs_setup && (
         <SetupGuide
