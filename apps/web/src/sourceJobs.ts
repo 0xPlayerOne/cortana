@@ -164,7 +164,6 @@ export function useSourceJobs() {
   )
   const [retryNonce, setRetryNonce] = useState(0)
   const jobsRef = useRef(jobs)
-  const pollingRef = useRef(false)
   jobsRef.current = jobs
 
   const remember = useCallback((job: DesktopSourceJob) => {
@@ -241,6 +240,7 @@ export function useSourceJobs() {
     // progress.
     if (!isDesktopApp || !foreground) return
     let disposed = false
+    let polling = false
     void getDesktopSourceJobs()
       .then((next) => {
         if (disposed) return
@@ -256,10 +256,10 @@ export function useSourceJobs() {
         setError(caught instanceof Error ? caught.message : 'Source job history unavailable')
       })
     const timer = window.setInterval(() => {
-      if (pollingRef.current) return
+      if (polling) return
       const ids = activeJobIds(jobsRef.current)
       if (ids.length === 0) return
-      pollingRef.current = true
+      polling = true
       void Promise.allSettled(ids.map((id) => getDesktopSourceValidation(id)))
         .then((results) => {
           if (disposed) return
@@ -287,7 +287,7 @@ export function useSourceJobs() {
           }
         })
         .finally(() => {
-          pollingRef.current = false
+          polling = false
         })
     }, SOURCE_JOB_POLL_MS)
     return () => {

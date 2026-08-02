@@ -796,7 +796,7 @@ function ServicesSection({
       setLocalError(message)
       onServicesError?.(message)
     } finally {
-      refreshInFlightRef.current = false
+      if (servicesRequestRef.current === requestId) refreshInFlightRef.current = false
     }
   }
 
@@ -806,6 +806,8 @@ function ServicesSection({
     const timer = window.setInterval(() => void refresh(), 15_000)
     return () => {
       window.clearInterval(timer)
+      servicesRequestRef.current += 1
+      refreshInFlightRef.current = false
     }
   }, [externalServices, foreground])
 
@@ -857,6 +859,7 @@ function ServicesSection({
     if (!window.confirm(`${action} ${service.label}?${warning}`)) return
     setBusy(`${service.name}:${action}`)
     actionInFlightRef.current = true
+    refreshInFlightRef.current = false
     servicesRequestRef.current += 1
     setLocalError('')
     onServiceActivity?.({
@@ -895,6 +898,7 @@ function ServicesSection({
   const toggleAutostart = async (enabled: boolean) => {
     setBusy('autostart')
     actionInFlightRef.current = true
+    refreshInFlightRef.current = false
     servicesRequestRef.current += 1
     setLocalError('')
     try {
@@ -922,6 +926,7 @@ function ServicesSection({
     }
     setBusy(`all:${action}`)
     actionInFlightRef.current = true
+    refreshInFlightRef.current = false
     servicesRequestRef.current += 1
     setLocalError('')
     onServiceActivity?.({ target: 'core services', action, status: 'running', detail: null })
@@ -958,6 +963,7 @@ function ServicesSection({
     }
     setBusy('install')
     actionInFlightRef.current = true
+    refreshInFlightRef.current = false
     servicesRequestRef.current += 1
     setLocalError('')
     onServiceActivity?.({
@@ -1027,6 +1033,7 @@ function ServicesSection({
     }
     setBusy('sync-install')
     actionInFlightRef.current = true
+    refreshInFlightRef.current = false
     servicesRequestRef.current += 1
     setLocalError('')
     onServiceActivity?.({
@@ -1303,7 +1310,6 @@ function UpdatesSection({
   const setUpdate = onDesktopUpdate ?? setLocalUpdate
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
-  const pollInFlightRef = useRef(false)
 
   useEffect(() => {
     if ((externalDesktopUpdate !== undefined && externalDesktopUpdate !== null) || !foreground) {
@@ -1321,9 +1327,10 @@ function UpdatesSection({
 
   useEffect(() => {
     if (externalDesktopUpdate !== undefined || busy !== 'install' || !foreground) return
+    let requestInFlight = false
     const poll = () => {
-      if (pollInFlightRef.current) return
-      pollInFlightRef.current = true
+      if (requestInFlight) return
+      requestInFlight = true
       void getDesktopUpdate()
         .then((next) => {
           setUpdate(next)
@@ -1333,7 +1340,7 @@ function UpdatesSection({
           setError(caught instanceof Error ? caught.message : 'Updater status unavailable')
         })
         .finally(() => {
-          pollInFlightRef.current = false
+          requestInFlight = false
         })
     }
     const timer = window.setInterval(poll, 400)
