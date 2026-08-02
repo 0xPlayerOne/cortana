@@ -1915,7 +1915,7 @@ fn failure_status(error: &anyhow::Error) -> SyncRunStatus {
 }
 
 fn cleanup_connector_spools(data_dir: &std::path::Path) -> Result<usize> {
-    let staging = data_dir.join("staging");
+    let staging = prepare_connector_staging(data_dir, false)?;
     if !staging.is_dir() {
         return Ok(0);
     }
@@ -2121,8 +2121,7 @@ async fn run_connector_to_spool(
     source: &SourceConfig,
     control: &SourceControl<'_>,
 ) -> Result<(PathBuf, PathBuf)> {
-    let staging = config.data_dir.join("staging");
-    std::fs::create_dir_all(&staging)?;
+    let staging = prepare_connector_staging(&config.data_dir, true)?;
     let identifier = uuid::Uuid::new_v4();
     let spool = staging.join(format!("connector-{identifier}.jsonl"));
     let diagnostics = staging.join(format!("connector-{identifier}.stderr"));
@@ -2198,6 +2197,57 @@ async fn run_connector_to_spool(
         );
     }
     Ok((spool, diagnostics))
+}
+
+fn prepare_connector_staging(data_dir: &std::path::Path, create: bool) -> Result<PathBuf> {
+    reject_symlink_path(data_dir)?;
+    let staging = data_dir.join("staging");
+    reject_symlink_path(&staging)?;
+    if create {
+        std::fs::create_dir_all(&staging)?;
+    }
+    for path in [data_dir, staging.as_path()] {
+        let metadata = match std::fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && !create => continue,
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("inspect connector staging directory {}", path.display())
+                });
+            }
+        };
+        anyhow::ensure!(
+            metadata.is_dir(),
+            "connector staging path is not a directory: {}",
+            path.display()
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            anyhow::ensure!(
+                metadata.uid() == unsafe { libc::geteuid() },
+                "connector staging path is not owned by the current user: {}",
+                path.display()
+            );
+            if create {
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+            }
+        }
+    }
+    Ok(staging)
+}
+
+fn reject_symlink_path(path: &std::path::Path) -> Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => anyhow::ensure!(
+            !metadata.file_type().is_symlink(),
+            "refusing to use symlinked connector staging path {}",
+            path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
 }
 
 fn maximum_connector_spool_bytes(limits: &SourceLimits) -> u64 {
@@ -2541,6 +2591,25 @@ mod tests {
         assert_eq!(
             cleanup_connector_spools(directory.path()).expect("repeat cleanup"),
             0
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn connector_staging_rejects_symlinked_directories() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let external = directory.path().join("external");
+        std::fs::create_dir(&external).expect("external staging");
+        symlink(&external, directory.path().join("staging")).expect("staging symlink");
+
+        let error = cleanup_connector_spools(directory.path())
+            .expect_err("connector staging symlink must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("symlinked connector staging path")
         );
     }
 
