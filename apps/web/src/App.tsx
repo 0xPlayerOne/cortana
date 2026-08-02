@@ -486,6 +486,10 @@ export function App() {
       (job) =>
         job.completed_at_unix_seconds !== null && !['running', 'cancelling'].includes(job.status)
     )
+    const completedIds = new Set(completed.map((job) => job.id))
+    for (const id of refreshedSourceJobsRef.current) {
+      if (!completedIds.has(id)) refreshedSourceJobsRef.current.delete(id)
+    }
     const unseen = completed.filter((job) => !refreshedSourceJobsRef.current.has(job.id))
     if (unseen.length === 0) return
     unseen.forEach((job) => refreshedSourceJobsRef.current.add(job.id))
