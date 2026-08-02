@@ -1235,7 +1235,7 @@ async fn validate_configured_source(
             }));
         }
         cleanup_connector_spools(&config.data_dir)?;
-        let (spool, diagnostics) = run_connector_to_spool(config, source, &control).await?;
+        let (spool, diagnostics) = run_connector_to_spool(config, source, &control, true).await?;
         let validation = validate_connector_spool(&spool, source, &control);
         let _ = std::fs::remove_file(&spool);
         let _ = std::fs::remove_file(&diagnostics);
@@ -2165,7 +2165,7 @@ async fn sync_source_documents(
         });
     }
 
-    let (spool, diagnostics) = run_connector_to_spool(config, source, control).await?;
+    let (spool, diagnostics) = run_connector_to_spool(config, source, control, false).await?;
     let result = async {
         let scope = validate_connector_spool(&spool, source, control)?;
         let reader = std::io::BufReader::new(
@@ -2271,6 +2271,7 @@ async fn run_connector_to_spool(
     config: &Config,
     source: &SourceConfig,
     control: &SourceControl<'_>,
+    bounded_connector: bool,
 ) -> Result<(PathBuf, PathBuf)> {
     let staging = prepare_connector_staging(&config.data_dir, true)?;
     let identifier = uuid::Uuid::new_v4();
@@ -2278,7 +2279,11 @@ async fn run_connector_to_spool(
     let diagnostics = staging.join(format!("connector-{identifier}.stderr"));
     let stdout = private_file(&spool)?;
     let stderr = private_file(&diagnostics)?;
-    let mut command = configured_connector_command(config, source)?;
+    let mut command = configured_connector_command(
+        config,
+        source,
+        bounded_connector.then_some(control.limits.max_documents),
+    )?;
     let executable = command.remove(0);
     let mut process = ProcessCommand::new(&executable);
     process
@@ -2452,7 +2457,11 @@ fn configure_no_follow(options: &mut std::fs::OpenOptions) {
 #[cfg(not(unix))]
 fn configure_no_follow(_options: &mut std::fs::OpenOptions) {}
 
-fn configured_connector_command(config: &Config, source: &SourceConfig) -> Result<Vec<String>> {
+fn configured_connector_command(
+    config: &Config,
+    source: &SourceConfig,
+    bounded_max_documents: Option<usize>,
+) -> Result<Vec<String>> {
     let command = if source.kind == "external" {
         anyhow::ensure!(
             !source.command.is_empty(),
@@ -2472,9 +2481,24 @@ fn configured_connector_command(config: &Config, source: &SourceConfig) -> Resul
                 .join(&source.name)
                 .display()
                 .to_string(),
-            source.kind.clone(),
         ]);
+        if bounded_max_documents.is_some() {
+            // This is a root-level connector option and must precede the
+            // subcommand for argparse to accept it.
+            command.push("--no-cache".into());
+        }
+        command.push(source.kind.clone());
         connector_arguments(&mut command, source)?;
+        if let Some(max_documents) = bounded_max_documents {
+            // Bounded validation must not mutate a persistent connector cache
+            // with a partial snapshot. Drive also needs an explicit document
+            // cap because it downloads a whole listing page before yielding
+            // JSONL; without this, a 25-document validation can fetch 1,000
+            // files and hit the wall-clock limit before the spool is checked.
+            if source.kind == "google-drive" {
+                command.extend(["--max-documents".into(), max_documents.to_string()]);
+            }
+        }
         command
     };
     anyhow::ensure!(
@@ -2670,8 +2694,9 @@ mod tests {
 
     use super::{
         Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
-        chunk, cleanup_connector_spools, context_bundle, ensure_recurring_sync_validated,
-        ingest_documents, private_file, run_connector_to_spool, validation_overrides,
+        chunk, cleanup_connector_spools, configured_connector_command, context_bundle,
+        ensure_recurring_sync_validated, ingest_documents, private_file, run_connector_to_spool,
+        validation_overrides,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
@@ -2689,6 +2714,51 @@ mod tests {
         assert_eq!(explicit.max_documents, Some(100));
         assert_eq!(explicit.max_bytes, Some(64 * 1024 * 1024));
         assert_eq!(explicit.max_seconds, Some(900));
+    }
+
+    #[test]
+    fn bounded_validation_caps_builtin_drive_without_mutating_cache() {
+        let config = Config::default();
+        let source = SourceConfig {
+            name: "work-drive".into(),
+            kind: "google-drive".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: None,
+            token: Some("/tmp/google-token.json".into()),
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+
+        let command = configured_connector_command(&config, &source, Some(25))
+            .expect("bounded connector command");
+        let no_cache = command
+            .iter()
+            .position(|argument| argument == "--no-cache")
+            .expect("validation must disable persistent caches");
+        let subcommand = command
+            .iter()
+            .position(|argument| argument == "google-drive")
+            .expect("Drive connector subcommand");
+        assert!(no_cache < subcommand);
+        assert_eq!(
+            command
+                .windows(2)
+                .find(|window| window[0] == "--max-documents")
+                .map(|window| window[1].as_str()),
+            Some("25")
+        );
     }
 
     #[test]
@@ -2883,7 +2953,7 @@ mod tests {
             }
         });
 
-        let result = run_connector_to_spool(&config, &source, &control).await;
+        let result = run_connector_to_spool(&config, &source, &control, false).await;
         heartbeat.abort();
         cancellation.stop();
 

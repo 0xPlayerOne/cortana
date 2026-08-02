@@ -200,18 +200,25 @@ def fetch_drive(
     client: httpx.Client | None = None,
     cache_dir: Path | None = None,
     max_content_chars: int = DEFAULT_MAX_DRIVE_CONTENT_CHARS,
+    max_documents: int | None = None,
 ) -> Iterable[Document]:
     if max_content_chars <= 0:
         raise ValueError("max_content_chars must be greater than zero")
+    if max_documents is not None and max_documents <= 0:
+        raise ValueError("max_documents must be greater than zero")
     cache = _drive_cache(cache_dir)
     try:
         with GoogleSession(token_path, client) as session:
             page_token: str | None = None
             pending_writes = 0
+            emitted = 0
             while True:
+                remaining = None if max_documents is None else max_documents - emitted
+                if remaining is not None and remaining <= 0:
+                    break
                 params = {
                     "q": query,
-                    "pageSize": 1000,
+                    "pageSize": min(1000, remaining) if remaining is not None else 1000,
                     "fields": DRIVE_FIELDS,
                     "supportsAllDrives": "true",
                     "includeItemsFromAllDrives": "true",
@@ -309,6 +316,11 @@ def fetch_drive(
                             "content_original_chars": len(body),
                         },
                     )
+                    emitted += 1
+                    if max_documents is not None and emitted >= max_documents:
+                        break
+                if max_documents is not None and emitted >= max_documents:
+                    break
                 page_token = payload.get("nextPageToken")
                 if not page_token:
                     break

@@ -19,6 +19,11 @@ def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="python -m cortana.connectors")
     root.add_argument("--project", default="default")
     root.add_argument("--cache-dir", type=Path)
+    root.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="disable connector caches for bounded, read-only validation",
+    )
     commands = root.add_subparsers(dest="connector", required=True)
 
     commands.add_parser("apple-notes")
@@ -42,6 +47,7 @@ def parser() -> argparse.ArgumentParser:
     _google_arguments(drive)
     drive.add_argument("--query", default="trashed = false")
     drive.add_argument("--max-content-chars", type=int, default=50_000)
+    drive.add_argument("--max-documents", type=int)
 
     gmail = commands.add_parser("gmail")
     _google_arguments(gmail)
@@ -74,7 +80,7 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
             arguments.channels,
             arguments.project,
             arguments.token_env,
-            cache_dir=arguments.cache_dir,
+            cache_dir=None if arguments.no_cache else arguments.cache_dir,
         )
     token_path = _token_path(arguments)
     if arguments.connector == "google-drive":
@@ -82,8 +88,9 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
             token_path,
             arguments.project,
             arguments.query,
-            cache_dir=arguments.cache_dir,
+            cache_dir=None if arguments.no_cache else arguments.cache_dir,
             max_content_chars=arguments.max_content_chars,
+            max_documents=arguments.max_documents,
         )
     if arguments.connector == "gmail":
         return fetch_gmail(
@@ -91,7 +98,7 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
             arguments.project,
             arguments.query,
             arguments.labels,
-            cache_dir=arguments.cache_dir,
+            cache_dir=None if arguments.no_cache else arguments.cache_dir,
         )
     if arguments.connector == "google-calendar":
         return fetch_calendar(token_path, arguments.project, arguments.query)
