@@ -82,6 +82,7 @@ pub struct SourceJobSnapshot {
     pub source: String,
     pub kind: String,
     pub project: String,
+    pub acl: Vec<String>,
     pub status: &'static str,
     pub summary: String,
     pub log: String,
@@ -106,6 +107,7 @@ pub struct InitialSyncPlan {
     pub source: String,
     pub kind: String,
     pub project: String,
+    pub acl: Vec<String>,
     pub enabled: bool,
     pub budget: InitialSyncBudget,
     pub budget_documents: usize,
@@ -237,6 +239,7 @@ impl SourceJobState {
             "source": &source.name,
             "kind": &source.kind,
             "project": &source.project,
+            "acl": &source.acl,
             "budget": budget.as_str(),
             "budget_documents": budget_documents,
             "budget_bytes": budget_bytes,
@@ -250,6 +253,7 @@ impl SourceJobState {
             source: source.name.clone(),
             kind: source.kind.clone(),
             project: source.project.clone(),
+            acl: source.acl.clone(),
             enabled: source.enabled,
             budget,
             budget_documents,
@@ -416,6 +420,7 @@ impl SourceJobState {
             status: "running",
             summary,
             log: String::new(),
+            acl: source.acl.clone(),
             started_at_unix_seconds: started_at,
             completed_at_unix_seconds: None,
             exit_code: None,
@@ -838,6 +843,7 @@ fn audit_event_json(snapshot: &SourceJobSnapshot, phase: &str) -> serde_json::Va
         "source": snapshot.source,
         "kind": snapshot.kind,
         "project": snapshot.project,
+        "acl": snapshot.acl,
         "status": snapshot.status,
         "exit_code": snapshot.exit_code,
         "writes_indexed_data": snapshot.writes_indexed_data,
@@ -1104,6 +1110,7 @@ mod tests {
         assert!(plan.writes_indexed_data);
         assert!(plan.requires_validation);
         assert_eq!(plan.validation_covers_budget, None);
+        assert!(plan.acl.is_empty());
         assert!(plan.plan_id.starts_with("plan-"));
 
         covered_validation_state(temp.path(), "work-code");
@@ -1381,6 +1388,7 @@ mod tests {
             source: "work-code".into(),
             kind: "filesystem".into(),
             project: "work".into(),
+            acl: vec!["work".into(), "admin".into()],
             status: "succeeded",
             summary: "done".into(),
             log: "secret output must never appear".into(),
@@ -1395,6 +1403,7 @@ mod tests {
         assert_eq!(event["event"], "source.initial-sync.completed");
         assert_eq!(event["budget"], "medium");
         assert_eq!(event["writes_indexed_data"], true);
+        assert_eq!(event["acl"], serde_json::json!(["work", "admin"]));
         assert_eq!(event["secret_values_recorded"], false);
         assert_eq!(event["source_content_recorded"], false);
         assert!(event.get("log").is_none());

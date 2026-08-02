@@ -99,6 +99,7 @@ export const demoStatus: BrainStatus = {
       source: name,
       kind,
       project,
+      acl: [project],
       enabled: name !== 'work-code',
       max_documents: 2000,
       max_bytes: 134217728,

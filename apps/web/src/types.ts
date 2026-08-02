@@ -91,6 +91,7 @@ export type ConfiguredSourceSummary = {
   kind: string
   project: string
   enabled: boolean
+  acl: string[]
   max_documents: number
   max_bytes: number
   max_duration_seconds: number
@@ -281,6 +282,7 @@ export type DesktopSourceJob = {
   source: string
   kind: string
   project: string
+  acl: string[]
   status: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
   summary: string
   log: string
@@ -309,6 +311,7 @@ export type DesktopInitialSyncPlan = {
   source: string
   kind: string
   project: string
+  acl: string[]
   enabled: boolean
   budget: InitialSyncBudget
   budget_documents: number
