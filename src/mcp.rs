@@ -21,6 +21,7 @@ use crate::{
 const MAX_SCOPE_BYTES: usize = 256;
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SearchParams {
     query: String,
     project: Option<String>,
@@ -29,6 +30,7 @@ pub struct SearchParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ContextParams {
     query: String,
     project: Option<String>,
@@ -38,6 +40,7 @@ pub struct ContextParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DomainSearchParams {
     query: String,
     project: Option<String>,
@@ -590,5 +593,9 @@ mod tests {
         assert!(validate_scopes(Some("work"), None).is_ok());
         assert!(validate_scopes(Some(""), None).is_err());
         assert!(validate_scopes(None, Some(&"x".repeat(MAX_SCOPE_BYTES + 1))).is_err());
+        assert!(
+            serde_json::from_str::<SearchParams>(r#"{"query":"work","unexpected":"field"}"#)
+                .is_err()
+        );
     }
 }
