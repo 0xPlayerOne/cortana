@@ -43,6 +43,8 @@ import type {
   Evidence,
 } from './types'
 
+const STATUS_REFRESH_MS = 15_000
+
 export function App() {
   const [query, setQuery] = useState('How do releases work?')
   const [activeQuery, setActiveQuery] = useState(query)
@@ -112,20 +114,48 @@ export function App() {
   }, [documentQuery])
 
   useEffect(() => {
-    const controller = new AbortController()
-    const statusRequest = getStatus(controller.signal)
-      .then(setStatus)
-      .catch((caught: unknown) => {
-        if (controller.signal.aborted) return
-        setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
-      })
-    void statusRequest.finally(() => {
-      // Status is independent from an in-flight query. If a user submits a
-      // search before the first health request finishes, the status response
-      // must not hide the query's loading state.
-      if (!controller.signal.aborted && searchRequestRef.current === 0) setLoading(false)
-    })
-    return () => controller.abort()
+    let disposed = false
+    let initialRequest = true
+    let controller: AbortController | null = null
+
+    const refresh = () => {
+      controller?.abort()
+      const nextController = new AbortController()
+      controller = nextController
+      const isInitialRequest = initialRequest
+      initialRequest = false
+      void getStatus(nextController.signal)
+        .then((next) => {
+          if (disposed || nextController.signal.aborted) return
+          setStatus(next)
+          setStatusError('')
+        })
+        .catch((caught: unknown) => {
+          if (disposed || nextController.signal.aborted) return
+          setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
+        })
+        .finally(() => {
+          // Status is independent from an in-flight query. If a user submits
+          // a search before the first health request finishes, the status
+          // response must not hide the query's loading state.
+          if (
+            isInitialRequest &&
+            !disposed &&
+            !nextController.signal.aborted &&
+            searchRequestRef.current === 0
+          ) {
+            setLoading(false)
+          }
+        })
+    }
+
+    refresh()
+    const timer = window.setInterval(refresh, STATUS_REFRESH_MS)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+      controller?.abort()
+    }
   }, [])
 
   useEffect(() => {
