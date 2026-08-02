@@ -25,7 +25,12 @@ describe('guided setup progress', () => {
         scanned_at_unix_seconds: 1,
         platform: 'macos',
         tools_ready: true,
-        core: { passed: true, query_mode: 'extractive', checks: [] },
+        core: {
+          passed: true,
+          query_mode: 'extractive',
+          embedding_generation: { stored: null, configured: 'deterministic:256' },
+          checks: [],
+        },
         core_error: null,
         tools: [],
       }

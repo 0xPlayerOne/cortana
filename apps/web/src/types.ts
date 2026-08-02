@@ -381,6 +381,10 @@ export type DesktopReadiness = {
   core: {
     passed: boolean
     query_mode: string
+    embedding_generation: {
+      stored: string | null
+      configured: string
+    }
     checks: Array<{ name: string; passed: boolean; detail: string }>
   } | null
   core_error: string | null

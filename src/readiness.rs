@@ -13,7 +13,14 @@ use crate::store::Store;
 pub struct ReadinessReport {
     pub passed: bool,
     pub query_mode: String,
+    pub embedding_generation: EmbeddingGeneration,
     pub checks: Vec<ReadinessCheck>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EmbeddingGeneration {
+    pub stored: Option<String>,
+    pub configured: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -32,6 +39,7 @@ pub async fn run(
     allow_sync_service: bool,
 ) -> ReadinessReport {
     let database = database_check(store);
+    let embedding_generation = embedding_generation_status(store, embedder);
     let embedding_index = embedding_index_check(store, embedder);
     let acl = public_acl_check(config, store);
     let backup = backup_check(&config.data_dir.join("backups"), max_backup_age_hours);
@@ -61,6 +69,7 @@ pub async fn run(
             "extractive"
         }
         .into(),
+        embedding_generation,
         checks,
     }
 }
@@ -185,6 +194,16 @@ fn embedding_index_check(store: &Store, embedder: &dyn Embedder) -> ReadinessChe
             passed: false,
             detail: error.to_string(),
         },
+    }
+}
+
+fn embedding_generation_status(store: &Store, embedder: &dyn Embedder) -> EmbeddingGeneration {
+    EmbeddingGeneration {
+        stored: store
+            .stats()
+            .ok()
+            .and_then(|stats| stats.embedding_fingerprint),
+        configured: embedder.fingerprint(),
     }
 }
 

@@ -681,6 +681,18 @@ async fn desktop_readiness_scan(app: AppHandle) -> readiness::ReadinessSnapshot 
 }
 
 #[tauri::command]
+async fn desktop_embedding_generation_migrate(
+    app: AppHandle,
+    from: String,
+    approved: bool,
+) -> Result<String, String> {
+    if !approved {
+        return Err("embedding generation migration requires explicit approval".into());
+    }
+    readiness::migrate_embedding_generation(&app, &from).await
+}
+
+#[tauri::command]
 async fn desktop_path_pick(app: AppHandle, kind: String) -> Result<Option<String>, String> {
     paths::pick(app, &kind).await
 }
@@ -955,6 +967,7 @@ pub fn run() {
             desktop_settings_import,
             desktop_path_pick,
             desktop_readiness_scan,
+            desktop_embedding_generation_migrate,
             desktop_installer_start,
             desktop_installer_status,
             desktop_installer_cancel,

@@ -35,6 +35,7 @@ afterEach(() => {
   state.scheduleGetCalls = 0
   state.scheduleSaveCalls = 0
   state.openSecretFileCalls = 0
+  state.embeddingMigrationCalls = []
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -83,6 +84,7 @@ const state = {
   settings: desktopSettings as DesktopSettings,
   sourceJob: null as DesktopSourceJob | null,
   authorizationCalls: [] as string[],
+  embeddingMigrationCalls: [] as string[],
   getDocumentsCalls: [] as Array<{
     workspace: string | undefined
     source: string | undefined
@@ -289,6 +291,10 @@ mock.module('./api', () => ({
             },
           ],
         }),
+  migrateDesktopEmbeddingGeneration: (from: string) => {
+    state.embeddingMigrationCalls.push(from)
+    return Promise.resolve('embedding generation migrated')
+  },
   startDesktopInstaller: (tool: string) => {
     state.installerJob = {
       id: 'install-1',
@@ -1120,6 +1126,55 @@ test('successful first-launch readiness scan releases the scan control', async (
   } finally {
     state.settings = originalSettings
     state.readinessScan = originalScan
+  }
+})
+
+test('embedding generation mismatch offers a confirmed desktop adoption action', async () => {
+  const originalScan = state.readinessScan
+  const originalConfirm = window.confirm
+  let scanCalls = 0
+  state.readinessScan = () => {
+    scanCalls += 1
+    const migrated = scanCalls > 1
+    return Promise.resolve({
+      scanned_at_unix_seconds: 1785000000 + scanCalls,
+      platform: 'macos',
+      tools_ready: true,
+      core: {
+        passed: migrated,
+        query_mode: 'extractive',
+        embedding_generation: {
+          stored: migrated ? 'openai:http://127.0.0.1:6999/v1:model:256' : 'legacy:model:256',
+          configured: 'openai:http://127.0.0.1:6999/v1:model:256',
+        },
+        checks: [
+          {
+            name: 'embedding-index',
+            passed: migrated,
+            detail: migrated ? 'index generation matches configured' : 'generation mismatch',
+          },
+        ],
+      },
+      core_error: null,
+      tools: [],
+    })
+  }
+  window.confirm = () => true
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Run readiness scan' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Adopt stored generation' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt stored generation' }))
+    await waitFor(() =>
+      expect(screen.getByText('Embedding generation adopted and readiness was rescanned.')).toBeTruthy()
+    )
+    expect(state.embeddingMigrationCalls).toEqual(['legacy:model:256'])
+  } finally {
+    state.readinessScan = originalScan
+    window.confirm = originalConfirm
   }
 })
 

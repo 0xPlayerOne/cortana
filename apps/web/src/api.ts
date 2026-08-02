@@ -60,6 +60,11 @@ export async function scanDesktopReadiness(): Promise<DesktopReadiness> {
   return invokeDesktop<DesktopReadiness>('desktop_readiness_scan')
 }
 
+export async function migrateDesktopEmbeddingGeneration(from: string): Promise<string> {
+  if (!isDesktopApp) throw new Error('Embedding generation migration is available in Cortana Desktop')
+  return invokeDesktop<string>('desktop_embedding_generation_migrate', { from, approved: true })
+}
+
 export async function getDesktopInfo(): Promise<DesktopInfo> {
   if (!isDesktopApp) throw new Error('Desktop information is available in Cortana Desktop')
   return invokeDesktop<DesktopInfo>('desktop_info')

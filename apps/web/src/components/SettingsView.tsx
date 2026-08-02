@@ -39,6 +39,7 @@ import {
   installDesktopServices,
   installDesktopSyncService,
   importDesktopSettings,
+  migrateDesktopEmbeddingGeneration,
   isDesktopApp,
   openDesktopSourceSetup,
   openDesktopProject,
@@ -1978,7 +1979,9 @@ function ReadinessSection({
   pollInstaller?: boolean
 }) {
   const [scanning, setScanning] = useState(false)
+  const [migratingGeneration, setMigratingGeneration] = useState(false)
   const [error, setError] = useState('')
+  const [migrationNotice, setMigrationNotice] = useState('')
   const autoScanAttemptedRef = useRef(false)
 
   useEffect(() => {
@@ -2024,6 +2027,7 @@ function ReadinessSection({
   const scan = async () => {
     setScanning(true)
     setError('')
+    setMigrationNotice('')
     try {
       const next = await (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
       onResult(next)
@@ -2031,6 +2035,32 @@ function ReadinessSection({
       setError(caught instanceof Error ? caught.message : 'Readiness scan failed')
     } finally {
       setScanning(false)
+    }
+  }
+
+  const migrateGeneration = async () => {
+    const generation = readiness?.core?.embedding_generation
+    if (!generation?.stored || generation.stored === generation.configured) return
+    const from = generation.stored
+    if (
+      !window.confirm(
+        `Adopt the stored embedding generation?\n\n${from}\n\nUse this only when the configured model, dimension, and vector space are unchanged and only the provider fingerprint changed. Cortana will create a verified backup, update generation metadata, and clear derived caches. Indexed documents will not be rebuilt. Continue?`
+      )
+    ) {
+      return
+    }
+    setMigratingGeneration(true)
+    setError('')
+    setMigrationNotice('')
+    try {
+      await migrateDesktopEmbeddingGeneration(from)
+      const next = await (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
+      onResult(next)
+      setMigrationNotice('Embedding generation adopted and readiness was rescanned.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Embedding generation migration failed')
+    } finally {
+      setMigratingGeneration(false)
     }
   }
 
@@ -2061,9 +2091,14 @@ function ReadinessSection({
     }
   }, [autoScan, onReadinessScan, onResult, readiness])
 
-  const readinessInFlight = scanning || readinessActivity?.status === 'running'
+  const readinessInFlight =
+    scanning || migratingGeneration || readinessActivity?.status === 'running'
   const readinessActivityError =
     readinessActivity?.status === 'failed' ? readinessActivity.detail : null
+  const embeddingGeneration = readiness?.core?.embedding_generation
+  const embeddingGenerationMismatch = Boolean(
+    embeddingGeneration?.stored && embeddingGeneration.stored !== embeddingGeneration.configured
+  )
 
   const install = async (tool: string, label: string) => {
     const action =
@@ -2124,6 +2159,11 @@ function ReadinessSection({
           <AlertTriangle size={16} /> <span>{error || readinessActivityError}</span>
         </div>
       )}
+      {migrationNotice && (
+        <div className="safety-note" role="status">
+          <Check size={16} /> <span>{migrationNotice}</span>
+        </div>
+      )}
       {readiness && (
         <>
           <div className="readiness-summary">
@@ -2171,6 +2211,23 @@ function ReadinessSection({
                 </div>
               </article>
             ))}
+            {embeddingGenerationMismatch && (
+              <div className="safety-note" role="status">
+                <span>
+                  The index uses a different embedding generation. Adopt it only after confirming
+                  that the vectors are interchangeable; otherwise rebuild or import a new
+                  generation.
+                </span>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={readinessInFlight}
+                  onClick={() => void migrateGeneration()}
+                >
+                  {migratingGeneration ? 'Adopting generation…' : 'Adopt stored generation'}
+                </button>
+              </div>
+            )}
           </div>
           {readiness.core && !readiness.core.passed && onOpenServices && (
             <div className="safety-note" role="status">

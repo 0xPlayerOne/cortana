@@ -13,8 +13,10 @@ use tokio::{process::Command, time::timeout};
 
 const VERSION_TIMEOUT: Duration = Duration::from_secs(3);
 const READINESS_TIMEOUT: Duration = Duration::from_secs(90);
+const EMBEDDING_MIGRATION_TIMEOUT: Duration = Duration::from_secs(90);
 const MAX_DETAIL_BYTES: usize = 2_048;
 const MAX_READINESS_BYTES: usize = 64 * 1024;
+const MAX_EMBEDDING_FINGERPRINT_BYTES: usize = 512;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ToolStatus {
@@ -100,6 +102,37 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
 async fn sidecar_readiness(app: &AppHandle) -> Result<Value, String> {
     let output = sidecar_output(app, &["readiness"], READINESS_TIMEOUT).await?;
     parse_readiness_output(&output.stdout, &output.stderr)
+}
+
+pub async fn migrate_embedding_generation(app: &AppHandle, from: &str) -> Result<String, String> {
+    validate_embedding_fingerprint(from)?;
+    let args = ["migrate-embedding", "--from", from, "--force"];
+    let output = sidecar_output(app, &args, EMBEDDING_MIGRATION_TIMEOUT).await?;
+    if !output.status.success() {
+        let detail = bounded_output(if output.stderr.is_empty() {
+            &output.stdout
+        } else {
+            &output.stderr
+        });
+        return Err(if detail.is_empty() {
+            "embedding generation migration failed".into()
+        } else {
+            detail
+        });
+    }
+    Ok(bounded_output(&output.stdout))
+}
+
+fn validate_embedding_fingerprint(value: &str) -> Result<(), String> {
+    if value.is_empty() || value.len() > MAX_EMBEDDING_FINGERPRINT_BYTES {
+        return Err(format!(
+            "embedding fingerprint must contain 1 to {MAX_EMBEDDING_FINGERPRINT_BYTES} bytes"
+        ));
+    }
+    if value.chars().any(char::is_control) {
+        return Err("embedding fingerprint must not contain control characters".into());
+    }
+    Ok(())
 }
 
 async fn sidecar_output(
@@ -556,5 +589,18 @@ mod tests {
     fn readiness_json_is_not_silently_truncated() {
         assert!(parse_readiness_output(br#"{"ready":true}"#, b"").is_ok());
         assert!(parse_readiness_output(&vec![b'x'; MAX_READINESS_BYTES + 1], b"").is_err());
+    }
+
+    #[test]
+    fn embedding_fingerprint_validation_is_exact_and_bounded() {
+        assert!(
+            validate_embedding_fingerprint("openai:http://127.0.0.1:6999/v1:model:256").is_ok()
+        );
+        assert!(validate_embedding_fingerprint("").is_err());
+        assert!(validate_embedding_fingerprint("legacy\nmodel").is_err());
+        assert!(
+            validate_embedding_fingerprint(&"x".repeat(MAX_EMBEDDING_FINGERPRINT_BYTES + 1))
+                .is_err()
+        );
     }
 }

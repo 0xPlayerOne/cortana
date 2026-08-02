@@ -55,6 +55,12 @@ environment without a shell or path supplied by the renderer.
 Unbundled local release binaries use the generated checkout resource while packaged applications
 prefer their embedded resource directory.
 
+If the core readiness report finds a stored embedding generation that differs from the configured
+fingerprint, the panel keeps the exact generation details visible and offers a confirmation-gated
+**Adopt stored generation** action. It creates a verified backup, clears derived caches, and never
+re-embeds or reconciles the corpus; model or dimension changes still require a new generation
+rebuild.
+
 The Settings **Sources** panel edits typed connector configuration, workspace assignments,
 credential references, and per-source safety budgets. Secret values are write-only. External
 command connectors remain read-only because their command arrays cross the native process

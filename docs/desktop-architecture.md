@@ -52,6 +52,13 @@ desktop shell retains the latest snapshot and scan activity across Settings navi
 installer completion schedules one shell-owned follow-up scan so readiness reflects the installed
 state even when the Settings view is not mounted.
 
+When the core report exposes a stored embedding generation that differs from the configured
+fingerprint, Settings shows an explicit confirmation-gated **Adopt stored generation** action. The
+native command passes only the exact reported fingerprint to `cortana migrate-embedding`; the CLI
+takes the sync lock, verifies and backs up SQLite, clears derived caches, and leaves indexed
+documents untouched. Operators must use it only after confirming that the model, dimension, and
+vector space are interchangeable; a true model change still requires a new generation rebuild.
+
 Tool installation is a second native boundary. The renderer can request only a fixed tool ID and
 must set an explicit approval flag after showing a confirmation. Native code maps that ID to a
 platform-specific command, permits one job at a time, bounds and sanitizes returned logs, supports
