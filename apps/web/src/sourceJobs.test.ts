@@ -102,6 +102,13 @@ test('upsertJob does not regress a terminal snapshot to an older active poll', (
   expect(upsertJob([terminal], staleActive)).toEqual([terminal])
 })
 
+test('upsertJob does not replace a newer terminal snapshot with an older completion', () => {
+  const newer = jobOf('a', 'succeeded', { completed_at_unix_seconds: 1785000200 })
+  const older = jobOf('a', 'failed', { completed_at_unix_seconds: 1785000100 })
+
+  expect(upsertJob([newer], older)).toEqual([newer])
+})
+
 test('upsertJob keeps the snapshot list bounded to the newest entries', () => {
   let jobs: DesktopSourceJob[] = []
   for (let index = 0; index < MAX_SOURCE_JOB_SNAPSHOTS + 3; index += 1) {

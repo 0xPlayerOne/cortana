@@ -26,10 +26,18 @@ export function isMissingJobError(error: unknown): boolean {
 export function upsertJob(jobs: DesktopSourceJob[], next: DesktopSourceJob): DesktopSourceJob[] {
   const existing = jobs.find((job) => job.id === next.id)
   // A poll can resolve after the action boundary has already remembered a
-  // terminal result. Never let that older in-flight snapshot make a completed
-  // job look active again in the shell.
-  if (existing && !isActiveJob(existing) && isActiveJob(next)) return jobs
+  // newer result. Never let that older in-flight snapshot make a completed
+  // job look active again or replace its terminal summary in the shell.
+  if (existing && snapshotRegresses(existing, next)) return jobs
   return [next, ...jobs.filter((job) => job.id !== next.id)].slice(0, MAX_SOURCE_JOB_SNAPSHOTS)
+}
+
+function snapshotRegresses(existing: DesktopSourceJob, next: DesktopSourceJob): boolean {
+  if (existing.completed_at_unix_seconds !== null) {
+    if (next.completed_at_unix_seconds === null) return true
+    if (next.completed_at_unix_seconds < existing.completed_at_unix_seconds) return true
+  }
+  return existing.status === 'cancelling' && next.status === 'running'
 }
 
 export function dropJob(jobs: DesktopSourceJob[], id: string): DesktopSourceJob[] {
