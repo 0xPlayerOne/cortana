@@ -14,6 +14,14 @@ version files, then merged automatically without running the code-change test
 matrix. Topic and staging-to-main promotion pull requests still run the complete
 CI, test, security, and CodeQL gates.
 
+## 0.19.0 release-history recovery
+
+The Hindsight desktop settings, deterministic evaluation gate, and bounded outbox
+telemetry landed together in the 2026-08-02 promotion. A metadata-only marker
+commit restores those already-published capabilities to Release Please's
+conventional-commit history after that promotion was merged as one squash commit;
+it does not change runtime behavior or trigger a corpus sync.
+
 ## Desktop release gates
 
 The desktop pipeline follows a staged audit policy:
