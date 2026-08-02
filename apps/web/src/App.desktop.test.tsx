@@ -186,3 +186,21 @@ test('running source jobs stay visible in the shell after leaving the settings v
     state.sourceJob = null
   }
 })
+
+test('hindsight status section remains explicit about being optional', async () => {
+  render(<App />)
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Hindsight' }))
+  expect(screen.getByText('Hindsight memory sidecar')).toBeTruthy()
+  expect(screen.getByText(/intentionally not wired into normal ingestion/i)).toBeTruthy()
+  expect(screen.getByDisplayValue('Optional sidecar')).toBeTruthy()
+  expect(screen.getByDisplayValue('Disabled')).toBeTruthy()
+  expect(screen.getByLabelText('Enabled')).toBeTruthy()
+})
