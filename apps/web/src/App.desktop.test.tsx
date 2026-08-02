@@ -638,6 +638,30 @@ test('failed first-launch readiness scan waits for an explicit retry', async () 
   }
 })
 
+test('successful first-launch readiness scan releases the scan control', async () => {
+  const originalSettings = state.settings
+  const originalScan = state.readinessScan
+  state.settings = { ...desktopSettings, needs_setup: true }
+  state.readinessScan = () =>
+    Promise.resolve({
+      scanned_at_unix_seconds: 1785000000,
+      platform: 'macos',
+      tools_ready: true,
+      core: null,
+      core_error: null,
+      tools: [],
+    })
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('Local tools ready')).toBeTruthy())
+    const scan = screen.getByRole('button', { name: 'Run again' })
+    expect(scan.hasAttribute('disabled')).toBe(false)
+  } finally {
+    state.settings = originalSettings
+    state.readinessScan = originalScan
+  }
+})
+
 test('completed installers trigger one shell-owned post-install readiness scan', async () => {
   const originalConfirm = window.confirm
   state.installerJob = null

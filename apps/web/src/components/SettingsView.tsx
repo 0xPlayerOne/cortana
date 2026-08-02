@@ -1737,13 +1737,7 @@ function ReadinessSection({
   }
 
   useEffect(() => {
-    if (
-      !autoScan ||
-      readinessActivity?.status === 'running' ||
-      readiness ||
-      autoScanAttemptedRef.current
-    )
-      return
+    if (!autoScan || readiness || autoScanAttemptedRef.current) return
     // First-launch readiness is intentionally one-shot. A failed scan is
     // surfaced for the operator to retry explicitly; it must not loop every
     // time the shell-owned activity status changes to failed.
@@ -1767,7 +1761,7 @@ function ReadinessSection({
     return () => {
       active = false
     }
-  }, [autoScan, onReadinessScan, onResult, readiness, readinessActivity?.status])
+  }, [autoScan, onReadinessScan, onResult, readiness])
 
   const readinessInFlight = scanning || readinessActivity?.status === 'running'
   const readinessActivityError =
