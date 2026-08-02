@@ -337,9 +337,9 @@ test('desktop shell does not present a stale service report after refresh failur
   )
 
   expect(screen.getByText('Services: unavailable')).toBeTruthy()
-  expect(screen.getByRole('button', { name: 'Open service health' }).getAttribute('title')).toContain(
-    'service status transport failed'
-  )
+  expect(
+    screen.getByRole('button', { name: 'Open service health' }).getAttribute('title')
+  ).toContain('service status transport failed')
 })
 
 test('query number fields keep drafts inside native bounds', async () => {

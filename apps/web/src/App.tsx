@@ -355,7 +355,7 @@ export function App() {
       .then(setDesktopUpdate)
       .catch(() => {
         // The Updates section will surface a more specific updater error.
-    })
+      })
   }, [])
 
   useEffect(() => {
@@ -1479,9 +1479,7 @@ export function ServiceHealthIndicator({
     )
   }
   if (!report) return null
-  const core = report.services.filter((service) =>
-    ['embedding', 'server'].includes(service.name)
-  )
+  const core = report.services.filter((service) => ['embedding', 'server'].includes(service.name))
   const coreLoaded = core.filter((service) => service.loaded).length
   const coreExitFailure = core.some(
     (service) => service.last_exit_status !== null && service.last_exit_status !== 0
