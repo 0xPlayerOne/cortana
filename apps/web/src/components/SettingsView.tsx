@@ -1675,6 +1675,12 @@ function WorkspaceSection({
                 <button
                   type="button"
                   aria-label={`Remove ${workspace.name}`}
+                  disabled={settings.sources.some((source) => source.project === workspace.id)}
+                  title={
+                    settings.sources.some((source) => source.project === workspace.id)
+                      ? 'Move assigned sources before removing this workspace'
+                      : 'Remove workspace'
+                  }
                   onClick={() =>
                     update((current) => ({
                       ...current,
@@ -1697,6 +1703,12 @@ function WorkspaceSection({
             <Field label="Scope ID" hint="lowercase letters, numbers, dashes">
               <input
                 value={workspace.id}
+                disabled={settings.sources.some((source) => source.project === workspace.id)}
+                title={
+                  settings.sources.some((source) => source.project === workspace.id)
+                    ? 'Move assigned sources before changing this workspace ID'
+                    : undefined
+                }
                 onChange={(event) => changeWorkspace(index, { id: event.target.value })}
                 required
                 maxLength={32}

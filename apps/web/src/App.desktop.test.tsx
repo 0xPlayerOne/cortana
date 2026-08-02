@@ -292,6 +292,30 @@ test('settings add controls avoid reusing removed identifiers', async () => {
   }
 })
 
+test('workspace controls protect scopes assigned to sources', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    sources: [{ ...workSource, project: 'work' }],
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+
+    expect(
+      (screen.getByRole('button', { name: 'Remove Work' }) as HTMLButtonElement).disabled
+    ).toBe(true)
+    expect((screen.getAllByLabelText(/Scope ID/)[0] as HTMLInputElement).disabled).toBe(true)
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
 test('settings warns before discarding dirty changes', async () => {
   const originalConfirm = window.confirm
   const responses = [false, true]
