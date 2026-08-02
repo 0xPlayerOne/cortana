@@ -1,9 +1,10 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use ignore::WalkBuilder;
+use reqwest::Url;
 use serde_json::json;
 
 use crate::model::Document;
@@ -147,12 +148,15 @@ fn filesystem_document(
         .ok()
         .map(DateTime::<Utc>::from)
         .unwrap_or_else(Utc::now);
+    let uri = Url::from_file_path(path)
+        .map(|url| url.to_string())
+        .map_err(|_| anyhow!("filesystem path cannot be represented as a file URI"))?;
     Ok(Some(Document {
         source: source.to_string(),
         source_id: relative.to_string_lossy().into_owned(),
         title: relative.to_string_lossy().into_owned(),
         content,
-        uri: Some(format!("file://{}", path.to_string_lossy())),
+        uri: Some(uri),
         updated_at,
         project: project.to_string(),
         acl: Vec::new(),
@@ -260,5 +264,21 @@ mod tests {
 
         assert_eq!(documents.len(), 1);
         assert_eq!(documents[0].source_id, "keep.rs");
+    }
+
+    #[test]
+    fn filesystem_source_escapes_special_characters_in_file_uris() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let root = directory.path().join("project with #hash");
+        std::fs::create_dir_all(&root).expect("source root");
+        let file = root.join("notes ? draft.md");
+        std::fs::write(&file, "encoded source link").expect("source file");
+
+        let documents = filesystem_documents(&root, "code", "work").expect("documents");
+        let expected = Url::from_file_path(file.canonicalize().expect("canonical file"))
+            .expect("file URL")
+            .to_string();
+
+        assert_eq!(documents[0].uri.as_deref(), Some(expected.as_str()));
     }
 }
