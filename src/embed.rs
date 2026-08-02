@@ -8,7 +8,7 @@ use futures_util::future::join_all;
 use reqwest::{Client, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::sync::{Mutex as AsyncMutex, Notify};
+use tokio::sync::{Mutex as AsyncMutex, watch};
 
 use crate::config::{EmbeddingConfig, validate_provider_base_url};
 use crate::store::Store;
@@ -35,7 +35,7 @@ pub struct CachedEmbedder {
     inner: Arc<dyn Embedder>,
     store: Store,
     max_entries: usize,
-    inflight: Arc<AsyncMutex<HashMap<String, Arc<Notify>>>>,
+    inflight: Arc<AsyncMutex<HashMap<String, watch::Sender<bool>>>>,
 }
 
 impl CachedEmbedder {
@@ -60,18 +60,18 @@ impl CachedEmbedder {
                 return Ok(vector);
             }
 
-            let (leader, notify) = {
+            let (leader, mut ready) = {
                 let mut inflight = self.inflight.lock().await;
-                if let Some(notify) = inflight.get(&key) {
-                    (false, notify.clone())
+                if let Some(sender) = inflight.get(&key) {
+                    (false, sender.subscribe())
                 } else {
-                    let notify = Arc::new(Notify::new());
-                    inflight.insert(key.clone(), notify.clone());
-                    (true, notify)
+                    let (sender, receiver) = watch::channel(false);
+                    inflight.insert(key.clone(), sender);
+                    (true, receiver)
                 }
             };
             if !leader {
-                notify.notified().await;
+                let _ = ready.wait_for(|value| *value).await;
                 continue;
             }
 
@@ -99,8 +99,9 @@ impl CachedEmbedder {
             .await;
 
             let mut inflight = self.inflight.lock().await;
-            inflight.remove(&key);
-            notify.notify_waiters();
+            if let Some(sender) = inflight.remove(&key) {
+                let _ = sender.send(true);
+            }
             drop(inflight);
             return result;
         }
@@ -131,23 +132,26 @@ impl CachedEmbedder {
                     .collect();
             }
 
-            let mut leaders = Vec::<(String, Arc<Notify>)>::new();
-            let mut waiters = Vec::<Arc<Notify>>::new();
+            let mut leaders = Vec::<(String, watch::Sender<bool>)>::new();
+            let mut waiters = Vec::<watch::Receiver<bool>>::new();
             {
                 let mut inflight = self.inflight.lock().await;
                 for text in missing.keys() {
                     let key = format!("{fingerprint}\u{0}{text}");
-                    if let Some(notify) = inflight.get(&key) {
-                        waiters.push(notify.clone());
+                    if let Some(sender) = inflight.get(&key) {
+                        waiters.push(sender.subscribe());
                     } else {
-                        let notify = Arc::new(Notify::new());
-                        inflight.insert(key, notify.clone());
-                        leaders.push((text.clone(), notify));
+                        let (sender, receiver) = watch::channel(false);
+                        inflight.insert(key, sender.clone());
+                        drop(receiver);
+                        leaders.push((text.clone(), sender));
                     }
                 }
             }
 
-            let waiting = join_all(waiters.into_iter().map(|notify| notify.notified_owned()));
+            let waiting = join_all(waiters.into_iter().map(|mut receiver| async move {
+                let _ = receiver.wait_for(|value| *value).await;
+            }));
             if leaders.is_empty() {
                 waiting.await;
                 continue;
@@ -159,7 +163,7 @@ impl CachedEmbedder {
                 .collect::<Vec<_>>();
             let leader_keys = leaders
                 .iter()
-                .map(|(text, notify)| (format!("{fingerprint}\u{0}{text}"), notify.clone()))
+                .map(|(text, sender)| (format!("{fingerprint}\u{0}{text}"), sender.clone()))
                 .collect::<Vec<_>>();
             let leader_result = async {
                 let result: Result<Vec<(String, Vec<f32>)>> = match self
@@ -194,9 +198,9 @@ impl CachedEmbedder {
                     Err(error) => Err(error),
                 };
                 let mut inflight = self.inflight.lock().await;
-                for (key, notify) in leader_keys {
+                for (key, sender) in leader_keys {
                     inflight.remove(&key);
-                    notify.notify_waiters();
+                    let _ = sender.send(true);
                 }
                 result
             };
