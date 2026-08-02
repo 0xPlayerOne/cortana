@@ -2482,23 +2482,14 @@ fn configured_connector_command(
                 .display()
                 .to_string(),
         ]);
-        if bounded_max_documents.is_some() {
+        if let Some(max_documents) = bounded_max_documents {
             // This is a root-level connector option and must precede the
             // subcommand for argparse to accept it.
             command.push("--no-cache".into());
+            command.extend(["--max-documents".into(), max_documents.to_string()]);
         }
         command.push(source.kind.clone());
         connector_arguments(&mut command, source)?;
-        if let Some(max_documents) = bounded_max_documents {
-            // Bounded validation must not mutate a persistent connector cache
-            // with a partial snapshot. Drive also needs an explicit document
-            // cap because it downloads a whole listing page before yielding
-            // JSONL; without this, a 25-document validation can fetch 1,000
-            // files and hit the wall-clock limit before the spool is checked.
-            if source.kind == "google-drive" {
-                command.extend(["--max-documents".into(), max_documents.to_string()]);
-            }
-        }
         command
     };
     anyhow::ensure!(
@@ -2759,6 +2750,11 @@ mod tests {
                 .map(|window| window[1].as_str()),
             Some("25")
         );
+        let max_documents = command
+            .iter()
+            .position(|argument| argument == "--max-documents")
+            .expect("bounded connector document cap");
+        assert!(max_documents < subcommand);
     }
 
     #[test]

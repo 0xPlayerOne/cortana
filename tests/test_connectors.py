@@ -1242,6 +1242,27 @@ def test_connector_cli_emits_buzz_jsonl(tmp_path: Path, capsys: pytest.CaptureFi
     assert "emitted=1" in captured.err
 
 
+def test_connector_cli_applies_bounded_document_cap(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    documents = [
+        Document(source="buzz", source_id=str(index), title="Event", content="body")
+        for index in range(3)
+    ]
+    monkeypatch.setattr(connector_cli, "fetch_buzz", lambda *_args: documents)
+
+    assert connector_cli.main(["--max-documents", "2", "buzz"]) == 0
+
+    captured = capsys.readouterr()
+    assert len(captured.out.splitlines()) == 2
+    assert "emitted=2" in captured.err
+
+
+def test_connector_cli_rejects_non_positive_document_cap() -> None:
+    with pytest.raises(RuntimeError, match="greater than zero"):
+        connector_cli.main(["--max-documents", "0", "buzz"])
+
+
 def test_connector_cli_dispatches_chat_sources(monkeypatch: pytest.MonkeyPatch) -> None:
     expected = [Document(source="test", source_id="1", title="One", content="Body")]
     monkeypatch.setattr(connector_cli, "fetch_slack", lambda *_args: expected)
