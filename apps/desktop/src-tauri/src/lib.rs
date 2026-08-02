@@ -123,6 +123,7 @@ struct DesktopInfo {
 struct TrayStatus {
     health: MenuItem<Wry>,
     corpus: MenuItem<Wry>,
+    ingestion: MenuItem<Wry>,
 }
 
 #[tauri::command]
@@ -562,9 +563,11 @@ fn show_main_window(app: &AppHandle) {
 fn install_tray(app: &mut tauri::App) -> tauri::Result<TrayStatus> {
     let health = MenuItem::with_id(app, "health", "Runtime: checking", false, None::<&str>)?;
     let corpus = MenuItem::with_id(app, "corpus", "Corpus: checking", false, None::<&str>)?;
+    let ingestion =
+        MenuItem::with_id(app, "ingestion", "Ingestion: checking", false, None::<&str>)?;
     let show = MenuItem::with_id(app, "show", "Show Cortana", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Cortana Desktop", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&health, &corpus, &show, &quit])?;
+    let menu = Menu::with_items(app, &[&health, &corpus, &ingestion, &show, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id("cortana")
         .menu(&menu)
@@ -595,7 +598,48 @@ fn install_tray(app: &mut tauri::App) -> tauri::Result<TrayStatus> {
     }
     builder.build(app)?;
 
-    Ok(TrayStatus { health, corpus })
+    Ok(TrayStatus {
+        health,
+        corpus,
+        ingestion,
+    })
+}
+
+fn ingestion_label(status: &Value) -> String {
+    let runs = status
+        .get("sync_runs")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let running = runs
+        .iter()
+        .filter(|run| run.get("status").and_then(Value::as_str) == Some("running"))
+        .count();
+    if running > 0 {
+        return format!("Ingestion: {running} running");
+    }
+    let attention = runs
+        .iter()
+        .filter(|run| {
+            matches!(
+                run.get("status").and_then(Value::as_str),
+                Some("failed" | "cancelled" | "budget_exceeded")
+            )
+        })
+        .count();
+    if attention > 0 {
+        return format!("Ingestion: {attention} need attention");
+    }
+    if status
+        .get("ingestion")
+        .and_then(|value| value.get("scheduled"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        "Ingestion: scheduled".into()
+    } else {
+        "Ingestion: manual".into()
+    }
 }
 
 async fn refresh_tray(backend: &BackendClient, tray: &TrayStatus) {
@@ -613,10 +657,12 @@ async fn refresh_tray(backend: &BackendClient, tray: &TrayStatus) {
             let _ = tray
                 .corpus
                 .set_text(format!("Corpus: {documents} docs · {chunks} chunks"));
+            let _ = tray.ingestion.set_text(ingestion_label(&status));
         }
         Err(_) => {
             let _ = tray.health.set_text("Runtime: offline");
             let _ = tray.corpus.set_text("Corpus: unavailable");
+            let _ = tray.ingestion.set_text("Ingestion: unavailable");
         }
     }
 }
@@ -768,5 +814,29 @@ mod tests {
         assert!(validate_external_url("file:///tmp/cv.pdf").is_ok());
         assert!(validate_external_url("ftp://example.com").is_err());
         assert!(validate_external_url("javascript:alert(1)").is_err());
+    }
+
+    #[test]
+    fn tray_ingestion_label_reports_bounded_operational_state() {
+        let running = serde_json::json!({
+            "sync_runs": [{"status": "running"}],
+            "ingestion": {"scheduled": false}
+        });
+        assert_eq!(ingestion_label(&running), "Ingestion: 1 running");
+
+        let attention = serde_json::json!({
+            "sync_runs": [{"status": "budget_exceeded"}, {"status": "failed"}],
+            "ingestion": {"scheduled": true}
+        });
+        assert_eq!(ingestion_label(&attention), "Ingestion: 2 need attention");
+
+        assert_eq!(
+            ingestion_label(&serde_json::json!({"sync_runs": [], "ingestion": {"scheduled": true}})),
+            "Ingestion: scheduled"
+        );
+        assert_eq!(
+            ingestion_label(&serde_json::json!({})),
+            "Ingestion: manual"
+        );
     }
 }
