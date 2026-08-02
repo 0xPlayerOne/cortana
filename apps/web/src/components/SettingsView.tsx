@@ -1879,6 +1879,7 @@ function SourcesSection({
   const activeJob =
     (job && ['running', 'cancelling'].includes(job.status) ? job : undefined) ??
     sourceJobs?.find((candidate) => ['running', 'cancelling'].includes(candidate.status))
+  const sourceLocked = Boolean(activeJob)
   const requestPlan = async (source: string, budget: InitialSyncBudget) => {
     setInitialSync((current) =>
       current && current.source === source
@@ -1984,13 +1985,15 @@ function SourcesSection({
     }
   }
 
-  const changeSource = (index: number, patch: Partial<SourceSettings>) =>
+  const changeSource = (index: number, patch: Partial<SourceSettings>) => {
+    if (sourceLocked) return
     update((current) => ({
       ...current,
       sources: current.sources.map((source, position) =>
         position === index ? { ...source, ...patch } : source
       ),
     }))
+  }
 
   const addSource = () =>
     update((current) => ({
@@ -2113,12 +2116,19 @@ function SourcesSection({
         <button
           type="button"
           className="secondary-button"
-          disabled={settings.sources.length >= 128}
+          disabled={settings.sources.length >= 128 || Boolean(activeJob)}
           onClick={addSource}
         >
           <Plus size={15} /> Add source
         </button>
       </div>
+
+      {activeJob && (
+        <div className="safety-note" role="status">
+          Source settings are locked while {activeJob.source} is running. Cancel or wait for the
+          operation to finish before changing its identity, credentials, or scope.
+        </div>
+      )}
 
       <div className="source-settings-list">
         {settings.sources.length === 0 && (
@@ -2139,6 +2149,7 @@ function SourcesSection({
                   <input
                     type="checkbox"
                     checked={source.enabled}
+                    disabled={sourceLocked}
                     onChange={(event) => changeSource(index, { enabled: event.target.checked })}
                   />
                   <span>
@@ -2153,7 +2164,7 @@ function SourcesSection({
                   {hasBrowserSetup(source.kind) && (
                     <button
                       type="button"
-                      disabled={!canValidate}
+                      disabled={!canValidate || sourceLocked}
                       title="Open the official provider setup page"
                       onClick={() => void openSetup(source)}
                     >
@@ -2222,7 +2233,7 @@ function SourcesSection({
                   <button
                     type="button"
                     aria-label={`Remove ${source.name}`}
-                    disabled={runningThis}
+                    disabled={sourceLocked}
                     onClick={() => {
                       if (
                         window.confirm(
@@ -2252,7 +2263,7 @@ function SourcesSection({
                 <Field label="Source name" hint="stable lowercase identifier">
                   <input
                     value={source.name}
-                    disabled={!source.editable}
+                    disabled={sourceLocked || !source.editable}
                     required
                     maxLength={64}
                     pattern="[a-z0-9][a-z0-9_-]*"
@@ -2262,7 +2273,7 @@ function SourcesSection({
                 <Field label="Connector">
                   <select
                     value={source.kind}
-                    disabled={!source.editable}
+                    disabled={sourceLocked || !source.editable}
                     onChange={(event) =>
                       changeSource(index, {
                         kind: event.target.value as SourceKind,
@@ -2301,7 +2312,7 @@ function SourcesSection({
                     <div className="path-input">
                       <input
                         value={source.root || ''}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         required={source.enabled}
                         placeholder="/Users/you/Documents"
                         onChange={(event) =>
@@ -2310,7 +2321,7 @@ function SourcesSection({
                       />
                       <button
                         type="button"
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         aria-label="Choose source directory"
                         onClick={() => void choosePath(index, 'directory', 'root')}
                       >
@@ -2324,7 +2335,7 @@ function SourcesSection({
                     <Field label="Source label" hint="identifier stored on indexed documents">
                       <input
                         value={source.source || ''}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         maxLength={128}
                         placeholder={source.name}
                         onChange={(event) =>
@@ -2335,7 +2346,7 @@ function SourcesSection({
                     <Field label="Excluded paths" hint="comma or line separated, relative paths">
                       <input
                         value={source.exclude.join(', ')}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         onChange={(event) =>
                           changeSource(index, { exclude: splitList(event.target.value) })
                         }
@@ -2353,7 +2364,7 @@ function SourcesSection({
                       <div className="path-input">
                         <input
                           value={source.token_path || ''}
-                          disabled={!source.editable}
+                          disabled={sourceLocked || !source.editable}
                           required={source.enabled && !source.token_env}
                           placeholder="/Users/you/.config/cortana/google-token.json"
                           onChange={(event) =>
@@ -2362,7 +2373,7 @@ function SourcesSection({
                         />
                         <button
                           type="button"
-                          disabled={!source.editable}
+                          disabled={sourceLocked || !source.editable}
                           aria-label="Choose Google token destination"
                           onClick={() => void choosePath(index, 'google-token', 'token_path')}
                         >
@@ -2378,7 +2389,7 @@ function SourcesSection({
                       <div className="path-input">
                         <input
                           value={source.oauth_client_path || ''}
-                          disabled={!source.editable}
+                          disabled={sourceLocked || !source.editable}
                           placeholder="/Users/you/Downloads/google-oauth-client.json"
                           onChange={(event) =>
                             changeSource(index, {
@@ -2388,7 +2399,7 @@ function SourcesSection({
                         />
                         <button
                           type="button"
-                          disabled={!source.editable}
+                          disabled={sourceLocked || !source.editable}
                           aria-label="Choose Google OAuth client JSON"
                           onClick={() =>
                             void choosePath(index, 'oauth-client', 'oauth_client_path')
@@ -2404,7 +2415,7 @@ function SourcesSection({
                     >
                       <input
                         value={source.token_env || ''}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         pattern="[A-Z_][A-Z0-9_]*"
                         placeholder="CORTANA_GOOGLE_TOKEN_PATH"
                         onChange={(event) =>
@@ -2420,18 +2431,25 @@ function SourcesSection({
                         <input
                           type="password"
                           autoComplete="new-password"
-                          disabled={!source.editable || !source.token_env}
+                          disabled={sourceLocked || !source.editable || !source.token_env}
                           value={source.token_env ? secretValues[source.token_env] || '' : ''}
                           onChange={(event) => {
                             if (source.token_env) {
-                              onSecret({ ...secretValues, [source.token_env]: event.target.value })
+                              onSecret({
+                                ...secretValues,
+                                [source.token_env]: event.target.value,
+                              })
                             }
                           }}
                         />
                         {source.token_env &&
                           secret?.configured &&
                           !clearedSecrets.has(secret.name) && (
-                            <button type="button" onClick={() => onClearSecret(source.token_env!)}>
+                            <button
+                              type="button"
+                              disabled={sourceLocked}
+                              onClick={() => onClearSecret(source.token_env!)}
+                            >
                               Clear
                             </button>
                           )}
@@ -2440,7 +2458,7 @@ function SourcesSection({
                     <Field label="Google query" hint="optional provider-native filter" wide>
                       <input
                         value={source.query || ''}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         maxLength={2048}
                         placeholder={source.kind === 'gmail' ? 'newer_than:1y' : ''}
                         onChange={(event) =>
@@ -2455,7 +2473,7 @@ function SourcesSection({
                     <Field label="Channel IDs" hint="comma or line separated" wide>
                       <input
                         value={source.channels.join(', ')}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         required={source.enabled}
                         onChange={(event) =>
                           changeSource(index, { channels: splitList(event.target.value) })
@@ -2472,7 +2490,7 @@ function SourcesSection({
                     >
                       <input
                         value={source.token_env || ''}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         required={source.enabled}
                         pattern="[A-Z_][A-Z0-9_]*"
                         onChange={(event) =>
@@ -2485,18 +2503,25 @@ function SourcesSection({
                         <input
                           type="password"
                           autoComplete="new-password"
-                          disabled={!source.editable || !source.token_env}
+                          disabled={sourceLocked || !source.editable || !source.token_env}
                           value={source.token_env ? secretValues[source.token_env] || '' : ''}
                           onChange={(event) => {
                             if (source.token_env) {
-                              onSecret({ ...secretValues, [source.token_env]: event.target.value })
+                              onSecret({
+                                ...secretValues,
+                                [source.token_env]: event.target.value,
+                              })
                             }
                           }}
                         />
                         {source.token_env &&
                           secret?.configured &&
                           !clearedSecrets.has(secret.name) && (
-                            <button type="button" onClick={() => onClearSecret(source.token_env!)}>
+                            <button
+                              type="button"
+                              disabled={sourceLocked}
+                              onClick={() => onClearSecret(source.token_env!)}
+                            >
                               Clear
                             </button>
                           )}
@@ -2509,6 +2534,7 @@ function SourcesSection({
                     <Field label="Document limit" hint="blank uses global budget">
                       <input
                         type="number"
+                        disabled={sourceLocked}
                         min={1}
                         max={1000000}
                         value={source.max_documents ?? ''}
@@ -2522,6 +2548,7 @@ function SourcesSection({
                     <Field label="Content limit (bytes)" hint="blank uses global budget">
                       <input
                         type="number"
+                        disabled={sourceLocked}
                         min={1024}
                         max={1099511627776}
                         value={source.max_bytes ?? ''}
@@ -2533,6 +2560,7 @@ function SourcesSection({
                     <Field label="Content limit (characters)" hint="blank uses connector defaults">
                       <input
                         type="number"
+                        disabled={sourceLocked}
                         min={1}
                         max={10000000}
                         value={source.max_content_chars ?? ''}
@@ -2546,6 +2574,7 @@ function SourcesSection({
                     <Field label="Duration limit (seconds)" hint="blank uses the global budget">
                       <input
                         type="number"
+                        disabled={sourceLocked}
                         min={1}
                         max={86400}
                         value={source.max_duration_seconds ?? ''}
@@ -2558,6 +2587,7 @@ function SourcesSection({
                     </Field>
                     <Field label="Document labels" hint="comma or line separated" wide>
                       <input
+                        disabled={sourceLocked}
                         value={source.labels.join(', ')}
                         onChange={(event) =>
                           changeSource(index, { labels: splitList(event.target.value) })
@@ -2570,6 +2600,7 @@ function SourcesSection({
                       wide
                     >
                       <input
+                        disabled={sourceLocked}
                         value={source.acl.join(', ')}
                         onChange={(event) =>
                           changeSource(index, { acl: splitList(event.target.value) })
@@ -2622,7 +2653,7 @@ function SourcesSection({
             {job.retryable && (
               <button
                 type="button"
-                disabled={!canValidate}
+                disabled={!canValidate || sourceLocked}
                 onClick={() => {
                   const source = settings.sources.find((item) => item.name === job.source)
                   if (source) {

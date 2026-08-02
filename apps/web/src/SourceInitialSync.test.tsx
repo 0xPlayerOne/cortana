@@ -181,6 +181,10 @@ test('a shared active source job locks source actions until it finishes', async 
   for (const label of ['Validate', 'Trial sync', 'Initial sync', 'Remove work-code']) {
     expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(true)
   }
+  expect((screen.getByRole('button', { name: 'Add source' }) as HTMLButtonElement).disabled).toBe(
+    true
+  )
+  expect((screen.getByLabelText(/^Source name/) as HTMLInputElement).disabled).toBe(true)
 })
 
 test('initial sync plans a fixed budget and displays the native limits', async () => {
