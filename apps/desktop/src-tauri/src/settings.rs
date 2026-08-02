@@ -1038,7 +1038,10 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
         1_000_000,
     )?;
     let data_path = Path::new(update.runtime.data_dir.trim());
-    if !data_path.is_absolute() || data_path.parent().is_none() {
+    if !data_path.is_absolute()
+        || data_path.parent().is_none()
+        || data_path.parent().is_none_or(|parent| parent.parent().is_none())
+    {
         return Err("data directory must be an absolute non-root path".into());
     }
     update.runtime.data_dir = data_path.display().to_string();
@@ -2464,6 +2467,10 @@ mod tests {
 
         let mut update = valid_update(temp.path());
         update.secrets[0].value = Some("secret\nINJECTED=yes".into());
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.runtime.data_dir = "/Users".into();
         assert!(validate_update(&mut update).is_err());
 
         let mut update = valid_update(temp.path());
