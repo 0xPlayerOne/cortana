@@ -9,7 +9,12 @@ import {
   desktopUpdate,
   runtimeAuditEvents,
 } from './test/fixtures'
-import type { DesktopSettings, DesktopSourceJob, SourceSettings } from './types'
+import type {
+  DesktopServiceReport,
+  DesktopSettings,
+  DesktopSourceJob,
+  SourceSettings,
+} from './types'
 
 afterEach(cleanup)
 
@@ -53,6 +58,59 @@ const googleSource: SourceSettings = {
 const state = {
   settings: desktopSettings as DesktopSettings,
   sourceJob: null as DesktopSourceJob | null,
+  serviceInstallCalls: 0,
+}
+
+const serviceReport: DesktopServiceReport = {
+  platform: 'macos',
+  supported: true,
+  services: [
+    {
+      name: 'embedding',
+      label: 'ai.cortana.embedding',
+      installed: false,
+      loaded: false,
+      state: null,
+      pid: null,
+      last_exit_status: null,
+    },
+    {
+      name: 'server',
+      label: 'ai.cortana.server',
+      installed: false,
+      loaded: false,
+      state: null,
+      pid: null,
+      last_exit_status: null,
+    },
+    {
+      name: 'sync',
+      label: 'ai.cortana.sync',
+      installed: false,
+      loaded: false,
+      state: null,
+      pid: null,
+      last_exit_status: null,
+    },
+    {
+      name: 'backup',
+      label: 'ai.cortana.backup',
+      installed: false,
+      loaded: false,
+      state: null,
+      pid: null,
+      last_exit_status: null,
+    },
+  ],
+}
+
+const installedServiceReport: DesktopServiceReport = {
+  ...serviceReport,
+  services: serviceReport.services.map((service) =>
+    service.name === 'sync'
+      ? service
+      : { ...service, installed: true, loaded: true, state: 'running' }
+  ),
 }
 
 mock.module('./api', () => ({
@@ -65,6 +123,11 @@ mock.module('./api', () => ({
   getContext: () => Promise.reject(new Error('Context retrieval failed (503)')),
   getDesktopSettings: () => Promise.resolve(state.settings),
   getDesktopInfo: () => Promise.resolve(desktopInfo),
+  getDesktopServices: () => Promise.resolve(serviceReport),
+  installDesktopServices: () => {
+    state.serviceInstallCalls += 1
+    return Promise.resolve(installedServiceReport)
+  },
   getDesktopHindsightStatus: () =>
     Promise.resolve({
       enabled: false,
@@ -170,6 +233,30 @@ test('source settings opens the Sources section directly', async () => {
 
   const sources = screen.getByRole('button', { name: 'Sources' })
   expect(sources.className).toContain('active')
+})
+
+test('services settings offers an explicit safe core-service install', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.serviceInstallCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Install core services/ })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Install core services/ }))
+    await waitFor(() => expect(state.serviceInstallCalls).toBe(1))
+    expect(screen.getByText('3 loaded')).toBeTruthy()
+    expect(screen.getByText(/sync service remains absent/)).toBeTruthy()
+  } finally {
+    window.confirm = originalConfirm
+  }
 })
 
 test('Google source settings expose env-backed token credentials', async () => {
