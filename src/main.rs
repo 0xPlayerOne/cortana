@@ -1316,6 +1316,7 @@ impl SyncLock {
         }
         let mut options = std::fs::OpenOptions::new();
         options.read(true).write(true).create(true);
+        configure_no_follow(&mut options);
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -1324,6 +1325,27 @@ impl SyncLock {
         let file = options
             .open(path)
             .with_context(|| format!("failed to open sync lock {}", path.display()))?;
+        let metadata = file.metadata()?;
+        anyhow::ensure!(
+            metadata.is_file(),
+            "sync lock is not a regular file: {}",
+            path.display()
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            anyhow::ensure!(
+                metadata.uid() == unsafe { libc::geteuid() },
+                "sync lock is not owned by the current user: {}",
+                path.display()
+            );
+            anyhow::ensure!(
+                metadata.nlink() == 1,
+                "sync lock has multiple hard links: {}",
+                path.display()
+            );
+            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        }
         FileExt::try_lock_exclusive(&file).with_context(|| {
             format!(
                 "another Cortana sync is already active (lock: {})",
@@ -2189,6 +2211,7 @@ fn maximum_connector_spool_bytes(limits: &SourceLimits) -> u64 {
 fn private_file(path: &std::path::Path) -> Result<std::fs::File> {
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
+    configure_no_follow(&mut options);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -2198,6 +2221,15 @@ fn private_file(path: &std::path::Path) -> Result<std::fs::File> {
         .open(path)
         .with_context(|| format!("failed to create private spool {}", path.display()))
 }
+
+#[cfg(unix)]
+fn configure_no_follow(options: &mut std::fs::OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt;
+    options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+}
+
+#[cfg(not(unix))]
+fn configure_no_follow(_options: &mut std::fs::OpenOptions) {}
 
 fn configured_connector_command(config: &Config, source: &SourceConfig) -> Result<Vec<String>> {
     let command = if source.kind == "external" {
@@ -2636,6 +2668,23 @@ mod tests {
         assert!(SyncLock::acquire(&path).is_err());
         drop(first);
         SyncLock::acquire(&path).expect("lock after release");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sync_lock_rejects_symlinked_paths() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let target = directory.path().join("outside.lock");
+        let link = directory.path().join("sync.lock");
+        std::fs::write(&target, b"not a lock").expect("target lock");
+        symlink(&target, &link).expect("lock symlink");
+
+        let error = SyncLock::acquire(&link)
+            .err()
+            .expect("sync lock must not follow a symlink");
+        assert!(error.to_string().contains("sync lock"));
     }
 
     #[test]
