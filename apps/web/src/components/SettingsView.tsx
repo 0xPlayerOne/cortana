@@ -1151,7 +1151,7 @@ function HindsightSection({
           <RefreshCw size={14} /> {checking ? 'Checking…' : 'Check connection'}
         </button>
       </div>
-      {externalStatus !== undefined && (
+      {externalStatus && (
         <p className="settings-note">
           This health snapshot is retained while you move between Desktop settings sections. It
           reads the last saved Hindsight configuration; save changes before checking again.
@@ -1328,7 +1328,7 @@ function HonchoSection({
           <RefreshCw size={14} /> {checking ? 'Checking…' : 'Check connection'}
         </button>
       </div>
-      {externalStatus !== undefined && (
+      {externalStatus && (
         <p className="settings-note">
           This health snapshot is retained while you move between Desktop settings sections. It
           reads the last saved Honcho configuration; save changes before checking again.
