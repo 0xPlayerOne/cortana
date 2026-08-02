@@ -628,7 +628,6 @@ fn systemd_service_status(
 }
 
 fn systemd_action(name: &str, action: &str) -> Result<()> {
-    ensure_systemd_available()?;
     anyhow::ensure!(
         matches!(name, "embedding" | "server" | "sync" | "backup"),
         "unsupported Cortana service: {name}"
@@ -637,6 +636,7 @@ fn systemd_action(name: &str, action: &str) -> Result<()> {
         matches!(action, "start" | "stop" | "restart"),
         "unsupported Cortana service action: {action}"
     );
+    ensure_systemd_available()?;
     let unit = match name {
         "sync" | "backup" => systemd_timer_unit(name),
         _ => systemd_service_unit(name),
