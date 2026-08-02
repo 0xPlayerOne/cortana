@@ -1993,6 +1993,42 @@ function SourcesSection({
                         </button>
                       </div>
                     </Field>
+                    <Field
+                      label="Google token environment variable"
+                      hint="optional alternative to the private token file"
+                    >
+                      <input
+                        value={source.token_env || ''}
+                        disabled={!source.editable}
+                        pattern="[A-Z_][A-Z0-9_]*"
+                        placeholder="GOOGLE_TOKEN_JSON"
+                        onChange={(event) =>
+                          changeSource(index, { token_env: event.target.value || null })
+                        }
+                      />
+                    </Field>
+                    <Field label="New Google token" hint="write-only; leave blank to keep existing">
+                      <div className="secret-input">
+                        <input
+                          type="password"
+                          autoComplete="new-password"
+                          disabled={!source.editable || !source.token_env}
+                          value={source.token_env ? secretValues[source.token_env] || '' : ''}
+                          onChange={(event) => {
+                            if (source.token_env) {
+                              onSecret({ ...secretValues, [source.token_env]: event.target.value })
+                            }
+                          }}
+                        />
+                        {source.token_env &&
+                          secret?.configured &&
+                          !clearedSecrets.has(secret.name) && (
+                            <button type="button" onClick={() => onClearSecret(source.token_env!)}>
+                              Clear
+                            </button>
+                          )}
+                      </div>
+                    </Field>
                     <Field label="Google query" hint="optional provider-native filter" wide>
                       <input
                         value={source.query || ''}

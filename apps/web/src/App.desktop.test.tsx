@@ -39,6 +39,17 @@ const workSource: SourceSettings = {
   editable: true,
 }
 
+const googleSource: SourceSettings = {
+  ...workSource,
+  name: 'personal-drive',
+  kind: 'google-drive',
+  project: 'personal',
+  root: null,
+  token_env: 'GOOGLE_TOKEN_JSON',
+  token_path: '/Users/you/.config/cortana/google-token.json',
+  oauth_client_path: '/Users/you/Downloads/google-oauth-client.json',
+}
+
 const state = {
   settings: desktopSettings as DesktopSettings,
   sourceJob: null as DesktopSourceJob | null,
@@ -159,6 +170,23 @@ test('source settings opens the Sources section directly', async () => {
 
   const sources = screen.getByRole('button', { name: 'Sources' })
   expect(sources.className).toContain('active')
+})
+
+test('Google source settings expose env-backed token credentials', async () => {
+  state.settings = { ...desktopSettings, sources: [googleSource] }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    await waitFor(() => expect(screen.getByText('Google token environment variable')).toBeTruthy())
+    expect(screen.getByText('New Google token')).toBeTruthy()
+  } finally {
+    state.settings = desktopSettings
+  }
 })
 
 test('running source jobs stay visible in the shell after leaving the settings view', async () => {
