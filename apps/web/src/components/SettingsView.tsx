@@ -418,22 +418,33 @@ function ServicesSection() {
   const [info, setInfo] = useState<DesktopInfo | null>(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const refreshInFlightRef = useRef(false)
+  const mountedRef = useRef(true)
 
   const refresh = async () => {
+    if (refreshInFlightRef.current) return
+    refreshInFlightRef.current = true
     setError('')
     try {
       const [nextReport, nextInfo] = await Promise.all([getDesktopServices(), getDesktopInfo()])
+      if (!mountedRef.current) return
       setReport(nextReport)
       setInfo(nextInfo)
     } catch (caught) {
+      if (!mountedRef.current) return
       setError(caught instanceof Error ? caught.message : 'Service status could not be loaded')
+    } finally {
+      refreshInFlightRef.current = false
     }
   }
 
   useEffect(() => {
     void refresh()
     const timer = window.setInterval(() => void refresh(), 15_000)
-    return () => window.clearInterval(timer)
+    return () => {
+      mountedRef.current = false
+      window.clearInterval(timer)
+    }
   }, [])
 
   const serviceAction = async (
@@ -595,6 +606,7 @@ function UpdatesSection() {
   const [update, setUpdate] = useState<DesktopUpdate | null>(null)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  const pollInFlightRef = useRef(false)
 
   useEffect(() => {
     void getDesktopUpdate()
@@ -604,7 +616,17 @@ function UpdatesSection() {
 
   useEffect(() => {
     if (busy !== 'install') return
-    const timer = window.setInterval(() => void getDesktopUpdate().then(setUpdate), 400)
+    const poll = () => {
+      if (pollInFlightRef.current) return
+      pollInFlightRef.current = true
+      void getDesktopUpdate()
+        .then(setUpdate)
+        .catch(() => {})
+        .finally(() => {
+          pollInFlightRef.current = false
+        })
+    }
+    const timer = window.setInterval(poll, 400)
     return () => window.clearInterval(timer)
   }, [busy])
 
