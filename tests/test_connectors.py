@@ -129,6 +129,28 @@ def test_buzz_reads_personas_and_logs_read_only(tmp_path: Path) -> None:
     assert documents[0].metadata["raw_event"]["id"] == "event"
 
 
+def test_buzz_rejects_symlinked_retention_files_and_logs(tmp_path: Path) -> None:
+    agents = tmp_path / "agents"
+    logs = agents / "logs"
+    logs.mkdir(parents=True)
+    external_database = tmp_path / "external-retention.db"
+    external_database.touch()
+    try:
+        (agents / "retention.db").symlink_to(external_database)
+    except (NotImplementedError, OSError):
+        return
+
+    with pytest.raises(RuntimeError, match="retention database must be a regular"):
+        list(buzz.fetch(tmp_path))
+
+    (agents / "retention.db").unlink()
+    external_log = tmp_path / "external.log"
+    external_log.write_text("private", encoding="utf-8")
+    (logs / "linked.log").symlink_to(external_log)
+    with pytest.raises(RuntimeError, match="log must not be a symlink"):
+        list(buzz.fetch(tmp_path))
+
+
 class FakeSlackClient:
     def __init__(self, *_args: object, **_kwargs: object) -> None:
         self.calls: list[str] = []
