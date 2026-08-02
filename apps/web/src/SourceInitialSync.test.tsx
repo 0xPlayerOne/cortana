@@ -115,6 +115,7 @@ const state = {
   settingsLoadError: null as Error | null,
   runningJob: null as DesktopSourceJob | null,
   cancelCalls: [] as string[],
+  cancelDeferred: null as Deferred<DesktopSourceJob> | null,
   pollCount: 0,
   servicesCalls: 0,
   serviceRefreshAfterAction: null as Deferred<DesktopServiceReport> | null,
@@ -132,6 +133,7 @@ beforeEach(() => {
   state.settingsLoadError = null
   state.runningJob = null
   state.cancelCalls = []
+  state.cancelDeferred = null
   state.pollCount = 0
   state.servicesCalls = 0
   state.serviceRefreshAfterAction = null
@@ -210,6 +212,7 @@ mock.module('./api', () => ({
   },
   cancelDesktopSourceValidation: (id: string) => {
     state.cancelCalls.push(id)
+    if (state.cancelDeferred) return state.cancelDeferred.promise
     return Promise.resolve(jobFor('small', 'cancelled'))
   },
 }))
@@ -679,6 +682,38 @@ test('cancelling a running initial sync keeps the native cancelled summary', asy
         'Guarded initial sync was cancelled. Committed batches remain indexed; reconciliation did not run.'
       )
     ).toBeTruthy()
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
+test('source-job cancellation disables duplicate clicks while native cancellation is pending', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  try {
+    state.runningJob = jobFor('small', 'running')
+    state.cancelDeferred = deferred<DesktopSourceJob>()
+    openSources()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Initial sync' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Start initial sync' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Start initial sync' }))
+    await waitFor(() => expect(screen.getByText('work-code · initial-sync · running')).toBeTruthy())
+
+    const cancel = screen.getByRole('button', { name: /Cancel/ })
+    fireEvent.click(cancel)
+    await waitFor(() => expect((cancel as HTMLButtonElement).disabled).toBe(true))
+    expect(state.cancelCalls).toHaveLength(1)
+
+    fireEvent.click(cancel)
+    expect(state.cancelCalls).toHaveLength(1)
+
+    state.cancelDeferred.resolve(jobFor('small', 'cancelled'))
+    await waitFor(() =>
+      expect(screen.getByText('work-code · initial-sync · cancelled')).toBeTruthy()
+    )
   } finally {
     window.confirm = originalConfirm
   }
