@@ -241,6 +241,21 @@ async fn python_status(install_supported: bool) -> ToolStatus {
             };
         }
     }
+    if let Some(path) = uv_managed_python().await {
+        let version = command_version(&path).await;
+        if version.as_deref().is_some_and(python_version_supported) {
+            return ToolStatus {
+                id: "python",
+                label: "Python 3.11+",
+                required: true,
+                available: true,
+                path: Some(path.display().to_string()),
+                version,
+                install_supported,
+                detail: format!("Found uv-managed interpreter at {}", path.display()),
+            };
+        }
+    }
     ToolStatus {
         id: "python",
         label: "Python 3.11+",
@@ -251,6 +266,33 @@ async fn python_status(install_supported: bool) -> ToolStatus {
         install_supported,
         detail: "Python 3.11 or newer is required for the ingestion runtime.".into(),
     }
+}
+
+async fn uv_managed_python() -> Option<PathBuf> {
+    let uv = find_executable("uv")?;
+    let output = timeout(
+        VERSION_TIMEOUT,
+        Command::new(uv)
+            .args(["python", "find", "3.11"])
+            .stdin(Stdio::null())
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    let path = parse_uv_python_path(&output.stdout)?;
+    is_executable(&path).then_some(path)
+}
+
+fn parse_uv_python_path(bytes: &[u8]) -> Option<PathBuf> {
+    let output = String::from_utf8_lossy(bytes);
+    let line = output
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
+    let path = PathBuf::from(line);
+    path.is_absolute().then_some(path)
 }
 
 fn python_version_supported(value: &str) -> bool {
@@ -388,6 +430,20 @@ mod tests {
         assert!(python_version_supported("Python 3.13.1"));
         assert!(!python_version_supported("Python 3.10.14"));
         assert!(!python_version_supported("unknown"));
+    }
+
+    #[test]
+    fn uv_python_path_parser_accepts_only_an_absolute_path_line() {
+        assert_eq!(
+            parse_uv_python_path(
+                b"/Users/example/.local/share/uv/python/cpython-3.11/bin/python3.11\n"
+            ),
+            Some(PathBuf::from(
+                "/Users/example/.local/share/uv/python/cpython-3.11/bin/python3.11"
+            ))
+        );
+        assert!(parse_uv_python_path(b"python3.11\n").is_none());
+        assert!(parse_uv_python_path(b"\n\n").is_none());
     }
 
     #[test]
