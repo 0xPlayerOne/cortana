@@ -199,7 +199,10 @@ class FakeSlackClient:
             return response(
                 {
                     "ok": True,
-                    "messages": [{"ts": "10.0", "user": "U1", "text": "Launch?", "reply_count": 1}],
+                    "messages": [
+                        {"ts": "10.0", "user": "U1", "text": "Launch?", "reply_count": 1},
+                        {"ts": "not-a-timestamp", "user": "U9", "text": "Ignore me"},
+                    ],
                     "response_metadata": {"next_cursor": ""},
                 }
             )
@@ -209,6 +212,7 @@ class FakeSlackClient:
                 "messages": [
                     {"ts": "10.0", "user": "U1", "text": "Launch?"},
                     {"ts": "11.0", "user": "U2", "text": "Yes"},
+                    {"ts": "invalid", "user": "U9", "text": "Ignore me"},
                 ],
             }
         )

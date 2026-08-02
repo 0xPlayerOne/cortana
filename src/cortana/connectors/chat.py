@@ -33,21 +33,42 @@ def fetch_slack(
                 )
                 payload = _slack_payload(response)
                 for parent in payload.get("messages", []):
+                    if not isinstance(parent, dict):
+                        continue
+                    parent_timestamp = _slack_timestamp(parent.get("ts"))
+                    if parent_timestamp is None:
+                        continue
                     thread = [parent]
-                    if int(parent.get("reply_count", 0)):
+                    try:
+                        has_replies = int(parent.get("reply_count", 0)) > 0
+                    except (TypeError, ValueError):
+                        has_replies = False
+                    if has_replies:
                         replies = _get_with_backoff(
                             client,
                             "/conversations.replies",
                             params={"channel": channel_id, "ts": parent["ts"], "limit": 200},
                         )
-                        thread = _slack_payload(replies).get("messages", thread)
+                        reply_messages = _slack_payload(replies).get("messages")
+                        if isinstance(reply_messages, list):
+                            thread = reply_messages
+                    valid_thread = [
+                        message
+                        for message in thread
+                        if isinstance(message, dict)
+                        and _slack_timestamp(message.get("ts")) is not None
+                    ]
                     text = "\n".join(
                         f"{message.get('user', 'unknown')}: {message.get('text', '')}"
-                        for message in thread
+                        for message in valid_thread
                         if message.get("text")
                     )
                     if text:
-                        updated = max(float(message["ts"]) for message in thread)
+                        updated = max(
+                            _slack_timestamp(message.get("ts"))
+                            for message in valid_thread
+                            if _slack_timestamp(message.get("ts")) is not None
+                        )
                         yield Document(
                             source="slack",
                             source_id=f"{channel_id}:{parent['ts']}",
@@ -59,9 +80,9 @@ def fetch_slack(
                             metadata={
                                 "channel_id": channel_id,
                                 "participants": sorted(
-                                    {m.get("user") for m in thread if m.get("user")}
+                                    {m.get("user") for m in valid_thread if m.get("user")}
                                 ),
-                                "message_count": len(thread),
+                                "message_count": len(valid_thread),
                             },
                         )
                 cursor = str(payload.get("response_metadata", {}).get("next_cursor") or "")
@@ -315,6 +336,14 @@ def _required_env(name: str) -> str:
     return value
 
 
+def _slack_timestamp(value: object) -> float | None:
+    try:
+        timestamp = float(value)
+    except (TypeError, ValueError):
+        return None
+    return timestamp if timestamp >= 0 else None
+
+
 def _get_with_backoff(
     client: httpx.Client,
     url: str,
@@ -365,7 +394,10 @@ def _respect_rate_limit_headers(response: httpx.Response) -> None:
 
 def _slack_payload(response: httpx.Response) -> dict[str, Any]:
     response.raise_for_status()
-    payload: dict[str, Any] = response.json()
+    raw_payload = response.json()
+    if not isinstance(raw_payload, dict):
+        raise RuntimeError("Slack API returned an invalid response")
+    payload: dict[str, Any] = raw_payload
     if not payload.get("ok"):
         raise RuntimeError(f"Slack API error: {payload.get('error', 'unknown')}")
     return payload
