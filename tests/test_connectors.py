@@ -4,6 +4,7 @@ import base64
 import datetime as dt
 import io
 import json
+import os
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -448,13 +449,24 @@ def test_chat_connector_rejects_missing_token(monkeypatch: pytest.MonkeyPatch) -
 def test_google_token_path_is_absolute_bounded_and_not_symlinked(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     token.write_text('{"token":"access"}', encoding="utf-8")
+    if os.name == "posix":
+        token.chmod(0o600)
     assert validate_token_path(token) == token
+
+    if os.name == "posix":
+        broad = tmp_path / "broad-token.json"
+        broad.write_text('{"token":"access"}', encoding="utf-8")
+        broad.chmod(0o644)
+        with pytest.raises(RuntimeError, match="owner-only"):
+            validate_token_path(broad)
 
     with pytest.raises(RuntimeError, match="must be absolute"):
         validate_token_path(Path("relative-token.json"))
 
     oversized = tmp_path / "oversized.json"
     oversized.write_bytes(b"x" * (64 * 1024 + 1))
+    if os.name == "posix":
+        oversized.chmod(0o600)
     with pytest.raises(RuntimeError, match="exceeds"):
         validate_token_path(oversized)
 

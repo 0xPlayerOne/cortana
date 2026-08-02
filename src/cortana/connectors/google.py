@@ -57,6 +57,8 @@ def validate_token_path(path: Path) -> Path:
         raise RuntimeError(f"Google token path must not be a symlink: {path}")
     if not stat.S_ISREG(metadata.st_mode):
         raise RuntimeError(f"Google token path is not a regular file: {path}")
+    if os.name == "posix" and stat.S_IMODE(metadata.st_mode) & 0o077:
+        raise RuntimeError(f"Google token file must be owner-only (mode 600): {path}")
     if metadata.st_size > MAX_TOKEN_FILE_BYTES:
         raise RuntimeError(f"Google token file exceeds {MAX_TOKEN_FILE_BYTES} bytes: {path}")
     return path
