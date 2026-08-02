@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.19.0](https://github.com/0xPlayerOne/cortana/compare/v0.18.0...v0.19.0) (2026-08-02)
+
+
+### Features
+
+* **memory:** publish Hindsight capabilities ([#228](https://github.com/0xPlayerOne/cortana/issues/228)) ([5bcec72](https://github.com/0xPlayerOne/cortana/commit/5bcec72473a870147619b6441c4a7b766bd867dc))
+
+
+### Bug Fixes
+
+* **deps:** preserve Dependabot Tauri action pin ([#243](https://github.com/0xPlayerOne/cortana/issues/243)) ([797e175](https://github.com/0xPlayerOne/cortana/commit/797e175e817861c4c05f82b7b639e99cc343a04f))
+* **desktop:** satisfy strict schedule clippy ([#241](https://github.com/0xPlayerOne/cortana/issues/241)) ([b36f975](https://github.com/0xPlayerOne/cortana/commit/b36f97539316e733afde69680074f1b86103abe5))
+* **query:** enforce answer deadline and token readiness ([#230](https://github.com/0xPlayerOne/cortana/issues/230)) ([7bb7df9](https://github.com/0xPlayerOne/cortana/commit/7bb7df97add68f2093906a733ee999f2fc4cbc4f))
+* stabilize token readiness and validation contracts ([#239](https://github.com/0xPlayerOne/cortana/issues/239)) ([0496785](https://github.com/0xPlayerOne/cortana/commit/0496785a0ff4b4e8ee91ff25ceb2ff4c91cc9445))
+
+
+### Tests
+
+* align coverage configuration assertions ([#233](https://github.com/0xPlayerOne/cortana/issues/233)) ([a4f1cb0](https://github.com/0xPlayerOne/cortana/commit/a4f1cb0956d7cb138fdaafcd60b85223bd9e3fa6))
+* split and expand coverage ([#232](https://github.com/0xPlayerOne/cortana/issues/232)) ([6d19ee2](https://github.com/0xPlayerOne/cortana/commit/6d19ee27508fcdbe48afc282e20ca27a010c51a0))
+
+
+### Maintenance
+
+* **deps:** bump compatible cargo dependencies ([11a0e61](https://github.com/0xPlayerOne/cortana/commit/11a0e619ee7edcbd4d66221eb607cc3c31d95f35))
+* **deps:** bump compatible npm dependencies ([8f17a74](https://github.com/0xPlayerOne/cortana/commit/8f17a741573e4d74f377d27459eefad330217dde))
+* **deps:** bump the github-actions group with 2 updates ([#234](https://github.com/0xPlayerOne/cortana/issues/234)) ([35b19db](https://github.com/0xPlayerOne/cortana/commit/35b19db3508304bacfe87c682ff12efa6d04f482))
+
 ## [0.18.0](https://github.com/0xPlayerOne/cortana/compare/v0.17.1...v0.18.0) (2026-08-02)
 
 
