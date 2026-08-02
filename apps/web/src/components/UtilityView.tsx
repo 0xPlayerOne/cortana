@@ -225,7 +225,7 @@ function InboxView({
                     {new Date(job.started_at_unix_seconds * 1000).toLocaleString()}
                   </span>
                 </div>
-                <StatusPill status={job.status === 'cancelling' ? 'cancelled' : 'running'} />
+                <StatusPill status={job.status} />
                 {onCancelSourceJob && (
                   <button
                     type="button"
@@ -643,22 +643,31 @@ function HelpView({
 }
 
 function SyncIcon({ status }: { status: string }) {
-  if (status === 'running') return <LoaderCircle className="spin" size={16} />
+  if (status === 'running' || status === 'cancelling') {
+    return <LoaderCircle className="spin" size={16} />
+  }
   return <AlertTriangle size={16} />
 }
 
 function StatusPill({
   status,
 }: {
-  status: 'running' | 'succeeded' | 'failed' | 'cancelled' | 'budget_exceeded'
+  status: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled' | 'budget_exceeded'
 }) {
   const label =
     status === 'budget_exceeded'
       ? 'Budget exceeded'
+      : status === 'cancelling'
+        ? 'Cancelling…'
+        : status === 'succeeded'
+          ? 'Succeeded'
+          : status[0].toUpperCase() + status.slice(1)
+  const tone =
+    status === 'running' || status === 'cancelling'
+      ? 'running'
       : status === 'succeeded'
-        ? 'Succeeded'
-        : status[0].toUpperCase() + status.slice(1)
-  const tone = status === 'running' ? 'running' : status === 'succeeded' ? 'healthy' : 'warning'
+        ? 'healthy'
+        : 'warning'
   return <span className={`status-pill ${tone}`}>{label}</span>
 }
 

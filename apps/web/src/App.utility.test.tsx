@@ -347,6 +347,54 @@ test('Inbox retains terminal source-job history after the job stops running', ()
   expect(screen.getByRole('alert').textContent).toBe('Source job cancellation failed')
 })
 
+test('Inbox keeps a cancelling source job visibly in progress until it exits', () => {
+  const job: DesktopSourceJob = {
+    id: 'source-cancelling',
+    operation: 'trial-sync',
+    source: 'work-code',
+    kind: 'filesystem',
+    project: 'work',
+    acl: ['work'],
+    status: 'cancelling',
+    summary: 'Cancelling source trial-sync…',
+    log: '',
+    started_at_unix_seconds: 1_785_000_000,
+    completed_at_unix_seconds: null,
+    exit_code: null,
+    retryable: false,
+    writes_indexed_data: true,
+    budget: null,
+  }
+
+  render(
+    <UtilityView
+      kind="inbox"
+      status={{ ...demoStatus, sync_runs: [] }}
+      sourceJobs={[job]}
+      query=""
+      answer={null}
+      evidence={[]}
+      loading={false}
+      error=""
+      contextBundle={null}
+      contextLoading={false}
+      contextError=""
+      contextTokens={0}
+      desktopAvailable={false}
+      onSearchFocus={() => {}}
+      onRetrieveContext={() => {}}
+      onOpenSettings={() => {}}
+      onOpenProject={() => {}}
+      onCancelSourceJob={() => {}}
+    />
+  )
+
+  expect(screen.getByText('Cancelling…')).toBeTruthy()
+  expect(
+    screen.getByRole('button', { name: 'Cancel work-code trial-sync' }).hasAttribute('disabled')
+  ).toBe(true)
+})
+
 test('Index renders live BrainStatus metrics and an offline empty state', async () => {
   await renderApp()
   fireEvent.click(railButton('Index'))
