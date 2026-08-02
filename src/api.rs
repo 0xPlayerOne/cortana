@@ -675,6 +675,15 @@ async fn status(
         .store
         .stats()
         .map(|stats| {
+            let workspaces = fallback_workspaces(
+                state.workspaces.as_ref(),
+                stats
+                    .sources
+                    .iter()
+                    .map(|source| source.project.clone())
+                    .collect::<Vec<_>>()
+                    .into_iter(),
+            );
             Json(Status {
                 status: "ok",
                 uptime_seconds: state.metrics.uptime_seconds(),
@@ -684,11 +693,70 @@ async fn status(
                 errors_total: state.metrics.errors.load(Ordering::Relaxed),
                 query: state.answer.status(),
                 ingestion: state.ingestion.refreshed(),
-                workspaces: state.workspaces.as_ref().clone(),
+                workspaces,
                 stats,
             })
         })
         .map_err(internal_error)
+}
+
+fn fallback_workspaces(
+    configured: &[WorkspaceConfig],
+    source_projects: impl IntoIterator<Item = String>,
+) -> Vec<WorkspaceConfig> {
+    if !configured.is_empty() {
+        return configured.to_vec();
+    }
+    let mut project_ids: BTreeSet<String> = source_projects
+        .into_iter()
+        .map(|project| project.to_ascii_lowercase())
+        .collect();
+    let mut workspaces = Vec::new();
+
+    for project in ["work", "personal", "special"] {
+        if project_ids.remove(project) {
+            workspaces.push(WorkspaceConfig {
+                id: project.to_string(),
+                name: title_case(project),
+                account_label: None,
+                color: None,
+            });
+        }
+    }
+    for project in project_ids {
+        if workspaces.len() >= 3 {
+            break;
+        }
+        workspaces.push(WorkspaceConfig {
+            id: project.clone(),
+            name: title_case(&project),
+            account_label: None,
+            color: None,
+        });
+    }
+
+    if !workspaces.is_empty() {
+        workspaces.truncate(3);
+        return workspaces;
+    }
+
+    ["work", "personal", "special"]
+        .into_iter()
+        .map(|id| WorkspaceConfig {
+            id: id.to_string(),
+            name: title_case(id),
+            account_label: None,
+            color: None,
+        })
+        .collect()
+}
+
+fn title_case(value: &str) -> String {
+    let mut characters = value.chars();
+    characters
+        .next()
+        .map(|first| first.to_uppercase().collect::<String>() + characters.as_str())
+        .unwrap_or_default()
 }
 
 async fn answer(
@@ -1034,6 +1102,37 @@ mod tests {
             .expect("fingerprint");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
         (directory, AppState::new(store, embedder, token))
+    }
+
+    #[test]
+    fn fallback_workspaces_prefer_core_scopes_and_bound_other_projects() {
+        let workspaces = fallback_workspaces(
+            &[],
+            ["community", "special", "agents", "work", "personal"]
+                .into_iter()
+                .map(String::from),
+        );
+        let ids: Vec<_> = workspaces
+            .iter()
+            .map(|workspace| workspace.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["work", "personal", "special"]);
+        assert_eq!(workspaces[0].name, "Work");
+
+        let explicit = vec![WorkspaceConfig {
+            id: "custom".into(),
+            name: "Custom".into(),
+            account_label: Some("owner@example.com".into()),
+            color: Some("#123456".into()),
+        }];
+        let preserved = fallback_workspaces(&explicit, ["work".into()]);
+        assert_eq!(preserved.len(), 1);
+        assert_eq!(preserved[0].id, "custom");
+        assert_eq!(
+            preserved[0].account_label.as_deref(),
+            Some("owner@example.com")
+        );
+        assert_eq!(preserved[0].color.as_deref(), Some("#123456"));
     }
 
     #[tokio::test]

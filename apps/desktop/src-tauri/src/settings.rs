@@ -764,24 +764,15 @@ fn configured_workspaces(root: &Table) -> Vec<WorkspaceSettings> {
                 .and_then(|table| table.get("project"))
                 .and_then(Value::as_str)
             {
-                projects.insert(project.to_string());
+                projects.insert(project.to_ascii_lowercase());
             }
         }
     }
-    let derived = projects
-        .into_iter()
-        .take(MAX_WORKSPACES)
-        .map(|id| WorkspaceSettings {
-            name: title_case(&id),
-            id,
-            account_label: None,
-            color: None,
-        })
-        .collect::<Vec<_>>();
-    if !derived.is_empty() {
-        return derived;
+    let fallback = prioritized_workspace_projects(projects);
+    if !fallback.is_empty() {
+        return fallback;
     }
-    ["personal", "work", "special"]
+    ["work", "personal", "special"]
         .into_iter()
         .map(|id| WorkspaceSettings {
             id: id.to_string(),
@@ -790,6 +781,35 @@ fn configured_workspaces(root: &Table) -> Vec<WorkspaceSettings> {
             color: None,
         })
         .collect()
+}
+
+fn prioritized_workspace_projects(projects: BTreeSet<String>) -> Vec<WorkspaceSettings> {
+    let mut result = Vec::new();
+    let mut remaining = projects;
+    for id in ["work", "personal", "special"] {
+        if remaining.remove(id) {
+            result.push(WorkspaceSettings {
+                id: id.to_string(),
+                name: title_case(id),
+                account_label: None,
+                color: None,
+            });
+        }
+    }
+    for id in remaining {
+        if result.len() >= MAX_WORKSPACES {
+            break;
+        }
+        let name = title_case(&id);
+        result.push(WorkspaceSettings {
+            id,
+            name,
+            account_label: None,
+            color: None,
+        });
+    }
+    result.truncate(MAX_WORKSPACES);
+    result
 }
 
 fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
@@ -2363,6 +2383,75 @@ mod tests {
         assert!(error.contains("personal"));
         update.workspaces[0].id = "personal".into();
         store.save(update).expect("matching source scope");
+    }
+
+    #[test]
+    fn configured_workspaces_prefer_work_personal_special_before_other_projects() {
+        let config: Table = toml::from_str(
+            r##"
+            [[sources]]
+            name = "chat-ops"
+            kind = "slack"
+            enabled = true
+            project = "community"
+
+            [[sources]]
+            name = "notes"
+            kind = "apple-notes"
+            enabled = false
+            project = "special"
+
+            [[sources]]
+            name = "archive"
+            kind = "filesystem"
+            enabled = true
+            project = "work"
+
+            [[sources]]
+            name = "journal"
+            kind = "filesystem"
+            enabled = true
+            project = "agents"
+
+            [[sources]]
+            name = "personal-box"
+            kind = "filesystem"
+            enabled = true
+            project = "personal"
+            "##,
+        )
+        .expect("config with implicit workspaces");
+
+        let workspaces = configured_workspaces(&config);
+        let ids: Vec<_> = workspaces.iter().map(|workspace| workspace.id.as_str()).collect();
+        assert_eq!(ids, vec!["work", "personal", "special"]);
+        assert_eq!(workspaces[2].name, "Special");
+    }
+
+    #[test]
+    fn configured_workspaces_preserve_explicit_workspace_definition() {
+        let config: Table = toml::from_str(
+            r##"
+            [[workspaces]]
+            id = "zeta"
+            name = "Zeta"
+
+            [[workspaces]]
+            id = "alpha"
+            name = "Alpha"
+
+            [[sources]]
+            name = "chat-ops"
+            kind = "slack"
+            enabled = true
+            project = "work"
+            "##,
+        )
+        .expect("config with explicit workspaces");
+
+        let workspaces = configured_workspaces(&config);
+        let ids: Vec<_> = workspaces.iter().map(|workspace| workspace.id.as_str()).collect();
+        assert_eq!(ids, vec!["zeta", "alpha"]);
     }
 
     #[test]
