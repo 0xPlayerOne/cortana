@@ -1999,7 +1999,7 @@ fn validate_hindsight_url(name: &str, value: &str) -> Result<(), String> {
     if url.scheme() == "http" && !is_loopback {
         return Err(format!("{name} cloud URL must use HTTPS"));
     }
-    if !url.username().is_empty() || !url.password().is_none() {
+    if !url.username().is_empty() || url.password().is_some() {
         return Err(format!("{name} URL must not include credentials"));
     }
     if url.query().is_some() {
@@ -2549,12 +2549,12 @@ mod tests {
         assert_eq!(state.ingestion.document_batch_size, 16);
         assert_eq!(state.ingestion.request_concurrency, 1);
         assert_eq!(state.runtime.connector_timeout_seconds, 21_600);
-        assert_eq!(state.hindsight.enabled, false);
+        assert!(!state.hindsight.enabled);
         assert_eq!(state.hindsight.provider, "hindsight");
         assert_eq!(state.hindsight.base_url, "http://127.0.0.1:8888");
         assert_eq!(state.hindsight.bank, "default");
-        assert_eq!(state.hindsight.optional, true);
-        assert_eq!(state.hindsight.wired_to_ingestion, false);
+        assert!(state.hindsight.optional);
+        assert!(!state.hindsight.wired_to_ingestion);
 
         fs::create_dir_all(store.config_path.parent().expect("config parent"))
             .expect("config directory");
