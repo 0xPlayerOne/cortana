@@ -32,6 +32,7 @@ pub async fn run(
     allow_sync_service: bool,
 ) -> ReadinessReport {
     let database = database_check(store);
+    let embedding_index = embedding_index_check(store, embedder);
     let acl = public_acl_check(config, store);
     let backup = backup_check(&config.data_dir.join("backups"), max_backup_age_hours);
     let sync = sync_check(allow_sync_service);
@@ -42,7 +43,16 @@ pub async fn run(
         api_check(api_url),
         query_check(config),
     );
-    let checks = vec![database, acl, embedding, api, backup, sync, query];
+    let checks = vec![
+        database,
+        embedding_index,
+        acl,
+        embedding,
+        api,
+        backup,
+        sync,
+        query,
+    ];
     ReadinessReport {
         passed: checks.iter().all(|check| check.passed),
         query_mode: if config.query.synthesis_enabled {
@@ -138,6 +148,40 @@ fn database_check(store: &Store) -> ReadinessCheck {
         },
         Err(error) => ReadinessCheck {
             name: "database-integrity".into(),
+            passed: false,
+            detail: error.to_string(),
+        },
+    }
+}
+
+fn embedding_index_check(store: &Store, embedder: &dyn Embedder) -> ReadinessCheck {
+    let configured_fingerprint = embedder.fingerprint();
+    match store.stats() {
+        Ok(stats) => match stats.embedding_fingerprint {
+            None => ReadinessCheck {
+                name: "embedding-index".into(),
+                passed: true,
+                detail: "index has no embedding generation yet; the first write will initialize it"
+                    .into(),
+            },
+            Some(index_fingerprint) if index_fingerprint == configured_fingerprint => {
+                ReadinessCheck {
+                    name: "embedding-index".into(),
+                    passed: true,
+                    detail: format!("index generation matches {}", index_fingerprint),
+                }
+            }
+            Some(index_fingerprint) => ReadinessCheck {
+                name: "embedding-index".into(),
+                passed: false,
+                detail: format!(
+                    "index uses {index_fingerprint}, but the configured provider uses {}; rebuild into a new generation before semantic retrieval or ingestion",
+                    configured_fingerprint
+                ),
+            },
+        },
+        Err(error) => ReadinessCheck {
+            name: "embedding-index".into(),
             passed: false,
             detail: error.to_string(),
         },
@@ -323,5 +367,22 @@ mod tests {
             acl: vec!["work".into()],
         });
         assert!(!public_acl_check(&config, &store).passed);
+    }
+
+    #[test]
+    fn embedding_index_reports_a_generation_mismatch_without_rebuilding() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        store
+            .ensure_fingerprint("deterministic:16")
+            .expect("fingerprint");
+        let embedder = crate::embed::DeterministicEmbedder::new(32);
+
+        let check = embedding_index_check(&store, &embedder);
+        assert!(!check.passed);
+        assert_eq!(check.name, "embedding-index");
+        assert!(check.detail.contains("deterministic:16"));
+        assert!(check.detail.contains("deterministic:32"));
+        assert!(check.detail.contains("rebuild into a new generation"));
     }
 }

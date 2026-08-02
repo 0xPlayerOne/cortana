@@ -235,8 +235,10 @@ impl Store {
                 |row| row.get(0),
             )
             .optional()?;
-        if current.as_deref().is_some_and(|value| value != fingerprint) {
-            bail!("embedding model differs from this index; rebuild into a new generation");
+        if let Some(index_fingerprint) = current.as_deref().filter(|value| *value != fingerprint) {
+            bail!(
+                "embedding model differs from this index (index: {index_fingerprint}; configured: {fingerprint}); rebuild into a new generation"
+            );
         }
         connection.execute(
             "INSERT OR IGNORE INTO meta(key,value) VALUES('embedding_fingerprint',?1)",
@@ -2495,6 +2497,23 @@ mod tests {
         let stats = store.stats().expect("stats");
         assert_eq!(stats.embedding_cache_entries, 1);
         assert_eq!(stats.embedding_cache_hits, 1);
+    }
+
+    #[test]
+    fn fingerprint_mismatch_explains_the_required_generation_change() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .ensure_fingerprint("model-a:16")
+            .expect("initial fingerprint");
+
+        let error = store
+            .ensure_fingerprint("model-b:32")
+            .expect_err("mismatched generation must fail closed");
+        let message = error.to_string();
+        assert!(message.contains("model-a:16"));
+        assert!(message.contains("model-b:32"));
+        assert!(message.contains("rebuild into a new generation"));
     }
 
     #[test]

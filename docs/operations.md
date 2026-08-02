@@ -181,9 +181,11 @@ differs from the XDG default.
 
 ## Read-only production readiness
 
-Run `cortana readiness` to check API liveness, embedding availability, database integrity, backup
-freshness, query mode, and recurring-sync state. The command does not call connectors or mutate
-the corpus. Recurring sync fails the safe default unless the operator explicitly supplies
+Run `cortana readiness` to check API liveness, embedding availability, embedding/index generation
+compatibility, database integrity, backup freshness, query mode, and recurring-sync state. A
+generation mismatch is reported with both fingerprints and requires an explicit rebuild into a
+new generation; readiness never changes the existing index. The command does not call connectors
+or mutate the corpus. Recurring sync fails the safe default unless the operator explicitly supplies
 `--allow-sync-service`; see the [evaluation guide](evaluation.md).
 
 ## Secrets
