@@ -3,7 +3,13 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 
 import { demoEvidence, demoStatus } from './demo'
 import { answerResponse } from './test/fixtures'
-import type { AnswerResponse, BrainDocument, BrainStatus, ContextBundle } from './types'
+import type {
+  AnswerResponse,
+  BrainDocument,
+  BrainGraphPage,
+  BrainStatus,
+  ContextBundle,
+} from './types'
 
 afterEach(cleanup)
 
@@ -37,6 +43,7 @@ const state = {
       ) => Promise<ContextBundle>)
     | null,
   getDocument: null as ((id: string, signal?: AbortSignal) => Promise<BrainDocument>) | null,
+  graph: null as BrainGraphPage | null,
 }
 
 mock.module('./api', () => ({
@@ -51,6 +58,10 @@ mock.module('./api', () => ({
     state.getDocument
       ? state.getDocument(id, signal)
       : Promise.reject(new Error('Document unavailable')),
+  getGraph: () =>
+    state.graph
+      ? Promise.resolve(state.graph)
+      : Promise.reject(new Error('Graph data unavailable')),
   getContext: (query: string, project?: string, source?: string, signal?: AbortSignal) =>
     state.getContext
       ? state.getContext(query, project, source, signal)
@@ -165,6 +176,32 @@ test('graph and timeline evidence actions open the selected source', async () =>
       )
     )
     expect(screen.getByRole('heading', { level: 1, name: 'Deployment playbook' })).toBeTruthy()
+  }
+})
+
+test('graph view renders indexed document nodes when the graph endpoint responds', async () => {
+  state.graph = {
+    nodes: [
+      {
+        id: 'document:release-process',
+        kind: 'document',
+        label: 'Release process',
+        project: 'work',
+        source: 'work-code',
+        document_id: 'release-process-id',
+      },
+    ],
+    edges: [],
+    next_cursor: null,
+  }
+
+  try {
+    await renderApp()
+    fireEvent.click(railButton('Graph'))
+    await waitFor(() => expect(screen.getByText('1 nodes · 0 links')).toBeTruthy())
+    expect(screen.getByRole('button', { name: 'Graph evidence: Release process' })).toBeTruthy()
+  } finally {
+    state.graph = null
   }
 })
 

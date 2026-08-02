@@ -2,7 +2,7 @@ import { BookOpen, FileText, History, Link2, Network, Sparkles, Star } from 'luc
 import { type CSSProperties, useEffect, useState } from 'react'
 
 import { isDesktopApp, openDesktopUrl } from '../api'
-import type { AnswerResponse, BrainDocument, Evidence } from '../types'
+import type { AnswerResponse, BrainDocument, BrainGraphPage, Evidence } from '../types'
 
 const tabs = [
   { id: 'answer', label: 'Answer', icon: Sparkles },
@@ -40,6 +40,9 @@ export function Workspace({
   error,
   document,
   documentLoading,
+  graph,
+  graphLoading,
+  graphError,
   tab,
   onTabChange,
   onSelect,
@@ -54,6 +57,9 @@ export function Workspace({
   error: string
   document: BrainDocument | null
   documentLoading: boolean
+  graph: BrainGraphPage | null
+  graphLoading: boolean
+  graphError: string
   tab: WorkspaceTab
   onTabChange: (tab: WorkspaceTab) => void
   onSelect: (index: number) => void
@@ -98,6 +104,15 @@ export function Workspace({
         <EmptyState title="Opening document" detail="Loading the canonical indexed content…" />
       ) : tab === 'document' && document ? (
         <BrainDocumentView document={document} onSelectDocument={onSelectDocument} />
+      ) : tab === 'graph' ? (
+        <GraphView
+          graph={graph}
+          graphLoading={graphLoading}
+          graphError={graphError}
+          evidence={evidence}
+          onSelect={selectEvidenceByChunkId}
+          onSelectDocument={onSelectDocument}
+        />
       ) : error ? (
         <EmptyState
           title="Cortana could not reach the brain"
@@ -116,8 +131,6 @@ export function Workspace({
         />
       ) : evidence.length === 0 ? (
         <EmptyState title="No evidence found" detail="Try a broader phrase or another source." />
-      ) : tab === 'graph' ? (
-        <GraphView evidence={evidence} onSelect={selectEvidenceByChunkId} />
       ) : tab === 'timeline' ? (
         <TimelineView evidence={evidence} onSelect={selectEvidenceByChunkId} />
       ) : tab === 'answer' ? (
@@ -414,30 +427,77 @@ function AnswerView({
 }
 
 function GraphView({
+  graph,
+  graphLoading,
+  graphError,
   evidence,
   onSelect,
+  onSelectDocument,
 }: {
+  graph: BrainGraphPage | null
+  graphLoading: boolean
+  graphError: string
   evidence: Evidence[]
   onSelect: (chunkId: string) => void
+  onSelectDocument: (id: string) => void
 }) {
+  const graphDocuments = graph?.nodes.filter((node) => node.kind === 'document') ?? []
+  const nodes = graphDocuments.length
+    ? graphDocuments.slice(0, 12)
+    : evidence.slice(0, 8).map((item) => ({
+        id: item.chunk_id,
+        kind: 'document' as const,
+        label: item.title,
+        project: '',
+        source: item.source,
+        document_id: null,
+      }))
+  if (graphLoading && nodes.length === 0) {
+    return (
+      <EmptyState
+        title="Loading knowledge graph"
+        detail="Mapping indexed workspaces and documents…"
+      />
+    )
+  }
+  if (graphError && nodes.length === 0) {
+    return <EmptyState title="Graph unavailable" detail={graphError} />
+  }
+  if (!graphLoading && nodes.length === 0) {
+    return (
+      <EmptyState title="No graph data" detail="Index a source to build linked workspace nodes." />
+    )
+  }
   return (
     <div className="graph-view">
       <div className="graph-center">
         <Sparkles size={24} />
       </div>
-      {evidence.slice(0, 8).map((item, index) => (
+      <div className="graph-summary" role="status">
+        {graph
+          ? `${graph.nodes.length} nodes · ${graph.edges.length} links`
+          : graphLoading
+            ? 'Loading indexed graph…'
+            : 'Retrieved evidence'}
+        {graphError ? ` · ${graphError}` : ''}
+      </div>
+      {nodes.map((node, index) => (
         <button
-          key={item.chunk_id}
-          aria-label={`Graph evidence: ${item.title}`}
+          type="button"
+          key={node.id}
+          aria-label={`Graph evidence: ${node.label}`}
           style={
             {
-              '--angle': `${(index / Math.min(evidence.length, 8)) * Math.PI * 2}rad`,
+              '--angle': `${(index / Math.max(nodes.length, 1)) * Math.PI * 2}rad`,
             } as CSSProperties
           }
-          onClick={() => onSelect(item.chunk_id)}
+          onClick={() => {
+            if (node.document_id) onSelectDocument(node.document_id)
+            else onSelect(node.id)
+          }}
         >
           <FileText size={17} />
-          <span>{item.title}</span>
+          <span>{node.label}</span>
         </button>
       ))}
     </div>

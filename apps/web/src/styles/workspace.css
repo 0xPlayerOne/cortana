@@ -445,6 +445,19 @@
   transform: translate(-50%, -50%);
 }
 
+.graph-summary {
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  z-index: 1;
+  max-width: calc(100% - 36px);
+  padding: 6px 9px;
+  color: #686963;
+  border: 1px solid #d7d4cb;
+  background: rgb(251 250 246 / 88%);
+  font-size: 11px;
+}
+
 .graph-view > button {
   --distance: min(29vw, 260px);
   position: absolute;

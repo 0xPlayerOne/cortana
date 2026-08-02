@@ -16,6 +16,7 @@ import {
   getDocument,
   getDocuments,
   getContext,
+  getGraph,
   getStatus,
   isDemoMode,
   isDesktopApp,
@@ -33,6 +34,7 @@ import type {
   AnswerResponse,
   BrainDocument,
   BrainDocumentSummary,
+  BrainGraphPage,
   BrainStatus,
   ContextBundle,
   DesktopSettings,
@@ -75,6 +77,9 @@ export function App() {
   const [contextWidth, setContextWidth] = useState(350)
   const [contextBundle, setContextBundle] = useState<ContextBundle | null>(null)
   const [contextLoading, setContextLoading] = useState(false)
+  const [graph, setGraph] = useState<BrainGraphPage | null>(null)
+  const [graphLoading, setGraphLoading] = useState(false)
+  const [graphError, setGraphError] = useState('')
   const searchRequestRef = useRef(0)
   const [contextError, setContextError] = useState('')
   const [queryHistory, setQueryHistory] = useState<string[]>([])
@@ -89,9 +94,11 @@ export function App() {
   const contextScopeRef = useRef('')
   const documentListAbortRef = useRef<AbortController | null>(null)
   const documentSelectAbortRef = useRef<AbortController | null>(null)
+  const graphAbortRef = useRef<AbortController | null>(null)
   const contextRequestRef = useRef(0)
   const documentListRequestRef = useRef(0)
   const documentSelectRequestRef = useRef(0)
+  const graphRequestRef = useRef(0)
   const documentPageLoadingRef = useRef(false)
   const sourceWidthRef = useRef(sourceWidth)
   const contextWidthRef = useRef(contextWidth)
@@ -173,6 +180,39 @@ export function App() {
       }
     }
   }, [debouncedDocumentQuery, source, workspace])
+
+  useEffect(() => {
+    if (view !== 'knowledge' || workspaceTab !== 'graph') return
+    const requestId = ++graphRequestRef.current
+    graphAbortRef.current?.abort()
+    const controller = new AbortController()
+    graphAbortRef.current = controller
+    setGraph(null)
+    setGraphError('')
+    setGraphLoading(true)
+    void getGraph(
+      workspace || undefined,
+      source || undefined,
+      debouncedDocumentQuery || undefined,
+      undefined,
+      controller.signal
+    )
+      .then((next) => {
+        if (graphRequestRef.current !== requestId || controller.signal.aborted) return
+        setGraph(next)
+      })
+      .catch((caught: unknown) => {
+        if (isAbort(caught) || controller.signal.aborted) return
+        if (graphRequestRef.current !== requestId) return
+        setGraphError(caught instanceof Error ? caught.message : 'Graph data unavailable')
+      })
+      .finally(() => {
+        if (graphRequestRef.current === requestId && !controller.signal.aborted) {
+          setGraphLoading(false)
+        }
+      })
+    return () => controller.abort()
+  }, [debouncedDocumentQuery, source, view, workspace, workspaceTab])
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -666,6 +706,9 @@ export function App() {
             error={error}
             document={activeDocument}
             documentLoading={documentLoading}
+            graph={graph}
+            graphLoading={graphLoading}
+            graphError={graphError}
             tab={workspaceTab}
             onTabChange={setWorkspaceTab}
             onSelect={setSelected}
