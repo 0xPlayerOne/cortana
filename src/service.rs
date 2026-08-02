@@ -619,11 +619,11 @@ pub fn sync_job_installed() -> bool {
     #[cfg(target_os = "linux")]
     {
         systemd_unit_path("sync")
-            .and_then(|path| {
-                let timer = path
-                    .parent()
-                    .map(|directory| directory.join(systemd_timer_unit("sync")))?;
-                Ok(path.is_file() && timer.is_file())
+            .map(|path| {
+                let Some(directory) = path.parent() else {
+                    return false;
+                };
+                path.is_file() && directory.join(systemd_timer_unit("sync")).is_file()
             })
             .unwrap_or(false)
     }

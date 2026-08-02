@@ -1077,7 +1077,10 @@ test('source tree actions resolve a configured source by its canonical label', a
     state.settings = originalSettings
     state.applySettingsUpdate = false
     state.lastSettingsUpdate = null
-    demoStatus.ingestion = { ...demoStatus.ingestion, configured_sources: originalConfiguredSources }
+    demoStatus.ingestion = {
+      ...demoStatus.ingestion,
+      configured_sources: originalConfiguredSources,
+    }
     demoStatus.sources = originalIndexedSources
   }
 })
