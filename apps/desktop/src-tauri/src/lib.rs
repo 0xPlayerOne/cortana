@@ -468,11 +468,12 @@ async fn desktop_settings_import(
 
 #[tauri::command]
 fn desktop_installer_start(
+    app: AppHandle,
     installer: State<'_, installer::InstallerState>,
     tool: String,
     approved: bool,
 ) -> Result<installer::InstallJobSnapshot, String> {
-    installer.start(&tool, approved)
+    installer.start_with_app(Some(&app), &tool, approved)
 }
 
 #[tauri::command]

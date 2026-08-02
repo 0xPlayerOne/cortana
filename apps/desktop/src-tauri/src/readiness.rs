@@ -7,7 +7,7 @@ use std::{
 
 use serde::Serialize;
 use serde_json::Value;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
 use tokio::{process::Command, time::timeout};
 
@@ -45,7 +45,7 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
     let (bundled_version, uv, connector, rust) = tokio::join!(
         sidecar_output(app, &["--version"], VERSION_TIMEOUT),
         tool_status("uv", "uv", &["uv"], true, uv_install_supported()),
-        connector_status(),
+        connector_status(app),
         tool_status("rust", "Rust toolchain", &["rustc"], false, false),
     );
     let cortana = if let Ok(version) = &bundled_version {
@@ -150,7 +150,7 @@ async fn tool_status(
     }
 }
 
-async fn connector_status() -> ToolStatus {
+async fn connector_status(app: &AppHandle) -> ToolStatus {
     let path = connector_candidates()
         .into_iter()
         .find(|candidate| is_executable(candidate));
@@ -158,6 +158,9 @@ async fn connector_status() -> ToolStatus {
         Some(path) => command_version(path).await,
         None => None,
     };
+    let resource_available = bundled_connector_resource_dir(app).is_ok();
+    let uv_available = find_executable("uv").is_some();
+    let install_supported = resource_available && uv_available;
     ToolStatus {
         id: "connectors",
         label: "Connector environment",
@@ -165,34 +168,73 @@ async fn connector_status() -> ToolStatus {
         available: path.is_some(),
         path: path.as_ref().map(|path| path.display().to_string()),
         version,
-        install_supported: false,
-        detail: path
-            .map(|path| format!("Found {}", path.display()))
-            .unwrap_or_else(|| {
-                "Install the Cortana ingestion workspace after uv is available.".into()
-            }),
+        install_supported,
+        detail: path.as_ref().map_or_else(
+            || {
+                if !resource_available {
+                    "This Desktop build is missing its bundled connector workspace.".into()
+                } else if uv_available {
+                    "Approve installation of the bundled ingestion workspace.".into()
+                } else {
+                    "Install uv before installing the bundled ingestion workspace.".into()
+                }
+            },
+            |path| format!("Found {}", path.display()),
+        ),
     }
 }
 
-fn connector_candidates() -> Vec<PathBuf> {
+pub(crate) fn bundled_connector_resource_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
-    if let Some(prefix) = std::env::var_os("CORTANA_INSTALL_PREFIX") {
-        candidates.push(PathBuf::from(prefix).join(connector_relative_path()));
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("cortana-connectors"));
     }
-    if let Some(home) = dirs::home_dir() {
-        candidates.push(home.join(".local").join(connector_relative_path()));
+    #[cfg(debug_assertions)]
+    candidates.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("cortana-connectors"),
+    );
+    candidates
+        .into_iter()
+        .find(|candidate| {
+            candidate.join("pyproject.toml").is_file()
+                && candidate.join("src").join("cortana").is_dir()
+        })
+        .ok_or_else(|| "bundled connector workspace is unavailable".into())
+}
+
+fn connector_candidates() -> Vec<PathBuf> {
+    connector_candidates_from(
+        std::env::var_os("CORTANA_INSTALL_PREFIX").map(PathBuf::from),
+        dirs::home_dir(),
+    )
+}
+
+fn connector_candidates_from(prefix: Option<PathBuf>, home: Option<PathBuf>) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(prefix) = prefix {
+        if prefix.is_absolute() {
+            candidates.push(prefix.join("share/cortana").join(connector_relative_path()));
+        }
+    }
+    if let Some(home) = home {
+        candidates.push(
+            home.join(".local/share/cortana")
+                .join(connector_relative_path()),
+        );
     }
     candidates
 }
 
 #[cfg(windows)]
 fn connector_relative_path() -> &'static str {
-    "share/cortana/venv/Scripts/cortana-connectors.exe"
+    "venv/Scripts/cortana-connectors.exe"
 }
 
 #[cfg(not(windows))]
 fn connector_relative_path() -> &'static str {
-    "share/cortana/venv/bin/cortana-connectors"
+    "venv/bin/cortana-connectors"
 }
 
 async fn core_readiness(path: &str) -> Result<Value, String> {
@@ -344,7 +386,7 @@ fn bounded_output(bytes: &[u8]) -> String {
         .join(" ")
 }
 
-fn find_executable(name: &str) -> Option<PathBuf> {
+pub(crate) fn find_executable(name: &str) -> Option<PathBuf> {
     let candidate = Path::new(name);
     if candidate.components().count() > 1 {
         return is_executable(candidate).then(|| candidate.to_path_buf());
@@ -425,6 +467,32 @@ mod tests {
     #[test]
     fn executable_lookup_does_not_treat_missing_tools_as_available() {
         assert!(find_executable("cortana-tool-that-does-not-exist").is_none());
+    }
+
+    #[test]
+    fn connector_candidates_match_release_install_layout() {
+        let candidates = connector_candidates_from(
+            Some(PathBuf::from("/opt/cortana")),
+            Some(PathBuf::from("/Users/example")),
+        );
+        #[cfg(not(windows))]
+        assert_eq!(
+            candidates,
+            vec![
+                PathBuf::from("/opt/cortana/share/cortana/venv/bin/cortana-connectors"),
+                PathBuf::from("/Users/example/.local/share/cortana/venv/bin/cortana-connectors"),
+            ]
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            candidates,
+            vec![
+                PathBuf::from("/opt/cortana/share/cortana/venv/Scripts/cortana-connectors.exe"),
+                PathBuf::from(
+                    "/Users/example/.local/share/cortana/venv/Scripts/cortana-connectors.exe"
+                ),
+            ]
+        );
     }
 
     #[test]

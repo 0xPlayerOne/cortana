@@ -79,3 +79,4 @@ mise.local.lock
 # Repository-specific rules
 apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/resources/

@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    path::{Path, PathBuf},
     process::Stdio,
     sync::{
         Arc, Mutex,
@@ -9,6 +10,7 @@ use std::{
 };
 
 use serde::Serialize;
+use tauri::AppHandle;
 use tokio::{io::AsyncReadExt, process::Command};
 
 const MAX_LOG_BYTES: u64 = 64 * 1024;
@@ -39,18 +41,27 @@ pub struct InstallerState {
     jobs: Arc<Mutex<BTreeMap<String, InstallJob>>>,
 }
 
+struct CommandSpec {
+    program: PathBuf,
+    args: Vec<String>,
+}
+
 struct CommandPlan {
-    program: &'static str,
-    args: Vec<&'static str>,
-    summary: &'static str,
+    commands: Vec<CommandSpec>,
+    summary: String,
 }
 
 impl InstallerState {
-    pub fn start(&self, tool: &str, approved: bool) -> Result<InstallJobSnapshot, String> {
+    pub(crate) fn start_with_app(
+        &self,
+        app: Option<&AppHandle>,
+        tool: &str,
+        approved: bool,
+    ) -> Result<InstallJobSnapshot, String> {
         if !approved {
             return Err("installation requires explicit approval".into());
         }
-        let plan = install_plan(tool)?;
+        let plan = install_plan(tool, app)?;
         let mut jobs = self
             .jobs
             .lock()
@@ -79,7 +90,7 @@ impl InstallerState {
             id: id.clone(),
             tool: tool.into(),
             status: "running",
-            summary: plan.summary.into(),
+            summary: plan.summary.clone(),
             log: String::new(),
             started_at_unix_seconds: started_at,
             completed_at_unix_seconds: None,
@@ -165,14 +176,40 @@ async fn run_plan(
     plan: CommandPlan,
     cancelled: Arc<AtomicBool>,
 ) -> Result<(Option<i32>, String), String> {
-    let mut child = Command::new(plan.program)
-        .args(plan.args)
+    let mut last_exit_code = None;
+    let mut log = String::new();
+    for command in plan.commands {
+        if cancelled.load(Ordering::SeqCst) {
+            return Ok((last_exit_code, sanitize_log(&log)));
+        }
+        let (exit_code, command_log) = run_command(&command, &cancelled).await?;
+        last_exit_code = exit_code;
+        if !command_log.is_empty() {
+            if !log.is_empty() {
+                log.push('\n');
+            }
+            log.push_str(&command_log);
+            log = sanitize_log(&log);
+        }
+        if cancelled.load(Ordering::SeqCst) || exit_code != Some(0) {
+            break;
+        }
+    }
+    Ok((last_exit_code, log))
+}
+
+async fn run_command(
+    command: &CommandSpec,
+    cancelled: &Arc<AtomicBool>,
+) -> Result<(Option<i32>, String), String> {
+    let mut child = Command::new(&command.program)
+        .args(&command.args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|error| format!("start {}: {error}", plan.program))?;
+        .map_err(|error| format!("start {}: {error}", command.program.display()))?;
     let stdout = child
         .stdout
         .take()
@@ -235,36 +272,103 @@ async fn read_bounded<R: tokio::io::AsyncRead + Unpin>(reader: R) -> Result<Vec<
     Ok(bytes)
 }
 
-fn install_plan(tool: &str) -> Result<CommandPlan, String> {
+fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, String> {
     match (tool, std::env::consts::OS) {
         ("uv", "macos") => Ok(CommandPlan {
-            program: "brew",
-            args: vec!["install", "uv"],
-            summary: "Install uv from Homebrew core",
+            commands: vec![CommandSpec {
+                program: "brew".into(),
+                args: vec!["install".into(), "uv".into()],
+            }],
+            summary: "Install uv from Homebrew core".into(),
         }),
         ("uv", "windows") => Ok(CommandPlan {
-            program: "winget",
-            args: vec!["install", "--id=astral-sh.uv", "-e"],
-            summary: "Install uv with WinGet",
+            commands: vec![CommandSpec {
+                program: "winget".into(),
+                args: vec!["install".into(), "--id=astral-sh.uv".into(), "-e".into()],
+            }],
+            summary: "Install uv with WinGet".into(),
         }),
         ("uv", "linux") => Ok(CommandPlan {
-            program: "sh",
-            args: vec![
-                "-c",
-                "curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/install.sh | sh",
-            ],
-            summary: "Install uv with Astral's HTTPS installer",
+            commands: vec![CommandSpec {
+                program: "sh".into(),
+                args: vec![
+                    "-c".into(),
+                    "curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/install.sh | sh".into(),
+                ],
+            }],
+            summary: "Install uv with Astral's HTTPS installer".into(),
         }),
         ("python", _) => Ok(CommandPlan {
-            program: "uv",
-            args: vec!["python", "install", "3.11"],
-            summary: "Install an isolated Python 3.11 runtime with uv",
+            commands: vec![CommandSpec {
+                program: "uv".into(),
+                args: vec!["python".into(), "install".into(), "3.11".into()],
+            }],
+            summary: "Install an isolated Python 3.11 runtime with uv".into(),
         }),
-        ("cortana", _) | ("connectors", _) => Err(
-            "Cortana and connector installation require the signed bundled runtime and are not downloaded independently"
+        ("connectors", _) => connector_plan(app),
+        ("cortana", _) => Err(
+            "Cortana installation is provided by the signed Desktop release and is not downloaded independently"
                 .into(),
         ),
         _ => Err("that tool has no supported installer".into()),
+    }
+}
+
+fn connector_plan(app: Option<&AppHandle>) -> Result<CommandPlan, String> {
+    let app = app
+        .ok_or_else(|| "connector installation requires the Desktop resource bundle".to_string())?;
+    let resource_dir = crate::readiness::bundled_connector_resource_dir(app)?;
+    let uv = crate::readiness::find_executable("uv")
+        .ok_or_else(|| "install uv before installing the connector environment".to_string())?;
+    let venv_dir = connector_venv_dir()?;
+    let python = connector_python_path(&venv_dir);
+    let package = format!("{}[ingestion]", resource_dir.display());
+    Ok(CommandPlan {
+        commands: vec![
+            CommandSpec {
+                program: uv.clone(),
+                args: vec![
+                    "venv".into(),
+                    "--python".into(),
+                    "3.11".into(),
+                    "--allow-existing".into(),
+                    venv_dir.display().to_string(),
+                ],
+            },
+            CommandSpec {
+                program: uv,
+                args: vec![
+                    "pip".into(),
+                    "install".into(),
+                    "--python".into(),
+                    python.display().to_string(),
+                    package,
+                ],
+            },
+        ],
+        summary: "Install bundled ingestion connectors with uv".into(),
+    })
+}
+
+fn connector_venv_dir() -> Result<PathBuf, String> {
+    if let Some(prefix) = std::env::var_os("CORTANA_INSTALL_PREFIX").map(PathBuf::from) {
+        if prefix.is_absolute() {
+            return Ok(prefix.join("share/cortana/venv"));
+        }
+    }
+    dirs::home_dir()
+        .map(|home| home.join(".local/share/cortana/venv"))
+        .ok_or_else(|| "cannot locate the current user's home directory".into())
+}
+
+fn connector_python_path(venv_dir: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        return venv_dir.join("Scripts/python.exe");
+    }
+    #[cfg(not(windows))]
+    {
+        venv_dir.join("bin/python")
     }
 }
 
@@ -314,8 +418,8 @@ mod tests {
     #[test]
     fn installer_requires_approval_and_rejects_unknown_tools() {
         let state = InstallerState::default();
-        assert!(state.start("uv", false).is_err());
-        assert!(state.start("anything", true).is_err());
+        assert!(state.start_with_app(None, "uv", false).is_err());
+        assert!(state.start_with_app(None, "anything", true).is_err());
     }
 
     #[test]
@@ -334,9 +438,11 @@ mod tests {
     async fn fixed_job_runner_captures_output_and_honors_cancellation() {
         let completed = run_plan(
             CommandPlan {
-                program: "sh",
-                args: vec!["-c", "printf ready"],
-                summary: "test",
+                commands: vec![CommandSpec {
+                    program: "sh".into(),
+                    args: vec!["-c".into(), "printf ready".into()],
+                }],
+                summary: "test".into(),
             },
             Arc::new(AtomicBool::new(false)),
         )
@@ -350,9 +456,11 @@ mod tests {
         let task = tokio::spawn(async move {
             run_plan(
                 CommandPlan {
-                    program: "sh",
-                    args: vec!["-c", "sleep 5"],
-                    summary: "test",
+                    commands: vec![CommandSpec {
+                        program: "sh".into(),
+                        args: vec!["-c".into(), "sleep 5".into()],
+                    }],
+                    summary: "test".into(),
                 },
                 cancellation,
             )

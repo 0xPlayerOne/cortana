@@ -20,7 +20,9 @@ The default capability grants only:
 The matching core executable is bundled as a Tauri sidecar for each release target. Native Rust
 code may invoke only that declared sidecar; the webview receives no shell capability and cannot
 replace its path or arguments. The sidecar is included inside the updater-signed desktop artifact,
-so Desktop readiness never depends on a separately downloaded Cortana executable.
+so Desktop readiness never depends on a separately downloaded Cortana executable. Each artifact also
+contains the connector package source (without credentials or a venv) as a private Tauri resource;
+the native installer can use that fixed resource to create the user's connector environment locally.
 
 Secrets and source credentials remain outside the renderer. The settings bridge returns only
 configured/unset metadata and accepts write-only named secret updates. It refuses symlinked config
@@ -48,8 +50,9 @@ sidecar. It rejects oversized or malformed reports and never starts a connector 
 Tool installation is a second native boundary. The renderer can request only a fixed tool ID and
 must set an explicit approval flag after showing a confirmation. Native code maps that ID to a
 platform-specific command, permits one job at a time, bounds and sanitizes returned logs, supports
-cancellation, and writes metadata-only audit events beside the active Cortana config. Arbitrary
-programs and arguments are never accepted from the renderer.
+cancellation, and writes metadata-only audit events beside the active Cortana config. The `connectors`
+plan is a fixed two-step uv invocation against the signed bundle resource and the per-user venv;
+arbitrary programs, package sources, and arguments are never accepted from the renderer.
 
 Source validation is a third native boundary. The renderer sends only an exact configured source
 name. Native Rust reloads the owner-local configuration, rejects an unknown name, then constructs

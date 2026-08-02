@@ -44,7 +44,10 @@ The Settings **Readiness** panel runs an explicit, read-only scan. It checks the
 uv, Python 3.11+, the connector environment, and the core production gates without starting an
 ingestion run. Fixed tool installers require a confirmation and native approval, expose bounded
 logs, and can be cancelled or retried. On a first launch, the guided setup opens this panel and
-runs the read-only scan automatically; every installation still requires separate approval.
+runs the read-only scan automatically; every installation still requires separate approval. Tauri
+release bundles carry the connector source and metadata needed for the approved **Install** action:
+it creates the per-user `~/.local/share/cortana/venv` environment with uv and installs the bounded
+`ingestion` dependency set. The bundle never includes credentials or an existing user's venv.
 
 The Settings **Sources** panel edits typed connector configuration, workspace assignments,
 credential references, and per-source safety budgets. Secret values are write-only. External
