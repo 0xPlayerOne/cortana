@@ -64,8 +64,12 @@ impl UpdaterState {
         self.update_snapshot(|snapshot| {
             snapshot.phase = "checking";
             snapshot.error = None;
+            snapshot.available_version = None;
+            snapshot.release_date = None;
+            snapshot.release_notes = None;
             snapshot.downloaded_bytes = 0;
             snapshot.total_bytes = None;
+            snapshot.restart_required = false;
         });
         let result = app
             .updater()
