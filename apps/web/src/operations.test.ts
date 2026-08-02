@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { demoStatus } from './demo'
-import { embeddingLabel, operationalSources, sourceHealth } from './operations'
+import { embeddingLabel, isLoopbackUrl, operationalSources, sourceHealth } from './operations'
 
 describe('operational source visibility', () => {
   test('includes configured disabled sources that remain indexed', () => {
@@ -90,5 +90,18 @@ describe('embedding status labels', () => {
     expect(embeddingLabel('deterministic:16')).toBe('deterministic:16')
     expect(embeddingLabel('openai:missing-dimension')).toBe('openai:missing-dimension')
     expect(embeddingLabel(null)).toBe('—')
+  })
+})
+
+describe('provider endpoint classification', () => {
+  test('recognizes only exact loopback hosts', () => {
+    expect(isLoopbackUrl('http://127.0.0.1:6999/v1')).toBe(true)
+    expect(isLoopbackUrl('http://[::1]:6999/v1')).toBe(true)
+    expect(isLoopbackUrl('https://localhost/v1')).toBe(true)
+    expect(isLoopbackUrl('https://api.localhost.example/v1')).toBe(false)
+  })
+
+  test('fails closed for malformed endpoints', () => {
+    expect(isLoopbackUrl('not a URL')).toBe(false)
   })
 })

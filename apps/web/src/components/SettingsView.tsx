@@ -54,6 +54,7 @@ import {
 } from '../api'
 import { buildSetupSteps } from '../setup'
 import { INITIAL_SYNC_BUDGETS } from '../types'
+import { isLoopbackUrl } from '../operations'
 import type {
   DesktopInitialSyncPlan,
   DesktopInstallJob,
@@ -2866,7 +2867,7 @@ function ProviderSection<T extends ProviderValue>({
             value={provider.provider}
             onChange={(event) => {
               const nextProvider = event.target.value as 'local' | 'cloud'
-              const loopback = /localhost|127\.0\.0\.1|\[::1\]/.test(provider.base_url)
+              const loopback = isLoopbackUrl(provider.base_url)
               const base_url =
                 nextProvider === 'cloud' && loopback
                   ? 'https://api.openai.com/v1'

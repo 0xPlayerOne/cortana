@@ -1,5 +1,14 @@
 import type { BrainStatus, ConfiguredSourceSummary, SourceSyncSummary } from './types'
 
+export function isLoopbackUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase()
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+  } catch {
+    return false
+  }
+}
+
 export function embeddingLabel(fingerprint: string | null | undefined): string {
   if (!fingerprint) return '—'
   const dimensionSeparator = fingerprint.lastIndexOf(':')
