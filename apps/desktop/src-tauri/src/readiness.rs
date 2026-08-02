@@ -8,7 +8,10 @@ use std::{
 use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::{
+    ShellExt,
+    process::{CommandChild, CommandEvent},
+};
 use tokio::{process::Command, time::timeout};
 
 const VERSION_TIMEOUT: Duration = Duration::from_secs(3);
@@ -107,8 +110,8 @@ async fn sidecar_readiness(app: &AppHandle) -> Result<Value, String> {
 pub async fn migrate_embedding_generation(app: &AppHandle, from: &str) -> Result<String, String> {
     validate_embedding_fingerprint(from)?;
     let args = ["migrate-embedding", "--from", from, "--force"];
-    let output = sidecar_output(app, &args, EMBEDDING_MIGRATION_TIMEOUT).await?;
-    if !output.status.success() {
+    let output = migration_sidecar_output(app, &args).await?;
+    if !output.success {
         let detail = bounded_output(if output.stderr.is_empty() {
             &output.stdout
         } else {
@@ -121,6 +124,80 @@ pub async fn migrate_embedding_generation(app: &AppHandle, from: &str) -> Result
         });
     }
     Ok(bounded_output(&output.stdout))
+}
+
+struct MigrationSidecarOutput {
+    success: bool,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+async fn migration_sidecar_output(
+    app: &AppHandle,
+    args: &[&str],
+) -> Result<MigrationSidecarOutput, String> {
+    let command = app
+        .shell()
+        .sidecar("cortana")
+        .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
+        .args(args)
+        .env("CORTANA_DESKTOP_PROCESS_GROUP", "1")
+        .set_raw_out(true);
+    let (mut receiver, child) = command
+        .spawn()
+        .map_err(|error| format!("run bundled Cortana runtime: {error}"))?;
+    let result = timeout(EMBEDDING_MIGRATION_TIMEOUT, async {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut success = false;
+        while let Some(event) = receiver.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => append_migration_output(&mut stdout, &bytes),
+                CommandEvent::Stderr(bytes) => append_migration_output(&mut stderr, &bytes),
+                CommandEvent::Error(error) => {
+                    return Err(format!("run bundled Cortana runtime: {error}"));
+                }
+                CommandEvent::Terminated(payload) => {
+                    success = payload.code == Some(0);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok(MigrationSidecarOutput {
+            success,
+            stdout,
+            stderr,
+        })
+    })
+    .await;
+    match result {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(error)) => {
+            terminate_migration_process(child);
+            Err(error)
+        }
+        Err(_) => {
+            terminate_migration_process(child);
+            Err("embedding generation migration timed out".into())
+        }
+    }
+}
+
+fn append_migration_output(buffer: &mut Vec<u8>, bytes: &[u8]) {
+    let remaining = MAX_DETAIL_BYTES.saturating_sub(buffer.len());
+    buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
+}
+
+fn terminate_migration_process(child: CommandChild) {
+    #[cfg(unix)]
+    {
+        let pid = child.pid();
+        if pid > 0 && pid <= i32::MAX as u32 {
+            let _ = unsafe { libc::kill(-(pid as libc::pid_t), libc::SIGKILL) };
+        }
+    }
+    let _ = child.kill();
 }
 
 fn validate_embedding_fingerprint(value: &str) -> Result<(), String> {
@@ -602,5 +679,13 @@ mod tests {
             validate_embedding_fingerprint(&"x".repeat(MAX_EMBEDDING_FINGERPRINT_BYTES + 1))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn migration_output_is_bounded_before_rendering_native_errors() {
+        let mut output = Vec::new();
+        append_migration_output(&mut output, &vec![b'x'; MAX_DETAIL_BYTES + 1]);
+        append_migration_output(&mut output, b"more");
+        assert_eq!(output.len(), MAX_DETAIL_BYTES);
     }
 }
