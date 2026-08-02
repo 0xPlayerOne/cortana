@@ -2153,7 +2153,11 @@ function SourcesSection({
   // snapshots. A standalone SettingsView still uses its local observer.
   useEffect(() => {
     if (!sourceJobs) return
+    const currentIds = new Set(sourceJobs.map((candidate) => candidate.id))
     sourceJobs.forEach((candidate) => sharedJobIds.current.add(candidate.id))
+    for (const id of sharedJobIds.current) {
+      if (!currentIds.has(id) && id !== job?.id) sharedJobIds.current.delete(id)
+    }
     // A job may have started while Settings was unmounted. Adopt the newest
     // recovered snapshot so this section can show and cancel it immediately,
     // instead of only locking the editor in the background.
@@ -2163,7 +2167,10 @@ function SourcesSection({
     }
     const next = sourceJobs.find((candidate) => candidate.id === job.id)
     if (next && next !== job) setJob(next)
-    else if (!next && sharedJobIds.current.has(job.id)) setJob(null)
+    else if (!next && sharedJobIds.current.has(job.id)) {
+      sharedJobIds.current.delete(job.id)
+      setJob(null)
+    }
   }, [job, sourceJobs])
 
   useEffect(() => {
