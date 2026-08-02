@@ -17,7 +17,7 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import {
   cancelDesktopInstaller,
@@ -90,10 +90,17 @@ export function SettingsView({
   onSaved,
   initialSection = 'readiness',
   onJob,
+  sourceJobs,
 }: {
   onSaved: (settings: DesktopSettings) => void
   initialSection?: Section
   onJob?: (job: DesktopSourceJob) => void
+  /**
+   * Shared snapshots from the shell-level source-job poller. Standalone
+   * renders (for example the web fallback and focused tests) omit this prop
+   * and keep the local observer below.
+   */
+  sourceJobs?: DesktopSourceJob[]
 }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
   const [section, setSection] = useState<Section>(initialSection)
@@ -274,6 +281,7 @@ export function SettingsView({
                 setSaved(false)
               }}
               onJob={onJob}
+              sourceJobs={sourceJobs}
             />
           )}
           {section === 'embedding' && (
@@ -1430,6 +1438,7 @@ function SourcesSection({
   clearedSecrets,
   onClearSecret,
   onJob,
+  sourceJobs,
 }: SettingsSectionProps & {
   canValidate: boolean
   secretValues: Record<string, string>
@@ -1437,6 +1446,7 @@ function SourcesSection({
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
   onJob?: (job: DesktopSourceJob) => void
+  sourceJobs?: DesktopSourceJob[]
 }) {
   const [job, setJob] = useState<DesktopSourceJob | null>(null)
   const applyJob = (next: DesktopSourceJob) => {
@@ -1451,8 +1461,19 @@ function SourcesSection({
     planning: boolean
     flowError: string
   } | null>(null)
+  const validationPlanKey = useRef('')
+
+  // In the full Desktop shell, App owns one poller for the source-job list so
+  // SourcePanel, the tray/status bar, and Settings all observe the same
+  // snapshots. A standalone SettingsView still uses its local observer.
+  useEffect(() => {
+    if (!sourceJobs || !job) return
+    const next = sourceJobs.find((candidate) => candidate.id === job.id)
+    if (next && next !== job) setJob(next)
+  }, [job, sourceJobs])
 
   useEffect(() => {
+    if (sourceJobs) return
     if (!job || !['running', 'cancelling'].includes(job.status)) return
     let active = true
     const timer = window.setTimeout(() => {
@@ -1460,13 +1481,6 @@ function SourcesSection({
         .then((next) => {
           if (!active) return
           applyJob(next)
-          if (
-            next.status === 'succeeded' &&
-            job.operation === 'validation' &&
-            initialSync?.source === job.source
-          ) {
-            void requestPlan(job.source, initialSync.budget)
-          }
         })
         .catch((caught: unknown) => {
           if (active) {
@@ -1505,6 +1519,26 @@ function SourcesSection({
       )
     }
   }
+
+  // Whether polling is owned by this section or by App, a successful
+  // validation must unlock a fresh plan for the selected initial-sync budget.
+  // Keeping this transition here avoids coupling the flow to one polling
+  // implementation and prevents duplicate plan requests on rerenders.
+  useEffect(() => {
+    if (
+      !job ||
+      job.status !== 'succeeded' ||
+      job.operation !== 'validation' ||
+      !initialSync ||
+      initialSync.source !== job.source
+    ) {
+      return
+    }
+    const key = `${job.id}:${initialSync.budget}`
+    if (validationPlanKey.current === key) return
+    validationPlanKey.current = key
+    void requestPlan(job.source, initialSync.budget)
+  }, [initialSync, job])
 
   const openInitialSync = (source: SourceSettings, budget: InitialSyncBudget = 'small') => {
     setInitialSync({

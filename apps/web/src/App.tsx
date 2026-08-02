@@ -645,6 +645,7 @@ export function App() {
         <SettingsView
           initialSection={settingsSection}
           onJob={sourceJobs.remember}
+          sourceJobs={sourceJobs.jobs}
           onSaved={(next) => {
             setDesktopSettings(next)
             if (workspace && !next.workspaces.some((item) => item.id === workspace)) {

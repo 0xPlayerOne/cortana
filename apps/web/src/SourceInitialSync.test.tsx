@@ -262,6 +262,48 @@ test('a plan without validation coverage gates the start behind budget validatio
   }
 })
 
+test('shared source-job snapshots unlock the initial-sync plan without local polling', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  try {
+    state.planOverrides = { validation_covers_budget: false }
+    const view = render(
+      <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[]} />
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Initial sync' }))
+    await waitFor(() => expect(screen.getByText(/latest validation used smaller limits/)).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Validate for this budget' }))
+    await waitFor(() => expect(state.validationCalls).toHaveLength(1))
+    const running = {
+      ...jobFor('small', 'running'),
+      id: 'source-1-2',
+      operation: 'validation' as const,
+      writes_indexed_data: false,
+    }
+    const succeeded = {
+      ...running,
+      status: 'succeeded' as const,
+      completed_at_unix_seconds: 1785000100,
+      exit_code: 0,
+      summary: 'Source validation succeeded within the selected budget.',
+    }
+
+    // App owns the poller in production. Simulate its snapshots arriving at
+    // the same SettingsView instance and ensure validation completion requests
+    // a new native plan rather than relying on the old local timer.
+    view.rerender(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[running]} />)
+    await waitFor(() => expect(screen.getByText('work-code · validation · running')).toBeTruthy())
+    view.rerender(
+      <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[succeeded]} />
+    )
+    await waitFor(() => expect(state.planCalls.length).toBeGreaterThan(1))
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
 test('execution shows running progress, cancellation, and a succeeded result', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true
