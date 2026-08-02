@@ -254,6 +254,54 @@ def test_worker_processes_delete_without_content_payload(tmp_path) -> None:
             outbox.enqueue_delete(project="work", source="gmail", source_id="bad id")
 
 
+def test_outbox_telemetry_is_bounded_and_does_not_include_document_content(tmp_path) -> None:
+    path = tmp_path / "telemetry.sqlite3"
+    document = MemoryDocument(
+        project="work",
+        source="gmail",
+        source_id="thread/telemetry",
+        title="Private title",
+        content="Private content",
+    )
+
+    class RecordingProvider:
+        @property
+        def configured(self) -> bool:
+            return True
+
+        def retain(self, _document: MemoryDocument) -> None:
+            return None
+
+        def delete(self, _document_id: str) -> None:
+            return None
+
+    with Outbox(path) as outbox:
+        outbox.enqueue_retain(document)
+        pending = outbox.telemetry()
+        assert pending["queue_depth"] == 1
+        assert pending["last_success_at"] is None
+        assert pending["last_error"] is None
+        assert "content" not in pending
+        assert "Private content" not in str(pending)
+
+        MemorySyncWorker(outbox=outbox, provider=RecordingProvider()).run(limit=1)
+        succeeded = outbox.telemetry()
+        assert succeeded["queue_depth"] == 0
+        assert succeeded["succeeded"] == 1
+        assert isinstance(succeeded["last_success_at"], float)
+
+        outbox.mark_failed(
+            outbox.enqueue_delete(project="work", source="gmail", source_id="thread/error"),
+            error="line one\n" + "x" * 2_000,
+            retriable=False,
+        )
+        failed = outbox.telemetry()
+        assert failed["dead_letter"] == 1
+        assert failed["last_error"] is not None
+        assert len(str(failed["last_error"])) <= 512
+        assert "\n" not in str(failed["last_error"])
+
+
 def test_outbox_validation_for_limits_and_leases(tmp_path) -> None:
     path = tmp_path / "bounds.sqlite3"
     with Outbox(path) as outbox:
