@@ -13,6 +13,8 @@ use tokio::sync::{Mutex as AsyncMutex, watch};
 use crate::config::{EmbeddingConfig, validate_provider_base_url};
 use crate::store::Store;
 
+const MAX_EMBEDDING_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+
 #[async_trait]
 pub trait Embedder: Send + Sync {
     async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>>;
@@ -316,10 +318,27 @@ impl Embedder for OpenAiEmbedder {
                 Err(error) => return Err(error.into()),
             }
         }
-        let response = response
+        let mut response = response
             .context("embedding provider did not return a response after bounded retries")?
             .error_for_status()?;
-        let vectors = response.json::<EmbedResponse>().await?.data;
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_EMBEDDING_RESPONSE_BYTES as u64)
+        {
+            bail!(
+                "embedding provider response exceeded the {MAX_EMBEDDING_RESPONSE_BYTES} byte safety limit"
+            );
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if body.len().saturating_add(chunk.len()) > MAX_EMBEDDING_RESPONSE_BYTES {
+                bail!(
+                    "embedding provider response exceeded the {MAX_EMBEDDING_RESPONSE_BYTES} byte safety limit"
+                );
+            }
+            body.extend_from_slice(&chunk);
+        }
+        let vectors = serde_json::from_slice::<EmbedResponse>(&body)?.data;
         if vectors.len() != input.len()
             || vectors
                 .iter()
@@ -416,6 +435,7 @@ fn normalize(mut values: Vec<f32>) -> Vec<f32> {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use axum::{Router, body::Body, routing::post};
     use tempfile::tempdir;
 
     use super::*;
@@ -563,5 +583,36 @@ mod tests {
         assert!(!is_retryable(StatusCode::UNAUTHORIZED));
         assert_eq!(exponential_delay(0), Duration::from_secs(1));
         assert_eq!(exponential_delay(10), Duration::from_secs(32));
+    }
+
+    #[tokio::test]
+    async fn oversized_embedding_responses_are_rejected_before_deserialization() {
+        let app = Router::new().route(
+            "/v1/embeddings",
+            post(|| async { Body::from(vec![b'x'; MAX_EMBEDDING_RESPONSE_BYTES + 1]) }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind embedding server");
+        let address = listener.local_addr().expect("embedding address");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve embedding response");
+        });
+
+        let embedder = OpenAiEmbedder::new(
+            EmbeddingConfig {
+                base_url: format!("http://{address}/v1"),
+                ..EmbeddingConfig::default()
+            },
+            None,
+        )
+        .expect("embedding config");
+        let error = embedder
+            .embed(&["bounded".into()])
+            .await
+            .expect_err("oversized response");
+        assert!(error.to_string().contains("safety limit"));
     }
 }

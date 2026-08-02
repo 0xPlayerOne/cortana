@@ -966,7 +966,11 @@ mod tests {
             source: None,
         };
         let cache_key = engine
-            .cache_key(&request, store.corpus_revision().expect("revision"), &["*".into()])
+            .cache_key(
+                &request,
+                store.corpus_revision().expect("revision"),
+                &["*".into()],
+            )
             .expect("cache key");
         store
             .cache_query(&cache_key, "{malformed", 10)
