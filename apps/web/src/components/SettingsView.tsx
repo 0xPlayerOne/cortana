@@ -704,7 +704,7 @@ function ServicesSection({
           <input
             type="checkbox"
             checked={info?.autostart_enabled || false}
-            disabled={!info || busy === 'autostart'}
+            disabled={!info || busy === 'autostart' || actionInFlight}
             onChange={(event) => void toggleAutostart(event.target.checked)}
           />
           <span>
@@ -745,7 +745,12 @@ function ServicesSection({
           >
             <RefreshCw size={14} /> Restart all
           </button>
-          <button type="button" className="secondary-button" onClick={() => void refresh()}>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={actionInFlight}
+            onClick={() => void refresh()}
+          >
             <RefreshCw size={14} /> Refresh
           </button>
           {needsCoreInstall && (
