@@ -38,6 +38,7 @@ afterEach(() => {
   state.openSecretFileCalls = 0
   state.embeddingMigrationCalls = []
   state.openUrlCalls = []
+  state.openUrlError = null
   state.openProjectCalls = 0
   state.openProjectError = null
 })
@@ -90,6 +91,7 @@ const state = {
   authorizationCalls: [] as string[],
   embeddingMigrationCalls: [] as string[],
   openUrlCalls: [] as string[],
+  openUrlError: null as Error | null,
   getDocumentsCalls: [] as Array<{
     workspace: string | undefined
     source: string | undefined
@@ -313,6 +315,7 @@ mock.module('./api', () => ({
   },
   openDesktopUrl: (url: string) => {
     state.openUrlCalls.push(url)
+    if (state.openUrlError) return Promise.reject(state.openUrlError)
     return Promise.resolve()
   },
   startDesktopInstaller: (tool: string) => {
@@ -592,6 +595,16 @@ test('desktop Help links use the native external URL bridge', async () => {
   await waitFor(() =>
     expect(state.openUrlCalls).toEqual(['https://github.com/0xPlayerOne/cortana/tree/main/docs'])
   )
+})
+
+test('desktop Help links surface native browser failures', async () => {
+  state.openUrlError = new Error('browser unavailable')
+  render(<App />)
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Help' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Help' }))
+  fireEvent.click(screen.getByRole('link', { name: /Documentation/ }))
+  await waitFor(() => expect(screen.getByText('browser unavailable')).toBeTruthy())
+  expect(state.openUrlCalls).toEqual(['https://github.com/0xPlayerOne/cortana/tree/main/docs'])
 })
 
 test('desktop Help project action surfaces native browser failures', async () => {

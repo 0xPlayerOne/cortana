@@ -695,9 +695,13 @@ function HelpView({
               onClick={(event) => {
                 if (!desktopAvailable) return
                 event.preventDefault()
-                void openDesktopUrl(href).catch(() => {
-                  // The native URL policy remains authoritative. Keep the
-                  // Help surface usable if the system browser rejects it.
+                setProjectError('')
+                void openDesktopUrl(href).catch((caught: unknown) => {
+                  setProjectError(
+                    caught instanceof Error
+                      ? caught.message
+                      : `Unable to open ${label.toLowerCase()} in the system browser`
+                  )
                 })
               }}
             >
