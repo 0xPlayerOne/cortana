@@ -485,7 +485,15 @@ impl Store {
         let Some((response, created_at)) = value else {
             return Ok(None);
         };
-        let created_at = DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&Utc);
+        let created_at = match DateTime::parse_from_rfc3339(&created_at) {
+            Ok(created_at) => created_at.with_timezone(&Utc),
+            Err(_) => {
+                let _ = optional_write(&connection, || {
+                    connection.execute("DELETE FROM query_cache WHERE cache_key=?1", [cache_key])
+                });
+                return Ok(None);
+            }
+        };
         if (Utc::now() - created_at).num_seconds() > ttl_seconds as i64 {
             optional_write(&connection, || {
                 connection.execute("DELETE FROM query_cache WHERE cache_key=?1", [cache_key])
@@ -2202,6 +2210,37 @@ mod tests {
         let stats = store.stats().expect("cache stats");
         assert_eq!(stats.query_cache_entries, 1);
         assert_eq!(stats.query_cache_hits, 1);
+    }
+
+    #[test]
+    fn malformed_query_cache_timestamps_are_evicted_as_misses() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let connection = store.connection.lock().expect("store lock");
+        connection
+            .execute(
+                "INSERT INTO query_cache(cache_key,response_json,created_at,last_used_at,hits)
+                 VALUES(?1,?2,?3,?3,0)",
+                params!["malformed-time", "{}", "not-a-timestamp"],
+            )
+            .expect("malformed cache row");
+        drop(connection);
+
+        assert_eq!(
+            store
+                .cached_query("malformed-time", 3600)
+                .expect("cache miss"),
+            None
+        );
+        let connection = store.connection.lock().expect("store lock");
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM query_cache WHERE cache_key=?1",
+                ["malformed-time"],
+                |row| row.get(0),
+            )
+            .expect("cache count");
+        assert_eq!(count, 0);
     }
 
     #[test]
