@@ -398,7 +398,8 @@ impl AnswerEngine {
             "output_tokens": self.config.output_tokens,
             "answer_timeout_seconds": self.config.answer_timeout_seconds,
         }))?;
-        Ok(format!("{:x}", Sha256::digest(material)))
+        let digest = Sha256::digest(material);
+        Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
     }
 }
 
