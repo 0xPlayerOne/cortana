@@ -253,7 +253,16 @@ export function SettingsView({
               onOpenServices={() => setSection('services')}
             />
           )}
-          {section === 'services' && <ServicesSection settings={settings} />}
+          {section === 'services' && (
+            <ServicesSection
+              settings={settings}
+              onRestarted={() =>
+                setSettings((current) =>
+                  current ? { ...current, restart_required: false } : current
+                )
+              }
+            />
+          )}
           {section === 'updates' && <UpdatesSection />}
           {section === 'access' && (
             <AccessSection
@@ -455,7 +464,13 @@ function SetupGuide({
   )
 }
 
-function ServicesSection({ settings }: { settings: DesktopSettings }) {
+function ServicesSection({
+  settings,
+  onRestarted,
+}: {
+  settings: DesktopSettings
+  onRestarted?: () => void
+}) {
   const [report, setReport] = useState<DesktopServiceReport | null>(null)
   const [info, setInfo] = useState<DesktopInfo | null>(null)
   const [busy, setBusy] = useState('')
@@ -533,6 +548,7 @@ function ServicesSection({ settings }: { settings: DesktopSettings }) {
     setError('')
     try {
       setReport(await runDesktopServicesActionAll(action))
+      if (action === 'restart') onRestarted?.()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Whole-app service action failed')
     } finally {
