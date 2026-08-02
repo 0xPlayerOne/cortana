@@ -1,5 +1,6 @@
 import {
   Bot,
+  CalendarDays,
   ChevronDown,
   ChevronRight,
   Code2,
@@ -26,18 +27,18 @@ import type {
 import { VirtualDocumentList } from './VirtualDocumentList'
 
 const sourceIcons: Record<string, typeof Folder> = {
-  code: Code2,
-  drive: Folder,
+  filesystem: Code2,
+  'google-drive': Folder,
+  'google-calendar': CalendarDays,
   gmail: Mail,
-  notes: StickyNote,
+  'apple-notes': StickyNote,
   discord: MessageCircle,
   slack: MessageCircle,
   buzz: Bot,
 }
 
-function sourceIcon(source: string) {
-  const key = Object.keys(sourceIcons).find((name) => source.includes(name))
-  return key ? sourceIcons[key] : Database
+export function sourceIconForKind(kind: string) {
+  return sourceIcons[kind] || Database
 }
 
 export function SourcePanel({
@@ -188,7 +189,7 @@ export function SourcePanel({
               </button>
               {!collapsedProjects.has(project) &&
                 items.map((item) => {
-                  const Icon = sourceIcon(item.source)
+                  const Icon = sourceIconForKind(item.kind)
                   const health = sourceHealth(item)
                   const key = `${item.project}:${item.source}`
                   const isCollapsed = collapsed.has(key)

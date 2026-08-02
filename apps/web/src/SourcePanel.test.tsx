@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { Bot, Code2, Database, Folder, MessageCircle } from 'lucide-react'
 
 import type {
   BrainDocumentSummary,
@@ -7,7 +8,7 @@ import type {
   DesktopSourceJob,
   WorkspaceSettings,
 } from './types'
-import { SourcePanel } from './components/SourcePanel'
+import { SourcePanel, sourceIconForKind } from './components/SourcePanel'
 
 afterEach(cleanup)
 
@@ -90,4 +91,12 @@ test('SourcePanel source and settings shortcuts open the Sources settings sectio
   fireEvent.click(screen.getByLabelText('Add source'))
   fireEvent.click(screen.getByLabelText('Source settings'))
   expect(sourcesOpenCalls).toBe(2)
+})
+
+test('source icons use the exact configured connector kind', () => {
+  expect(sourceIconForKind('filesystem')).toBe(Code2)
+  expect(sourceIconForKind('google-drive')).toBe(Folder)
+  expect(sourceIconForKind('slack')).toBe(MessageCircle)
+  expect(sourceIconForKind('buzz')).toBe(Bot)
+  expect(sourceIconForKind('slack-archive')).toBe(Database)
 })
