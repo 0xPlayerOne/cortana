@@ -23,7 +23,7 @@ use tracing::Level;
 use crate::{
     answer::{AnswerEngine, AnswerRequest, AnswerResponse, QueryRuntimeStatus},
     auth::{ADMIN_SCOPE, AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE},
-    config::{Config, WorkspaceConfig},
+    config::{Config, SourceConfig, WorkspaceConfig},
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
     model::Evidence,
@@ -219,6 +219,21 @@ impl Default for IngestionStatus {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum SourceAuthorizationMethod {
+    None,
+    Token,
+    GoogleOauth,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct SourceAuthorizationSummary {
+    method: SourceAuthorizationMethod,
+    setup_required: bool,
+    authorized: bool,
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct ConfiguredSourceStatus {
     name: String,
@@ -230,6 +245,7 @@ struct ConfiguredSourceStatus {
     max_documents: usize,
     max_bytes: u64,
     max_duration_seconds: u64,
+    authorization: SourceAuthorizationSummary,
     validation: Option<SourceValidationStatus>,
 }
 
@@ -254,6 +270,7 @@ impl IngestionStatus {
                 max_duration_seconds: source
                     .max_duration_seconds
                     .unwrap_or(config.ingestion.max_duration_seconds),
+                authorization: source_authorization_summary(config, source),
                 validation: None,
             })
             .collect();
@@ -288,6 +305,63 @@ impl IngestionStatus {
             }
         }
         status
+    }
+}
+
+fn is_google_source(kind: &str) -> bool {
+    matches!(kind, "google-drive" | "gmail" | "google-calendar")
+}
+
+fn regular_file_ready(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
+}
+
+fn source_authorization_summary(
+    config: &Config,
+    source: &SourceConfig,
+) -> SourceAuthorizationSummary {
+    if is_google_source(&source.kind) {
+        let oauth_client_ready = source
+            .oauth_client
+            .as_ref()
+            .is_some_and(|path| regular_file_ready(path));
+        let token_env_ready = source.token_env.as_deref().is_some_and(|name| {
+            !name.trim().is_empty()
+                && config
+                    .environment_value(name)
+                    .is_some_and(|value| !value.is_empty())
+        });
+        let token_file_ready = source
+            .token
+            .as_ref()
+            .is_some_and(|path| regular_file_ready(path));
+        SourceAuthorizationSummary {
+            method: SourceAuthorizationMethod::GoogleOauth,
+            setup_required: !oauth_client_ready && !token_env_ready,
+            authorized: token_env_ready || token_file_ready,
+        }
+    } else if source.token_env.is_some() || source.token.is_some() {
+        let token_env_ready = source.token_env.as_deref().is_some_and(|name| {
+            !name.trim().is_empty()
+                && config
+                    .environment_value(name)
+                    .is_some_and(|value| !value.is_empty())
+        });
+        let token_file_ready = source
+            .token
+            .as_ref()
+            .is_some_and(|path| regular_file_ready(path));
+        SourceAuthorizationSummary {
+            method: SourceAuthorizationMethod::Token,
+            setup_required: !token_env_ready && !token_file_ready,
+            authorized: token_env_ready || token_file_ready,
+        }
+    } else {
+        SourceAuthorizationSummary {
+            method: SourceAuthorizationMethod::None,
+            setup_required: false,
+            authorized: true,
+        }
     }
 }
 
@@ -1306,6 +1380,18 @@ mod tests {
             value["ingestion"]["configured_sources"][0]["acl"],
             serde_json::json!(["work", "admin"])
         );
+        assert_eq!(
+            value["ingestion"]["configured_sources"][0]["authorization"]["method"],
+            "none"
+        );
+        assert_eq!(
+            value["ingestion"]["configured_sources"][0]["authorization"]["setup_required"],
+            false
+        );
+        assert_eq!(
+            value["ingestion"]["configured_sources"][0]["authorization"]["authorized"],
+            true
+        );
         assert_eq!(value["ingestion"]["max_documents_per_source"], 25);
         assert_eq!(value["query"]["mode"], "extractive");
         assert_eq!(value["query"]["max_planned_queries"], 4);
@@ -1313,6 +1399,102 @@ mod tests {
         assert_eq!(value["sync_runs"], serde_json::json!([]));
         assert_eq!(value["workspaces"][0]["id"], "work");
         assert_eq!(value["workspaces"][0]["account_label"], "team@example.com");
+    }
+
+    #[tokio::test]
+    async fn status_reports_source_authorization_readiness_for_google_and_token_backed_sources() {
+        let (directory, state) = test_state(None);
+        let token_path = directory.path().join("google-token.json");
+        let oauth_client_path = directory.path().join("google-oauth-client.json");
+        let incomplete_oauth_client_path =
+            directory.path().join("missing-google-oauth-client.json");
+        std::fs::write(&token_path, "{{\"refresh_token\":\"token\"}}").expect("write token file");
+        std::fs::write(
+            &oauth_client_path,
+            "{\"installed\":{\"client_id\":\"id\",\"client_secret\":\"secret\",\"auth_uri\":\"https://example.com/auth\",\"token_uri\":\"https://example.com/token\",\"auth_provider_x509_cert_url\":\"https://example.com/x509\",\"redirect_uris\":[\"http://127.0.0.1\"]}}",
+        )
+        .expect("write google client file");
+
+        let mut config: Config = toml::from_str(&format!(
+            r##"
+            [ingestion]
+            request_concurrency = 1
+
+            [[sources]]
+            name = "slack"
+            kind = "slack"
+            enabled = true
+            project = "work"
+            token_env = "SLACK_TOKEN"
+            acl = ["work"]
+
+            [[sources]]
+            name = "gmail"
+            kind = "google-drive"
+            enabled = true
+            project = "work"
+            oauth_client = "{oauth_client_path_display}"
+            token = "{token_path_display}"
+            acl = ["work"]
+
+            [[sources]]
+            name = "calendar"
+            kind = "google-calendar"
+            enabled = true
+            project = "work"
+            oauth_client = "{incomplete_oauth_client_path_display}"
+            acl = ["work"]
+            "##,
+            oauth_client_path_display = oauth_client_path.display(),
+            token_path_display = token_path.display(),
+            incomplete_oauth_client_path_display = incomplete_oauth_client_path.display(),
+        ))
+        .expect("configuration");
+        config.data_dir = directory.path().to_path_buf();
+        config
+            .environment
+            .insert("SLACK_TOKEN".into(), "present".into());
+        let state = state.with_config(&config, false);
+
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("status body");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("status JSON");
+
+        let configured = &value["ingestion"]["configured_sources"];
+        let slack = configured
+            .as_array()
+            .and_then(|list| list.iter().find(|item| item["name"] == "slack"))
+            .expect("slack status");
+        assert_eq!(slack["authorization"]["method"], "token");
+        assert_eq!(slack["authorization"]["setup_required"], false);
+        assert_eq!(slack["authorization"]["authorized"], true);
+
+        let gmail = configured
+            .as_array()
+            .and_then(|list| list.iter().find(|item| item["name"] == "gmail"))
+            .expect("gmail status");
+        assert_eq!(gmail["authorization"]["method"], "google_oauth");
+        assert_eq!(gmail["authorization"]["setup_required"], false);
+        assert_eq!(gmail["authorization"]["authorized"], true);
+
+        let calendar = configured
+            .as_array()
+            .and_then(|list| list.iter().find(|item| item["name"] == "calendar"))
+            .expect("calendar status");
+        assert_eq!(calendar["authorization"]["method"], "google_oauth");
+        assert_eq!(calendar["authorization"]["setup_required"], true);
+        assert_eq!(calendar["authorization"]["authorized"], false);
     }
 
     #[tokio::test]

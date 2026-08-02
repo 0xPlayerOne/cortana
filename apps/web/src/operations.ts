@@ -10,6 +10,7 @@ export type OperationalSource = {
   chunks: number
   latest_updated_at: string | null
   sync: SourceSyncSummary | null
+  authorization?: ConfiguredSourceSummary['authorization']
   validation?: ConfiguredSourceSummary['validation']
 }
 
@@ -50,6 +51,28 @@ export function operationalSources(status: BrainStatus | null): OperationalSourc
 export function sourceHealth(source: OperationalSource) {
   if (!source.enabled)
     return { state: 'disabled', label: 'Disabled; existing index remains queryable' }
+  if (source.authorization && source.authorization.method !== 'none') {
+    if (!source.authorization.authorized) {
+      return {
+        state: 'warning',
+        label:
+          source.authorization.method === 'google_oauth' && source.authorization.setup_required
+            ? 'Google OAuth client setup required'
+            : source.authorization.method === 'google_oauth'
+              ? 'Google token authorization required'
+              : 'Source token required for connector authorization',
+      }
+    }
+    if (source.authorization.setup_required) {
+      return {
+        state: 'warning',
+        label:
+          source.authorization.method === 'google_oauth'
+            ? 'Google OAuth needs setup'
+            : 'Token source setup required',
+      }
+    }
+  }
   if (!source.sync) {
     if (source.validation?.status === 'succeeded') {
       return {

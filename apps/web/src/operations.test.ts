@@ -22,6 +22,40 @@ describe('operational source visibility', () => {
     expect(sourceHealth(discord!).state).toBe('failed')
   })
 
+  test('surfaces authorization readiness warnings in source health', () => {
+    const status = structuredClone(demoStatus)
+    const slack = status.ingestion.configured_sources.find(
+      (source) => source.name === 'team-slack'
+    )!
+    slack.authorization = {
+      method: 'token',
+      setup_required: true,
+      authorized: false,
+    }
+
+    const source = operationalSources(status).find((item) => item.name === 'team-slack')
+    const health = sourceHealth(source!)
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('Source token required')
+  })
+
+  test('surfaces google oauth readiness in source health', () => {
+    const status = structuredClone(demoStatus)
+    const gmail = status.ingestion.configured_sources.find(
+      (source) => source.name === 'personal-gmail'
+    )!
+    gmail.authorization = {
+      method: 'google_oauth',
+      setup_required: true,
+      authorized: false,
+    }
+
+    const source = operationalSources(status).find((item) => item.name === 'personal-gmail')
+    const health = sourceHealth(source!)
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('Google OAuth client setup required')
+  })
+
   test('distinguishes a validated connector from an unproven source', () => {
     const status = structuredClone(demoStatus)
     const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!

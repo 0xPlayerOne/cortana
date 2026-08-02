@@ -31,7 +31,10 @@ entries, and cache hits without logging queries or evidence.
 
 `/v1/status` also reports whether recurring ingestion is installed, the global and per-source
 safety budgets, every configured source including disabled or not-yet-indexed sources, its configured
-ACL labels, and the latest persisted validation and sync outcomes for each source. Validation proves bounded connector
+ACL labels, a non-secret authorization summary, and the latest persisted validation and sync outcomes
+for each source. The authorization summary reports only the connector method (`none`, `token`, or
+`google_oauth`) plus setup and authorization booleans; it never exposes token values, paths, OAuth
+client paths, or environment contents. Validation proves bounded connector
 access without mutating the corpus and is shown separately from synchronization health. Sync
 outcomes are recorded as `running`, `succeeded`,
 `failed`, `cancelled`, or `budget_exceeded`. A process interruption intentionally leaves a
