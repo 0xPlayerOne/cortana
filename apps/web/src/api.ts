@@ -542,10 +542,10 @@ async function authorizedFetch(input: string, init: RequestInit): Promise<Respon
   // A cold web shell starts status, document, and graph requests together.
   // Reuse one prompt for that burst instead of opening several modal dialogs.
   if (init.signal?.aborted) return response
+  window.sessionStorage.removeItem('cortana_api_token')
   const token = await requestAccessToken()
   if (!token) return response
 
-  window.sessionStorage.removeItem('cortana_api_token')
   window.sessionStorage.setItem('cortana_api_token', token)
   response = await request(token)
   if (response.status === 401) window.sessionStorage.removeItem('cortana_api_token')

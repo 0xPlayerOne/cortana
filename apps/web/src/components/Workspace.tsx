@@ -88,6 +88,7 @@ export function Workspace({
       <div className="workspace-tabs" role="tablist" aria-label="Result views">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
+            type="button"
             key={id}
             role="tab"
             aria-selected={tab === id}
@@ -226,7 +227,11 @@ function BrainDocumentView({
                 <section>
                   <h2>Backlinks</h2>
                   {document.backlinks.map((related) => (
-                    <button key={related.id} onClick={() => onSelectDocument(related.id)}>
+                    <button
+                      type="button"
+                      key={related.id}
+                      onClick={() => onSelectDocument(related.id)}
+                    >
                       <Link2 size={14} />
                       <span>{related.title}</span>
                       <small>{related.source}</small>
@@ -238,7 +243,11 @@ function BrainDocumentView({
                 <section>
                   <h2>Surrounding documents</h2>
                   {document.surrounding.map((related) => (
-                    <button key={related.id} onClick={() => onSelectDocument(related.id)}>
+                    <button
+                      type="button"
+                      key={related.id}
+                      onClick={() => onSelectDocument(related.id)}
+                    >
                       <FileText size={14} />
                       <span>{related.title}</span>
                       <small>{new Date(related.updated_at).toLocaleDateString()}</small>
@@ -343,7 +352,7 @@ function DocumentView({
           <div id="related" className="evidence-footer">
             <h2>Related evidence</h2>
             {evidence.slice(0, 6).map((item, index) => (
-              <button key={item.chunk_id} onClick={() => onSelect(index)}>
+              <button type="button" key={item.chunk_id} onClick={() => onSelect(index)}>
                 <span>{index + 1}</span> {item.title}
               </button>
             ))}
@@ -412,7 +421,12 @@ function AnswerView({
       ))}
       <p className="lead">{evidence.length} cited passages</p>
       {evidence.slice(0, 4).map((item, index) => (
-        <button className="answer-source" key={item.chunk_id} onClick={() => onSelect(index)}>
+        <button
+          type="button"
+          className="answer-source"
+          key={item.chunk_id}
+          onClick={() => onSelect(index)}
+        >
           <span>[{index + 1}]</span>
           <div>
             <h2>{item.title}</h2>
@@ -522,6 +536,7 @@ function TimelineView({
         .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
         .map((item) => (
           <button
+            type="button"
             key={item.chunk_id}
             aria-label={`Timeline evidence: ${item.title}`}
             onClick={() => onSelect(item.chunk_id)}
@@ -552,7 +567,11 @@ function EmptyState({
       <Sparkles size={28} />
       <h1>{title}</h1>
       <p>{detail}</p>
-      {action && <button onClick={action}>Try again</button>}
+      {action && (
+        <button type="button" onClick={action}>
+          Try again
+        </button>
+      )}
     </div>
   )
 }

@@ -236,7 +236,7 @@ function InboxView({
         </section>
       )}
       <div className="utility-actions">
-        <button className="secondary-button" onClick={onOpenSettings}>
+        <button type="button" className="secondary-button" onClick={onOpenSettings}>
           <Settings size={15} /> Manage ingestion in settings
         </button>
       </div>
@@ -337,7 +337,7 @@ function ConversationsView({
         </section>
       )}
       <div className="utility-actions">
-        <button className="secondary-button" onClick={onSearchFocus}>
+        <button type="button" className="secondary-button" onClick={onSearchFocus}>
           <Search size={15} /> Search the brain
         </button>
       </div>
@@ -504,7 +504,7 @@ function IndexView({
         </div>
       </section>
       <div className="utility-actions">
-        <button className="secondary-button" onClick={onOpenSettings}>
+        <button type="button" className="secondary-button" onClick={onOpenSettings}>
           <Settings size={15} /> Open settings
         </button>
       </div>
@@ -566,7 +566,7 @@ function HelpView({
         </div>
         {desktopAvailable && (
           <div className="utility-actions">
-            <button className="secondary-button" onClick={onOpenProject}>
+            <button type="button" className="secondary-button" onClick={onOpenProject}>
               <ExternalLink size={15} /> Open project page
             </button>
           </div>
@@ -627,7 +627,7 @@ function UtilityEmpty({
       {actions.length > 0 && (
         <div className="utility-actions utility-actions-center">
           {actions.map(({ label, icon: actionIcon, onClick }) => (
-            <button className="secondary-button" key={label} onClick={onClick}>
+            <button type="button" className="secondary-button" key={label} onClick={onClick}>
               {actionIcon} {label}
             </button>
           ))}
