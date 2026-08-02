@@ -190,10 +190,46 @@ export function useSourceJobs() {
     window.addEventListener('focus', markForeground)
     window.addEventListener('blur', markBackground)
     document.addEventListener('visibilitychange', syncVisibility)
+    let disposed = false
+    let unlistenFocus: (() => void) | undefined
+    if (isDesktopApp && '__TAURI_INTERNALS__' in window) {
+      void import('@tauri-apps/api/window')
+        .then(({ getCurrentWindow }) => {
+          const currentWindow = getCurrentWindow()
+          void currentWindow
+            .isFocused()
+            .then((payload) => {
+              if (!disposed) {
+                focused.current = payload
+                syncForeground()
+              }
+            })
+            .catch(() => {
+              // Browser focus events remain the fallback when the native
+              // startup snapshot is unavailable.
+            })
+          return currentWindow.onFocusChanged(({ payload }) => {
+            if (!disposed) {
+              focused.current = payload
+              syncForeground()
+            }
+          })
+        })
+        .then((unlisten) => {
+          if (disposed) unlisten()
+          else unlistenFocus = unlisten
+        })
+        .catch(() => {
+          // Browser focus events remain the fallback when the native focus
+          // listener cannot be registered during startup.
+        })
+    }
     return () => {
+      disposed = true
       window.removeEventListener('focus', markForeground)
       window.removeEventListener('blur', markBackground)
       document.removeEventListener('visibilitychange', syncVisibility)
+      unlistenFocus?.()
     }
   }, [])
 

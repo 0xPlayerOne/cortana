@@ -124,10 +124,46 @@ function useDesktopForeground(): boolean {
     window.addEventListener('focus', markFocused)
     window.addEventListener('blur', markBlurred)
     document.addEventListener('visibilitychange', markVisible)
+    let disposed = false
+    let unlistenFocus: (() => void) | undefined
+    if (isDesktopApp && '__TAURI_INTERNALS__' in window) {
+      void import('@tauri-apps/api/window')
+        .then(({ getCurrentWindow }) => {
+          const currentWindow = getCurrentWindow()
+          void currentWindow
+            .isFocused()
+            .then((payload) => {
+              if (!disposed) {
+                focused.current = payload
+                syncForeground()
+              }
+            })
+            .catch(() => {
+              // Browser focus events remain the fallback when the native
+              // startup snapshot is unavailable.
+            })
+          return currentWindow.onFocusChanged(({ payload }) => {
+            if (!disposed) {
+              focused.current = payload
+              syncForeground()
+            }
+          })
+        })
+        .then((unlisten) => {
+          if (disposed) unlisten()
+          else unlistenFocus = unlisten
+        })
+        .catch(() => {
+          // Browser focus events remain the fallback when the native focus
+          // listener cannot be registered during startup.
+        })
+    }
     return () => {
+      disposed = true
       window.removeEventListener('focus', markFocused)
       window.removeEventListener('blur', markBlurred)
       document.removeEventListener('visibilitychange', markVisible)
+      unlistenFocus?.()
     }
   }, [])
 
