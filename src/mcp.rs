@@ -422,7 +422,11 @@ fn normalized_sources(sources: Vec<String>) -> Vec<String> {
 
 fn validate_scopes(project: Option<&str>, source: Option<&str>) -> Result<(), String> {
     for (name, value) in [("project", project), ("source", source)] {
-        if value.is_some_and(|value| value.is_empty() || value.len() > MAX_SCOPE_BYTES) {
+        if value.is_some_and(|value| {
+            value.is_empty()
+                || value.len() > MAX_SCOPE_BYTES
+                || value.chars().any(|character| character.is_control())
+        }) {
             return Err(format!("{name} must contain 1 to {MAX_SCOPE_BYTES} bytes"));
         }
     }
@@ -611,6 +615,7 @@ mod tests {
         assert!(validate_scopes(Some("work"), None).is_ok());
         assert!(validate_scopes(Some(""), None).is_err());
         assert!(validate_scopes(None, Some(&"x".repeat(MAX_SCOPE_BYTES + 1))).is_err());
+        assert!(validate_scopes(Some("work\u{0000}personal"), None).is_err());
         assert!(
             serde_json::from_str::<SearchParams>(r#"{"query":"work","unexpected":"field"}"#)
                 .is_err()

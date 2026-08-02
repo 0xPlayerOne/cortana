@@ -643,10 +643,12 @@ fn validate_retrieval_request(request: &RetrievalRequest) -> Result<(), String> 
         ("project", request.project.as_deref()),
         ("source", request.source.as_deref()),
     ] {
-        if value.is_some_and(|value| value.len() > MAX_SCOPE_LENGTH) {
-            return Err(format!(
-                "{name} exceeds the {MAX_SCOPE_LENGTH} byte desktop safety limit"
-            ));
+        if value.is_some_and(|value| {
+            value.is_empty()
+                || value.len() > MAX_SCOPE_LENGTH
+                || value.chars().any(|character| character.is_control())
+        }) {
+            return Err(format!("{name} must contain 1 to {MAX_SCOPE_LENGTH} bytes"));
         }
     }
     Ok(())
@@ -660,7 +662,11 @@ fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), S
         ("project", request.project.as_deref()),
         ("source", request.source.as_deref()),
     ] {
-        if value.is_some_and(|value| value.is_empty() || value.len() > MAX_SCOPE_LENGTH) {
+        if value.is_some_and(|value| {
+            value.is_empty()
+                || value.len() > MAX_SCOPE_LENGTH
+                || value.chars().any(|character| character.is_control())
+        }) {
             return Err(format!("{name} must contain 1 to {MAX_SCOPE_LENGTH} bytes"));
         }
     }
@@ -942,6 +948,14 @@ mod tests {
             limit: 50,
         };
         assert!(validate_document_list_request(&invalid_query).is_err());
+        let invalid_scope = DocumentListRequest {
+            project: Some("work\u{0000}personal".into()),
+            source: None,
+            query: None,
+            cursor: None,
+            limit: 50,
+        };
+        assert!(validate_document_list_request(&invalid_scope).is_err());
         assert!(validate_document_id(&"a".repeat(64)).is_ok());
         assert!(validate_document_id("../store.sqlite3").is_err());
     }

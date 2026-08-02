@@ -693,7 +693,11 @@ async fn graph(
 }
 
 fn validate_document_scope(name: &str, value: Option<&str>) -> Result<(), (StatusCode, String)> {
-    if value.is_some_and(|value| value.is_empty() || value.len() > MAX_DOCUMENT_SCOPE_LENGTH) {
+    if value.is_some_and(|value| {
+        value.is_empty()
+            || value.len() > MAX_DOCUMENT_SCOPE_LENGTH
+            || value.chars().any(|character| character.is_control())
+    }) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("{name} must contain 1 to {MAX_DOCUMENT_SCOPE_LENGTH} bytes"),
@@ -1448,6 +1452,28 @@ mod tests {
         let body = serde_json::to_vec(&serde_json::json!({
             "query": "release",
             "project": "x".repeat(MAX_DOCUMENT_SCOPE_LENGTH + 1)
+        }))
+        .expect("request JSON");
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn retrieval_rejects_control_characters_in_scope_filters() {
+        let (_directory, state) = test_state(None);
+        let body = serde_json::to_vec(&serde_json::json!({
+            "query": "release",
+            "source": "slack\u{0000}work"
         }))
         .expect("request JSON");
         let response = router(state)
