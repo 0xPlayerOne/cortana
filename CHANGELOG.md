@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.3](https://github.com/0xPlayerOne/cortana/compare/v0.19.2...v0.19.3) (2026-08-02)
+
+
+### Bug Fixes
+
+* **validation:** bound Drive source preflight ([#252](https://github.com/0xPlayerOne/cortana/issues/252)) ([642b1e0](https://github.com/0xPlayerOne/cortana/commit/642b1e067c55642b600adf71aa8d31638afac407))
+
 ## [0.19.2](https://github.com/0xPlayerOne/cortana/compare/v0.19.1...v0.19.2) (2026-08-02)
 
 
