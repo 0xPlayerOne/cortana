@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/0xPlayerOne/cortana/compare/v0.17.0...v0.17.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* **desktop:** harden UI async state and source links ([#216](https://github.com/0xPlayerOne/cortana/issues/216)) ([0b3fb44](https://github.com/0xPlayerOne/cortana/commit/0b3fb44416f24916c63be361eabbce224dd3c929))
+
 ## [0.17.0](https://github.com/0xPlayerOne/cortana/compare/v0.16.1...v0.17.0) (2026-08-02)
 
 
