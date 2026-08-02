@@ -248,7 +248,7 @@ export function SettingsView({
               onOpenServices={() => setSection('services')}
             />
           )}
-          {section === 'services' && <ServicesSection />}
+          {section === 'services' && <ServicesSection settings={settings} />}
           {section === 'updates' && <UpdatesSection />}
           {section === 'access' && (
             <AccessSection
@@ -441,7 +441,7 @@ function SetupGuide({
   )
 }
 
-function ServicesSection() {
+function ServicesSection({ settings }: { settings: DesktopSettings }) {
   const [report, setReport] = useState<DesktopServiceReport | null>(null)
   const [info, setInfo] = useState<DesktopInfo | null>(null)
   const [busy, setBusy] = useState('')
@@ -545,6 +545,15 @@ function ServicesSection() {
     }
   }
 
+  const needsCoreInstall =
+    report?.supported === true &&
+    report.services.some(
+      (service) =>
+        service.name !== 'sync' &&
+        (service.name !== 'embedding' || settings.embedding.provider === 'local') &&
+        !service.installed
+    )
+
   return (
     <SettingsSection
       title="Services"
@@ -599,7 +608,7 @@ function ServicesSection() {
           <button type="button" className="secondary-button" onClick={() => void refresh()}>
             <RefreshCw size={14} /> Refresh
           </button>
-          {report?.supported && !report.services.some((service) => service.installed) && (
+          {needsCoreInstall && (
             <button
               type="button"
               className="primary-button"

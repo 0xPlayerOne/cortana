@@ -259,6 +259,36 @@ test('services settings offers an explicit safe core-service install', async () 
   }
 })
 
+test('services settings keeps repair available for a partial core install', async () => {
+  const original = serviceReport.services.map((service) => ({ ...service }))
+  serviceReport.services[0] = {
+    ...serviceReport.services[0],
+    installed: true,
+    loaded: true,
+    state: 'running',
+  }
+  serviceReport.services[1] = {
+    ...serviceReport.services[1],
+    installed: true,
+    loaded: true,
+    state: 'running',
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Install core services/ })).toBeTruthy()
+    )
+  } finally {
+    serviceReport.services.splice(0, serviceReport.services.length, ...original)
+  }
+})
+
 test('services settings surfaces a non-zero last exit as a failed service', async () => {
   const original = serviceReport.services[1]
   serviceReport.services[1] = {
