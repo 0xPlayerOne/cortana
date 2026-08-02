@@ -590,7 +590,7 @@ export function App() {
   }, [sourceJobs.jobs])
 
   useEffect(() => {
-    if (!isDesktopApp || !installerJob || !isActiveInstaller(installerJob)) return
+    if (!isDesktopApp || !installerJob || !isActiveInstaller(installerJob) || !pageVisible) return
     let disposed = false
     const poll = () => {
       if (disposed || installerPollingRef.current) return
@@ -615,7 +615,7 @@ export function App() {
       disposed = true
       window.clearInterval(timer)
     }
-  }, [installerJob?.id, installerJob?.status])
+  }, [installerJob?.id, installerJob?.status, pageVisible])
 
   useEffect(() => {
     const previous = installerStatusRef.current
@@ -640,7 +640,8 @@ export function App() {
     if (
       !isDesktopApp ||
       !desktopUpdate ||
-      !['downloading', 'installing'].includes(desktopUpdate.phase)
+      !['downloading', 'installing'].includes(desktopUpdate.phase) ||
+      !pageVisible
     ) {
       return
     }
@@ -665,7 +666,7 @@ export function App() {
       disposed = true
       window.clearInterval(timer)
     }
-  }, [desktopUpdate?.phase])
+  }, [desktopUpdate?.phase, pageVisible])
 
   const agentContext = useMemo(
     () => buildAgentContext(activeQuery, evidence),
