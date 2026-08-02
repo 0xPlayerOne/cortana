@@ -389,8 +389,46 @@ fn regular_file_ready(path: &std::path::Path) -> bool {
 fn google_token_env_ready(config: &Config, name: &str) -> bool {
     config.environment_value(name).is_some_and(|value| {
         let path = std::path::Path::new(value.trim());
-        path.is_absolute() && regular_file_ready(path)
+        path.is_absolute() && regular_file_ready(path) && private_path_components_ready(path)
     })
+}
+
+fn private_path_components_ready(path: &std::path::Path) -> bool {
+    let mut current = path.to_path_buf();
+    loop {
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata)
+                if metadata.file_type().is_symlink() && !is_allowed_system_alias(&current) =>
+            {
+                return false;
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return false,
+            Err(_) => return false,
+        }
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        if parent == current {
+            break;
+        }
+        current = parent.to_path_buf();
+    }
+    true
+}
+
+fn is_allowed_system_alias(path: &std::path::Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        path == std::path::Path::new("/tmp")
+            || path == std::path::Path::new("/var")
+            || path == std::path::Path::new("/etc")
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        false
+    }
 }
 
 fn source_authorization_summary(
@@ -1366,6 +1404,31 @@ mod tests {
         let ready = source_authorization_summary(&config, &source);
         assert!(ready.authorized);
         assert!(!ready.setup_required);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn google_token_environment_value_rejects_symlinked_parent() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let real = directory.path().join("real");
+        std::fs::create_dir(&real).expect("real token directory");
+        let token = real.join("google-token.json");
+        write_private_fixture(&token, "{}\n");
+        let linked = directory.path().join("linked");
+        symlink(&real, &linked).expect("symlink token directory");
+
+        let mut source = google_source(None);
+        source.token_env = Some("GOOGLE_TOKEN_PATH".into());
+        let mut config = Config::default();
+        config.environment.insert(
+            "GOOGLE_TOKEN_PATH".into(),
+            linked.join("google-token.json").display().to_string(),
+        );
+
+        let summary = source_authorization_summary(&config, &source);
+        assert!(!summary.authorized);
     }
 
     #[test]
