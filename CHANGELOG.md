@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.6](https://github.com/0xPlayerOne/cortana/compare/v0.19.5...v0.19.6) (2026-08-02)
+
+
+### CI
+
+* **release:** avoid empty macOS signing certificates ([#266](https://github.com/0xPlayerOne/cortana/issues/266)) ([7b04d20](https://github.com/0xPlayerOne/cortana/commit/7b04d206b1af22b512da4c57335cf7b043ec3fdc))
+
 ## [0.19.5](https://github.com/0xPlayerOne/cortana/compare/v0.19.4...v0.19.5) (2026-08-02)
 
 
