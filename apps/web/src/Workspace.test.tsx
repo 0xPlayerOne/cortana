@@ -39,3 +39,30 @@ test('unsafe document links are not rendered into the web shell', () => {
   expect(screen.getByRole('heading', { name: unsafe.title })).toBeTruthy()
   expect(screen.queryByRole('link', { name: 'Open original source' })).toBeNull()
 })
+
+test('unsafe retrieved-evidence links are not rendered into the web shell', () => {
+  render(
+    <Workspace
+      {...props}
+      document={null}
+      tab="sources"
+      evidence={[
+        {
+          chunk_id: 'unsafe-evidence',
+          source: 'notes',
+          source_id: 'note-1',
+          title: 'Unsafe evidence',
+          uri: 'javascript:alert(1)',
+          content: 'Evidence excerpt',
+          score: 0.9,
+          semantic_rank: 1,
+          lexical_rank: null,
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ]}
+    />
+  )
+
+  expect(screen.getByRole('heading', { name: 'Unsafe evidence' })).toBeTruthy()
+  expect(screen.queryByRole('link', { name: 'Open original source' })).toBeNull()
+})

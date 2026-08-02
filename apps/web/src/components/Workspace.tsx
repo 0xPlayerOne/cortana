@@ -299,6 +299,7 @@ function DocumentView({
 }) {
   const [favorite, setFavorite] = useState(false)
   useEffect(() => setFavorite(false), [active.chunk_id])
+  const sourceHref = active.uri ? safeSourceLink(active.uri) : null
 
   return (
     <article className="document">
@@ -314,18 +315,16 @@ function DocumentView({
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
           </button>
-          {active.uri && (
+          {sourceHref && (
             <a
-              href={active.uri}
+              href={sourceHref}
               target={isDesktopApp ? undefined : '_blank'}
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
               onClick={(event) => {
                 if (!isDesktopApp) return
-                const uri = active.uri
-                if (!uri) return
                 event.preventDefault()
-                void openSourceLink(uri)
+                void openSourceLink(sourceHref)
               }}
             >
               <Link2 size={17} />
