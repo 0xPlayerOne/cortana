@@ -69,6 +69,13 @@ enum Command {
     },
     /// Validate configuration, storage, and the embedding provider.
     Doctor,
+    /// Adopt a reviewed embedding generation without rebuilding indexed documents.
+    MigrateEmbedding {
+        #[arg(long, value_name = "FINGERPRINT")]
+        from: String,
+        #[arg(long, help = "Confirm the metadata and derived-cache migration")]
+        force: bool,
+    },
     /// Run deterministic retrieval and answer quality gates in an isolated temporary index.
     Eval {
         #[arg(long, help = "Use a custom synthetic evaluation fixture")]
@@ -540,6 +547,9 @@ async fn main() -> Result<()> {
         anyhow::ensure!(report.passed, "production readiness checks failed");
         return Ok(());
     }
+    if let Some(Command::MigrateEmbedding { from, force }) = cli.command.as_ref() {
+        return migrate_embedding_generation(&config, &store, base_embedder.as_ref(), from, *force);
+    }
     store.ensure_fingerprint(&base_embedder.fingerprint())?;
     let embedder: Arc<dyn Embedder> = Arc::new(CachedEmbedder::with_limit(
         store.clone(),
@@ -809,6 +819,7 @@ async fn main() -> Result<()> {
         Some(
             Command::Init { .. }
             | Command::MigrateHermes { .. }
+            | Command::MigrateEmbedding { .. }
             | Command::Eval { .. }
             | Command::AuthorizeGoogle { .. }
             | Command::ValidateSource { .. }
@@ -1499,6 +1510,60 @@ fn backup_database(config: &Config, output: Option<&std::path::Path>, keep: usiz
         prune_backups(&directory, keep, Some(&destination))?;
     }
     println!("backup verified: {}", destination.display());
+    Ok(())
+}
+
+fn migrate_embedding_generation(
+    config: &Config,
+    store: &Store,
+    base_embedder: &dyn Embedder,
+    from: &str,
+    force: bool,
+) -> Result<()> {
+    let target = base_embedder.fingerprint();
+    let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+    let current = store
+        .stats()?
+        .embedding_fingerprint
+        .context("the index has no embedding generation; initialize it before migrating")?;
+    anyhow::ensure!(
+        current == from,
+        "embedding generation does not match --from (expected: {from}; actual: {current})"
+    );
+    if current == target {
+        println!("embedding generation already matches configured provider: {target}");
+        return Ok(());
+    }
+    anyhow::ensure!(
+        force,
+        "embedding migration changes index metadata and clears derived caches; rerun with --force after reviewing the exact --from fingerprint"
+    );
+    store.integrity_check()?;
+
+    let backup = config.data_dir.join("backups").join(format!(
+        "cortana-embedding-migration-{}-{}.sqlite3",
+        chrono::Utc::now().format("%Y%m%d-%H%M%S"),
+        uuid::Uuid::new_v4()
+    ));
+    store.backup(&backup)?;
+    store.migrate_embedding_fingerprint(&current, &target)?;
+    if let Err(error) = store.record_audit(
+        "local-cli",
+        "embedding-generation-migrate",
+        None,
+        None,
+        "ok",
+        None,
+        0,
+        config.auth.audit_max_events,
+    ) {
+        tracing::warn!(%error, "embedding generation migration audit write failed");
+    }
+    println!("embedding generation migrated");
+    println!("  from: {current}");
+    println!("  to: {target}");
+    println!("  verified backup: {}", backup.display());
+    println!("  indexed documents were not rebuilt; derived caches were cleared");
     Ok(())
 }
 
@@ -2941,6 +3006,25 @@ mod tests {
                 Cli::try_parse_from(["cortana", "context", "query", "--max-tokens", tokens])
                     .expect_err("out-of-range max tokens");
             assert!(error.to_string().contains("is not in 256..=64000"));
+        }
+    }
+
+    #[test]
+    fn migrate_embedding_command_parses_exact_source_and_confirmation() {
+        let cli = Cli::try_parse_from([
+            "cortana",
+            "migrate-embedding",
+            "--from",
+            "legacy:model:16",
+            "--force",
+        ])
+        .expect("embedding migration command");
+        match cli.command {
+            Some(Command::MigrateEmbedding { from, force }) => {
+                assert_eq!(from, "legacy:model:16");
+                assert!(force);
+            }
+            _ => panic!("expected the migrate-embedding subcommand"),
         }
     }
 

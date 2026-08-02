@@ -247,6 +247,59 @@ impl Store {
         Ok(())
     }
 
+    /// Adopt a reviewed embedding generation without touching indexed documents.
+    ///
+    /// This is intentionally stricter than `ensure_fingerprint`: callers must
+    /// name the exact generation currently stored in the index. The operation
+    /// invalidates derived caches because their vectors were produced under the
+    /// old generation, while leaving documents and their stored vectors in
+    /// place for an explicit operator-approved migration.
+    pub fn migrate_embedding_fingerprint(&self, from: &str, to: &str) -> Result<()> {
+        anyhow::ensure!(
+            !from.trim().is_empty(),
+            "source embedding fingerprint is empty"
+        );
+        anyhow::ensure!(
+            !to.trim().is_empty(),
+            "target embedding fingerprint is empty"
+        );
+        anyhow::ensure!(
+            from != to,
+            "source and target embedding generations are identical"
+        );
+
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let current: Option<String> = transaction
+            .query_row(
+                "SELECT value FROM meta WHERE key='embedding_fingerprint'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(current) = current else {
+            bail!(
+                "the index has no embedding generation; initialize it with the configured provider first"
+            );
+        };
+        anyhow::ensure!(
+            current == from,
+            "embedding generation changed while preparing migration (expected: {from}; actual: {current})"
+        );
+        let changed = transaction.execute(
+            "UPDATE meta SET value=?1 WHERE key='embedding_fingerprint' AND value=?2",
+            params![to, from],
+        )?;
+        anyhow::ensure!(
+            changed == 1,
+            "embedding generation migration did not update the index"
+        );
+        transaction.execute("DELETE FROM embedding_cache", [])?;
+        transaction.execute("DELETE FROM query_cache", [])?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn begin_sync(
         &self,
         source: &str,
@@ -2514,6 +2567,61 @@ mod tests {
         assert!(message.contains("model-a:16"));
         assert!(message.contains("model-b:32"));
         assert!(message.contains("rebuild into a new generation"));
+    }
+
+    #[test]
+    fn embedding_generation_migration_updates_meta_and_invalidates_derived_caches() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .ensure_fingerprint("legacy-endpoint:model-a:16")
+            .expect("initial fingerprint");
+        store
+            .cache_embedding("legacy-endpoint:model-a:16", "same text", &[0.25, 0.75])
+            .expect("cache embedding");
+        store
+            .cache_query("cached-query", "{\"ok\":true}", 10)
+            .expect("cache query");
+
+        store
+            .migrate_embedding_fingerprint(
+                "legacy-endpoint:model-a:16",
+                "openai:http://127.0.0.1:6999/v1:model-a:16",
+            )
+            .expect("migrate generation");
+
+        let stats = store.stats().expect("stats");
+        assert_eq!(
+            stats.embedding_fingerprint.as_deref(),
+            Some("openai:http://127.0.0.1:6999/v1:model-a:16")
+        );
+        assert_eq!(stats.embedding_cache_entries, 0);
+        assert_eq!(stats.query_cache_entries, 0);
+        store
+            .ensure_fingerprint("openai:http://127.0.0.1:6999/v1:model-a:16")
+            .expect("new generation matches");
+    }
+
+    #[test]
+    fn embedding_generation_migration_requires_an_exact_current_generation() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .ensure_fingerprint("current:model-a:16")
+            .expect("initial fingerprint");
+
+        let error = store
+            .migrate_embedding_fingerprint("stale:model-a:16", "new:model-a:16")
+            .expect_err("stale source generation must fail closed");
+        assert!(error.to_string().contains("expected: stale:model-a:16"));
+        assert_eq!(
+            store
+                .stats()
+                .expect("stats")
+                .embedding_fingerprint
+                .as_deref(),
+            Some("current:model-a:16")
+        );
     }
 
     #[test]

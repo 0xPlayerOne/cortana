@@ -183,10 +183,22 @@ differs from the XDG default.
 
 Run `cortana readiness` to check API liveness, embedding availability, embedding/index generation
 compatibility, database integrity, backup freshness, query mode, and recurring-sync state. A
-generation mismatch is reported with both fingerprints and requires an explicit rebuild into a
-new generation; readiness never changes the existing index. The command does not call connectors
-or mutate the corpus. Recurring sync fails the safe default unless the operator explicitly supplies
-`--allow-sync-service`; see the [evaluation guide](evaluation.md).
+generation mismatch is reported with both fingerprints and readiness never changes the existing
+index. If the provider endpoint changed but the model, dimension, and vector space are known to be
+identical, an operator can adopt the exact stored generation without re-embedding the corpus:
+
+```bash
+cortana migrate-embedding \
+  --from 'Qwen/Qwen3-Embedding-0.6B:1024' \
+  --force
+```
+
+The command takes the sync lock, verifies SQLite integrity, creates a verified recovery snapshot,
+updates only the generation metadata, and clears derived embedding/query caches. It never calls a
+connector or rewrites indexed documents. Do not use it when the model, dimension, or vector space
+changed; rebuild or re-import vectors into a new generation instead. Recurring sync fails the safe
+default unless the operator explicitly supplies `--allow-sync-service`; see the
+[evaluation guide](evaluation.md).
 
 ## Secrets
 

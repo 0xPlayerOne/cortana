@@ -77,6 +77,10 @@ explicit, one-time agent setting. Point the MCP command at the installed
 
 Use `--offline` for a deterministic, zero-network evaluation index. Offline and production
 embeddings are intentionally fingerprinted as different index generations and cannot be mixed.
+If only an endpoint fingerprint changed and you have verified that the stored vectors are still
+the same model, dimension, and vector space, use the explicit `migrate-embedding --from ...
+--force` command to adopt the generation without a corpus rebuild; otherwise rebuild or import
+vectors into a new generation.
 See [the ingestion guide](docs/ingestion.md) and
 [`config.example.toml`](config.example.toml) for Google Drive, Gmail, Calendar, Apple Notes, Slack,
 Discord, Buzz, filesystem/code, and external adapters.

@@ -175,8 +175,8 @@ fn embedding_index_check(store: &Store, embedder: &dyn Embedder) -> ReadinessChe
                 name: "embedding-index".into(),
                 passed: false,
                 detail: format!(
-                    "index uses {index_fingerprint}, but the configured provider uses {}; rebuild into a new generation before semantic retrieval or ingestion",
-                    configured_fingerprint
+                    "index uses {index_fingerprint}, but the configured provider uses {}; rebuild into a new generation before semantic retrieval or ingestion, or explicitly adopt this exact generation with `cortana migrate-embedding --from '{index_fingerprint}' --force` only after verifying the vectors are interchangeable",
+                    configured_fingerprint,
                 ),
             },
         },
