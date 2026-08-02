@@ -191,6 +191,14 @@ def test_buzz_rejects_symlinked_retention_files_and_logs(tmp_path: Path) -> None
         list(buzz.fetch(tmp_path))
 
     (agents / "retention.db").unlink()
+    try:
+        (agents / "retention.db").symlink_to(tmp_path / "missing-retention.db")
+    except (NotImplementedError, OSError):
+        return
+    with pytest.raises(RuntimeError, match="retention database must be a regular"):
+        list(buzz.fetch(tmp_path))
+
+    (agents / "retention.db").unlink()
     external_log = tmp_path / "external.log"
     external_log.write_text("private", encoding="utf-8")
     (logs / "linked.log").symlink_to(external_log)

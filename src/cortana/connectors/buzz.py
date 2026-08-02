@@ -73,4 +73,6 @@ def _is_regular_non_symlink(path: Path) -> bool:
         metadata = path.lstat()
     except FileNotFoundError:
         return False
+    if stat.S_ISLNK(metadata.st_mode):
+        raise RuntimeError(f"Buzz retention database must be a regular non-symlink file: {path}")
     return stat.S_ISREG(metadata.st_mode)
