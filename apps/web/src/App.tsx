@@ -1061,6 +1061,7 @@ export function App() {
               clearScopedResults()
               scopeSources(workspace, '')
               setSource('')
+              if (isDesktopApp) writeSourceSelectionPreference('')
             }
           }}
         />

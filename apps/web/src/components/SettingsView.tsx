@@ -206,7 +206,10 @@ export function SettingsView({
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    if (!settings) return
+    // Enter can submit a form even when the visible Save button is disabled.
+    // Avoid creating a no-op settings audit event or touching secrets when
+    // there is no draft to persist.
+    if (!settings || !dirty || saving) return
     setSaving(true)
     setError('')
     try {

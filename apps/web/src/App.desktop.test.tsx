@@ -361,6 +361,8 @@ test('desktop settings navigation opens the audit trail and renders both event s
   const save = screen.getByRole('button', { name: 'Save changes' })
   expect(save).toBeTruthy()
   expect(save.hasAttribute('disabled')).toBe(true)
+  fireEvent.submit(document.getElementById('settings-form')!)
+  expect(state.saveSettingsCalls).toBe(0)
 
   // Section navigation into the audit trail.
   fireEvent.click(screen.getByRole('button', { name: 'Audit' }))
