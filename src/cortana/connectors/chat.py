@@ -4,6 +4,7 @@ import datetime as dt
 import json
 import os
 import sqlite3
+import stat
 import time
 from collections.abc import Iterable
 from pathlib import Path
@@ -190,10 +191,13 @@ def _fetch_discord_cached(
 
 
 def _discord_cache(cache_dir: Path) -> sqlite3.Connection:
-    cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    cache_dir.chmod(0o700)
+    _prepare_private_cache_directory(cache_dir)
     path = cache_dir / "discord.sqlite3"
-    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    if path.is_symlink():
+        raise RuntimeError(f"Discord cache path must not be a symlink: {path}")
+    flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, 0o600)
     os.close(descriptor)
     path.chmod(0o600)
     connection = sqlite3.connect(path)
@@ -212,6 +216,42 @@ def _discord_cache(cache_dir: Path) -> sqlite3.Connection:
         "PRIMARY KEY(channel_id,id))"
     )
     return connection
+
+
+def _prepare_private_cache_directory(path: Path) -> None:
+    _reject_symlink_components(path)
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    current = path
+    while True:
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError as error:
+            raise RuntimeError(f"Discord cache directory does not exist: {current}") from error
+        if stat.S_ISLNK(metadata.st_mode):
+            raise RuntimeError(f"Discord cache directory must not contain a symlink: {current}")
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise RuntimeError(f"Discord cache path is not a directory: {current}")
+        if current == current.parent:
+            break
+        current = current.parent
+    path.chmod(0o700)
+
+
+def _reject_symlink_components(path: Path) -> None:
+    current = path
+    while True:
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            if current == current.parent:
+                return
+            current = current.parent
+            continue
+        if stat.S_ISLNK(metadata.st_mode):
+            raise RuntimeError(f"Discord cache directory must not contain a symlink: {current}")
+        if current == current.parent:
+            return
+        current = current.parent
 
 
 def _full_refresh_due(last_full: str) -> bool:

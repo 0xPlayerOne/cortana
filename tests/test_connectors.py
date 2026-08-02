@@ -327,6 +327,27 @@ def test_discord_cache_uses_incremental_after_cursor(
     assert cache.stat().st_mode & 0o777 == 0o700
 
 
+def test_discord_cache_rejects_symlinked_directory_and_database(tmp_path: Path) -> None:
+    external = tmp_path / "external-cache"
+    external.mkdir()
+    linked_directory = tmp_path / "cache"
+    try:
+        linked_directory.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        return
+
+    with pytest.raises(RuntimeError, match="directory must not contain a symlink"):
+        chat._discord_cache(linked_directory)
+
+    linked_directory.unlink()
+    linked_directory.mkdir()
+    external_database = tmp_path / "external.sqlite3"
+    external_database.touch()
+    (linked_directory / "discord.sqlite3").symlink_to(external_database)
+    with pytest.raises(RuntimeError, match="cache path must not be a symlink"):
+        chat._discord_cache(linked_directory)
+
+
 def test_chat_connector_rejects_missing_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MISSING_TOKEN", raising=False)
     with pytest.raises(RuntimeError, match="MISSING_TOKEN is required"):
