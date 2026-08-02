@@ -327,7 +327,12 @@ impl Embedder for OpenAiEmbedder {
     }
 
     fn fingerprint(&self) -> String {
-        format!("{}:{}", self.config.model, self.config.dimension)
+        format!(
+            "openai:{}:{}:{}",
+            self.config.base_url.trim_end_matches('/'),
+            self.config.model,
+            self.config.dimension
+        )
     }
 
     fn request_concurrency(&self) -> usize {
@@ -465,6 +470,21 @@ mod tests {
         let stats = store.stats().expect("cache stats");
         assert_eq!(stats.embedding_cache_entries, 2);
         assert_eq!(stats.embedding_cache_hits, 3);
+    }
+
+    #[test]
+    fn openai_fingerprint_isolated_by_provider_endpoint() {
+        let local = OpenAiEmbedder::new(EmbeddingConfig::default(), None).expect("local config");
+        let mut cloud_config = EmbeddingConfig::default();
+        cloud_config.base_url = "https://api.example.test/v1".into();
+        let cloud = OpenAiEmbedder::new(cloud_config, None).expect("cloud config");
+        let mut normalized_config = EmbeddingConfig::default();
+        normalized_config.base_url = "http://127.0.0.1:6999/v1/".into();
+        let normalized =
+            OpenAiEmbedder::new(normalized_config, None).expect("normalized local config");
+
+        assert_ne!(local.fingerprint(), cloud.fingerprint());
+        assert_eq!(local.fingerprint(), normalized.fingerprint());
     }
 
     #[tokio::test]
