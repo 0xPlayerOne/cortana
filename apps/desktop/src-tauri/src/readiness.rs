@@ -303,22 +303,7 @@ async fn embedding_runtime_status() -> ToolStatus {
     let configured_program = settings
         .as_ref()
         .and_then(|snapshot| snapshot.embedding_service_program.as_deref());
-    let path = configured_program
-        .and_then(|program| {
-            let candidate = Path::new(program);
-            if candidate.is_absolute() {
-                Some(candidate.to_path_buf())
-            } else {
-                find_executable(program)
-            }
-        })
-        .filter(|candidate| is_executable(candidate))
-        .or_else(|| {
-            configured_program
-                .is_none()
-                .then(|| find_executable("text-embeddings-router"))
-                .flatten()
-        });
+    let path = embedding_runtime_path(configured_program);
     let install_supported = required
         && cfg!(target_os = "macos")
         && find_executable("brew").is_some();
@@ -353,6 +338,25 @@ async fn embedding_runtime_status() -> ToolStatus {
         install_supported,
         detail,
     }
+}
+
+fn embedding_runtime_path(configured_program: Option<&str>) -> Option<PathBuf> {
+    configured_program
+        .and_then(|program| {
+            let candidate = Path::new(program);
+            if candidate.is_absolute() {
+                Some(candidate.to_path_buf())
+            } else {
+                find_executable(program)
+            }
+        })
+        .filter(|candidate| is_executable(candidate))
+        .or_else(|| {
+            configured_program
+                .is_none()
+                .then(|| find_executable("text-embeddings-router"))
+                .flatten()
+        })
 }
 
 pub(crate) fn bundled_connector_resource_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -656,6 +660,11 @@ mod tests {
     #[test]
     fn executable_lookup_does_not_treat_missing_tools_as_available() {
         assert!(find_executable("cortana-tool-that-does-not-exist").is_none());
+    }
+
+    #[test]
+    fn configured_embedding_runtime_does_not_fall_back_to_a_different_binary() {
+        assert!(embedding_runtime_path(Some("cortana-tool-that-does-not-exist")).is_none());
     }
 
     #[test]
