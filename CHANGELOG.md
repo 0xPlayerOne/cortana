@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.16.0](https://github.com/0xPlayerOne/cortana/compare/v0.15.2...v0.16.0) (2026-08-02)
+
+
+### Features
+
+* **api:** expose source ACLs in status ([#207](https://github.com/0xPlayerOne/cortana/issues/207)) ([3c8c940](https://github.com/0xPlayerOne/cortana/commit/3c8c940800f9f485ce23ab2b5495739f50ef7cf5))
+* **ingestion:** carry source ACLs through jobs ([#208](https://github.com/0xPlayerOne/cortana/issues/208)) ([0891ea5](https://github.com/0xPlayerOne/cortana/commit/0891ea528107899b1dc855b8d106bfa9b6ffec9f))
+
+
+### Bug Fixes
+
+* **desktop:** make graph evidence actionable ([#204](https://github.com/0xPlayerOne/cortana/issues/204)) ([0d1f38f](https://github.com/0xPlayerOne/cortana/commit/0d1f38fcf3c60bf84d4a9df2a751d9b0a76f2134))
+* **desktop:** make search history controls actionable ([#203](https://github.com/0xPlayerOne/cortana/issues/203)) ([9d5d5de](https://github.com/0xPlayerOne/cortana/commit/9d5d5de05592b408172434afdf3f6a3d7aff05db))
+* **workspaces:** preserve core scope fallbacks ([#206](https://github.com/0xPlayerOne/cortana/issues/206)) ([f95627a](https://github.com/0xPlayerOne/cortana/commit/f95627ad9fdcd9a969397b97f5762bf04fedc864))
+
 ## [0.15.2](https://github.com/0xPlayerOne/cortana/compare/v0.15.1...v0.15.2) (2026-08-01)
 
 
