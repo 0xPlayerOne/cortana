@@ -369,6 +369,19 @@ def test_google_private_cache_rejects_symlink(tmp_path: Path) -> None:
         _private_cache(linked)
 
 
+def test_google_private_cache_rejects_symlinked_directory(tmp_path: Path) -> None:
+    external = tmp_path / "external-cache"
+    external.mkdir()
+    linked = tmp_path / "cache"
+    try:
+        linked.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        return
+
+    with pytest.raises(RuntimeError, match="directory must not contain a symlink"):
+        _private_cache(linked / "drive.sqlite3")
+
+
 def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     token.write_text('{"token":"access"}', encoding="utf-8")
