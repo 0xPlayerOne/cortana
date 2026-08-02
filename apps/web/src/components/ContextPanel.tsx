@@ -41,7 +41,12 @@ export function ContextPanel({
     <aside className={`context-panel ${open ? 'mobile-open' : ''}`}>
       <div className="context-heading">
         <strong>Agent context</strong>
-        <button type="button" aria-label="Close agent context" onClick={onClose}>
+        <button
+          type="button"
+          aria-label="Close agent context"
+          title="Close agent context"
+          onClick={onClose}
+        >
           <X size={17} />
         </button>
       </div>
@@ -137,7 +142,12 @@ export function ContextPanel({
         </section>
       </div>
       <div className="copy-area">
-        <button type="button" aria-label="Copy agent context" onClick={() => void copy()}>
+        <button
+          type="button"
+          aria-label="Copy agent context"
+          title="Copy agent context"
+          onClick={() => void copy()}
+        >
           {copied ? <Check size={17} /> : <Copy size={17} />}
           {copied
             ? 'Context copied'

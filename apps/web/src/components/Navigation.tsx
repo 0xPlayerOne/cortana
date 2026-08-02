@@ -62,6 +62,7 @@ export function TitleActions({
           type="button"
           className="mobile-button"
           aria-label="Open agent context"
+          title="Open agent context"
           onClick={onOpenContext}
         >
           <PanelRightClose size={18} />
@@ -75,6 +76,7 @@ export function TitleActions({
         type="button"
         className="mobile-button"
         aria-label="Open sources"
+        title="Open sources"
         onClick={onOpenSources}
       >
         <Menu size={19} />

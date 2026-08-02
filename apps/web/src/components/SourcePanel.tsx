@@ -124,13 +124,29 @@ export function SourcePanel({
     <aside className={`source-panel ${open ? 'mobile-open' : ''}`}>
       <div className="panel-heading">
         <strong>Sources</strong>
-        <button type="button" className="mobile-close" aria-label="Close sources" onClick={onClose}>
+        <button
+          type="button"
+          className="mobile-close"
+          aria-label="Close sources"
+          title="Close sources"
+          onClick={onClose}
+        >
           <X size={17} />
         </button>
-        <button type="button" aria-label="Add source" onClick={onOpenSourcesSettings}>
+        <button
+          type="button"
+          aria-label="Add source"
+          title="Add source"
+          onClick={onOpenSourcesSettings}
+        >
           +
         </button>
-        <button type="button" aria-label="Source settings" onClick={onOpenSourcesSettings}>
+        <button
+          type="button"
+          aria-label="Source settings"
+          title="Source settings"
+          onClick={onOpenSourcesSettings}
+        >
           <Settings size={16} />
         </button>
       </div>
@@ -164,6 +180,7 @@ export function SourcePanel({
                   type="button"
                   className="source-job-cancel"
                   aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
+                  title={`Cancel ${job.project} ${job.source} ${job.operation}`}
                   disabled={job.status === 'cancelling'}
                   onClick={() => onCancelSourceJob(job.id)}
                 >
@@ -269,6 +286,7 @@ export function SourcePanel({
                           type="button"
                           className="tree-toggle"
                           aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
+                          title={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
                           aria-expanded={!isCollapsed}
                           onClick={() => {
                             setCollapsed((current) => {

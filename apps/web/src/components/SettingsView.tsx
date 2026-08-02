@@ -1785,6 +1785,7 @@ function AccessSection({
                 <button
                   type="button"
                   aria-label={`Remove ${principal.principal}`}
+                  title={`Remove ${principal.principal}`}
                   onClick={() =>
                     update((current) => ({
                       ...current,
@@ -2872,6 +2873,7 @@ function SourcesSection({
                     type="button"
                     aria-label={`Remove ${source.name}`}
                     disabled={sourceLocked}
+                    title={`Remove ${source.name}`}
                     onClick={() => {
                       if (
                         window.confirm(
@@ -2963,6 +2965,7 @@ function SourcesSection({
                         type="button"
                         disabled={sourceLocked || !source.editable}
                         aria-label="Choose source directory"
+                        title="Choose source directory"
                         onClick={() => void choosePath(index, 'directory', 'root')}
                       >
                         <FolderOpen size={14} />
@@ -3015,6 +3018,7 @@ function SourcesSection({
                           type="button"
                           disabled={sourceLocked || !source.editable}
                           aria-label="Choose Google token destination"
+                          title="Choose Google token destination"
                           onClick={() => void choosePath(index, 'google-token', 'token_path')}
                         >
                           <FolderOpen size={14} />
@@ -3041,6 +3045,7 @@ function SourcesSection({
                           type="button"
                           disabled={sourceLocked || !source.editable}
                           aria-label="Choose Google OAuth client JSON"
+                          title="Choose Google OAuth client JSON"
                           onClick={() =>
                             void choosePath(index, 'oauth-client', 'oauth_client_path')
                           }
@@ -3381,7 +3386,12 @@ function InitialSyncFlow({
           <span className="eyebrow">Guided initial sync</span>
           <strong>{source.name}</strong>
         </div>
-        <button type="button" aria-label="Close initial sync plan" onClick={onClose}>
+        <button
+          type="button"
+          aria-label="Close initial sync plan"
+          title="Close initial sync plan"
+          onClick={onClose}
+        >
           <X size={15} />
         </button>
       </header>

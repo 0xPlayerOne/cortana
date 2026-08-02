@@ -157,8 +157,12 @@ test('SourcePanel source and settings shortcuts open the Sources settings sectio
       jobs={[]}
     />
   )
-  fireEvent.click(screen.getByLabelText('Add source'))
-  fireEvent.click(screen.getByLabelText('Source settings'))
+  const add = screen.getByLabelText('Add source')
+  const settings = screen.getByLabelText('Source settings')
+  expect(add.getAttribute('title')).toBe('Add source')
+  expect(settings.getAttribute('title')).toBe('Source settings')
+  fireEvent.click(add)
+  fireEvent.click(settings)
   expect(sourcesOpenCalls).toBe(2)
 })
 

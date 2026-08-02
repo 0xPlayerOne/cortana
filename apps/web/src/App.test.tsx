@@ -182,7 +182,9 @@ test('document filter bounds requests to the native query byte budget', async ()
   state.documentsCalls = []
   render(<App />)
 
-  fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
+  const openSources = screen.getByRole('button', { name: 'Open sources' })
+  expect(openSources.getAttribute('title')).toBe('Open sources')
+  fireEvent.click(openSources)
   const filter = await screen.findByRole('textbox', { name: 'Filter documents' })
   fireEvent.change(filter, { target: { value: longUnicodeQuery } })
 
