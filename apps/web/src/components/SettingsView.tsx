@@ -1797,6 +1797,9 @@ function SourcesSection({
       window.clearTimeout(timer)
     }
   }, [job, initialSync, onJob])
+  const activeJob =
+    (job && ['running', 'cancelling'].includes(job.status) ? job : undefined) ??
+    sourceJobs?.find((candidate) => ['running', 'cancelling'].includes(candidate.status))
   const requestPlan = async (source: string, budget: InitialSyncBudget) => {
     setInitialSync((current) =>
       current && current.source === source
@@ -2049,8 +2052,7 @@ function SourcesSection({
           const secret = source.token_env
             ? settings.secrets.find((item) => item.name === source.token_env)
             : undefined
-          const runningThis =
-            job?.source === source.name && ['running', 'cancelling'].includes(job.status)
+          const runningThis = activeJob?.source === source.name
           return (
             <article className="source-settings-card" key={`${source.name}:${index}`}>
               <header>
@@ -2086,12 +2088,12 @@ function SourcesSection({
                         !canValidate ||
                         !source.token_path ||
                         !source.oauth_client_path ||
-                        Boolean(job && ['running', 'cancelling'].includes(job.status))
+                        Boolean(activeJob)
                       }
                       title="Authorize read-only Google access with PKCE"
                       onClick={() => void authorizeSource(source)}
                     >
-                      {runningThis && job?.operation === 'authorization' ? (
+                      {runningThis && activeJob?.operation === 'authorization' ? (
                         <LoaderCircle className="spin" size={14} />
                       ) : (
                         <KeyRound size={14} />
@@ -2101,18 +2103,11 @@ function SourcesSection({
                   )}
                   <button
                     type="button"
-                    disabled={
-                      !canValidate ||
-                      Boolean(
-                        job &&
-                        runningThis === false &&
-                        ['running', 'cancelling'].includes(job.status)
-                      )
-                    }
+                    disabled={!canValidate || Boolean(activeJob)}
                     title={canValidate ? 'Read-only bounded validation' : 'Save changes first'}
                     onClick={() => void validateSource(source)}
                   >
-                    {runningThis && job?.operation === 'validation' ? (
+                    {runningThis && activeJob?.operation === 'validation' ? (
                       <LoaderCircle className="spin" size={14} />
                     ) : (
                       <Play size={14} />
@@ -2121,15 +2116,11 @@ function SourcesSection({
                   </button>
                   <button
                     type="button"
-                    disabled={
-                      !canValidate ||
-                      !source.enabled ||
-                      Boolean(job && ['running', 'cancelling'].includes(job.status))
-                    }
+                    disabled={!canValidate || !source.enabled || Boolean(activeJob)}
                     title="Validation-gated trial sync; max 25 documents, 5 MiB, no reconciliation"
                     onClick={() => void trialSyncSource(source)}
                   >
-                    {runningThis && job?.operation === 'trial-sync' ? (
+                    {runningThis && activeJob?.operation === 'trial-sync' ? (
                       <LoaderCircle className="spin" size={14} />
                     ) : (
                       <Play size={14} />
@@ -2138,15 +2129,11 @@ function SourcesSection({
                   </button>
                   <button
                     type="button"
-                    disabled={
-                      !canValidate ||
-                      !source.enabled ||
-                      Boolean(job && ['running', 'cancelling'].includes(job.status))
-                    }
+                    disabled={!canValidate || !source.enabled || Boolean(activeJob)}
                     title="Guided initial sync; fixed budget, validation-gated, no reconciliation"
                     onClick={() => openInitialSync(source)}
                   >
-                    {runningThis && job?.operation === 'initial-sync' ? (
+                    {runningThis && activeJob?.operation === 'initial-sync' ? (
                       <LoaderCircle className="spin" size={14} />
                     ) : (
                       <Zap size={14} />
@@ -2156,6 +2143,7 @@ function SourcesSection({
                   <button
                     type="button"
                     aria-label={`Remove ${source.name}`}
+                    disabled={runningThis}
                     onClick={() => {
                       if (
                         window.confirm(
@@ -2521,7 +2509,7 @@ function SourcesSection({
         <InitialSyncFlow
           source={settings.sources.find((item) => item.name === initialSync.source)!}
           flow={initialSync}
-          busy={Boolean(job && ['running', 'cancelling'].includes(job.status)) || !canValidate}
+          busy={Boolean(activeJob) || !canValidate}
           onBudget={(budget) => void requestPlan(initialSync.source, budget)}
           onValidate={() => void validateInitialSyncBudget(sourceOf(settings, initialSync.source))}
           onStart={() => void startInitialSync(sourceOf(settings, initialSync.source))}

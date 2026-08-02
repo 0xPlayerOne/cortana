@@ -169,6 +169,20 @@ function openSources() {
   render(<SettingsView onSaved={() => {}} initialSection="sources" />)
 }
 
+test('a shared active source job locks source actions until it finishes', async () => {
+  const activeJob = {
+    ...jobFor('small', 'running'),
+    operation: 'trial-sync' as const,
+    summary: 'Guarded trial sync is running.',
+  }
+  render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
+
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+  for (const label of ['Validate', 'Trial sync', 'Initial sync', 'Remove work-code']) {
+    expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(true)
+  }
+})
+
 test('initial sync plans a fixed budget and displays the native limits', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true
@@ -272,7 +286,9 @@ test('shared source-job snapshots unlock the initial-sync plan without local pol
     )
     await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Initial sync' }))
-    await waitFor(() => expect(screen.getByText(/latest validation used smaller limits/)).toBeTruthy())
+    await waitFor(() =>
+      expect(screen.getByText(/latest validation used smaller limits/)).toBeTruthy()
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Validate for this budget' }))
     await waitFor(() => expect(state.validationCalls).toHaveLength(1))
@@ -293,7 +309,9 @@ test('shared source-job snapshots unlock the initial-sync plan without local pol
     // App owns the poller in production. Simulate its snapshots arriving at
     // the same SettingsView instance and ensure validation completion requests
     // a new native plan rather than relying on the old local timer.
-    view.rerender(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[running]} />)
+    view.rerender(
+      <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[running]} />
+    )
     await waitFor(() => expect(screen.getByText('work-code · validation · running')).toBeTruthy())
     view.rerender(
       <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[succeeded]} />
