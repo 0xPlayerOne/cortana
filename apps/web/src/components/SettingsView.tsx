@@ -2398,6 +2398,7 @@ function SourcesSection({
                 <Field label="Workspace">
                   <select
                     value={source.project}
+                    disabled={sourceLocked}
                     onChange={(event) => changeSource(index, { project: event.target.value })}
                   >
                     {settings.workspaces.map((workspace) => (

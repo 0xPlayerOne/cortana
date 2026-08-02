@@ -185,6 +185,7 @@ test('a shared active source job locks source actions until it finishes', async 
     true
   )
   expect((screen.getByLabelText(/^Source name/) as HTMLInputElement).disabled).toBe(true)
+  expect((screen.getByLabelText('Workspace') as HTMLSelectElement).disabled).toBe(true)
 })
 
 test('initial sync plans a fixed budget and displays the native limits', async () => {
