@@ -156,7 +156,7 @@ impl SyncRunStatus {
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
-        reject_symlink(path)?;
+        reject_database_symlinks(path)?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -1276,6 +1276,7 @@ impl Store {
     }
 
     pub fn backup(&self, destination: &Path) -> Result<()> {
+        reject_database_symlinks(destination)?;
         anyhow::ensure!(
             !destination.exists(),
             "backup already exists: {}",
@@ -1305,6 +1306,11 @@ impl Store {
     }
 
     pub fn restore(database: &Path, source: &Path, recovery_backup: Option<&Path>) -> Result<()> {
+        reject_database_symlinks(database)?;
+        reject_database_symlinks(source)?;
+        if let Some(recovery) = recovery_backup {
+            reject_database_symlinks(recovery)?;
+        }
         verify_database(source)?;
         if database.exists()
             && let Some(recovery) = recovery_backup
@@ -1556,6 +1562,7 @@ fn optional_write<T>(
 }
 
 fn verify_database(path: &Path) -> Result<()> {
+    reject_database_symlinks(path)?;
     anyhow::ensure!(
         path.is_file(),
         "database does not exist: {}",
@@ -1582,22 +1589,40 @@ fn secure_file(_path: &Path) -> Result<()> {
 }
 
 fn reject_symlink(path: &Path) -> Result<()> {
-    if std::fs::symlink_metadata(path)
-        .map(|metadata| metadata.file_type().is_symlink())
-        .unwrap_or(false)
-    {
-        bail!("refusing to use symlinked database path {}", path.display());
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            bail!("refusing to use symlinked database path {}", path.display());
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error)
+            .with_context(|| format!("failed to inspect database path {}", path.display())),
+    }
+}
+
+fn reject_database_symlinks(database: &Path) -> Result<()> {
+    for suffix in ["", "-wal", "-shm"] {
+        let mut path = database.as_os_str().to_os_string();
+        path.push(suffix);
+        reject_symlink(&PathBuf::from(path))?;
     }
     Ok(())
 }
 
 fn secure_database_files(database: &Path) -> Result<()> {
+    reject_database_symlinks(database)?;
     for suffix in ["", "-wal", "-shm"] {
         let mut path = database.as_os_str().to_os_string();
         path.push(suffix);
         let path = PathBuf::from(path);
-        if path.exists() {
-            secure_file(&path)?;
+        match std::fs::symlink_metadata(&path) {
+            Ok(_) => secure_file(&path)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("failed to inspect database sidecar {}", path.display())
+                });
+            }
         }
     }
     Ok(())
@@ -2544,6 +2569,25 @@ mod tests {
         assert!(error.to_string().contains("symlinked database path"));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn opening_a_database_with_a_symlinked_sidecar_is_rejected() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let database = directory.path().join("store.sqlite3");
+        Store::open(&database).expect("database");
+        let external = directory.path().join("external-wal");
+        std::fs::write(&external, b"not a sqlite wal").expect("external sidecar");
+        let wal = PathBuf::from(format!("{}-wal", database.display()));
+        symlink(&external, &wal).expect("sidecar symlink");
+
+        let error = Store::open(&database)
+            .err()
+            .expect("symlinked sidecar must fail");
+        assert!(error.to_string().contains("symlinked database path"));
+    }
+
     #[test]
     fn backup_is_consistent_and_refuses_overwrite() {
         let directory = tempdir().expect("temporary directory");
@@ -2610,6 +2654,37 @@ mod tests {
                 .expect("recovery chunks")[0]
                 .content,
             "replace me"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backup_and_restore_reject_symlinked_paths() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let database = directory.path().join("store.sqlite3");
+        let store = Store::open(&database).expect("open store");
+
+        let backup_target = directory.path().join("outside.sqlite3");
+        let backup_link = directory.path().join("backup.sqlite3");
+        symlink(&backup_target, &backup_link).expect("backup symlink");
+        let backup_error = store
+            .backup(&backup_link)
+            .err()
+            .expect("backup symlink must fail");
+        assert!(backup_error.to_string().contains("symlinked database path"));
+
+        let restore_target = directory.path().join("restore.sqlite3");
+        let restore_link = directory.path().join("restore-link.sqlite3");
+        symlink(&restore_target, &restore_link).expect("restore symlink");
+        let restore_error = Store::restore(&restore_link, &database, None)
+            .err()
+            .expect("restore symlink must fail");
+        assert!(
+            restore_error
+                .to_string()
+                .contains("symlinked database path")
         );
     }
 }
