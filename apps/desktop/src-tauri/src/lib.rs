@@ -125,12 +125,24 @@ impl BackendClient {
 /// Fall back to the requested scope when no admin credential is configured.
 fn desktop_bearer_for_scope(scope: &str) -> Result<Option<String>, String> {
     if scope != "admin" {
-        let admin = settings::bearer_for_scope("admin").ok().flatten();
-        if let Some(token) = admin {
-            return Ok(Some(token));
+        if let Ok(snapshot) = settings::load() {
+            for principal in snapshot
+                .auth_principals
+                .iter()
+                .filter(|principal| principal_supports_owner_scope(principal, scope))
+            {
+                if let Ok(Some(token)) = settings::secret_value_for_env(&principal.token_env) {
+                    return Ok(Some(token));
+                }
+            }
         }
     }
     settings::bearer_for_scope(scope)
+}
+
+fn principal_supports_owner_scope(principal: &settings::AuthPrincipalSettings, scope: &str) -> bool {
+    principal.scopes.iter().any(|value| value == "admin")
+        && principal.scopes.iter().any(|value| value == scope)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1022,6 +1034,31 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn principal(scopes: &[&str]) -> settings::AuthPrincipalSettings {
+        settings::AuthPrincipalSettings {
+            principal: "owner".into(),
+            token_env: "OWNER_TOKEN".into(),
+            scopes: scopes.iter().map(|scope| (*scope).into()).collect(),
+            acl: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn owner_preference_requires_the_requested_scope_too() {
+        assert!(!principal_supports_owner_scope(
+            &principal(&["admin"]),
+            "query"
+        ));
+        assert!(principal_supports_owner_scope(
+            &principal(&["admin", "query"]),
+            "query"
+        ));
+        assert!(!principal_supports_owner_scope(
+            &principal(&["admin", "status"]),
+            "query"
+        ));
+    }
 
     #[test]
     fn retrieval_request_enforces_bounded_non_empty_inputs() {
