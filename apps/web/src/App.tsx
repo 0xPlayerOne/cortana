@@ -386,7 +386,7 @@ export function App() {
       disposed = true
       window.clearInterval(timer)
     }
-  }, [])
+  }, [desktopSettings])
 
   useEffect(() => {
     if (!isDesktopApp || !desktopSettings) return
