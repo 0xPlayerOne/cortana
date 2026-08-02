@@ -210,6 +210,9 @@ fn install_windows(config: &Config, options: InstallOptions<'_>) -> Result<()> {
     }
     for job in jobs {
         windows_create_task(&job)?;
+        if matches!(job.schedule, Schedule::KeepAlive) {
+            windows_run_task(job.label)?;
+        }
         println!("installed {}", job.label);
     }
     Ok(())
@@ -340,14 +343,21 @@ fn windows_action(name: &str, action: &str) -> Result<()> {
         let _ = windows_schtasks(&args);
     }
     if matches!(action, "start" | "restart") {
-        let args = vec!["/Run".to_string(), "/TN".to_string(), task.to_string()];
-        let output = windows_schtasks(&args)?;
-        anyhow::ensure!(
-            output.status.success(),
-            "start Windows Task Scheduler task {task} failed: {}",
-            bounded_command_error(&output.stderr)
-        );
+        windows_run_task(label)?;
     }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_run_task(label: &str) -> Result<()> {
+    let task = windows_task_name(label)?;
+    let args = vec!["/Run".to_string(), "/TN".to_string(), task.to_string()];
+    let output = windows_schtasks(&args)?;
+    anyhow::ensure!(
+        output.status.success(),
+        "start Windows Task Scheduler task {task} failed: {}",
+        bounded_command_error(&output.stderr)
+    );
     Ok(())
 }
 
@@ -629,6 +639,7 @@ struct Job {
     schedule: Schedule,
 }
 
+#[derive(Clone, Copy)]
 enum Schedule {
     KeepAlive,
     Interval(u64),

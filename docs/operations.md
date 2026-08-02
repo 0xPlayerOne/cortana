@@ -183,7 +183,7 @@ differs from the XDG default.
 
 Cortana Desktop and `cortana service install` use per-user Windows Task Scheduler tasks. They do
 not require administrator access and keep the same fixed service IDs (`embedding`, `server`, `sync`,
-and `backup`). Core services start at the user's next logon; sync and backup use bounded minute
+and `backup`). Core services start immediately after installation and again at the user's next logon; sync and backup use bounded minute
 intervals derived from the saved schedule. The Desktop Services panel reports task state and last
 run result and can start, stop, or restart an installed task. A cloud embedding provider omits the
 embedding task, and recurring sync remains opt-in and validation-gated on every platform.
