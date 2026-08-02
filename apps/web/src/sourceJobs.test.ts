@@ -39,6 +39,7 @@ const state = {
   polled: new Map<string, DesktopSourceJob | Error>(),
   pending: null as Promise<DesktopSourceJob> | null,
   recovered: [] as DesktopSourceJob[],
+  recoveryError: null as Error | null,
 }
 
 beforeEach(() => {
@@ -46,12 +47,14 @@ beforeEach(() => {
   state.polled.clear()
   state.pending = null
   state.recovered = []
+  state.recoveryError = null
 })
 
 mock.module('./api', () => ({
   ...realApi,
   isDesktopApp: true,
-  getDesktopSourceJobs: () => Promise.resolve(state.recovered),
+  getDesktopSourceJobs: () =>
+    state.recoveryError ? Promise.reject(state.recoveryError) : Promise.resolve(state.recovered),
   getDesktopSourceValidation: (id: string) => {
     state.statusCalls.push(id)
     if (state.pending) return state.pending
@@ -426,6 +429,26 @@ test('source job status errors expose a recovery action', async () => {
   })
   expect(result.current.error).toBe('')
   expect(result.current.jobs[0]?.status).toBe('succeeded')
+  unmount()
+})
+
+test('source job history recovery failures stay visible and retryable', async () => {
+  state.recoveryError = new Error('source job history transport failed')
+  const { result, unmount } = renderHook(() => useSourceJobs())
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+  expect(result.current.error).toBe('source job history transport failed')
+
+  state.recoveryError = null
+  state.recovered = [jobOf('recovered-after-retry', 'succeeded')]
+  act(() => result.current.retry())
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+  expect(result.current.error).toBe('')
+  expect(result.current.jobs[0]?.id).toBe('recovered-after-retry')
   unmount()
 })
 

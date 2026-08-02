@@ -247,10 +247,13 @@ export function useSourceJobs() {
         setJobs((current) => mergeJobSnapshots(current, next))
         setError('')
       })
-      .catch(() => {
-        // A fresh native process may have no source-job state yet. The
-        // renderer can still discover jobs started during this session via
-        // remember(), so an unavailable recovery snapshot is non-fatal.
+      .catch((caught: unknown) => {
+        if (disposed) return
+        // A failed recovery read is distinct from an empty native history:
+        // preserve remembered jobs, but tell the operator that the snapshot
+        // may be stale and expose the same explicit retry action used by the
+        // active poller.
+        setError(caught instanceof Error ? caught.message : 'Source job history unavailable')
       })
     const timer = window.setInterval(() => {
       if (pollingRef.current) return
