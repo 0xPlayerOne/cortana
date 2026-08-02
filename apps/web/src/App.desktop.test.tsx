@@ -1166,12 +1166,66 @@ test('embedding generation mismatch offers a confirmed desktop adoption action',
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Run readiness scan' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Adopt stored generation' })).toBeTruthy())
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Adopt stored generation' })).toBeTruthy()
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Adopt stored generation' }))
     await waitFor(() =>
-      expect(screen.getByText('Embedding generation adopted and readiness was rescanned.')).toBeTruthy()
+      expect(
+        screen.getByText('Embedding generation adopted and readiness was rescanned.')
+      ).toBeTruthy()
     )
     expect(state.embeddingMigrationCalls).toEqual(['legacy:model:256'])
+  } finally {
+    state.readinessScan = originalScan
+    window.confirm = originalConfirm
+  }
+})
+
+test('embedding adoption reports a follow-up mismatch instead of claiming readiness', async () => {
+  const originalScan = state.readinessScan
+  const originalConfirm = window.confirm
+  state.readinessScan = () =>
+    Promise.resolve({
+      scanned_at_unix_seconds: 1785000000,
+      platform: 'macos',
+      tools_ready: true,
+      core: {
+        passed: false,
+        query_mode: 'extractive',
+        embedding_generation: {
+          stored: 'legacy:model:256',
+          configured: 'openai:http://127.0.0.1:6999/v1:model:256',
+        },
+        checks: [
+          {
+            name: 'embedding-index',
+            passed: false,
+            detail: 'generation mismatch',
+          },
+        ],
+      },
+      core_error: null,
+      tools: [],
+    })
+  window.confirm = () => true
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Run readiness scan' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Adopt stored generation' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt stored generation' }))
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Embedding generation was adopted, but the follow-up readiness scan still reports a mismatch.'
+        )
+      ).toBeTruthy()
+    )
   } finally {
     state.readinessScan = originalScan
     window.confirm = originalConfirm

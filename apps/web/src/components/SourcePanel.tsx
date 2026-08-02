@@ -1,26 +1,21 @@
 import {
-  Bot,
-  CalendarDays,
   ChevronDown,
   ChevronRight,
   CircleStop,
-  Code2,
   Database,
   ExternalLink,
   Folder,
   KeyRound,
   LoaderCircle,
-  Mail,
-  MessageCircle,
   Search,
   Settings,
-  StickyNote,
   X,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { activeJobs, describeSourceJobProgress } from '../sourceJobs'
 import { operationalSources, sourceHealth, type OperationalSource } from '../operations'
+import { sourceIconForKind } from './sourceIcons'
 import type {
   BrainDocumentSummary,
   BrainStatus,
@@ -28,21 +23,6 @@ import type {
   WorkspaceSettings,
 } from '../types'
 import { VirtualDocumentList } from './VirtualDocumentList'
-
-const sourceIcons: Record<string, typeof Folder> = {
-  filesystem: Code2,
-  'google-drive': Folder,
-  'google-calendar': CalendarDays,
-  gmail: Mail,
-  'apple-notes': StickyNote,
-  discord: MessageCircle,
-  slack: MessageCircle,
-  buzz: Bot,
-}
-
-export function sourceIconForKind(kind: string) {
-  return sourceIcons[kind] || Database
-}
 
 export function SourcePanel({
   open,

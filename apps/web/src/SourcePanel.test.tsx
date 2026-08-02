@@ -9,7 +9,8 @@ import type {
   WorkspaceSettings,
 } from './types'
 import { demoStatus } from './demo'
-import { SourcePanel, sourceIconForKind } from './components/SourcePanel'
+import { SourcePanel } from './components/SourcePanel'
+import { sourceIconForKind } from './components/sourceIcons'
 
 afterEach(cleanup)
 

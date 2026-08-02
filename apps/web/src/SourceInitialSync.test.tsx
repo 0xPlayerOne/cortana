@@ -165,7 +165,7 @@ mock.module('./api', () => ({
       ? state.serviceRefreshAfterAction.promise
       : Promise.resolve(state.serviceRefreshReports.at(-1) ?? state.serviceRefreshReports[0])
   },
-  runDesktopServicesActionAll: (_action: 'start' | 'stop' | 'restart') => {
+  runDesktopServicesActionAll: () => {
     if (!state.serviceActionResponse) return Promise.reject(new Error('Service action unavailable'))
     return state.serviceActionResponse.promise
   },

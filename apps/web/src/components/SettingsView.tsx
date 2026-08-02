@@ -2054,9 +2054,24 @@ function ReadinessSection({
     setMigrationNotice('')
     try {
       await migrateDesktopEmbeddingGeneration(from)
-      const next = await (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
-      onResult(next)
-      setMigrationNotice('Embedding generation adopted and readiness was rescanned.')
+      try {
+        const next = await (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
+        onResult(next)
+        const nextGeneration = next.core?.embedding_generation
+        if (!nextGeneration || nextGeneration.stored !== nextGeneration.configured) {
+          setError(
+            'Embedding generation was adopted, but the follow-up readiness scan still reports a mismatch.'
+          )
+        } else {
+          setMigrationNotice('Embedding generation adopted and readiness was rescanned.')
+        }
+      } catch (caught) {
+        setError(
+          caught instanceof Error
+            ? `Embedding generation was adopted, but readiness could not be rescanned: ${caught.message}`
+            : 'Embedding generation was adopted, but readiness could not be rescanned'
+        )
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Embedding generation migration failed')
     } finally {
