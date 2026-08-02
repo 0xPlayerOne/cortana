@@ -22,6 +22,14 @@
   flex: 1;
 }
 
+.settings-header-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .settings-header h1 {
   margin: 2px 0 7px;
   color: #f0efe9;
@@ -259,6 +267,7 @@
   justify-content: space-between;
   margin: 22px 0 14px;
   gap: 12px;
+  flex-wrap: wrap;
   color: var(--muted);
   font-size: 11px;
 }
@@ -268,6 +277,22 @@
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.015);
+}
+
+.service-schedule {
+  display: grid;
+  gap: 12px;
+  margin: 12px 0 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.service-schedule p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .service-grid {
@@ -316,6 +341,11 @@
   box-shadow: 0 0 8px rgba(126, 201, 153, 0.45);
 }
 
+.service-state.failed {
+  background: #e77b6f;
+  box-shadow: 0 0 8px rgba(231, 123, 111, 0.4);
+}
+
 .service-actions {
   display: flex;
   flex-wrap: wrap;
@@ -357,6 +387,19 @@
 }
 
 @media (max-width: 760px) {
+  .settings-header,
+  .setup-guide-heading {
+    flex-wrap: wrap;
+  }
+
+  .settings-header {
+    padding: 22px 20px 18px;
+  }
+
+  .setup-guide-heading > span {
+    white-space: normal;
+  }
+
   .service-grid {
     grid-template-columns: 1fr;
   }
@@ -368,6 +411,34 @@
   .portable-settings {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .initial-sync-budgets,
+  .initial-sync-plan {
+    grid-template-columns: 1fr;
+  }
+
+  .initial-sync-plan > div {
+    flex-wrap: wrap;
+  }
+
+  .initial-sync-actions {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .initial-sync-actions span {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .initial-sync-flow .safety-note {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .initial-sync-flow .safety-note button {
+    margin-left: 0;
   }
 }
 
@@ -393,7 +464,9 @@
 
 .source-settings-card > header {
   justify-content: space-between;
+  align-items: flex-start;
   gap: 14px;
+  flex-wrap: wrap;
 }
 
 .source-enable {
@@ -421,7 +494,15 @@
 }
 
 .source-card-actions {
+  min-width: 0;
   gap: 7px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.source-validation-job > div {
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .source-card-actions button,

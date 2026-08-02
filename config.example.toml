@@ -60,6 +60,19 @@ bank = "default"
 optional = true
 wired_to_ingestion = false
 
+[honcho]
+# Optional session sidecar for deliberately selected agent episodes. Disabled by default and
+# never wired to normal source ingestion. See docs/memory-honcho.md.
+enabled = false
+provider = "honcho"
+base_url = "https://api.honcho.dev"
+workspace_id = "default"
+peer_id = "cortana"
+session_prefix = "cortana"
+# token_env = "CORTANA_HONCHO_TOKEN"
+optional = true
+wired_to_ingestion = false
+
 [auth]
 # Query audit stores metadata only (never query text, evidence, or tokens).
 audit_max_events = 10000

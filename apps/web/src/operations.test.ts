@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
 import { demoStatus } from './demo'
-import { operationalSources, sourceHealth } from './operations'
+import {
+  describeSyncRunProgress,
+  embeddingLabel,
+  isLoopbackUrl,
+  operationalSources,
+  sourceHealth,
+} from './operations'
 
 describe('operational source visibility', () => {
   test('includes configured disabled sources that remain indexed', () => {
@@ -20,6 +26,16 @@ describe('operational source visibility', () => {
 
     expect(discord?.sync?.status).toBe('budget_exceeded')
     expect(sourceHealth(discord!).state).toBe('failed')
+  })
+
+  test('reports elapsed sync time against the persisted safety budget', () => {
+    const run = {
+      ...demoStatus.sync_runs[0],
+      started_at: '2026-01-01T00:00:00Z',
+      completed_at: null,
+      budget_seconds: 900,
+    }
+    expect(describeSyncRunProgress(run, Date.parse('2026-01-01T00:01:05Z'))).toBe('1m 5s / 15m')
   })
 
   test('surfaces authorization readiness warnings in source health', () => {
@@ -53,7 +69,7 @@ describe('operational source visibility', () => {
     const source = operationalSources(status).find((item) => item.name === 'personal-gmail')
     const health = sourceHealth(source!)
     expect(health.state).toBe('warning')
-    expect(health.label).toContain('Google OAuth client setup required')
+    expect(health.label).toContain('Google OAuth setup required')
   })
 
   test('distinguishes a validated connector from an unproven source', () => {
@@ -76,5 +92,32 @@ describe('operational source visibility', () => {
     const source = operationalSources(status).find((item) => item.name === 'buzz')
     expect(sourceHealth(source!).state).toBe('healthy')
     expect(sourceHealth(source!).label).toContain('Connector validated')
+  })
+})
+
+describe('embedding status labels', () => {
+  test('keeps URL colons from truncating the model label', () => {
+    expect(embeddingLabel('openai:http://127.0.0.1:6999/v1:Qwen/Qwen3-Embedding-0.6B:1024')).toBe(
+      'Qwen/Qwen3-Embedding-0.6B · 1024d'
+    )
+  })
+
+  test('does not invent a model label for short or malformed fingerprints', () => {
+    expect(embeddingLabel('deterministic:16')).toBe('deterministic:16')
+    expect(embeddingLabel('openai:missing-dimension')).toBe('openai:missing-dimension')
+    expect(embeddingLabel(null)).toBe('—')
+  })
+})
+
+describe('provider endpoint classification', () => {
+  test('recognizes only exact loopback hosts', () => {
+    expect(isLoopbackUrl('http://127.0.0.1:6999/v1')).toBe(true)
+    expect(isLoopbackUrl('http://[::1]:6999/v1')).toBe(true)
+    expect(isLoopbackUrl('https://localhost/v1')).toBe(true)
+    expect(isLoopbackUrl('https://api.localhost.example/v1')).toBe(false)
+  })
+
+  test('fails closed for malformed endpoints', () => {
+    expect(isLoopbackUrl('not a URL')).toBe(false)
   })
 })

@@ -15,10 +15,14 @@ replacement on re-retain, and original chunks, which makes a future derived adap
 without making it authoritative. See the official
 [Hindsight document contract](https://hindsight.vectorize.io/developer/api/documents).
 
-Honcho is deferred. Its current strengths are conversational state, peer representations, and
-theory-of-mind reasoning rather than evidence-preserving personal knowledge retrieval. Its hosted
-workspace and separate agent-integration model would add a second security, billing, and retention
-boundary. See the official [Honcho integration overview](https://honcho.dev/docs/v3/guides/overview).
+Honcho remains non-authoritative. Its current strengths are conversational state, peer
+representations, and theory-of-mind reasoning rather than evidence-preserving personal knowledge
+retrieval. A bounded `HonchoHttpProvider` now exists behind the same durable outbox, using one
+deterministic session per Cortana document so the session-level delete endpoint can propagate a
+single deletion safely. It is still disabled by default and is not wired into normal ingestion,
+Desktop settings, or retrieval. Its hosted workspace and separate agent-integration model add a
+second security, billing, and retention boundary. See the [Honcho adapter contract](../memory-honcho.md)
+and the official [Honcho integration overview](https://honcho.dev/docs/v3/guides/overview).
 
 ## Rationale
 

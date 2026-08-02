@@ -118,6 +118,83 @@ fn offline_ingest_and_search_round_trip() {
 }
 
 #[test]
+fn embedding_generation_migration_requires_confirmation_and_preserves_documents() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 256\nbase_url = \"http://127.0.0.1:6999/v1\"\nmodel = \"Qwen/Qwen3-Embedding-0.6B\"\n"
+        ),
+    )
+    .expect("write config");
+    let document = r#"{"source":"test","source_id":"one","title":"Runbook","content":"Keep the indexed document during generation adoption.","project":"demo"}"#;
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(document)
+        .assert()
+        .success();
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["migrate-embedding", "--from", "deterministic:256"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("rerun with --force"));
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args([
+            "migrate-embedding",
+            "--from",
+            "deterministic:256",
+            "--force",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("embedding generation migrated"))
+        .stdout(predicate::str::contains(
+            "indexed documents were not rebuilt",
+        ));
+
+    let connection = Connection::open(data.join("cortana.sqlite3")).expect("open index");
+    let (fingerprint, documents, cache_entries): (String, i64, i64) = connection
+        .query_row(
+            "SELECT
+               (SELECT value FROM meta WHERE key='embedding_fingerprint'),
+               (SELECT COUNT(*) FROM documents),
+               (SELECT COUNT(*) FROM embedding_cache)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("migration state");
+    assert_eq!(
+        fingerprint,
+        "openai:http://127.0.0.1:6999/v1:Qwen/Qwen3-Embedding-0.6B:256"
+    );
+    assert_eq!(documents, 1);
+    assert_eq!(cache_entries, 0);
+    assert!(
+        fs::read_dir(data.join("backups"))
+            .expect("backup directory")
+            .filter_map(Result::ok)
+            .any(|entry| entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("cortana-embedding-migration-"))
+    );
+}
+
+#[test]
 fn offline_context_emits_cited_bundle_and_enforces_bounds() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

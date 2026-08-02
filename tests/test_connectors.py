@@ -4,6 +4,7 @@ import base64
 import datetime as dt
 import io
 import json
+import os
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -19,11 +20,14 @@ from cortana.connectors.google import (
     GoogleSession,
     _gmail_document,
     _plain_text,
+    _private_cache,
     _timestamp,
     fetch_calendar,
     fetch_drive,
     fetch_gmail,
+    validate_token_path,
 )
+from cortana.connectors.http import MAX_JSON_RESPONSE_BYTES, json_payload
 from cortana.connectors.model import Document, emit
 
 
@@ -33,6 +37,29 @@ def response(
     return httpx.Response(
         status, json=payload, request=request or httpx.Request("GET", "https://example.test")
     )
+
+
+def write_token(path: Path, body: str) -> None:
+    path.write_text(body, encoding="utf-8")
+    if os.name == "posix":
+        path.chmod(0o600)
+
+
+def test_connector_json_payload_is_bounded_and_reports_invalid_bodies() -> None:
+    request = httpx.Request("GET", "https://example.test")
+    assert json_payload(httpx.Response(200, json={"ok": True}, request=request)) == {"ok": True}
+
+    oversized = httpx.Response(
+        200,
+        content=b"{}" + b" " * MAX_JSON_RESPONSE_BYTES,
+        request=request,
+    )
+    with pytest.raises(RuntimeError, match="exceeds"):
+        json_payload(oversized)
+
+    invalid = httpx.Response(200, content=b"not-json", request=request)
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        json_payload(invalid)
 
 
 def test_document_jsonl_emit_uses_utc_and_skips_empty() -> None:
@@ -78,6 +105,12 @@ def test_apple_notes_normalizes_jxa_rows(monkeypatch: pytest.MonkeyPatch) -> Non
                     "body": " ",
                     "modified": "2026-07-29T10:00:00.000Z",
                 },
+                {
+                    "id": "x-coredata://note/bad",
+                    "name": "Malformed",
+                    "body": "Keep the rest of the export usable",
+                    "modified": "not-a-timestamp",
+                },
             ]
         ),
         stderr="",
@@ -88,6 +121,7 @@ def test_apple_notes_normalizes_jxa_rows(monkeypatch: pytest.MonkeyPatch) -> Non
 
     assert len(documents) == 1
     assert documents[0].source_id == "x-coredata://note/1"
+    assert documents[0].uri == "notes://showNote?identifier=x-coredata%3A%2F%2Fnote%2F1"
     assert documents[0].metadata == {"account": "iCloud", "folder": "Notes"}
 
 
@@ -98,6 +132,22 @@ def test_apple_notes_reports_actionable_timeout(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(subprocess, "run", timeout)
 
     with pytest.raises(RuntimeError, match="grant Automation access"):
+        list(apple_notes.fetch())
+
+
+def test_apple_notes_rejects_malformed_or_oversized_exports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    malformed = subprocess.CompletedProcess(args=[], returncode=0, stdout="{}", stderr="")
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: malformed)
+    with pytest.raises(RuntimeError, match="invalid export shape"):
+        list(apple_notes.fetch())
+
+    oversized = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout="x" * (apple_notes.MAX_EXPORT_BYTES + 1), stderr=""
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: oversized)
+    with pytest.raises(RuntimeError, match="safety limit"):
         list(apple_notes.fetch())
 
 
@@ -116,15 +166,64 @@ def test_buzz_reads_personas_and_logs_read_only(tmp_path: Path) -> None:
             "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
             (30078, "pub", "profile", "Agent profile", 1_700_000_000, '{"id":"event"}', 0),
         )
+        connection.execute(
+            "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
+            (30078, "pub", "bad-time", "Skip this event", "not-a-time", "{}", 0),
+        )
+        connection.execute(
+            "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
+            (30078, "pub", "bad-json", "Keep this event", 1_700_000_001, "not-json", 0),
+        )
+        connection.execute(
+            "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
+            (30078, "", "bad-identity", "Skip this event", 1_700_000_002, "{}", 0),
+        )
+        connection.execute(
+            "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
+            (30078, "pub", "empty-content", "", 1_700_000_003, "{}", 0),
+        )
     (logs / "agent.log").write_text("started agent", encoding="utf-8")
 
     documents = list(buzz.fetch(tmp_path))
 
     assert [document.source_id for document in documents] == [
         "persona:30078:pub:profile",
+        "persona:30078:pub:bad-json",
         "log:agent.log",
     ]
+    assert documents[0].uri == "buzz://persona/pub/profile"
     assert documents[0].metadata["raw_event"]["id"] == "event"
+    assert documents[1].metadata["raw_event"] is None
+
+
+def test_buzz_rejects_symlinked_retention_files_and_logs(tmp_path: Path) -> None:
+    agents = tmp_path / "agents"
+    logs = agents / "logs"
+    logs.mkdir(parents=True)
+    external_database = tmp_path / "external-retention.db"
+    external_database.touch()
+    try:
+        (agents / "retention.db").symlink_to(external_database)
+    except (NotImplementedError, OSError):
+        return
+
+    with pytest.raises(RuntimeError, match="retention database must be a regular"):
+        list(buzz.fetch(tmp_path))
+
+    (agents / "retention.db").unlink()
+    try:
+        (agents / "retention.db").symlink_to(tmp_path / "missing-retention.db")
+    except (NotImplementedError, OSError):
+        return
+    with pytest.raises(RuntimeError, match="retention database must be a regular"):
+        list(buzz.fetch(tmp_path))
+
+    (agents / "retention.db").unlink()
+    external_log = tmp_path / "external.log"
+    external_log.write_text("private", encoding="utf-8")
+    (logs / "linked.log").symlink_to(external_log)
+    with pytest.raises(RuntimeError, match="log must not be a symlink"):
+        list(buzz.fetch(tmp_path))
 
 
 class FakeSlackClient:
@@ -143,7 +242,10 @@ class FakeSlackClient:
             return response(
                 {
                     "ok": True,
-                    "messages": [{"ts": "10.0", "user": "U1", "text": "Launch?", "reply_count": 1}],
+                    "messages": [
+                        {"ts": "10.0", "user": "U1", "text": "Launch?", "reply_count": 1},
+                        {"ts": "not-a-timestamp", "user": "U9", "text": "Ignore me"},
+                    ],
                     "response_metadata": {"next_cursor": ""},
                 }
             )
@@ -153,6 +255,7 @@ class FakeSlackClient:
                 "messages": [
                     {"ts": "10.0", "user": "U1", "text": "Launch?"},
                     {"ts": "11.0", "user": "U2", "text": "Yes"},
+                    {"ts": "invalid", "user": "U9", "text": "Ignore me"},
                 ],
             }
         )
@@ -282,6 +385,42 @@ def test_chat_connectors_reassemble_slack_and_normalize_discord(
     assert discord_documents[0].metadata["author_id"] == "u1"
 
 
+def test_slack_message_pages_fail_closed_on_invalid_shapes() -> None:
+    assert chat._slack_messages({"messages": [None, {"ts": "1.0"}]}) == [{"ts": "1.0"}]
+    with pytest.raises(RuntimeError, match="invalid message page"):
+        chat._slack_messages({"messages": "not-a-list"})
+    with pytest.raises(RuntimeError, match="no usable records"):
+        chat._slack_messages({"messages": [None]})
+
+
+def test_discord_skips_malformed_messages_without_aborting_the_batch() -> None:
+    assert (
+        chat._discord_document(
+            {"id": "bad", "content": "content", "timestamp": "not-a-timestamp"},
+            "D1",
+            "work",
+        )
+        is None
+    )
+    document = chat._discord_document(
+        {
+            "id": "100",
+            "content": "Status",
+            "attachments": [None, {"url": "https://files.test/report.pdf"}],
+            "timestamp": "2026-07-29T12:00:00Z",
+            "author": None,
+        },
+        "D1",
+        "work",
+    )
+    assert document is not None
+    assert document.source_id == "100"
+    assert document.metadata["author_id"] is None
+    assert chat._discord_page([None, {"id": "bad"}, {"id": "100"}]) == [{"id": "100"}]
+    with pytest.raises(RuntimeError, match="no usable records"):
+        chat._discord_page([None, {"id": "bad"}])
+
+
 def test_discord_cache_uses_incremental_after_cursor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -325,15 +464,111 @@ def test_discord_cache_uses_incremental_after_cursor(
     assert cache.stat().st_mode & 0o777 == 0o700
 
 
+def test_discord_cache_rejects_symlinked_directory_and_database(tmp_path: Path) -> None:
+    external = tmp_path / "external-cache"
+    external.mkdir()
+    linked_directory = tmp_path / "cache"
+    try:
+        linked_directory.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        return
+
+    with pytest.raises(RuntimeError, match="directory must not contain a symlink"):
+        chat._discord_cache(linked_directory)
+
+    linked_directory.unlink()
+    linked_directory.mkdir()
+    external_database = tmp_path / "external.sqlite3"
+    external_database.touch()
+    (linked_directory / "discord.sqlite3").symlink_to(external_database)
+    with pytest.raises(RuntimeError, match="cache path must not be a symlink"):
+        chat._discord_cache(linked_directory)
+
+
 def test_chat_connector_rejects_missing_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MISSING_TOKEN", raising=False)
     with pytest.raises(RuntimeError, match="MISSING_TOKEN is required"):
         list(chat.fetch_slack(["C1"], "work", "MISSING_TOKEN"))
 
 
+def test_google_token_path_is_absolute_bounded_and_not_symlinked(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    if os.name == "posix":
+        token.chmod(0o600)
+    assert validate_token_path(token) == token
+
+    if os.name == "posix":
+        broad = tmp_path / "broad-token.json"
+        broad.write_text('{"token":"access"}', encoding="utf-8")
+        broad.chmod(0o644)
+        with pytest.raises(RuntimeError, match="owner-only"):
+            validate_token_path(broad)
+
+    with pytest.raises(RuntimeError, match="must be absolute"):
+        validate_token_path(Path("relative-token.json"))
+
+    oversized = tmp_path / "oversized.json"
+    oversized.write_bytes(b"x" * (64 * 1024 + 1))
+    if os.name == "posix":
+        oversized.chmod(0o600)
+    with pytest.raises(RuntimeError, match="exceeds"):
+        validate_token_path(oversized)
+
+    try:
+        linked = tmp_path / "linked-token.json"
+        linked.symlink_to(token)
+    except (NotImplementedError, OSError):
+        pass
+    else:
+        with pytest.raises(RuntimeError, match="must not be a symlink"):
+            validate_token_path(linked)
+
+
+def test_google_token_path_rejects_symlinked_parent(tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    token = real / "token.json"
+    write_token(token, '{"token":"access"}')
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(real, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        return
+
+    with pytest.raises(RuntimeError, match="component must not be a symlink"):
+        validate_token_path(linked / "token.json")
+
+
+def test_google_private_cache_rejects_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "cache-target.sqlite3"
+    target.touch()
+    linked = tmp_path / "cache.sqlite3"
+    try:
+        linked.symlink_to(target)
+    except (NotImplementedError, OSError):
+        return
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        _private_cache(linked)
+
+
+def test_google_private_cache_rejects_symlinked_directory(tmp_path: Path) -> None:
+    external = tmp_path / "external-cache"
+    external.mkdir()
+    linked = tmp_path / "cache"
+    try:
+        linked.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        return
+
+    with pytest.raises(RuntimeError, match="directory must not contain a symlink"):
+        _private_cache(linked / "drive.sqlite3")
+
+
 def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/drive/v3/files":
@@ -368,9 +603,54 @@ def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
     assert documents[0].metadata["owners"] == ["Ada"]
 
 
+def test_google_drive_skips_malformed_listing_records(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        None,
+                        {"name": "missing id"},
+                        {
+                            "id": "bad-time",
+                            "name": "Bad timestamp",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "not-a-timestamp",
+                        },
+                        {
+                            "id": "valid",
+                            "name": "Keep this file",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="Useful content", request=request)
+
+    documents = list(
+        fetch_drive(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["valid"]
+    diagnostic = capsys.readouterr().err
+    assert "Drive file skipped: record=0 is not an object" in diagnostic
+    assert "Drive file skipped: id=bad-time" in diagnostic
+
+
 def test_google_drive_bounds_oversized_exports_with_explicit_metadata(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     body = "header\n" + ("middle-row\n" * 100) + "final-row"
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -403,7 +683,7 @@ def test_google_drive_bounds_oversized_exports_with_explicit_metadata(tmp_path: 
 
 def test_google_drive_reuses_content_until_modified(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     cache = tmp_path / "cache"
     content_requests = 0
 
@@ -439,7 +719,7 @@ def test_google_drive_isolates_content_failure_and_uses_stale_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     cache = tmp_path / "cache"
     modified_time = "2026-07-29T12:00:00Z"
     fail = False
@@ -481,7 +761,7 @@ def test_google_drive_isolates_content_failure_and_uses_stale_cache(
 
 def test_google_gmail_decodes_message_body(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     encoded = base64.urlsafe_b64encode(b"Deployment is green").decode()
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -514,9 +794,47 @@ def test_google_gmail_decodes_message_body(tmp_path: Path) -> None:
     assert documents[0].metadata["thread_id"] == "t1"
 
 
+def test_google_gmail_skips_malformed_listing_records(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response(
+                {"messages": [None, {"labelIds": ["INBOX"]}, {"id": "m1"}]},
+                request=request,
+            )
+        return response(
+            {
+                "id": "m1",
+                "payload": {
+                    "headers": [{"name": "Subject", "value": "Keep this message"}],
+                    "mimeType": "text/plain",
+                    "body": {
+                        "data": base64.urlsafe_b64encode(b"Useful mail").decode(),
+                    },
+                },
+            },
+            request=request,
+        )
+
+    documents = list(
+        fetch_gmail(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["m1"]
+    assert "Gmail message skipped: record=0 is not an object" in capsys.readouterr().err
+
+
 def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     cache = tmp_path / "cache"
     detail_requests = 0
 
@@ -553,7 +871,7 @@ def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
 
 def test_google_gmail_skips_isolated_inaccessible_message(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/messages"):
@@ -589,7 +907,7 @@ def test_google_gmail_refuses_broad_detail_denial(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     client = httpx.Client(
         transport=httpx.MockTransport(
             lambda request: response(
@@ -610,7 +928,7 @@ def test_google_gmail_refuses_broad_detail_denial(
 
 def test_google_calendar_normalizes_events(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/calendarList"):
@@ -652,7 +970,7 @@ def test_google_calendar_normalizes_events(tmp_path: Path) -> None:
 
 def test_google_calendar_collapses_recurring_occurrences(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/calendarList"):
@@ -704,22 +1022,59 @@ def test_google_calendar_collapses_recurring_occurrences(tmp_path: Path) -> None
     ]
 
 
+def test_google_calendar_skips_malformed_events(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/calendarList"):
+            return response({"items": [{"id": "primary", "summary": "Work"}]}, request=request)
+        return response(
+            {
+                "items": [
+                    {"id": "broken", "start": "not-an-object"},
+                    {
+                        "id": "valid",
+                        "summary": "Keep this event",
+                        "start": {"dateTime": "2026-07-29T12:00:00Z"},
+                        "end": {"dateTime": "2026-07-29T12:30:00Z"},
+                        "updated": "2026-07-29T11:00:00Z",
+                    },
+                ]
+            },
+            request=request,
+        )
+
+    documents = list(
+        fetch_calendar(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["primary:valid"]
+    assert "Calendar event skipped: id=broken" in capsys.readouterr().err
+
+
 def test_google_session_refreshes_and_secures_token_file(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text(
+    write_token(
+        token,
         json.dumps(
             {
                 "refresh_token": "refresh",
                 "client_id": "client",
                 "client_secret": "secret",
-                "token_uri": "https://oauth2.test/token",
+                "token_uri": "https://oauth2.googleapis.com/token",
             }
         ),
-        encoding="utf-8",
     )
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.host == "oauth2.test":
+        if request.url.host == "oauth2.googleapis.com":
             return response({"access_token": "new-access", "expires_in": 100}, request=request)
         return response({"ok": True}, request=request)
 
@@ -734,7 +1089,8 @@ def test_google_session_refreshes_and_secures_token_file(tmp_path: Path) -> None
 
 def test_google_session_retries_unauthorized_response(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text(
+    write_token(
+        token,
         json.dumps(
             {
                 "token": "expired",
@@ -743,7 +1099,6 @@ def test_google_session_retries_unauthorized_response(tmp_path: Path) -> None:
                 "client_secret": "secret",
             }
         ),
-        encoding="utf-8",
     )
     calls = 0
 
@@ -762,9 +1117,9 @@ def test_google_session_retries_unauthorized_response(tmp_path: Path) -> None:
 
 def test_google_session_refresh_allows_desktop_client_without_secret(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text(
+    write_token(
+        token,
         json.dumps({"refresh_token": "refresh", "client_id": "desktop-client"}),
-        encoding="utf-8",
     )
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -800,10 +1155,34 @@ def test_google_helpers_normalize_html_dates_and_snippets() -> None:
 
 def test_google_session_reports_unrefreshable_credentials(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text("{}", encoding="utf-8")
+    write_token(token, "{}")
     with (
         GoogleSession(token, httpx.Client()) as session,
         pytest.raises(RuntimeError, match="missing refresh_token"),
+    ):
+        session.request("GET", "https://api.test/data")
+
+
+def test_google_session_rejects_invalid_json_and_non_google_refresh_uri(tmp_path: Path) -> None:
+    invalid = tmp_path / "invalid.json"
+    write_token(invalid, "not-json")
+    with pytest.raises(RuntimeError, match="not valid JSON"):
+        GoogleSession(invalid, httpx.Client())
+
+    token = tmp_path / "external.json"
+    write_token(
+        token,
+        json.dumps(
+            {
+                "refresh_token": "refresh",
+                "client_id": "client",
+                "token_uri": "https://attacker.example/token",
+            }
+        ),
+    )
+    with (
+        GoogleSession(token, httpx.Client()) as session,
+        pytest.raises(RuntimeError, match="HTTPS Google OAuth"),
     ):
         session.request("GET", "https://api.test/data")
 

@@ -26,10 +26,11 @@ pub struct ContextMetrics {
 pub fn build(query: &str, evidence: &[Evidence], max_tokens: usize) -> ContextBundle {
     let max_tokens = max_tokens.clamp(MIN_CONTEXT_TOKENS, MAX_CONTEXT_TOKENS);
     let max_chars = max_tokens.saturating_mul(CHARS_PER_TOKEN);
-    let mut context = format!(
-        "# Cortana evidence context\n\nQuery: {query}\n\n\
-         Use only the evidence below for factual claims. Cite sources with [n]."
-    );
+    let query_prefix = "# Cortana evidence context\n\nQuery: ";
+    let instructions = "\n\nUse only the evidence below for factual claims. Cite sources with [n].";
+    let query_budget = max_chars.saturating_sub(query_prefix.len() + instructions.len());
+    let bounded_query = truncate(query, query_budget);
+    let mut context = format!("{query_prefix}{bounded_query}{instructions}");
     let mut included = Vec::new();
 
     for item in evidence {
@@ -145,5 +146,13 @@ mod tests {
         assert!(bundle.metrics.estimated_tokens <= 256);
         assert_eq!(bundle.metrics.included, 1);
         assert_eq!(bundle.metrics.omitted, 1);
+    }
+
+    #[test]
+    fn bounds_a_maximum_length_query_inside_the_context_budget() {
+        let bundle = build(&"query ".repeat(4_000), &[], 256);
+        assert!(bundle.context.contains("[…truncated]"));
+        assert!(bundle.metrics.estimated_tokens <= 256);
+        assert!(bundle.context.len() <= 256 * CHARS_PER_TOKEN);
     }
 }

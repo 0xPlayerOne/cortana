@@ -7,12 +7,13 @@
     "build": "tauri build --no-bundle",
     "build:release": "tauri build",
     "bundle:mac": "tauri build --bundles app --no-sign --config '{\"bundle\":{\"createUpdaterArtifacts\":false}}'",
+    "prepare:resources": "node ../../scripts/prepare-desktop-resources.mjs",
     "prepare:sidecar": "bun ../../scripts/prepare-desktop-sidecar.mjs",
-    "check": "bun run prepare:sidecar && cargo check --manifest-path src-tauri/Cargo.toml",
-    "clippy": "bun run prepare:sidecar && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
+    "check": "bun run prepare:resources && bun run prepare:sidecar && cargo check --manifest-path src-tauri/Cargo.toml",
+    "clippy": "bun run prepare:resources && bun run prepare:sidecar && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
     "dev": "tauri dev",
     "info": "tauri info",
-    "test": "bun run prepare:sidecar && cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features"
+    "test": "bun run prepare:resources && bun run prepare:sidecar && cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"

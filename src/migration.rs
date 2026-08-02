@@ -63,7 +63,7 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
             .hermes_home
             .join("google-tokens")
             .join(format!("{account}.json"));
-        if !source.is_file() {
+        if !regular_file_no_symlink(&source)? {
             continue;
         }
         let destination = token_dir.join(format!("{account}.json"));
@@ -326,7 +326,7 @@ fn validate_account_name(account: &str) -> Result<()> {
 fn collect_secrets(paths: &[PathBuf]) -> Result<Vec<String>> {
     let mut secrets = Vec::new();
     for path in paths {
-        if !path.is_file() {
+        if !regular_file_no_symlink(path)? {
             continue;
         }
         let body = fs::read_to_string(path)
@@ -367,6 +367,11 @@ fn find_embedding_router() -> Option<PathBuf> {
 }
 
 fn secure_copy(source: &Path, destination: &Path, replace: bool) -> Result<()> {
+    anyhow::ensure!(
+        regular_file_no_symlink(source)?,
+        "migration source does not exist: {}",
+        source.display()
+    );
     let contents =
         fs::read(source).with_context(|| format!("failed to read {}", source.display()))?;
     secure_write(destination, &contents, replace)
@@ -402,6 +407,25 @@ fn secure_write(path: &Path, contents: &[u8], replace: bool) -> Result<()> {
     fs::rename(&temporary, path)
         .with_context(|| format!("failed to publish {}", path.display()))?;
     Ok(())
+}
+
+fn regular_file_no_symlink(path: &Path) -> Result<bool> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    anyhow::ensure!(
+        !metadata.file_type().is_symlink(),
+        "migration input must not be a symlink: {}",
+        path.display()
+    );
+    anyhow::ensure!(
+        metadata.file_type().is_file(),
+        "migration input must be a regular file: {}",
+        path.display()
+    );
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -516,5 +540,27 @@ mod tests {
             let mode = fs::metadata(path).expect("metadata").permissions().mode();
             assert_eq!(mode & 0o777, 0o600);
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_legacy_credentials_before_copying() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let options = options(directory.path());
+        fs::create_dir_all(options.hermes_home.join("google-tokens")).expect("token directory");
+        symlink(
+            options.hermes_home.join("google-tokens/missing.json"),
+            options.hermes_home.join("google-tokens/work.json"),
+        )
+        .expect("token symlink");
+
+        let error = migrate_hermes(&options).expect_err("symlinked token must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("migration input must not be a symlink")
+        );
     }
 }

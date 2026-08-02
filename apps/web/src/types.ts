@@ -233,6 +233,18 @@ export type HindsightSettings = {
   wired_to_ingestion: boolean
 }
 
+export type HonchoSettings = {
+  enabled: boolean
+  provider: 'honcho'
+  base_url: string
+  workspace_id: string
+  peer_id: string
+  session_prefix: string
+  token_env: string | null
+  optional: boolean
+  wired_to_ingestion: boolean
+}
+
 export type AuthPrincipalSettings = {
   principal: string
   token_env: string
@@ -243,6 +255,8 @@ export type AuthPrincipalSettings = {
 export type DesktopSettings = {
   config_path: string
   secret_file_path: string
+  secret_file_managed: boolean
+  embedding_service_program: string | null
   needs_setup: boolean
   restart_required: boolean
   workspaces: WorkspaceSettings[]
@@ -251,6 +265,7 @@ export type DesktopSettings = {
   embedding: EmbeddingSettings
   query: QuerySettings
   hindsight: HindsightSettings
+  honcho: HonchoSettings
   ingestion: {
     max_documents_per_source: number
     max_bytes_per_source: number
@@ -278,6 +293,7 @@ export type DesktopSettingsUpdate = Pick<
   | 'embedding'
   | 'query'
   | 'hindsight'
+  | 'honcho'
   | 'ingestion'
   | 'runtime'
 > & {
@@ -365,6 +381,10 @@ export type DesktopReadiness = {
   core: {
     passed: boolean
     query_mode: string
+    embedding_generation: {
+      stored: string | null
+      configured: string
+    }
     checks: Array<{ name: string; passed: boolean; detail: string }>
   } | null
   core_error: string | null
@@ -378,6 +398,11 @@ export type DesktopReadiness = {
     install_supported: boolean
     detail: string
   }>
+}
+
+export type DesktopReadinessActivity = {
+  status: 'running' | 'succeeded' | 'failed'
+  detail: string | null
 }
 
 export type DesktopInfo = {
@@ -401,6 +426,24 @@ export type DesktopServiceReport = {
   }>
 }
 
+export type DesktopSchedule = {
+  sync_interval_seconds: number
+  backup_interval_seconds: number
+}
+
+/**
+ * Shell-owned status for a service control request. Native service commands
+ * are awaited by the bridge, but keeping this small snapshot in App makes the
+ * operation visible when the user changes Settings sections or returns to the
+ * knowledge view before the command finishes.
+ */
+export type DesktopServiceActivity = {
+  target: string
+  action: 'install' | 'start' | 'stop' | 'restart'
+  status: 'running' | 'succeeded' | 'failed'
+  detail: string | null
+}
+
 export type DesktopHindsightStatus = {
   enabled: boolean
   configured: boolean
@@ -408,6 +451,19 @@ export type DesktopHindsightStatus = {
   state: 'disabled' | 'configuration_required' | 'healthy' | 'unreachable' | 'unhealthy'
   endpoint: string
   bank: string
+  token_configured: boolean
+  detail: string | null
+}
+
+export type DesktopHonchoStatus = {
+  enabled: boolean
+  configured: boolean
+  reachable: boolean
+  state:
+    'disabled' | 'configuration_required' | 'healthy' | 'reachable' | 'unreachable' | 'unhealthy'
+  endpoint: string
+  workspace_id: string
+  peer_id: string
   token_configured: boolean
   detail: string | null
 }

@@ -11,14 +11,17 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auth::{Principal, QUERY_SCOPE, STATUS_SCOPE},
+    auth::{Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
     context,
     embed::Embedder,
     retrieval,
     store::Store,
 };
 
+const MAX_SCOPE_BYTES: usize = 256;
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SearchParams {
     query: String,
     project: Option<String>,
@@ -27,6 +30,7 @@ pub struct SearchParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ContextParams {
     query: String,
     project: Option<String>,
@@ -36,6 +40,7 @@ pub struct ContextParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct DomainSearchParams {
     query: String,
     project: Option<String>,
@@ -52,6 +57,8 @@ pub struct ConfiguredSourceStatus {
     pub kind: String,
     pub project: String,
     pub enabled: bool,
+    #[serde(skip)]
+    pub acl: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -129,13 +136,31 @@ impl BrainServer {
             );
             return "authorization error: query scope required".into();
         }
+        if let Err(error) = validate_request(
+            &params.query,
+            params.project.as_deref(),
+            params.source.as_deref(),
+        ) {
+            self.audit(
+                "mcp.search",
+                params.project.as_deref(),
+                params.source.as_deref(),
+                "invalid",
+                None,
+                started,
+            );
+            return format!("invalid request: {error}");
+        }
         match retrieval::retrieve_scoped(
             &self.store,
             &self.embedder,
             &params.query,
             params.project.as_deref(),
             params.source.as_deref(),
-            params.limit.unwrap_or(10),
+            params
+                .limit
+                .unwrap_or(10)
+                .clamp(1, retrieval::MAX_RESULT_LIMIT),
             &self.principal.acl_labels(),
         )
         .await
@@ -181,13 +206,31 @@ impl BrainServer {
             );
             return "authorization error: query scope required".into();
         }
+        if let Err(error) = validate_request(
+            &params.query,
+            params.project.as_deref(),
+            params.source.as_deref(),
+        ) {
+            self.audit(
+                "mcp.context",
+                params.project.as_deref(),
+                params.source.as_deref(),
+                "invalid",
+                None,
+                started,
+            );
+            return format!("invalid request: {error}");
+        }
         match retrieval::retrieve_scoped(
             &self.store,
             &self.embedder,
             &params.query,
             params.project.as_deref(),
             params.source.as_deref(),
-            params.limit.unwrap_or(20),
+            params
+                .limit
+                .unwrap_or(20)
+                .clamp(1, retrieval::MAX_RESULT_LIMIT),
             &self.principal.acl_labels(),
         )
         .await
@@ -250,16 +293,44 @@ impl BrainServer {
         description = "Report index health, configured source coverage, embedding identity, and persistent cache telemetry without exposing credentials"
     )]
     async fn brain_status(&self) -> String {
+        let started = Instant::now();
         if !self.principal.has_scope(STATUS_SCOPE) {
+            self.audit("mcp.brain_status", None, None, "forbidden", None, started);
             return "authorization error: status scope required".into();
         }
-        match self.store.stats() {
-            Ok(stats) => serde_json::to_string(&BrainStatus {
-                stats,
-                configured_sources: self.configured_sources.clone(),
-            })
-            .unwrap_or_else(|error| error.to_string()),
-            Err(error) => format!("status error: {error}"),
+        let acl = self.principal.acl_labels();
+        let owner = self.principal.is_owner();
+        match if owner {
+            self.store.stats()
+        } else {
+            self.store.stats_scoped(&acl)
+        } {
+            Ok(stats) => {
+                let count = usize::try_from(stats.documents).ok();
+                let result = serde_json::to_string(&BrainStatus {
+                    stats,
+                    configured_sources: self
+                        .configured_sources
+                        .iter()
+                        .filter(|source| self.principal.is_owner() || acl_allows(&source.acl, &acl))
+                        .cloned()
+                        .collect(),
+                });
+                match result {
+                    Ok(payload) => {
+                        self.audit("mcp.brain_status", None, None, "succeeded", count, started);
+                        payload
+                    }
+                    Err(error) => {
+                        self.audit("mcp.brain_status", None, None, "failed", None, started);
+                        error.to_string()
+                    }
+                }
+            }
+            Err(error) => {
+                self.audit("mcp.brain_status", None, None, "failed", None, started);
+                format!("status error: {error}")
+            }
         }
     }
 }
@@ -282,6 +353,17 @@ impl BrainServer {
                 started,
             );
             return "authorization error: query scope required".into();
+        }
+        if let Err(error) = validate_request(&params.query, params.project.as_deref(), None) {
+            self.audit(
+                action,
+                params.project.as_deref(),
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return format!("invalid request: {error}");
         }
         match retrieval::retrieve_sources_scoped(
             &self.store,
@@ -365,6 +447,36 @@ fn normalized_sources(sources: Vec<String>) -> Vec<String> {
     sources
 }
 
+fn validate_scopes(project: Option<&str>, source: Option<&str>) -> Result<(), String> {
+    for (name, value) in [("project", project), ("source", source)] {
+        if value.is_some_and(|value| {
+            value.is_empty()
+                || value.len() > MAX_SCOPE_BYTES
+                || value.chars().any(|character| character.is_control())
+        }) {
+            return Err(format!("{name} must contain 1 to {MAX_SCOPE_BYTES} bytes"));
+        }
+    }
+    Ok(())
+}
+
+fn validate_request(
+    query: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+) -> Result<(), String> {
+    if query.trim().is_empty() {
+        return Err("query must not be empty".into());
+    }
+    if query.len() > retrieval::MAX_QUERY_BYTES {
+        return Err(format!(
+            "query exceeds {} bytes",
+            retrieval::MAX_QUERY_BYTES
+        ));
+    }
+    validate_scopes(project, source)
+}
+
 pub async fn serve(server: BrainServer) -> anyhow::Result<()> {
     server.serve(stdio()).await?.waiting().await?;
     Ok(())
@@ -376,7 +488,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::auth::AuthPolicy;
+    use crate::auth::{ADMIN_SCOPE, AuthPolicy};
     use crate::config::{AuthTokenConfig, Config};
     use crate::embed::DeterministicEmbedder;
     use crate::model::{Document, Evidence};
@@ -445,7 +557,8 @@ mod tests {
         );
         let audit = store.audit_events(10).expect("audit");
         assert_eq!(audit[0].principal, "work-agent");
-        assert_eq!(audit[0].action, "mcp.search");
+        assert_eq!(audit[0].action, "mcp.brain_status");
+        assert_eq!(audit[1].action, "mcp.search");
     }
 
     #[tokio::test]
@@ -530,6 +643,7 @@ mod tests {
                 kind: "gmail".into(),
                 project: "personal".into(),
                 enabled: false,
+                acl: vec!["personal".into()],
             },
         ]);
 
@@ -539,5 +653,141 @@ mod tests {
         assert_eq!(status["configured_sources"][0]["enabled"], false);
         assert!(status["configured_sources"][0].get("token").is_none());
         assert!(status.get("sources").is_some());
+    }
+
+    #[tokio::test]
+    async fn brain_status_filters_configured_sources_by_principal_acl() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "work-agent".into(),
+            token_env: "WORK_TOKEN".into(),
+            scopes: vec![STATUS_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let principal = AuthPolicy::from_config(&config, None)
+            .expect("policy")
+            .authenticate("work-secret")
+            .expect("principal");
+        let server = BrainServer::new(store, embedder)
+            .with_principal(principal)
+            .with_configured_sources(vec![
+                ConfiguredSourceStatus {
+                    name: "work-drive".into(),
+                    source: "work-drive".into(),
+                    kind: "google-drive".into(),
+                    project: "work".into(),
+                    enabled: true,
+                    acl: vec!["work".into()],
+                },
+                ConfiguredSourceStatus {
+                    name: "personal-notes".into(),
+                    source: "personal-notes".into(),
+                    kind: "apple-notes".into(),
+                    project: "personal".into(),
+                    enabled: true,
+                    acl: vec!["personal".into()],
+                },
+                ConfiguredSourceStatus {
+                    name: "public-reference".into(),
+                    source: "public-reference".into(),
+                    kind: "filesystem".into(),
+                    project: "reference".into(),
+                    enabled: true,
+                    acl: Vec::new(),
+                },
+            ]);
+
+        let status: serde_json::Value =
+            serde_json::from_str(&server.brain_status().await).expect("status JSON");
+        let names = status["configured_sources"]
+            .as_array()
+            .expect("configured sources")
+            .iter()
+            .filter_map(|source| source["name"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["work-drive", "public-reference"]);
+    }
+
+    #[tokio::test]
+    async fn admin_brain_status_includes_configured_sources_outside_named_acl() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("ADMIN_TOKEN".into(), "admin-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "admin-agent".into(),
+            token_env: "ADMIN_TOKEN".into(),
+            scopes: vec![ADMIN_SCOPE.into(), STATUS_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let principal = AuthPolicy::from_config(&config, None)
+            .expect("policy")
+            .authenticate("admin-secret")
+            .expect("principal");
+        let server = BrainServer::new(store, embedder)
+            .with_principal(principal)
+            .with_configured_sources(vec![
+                ConfiguredSourceStatus {
+                    name: "work-drive".into(),
+                    source: "work-drive".into(),
+                    kind: "google-drive".into(),
+                    project: "work".into(),
+                    enabled: true,
+                    acl: vec!["work".into()],
+                },
+                ConfiguredSourceStatus {
+                    name: "personal-notes".into(),
+                    source: "personal-notes".into(),
+                    kind: "apple-notes".into(),
+                    project: "personal".into(),
+                    enabled: true,
+                    acl: vec!["personal".into()],
+                },
+            ]);
+
+        let status: serde_json::Value =
+            serde_json::from_str(&server.brain_status().await).expect("status JSON");
+        let names = status["configured_sources"]
+            .as_array()
+            .expect("configured sources")
+            .iter()
+            .filter_map(|source| source["name"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["work-drive", "personal-notes"]);
+    }
+
+    #[test]
+    fn mcp_scope_filters_are_explicitly_bounded() {
+        assert!(validate_scopes(Some("work"), None).is_ok());
+        assert!(validate_scopes(Some(""), None).is_err());
+        assert!(validate_scopes(None, Some(&"x".repeat(MAX_SCOPE_BYTES + 1))).is_err());
+        assert!(validate_scopes(Some("work\u{0000}personal"), None).is_err());
+        assert!(
+            serde_json::from_str::<SearchParams>(r#"{"query":"work","unexpected":"field"}"#)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn mcp_requests_reject_empty_and_oversized_queries() {
+        assert_eq!(
+            validate_request(" \n\t", None, None).expect_err("blank query"),
+            "query must not be empty"
+        );
+        assert!(
+            validate_request(&"x".repeat(retrieval::MAX_QUERY_BYTES + 1), None, None)
+                .expect_err("oversized query")
+                .contains("query exceeds")
+        );
+        assert!(validate_request("work", Some("engineering"), Some("notes")).is_ok());
     }
 }

@@ -13,7 +13,14 @@ use crate::store::Store;
 pub struct ReadinessReport {
     pub passed: bool,
     pub query_mode: String,
+    pub embedding_generation: EmbeddingGeneration,
     pub checks: Vec<ReadinessCheck>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct EmbeddingGeneration {
+    pub stored: Option<String>,
+    pub configured: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -31,17 +38,29 @@ pub async fn run(
     max_backup_age_hours: u64,
     allow_sync_service: bool,
 ) -> ReadinessReport {
-    let mut checks = Vec::new();
-    checks.push(database_check(store));
-    checks.push(public_acl_check(config, store));
-    checks.push(embedding_check(embedder).await);
-    checks.push(api_check(api_url).await);
-    checks.push(backup_check(
-        &config.data_dir.join("backups"),
-        max_backup_age_hours,
-    ));
-    checks.push(sync_check(allow_sync_service));
-    checks.push(query_check(config).await);
+    let database = database_check(store);
+    let embedding_generation = embedding_generation_status(store, embedder);
+    let embedding_index = embedding_index_check(store, embedder);
+    let acl = public_acl_check(config, store);
+    let backup = backup_check(&config.data_dir.join("backups"), max_backup_age_hours);
+    let sync = sync_check(allow_sync_service);
+    // These probes do not share mutable state. Run them together so readiness
+    // is bounded by the slowest external dependency rather than their sum.
+    let (embedding, api, query) = tokio::join!(
+        embedding_check(embedder),
+        api_check(api_url),
+        query_check(config),
+    );
+    let checks = vec![
+        database,
+        embedding_index,
+        acl,
+        embedding,
+        api,
+        backup,
+        sync,
+        query,
+    ];
     ReadinessReport {
         passed: checks.iter().all(|check| check.passed),
         query_mode: if config.query.synthesis_enabled {
@@ -50,6 +69,7 @@ pub async fn run(
             "extractive"
         }
         .into(),
+        embedding_generation,
         checks,
     }
 }
@@ -143,6 +163,50 @@ fn database_check(store: &Store) -> ReadinessCheck {
     }
 }
 
+fn embedding_index_check(store: &Store, embedder: &dyn Embedder) -> ReadinessCheck {
+    let configured_fingerprint = embedder.fingerprint();
+    match store.stats() {
+        Ok(stats) => match stats.embedding_fingerprint {
+            None => ReadinessCheck {
+                name: "embedding-index".into(),
+                passed: true,
+                detail: "index has no embedding generation yet; the first write will initialize it"
+                    .into(),
+            },
+            Some(index_fingerprint) if index_fingerprint == configured_fingerprint => {
+                ReadinessCheck {
+                    name: "embedding-index".into(),
+                    passed: true,
+                    detail: format!("index generation matches {}", index_fingerprint),
+                }
+            }
+            Some(index_fingerprint) => ReadinessCheck {
+                name: "embedding-index".into(),
+                passed: false,
+                detail: format!(
+                    "index uses {index_fingerprint}, but the configured provider uses {}; rebuild into a new generation before semantic retrieval or ingestion, or explicitly adopt this exact generation with `cortana migrate-embedding --from '{index_fingerprint}' --force` only after verifying the vectors are interchangeable",
+                    configured_fingerprint,
+                ),
+            },
+        },
+        Err(error) => ReadinessCheck {
+            name: "embedding-index".into(),
+            passed: false,
+            detail: error.to_string(),
+        },
+    }
+}
+
+fn embedding_generation_status(store: &Store, embedder: &dyn Embedder) -> EmbeddingGeneration {
+    EmbeddingGeneration {
+        stored: store
+            .stats()
+            .ok()
+            .and_then(|stats| stats.embedding_fingerprint),
+        configured: embedder.fingerprint(),
+    }
+}
+
 async fn embedding_check(embedder: &dyn Embedder) -> ReadinessCheck {
     match tokio::time::timeout(Duration::from_secs(15), embedder.probe()).await {
         Ok(Ok(())) => ReadinessCheck {
@@ -209,9 +273,12 @@ fn backup_check(directory: &Path, max_age_hours: u64) -> ReadinessCheck {
                     .is_some_and(|extension| extension == "sqlite3")
             })
             .filter_map(|entry| {
-                entry
-                    .metadata()
-                    .and_then(|metadata| metadata.modified())
+                let metadata = std::fs::symlink_metadata(entry.path()).ok()?;
+                if !metadata.file_type().is_file() {
+                    return None;
+                }
+                metadata
+                    .modified()
                     .ok()
                     .map(|modified| (entry.path(), modified))
             })
@@ -276,6 +343,20 @@ mod tests {
         assert!(backup_check(directory.path(), 48).passed);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn backup_freshness_ignores_symlinked_sqlite_files() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let outside = tempdir().expect("external temporary directory");
+        let target = outside.path().join("external.sqlite3");
+        File::create(&target).expect("external backup fixture");
+        symlink(&target, directory.path().join("backup.sqlite3")).expect("backup symlink");
+
+        assert!(!backup_check(directory.path(), 48).passed);
+    }
+
     #[test]
     fn shared_mode_fails_readiness_while_legacy_public_rows_remain() {
         let directory = tempdir().expect("temporary directory");
@@ -305,5 +386,22 @@ mod tests {
             acl: vec!["work".into()],
         });
         assert!(!public_acl_check(&config, &store).passed);
+    }
+
+    #[test]
+    fn embedding_index_reports_a_generation_mismatch_without_rebuilding() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        store
+            .ensure_fingerprint("deterministic:16")
+            .expect("fingerprint");
+        let embedder = crate::embed::DeterministicEmbedder::new(32);
+
+        let check = embedding_index_check(&store, &embedder);
+        assert!(!check.passed);
+        assert_eq!(check.name, "embedding-index");
+        assert!(check.detail.contains("deterministic:16"));
+        assert!(check.detail.contains("deterministic:32"));
+        assert!(check.detail.contains("rebuild into a new generation"));
     }
 }

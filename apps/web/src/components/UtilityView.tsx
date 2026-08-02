@@ -1,18 +1,25 @@
 import {
   AlertTriangle,
   BookOpen,
-  Database,
+  Check,
+  CheckCircle2,
+  CircleStop,
+  CircleX,
+  Copy,
   ExternalLink,
   FileText,
   Inbox,
   LoaderCircle,
   MessageCircle,
+  RefreshCw,
   Search,
   Settings,
   Sparkles,
   TerminalSquare,
 } from 'lucide-react'
+import { useState } from 'react'
 
+import { openDesktopUrl } from '../api'
 import type {
   AnswerResponse,
   BrainStatus,
@@ -20,6 +27,10 @@ import type {
   DesktopSourceJob,
   Evidence,
 } from '../types'
+import { describeSourceJobProgress, recentCompletedJobs } from '../sourceJobs'
+import { describeSyncRunProgress } from '../operations'
+import { shortcutLabel } from '../shortcuts'
+import { useClipboardCopy } from '../useClipboardCopy'
 
 export type UtilityKind = 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
 
@@ -54,6 +65,8 @@ const TITLES: Record<UtilityKind, { eyebrow: string; title: string; description:
 export function UtilityView({
   kind,
   status,
+  statusError = '',
+  onRetryStatus,
   sourceJobs,
   query,
   answer,
@@ -65,13 +78,18 @@ export function UtilityView({
   contextError,
   contextTokens,
   desktopAvailable,
+  sourceJobError,
+  onRetrySourceJobs,
   onSearchFocus,
   onRetrieveContext,
   onOpenSettings,
   onOpenProject,
+  onCancelSourceJob,
 }: {
   kind: UtilityKind
   status: BrainStatus | null
+  statusError?: string
+  onRetryStatus?: () => void
   sourceJobs: DesktopSourceJob[]
   query: string
   answer: AnswerResponse | null
@@ -83,10 +101,13 @@ export function UtilityView({
   contextError: string
   contextTokens: number
   desktopAvailable: boolean
+  sourceJobError?: string
+  onRetrySourceJobs?: () => void
   onSearchFocus: () => void
   onRetrieveContext: () => void
   onOpenSettings: () => void
-  onOpenProject: () => void
+  onOpenProject: () => void | Promise<void>
+  onCancelSourceJob?: (id: string) => void
 }) {
   const { eyebrow, title, description } = TITLES[kind]
   return (
@@ -100,7 +121,16 @@ export function UtilityView({
       </header>
       <div className="utility-body">
         {kind === 'inbox' && (
-          <InboxView status={status} sourceJobs={sourceJobs} onOpenSettings={onOpenSettings} />
+          <InboxView
+            status={status}
+            statusError={statusError}
+            sourceJobs={sourceJobs}
+            sourceJobError={sourceJobError}
+            onRetrySourceJobs={onRetrySourceJobs}
+            onOpenSettings={onOpenSettings}
+            onRetryStatus={onRetryStatus}
+            onCancelSourceJob={onCancelSourceJob}
+          />
         )}
         {kind === 'conversations' && (
           <ConversationsView
@@ -123,7 +153,14 @@ export function UtilityView({
             onRetrieveContext={onRetrieveContext}
           />
         )}
-        {kind === 'index' && <IndexView status={status} onOpenSettings={onOpenSettings} />}
+        {kind === 'index' && (
+          <IndexView
+            status={status}
+            statusError={statusError}
+            onOpenSettings={onOpenSettings}
+            onRetryStatus={onRetryStatus}
+          />
+        )}
         {kind === 'help' && (
           <HelpView desktopAvailable={desktopAvailable} onOpenProject={onOpenProject} />
         )}
@@ -134,12 +171,22 @@ export function UtilityView({
 
 function InboxView({
   status,
+  statusError,
   sourceJobs,
+  sourceJobError,
+  onRetrySourceJobs,
   onOpenSettings,
+  onRetryStatus,
+  onCancelSourceJob,
 }: {
   status: BrainStatus | null
+  statusError: string
   sourceJobs: DesktopSourceJob[]
+  sourceJobError?: string
+  onRetrySourceJobs?: () => void
   onOpenSettings: () => void
+  onRetryStatus?: () => void
+  onCancelSourceJob?: (id: string) => void
 }) {
   const attention = (status?.sync_runs ?? []).filter((run) =>
     ['running', 'failed', 'cancelled', 'budget_exceeded'].includes(run.status)
@@ -147,12 +194,42 @@ function InboxView({
   const activeJobs = sourceJobs.filter(
     (job) => job.status === 'running' || job.status === 'cancelling'
   )
-  if (attention.length === 0 && activeJobs.length === 0) {
+  const completedJobs = recentCompletedJobs(sourceJobs)
+  if (
+    !sourceJobError &&
+    attention.length === 0 &&
+    activeJobs.length === 0 &&
+    completedJobs.length === 0
+  ) {
+    if (!status) {
+      return (
+        <UtilityEmpty
+          icon={
+            statusError ? <AlertTriangle size={26} /> : <LoaderCircle className="spin" size={26} />
+          }
+          title={statusError ? 'Sync health unavailable' : 'Loading sync health'}
+          detail={
+            statusError ||
+            'Waiting for the runtime status snapshot before reporting source health or sync history.'
+          }
+          actions={[
+            ...(onRetryStatus
+              ? [{ label: 'Retry status', icon: <RefreshCw size={15} />, onClick: onRetryStatus }]
+              : []),
+            { label: 'Open settings', icon: <Settings size={15} />, onClick: onOpenSettings },
+          ]}
+        />
+      )
+    }
     return (
       <UtilityEmpty
         icon={<Inbox size={26} />}
         title="No sync attention"
-        detail="Every configured source is idle and the last sync of each source finished cleanly. New sync activity will appear here as it happens."
+        detail={
+          statusError
+            ? `${statusError} No attention is recorded in the last known snapshot.`
+            : 'Every configured source is idle and the last sync of each source finished cleanly. New sync activity will appear here as it happens.'
+        }
         actions={[
           { label: 'Open settings', icon: <Settings size={15} />, onClick: onOpenSettings },
         ]}
@@ -161,6 +238,29 @@ function InboxView({
   }
   return (
     <>
+      {sourceJobError && (
+        <p className="utility-error" role="alert">
+          {sourceJobError}
+          {onRetrySourceJobs && (
+            <>
+              {' '}
+              <button type="button" className="link-button" onClick={onRetrySourceJobs}>
+                Retry source jobs
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {statusError && status && (
+        <p className="utility-error" role="status">
+          {statusError} Showing the last known sync snapshot.{' '}
+          {onRetryStatus && (
+            <button type="button" className="link-button" onClick={onRetryStatus}>
+              Retry status
+            </button>
+          )}
+        </p>
+      )}
       {attention.length > 0 && (
         <section className="utility-section">
           <h2>Sync attention</h2>
@@ -172,7 +272,8 @@ function InboxView({
                   <strong>{run.source}</strong>
                   <span>
                     {run.project} · started {new Date(run.started_at).toLocaleString()} ·{' '}
-                    {run.documents ?? '—'} documents · {run.bytes ?? '—'} bytes
+                    {describeSyncRunProgress(run)} · {run.documents ?? '—'} documents ·{' '}
+                    {run.bytes ?? '—'} bytes
                   </span>
                 </div>
                 <StatusPill status={run.status} />
@@ -191,18 +292,67 @@ function InboxView({
                 <div className="utility-item-main">
                   <strong>{job.source}</strong>
                   <span>
-                    {job.project} · {job.operation} ·{' '}
+                    {job.project} · {job.operation} · {describeSourceJobProgress(job)} · started{' '}
                     {new Date(job.started_at_unix_seconds * 1000).toLocaleString()}
                   </span>
                 </div>
-                <StatusPill status={job.status === 'cancelling' ? 'cancelled' : 'running'} />
+                <StatusPill status={job.status} />
+                {onCancelSourceJob && (
+                  <button
+                    type="button"
+                    className="utility-cancel"
+                    disabled={job.status === 'cancelling'}
+                    aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
+                    onClick={() => onCancelSourceJob(job.id)}
+                  >
+                    <CircleStop size={14} /> Cancel
+                  </button>
+                )}
               </div>
             ))}
           </div>
         </section>
       )}
+      {completedJobs.length > 0 && (
+        <section className="utility-section">
+          <h2>Recent source jobs</h2>
+          <div className="utility-list">
+            {completedJobs.map((job) => {
+              const terminalStatus = job.status === 'cancelling' ? 'running' : job.status
+              const started = new Date(job.started_at_unix_seconds * 1000)
+              const completed = job.completed_at_unix_seconds
+                ? new Date(job.completed_at_unix_seconds * 1000)
+                : null
+              const duration = completed
+                ? `${Math.max(0, Math.round((completed.getTime() - started.getTime()) / 1000))}s`
+                : 'duration unavailable'
+              return (
+                <div className="utility-item" key={job.id}>
+                  <SyncIcon status={terminalStatus} />
+                  <div className="utility-item-main">
+                    <strong>
+                      {job.source} · {job.operation}
+                    </strong>
+                    <span>
+                      {job.project} · {job.summary} · started {started.toLocaleString()} ·{' '}
+                      {duration}
+                    </span>
+                    {job.log && (
+                      <details className="utility-job-log">
+                        <summary>View job log</summary>
+                        <pre>{job.log}</pre>
+                      </details>
+                    )}
+                  </div>
+                  <StatusPill status={terminalStatus} />
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
       <div className="utility-actions">
-        <button className="secondary-button" onClick={onOpenSettings}>
+        <button type="button" className="secondary-button" onClick={onOpenSettings}>
           <Settings size={15} /> Manage ingestion in settings
         </button>
       </div>
@@ -277,8 +427,8 @@ function ConversationsView({
             <span>{evidence.length} cited passages</span>
           </div>
           <p className="utility-answer">{answer.answer}</p>
-          {answer.warnings.map((warning) => (
-            <p className="answer-warning" key={warning}>
+          {answer.warnings.map((warning, index) => (
+            <p className="answer-warning" key={`${warning}:${index}`}>
               {warning}
             </p>
           ))}
@@ -303,7 +453,7 @@ function ConversationsView({
         </section>
       )}
       <div className="utility-actions">
-        <button className="secondary-button" onClick={onSearchFocus}>
+        <button type="button" className="secondary-button" onClick={onSearchFocus}>
           <Search size={15} /> Search the brain
         </button>
       </div>
@@ -328,6 +478,8 @@ function AgentToolsView({
   contextTokens: number
   onRetrieveContext: () => void
 }) {
+  const { copied, copyError, copy } = useClipboardCopy(contextBundle?.context ?? null)
+
   return (
     <>
       <section className="utility-section">
@@ -368,6 +520,22 @@ function AgentToolsView({
                 ))}
               </div>
             )}
+            <div className="utility-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                aria-label="Copy MCP-equivalent context"
+                onClick={() => void copy()}
+              >
+                {copied ? <Check size={15} /> : <Copy size={15} />}
+                {copied ? 'Context copied' : 'Copy MCP-equivalent context'}
+              </button>
+              {copyError && (
+                <p className="utility-error" role="alert">
+                  {copyError}
+                </p>
+              )}
+            </div>
           </>
         ) : (
           <UtilityEmpty
@@ -383,7 +551,11 @@ function AgentToolsView({
             ]}
           />
         )}
-        {contextError && <p className="utility-error">{contextError}</p>}
+        {contextError && (
+          <p className="utility-error" role="alert">
+            {contextError}
+          </p>
+        )}
       </section>
       <section className="utility-section">
         <h2>Agent context window</h2>
@@ -404,18 +576,30 @@ function AgentToolsView({
 
 function IndexView({
   status,
+  statusError,
   onOpenSettings,
+  onRetryStatus,
 }: {
   status: BrainStatus | null
+  statusError: string
   onOpenSettings: () => void
+  onRetryStatus?: () => void
 }) {
   if (!status) {
     return (
       <UtilityEmpty
-        icon={<Database size={26} />}
-        title="Index offline"
-        detail="The brain is not reachable, so no live metrics are available. Start the Rust API or add ?demo=1 to preview the workspace."
+        icon={
+          statusError ? <AlertTriangle size={26} /> : <LoaderCircle className="spin" size={26} />
+        }
+        title={statusError ? 'Index unavailable' : 'Loading index'}
+        detail={
+          statusError ||
+          'Waiting for the runtime status snapshot before reporting live index metrics.'
+        }
         actions={[
+          ...(onRetryStatus
+            ? [{ label: 'Retry status', icon: <RefreshCw size={15} />, onClick: onRetryStatus }]
+            : []),
           { label: 'Open settings', icon: <Settings size={15} />, onClick: onOpenSettings },
         ]}
       />
@@ -470,7 +654,7 @@ function IndexView({
         </div>
       </section>
       <div className="utility-actions">
-        <button className="secondary-button" onClick={onOpenSettings}>
+        <button type="button" className="secondary-button" onClick={onOpenSettings}>
           <Settings size={15} /> Open settings
         </button>
       </div>
@@ -483,12 +667,13 @@ function HelpView({
   onOpenProject,
 }: {
   desktopAvailable: boolean
-  onOpenProject: () => void
+  onOpenProject: () => void | Promise<void>
 }) {
+  const [projectError, setProjectError] = useState('')
   const shortcuts = [
-    { keys: '⌘ K', action: 'Focus the search bar' },
-    { keys: '⌘ P', action: 'Toggle the command palette' },
-    { keys: '⌘ ⇧ F', action: 'Open the document filter' },
+    { keys: shortcutLabel('MOD K'), action: 'Focus the search bar' },
+    { keys: shortcutLabel('MOD P'), action: 'Toggle the command palette' },
+    { keys: shortcutLabel('MOD ⇧ F'), action: 'Open the document filter' },
     { keys: 'Esc', action: 'Close panels and the palette' },
   ]
   const links = [
@@ -520,7 +705,25 @@ function HelpView({
         <h2>Project and docs</h2>
         <div className="utility-list">
           {links.map(({ label, href, detail }) => (
-            <a className="utility-link" href={href} target="_blank" rel="noreferrer" key={href}>
+            <a
+              className="utility-link"
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              key={href}
+              onClick={(event) => {
+                if (!desktopAvailable) return
+                event.preventDefault()
+                setProjectError('')
+                void openDesktopUrl(href).catch((caught: unknown) => {
+                  setProjectError(
+                    caught instanceof Error
+                      ? caught.message
+                      : `Unable to open ${label.toLowerCase()} in the system browser`
+                  )
+                })
+              }}
+            >
               <BookOpen size={16} />
               <span>
                 <strong>{label}</strong>
@@ -532,10 +735,28 @@ function HelpView({
         </div>
         {desktopAvailable && (
           <div className="utility-actions">
-            <button className="secondary-button" onClick={onOpenProject}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setProjectError('')
+                void Promise.resolve(onOpenProject()).catch((caught: unknown) => {
+                  setProjectError(
+                    caught instanceof Error
+                      ? caught.message
+                      : 'Unable to open the Cortana project page'
+                  )
+                })
+              }}
+            >
               <ExternalLink size={15} /> Open project page
             </button>
           </div>
+        )}
+        {projectError && (
+          <p className="utility-error" role="alert">
+            {projectError}
+          </p>
         )}
         <p className="utility-note">
           Cortana is local-first: your index, context bundles, and settings stay on this machine.
@@ -546,22 +767,37 @@ function HelpView({
 }
 
 function SyncIcon({ status }: { status: string }) {
-  if (status === 'running') return <LoaderCircle className="spin" size={16} />
+  if (status === 'running' || status === 'cancelling') {
+    return <LoaderCircle className="spin" size={16} />
+  }
+  if (status === 'succeeded') {
+    return <CheckCircle2 size={16} />
+  }
+  if (status === 'cancelled') {
+    return <CircleX size={16} />
+  }
   return <AlertTriangle size={16} />
 }
 
 function StatusPill({
   status,
 }: {
-  status: 'running' | 'succeeded' | 'failed' | 'cancelled' | 'budget_exceeded'
+  status: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled' | 'budget_exceeded'
 }) {
   const label =
     status === 'budget_exceeded'
       ? 'Budget exceeded'
+      : status === 'cancelling'
+        ? 'Cancelling…'
+        : status === 'succeeded'
+          ? 'Succeeded'
+          : status[0].toUpperCase() + status.slice(1)
+  const tone =
+    status === 'running' || status === 'cancelling'
+      ? 'running'
       : status === 'succeeded'
-        ? 'Succeeded'
-        : status[0].toUpperCase() + status.slice(1)
-  const tone = status === 'running' ? 'running' : status === 'succeeded' ? 'healthy' : 'warning'
+        ? 'healthy'
+        : 'warning'
   return <span className={`status-pill ${tone}`}>{label}</span>
 }
 
@@ -593,7 +829,7 @@ function UtilityEmpty({
       {actions.length > 0 && (
         <div className="utility-actions utility-actions-center">
           {actions.map(({ label, icon: actionIcon, onClick }) => (
-            <button className="secondary-button" key={label} onClick={onClick}>
+            <button type="button" className="secondary-button" key={label} onClick={onClick}>
               {actionIcon} {label}
             </button>
           ))}

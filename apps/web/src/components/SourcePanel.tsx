@@ -1,22 +1,21 @@
 import {
-  Bot,
   ChevronDown,
   ChevronRight,
-  Code2,
+  CircleStop,
   Database,
+  ExternalLink,
   Folder,
+  KeyRound,
   LoaderCircle,
-  Mail,
-  MessageCircle,
   Search,
   Settings,
-  StickyNote,
   X,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { activeJobs } from '../sourceJobs'
+import { activeJobs, describeSourceJobProgress } from '../sourceJobs'
 import { operationalSources, sourceHealth, type OperationalSource } from '../operations'
+import { sourceIconForKind } from './sourceIcons'
 import type {
   BrainDocumentSummary,
   BrainStatus,
@@ -25,25 +24,13 @@ import type {
 } from '../types'
 import { VirtualDocumentList } from './VirtualDocumentList'
 
-const sourceIcons: Record<string, typeof Folder> = {
-  code: Code2,
-  drive: Folder,
-  gmail: Mail,
-  notes: StickyNote,
-  discord: MessageCircle,
-  slack: MessageCircle,
-  buzz: Bot,
-}
-
-function sourceIcon(source: string) {
-  const key = Object.keys(sourceIcons).find((name) => source.includes(name))
-  return key ? sourceIcons[key] : Database
-}
-
 export function SourcePanel({
   open,
   status,
   statusError,
+  onRetryStatus,
+  sourceJobError = '',
+  onRetrySourceJobs,
   workspace,
   workspaces,
   documentQuery,
@@ -58,13 +45,25 @@ export function SourcePanel({
   onDocumentQueryChange,
   onSelectDocument,
   onLoadMoreDocuments,
+  onRetryDocuments,
   onOpenSourcesSettings,
+  onOpenSourceSetup,
+  onAuthorizeSource,
+  onToggleSource,
+  sourceToggleBusy = null,
+  sourceToggleDisabled = false,
+  sourceToggleError = '',
+  sourceToggleNotice = '',
   onClose,
+  onCancelSourceJob,
   jobs = [],
 }: {
   open: boolean
   status: BrainStatus | null
   statusError: string
+  onRetryStatus?: () => void
+  sourceJobError?: string
+  onRetrySourceJobs?: () => void
   workspace: string
   workspaces: WorkspaceSettings[]
   documentQuery: string
@@ -79,8 +78,17 @@ export function SourcePanel({
   onDocumentQueryChange: (query: string) => void
   onSelectDocument: (id: string) => void
   onLoadMoreDocuments: () => void
+  onRetryDocuments?: () => void
   onOpenSourcesSettings: () => void
+  onOpenSourceSetup?: (source: string, project: string) => void
+  onAuthorizeSource?: (source: string, project: string) => void
+  onToggleSource?: (source: string, project: string, enabled: boolean) => void
+  sourceToggleBusy?: string | null
+  sourceToggleDisabled?: boolean
+  sourceToggleError?: string
+  sourceToggleNotice?: string
   onClose: () => void
+  onCancelSourceJob?: (id: string) => void
   jobs?: DesktopSourceJob[]
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -101,20 +109,48 @@ export function SourcePanel({
   )
   const active = activeJobs(jobs)
   const statusLoading = status === null && statusError === ''
-  const sourceModeClass = status?.ingestion.scheduled ? 'scheduled' : 'manual'
-  const sourceModeLabel = status?.ingestion.scheduled ? 'scheduled' : 'paused · manual only'
+  const sourceModeClass = status
+    ? status.ingestion.scheduled
+      ? 'scheduled'
+      : 'manual'
+    : statusError
+      ? 'unavailable'
+      : 'manual'
+  const sourceModeLabel = status
+    ? status.ingestion.scheduled
+      ? 'scheduled'
+      : 'paused · manual only'
+    : statusError
+      ? 'status unavailable'
+      : 'loading status…'
 
   return (
     <aside className={`source-panel ${open ? 'mobile-open' : ''}`}>
       <div className="panel-heading">
         <strong>Sources</strong>
-        <button className="mobile-close" aria-label="Close sources" onClick={onClose}>
+        <button
+          type="button"
+          className="mobile-close"
+          aria-label="Close sources"
+          title="Close sources"
+          onClick={onClose}
+        >
           <X size={17} />
         </button>
-        <button aria-label="Add source" onClick={onOpenSourcesSettings}>
+        <button
+          type="button"
+          aria-label="Add source"
+          title="Add source"
+          onClick={onOpenSourcesSettings}
+        >
           +
         </button>
-        <button aria-label="Source settings" onClick={onOpenSourcesSettings}>
+        <button
+          type="button"
+          aria-label="Source settings"
+          title="Source settings"
+          onClick={onOpenSourcesSettings}
+        >
           <Settings size={16} />
         </button>
       </div>
@@ -140,19 +176,70 @@ export function SourcePanel({
             <div className="source-job-item" key={job.id}>
               <LoaderCircle className="spin" size={12} />
               <span>
-                {job.source} · {job.operation} · {job.status}
+                {job.project} · {job.source} · {job.operation} · {job.status} ·{' '}
+                {describeSourceJobProgress(job)}
               </span>
+              {onCancelSourceJob && (
+                <button
+                  type="button"
+                  className="source-job-cancel"
+                  aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
+                  title={`Cancel ${job.project} ${job.source} ${job.operation}`}
+                  disabled={job.status === 'cancelling'}
+                  onClick={() => onCancelSourceJob(job.id)}
+                >
+                  <CircleStop size={12} />
+                </button>
+              )}
             </div>
           ))}
         </div>
+      )}
+      {sourceJobError && (
+        <p className="document-list-error source-job-error" role="alert">
+          {sourceJobError}
+          {onRetrySourceJobs && (
+            <>
+              {' '}
+              <button type="button" className="link-button" onClick={onRetrySourceJobs}>
+                Retry source jobs
+              </button>
+            </>
+          )}
+        </p>
+      )}
+      {sourceToggleError && (
+        <p className="document-list-error source-job-error" role="alert">
+          {sourceToggleError}
+        </p>
+      )}
+      {sourceToggleNotice && (
+        <p className="document-list-state source-toggle-notice" role="status">
+          {sourceToggleNotice}
+        </p>
+      )}
+      {statusError && status && (
+        <p className="document-list-error" role="status">
+          {statusError} Showing the last known source index.{' '}
+          {onRetryStatus && (
+            <button type="button" className="link-button" onClick={onRetryStatus}>
+              Retry status
+            </button>
+          )}
+        </p>
       )}
       {statusLoading ? (
         <p className="document-list-state" role="status">
           Loading source index and health…
         </p>
-      ) : statusError ? (
+      ) : statusError && !status ? (
         <p className="document-list-error" role="status">
-          {statusError}
+          {statusError}{' '}
+          {onRetryStatus && (
+            <button type="button" className="link-button" onClick={onRetryStatus}>
+              Retry status
+            </button>
+          )}
         </p>
       ) : !projects.length ? (
         <div className="source-empty">
@@ -188,16 +275,32 @@ export function SourcePanel({
               </button>
               {!collapsedProjects.has(project) &&
                 items.map((item) => {
-                  const Icon = sourceIcon(item.source)
+                  const Icon = sourceIconForKind(item.kind)
                   const health = sourceHealth(item)
                   const key = `${item.project}:${item.source}`
                   const isCollapsed = collapsed.has(key)
+                  // Source names are only unique inside a workspace. When the
+                  // panel shows all workspaces, matching by name alone would
+                  // highlight every same-named connector and make a click
+                  // appear to select the wrong account.
+                  const isSelected = selected === item.source && workspace === item.project
+                  const auth = item.authorization
+                  const needsProviderSetup = Boolean(auth?.setup_required)
+                  const needsGoogleAuthorization =
+                    auth?.method === 'google_oauth' && !auth.authorized && !needsProviderSetup
+                  const sourceJobActive = active.some(
+                    (job) =>
+                      job.project === item.project &&
+                      (job.source === item.source || job.source === item.name)
+                  )
                   return (
                     <div className="source-node" key={key}>
                       <div className="source-row">
                         <button
+                          type="button"
                           className="tree-toggle"
                           aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
+                          title={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
                           aria-expanded={!isCollapsed}
                           onClick={() => {
                             setCollapsed((current) => {
@@ -211,8 +314,9 @@ export function SourcePanel({
                           {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
                         </button>
                         <button
-                          className={`source-select ${selected === item.source ? 'selected' : ''}`}
-                          aria-pressed={selected === item.source}
+                          type="button"
+                          className={`source-select ${isSelected ? 'selected' : ''}`}
+                          aria-pressed={isSelected}
                           onClick={() => onSelect(item.source, item.project)}
                           title={health.label}
                         >
@@ -221,6 +325,78 @@ export function SourcePanel({
                           <i className={`source-health ${health.state}`} />
                           <small>{item.documents.toLocaleString()}</small>
                         </button>
+                        {onOpenSourceSetup && needsProviderSetup && (
+                          <button
+                            type="button"
+                            className="source-action"
+                            aria-label={`Open ${item.name} setup`}
+                            title={
+                              sourceJobActive
+                                ? 'Wait for the active source job to finish'
+                                : auth?.method === 'google_oauth'
+                                  ? 'Open Google source settings'
+                                  : 'Open the provider setup page'
+                            }
+                            disabled={
+                              sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onOpenSourceSetup(item.source, item.project)
+                            }}
+                          >
+                            <ExternalLink size={13} />
+                          </button>
+                        )}
+                        {onAuthorizeSource && needsGoogleAuthorization && (
+                          <button
+                            type="button"
+                            className="source-action"
+                            aria-label={`Authorize ${item.name}`}
+                            title={
+                              sourceJobActive
+                                ? 'Wait for the active source job to finish'
+                                : 'Authorize this Google source in your browser'
+                            }
+                            disabled={
+                              sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onAuthorizeSource(item.source, item.project)
+                            }}
+                          >
+                            <KeyRound size={13} />
+                          </button>
+                        )}
+                        {onToggleSource && item.kind !== 'indexed' && (
+                          <button
+                            type="button"
+                            role="switch"
+                            className={`source-enable-toggle ${item.enabled ? 'enabled' : ''}`}
+                            aria-checked={item.enabled}
+                            aria-busy={sourceToggleBusy === key}
+                            aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.name}`}
+                            title={
+                              sourceJobActive
+                                ? 'Wait for the active source job to finish'
+                                : sourceToggleBusy !== null
+                                  ? 'Saving source setting…'
+                                  : sourceToggleDisabled
+                                    ? 'Save or discard settings changes before toggling a source'
+                                    : `${item.enabled ? 'Disable' : 'Enable'} ${item.name}`
+                            }
+                            disabled={
+                              sourceToggleDisabled || sourceToggleBusy !== null || sourceJobActive
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onToggleSource(item.source, item.project, !item.enabled)
+                            }}
+                          >
+                            <span />
+                          </button>
+                        )}
                       </div>
                       {!isCollapsed && (
                         <span className="source-node-hint">
@@ -248,10 +424,25 @@ export function SourcePanel({
             placeholder="Filter documents"
             aria-label="Filter documents"
           />
+          {documentQuery !== '' && (
+            <button
+              type="button"
+              className="document-filter-clear"
+              aria-label="Clear document filter"
+              onClick={() => onDocumentQueryChange('')}
+            >
+              <X size={14} />
+            </button>
+          )}
         </label>
         {documentsError ? (
           <p className="document-list-error" role="alert">
-            {documentsError}
+            {documentsError}{' '}
+            {onRetryDocuments && (
+              <button type="button" className="link-button" onClick={onRetryDocuments}>
+                Retry documents
+              </button>
+            )}
           </p>
         ) : documents.length ? (
           <VirtualDocumentList
@@ -273,7 +464,7 @@ export function SourcePanel({
           </p>
         )}
         {hasMoreDocuments && !documentsLoading && (
-          <button className="load-more-documents" onClick={onLoadMoreDocuments}>
+          <button type="button" className="load-more-documents" onClick={onLoadMoreDocuments}>
             Load next page
           </button>
         )}

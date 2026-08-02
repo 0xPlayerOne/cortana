@@ -1,4 +1,7 @@
 use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
@@ -15,8 +18,11 @@ use tauri_plugin_autostart::ManagerExt;
 
 mod installer;
 mod hindsight;
+mod honcho;
 mod paths;
 mod readiness;
+mod schedule;
+mod scheduled_services;
 mod services;
 mod settings;
 mod source_jobs;
@@ -28,6 +34,7 @@ const MAX_QUERY_LENGTH: usize = 16_384;
 const MAX_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_CURSOR_LENGTH: usize = 1024;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
+const MAX_BACKEND_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 const PROJECT_URL: &str = "https://github.com/0xPlayerOne/cortana";
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
@@ -69,13 +76,13 @@ impl BackendClient {
             _ => "query",
         };
         let mut request = self.http.request(method, url);
-        if let Some(token) = settings::bearer_for_scope(scope)? {
+        if let Some(token) = desktop_bearer_for_scope(scope)? {
             request = request.bearer_auth(token);
         }
         if let Some(body) = body {
             request = request.json(&body);
         }
-        let response = request
+        let mut response = request
             .send()
             .await
             .map_err(|error| format!("Cortana runtime is unavailable: {error}"))?;
@@ -86,11 +93,57 @@ impl BackendClient {
                 status.as_u16()
             ));
         }
-        response
-            .json()
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_BACKEND_RESPONSE_BYTES as u64)
+        {
+            return Err(format!(
+                "Cortana runtime response exceeded the {MAX_BACKEND_RESPONSE_BYTES} byte Desktop safety limit"
+            ));
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
             .await
+            .map_err(|error| format!("read Cortana runtime response: {error}"))?
+        {
+            if body.len().saturating_add(chunk.len()) > MAX_BACKEND_RESPONSE_BYTES {
+                return Err(format!(
+                    "Cortana runtime response exceeded the {MAX_BACKEND_RESPONSE_BYTES} byte Desktop safety limit"
+                ));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        serde_json::from_slice(&body)
             .map_err(|error| format!("Cortana runtime returned an invalid response: {error}"))
     }
+}
+
+/// Desktop is the owner-local control plane. If a named auth principal carries
+/// both `admin` and the requested scope, prefer it for loopback requests so the
+/// UI does not accidentally render a narrow agent's ACL as the whole corpus.
+/// Fall back to the requested scope when no shared-scope owner credential is
+/// configured.
+fn desktop_bearer_for_scope(scope: &str) -> Result<Option<String>, String> {
+    if scope != "admin" {
+        if let Ok(snapshot) = settings::load() {
+            for principal in snapshot
+                .auth_principals
+                .iter()
+                .filter(|principal| principal_supports_owner_scope(principal, scope))
+            {
+                if let Ok(Some(token)) = settings::secret_value_for_env(&principal.token_env) {
+                    return Ok(Some(token));
+                }
+            }
+        }
+    }
+    settings::bearer_for_scope(scope)
+}
+
+fn principal_supports_owner_scope(principal: &settings::AuthPrincipalSettings, scope: &str) -> bool {
+    principal.scopes.iter().any(|value| value == "admin")
+        && principal.scopes.iter().any(|value| value == scope)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -123,6 +176,8 @@ struct DesktopInfo {
 struct TrayStatus {
     health: MenuItem<Wry>,
     corpus: MenuItem<Wry>,
+    ingestion: MenuItem<Wry>,
+    source_jobs: MenuItem<Wry>,
 }
 
 #[tauri::command]
@@ -249,18 +304,228 @@ fn desktop_project_open() -> Result<(), String> {
     open::that(PROJECT_URL).map_err(|error| format!("open Cortana project page: {error}"))
 }
 
+#[tauri::command]
+fn desktop_secret_file_open() -> Result<(), String> {
+    let path = settings::load()?.secret_file_path;
+    if !std::path::Path::new(&path).is_file() {
+        return Err("secret file is unavailable".into());
+    }
+    open::that_detached(&path).map_err(|error| format!("open secret file: {error}"))?;
+    let event = serde_json::json!({
+        "at_unix_seconds": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        "event": "desktop.secret_file.opened",
+        "secret_values_recorded": false,
+    });
+    let _ = settings::append_audit_event(&settings::default_config_path(), &event);
+    Ok(())
+}
+
 fn validate_external_url(url: &str) -> Result<(), String> {
     let parsed = Url::parse(url).map_err(|error| format!("invalid URL: {error}"))?;
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("external links must not contain embedded credentials".into());
+    }
     match parsed.scheme() {
-        "http" | "https" | "mailto" | "file" => Ok(()),
+        "http" | "https" => Ok(()),
+        "mailto" => Ok(()),
+        "slack" => validate_slack_url(&parsed),
+        "notes" => validate_notes_url(&parsed),
+        "buzz" => validate_buzz_url(&parsed),
+        "file" => {
+            if parsed
+                .host_str()
+                .is_some_and(|host| !host.is_empty() && host != "localhost")
+            {
+                return Err("file links must be local paths".into());
+            }
+            if parsed.query().is_some() || parsed.fragment().is_some() {
+                return Err("file links must not contain query or fragment data".into());
+            }
+            parsed
+                .to_file_path()
+                .map_err(|_| "file links must contain an absolute local path".to_string())?;
+            Ok(())
+        }
         _ => Err(format!("unsupported URL scheme: {}", parsed.scheme())),
+    }
+}
+
+fn validate_slack_url(url: &Url) -> Result<(), String> {
+    if url.host_str() != Some("channel") || !url.path().is_empty() || url.fragment().is_some() {
+        return Err("Slack links must target a channel deep link".into());
+    }
+    let mut team = None;
+    let mut channel = None;
+    let mut message = None;
+    for (key, value) in url.query_pairs() {
+        let slot = match key.as_ref() {
+            "team" => &mut team,
+            "id" => &mut channel,
+            "message" => &mut message,
+            _ => return Err("Slack links contain unsupported query data".into()),
+        };
+        if slot.replace(value.into_owned()).is_some() {
+            return Err("Slack links must not repeat query fields".into());
+        }
+    }
+    let channel = channel.ok_or_else(|| "Slack links must include a channel id".to_string())?;
+    if !valid_slack_identifier(&channel) {
+        return Err("Slack links contain an invalid channel id".into());
+    }
+    let message = message
+        .ok_or_else(|| "Slack links must include a message timestamp".to_string())?;
+    if !valid_slack_timestamp(&message) {
+        return Err("Slack links contain an invalid message timestamp".into());
+    }
+    if team
+        .as_deref()
+        .is_some_and(|value| !value.is_empty() && !valid_slack_identifier(value))
+    {
+        return Err("Slack links contain an invalid team id".into());
+    }
+    Ok(())
+}
+
+fn validate_notes_url(url: &Url) -> Result<(), String> {
+    if url
+        .host_str()
+        .is_none_or(|host| !host.eq_ignore_ascii_case("shownote"))
+        || !url.path().is_empty()
+        || url.fragment().is_some()
+    {
+        return Err("Apple Notes links must target a note deep link".into());
+    }
+    let mut identifier = None;
+    for (key, value) in url.query_pairs() {
+        if key != "identifier" || identifier.replace(value.into_owned()).is_some() {
+            return Err("Apple Notes links contain unsupported query data".into());
+        }
+    }
+    let identifier = identifier
+        .ok_or_else(|| "Apple Notes links must include a note identifier".to_string())?;
+    validate_custom_link_value(&identifier, 1024, true)
+        .then_some(())
+        .ok_or_else(|| "Apple Notes links contain an invalid note identifier".into())
+}
+
+fn validate_buzz_url(url: &Url) -> Result<(), String> {
+    if url
+        .host_str()
+        .is_none_or(|host| !host.eq_ignore_ascii_case("persona"))
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("Buzz links must target a persona deep link".into());
+    }
+    if contains_forbidden_encoded_path_byte(url.path()) {
+        return Err("Buzz links contain an invalid encoded path segment".into());
+    }
+    let segments = url
+        .path_segments()
+        .ok_or_else(|| "Buzz links must contain persona path segments".to_string())?
+        .collect::<Vec<_>>();
+    if segments.len() != 2
+        || segments
+            .iter()
+            .any(|segment| !validate_custom_link_value(segment, 256, false))
+    {
+        return Err("Buzz links contain invalid persona data".into());
+    }
+    Ok(())
+}
+
+fn contains_forbidden_encoded_path_byte(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            index += 1;
+            continue;
+        }
+        if index + 2 >= bytes.len() {
+            return true;
+        }
+        let Some(high) = (bytes[index + 1] as char).to_digit(16) else {
+            return true;
+        };
+        let Some(low) = (bytes[index + 2] as char).to_digit(16) else {
+            return true;
+        };
+        let decoded = (high * 16 + low) as u8;
+        if decoded == b'/' || decoded == b'\\' || decoded < 0x20 || decoded == 0x7f {
+            return true;
+        }
+        index += 3;
+    }
+    false
+}
+
+fn validate_custom_link_value(value: &str, maximum_length: usize, allow_slash: bool) -> bool {
+    !value.is_empty()
+        && value.len() <= maximum_length
+        && (allow_slash || !value.contains('/'))
+        && !value.chars().any(|character| character.is_control())
+}
+
+fn valid_slack_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn valid_slack_timestamp(value: &str) -> bool {
+    if value.is_empty() || value.len() > 64 {
+        return false;
+    }
+    if let Some((whole, fraction)) = value.split_once('.') {
+        !whole.is_empty()
+            && !fraction.is_empty()
+            && whole.bytes().all(|byte| byte.is_ascii_digit())
+            && fraction.bytes().all(|byte| byte.is_ascii_digit())
+    } else {
+        value.bytes().all(|byte| byte.is_ascii_digit())
     }
 }
 
 #[tauri::command]
 fn desktop_url_open(url: String) -> Result<(), String> {
     validate_external_url(&url)?;
+    let parsed = Url::parse(&url).map_err(|error| format!("invalid URL: {error}"))?;
+    if parsed.scheme() == "file" {
+        let target = configured_file_target(&parsed)?;
+        return open::that_detached(target).map_err(|error| format!("open local source: {error}"));
+    }
     open::that_detached(url).map_err(|error| format!("open external URL: {error}"))
+}
+
+fn configured_file_target(url: &Url) -> Result<PathBuf, String> {
+    let target = url
+        .to_file_path()
+        .map_err(|_| "file links must contain an absolute local path".to_string())?;
+    let target = fs::canonicalize(&target)
+        .map_err(|error| format!("resolve local source path: {error}"))?;
+    let settings = settings::load()?;
+    let roots = settings
+        .sources
+        .iter()
+        .filter(|source| source.kind == "filesystem")
+        .filter_map(|source| source.root.as_deref())
+        .map(Path::new)
+        .filter_map(|root| fs::canonicalize(root).ok())
+        .collect::<Vec<_>>();
+    if is_within_filesystem_root(&target, &roots) {
+        return Ok(target);
+    }
+    Err("local source links must stay inside a configured filesystem source root".into())
+}
+
+fn is_within_filesystem_root(target: &Path, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| target.starts_with(root))
 }
 
 #[tauri::command]
@@ -303,8 +568,41 @@ async fn desktop_services_status(app: AppHandle) -> Result<services::ServiceRepo
 }
 
 #[tauri::command]
+async fn desktop_services_install(
+    app: AppHandle,
+    approved: bool,
+) -> Result<services::ServiceReport, String> {
+    scheduled_services::install_core(&app, approved).await
+}
+
+#[tauri::command]
+async fn desktop_services_install_sync(
+    app: AppHandle,
+    approved: bool,
+) -> Result<services::ServiceReport, String> {
+    scheduled_services::install_sync(&app, approved).await
+}
+
+#[tauri::command]
+fn desktop_schedule_get() -> Result<schedule::ScheduleSettings, String> {
+    schedule::load()
+}
+
+#[tauri::command]
+fn desktop_schedule_save(
+    schedule: schedule::ScheduleSettings,
+) -> Result<schedule::ScheduleSettings, String> {
+    schedule::save(schedule)
+}
+
+#[tauri::command]
 async fn desktop_hindsight_status() -> Result<hindsight::HindsightStatus, String> {
     hindsight::status().await
+}
+
+#[tauri::command]
+async fn desktop_honcho_status() -> Result<honcho::HonchoStatus, String> {
+    honcho::status().await
 }
 
 #[tauri::command]
@@ -386,11 +684,12 @@ async fn desktop_settings_import(
 
 #[tauri::command]
 fn desktop_installer_start(
+    app: AppHandle,
     installer: State<'_, installer::InstallerState>,
     tool: String,
     approved: bool,
 ) -> Result<installer::InstallJobSnapshot, String> {
-    installer.start(&tool, approved)
+    installer.start_with_app(Some(&app), &tool, approved)
 }
 
 #[tauri::command]
@@ -472,6 +771,13 @@ fn desktop_source_validation_status(
 }
 
 #[tauri::command]
+fn desktop_source_jobs_status(
+    jobs: State<'_, source_jobs::SourceJobState>,
+) -> Result<Vec<source_jobs::SourceJobSnapshot>, String> {
+    jobs.snapshots()
+}
+
+#[tauri::command]
 fn desktop_source_validation_cancel(
     jobs: State<'_, source_jobs::SourceJobState>,
     id: String,
@@ -482,6 +788,18 @@ fn desktop_source_validation_cancel(
 #[tauri::command]
 async fn desktop_readiness_scan(app: AppHandle) -> readiness::ReadinessSnapshot {
     readiness::scan(&app).await
+}
+
+#[tauri::command]
+async fn desktop_embedding_generation_migrate(
+    app: AppHandle,
+    from: String,
+    approved: bool,
+) -> Result<String, String> {
+    if !approved {
+        return Err("embedding generation migration requires explicit approval".into());
+    }
+    readiness::migrate_embedding_generation(&app, &from).await
 }
 
 #[tauri::command]
@@ -503,10 +821,12 @@ fn validate_retrieval_request(request: &RetrievalRequest) -> Result<(), String> 
         ("project", request.project.as_deref()),
         ("source", request.source.as_deref()),
     ] {
-        if value.is_some_and(|value| value.len() > MAX_SCOPE_LENGTH) {
-            return Err(format!(
-                "{name} exceeds the {MAX_SCOPE_LENGTH} byte desktop safety limit"
-            ));
+        if value.is_some_and(|value| {
+            value.is_empty()
+                || value.len() > MAX_SCOPE_LENGTH
+                || value.chars().any(|character| character.is_control())
+        }) {
+            return Err(format!("{name} must contain 1 to {MAX_SCOPE_LENGTH} bytes"));
         }
     }
     Ok(())
@@ -520,15 +840,19 @@ fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), S
         ("project", request.project.as_deref()),
         ("source", request.source.as_deref()),
     ] {
-        if value.is_some_and(|value| value.is_empty() || value.len() > MAX_SCOPE_LENGTH) {
+        if value.is_some_and(|value| {
+            value.is_empty()
+                || value.len() > MAX_SCOPE_LENGTH
+                || value.chars().any(|character| character.is_control())
+        }) {
             return Err(format!("{name} must contain 1 to {MAX_SCOPE_LENGTH} bytes"));
         }
     }
-    if request
-        .query
-        .as_ref()
-        .is_some_and(|query| query.is_empty() || query.len() > MAX_SCOPE_LENGTH)
-    {
+    if request.query.as_ref().is_some_and(|query| {
+        query.len() > MAX_SCOPE_LENGTH
+            || query.trim().is_empty()
+            || query.chars().any(|character| character.is_control())
+    }) {
         return Err(format!("query must contain 1 to {MAX_SCOPE_LENGTH} bytes"));
     }
     if request
@@ -562,9 +886,13 @@ fn show_main_window(app: &AppHandle) {
 fn install_tray(app: &mut tauri::App) -> tauri::Result<TrayStatus> {
     let health = MenuItem::with_id(app, "health", "Runtime: checking", false, None::<&str>)?;
     let corpus = MenuItem::with_id(app, "corpus", "Corpus: checking", false, None::<&str>)?;
+    let ingestion =
+        MenuItem::with_id(app, "ingestion", "Ingestion: checking", false, None::<&str>)?;
+    let source_jobs =
+        MenuItem::with_id(app, "source-jobs", "Source jobs: checking", false, None::<&str>)?;
     let show = MenuItem::with_id(app, "show", "Show Cortana", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Cortana Desktop", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&health, &corpus, &show, &quit])?;
+    let menu = Menu::with_items(app, &[&health, &corpus, &ingestion, &source_jobs, &show, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id("cortana")
         .menu(&menu)
@@ -595,10 +923,61 @@ fn install_tray(app: &mut tauri::App) -> tauri::Result<TrayStatus> {
     }
     builder.build(app)?;
 
-    Ok(TrayStatus { health, corpus })
+    Ok(TrayStatus {
+        health,
+        corpus,
+        ingestion,
+        source_jobs,
+    })
 }
 
-async fn refresh_tray(backend: &BackendClient, tray: &TrayStatus) {
+fn ingestion_label(status: &Value) -> String {
+    let runs = status
+        .get("sync_runs")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default();
+    let running = runs
+        .iter()
+        .filter(|run| run.get("status").and_then(Value::as_str) == Some("running"))
+        .count();
+    if running > 0 {
+        return format!("Ingestion: {running} running");
+    }
+    let attention = runs
+        .iter()
+        .filter(|run| {
+            matches!(
+                run.get("status").and_then(Value::as_str),
+                Some("failed" | "cancelled" | "budget_exceeded")
+            )
+        })
+        .count();
+    if attention > 0 {
+        return format!("Ingestion: {attention} need attention");
+    }
+    if status
+        .get("ingestion")
+        .and_then(|value| value.get("scheduled"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        "Ingestion: scheduled".into()
+    } else {
+        "Ingestion: manual".into()
+    }
+}
+
+async fn refresh_tray(
+    backend: &BackendClient,
+    jobs: &source_jobs::SourceJobState,
+    tray: &TrayStatus,
+) {
+    let source_label = jobs
+        .snapshots()
+        .map(|snapshots| source_jobs_label(&snapshots))
+        .unwrap_or_else(|_| "Source jobs: unavailable".to_string());
+    let _ = tray.source_jobs.set_text(source_label);
     match backend.request(Method::GET, "/v1/status", None).await {
         Ok(status) => {
             let documents = status
@@ -613,11 +992,38 @@ async fn refresh_tray(backend: &BackendClient, tray: &TrayStatus) {
             let _ = tray
                 .corpus
                 .set_text(format!("Corpus: {documents} docs · {chunks} chunks"));
+            let _ = tray.ingestion.set_text(ingestion_label(&status));
         }
         Err(_) => {
             let _ = tray.health.set_text("Runtime: offline");
             let _ = tray.corpus.set_text("Corpus: unavailable");
+            let _ = tray.ingestion.set_text("Ingestion: unavailable");
         }
+    }
+}
+
+fn source_jobs_label(snapshots: &[source_jobs::SourceJobSnapshot]) -> String {
+    let active = snapshots
+        .iter()
+        .filter(|job| matches!(job.status, "running" | "cancelling"))
+        .count();
+    if active > 0 {
+        return format!("Source jobs: {active} active");
+    }
+
+    // Snapshots are newest first. Count only the latest terminal result for
+    // each source so an old failure does not keep the tray in an attention
+    // state after a later successful run.
+    let mut seen_sources = BTreeSet::new();
+    let attention = snapshots
+        .iter()
+        .filter(|job| seen_sources.insert((job.project.as_str(), job.source.as_str())))
+        .filter(|job| matches!(job.status, "failed" | "cancelled" | "budget_exceeded"))
+        .count();
+    if attention > 0 {
+        format!("Source jobs: {attention} need attention")
+    } else {
+        "Source jobs: idle".to_string()
     }
 }
 
@@ -649,11 +1055,17 @@ pub fn run() {
             brain_audit,
             desktop_audit,
             desktop_project_open,
+            desktop_secret_file_open,
             desktop_url_open,
             desktop_info,
             desktop_autostart_set,
             desktop_services_status,
+            desktop_services_install,
+            desktop_services_install_sync,
+            desktop_schedule_get,
+            desktop_schedule_save,
             desktop_hindsight_status,
+            desktop_honcho_status,
             desktop_service_action,
             desktop_services_action_all,
             desktop_update_status,
@@ -665,6 +1077,7 @@ pub fn run() {
             desktop_settings_import,
             desktop_path_pick,
             desktop_readiness_scan,
+            desktop_embedding_generation_migrate,
             desktop_installer_start,
             desktop_installer_status,
             desktop_installer_cancel,
@@ -674,14 +1087,16 @@ pub fn run() {
             desktop_source_setup_open,
             desktop_source_initial_sync,
             desktop_source_validation_status,
+            desktop_source_jobs_status,
             desktop_source_validation_cancel
         ])
         .setup(move |app| {
             let tray = install_tray(app)?;
             let backend = backend.clone();
+            let jobs = app.state::<source_jobs::SourceJobState>().inner().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    refresh_tray(&backend, &tray).await;
+                    refresh_tray(&backend, &jobs, &tray).await;
                     tokio::time::sleep(Duration::from_secs(15)).await;
                 }
             });
@@ -703,6 +1118,31 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn principal(scopes: &[&str]) -> settings::AuthPrincipalSettings {
+        settings::AuthPrincipalSettings {
+            principal: "owner".into(),
+            token_env: "OWNER_TOKEN".into(),
+            scopes: scopes.iter().map(|scope| (*scope).into()).collect(),
+            acl: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn owner_preference_requires_the_requested_scope_too() {
+        assert!(!principal_supports_owner_scope(
+            &principal(&["admin"]),
+            "query"
+        ));
+        assert!(principal_supports_owner_scope(
+            &principal(&["admin", "query"]),
+            "query"
+        ));
+        assert!(!principal_supports_owner_scope(
+            &principal(&["admin", "status"]),
+            "query"
+        ));
+    }
 
     #[test]
     fn retrieval_request_enforces_bounded_non_empty_inputs() {
@@ -756,6 +1196,38 @@ mod tests {
             limit: 50,
         };
         assert!(validate_document_list_request(&invalid_query).is_err());
+        let padded_query = DocumentListRequest {
+            project: None,
+            source: None,
+            query: Some(format!(" {} ", "x".repeat(MAX_SCOPE_LENGTH))),
+            cursor: None,
+            limit: 50,
+        };
+        assert!(validate_document_list_request(&padded_query).is_err());
+        let control_query = DocumentListRequest {
+            project: None,
+            source: None,
+            query: Some("\u{0000}".into()),
+            cursor: None,
+            limit: 50,
+        };
+        assert!(validate_document_list_request(&control_query).is_err());
+        let whitespace_query = DocumentListRequest {
+            project: None,
+            source: None,
+            query: Some("   ".into()),
+            cursor: None,
+            limit: 50,
+        };
+        assert!(validate_document_list_request(&whitespace_query).is_err());
+        let invalid_scope = DocumentListRequest {
+            project: Some("work\u{0000}personal".into()),
+            source: None,
+            query: None,
+            cursor: None,
+            limit: 50,
+        };
+        assert!(validate_document_list_request(&invalid_scope).is_err());
         assert!(validate_document_id(&"a".repeat(64)).is_ok());
         assert!(validate_document_id("../store.sqlite3").is_err());
     }
@@ -764,9 +1236,126 @@ mod tests {
     fn validates_external_url_schemes_for_open_bridge() {
         assert!(validate_external_url("https://example.com").is_ok());
         assert!(validate_external_url("http://127.0.0.1").is_ok());
+        assert!(validate_external_url("https://user:password@example.com").is_err());
         assert!(validate_external_url("mailto:help@example.com").is_ok());
+        assert!(validate_external_url("mailto://user:password@example.com").is_err());
+        assert!(validate_external_url(
+            "slack://channel?team=&id=C123ABC&message=1712345678.000100"
+        )
+        .is_ok());
+        assert!(validate_external_url("slack://channel?id=C123ABC").is_err());
+        assert!(validate_external_url("slack://channel?id=C123ABC&message=1&message=2").is_err());
+        assert!(validate_external_url(
+            "slack://channel?id=C123ABC&message=1&redirect=https://evil.example"
+        )
+        .is_err());
+        assert!(validate_external_url("slack://channel?id=C123ABC&message=.").is_err());
+        assert!(validate_external_url(
+            "notes://showNote?identifier=x-coredata%3A%2F%2Fnote-1"
+        )
+        .is_ok());
+        assert!(validate_external_url("notes://showNote?identifier=").is_err());
+        assert!(validate_external_url("notes://showNote?identifier=x&extra=1").is_err());
+        assert!(validate_external_url("buzz://persona/npub123/session%3A1").is_ok());
+        assert!(validate_external_url("buzz://persona/npub123/session/extra").is_err());
+        assert!(validate_external_url("buzz://persona/npub123/").is_err());
+        assert!(validate_external_url("buzz://persona/npub%2F123/session").is_err());
+        assert!(validate_external_url("buzz://persona/npub%00/session").is_err());
         assert!(validate_external_url("file:///tmp/cv.pdf").is_ok());
+        assert!(validate_external_url("file://user@localhost/tmp/cv.pdf").is_err());
+        assert!(validate_external_url("file://remote.example/cv.pdf").is_err());
+        assert!(validate_external_url("file:///tmp/cv.pdf?download=1").is_err());
         assert!(validate_external_url("ftp://example.com").is_err());
         assert!(validate_external_url("javascript:alert(1)").is_err());
+    }
+
+    #[test]
+    fn local_file_targets_are_contained_by_configured_roots() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let root = temp.path().join("source");
+        let outside = temp.path().join("outside.txt");
+        std::fs::create_dir_all(&root).expect("source root");
+        let inside = root.join("note.md");
+        std::fs::write(&inside, "note").expect("inside file");
+        std::fs::write(&outside, "private").expect("outside file");
+        let roots = vec![fs::canonicalize(&root).expect("canonical root")];
+        assert!(is_within_filesystem_root(
+            &fs::canonicalize(&inside).expect("canonical inside"),
+            &roots
+        ));
+        assert!(!is_within_filesystem_root(
+            &fs::canonicalize(&outside).expect("canonical outside"),
+            &roots
+        ));
+    }
+
+    #[test]
+    fn tray_ingestion_label_reports_bounded_operational_state() {
+        let running = serde_json::json!({
+            "sync_runs": [{"status": "running"}],
+            "ingestion": {"scheduled": false}
+        });
+        assert_eq!(ingestion_label(&running), "Ingestion: 1 running");
+
+        let attention = serde_json::json!({
+            "sync_runs": [{"status": "budget_exceeded"}, {"status": "failed"}],
+            "ingestion": {"scheduled": true}
+        });
+        assert_eq!(ingestion_label(&attention), "Ingestion: 2 need attention");
+
+        assert_eq!(
+            ingestion_label(&serde_json::json!({"sync_runs": [], "ingestion": {"scheduled": true}})),
+            "Ingestion: scheduled"
+        );
+        assert_eq!(
+            ingestion_label(&serde_json::json!({})),
+            "Ingestion: manual"
+        );
+    }
+
+    #[test]
+    fn tray_source_job_label_uses_latest_terminal_result_per_source() {
+        let snapshot =
+            |source: &str, project: &str, status: &'static str| source_jobs::SourceJobSnapshot {
+            id: format!("source-1-{}", source.len()),
+            operation: "validation",
+            source: source.into(),
+            kind: "filesystem".into(),
+            project: project.into(),
+            acl: Vec::new(),
+            status,
+            summary: String::new(),
+            log: String::new(),
+            started_at_unix_seconds: 1,
+            completed_at_unix_seconds: Some(2),
+            exit_code: Some(0),
+            retryable: false,
+            writes_indexed_data: false,
+            budget: None,
+        };
+
+        let history = vec![
+            snapshot("work-code", "work", "succeeded"),
+            snapshot("personal-mail", "work", "succeeded"),
+            snapshot("personal-mail", "work", "failed"),
+        ];
+        assert_eq!(source_jobs_label(&history), "Source jobs: idle");
+
+        let mut failed_latest = history;
+        failed_latest[1].status = "failed";
+        assert_eq!(
+            source_jobs_label(&failed_latest),
+            "Source jobs: 1 need attention"
+        );
+
+        failed_latest[0].status = "running";
+        assert_eq!(source_jobs_label(&failed_latest), "Source jobs: 1 active");
+
+        let duplicate_names = vec![
+            snapshot("notes", "work", "failed"),
+            snapshot("notes", "personal", "failed"),
+            snapshot("notes", "work", "succeeded"),
+        ];
+        assert_eq!(source_jobs_label(&duplicate_names), "Source jobs: 2 need attention");
     }
 }

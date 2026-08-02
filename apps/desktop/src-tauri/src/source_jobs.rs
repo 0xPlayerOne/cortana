@@ -18,6 +18,9 @@ use tauri_plugin_shell::{
     process::{CommandChild, CommandEvent},
 };
 
+#[cfg(test)]
+use tauri_plugin_shell::process::TerminatedPayload;
+
 use crate::settings;
 
 const MAX_LOG_BYTES: usize = 64 * 1024;
@@ -333,11 +336,26 @@ impl SourceJobState {
         ) {
             return Err("browser authorization is available only for Google sources".into());
         }
-        if source.token_path.is_none() || source.oauth_client_path.is_none() {
+        if (source.token_path.is_none() && source.token_env.is_none())
+            || source.oauth_client_path.is_none()
+        {
             return Err(
-                "save both the Google token destination and Desktop OAuth client paths first"
+                "save a Google token destination (file or path environment variable) and Desktop OAuth client path first"
                     .into(),
             );
+        }
+        if source.token_path.is_none() {
+            let token_env = source
+                .token_env
+                .as_deref()
+                .ok_or_else(|| "Google token path environment variable is missing".to_string())?;
+            let value = settings::secret_value_for_env(token_env)?
+                .ok_or_else(|| format!("configure {token_env} with an absolute token path first"))?;
+            if !std::path::Path::new(value.trim()).is_absolute() {
+                return Err(format!(
+                    "{token_env} must contain an absolute Google token path"
+                ));
+            }
         }
         self.start(
             app,
@@ -402,7 +420,8 @@ impl SourceJobState {
             .shell()
             .sidecar("cortana")
             .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
-            .args(args);
+            .args(args)
+            .env("CORTANA_DESKTOP_PROCESS_GROUP", "1");
         let (mut receiver, child) = command
             .spawn()
             .map_err(|error| format!("start source {operation}: {error}"))?;
@@ -462,6 +481,21 @@ impl SourceJobState {
             .ok_or_else(|| "source job was not found".into())
     }
 
+    /// Return the bounded in-memory job history so a remounted webview can
+    /// recover activity that started before the current renderer instance.
+    pub fn snapshots(&self) -> Result<Vec<SourceJobSnapshot>, String> {
+        let mut snapshots = self
+            .jobs
+            .lock()
+            .map_err(|_| "source job state is unavailable".to_string())?
+            .values()
+            .map(|job| job.snapshot.clone())
+            .collect::<Vec<_>>();
+        snapshots.sort_by(|left, right| compare_job_order(right, left));
+        snapshots.truncate(MAX_JOBS);
+        Ok(snapshots)
+    }
+
     pub fn cancel(&self, id: &str) -> Result<SourceJobSnapshot, String> {
         validate_job_id(id)?;
         let mut jobs = self
@@ -477,7 +511,7 @@ impl SourceJobState {
         job.snapshot.status = "cancelling";
         job.snapshot.summary = format!("Cancelling source {}…", job.snapshot.operation);
         if let Some(child) = job.child.take() {
-            if let Err(error) = child.kill() {
+            if let Err(error) = terminate_source_process(child) {
                 job.snapshot.status = "failed";
                 job.snapshot.summary =
                     format!("Source {} could not be cancelled.", job.snapshot.operation);
@@ -505,6 +539,13 @@ impl SourceJobState {
             }
             CommandEvent::Terminated(payload) => {
                 job.child = None;
+                // Cancellation can fail after the child handle has already
+                // been taken. Preserve that explicit failure if the process
+                // later emits its termination event; an exit code of zero
+                // must not make a failed cancellation look successful.
+                if !matches!(job.snapshot.status, "running" | "cancelling") {
+                    return;
+                }
                 job.snapshot.exit_code = payload.code;
                 job.snapshot.completed_at_unix_seconds = Some(now());
                 job.snapshot.status = if job.snapshot.status == "cancelling" {
@@ -546,6 +587,23 @@ impl SourceJobState {
     }
 }
 
+fn terminate_source_process(child: CommandChild) -> Result<(), String> {
+    let pid = child.pid();
+    #[cfg(unix)]
+    if pid > 0 && pid <= i32::MAX as u32 {
+        // Source jobs opt into an isolated process group before the CLI
+        // starts any connector. Killing the negative PID includes connector
+        // helpers and avoids leaving an orphaned long-running sync behind.
+        let result = unsafe { libc::kill(-(pid as libc::pid_t), libc::SIGKILL) };
+        if result == 0 {
+            return Ok(());
+        }
+    }
+    child
+        .kill()
+        .map_err(|error| format!("kill source process: {error}"))
+}
+
 pub fn open_setup(source_name: &str) -> Result<SetupOpenOutcome, String> {
     let source = settings::configured_source(source_name)?;
     let url = match source.kind.as_str() {
@@ -579,7 +637,8 @@ fn prune_jobs(jobs: &mut BTreeMap<String, SourceJob>) {
     while jobs.len() >= MAX_JOBS {
         let completed = jobs
             .iter()
-            .find(|(_, job)| !matches!(job.snapshot.status, "running" | "cancelling"))
+            .filter(|(_, job)| !matches!(job.snapshot.status, "running" | "cancelling"))
+            .min_by(|(_, left), (_, right)| compare_job_order(&left.snapshot, &right.snapshot))
             .map(|(id, _)| id.clone());
         if let Some(id) = completed {
             jobs.remove(&id);
@@ -587,6 +646,23 @@ fn prune_jobs(jobs: &mut BTreeMap<String, SourceJob>) {
             break;
         }
     }
+}
+
+/// Job ids include a monotonic process-local sequence after the launch time.
+/// Compare that suffix numerically so jobs created within one second retain
+/// their actual launch order instead of relying on lexicographic ordering.
+fn compare_job_order(left: &SourceJobSnapshot, right: &SourceJobSnapshot) -> std::cmp::Ordering {
+    left.started_at_unix_seconds
+        .cmp(&right.started_at_unix_seconds)
+        .then_with(|| match (job_sequence(&left.id), job_sequence(&right.id)) {
+            (Some(left), Some(right)) => left.cmp(&right),
+            _ => left.id.cmp(&right.id),
+        })
+        .then_with(|| left.id.cmp(&right.id))
+}
+
+fn job_sequence(id: &str) -> Option<u64> {
+    id.rsplit_once('-')?.1.parse().ok()
 }
 
 fn validation_args(source: &str) -> Vec<String> {
@@ -712,8 +788,7 @@ fn validation_covers_budget_at(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(format!("inspect source validation state: {error}")),
     }
-    let file =
-        fs::File::open(&path).map_err(|error| format!("open source validation state: {error}"))?;
+    let file = open_validation_state(&path)?;
     let mut bytes = Vec::new();
     file.take(MAX_VALIDATION_STATE_BYTES + 1)
         .read_to_end(&mut bytes)
@@ -747,6 +822,36 @@ fn validation_covers_budget_at(
             && max_bytes >= bytes
             && max_seconds >= seconds,
     ))
+}
+
+fn open_validation_state(path: &Path) -> Result<fs::File, String> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+    }
+    let file = options
+        .open(path)
+        .map_err(|error| format!("open source validation state: {error}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("inspect source validation state: {error}"))?;
+    if !metadata.is_file() {
+        return Err("source validation state is not a regular file".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != unsafe { libc::geteuid() } {
+            return Err("source validation state is not owned by the current user".into());
+        }
+        if metadata.nlink() != 1 {
+            return Err("source validation state has multiple hard links".into());
+        }
+    }
+    Ok(file)
 }
 
 fn terminal_summary(operation: &str, status: &str, disconnected: bool) -> String {
@@ -867,11 +972,114 @@ fn now() -> u64 {
 mod tests {
     use super::*;
 
+    fn snapshot_for(id: &str, started_at_unix_seconds: u64) -> SourceJobSnapshot {
+        SourceJobSnapshot {
+            id: id.into(),
+            operation: "validation",
+            source: "work-code".into(),
+            kind: "filesystem".into(),
+            project: "work".into(),
+            acl: vec!["work".into()],
+            status: "succeeded",
+            summary: "done".into(),
+            log: String::new(),
+            started_at_unix_seconds,
+            completed_at_unix_seconds: Some(started_at_unix_seconds + 1),
+            exit_code: Some(0),
+            retryable: false,
+            writes_indexed_data: false,
+            budget: None,
+        }
+    }
+
     #[test]
     fn job_ids_are_narrowly_validated() {
         assert!(validate_job_id("source-123-4").is_ok());
         assert!(validate_job_id("../source").is_err());
         assert!(validate_job_id(&"x".repeat(97)).is_err());
+    }
+
+    #[test]
+    fn snapshots_return_newest_bounded_history_first() {
+        let state = SourceJobState::default();
+        let mut jobs = state.jobs.lock().expect("job state");
+        for index in 0..(MAX_JOBS + 3) {
+            let id = format!("source-{index}");
+            let snapshot = snapshot_for(&id, index as u64);
+            jobs.insert(
+                id,
+                SourceJob {
+                    snapshot,
+                    child: None,
+                },
+            );
+        }
+        drop(jobs);
+
+        let snapshots = state.snapshots().expect("snapshots");
+        assert_eq!(snapshots.len(), MAX_JOBS);
+        assert_eq!(snapshots.first().map(|item| item.id.as_str()), Some("source-22"));
+        assert_eq!(snapshots.last().map(|item| item.id.as_str()), Some("source-3"));
+    }
+
+    #[test]
+    fn snapshots_order_same_second_jobs_by_numeric_sequence() {
+        let state = SourceJobState::default();
+        let mut jobs = state.jobs.lock().expect("job state");
+        for id in ["source-1785000000-9", "source-1785000000-10"] {
+            let snapshot = snapshot_for(id, 1_785_000_000);
+            jobs.insert(
+                id.into(),
+                SourceJob {
+                    snapshot,
+                    child: None,
+                },
+            );
+        }
+        drop(jobs);
+
+        let snapshots = state.snapshots().expect("snapshots");
+        assert_eq!(
+            snapshots
+                .iter()
+                .map(|snapshot| snapshot.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["source-1785000000-10", "source-1785000000-9"]
+        );
+    }
+
+    #[test]
+    fn termination_event_does_not_overwrite_an_explicit_cancellation_failure() {
+        let state = SourceJobState::default();
+        let mut snapshot = snapshot_for("source-1-1", 1_785_000_000);
+        snapshot.status = "failed";
+        snapshot.summary = "Source validation could not be cancelled.".into();
+        snapshot.completed_at_unix_seconds = Some(1_785_000_001);
+        snapshot.exit_code = None;
+        snapshot.retryable = true;
+        state.jobs.lock().expect("job state").insert(
+            snapshot.id.clone(),
+            SourceJob {
+                snapshot,
+                child: None,
+            },
+        );
+
+        state.handle_event(
+            "source-1-1",
+            CommandEvent::Terminated(TerminatedPayload {
+                code: Some(0),
+                signal: None,
+            }),
+        );
+
+        let snapshot = state.status("source-1-1").expect("snapshot");
+        assert_eq!(snapshot.status, "failed");
+        assert_eq!(
+            snapshot.summary,
+            "Source validation could not be cancelled."
+        );
+        assert_eq!(snapshot.exit_code, None);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
-use std::process::{Command as ProcessCommand, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -18,6 +18,7 @@ use cortana::{api, google_oauth, mcp, migration, service, source_validation, sup
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
 use serde::Deserialize;
+use tokio::process::Command as ProcessCommand;
 
 // Leave half of the default local TEI permits available for interactive agents.
 const EMBEDDING_REQUEST_SIZE: usize = 8;
@@ -68,6 +69,13 @@ enum Command {
     },
     /// Validate configuration, storage, and the embedding provider.
     Doctor,
+    /// Adopt a reviewed embedding generation without rebuilding indexed documents.
+    MigrateEmbedding {
+        #[arg(long, value_name = "FINGERPRINT")]
+        from: String,
+        #[arg(long, help = "Confirm the metadata and derived-cache migration")]
+        force: bool,
+    },
     /// Run deterministic retrieval and answer quality gates in an isolated temporary index.
     Eval {
         #[arg(long, help = "Use a custom synthetic evaluation fixture")]
@@ -249,10 +257,15 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum ServiceAction {
-    /// Install and immediately bootstrap macOS launchd jobs.
+    /// Install and immediately bootstrap per-user macOS launchd, Linux systemd, or Windows Task Scheduler jobs.
     Install {
         #[arg(long, default_value = "apps/web/dist")]
         web_dir: PathBuf,
+        #[arg(
+            long,
+            help = "Install the API service without serving the workspace assets"
+        )]
+        no_web: bool,
         #[arg(long)]
         working_directory: Option<PathBuf>,
         #[arg(long, default_value_t = 900)]
@@ -319,6 +332,7 @@ enum AclAction {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    configure_desktop_process_group();
     init_tracing();
     let cli = Cli::parse();
     if let Some(Command::Init {
@@ -449,7 +463,8 @@ async fn main() -> Result<()> {
                 max_bytes: *max_bytes,
                 max_seconds: *max_seconds,
             },
-        );
+        )
+        .await;
     }
     if let Some(Command::AuthorizeGoogle { source }) = cli.command.as_ref() {
         let outcome = google_oauth::authorize(&config, source).await?;
@@ -531,6 +546,9 @@ async fn main() -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&report)?);
         anyhow::ensure!(report.passed, "production readiness checks failed");
         return Ok(());
+    }
+    if let Some(Command::MigrateEmbedding { from, force }) = cli.command.as_ref() {
+        return migrate_embedding_generation(&config, &store, base_embedder.as_ref(), from, *force);
     }
     store.ensure_fingerprint(&base_embedder.fingerprint())?;
     let embedder: Arc<dyn Embedder> = Arc::new(CachedEmbedder::with_limit(
@@ -777,6 +795,7 @@ async fn main() -> Result<()> {
                     kind: source.kind.clone(),
                     project: source.project.clone(),
                     enabled: source.enabled,
+                    acl: source.acl.clone(),
                 })
                 .collect();
             let principal = if let Some(name) = token_env {
@@ -801,6 +820,7 @@ async fn main() -> Result<()> {
         Some(
             Command::Init { .. }
             | Command::MigrateHermes { .. }
+            | Command::MigrateEmbedding { .. }
             | Command::Eval { .. }
             | Command::AuthorizeGoogle { .. }
             | Command::ValidateSource { .. }
@@ -810,6 +830,22 @@ async fn main() -> Result<()> {
         None => {
             println!("cortana {}", env!("CARGO_PKG_VERSION"));
             Ok(())
+        }
+    }
+}
+
+fn configure_desktop_process_group() {
+    #[cfg(unix)]
+    if std::env::var_os("CORTANA_DESKTOP_PROCESS_GROUP").is_some() {
+        // Desktop source jobs are cancelled as a unit. Keep the wrapper and
+        // its connector children in one process group without changing the
+        // terminal job-control behavior of normal CLI invocations.
+        let result = unsafe { libc::setpgid(0, 0) };
+        if result != 0 {
+            eprintln!(
+                "warning: could not isolate Desktop source job process group: {}",
+                std::io::Error::last_os_error()
+            );
         }
     }
 }
@@ -1138,7 +1174,7 @@ fn acl_alignment_errors(config: &Config, mappings: &[(String, Vec<String>)]) -> 
     errors
 }
 
-fn validate_configured_source(
+async fn validate_configured_source(
     config: &Config,
     selected: &str,
     overrides: SyncOverrides,
@@ -1155,7 +1191,7 @@ fn validate_configured_source(
         started: Instant::now(),
         cancellation: &cancellation,
     };
-    let validation = (|| -> Result<serde_json::Value> {
+    let validation: Result<serde_json::Value> = async {
         if source.kind == "filesystem" {
             let root = source
                 .root
@@ -1175,7 +1211,7 @@ fn validate_configured_source(
             }));
         }
         cleanup_connector_spools(&config.data_dir)?;
-        let (spool, diagnostics) = run_connector_to_spool(config, source, &control)?;
+        let (spool, diagnostics) = run_connector_to_spool(config, source, &control).await?;
         let validation = validate_connector_spool(&spool, source, &control);
         let _ = std::fs::remove_file(&spool);
         let _ = std::fs::remove_file(&diagnostics);
@@ -1185,7 +1221,8 @@ fn validate_configured_source(
             "bytes": scope.bytes,
             "inspection": "connector snapshot"
         }))
-    })();
+    }
+    .await;
     cancellation.stop();
     let validated_at = chrono::Utc::now();
     let result = match validation {
@@ -1273,6 +1310,7 @@ fn require_sync_validation(
         source,
         limits.max_documents,
         limits.max_bytes,
+        limits.max_seconds,
     )
 }
 
@@ -1312,6 +1350,7 @@ impl SyncLock {
         }
         let mut options = std::fs::OpenOptions::new();
         options.read(true).write(true).create(true);
+        configure_no_follow(&mut options);
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -1320,6 +1359,27 @@ impl SyncLock {
         let file = options
             .open(path)
             .with_context(|| format!("failed to open sync lock {}", path.display()))?;
+        let metadata = file.metadata()?;
+        anyhow::ensure!(
+            metadata.is_file(),
+            "sync lock is not a regular file: {}",
+            path.display()
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            anyhow::ensure!(
+                metadata.uid() == unsafe { libc::geteuid() },
+                "sync lock is not owned by the current user: {}",
+                path.display()
+            );
+            anyhow::ensure!(
+                metadata.nlink() == 1,
+                "sync lock has multiple hard links: {}",
+                path.display()
+            );
+            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        }
         FileExt::try_lock_exclusive(&file).with_context(|| {
             format!(
                 "another Cortana sync is already active (lock: {})",
@@ -1338,15 +1398,23 @@ fn manage_service(
     match action {
         ServiceAction::Install {
             web_dir,
+            no_web,
             working_directory,
             sync_seconds,
             backup_seconds,
             no_embedding_service,
             enable_sync_service,
         } => {
-            let web_dir = web_dir.canonicalize().with_context(|| {
-                format!("workspace directory does not exist: {}", web_dir.display())
-            })?;
+            if *enable_sync_service {
+                ensure_recurring_sync_validated(config)?;
+            }
+            let web_dir = if *no_web {
+                None
+            } else {
+                Some(web_dir.canonicalize().with_context(|| {
+                    format!("workspace directory does not exist: {}", web_dir.display())
+                })?)
+            };
             let working_directory = working_directory
                 .clone()
                 .unwrap_or(std::env::current_dir()?)
@@ -1355,7 +1423,8 @@ fn manage_service(
                 config,
                 service::InstallOptions {
                     config: &config_path.canonicalize()?,
-                    web_dir: &web_dir,
+                    web_dir: web_dir.as_deref(),
+                    no_web: *no_web,
                     working_directory: &working_directory,
                     sync_seconds: *sync_seconds,
                     backup_seconds: *backup_seconds,
@@ -1391,6 +1460,33 @@ fn manage_service(
     }
 }
 
+fn ensure_recurring_sync_validated(config: &Config) -> Result<()> {
+    let mut checked = 0usize;
+    for source in config.sources.iter().filter(|source| source.enabled) {
+        checked += 1;
+        let limits = SourceLimits::resolve(config, source, SyncOverrides::default())
+            .with_context(|| format!("invalid recurring sync budget for {}", source.name))?;
+        source_validation::require_success(
+            &config.data_dir,
+            source,
+            limits.max_documents,
+            limits.max_bytes,
+            limits.max_seconds,
+        )
+        .with_context(|| {
+            format!(
+                "recurring sync requires a current successful validation for source {}",
+                source.name
+            )
+        })?;
+    }
+    anyhow::ensure!(
+        checked > 0,
+        "recurring sync requires at least one enabled source"
+    );
+    Ok(())
+}
+
 fn init_tracing() {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("cortana=info,tower_http=info"));
@@ -1415,6 +1511,60 @@ fn backup_database(config: &Config, output: Option<&std::path::Path>, keep: usiz
         prune_backups(&directory, keep, Some(&destination))?;
     }
     println!("backup verified: {}", destination.display());
+    Ok(())
+}
+
+fn migrate_embedding_generation(
+    config: &Config,
+    store: &Store,
+    base_embedder: &dyn Embedder,
+    from: &str,
+    force: bool,
+) -> Result<()> {
+    let target = base_embedder.fingerprint();
+    let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+    let current = store
+        .stats()?
+        .embedding_fingerprint
+        .context("the index has no embedding generation; initialize it before migrating")?;
+    anyhow::ensure!(
+        current == from,
+        "embedding generation does not match --from (expected: {from}; actual: {current})"
+    );
+    if current == target {
+        println!("embedding generation already matches configured provider: {target}");
+        return Ok(());
+    }
+    anyhow::ensure!(
+        force,
+        "embedding migration changes index metadata and clears derived caches; rerun with --force after reviewing the exact --from fingerprint"
+    );
+    store.integrity_check()?;
+
+    let backup = config.data_dir.join("backups").join(format!(
+        "cortana-embedding-migration-{}-{}.sqlite3",
+        chrono::Utc::now().format("%Y%m%d-%H%M%S"),
+        uuid::Uuid::new_v4()
+    ));
+    store.backup(&backup)?;
+    store.migrate_embedding_fingerprint(&current, &target)?;
+    if let Err(error) = store.record_audit(
+        "local-cli",
+        "embedding-generation-migrate",
+        None,
+        None,
+        "ok",
+        None,
+        0,
+        config.auth.audit_max_events,
+    ) {
+        tracing::warn!(%error, "embedding generation migration audit write failed");
+    }
+    println!("embedding generation migrated");
+    println!("  from: {current}");
+    println!("  to: {target}");
+    println!("  verified backup: {}", backup.display());
+    println!("  indexed documents were not rebuilt; derived caches were cleared");
     Ok(())
 }
 
@@ -1498,15 +1648,18 @@ fn init(
 
 async fn doctor(store: &Store, embedder: &dyn Embedder) -> Result<()> {
     let vectors = embedder.embed(&["health check".to_string()]).await?;
+    let vector = vectors
+        .first()
+        .context("embedding provider returned no vector")?;
     anyhow::ensure!(
-        !vectors[0].is_empty(),
+        !vector.is_empty(),
         "embedding provider returned an empty vector"
     );
     let _ = store.all_chunks(None, None)?;
     println!(
         "cortana: healthy (embedding={}, dimension={})",
         embedder.fingerprint(),
-        vectors[0].len()
+        vector.len()
     );
     Ok(())
 }
@@ -1889,7 +2042,7 @@ fn failure_status(error: &anyhow::Error) -> SyncRunStatus {
 }
 
 fn cleanup_connector_spools(data_dir: &std::path::Path) -> Result<usize> {
-    let staging = data_dir.join("staging");
+    let staging = prepare_connector_staging(data_dir, false)?;
     if !staging.is_dir() {
         return Ok(0);
     }
@@ -1988,7 +2141,7 @@ async fn sync_source_documents(
         });
     }
 
-    let (spool, diagnostics) = run_connector_to_spool(config, source, control)?;
+    let (spool, diagnostics) = run_connector_to_spool(config, source, control).await?;
     let result = async {
         let scope = validate_connector_spool(&spool, source, control)?;
         let reader = std::io::BufReader::new(
@@ -2090,13 +2243,12 @@ fn validate_connector_spool(
     })
 }
 
-fn run_connector_to_spool(
+async fn run_connector_to_spool(
     config: &Config,
     source: &SourceConfig,
     control: &SourceControl<'_>,
 ) -> Result<(PathBuf, PathBuf)> {
-    let staging = config.data_dir.join("staging");
-    std::fs::create_dir_all(&staging)?;
+    let staging = prepare_connector_staging(&config.data_dir, true)?;
     let identifier = uuid::Uuid::new_v4();
     let spool = staging.join(format!("connector-{identifier}.jsonl"));
     let diagnostics = staging.join(format!("connector-{identifier}.stderr"));
@@ -2104,12 +2256,20 @@ fn run_connector_to_spool(
     let stderr = private_file(&diagnostics)?;
     let mut command = configured_connector_command(config, source)?;
     let executable = command.remove(0);
-    let child = ProcessCommand::new(&executable)
+    let mut process = ProcessCommand::new(&executable);
+    process
         .args(&command)
         .envs(&config.environment)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
+        .stderr(Stdio::from(stderr));
+    #[cfg(unix)]
+    if std::env::var_os("CORTANA_DESKTOP_PROCESS_GROUP").is_none() {
+        // Normal CLI/service runs isolate the connector so cancellation can
+        // terminate helpers without touching the caller's process group.
+        process.process_group(0);
+    }
+    let child = process
         .spawn()
         .with_context(|| format!("failed to run connector command {executable}"));
     let mut child = match child {
@@ -2127,8 +2287,7 @@ fn run_connector_to_spool(
     let started = std::time::Instant::now();
     let status = loop {
         if control.cancellation.is_requested() {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_connector(&mut child).await;
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!("connector {} cancelled before reconciliation", source.name);
@@ -2136,8 +2295,7 @@ fn run_connector_to_spool(
         let spool_bytes = std::fs::metadata(&spool).map_or(0, |metadata| metadata.len());
         let diagnostic_bytes = std::fs::metadata(&diagnostics).map_or(0, |metadata| metadata.len());
         if spool_bytes > maximum_spool_bytes || diagnostic_bytes > MAXIMUM_DIAGNOSTIC_BYTES {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_connector(&mut child).await;
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!(
@@ -2149,8 +2307,7 @@ fn run_connector_to_spool(
             break status;
         }
         if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_connector(&mut child).await;
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!(
@@ -2159,7 +2316,7 @@ fn run_connector_to_spool(
                 timeout.as_secs()
             );
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        tokio::time::sleep(Duration::from_millis(100)).await;
     };
     if !status.success() {
         let message = std::fs::read_to_string(&diagnostics).unwrap_or_default();
@@ -2174,6 +2331,72 @@ fn run_connector_to_spool(
     Ok((spool, diagnostics))
 }
 
+async fn terminate_connector(child: &mut tokio::process::Child) {
+    #[cfg(unix)]
+    if let Some(pid) = child.id().filter(|pid| *pid > 0 && *pid <= i32::MAX as u32) {
+        // Normal CLI/service runs make the connector a process-group leader,
+        // so a negative PID terminates helpers spawned by it too. Desktop
+        // source jobs inherit their wrapper's isolated group and are killed
+        // as a unit by the native Desktop cancellation path instead.
+        unsafe {
+            let _ = libc::kill(-(pid as i32), libc::SIGKILL);
+        }
+    }
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+}
+
+fn prepare_connector_staging(data_dir: &std::path::Path, create: bool) -> Result<PathBuf> {
+    reject_symlink_path(data_dir)?;
+    let staging = data_dir.join("staging");
+    reject_symlink_path(&staging)?;
+    if create {
+        std::fs::create_dir_all(&staging)?;
+    }
+    for path in [data_dir, staging.as_path()] {
+        let metadata = match std::fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound && !create => continue,
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("inspect connector staging directory {}", path.display())
+                });
+            }
+        };
+        anyhow::ensure!(
+            metadata.is_dir(),
+            "connector staging path is not a directory: {}",
+            path.display()
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            anyhow::ensure!(
+                metadata.uid() == unsafe { libc::geteuid() },
+                "connector staging path is not owned by the current user: {}",
+                path.display()
+            );
+            if create {
+                std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+            }
+        }
+    }
+    Ok(staging)
+}
+
+fn reject_symlink_path(path: &std::path::Path) -> Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => anyhow::ensure!(
+            !metadata.file_type().is_symlink(),
+            "refusing to use symlinked connector staging path {}",
+            path.display()
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
+}
+
 fn maximum_connector_spool_bytes(limits: &SourceLimits) -> u64 {
     limits.max_bytes.saturating_add(
         u64::try_from(limits.max_documents)
@@ -2185,6 +2408,7 @@ fn maximum_connector_spool_bytes(limits: &SourceLimits) -> u64 {
 fn private_file(path: &std::path::Path) -> Result<std::fs::File> {
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
+    configure_no_follow(&mut options);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
@@ -2194,6 +2418,15 @@ fn private_file(path: &std::path::Path) -> Result<std::fs::File> {
         .open(path)
         .with_context(|| format!("failed to create private spool {}", path.display()))
 }
+
+#[cfg(unix)]
+fn configure_no_follow(options: &mut std::fs::OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt;
+    options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+}
+
+#[cfg(not(unix))]
+fn configure_no_follow(_options: &mut std::fs::OpenOptions) {}
 
 fn configured_connector_command(config: &Config, source: &SourceConfig) -> Result<Vec<String>> {
     let command = if source.kind == "external" {
@@ -2412,12 +2645,49 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        Cli, Command, DEFAULT_CONTEXT_LIMIT, SyncLock, chunk, cleanup_connector_spools,
-        context_bundle, ingest_documents, private_file,
+        Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
+        chunk, cleanup_connector_spools, context_bundle, ensure_recurring_sync_validated,
+        ingest_documents, private_file, run_connector_to_spool,
     };
+    use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
     use cortana::model::Document;
     use cortana::store::Store;
+
+    #[test]
+    fn recurring_sync_requires_current_validation_for_each_enabled_source() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        config.sources.push(SourceConfig {
+            name: "work-code".into(),
+            kind: "filesystem".into(),
+            enabled: true,
+            project: "work".into(),
+            root: Some(directory.path().join("code")),
+            source: Some("work-code".into()),
+            channels: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        });
+
+        let error = ensure_recurring_sync_validated(&config)
+            .expect_err("missing source validation must block recurring sync");
+        assert!(error.to_string().contains("work-code"));
+        assert!(error.to_string().contains("current successful validation"));
+    }
 
     struct BatchRecordingEmbedder {
         maximum: AtomicUsize,
@@ -2506,6 +2776,89 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn connector_staging_rejects_symlinked_directories() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let external = directory.path().join("external");
+        std::fs::create_dir(&external).expect("external staging");
+        symlink(&external, directory.path().join("staging")).expect("staging symlink");
+
+        let error = cleanup_connector_spools(directory.path())
+            .expect_err("connector staging symlink must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("symlinked connector staging path")
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn connector_polling_does_not_block_other_async_tasks() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        config.connectors.timeout_seconds = 2;
+        let source = SourceConfig {
+            name: "slow-external".into(),
+            kind: "external".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: Some(1),
+            max_bytes: Some(1024),
+            max_duration_seconds: Some(2),
+            exclude: Vec::new(),
+            command: vec!["sh".into(), "-c".into(), "sleep 0.2; printf done".into()],
+            acl: Vec::new(),
+        };
+        let cancellation = Cancellation::inert();
+        let control = SourceControl {
+            limits: SourceLimits {
+                max_documents: 1,
+                max_bytes: 1024,
+                max_seconds: 2,
+                document_batch_size: 1,
+                request_concurrency: 1,
+            },
+            started: std::time::Instant::now(),
+            cancellation: &cancellation,
+        };
+        let ticks = Arc::new(AtomicUsize::new(0));
+        let tick_counter = Arc::clone(&ticks);
+        let heartbeat = tokio::spawn(async move {
+            for _ in 0..10 {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                tick_counter.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        let result = run_connector_to_spool(&config, &source, &control).await;
+        heartbeat.abort();
+        cancellation.stop();
+
+        let (spool, diagnostics) = result.expect("connector should finish");
+        let _ = std::fs::remove_file(spool);
+        let _ = std::fs::remove_file(diagnostics);
+        assert!(
+            ticks.load(Ordering::SeqCst) > 0,
+            "connector polling blocked the Tokio runtime"
+        );
+    }
+
     #[tokio::test]
     async fn oversized_documents_respect_embedding_provider_batch_bound() {
         let directory = tempfile::tempdir().expect("temporary directory");
@@ -2568,6 +2921,23 @@ mod tests {
         assert!(SyncLock::acquire(&path).is_err());
         drop(first);
         SyncLock::acquire(&path).expect("lock after release");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn sync_lock_rejects_symlinked_paths() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let target = directory.path().join("outside.lock");
+        let link = directory.path().join("sync.lock");
+        std::fs::write(&target, b"not a lock").expect("target lock");
+        symlink(&target, &link).expect("lock symlink");
+
+        let error = SyncLock::acquire(&link)
+            .err()
+            .expect("sync lock must not follow a symlink");
+        assert!(error.to_string().contains("sync lock"));
     }
 
     #[test]
@@ -2637,6 +3007,25 @@ mod tests {
                 Cli::try_parse_from(["cortana", "context", "query", "--max-tokens", tokens])
                     .expect_err("out-of-range max tokens");
             assert!(error.to_string().contains("is not in 256..=64000"));
+        }
+    }
+
+    #[test]
+    fn migrate_embedding_command_parses_exact_source_and_confirmation() {
+        let cli = Cli::try_parse_from([
+            "cortana",
+            "migrate-embedding",
+            "--from",
+            "legacy:model:16",
+            "--force",
+        ])
+        .expect("embedding migration command");
+        match cli.command {
+            Some(Command::MigrateEmbedding { from, force }) => {
+                assert_eq!(from, "legacy:model:16");
+                assert!(force);
+            }
+            _ => panic!("expected the migrate-embedding subcommand"),
         }
     }
 
