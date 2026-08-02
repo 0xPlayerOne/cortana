@@ -15,6 +15,7 @@ use tokio::{io::AsyncReadExt, process::Command};
 
 const MAX_LOG_BYTES: u64 = 64 * 1024;
 const MAX_JOBS: usize = 10;
+const INSTALL_COMMAND_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 static NEXT_JOB: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, Serialize)]
@@ -235,18 +236,33 @@ async fn run_command(
     let stdout_task = tauri::async_runtime::spawn(read_bounded(stdout));
     let stderr_task = tauri::async_runtime::spawn(read_bounded(stderr));
     let mut cancellation_sent = false;
-    let status = loop {
-        if cancelled.load(Ordering::SeqCst) && !cancellation_sent {
-            cancellation_sent = true;
+    let status = match tokio::time::timeout(INSTALL_COMMAND_TIMEOUT, async {
+        loop {
+            if cancelled.load(Ordering::SeqCst) && !cancellation_sent {
+                cancellation_sent = true;
+                terminate_installer_process(&mut child).await;
+            }
+            if let Some(status) = child
+                .try_wait()
+                .map_err(|error| format!("wait for installer: {error}"))?
+            {
+                break Ok::<_, String>(status);
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    })
+    .await
+    {
+        Ok(result) => result?,
+        Err(_) => {
             terminate_installer_process(&mut child).await;
+            stdout_task.abort();
+            stderr_task.abort();
+            return Err(format!(
+                "installer command timed out after {} seconds",
+                INSTALL_COMMAND_TIMEOUT.as_secs()
+            ));
         }
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|error| format!("wait for installer: {error}"))?
-        {
-            break status;
-        }
-        tokio::time::sleep(Duration::from_millis(200)).await;
     };
     let stdout = stdout_task
         .await
