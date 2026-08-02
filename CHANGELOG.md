@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.19.5](https://github.com/0xPlayerOne/cortana/compare/v0.19.4...v0.19.5) (2026-08-02)
+
+
+### Bug Fixes
+
+* **desktop:** preserve legacy source scopes ([#257](https://github.com/0xPlayerOne/cortana/issues/257)) ([d85277b](https://github.com/0xPlayerOne/cortana/commit/d85277b616d5883ceb8f49dabc32597621d1ccc1))
+* **ingestion:** cap all bounded connector output ([#262](https://github.com/0xPlayerOne/cortana/issues/262)) ([8f26b56](https://github.com/0xPlayerOne/cortana/commit/8f26b5612bce4b89a730273d9d60e8752ff9534f))
+* **ingestion:** propagate bounded connector caps ([#264](https://github.com/0xPlayerOne/cortana/issues/264)) ([1a593b6](https://github.com/0xPlayerOne/cortana/commit/1a593b6524f7d6f5d3a204dff96fcb0a9d4c1d83))
+
+
+### CI
+
+* **desktop:** pin audit workflow actions ([#261](https://github.com/0xPlayerOne/cortana/issues/261)) ([1c299b8](https://github.com/0xPlayerOne/cortana/commit/1c299b8499f814726b49b37bb820326af605c655))
+* **release:** enable optional Apple distribution signing ([#259](https://github.com/0xPlayerOne/cortana/issues/259)) ([85ff287](https://github.com/0xPlayerOne/cortana/commit/85ff287a1f21eca0399c7888720883b0a5b98134))
+
 ## [0.19.4](https://github.com/0xPlayerOne/cortana/compare/v0.19.3...v0.19.4) (2026-08-02)
 
 
