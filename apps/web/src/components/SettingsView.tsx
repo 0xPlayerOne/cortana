@@ -326,6 +326,11 @@ export function SettingsView({
     // Avoid creating a no-op settings audit event or touching secrets when
     // there is no draft to persist.
     if (!settings || !dirty || saving) return
+    const sourceIdentityError = validateSourceIdentityScopes(settings.sources)
+    if (sourceIdentityError) {
+      setError(sourceIdentityError)
+      return
+    }
     setSaving(true)
     setError('')
     try {
@@ -3705,6 +3710,20 @@ function referencedSecretNames(settings: DesktopSettings): Set<string> {
   })
   settings.auth_principals.forEach((principal) => names.add(principal.token_env))
   return names
+}
+
+function validateSourceIdentityScopes(sources: readonly SourceSettings[]): string | null {
+  const seen = new Map<string, string>()
+  for (const source of sources) {
+    const canonical = source.source?.trim() || source.name.trim()
+    const scope = `${source.project}\u0000${canonical}`
+    const previous = seen.get(scope)
+    if (previous) {
+      return `Source identifier \`${canonical}\` is duplicated in workspace \`${source.project}\` (\`${previous}\` and \`${source.name}\`). Choose a unique source label before saving.`
+    }
+    seen.set(scope, source.name)
+  }
+  return null
 }
 
 type ProviderValue = DesktopSettings['embedding'] | DesktopSettings['query']
