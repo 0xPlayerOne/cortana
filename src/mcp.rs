@@ -18,6 +18,8 @@ use crate::{
     store::Store,
 };
 
+const MAX_SCOPE_BYTES: usize = 256;
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchParams {
     query: String,
@@ -129,6 +131,17 @@ impl BrainServer {
             );
             return "authorization error: query scope required".into();
         }
+        if let Err(error) = validate_scopes(params.project.as_deref(), params.source.as_deref()) {
+            self.audit(
+                "mcp.search",
+                params.project.as_deref(),
+                params.source.as_deref(),
+                "invalid",
+                None,
+                started,
+            );
+            return format!("invalid request: {error}");
+        }
         match retrieval::retrieve_scoped(
             &self.store,
             &self.embedder,
@@ -180,6 +193,17 @@ impl BrainServer {
                 started,
             );
             return "authorization error: query scope required".into();
+        }
+        if let Err(error) = validate_scopes(params.project.as_deref(), params.source.as_deref()) {
+            self.audit(
+                "mcp.context",
+                params.project.as_deref(),
+                params.source.as_deref(),
+                "invalid",
+                None,
+                started,
+            );
+            return format!("invalid request: {error}");
         }
         match retrieval::retrieve_scoped(
             &self.store,
@@ -283,6 +307,17 @@ impl BrainServer {
             );
             return "authorization error: query scope required".into();
         }
+        if let Err(error) = validate_scopes(params.project.as_deref(), None) {
+            self.audit(
+                action,
+                params.project.as_deref(),
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return format!("invalid request: {error}");
+        }
         match retrieval::retrieve_sources_scoped(
             &self.store,
             &self.embedder,
@@ -363,6 +398,15 @@ fn normalized_sources(sources: Vec<String>) -> Vec<String> {
     sources.dedup();
     sources.truncate(32);
     sources
+}
+
+fn validate_scopes(project: Option<&str>, source: Option<&str>) -> Result<(), String> {
+    for (name, value) in [("project", project), ("source", source)] {
+        if value.is_some_and(|value| value.is_empty() || value.len() > MAX_SCOPE_BYTES) {
+            return Err(format!("{name} must contain 1 to {MAX_SCOPE_BYTES} bytes"));
+        }
+    }
+    Ok(())
 }
 
 pub async fn serve(server: BrainServer) -> anyhow::Result<()> {
@@ -539,5 +583,12 @@ mod tests {
         assert_eq!(status["configured_sources"][0]["enabled"], false);
         assert!(status["configured_sources"][0].get("token").is_none());
         assert!(status.get("sources").is_some());
+    }
+
+    #[test]
+    fn mcp_scope_filters_are_explicitly_bounded() {
+        assert!(validate_scopes(Some("work"), None).is_ok());
+        assert!(validate_scopes(Some(""), None).is_err());
+        assert!(validate_scopes(None, Some(&"x".repeat(MAX_SCOPE_BYTES + 1))).is_err());
     }
 }
