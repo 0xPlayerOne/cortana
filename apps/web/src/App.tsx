@@ -162,6 +162,7 @@ export function App() {
   const documentSelectRequestRef = useRef(0)
   const graphRequestRef = useRef(0)
   const statusRequestRef = useRef(0)
+  const statusRefreshRef = useRef<(() => void) | null>(null)
   const documentPageLoadingRef = useRef(false)
   const sourceWidthRef = useRef(sourceWidth)
   const contextWidthRef = useRef(contextWidth)
@@ -261,6 +262,7 @@ export function App() {
         })
     }
 
+    statusRefreshRef.current = refresh
     refresh()
     const timer = window.setInterval(refresh, STATUS_REFRESH_MS)
     return () => {
@@ -268,6 +270,7 @@ export function App() {
       window.clearInterval(timer)
       controller?.abort()
       statusRequestRef.current += 1
+      if (statusRefreshRef.current === refresh) statusRefreshRef.current = null
     }
   }, [pageVisible])
 
@@ -1101,6 +1104,10 @@ export function App() {
       })
   }
 
+  const retryStatus = useCallback(() => {
+    statusRefreshRef.current?.()
+  }, [])
+
   function openGraph() {
     if (!canLeaveSettings()) return
     setView('knowledge')
@@ -1358,6 +1365,7 @@ export function App() {
             documentsError={documentsError}
             hasMoreDocuments={Boolean(documentCursor)}
             statusError={statusError}
+            onRetryStatus={retryStatus}
             sourceJobError={sourceJobsError}
             onSelect={chooseSource}
             onSelectWorkspace={chooseWorkspace}

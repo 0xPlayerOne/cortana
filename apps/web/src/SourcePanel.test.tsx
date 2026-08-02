@@ -21,7 +21,12 @@ const workspace: WorkspaceSettings = {
   color: '#5A9BD5',
 }
 
-function renderPanel(statusValue: BrainStatus | null, statusError: string, sourceJobError = '') {
+function renderPanel(
+  statusValue: BrainStatus | null,
+  statusError: string,
+  sourceJobError = '',
+  onRetryStatus?: () => void
+) {
   const docs: BrainDocumentSummary[] = []
   const noJobs: DesktopSourceJob[] = []
   render(
@@ -29,6 +34,7 @@ function renderPanel(statusValue: BrainStatus | null, statusError: string, sourc
       open={false}
       status={statusValue}
       statusError={statusError}
+      onRetryStatus={onRetryStatus}
       sourceJobError={sourceJobError}
       workspace=""
       workspaces={[workspace]}
@@ -61,6 +67,15 @@ test('SourcePanel surfaces status errors instead of empty-source phantom state',
   expect(screen.getByText('Status unavailable')).toBeTruthy()
   expect(screen.getByText('Ingestion status unavailable')).toBeTruthy()
   expect(screen.queryByText('No indexed sources yet.')).toBeNull()
+})
+
+test('SourcePanel exposes a bounded retry action for status errors', () => {
+  let retries = 0
+  renderPanel(null, 'Status unavailable', '', () => {
+    retries += 1
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Retry status' }))
+  expect(retries).toBe(1)
 })
 
 test('SourcePanel keeps the last known source index visible during a refresh failure', () => {

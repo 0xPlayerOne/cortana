@@ -28,6 +28,7 @@ export function SourcePanel({
   open,
   status,
   statusError,
+  onRetryStatus,
   sourceJobError = '',
   workspace,
   workspaces,
@@ -58,6 +59,7 @@ export function SourcePanel({
   open: boolean
   status: BrainStatus | null
   statusError: string
+  onRetryStatus?: () => void
   sourceJobError?: string
   workspace: string
   workspaces: WorkspaceSettings[]
@@ -189,7 +191,12 @@ export function SourcePanel({
       )}
       {statusError && status && (
         <p className="document-list-error" role="status">
-          {statusError} Showing the last known source index.
+          {statusError} Showing the last known source index.{' '}
+          {onRetryStatus && (
+            <button type="button" className="link-button" onClick={onRetryStatus}>
+              Retry status
+            </button>
+          )}
         </p>
       )}
       {statusLoading ? (
@@ -198,7 +205,12 @@ export function SourcePanel({
         </p>
       ) : statusError && !status ? (
         <p className="document-list-error" role="status">
-          {statusError}
+          {statusError}{' '}
+          {onRetryStatus && (
+            <button type="button" className="link-button" onClick={onRetryStatus}>
+              Retry status
+            </button>
+          )}
         </p>
       ) : !projects.length ? (
         <div className="source-empty">
