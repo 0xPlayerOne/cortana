@@ -24,6 +24,12 @@ use tokio::process::Command as ProcessCommand;
 const EMBEDDING_REQUEST_SIZE: usize = 8;
 // The CLI context command mirrors the HTTP/MCP context contract defaults.
 const DEFAULT_CONTEXT_LIMIT: usize = 10;
+// A plain `validate-source` call must remain a read-only preflight. Callers
+// that need coverage for a larger initial or recurring sync must opt into the
+// matching explicit limits instead of inheriting the source's write budget.
+const VALIDATION_MAX_DOCUMENTS: usize = 25;
+const VALIDATION_MAX_BYTES: u64 = 5 * 1024 * 1024;
+const VALIDATION_MAX_SECONDS: u64 = 60;
 
 #[derive(Debug, Parser)]
 #[command(name = "cortana", version, about = "Agent-native second brain")]
@@ -176,13 +182,23 @@ enum Command {
         require_validation: bool,
     },
     /// Fetch and validate one configured source without embedding or indexing it.
+    /// Omitting overrides uses the safe 25-document, 5 MiB, 60-second preflight bounds.
     ValidateSource {
         source: String,
-        #[arg(long, help = "Override the document budget for this validation")]
+        #[arg(
+            long,
+            help = "Override the document budget for this validation (default: 25)"
+        )]
         max_documents: Option<usize>,
-        #[arg(long, help = "Override the content-byte budget for this validation")]
+        #[arg(
+            long,
+            help = "Override the content-byte budget for this validation (default: 5242880)"
+        )]
         max_bytes: Option<u64>,
-        #[arg(long, help = "Override the wall-clock budget for this validation")]
+        #[arg(
+            long,
+            help = "Override the wall-clock budget for this validation (default: 60 seconds)"
+        )]
         max_seconds: Option<u64>,
     },
     /// Authorize a configured Google source in the system browser without reading source data.
@@ -458,11 +474,7 @@ async fn main() -> Result<()> {
         return validate_configured_source(
             &config,
             source,
-            SyncOverrides {
-                max_documents: *max_documents,
-                max_bytes: *max_bytes,
-                max_seconds: *max_seconds,
-            },
+            validation_overrides(*max_documents, *max_bytes, *max_seconds),
         )
         .await;
     }
@@ -873,6 +885,18 @@ struct SyncOverrides {
     max_documents: Option<usize>,
     max_bytes: Option<u64>,
     max_seconds: Option<u64>,
+}
+
+fn validation_overrides(
+    max_documents: Option<usize>,
+    max_bytes: Option<u64>,
+    max_seconds: Option<u64>,
+) -> SyncOverrides {
+    SyncOverrides {
+        max_documents: Some(max_documents.unwrap_or(VALIDATION_MAX_DOCUMENTS)),
+        max_bytes: Some(max_bytes.unwrap_or(VALIDATION_MAX_BYTES)),
+        max_seconds: Some(max_seconds.unwrap_or(VALIDATION_MAX_SECONDS)),
+    }
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -2647,12 +2671,25 @@ mod tests {
     use super::{
         Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
         chunk, cleanup_connector_spools, context_bundle, ensure_recurring_sync_validated,
-        ingest_documents, private_file, run_connector_to_spool,
+        ingest_documents, private_file, run_connector_to_spool, validation_overrides,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
     use cortana::model::Document;
     use cortana::store::Store;
+
+    #[test]
+    fn validate_source_defaults_to_safe_read_only_bounds() {
+        let defaults = validation_overrides(None, None, None);
+        assert_eq!(defaults.max_documents, Some(25));
+        assert_eq!(defaults.max_bytes, Some(5 * 1024 * 1024));
+        assert_eq!(defaults.max_seconds, Some(60));
+
+        let explicit = validation_overrides(Some(100), Some(64 * 1024 * 1024), Some(900));
+        assert_eq!(explicit.max_documents, Some(100));
+        assert_eq!(explicit.max_bytes, Some(64 * 1024 * 1024));
+        assert_eq!(explicit.max_seconds, Some(900));
+    }
 
     #[test]
     fn recurring_sync_requires_current_validation_for_each_enabled_source() {
