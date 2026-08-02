@@ -315,7 +315,20 @@ fn is_google_source(kind: &str) -> bool {
 }
 
 fn regular_file_ready(path: &std::path::Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| {
+        if !metadata.file_type().is_file() {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            return metadata.permissions().mode() & 0o077 == 0;
+        }
+        #[cfg(not(unix))]
+        {
+            true
+        }
+    })
 }
 
 fn google_token_env_ready(config: &Config, name: &str) -> bool {
@@ -1202,6 +1215,16 @@ mod tests {
         (directory, AppState::new(store, embedder, token))
     }
 
+    fn write_private_fixture(path: &std::path::Path, body: &str) {
+        std::fs::write(path, body).expect("write fixture");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                .expect("secure fixture");
+        }
+    }
+
     fn google_source(token: Option<std::path::PathBuf>) -> SourceConfig {
         SourceConfig {
             name: "personal-gmail".into(),
@@ -1230,7 +1253,7 @@ mod tests {
     fn google_token_file_is_complete_authorization_without_oauth_client() {
         let directory = tempdir().expect("temporary directory");
         let token = directory.path().join("google-token.json");
-        std::fs::write(&token, "{}\n").expect("token fixture");
+        write_private_fixture(&token, "{}\n");
         let summary = source_authorization_summary(&Config::default(), &google_source(Some(token)));
 
         assert!(summary.authorized);
@@ -1262,7 +1285,7 @@ mod tests {
         );
         assert!(!source_authorization_summary(&config, &source).authorized);
 
-        std::fs::write(&token, "{}\n").expect("token fixture");
+        write_private_fixture(&token, "{}\n");
         config
             .environment
             .insert("GOOGLE_TOKEN_PATH".into(), token.display().to_string());
@@ -1275,7 +1298,7 @@ mod tests {
     fn google_oauth_client_can_authorize_without_existing_token() {
         let directory = tempdir().expect("temporary directory");
         let client = directory.path().join("oauth-client.json");
-        std::fs::write(&client, "{}\n").expect("OAuth client fixture");
+        write_private_fixture(&client, "{}\n");
         let mut source = google_source(None);
         source.oauth_client = Some(client);
         let summary = source_authorization_summary(&Config::default(), &source);
@@ -1534,12 +1557,11 @@ mod tests {
         let oauth_client_path = directory.path().join("google-oauth-client.json");
         let incomplete_oauth_client_path =
             directory.path().join("missing-google-oauth-client.json");
-        std::fs::write(&token_path, "{{\"refresh_token\":\"token\"}}").expect("write token file");
-        std::fs::write(
+        write_private_fixture(&token_path, "{\"refresh_token\":\"token\"}");
+        write_private_fixture(
             &oauth_client_path,
             "{\"installed\":{\"client_id\":\"id\",\"client_secret\":\"secret\",\"auth_uri\":\"https://example.com/auth\",\"token_uri\":\"https://example.com/token\",\"auth_provider_x509_cert_url\":\"https://example.com/x509\",\"redirect_uris\":[\"http://127.0.0.1\"]}}",
-        )
-        .expect("write google client file");
+        );
 
         let mut config: Config = toml::from_str(&format!(
             r##"
