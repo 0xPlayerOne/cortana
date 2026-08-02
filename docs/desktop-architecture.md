@@ -161,7 +161,9 @@ Linux uses per-user systemd units and timers without requiring root. It accepts 
 `embedding`, `server`, `sync`, and `backup` IDs with `start`, `stop`, or `restart`.
 Every action requires an explicit confirmation and is audited without command output or secrets.
 An uninstalled sync job remains uninstalled and cannot be enabled from this panel. Desktop
-autostart is managed separately and does not change runtime-service or ingestion state.
+autostart is managed separately and does not change runtime-service or ingestion state. Service
+commands run in an isolated process group on Unix with a bounded timeout, so a stalled install or
+action also terminates bundled runtime helpers instead of leaving an orphaned process behind.
 
 Start All, Stop All, and Restart All are narrower than the individual controls: they operate only
 on `embedding` and `server`, in dependency-safe order. They always exclude `sync` and `backup`, so
