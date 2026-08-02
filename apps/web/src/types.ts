@@ -85,6 +85,12 @@ export type SourceSyncSummary = {
   budget_seconds: number
 }
 
+export type SourceAuthorizationSummary = {
+  method: 'none' | 'token' | 'google_oauth'
+  setup_required: boolean
+  authorized: boolean
+}
+
 export type ConfiguredSourceSummary = {
   name: string
   source: string
@@ -95,6 +101,7 @@ export type ConfiguredSourceSummary = {
   max_documents: number
   max_bytes: number
   max_duration_seconds: number
+  authorization?: SourceAuthorizationSummary | null
   validation?: {
     source: string
     project: string
