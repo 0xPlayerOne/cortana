@@ -1159,7 +1159,7 @@ test('running source jobs stay visible in the shell after leaving the settings v
     fireEvent.click(activeJobs)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Inbox' })).toBeTruthy())
     expect(screen.getByRole('heading', { name: 'Active source jobs' })).toBeTruthy()
-    const cancel = screen.getByRole('button', { name: 'Cancel work-code validation' })
+    const cancel = screen.getByRole('button', { name: 'Cancel work work-code validation' })
     fireEvent.click(cancel)
     await waitFor(() => expect((cancel as HTMLButtonElement).disabled).toBe(true))
   } finally {

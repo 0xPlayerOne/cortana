@@ -153,7 +153,7 @@ export function SourcePanel({
                 <button
                   type="button"
                   className="source-job-cancel"
-                  aria-label={`Cancel ${job.source} ${job.operation}`}
+                  aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
                   disabled={job.status === 'cancelling'}
                   onClick={() => onCancelSourceJob(job.id)}
                 >

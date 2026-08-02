@@ -199,6 +199,6 @@ test('active source jobs expose a cancellation control in the source panel', () 
       jobs={[job]}
     />
   )
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel work-code validation' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel work work-code validation' }))
   expect(cancelled).toBe('source-1-1')
 })

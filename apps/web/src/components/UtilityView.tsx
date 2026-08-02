@@ -231,7 +231,7 @@ function InboxView({
                     type="button"
                     className="utility-cancel"
                     disabled={job.status === 'cancelling'}
-                    aria-label={`Cancel ${job.source} ${job.operation}`}
+                    aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
                     onClick={() => onCancelSourceJob(job.id)}
                   >
                     <CircleStop size={14} /> Cancel

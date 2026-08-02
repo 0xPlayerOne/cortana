@@ -391,7 +391,9 @@ test('Inbox keeps a cancelling source job visibly in progress until it exits', (
 
   expect(screen.getByText('Cancelling…')).toBeTruthy()
   expect(
-    screen.getByRole('button', { name: 'Cancel work-code trial-sync' }).hasAttribute('disabled')
+    screen
+      .getByRole('button', { name: 'Cancel work work-code trial-sync' })
+      .hasAttribute('disabled')
   ).toBe(true)
 })
 
