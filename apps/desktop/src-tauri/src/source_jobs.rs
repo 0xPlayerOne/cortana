@@ -993,14 +993,8 @@ mod tests {
 
         let snapshots = state.snapshots().expect("snapshots");
         assert_eq!(snapshots.len(), MAX_JOBS);
-        assert_eq!(
-            snapshots.first().map(|item| item.id.as_str()),
-            Some("source-22")
-        );
-        assert_eq!(
-            snapshots.last().map(|item| item.id.as_str()),
-            Some("source-3")
-        );
+        assert_eq!(snapshots.first().map(|item| item.id.as_str()), Some("source-22"));
+        assert_eq!(snapshots.last().map(|item| item.id.as_str()), Some("source-3"));
     }
 
     #[test]
