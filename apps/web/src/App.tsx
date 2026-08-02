@@ -174,7 +174,29 @@ export function App() {
       setPageVisible(document.visibilityState !== 'hidden')
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    let disposed = false
+    let unlistenFocus: (() => void) | undefined
+    if (isDesktopApp && '__TAURI_INTERNALS__' in window) {
+      void import('@tauri-apps/api/window')
+        .then(({ getCurrentWindow }) =>
+          getCurrentWindow().onFocusChanged(({ payload }) => {
+            if (!disposed) setPageVisible(payload)
+          })
+        )
+        .then((unlisten) => {
+          if (disposed) unlisten()
+          else unlistenFocus = unlisten
+        })
+        .catch(() => {
+          // Browser visibility remains the fallback when a native focus
+          // listener is unavailable during early Desktop startup.
+        })
+    }
+    return () => {
+      disposed = true
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      unlistenFocus?.()
+    }
   }, [])
 
   const runReadinessScan = useCallback(async (): Promise<DesktopReadiness> => {
