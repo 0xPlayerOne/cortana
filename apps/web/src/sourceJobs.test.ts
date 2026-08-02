@@ -125,6 +125,17 @@ test('mergeJobSnapshots refreshes remembered ids without accepting stale recover
   expect(mergeJobSnapshots([newer], [recovered])[0]).toEqual(newer)
 })
 
+test('mergeJobSnapshots keeps newer remembered jobs ahead of older recovery history', () => {
+  const newer = jobOf('job-2', 'succeeded', {
+    started_at_unix_seconds: 1785000200,
+  })
+  const older = jobOf('job-1', 'failed', {
+    started_at_unix_seconds: 1785000100,
+  })
+
+  expect(mergeJobSnapshots([newer], [older]).map((job) => job.id)).toEqual(['job-2', 'job-1'])
+})
+
 test('upsertJob keeps the snapshot list bounded to the newest entries', () => {
   let jobs: DesktopSourceJob[] = []
   for (let index = 0; index < MAX_SOURCE_JOB_SNAPSHOTS + 3; index += 1) {

@@ -40,7 +40,25 @@ export function mergeJobSnapshots(
   // Native snapshots are newest-first. Apply them oldest-first so the final
   // list keeps the same newest-first ordering as upsertJob while still using
   // its stale-poll protection for ids already remembered by the shell.
-  return [...recovered].reverse().reduce(upsertJob, jobs)
+  const merged = [...recovered].reverse().reduce(upsertJob, jobs)
+  return merged.sort(compareJobRecency).slice(0, MAX_SOURCE_JOB_SNAPSHOTS)
+}
+
+function compareJobRecency(left: DesktopSourceJob, right: DesktopSourceJob): number {
+  if (left.started_at_unix_seconds !== right.started_at_unix_seconds) {
+    return right.started_at_unix_seconds - left.started_at_unix_seconds
+  }
+  const leftSequence = jobSequence(left.id)
+  const rightSequence = jobSequence(right.id)
+  if (leftSequence !== null && rightSequence !== null && leftSequence !== rightSequence) {
+    return rightSequence - leftSequence
+  }
+  return 0
+}
+
+function jobSequence(id: string): number | null {
+  const value = id.slice(id.lastIndexOf('-') + 1)
+  return /^\d+$/.test(value) ? Number(value) : null
 }
 
 function snapshotRegresses(existing: DesktopSourceJob, next: DesktopSourceJob): boolean {
