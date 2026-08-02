@@ -338,6 +338,39 @@ test('a shared active source job locks source actions until it finishes', async 
   expect((screen.getByLabelText('Workspace') as HTMLSelectElement).disabled).toBe(true)
 })
 
+test('standalone source polling pauses while Settings is backgrounded', async () => {
+  const originalConfirm = window.confirm
+  const visibilityDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+  const setVisibility = (value: 'hidden' | 'visible') => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value,
+    })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+  window.confirm = () => true
+  state.runningJob = jobFor('small', 'running')
+  try {
+    render(
+      <SettingsView onSaved={() => {}} initialSection="sources" desktopSettings={state.settings} />
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Validate' })).toBeTruthy())
+
+    act(() => setVisibility('hidden'))
+    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
+    await waitFor(() => expect(state.validationCalls).toHaveLength(1))
+    await new Promise((resolve) => setTimeout(resolve, 800))
+    expect(state.pollCount).toBe(0)
+
+    act(() => setVisibility('visible'))
+    await waitFor(() => expect(state.pollCount).toBeGreaterThan(0), { timeout: 1_500 })
+  } finally {
+    window.confirm = originalConfirm
+    if (visibilityDescriptor)
+      Object.defineProperty(document, 'visibilityState', visibilityDescriptor)
+  }
+})
+
 test('an active source job locks only that source configuration', async () => {
   const otherSource = {
     ...workSource,
