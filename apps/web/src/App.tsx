@@ -1047,6 +1047,25 @@ export function App() {
             setSettingsDirty(false)
             setHindsightStatus(null)
             setHonchoStatus(null)
+            // A settings save can change the configured embedding/runtime
+            // services. Refresh the shell-owned snapshots immediately rather
+            // than waiting for the next 15-second health tick.
+            void getDesktopServices()
+              .then((nextServices) => {
+                setDesktopServices(nextServices)
+                setDesktopServicesError('')
+              })
+              .catch((caught: unknown) => {
+                setDesktopServicesError(
+                  caught instanceof Error ? caught.message : 'Service status is unavailable'
+                )
+              })
+            void getDesktopInfo()
+              .then(setDesktopInfo)
+              .catch(() => {
+                // Keep the previous metadata snapshot when the refresh is
+                // unavailable; the Services panel can retry explicitly.
+              })
             void getStatus()
               .then((nextStatus) => {
                 setStatus(nextStatus)

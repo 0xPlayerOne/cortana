@@ -713,6 +713,23 @@ test('updates settings reuses the shell updater snapshot without a duplicate rea
   expect(state.getDesktopUpdateCalls).toBe(1)
 })
 
+test('settings save refreshes shell service metadata immediately', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+  await waitFor(() => expect(state.getDesktopServicesCalls).toBe(1))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+  fireEvent.change(screen.getAllByLabelText('Display name')[0], {
+    target: { value: 'Work settings' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+  await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
+  await waitFor(() => expect(state.getDesktopServicesCalls).toBe(2))
+})
+
 test('service activity survives leaving Settings while a native action is running', async () => {
   const originalConfirm = window.confirm
   const originalAction = state.serviceAction
