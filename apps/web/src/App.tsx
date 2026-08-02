@@ -304,21 +304,6 @@ export function App() {
     [activeQuery, evidence]
   )
 
-  useEffect(() => {
-    const refresh = () => {
-      void getStatus()
-        .then((next) => {
-          setStatus(next)
-          setStatusError('')
-        })
-        .catch((caught: unknown) => {
-          setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
-        })
-    }
-    const interval = window.setInterval(refresh, 15_000)
-    return () => window.clearInterval(interval)
-  }, [])
-
   function isAbort(caught: unknown) {
     return caught instanceof DOMException
       ? caught.name === 'AbortError'
