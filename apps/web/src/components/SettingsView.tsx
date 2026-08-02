@@ -99,6 +99,29 @@ type Section =
   | 'ingestion'
   | 'advanced'
 
+function useDesktopForeground(): boolean {
+  const [foreground, setForeground] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
+  )
+
+  useEffect(() => {
+    const markVisible = () => setForeground(document.visibilityState !== 'hidden')
+    const markFocused = () => setForeground(true)
+    const markBlurred = () => setForeground(false)
+
+    window.addEventListener('focus', markFocused)
+    window.addEventListener('blur', markBlurred)
+    document.addEventListener('visibilitychange', markVisible)
+    return () => {
+      window.removeEventListener('focus', markFocused)
+      window.removeEventListener('blur', markBlurred)
+      document.removeEventListener('visibilitychange', markVisible)
+    }
+  }, [])
+
+  return foreground
+}
+
 export function SettingsView({
   desktopSettings: externalSettings,
   onSaved,
@@ -637,6 +660,7 @@ function ServicesSection({
   onServiceActivity?: (activity: DesktopServiceActivity | null) => void
   onRestarted?: () => void
 }) {
+  const foreground = useDesktopForeground()
   const [localReport, setLocalReport] = useState<DesktopServiceReport | null>(null)
   const report = externalServices === undefined ? localReport : externalServices
   const setReport = onServices ?? setLocalReport
@@ -692,14 +716,19 @@ function ServicesSection({
   }
 
   useEffect(() => {
-    if (externalServices !== undefined) return
+    mountedRef.current = true
+    if (externalServices !== undefined || !foreground) {
+      return () => {
+        mountedRef.current = false
+      }
+    }
     void refresh()
     const timer = window.setInterval(() => void refresh(), 15_000)
     return () => {
       mountedRef.current = false
       window.clearInterval(timer)
     }
-  }, [externalServices])
+  }, [externalServices, foreground])
 
   useEffect(() => {
     let active = true
@@ -1185,6 +1214,7 @@ function UpdatesSection({
   desktopUpdate?: DesktopUpdate | null
   onDesktopUpdate?: (update: DesktopUpdate) => void
 }) {
+  const foreground = useDesktopForeground()
   const [localUpdate, setLocalUpdate] = useState<DesktopUpdate | null>(null)
   const update = externalDesktopUpdate === undefined ? localUpdate : externalDesktopUpdate
   const setUpdate = onDesktopUpdate ?? setLocalUpdate
@@ -1193,16 +1223,18 @@ function UpdatesSection({
   const pollInFlightRef = useRef(false)
 
   useEffect(() => {
-    if (externalDesktopUpdate !== undefined && externalDesktopUpdate !== null) return
+    if ((externalDesktopUpdate !== undefined && externalDesktopUpdate !== null) || !foreground) {
+      return
+    }
     void getDesktopUpdate()
       .then(setUpdate)
       .catch((caught: unknown) => {
         setError(caught instanceof Error ? caught.message : 'Updater status unavailable')
       })
-  }, [externalDesktopUpdate, setUpdate])
+  }, [externalDesktopUpdate, foreground, setUpdate])
 
   useEffect(() => {
-    if (externalDesktopUpdate !== undefined || busy !== 'install') return
+    if (externalDesktopUpdate !== undefined || busy !== 'install' || !foreground) return
     const poll = () => {
       if (pollInFlightRef.current) return
       pollInFlightRef.current = true
@@ -1215,7 +1247,7 @@ function UpdatesSection({
     }
     const timer = window.setInterval(poll, 400)
     return () => window.clearInterval(timer)
-  }, [busy, externalDesktopUpdate])
+  }, [busy, externalDesktopUpdate, foreground])
 
   const check = async () => {
     setBusy('check')
@@ -1990,6 +2022,7 @@ function ReadinessSection({
   onReadinessScan?: () => Promise<DesktopReadiness>
   pollInstaller?: boolean
 }) {
+  const foreground = useDesktopForeground()
   const [scanning, setScanning] = useState(false)
   const [migratingGeneration, setMigratingGeneration] = useState(false)
   const [error, setError] = useState('')
@@ -1997,7 +2030,9 @@ function ReadinessSection({
   const autoScanAttemptedRef = useRef(false)
 
   useEffect(() => {
-    if (!pollInstaller || !job || !['running', 'cancelling'].includes(job.status)) return
+    if (!pollInstaller || !foreground || !job || !['running', 'cancelling'].includes(job.status)) {
+      return
+    }
     let active = true
     const timer = window.setTimeout(() => {
       void getDesktopInstaller(job.id)
@@ -2034,7 +2069,7 @@ function ReadinessSection({
       active = false
       window.clearTimeout(timer)
     }
-  }, [job, onJob, onReadinessScan, onResult, pollInstaller])
+  }, [foreground, job, onJob, onReadinessScan, onResult, pollInstaller])
 
   const scan = async () => {
     setScanning(true)
@@ -2471,6 +2506,7 @@ function SourcesSection({
   } | null>(null)
   const validationPlanKey = useRef('')
   const sharedJobIds = useRef(new Set<string>())
+  const foreground = useDesktopForeground()
 
   // In the full Desktop shell, App owns one poller for the source-job list so
   // SourcePanel, the tray/status bar, and Settings all observe the same
@@ -2498,7 +2534,7 @@ function SourcesSection({
   }, [job, sourceJobs])
 
   useEffect(() => {
-    if (sourceJobs) return
+    if (sourceJobs || !foreground) return
     if (!job || !['running', 'cancelling'].includes(job.status)) return
     let active = true
     const timer = window.setTimeout(() => {
@@ -2517,7 +2553,7 @@ function SourcesSection({
       active = false
       window.clearTimeout(timer)
     }
-  }, [job, initialSync, onJob])
+  }, [foreground, job, initialSync, onJob])
   const activeJob =
     (job && ['running', 'cancelling'].includes(job.status) ? job : undefined) ??
     sourceJobs?.find((candidate) => ['running', 'cancelling'].includes(candidate.status))
