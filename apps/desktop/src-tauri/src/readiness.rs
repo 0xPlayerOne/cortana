@@ -414,6 +414,18 @@ fn executable_search_paths() -> Vec<PathBuf> {
             }
         }
     }
+    // GUI-launched macOS processes often do not inherit the shell's Homebrew
+    // path. Include the conventional prefixes so readiness and installers
+    // work consistently from Finder, the Dock, and a terminal.
+    #[cfg(unix)]
+    for path in [
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/opt/homebrew/bin"),
+    ] {
+        if !paths.contains(&path) {
+            paths.push(path);
+        }
+    }
     paths
 }
 

@@ -286,7 +286,7 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
     match (tool, std::env::consts::OS) {
         ("uv", "macos") => Ok(CommandPlan {
             commands: vec![CommandSpec {
-                program: "brew".into(),
+                program: executable_or_name("brew"),
                 args: vec!["install".into(), "uv".into()],
             }],
             summary: "Install uv from Homebrew core".into(),
@@ -294,7 +294,7 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
         }),
         ("uv", "windows") => Ok(CommandPlan {
             commands: vec![CommandSpec {
-                program: "winget".into(),
+                program: executable_or_name("winget"),
                 args: vec!["install".into(), "--id=astral-sh.uv".into(), "-e".into()],
             }],
             summary: "Install uv with WinGet".into(),
@@ -302,7 +302,7 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
         }),
         ("uv", "linux") => Ok(CommandPlan {
             commands: vec![CommandSpec {
-                program: "sh".into(),
+                program: executable_or_name("sh"),
                 args: vec![
                     "-c".into(),
                     "curl --proto '=https' --tlsv1.2 -LsSf https://astral.sh/uv/install.sh | sh".into(),
@@ -313,7 +313,7 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
         }),
         ("python", _) => Ok(CommandPlan {
             commands: vec![CommandSpec {
-                program: "uv".into(),
+                program: executable_or_name("uv"),
                 args: vec!["python".into(), "install".into(), "3.11".into()],
             }],
             summary: "Install an isolated Python 3.11 runtime with uv".into(),
@@ -326,6 +326,10 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
         ),
         _ => Err("that tool has no supported installer".into()),
     }
+}
+
+fn executable_or_name(name: &str) -> PathBuf {
+    crate::readiness::find_executable(name).unwrap_or_else(|| PathBuf::from(name))
 }
 
 fn connector_plan(app: Option<&AppHandle>) -> Result<CommandPlan, String> {
