@@ -15,8 +15,11 @@ use serde_json::Value;
 use tauri::AppHandle;
 use tauri_plugin_shell::{
     ShellExt,
-    process::{CommandChild, CommandEvent, TerminatedPayload},
+    process::{CommandChild, CommandEvent},
 };
+
+#[cfg(test)]
+use tauri_plugin_shell::process::TerminatedPayload;
 
 use crate::settings;
 

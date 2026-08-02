@@ -804,7 +804,10 @@ fn validate_document_scope(name: &str, value: Option<&str>) -> Result<(), (Statu
 }
 
 fn validate_document_query(value: Option<&str>) -> Result<(), (StatusCode, String)> {
-    if value.is_some_and(|value| value.is_empty() || value.len() > MAX_DOCUMENT_QUERY_LENGTH) {
+    if value.is_some_and(|value| {
+        let value = value.trim();
+        value.is_empty() || value.len() > MAX_DOCUMENT_QUERY_LENGTH
+    }) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("query must contain 1 to {MAX_DOCUMENT_QUERY_LENGTH} bytes"),
@@ -2010,6 +2013,18 @@ mod tests {
             filtered_value["documents"][0]["source_id"],
             serde_json::json!("note-1")
         );
+
+        let blank_filter = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/documents?project=demo&query=%20%20&limit=10")
+                    .body(Body::empty())
+                    .expect("blank filter request"),
+            )
+            .await
+            .expect("blank filter response");
+        assert_eq!(blank_filter.status(), StatusCode::BAD_REQUEST);
 
         let graph = app
             .clone()
