@@ -1292,8 +1292,15 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
         return Err("data directory must be an absolute non-root path".into());
     }
     update.runtime.data_dir = data_path.display().to_string();
+    let referenced_secrets = update_secret_names(update);
     for secret in &update.secrets {
         validate_env_name(&secret.name)?;
+        if !referenced_secrets.contains(&secret.name) {
+            return Err(format!(
+                "secret `{}` is not referenced by the saved settings",
+                secret.name
+            ));
+        }
         if secret.clear && secret.value.is_some() {
             return Err(format!(
                 "secret `{}` cannot be set and cleared together",
@@ -2868,6 +2875,14 @@ mod tests {
 
         let mut update = valid_update(temp.path());
         update.secrets[0].value = Some("secret\nINJECTED=yes".into());
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.secrets.push(SecretUpdate {
+            name: "CORTANA_UNUSED_TOKEN".into(),
+            value: Some("must-not-be-written".into()),
+            clear: false,
+        });
         assert!(validate_update(&mut update).is_err());
 
         let mut update = valid_update(temp.path());

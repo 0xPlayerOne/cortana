@@ -210,6 +210,7 @@ export function SettingsView({
     setSaving(true)
     setError('')
     try {
+      const referencedSecrets = referencedSecretNames(settings)
       const payload: DesktopSettingsUpdate = {
         workspaces: settings.workspaces,
         sources: settings.sources,
@@ -222,9 +223,14 @@ export function SettingsView({
         runtime: settings.runtime,
         secrets: [
           ...Object.entries(secretValues)
-            .filter(([name, value]) => value.length > 0 && !clearedSecrets.has(name))
+            .filter(
+              ([name, value]) =>
+                referencedSecrets.has(name) && value.length > 0 && !clearedSecrets.has(name)
+            )
             .map(([name, value]) => ({ name, value })),
-          ...Array.from(clearedSecrets, (name) => ({ name, clear: true })),
+          ...Array.from(clearedSecrets)
+            .filter((name) => referencedSecrets.has(name))
+            .map((name) => ({ name, clear: true })),
         ],
       }
       const next = await saveDesktopSettings(payload)
@@ -3114,6 +3120,23 @@ function optionalNumber(value: string): number | null {
   if (value === '') return null
   const number = Number(value)
   return Number.isFinite(number) ? number : null
+}
+
+function referencedSecretNames(settings: DesktopSettings): Set<string> {
+  const names = new Set<string>()
+  for (const name of [
+    settings.embedding.api_key_env,
+    settings.query.api_key_env,
+    settings.hindsight.token_env,
+    settings.honcho.token_env,
+  ]) {
+    if (name) names.add(name)
+  }
+  settings.sources.forEach((source) => {
+    if (source.token_env) names.add(source.token_env)
+  })
+  settings.auth_principals.forEach((principal) => names.add(principal.token_env))
+  return names
 }
 
 type ProviderValue = DesktopSettings['embedding'] | DesktopSettings['query']
