@@ -411,12 +411,15 @@ fn desktop_audit_caches_cargo_audit_binary() {
             .find("\n      - name: ")
             .map_or(desktop.len(), |next| cache_start + 1 + next)];
     let cache_major = cache_block.lines().find_map(|line| {
-        line.trim()
-            .strip_prefix("uses: actions/cache@v")?
-            .split_whitespace()
-            .next()?
-            .parse::<u32>()
-            .ok()
+        let line = line.trim();
+        let version = line
+            .strip_prefix("uses: actions/cache@v")
+            .and_then(|value| value.split_whitespace().next())
+            .or_else(|| {
+                line.split_once("# v")
+                    .map(|(_, value)| value.split_whitespace().next().unwrap_or_default())
+            })?;
+        version.parse::<u32>().ok()
     });
     assert!(
         cache_major.is_some_and(|major| major >= 4),
