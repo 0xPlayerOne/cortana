@@ -1,14 +1,20 @@
 import { afterEach, expect, mock, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-import { demoStatus } from './demo'
+import { demoEvidence, demoStatus } from './demo'
 import {
   answerResponse,
   canonicalDocument,
   firstDocumentsPage,
   secondDocumentsPage,
 } from './test/fixtures'
-import type { AnswerResponse, BrainDocumentPage, BrainStatus } from './types'
+import type {
+  AnswerResponse,
+  BrainDocument,
+  BrainDocumentPage,
+  BrainStatus,
+  ContextBundle,
+} from './types'
 
 afterEach(cleanup)
 
@@ -23,6 +29,22 @@ type DocumentsCall = {
   cursor: string | undefined
 }
 
+type Deferred<T> = {
+  promise: Promise<T>
+  resolve: (value: T) => void
+  reject: (reason?: unknown) => void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((next, fail) => {
+    resolve = next
+    reject = fail
+  })
+  return { promise, resolve, reject }
+}
+
 const state = {
   status: demoStatus as BrainStatus,
   documents: ((_project, _source, _query, cursor) =>
@@ -33,7 +55,23 @@ const state = {
     cursor?: string
   ) => Promise<BrainDocumentPage>,
   documentsCalls: [] as DocumentsCall[],
-  answer: null as (() => Promise<AnswerResponse>) | null,
+  answer: null as
+    | ((
+        query?: string,
+        project?: string,
+        source?: string,
+        signal?: AbortSignal
+      ) => Promise<AnswerResponse>)
+    | null,
+  getContext: null as
+    | ((
+        query: string,
+        project?: string,
+        source?: string,
+        signal?: AbortSignal
+      ) => Promise<ContextBundle>)
+    | null,
+  getDocument: null as ((id: string, signal?: AbortSignal) => Promise<BrainDocument>) | null,
   document: canonicalDocument,
 }
 
@@ -46,10 +84,16 @@ mock.module('./api', () => ({
     state.documentsCalls.push({ project, source, query, cursor })
     return state.documents(project, source, query, cursor)
   },
-  getAnswer: () =>
-    state.answer ? state.answer() : Promise.reject(new Error('Answer request failed (503)')),
-  getDocument: (id: string) => Promise.resolve({ ...state.document, id }),
-  getContext: () => Promise.reject(new Error('Context retrieval failed (503)')),
+  getAnswer: (query?: string, project?: string, source?: string, signal?: AbortSignal) =>
+    state.answer
+      ? state.answer(query, project, source, signal)
+      : Promise.reject(new Error('Answer request failed (503)')),
+  getDocument: (id: string, signal?: AbortSignal) =>
+    state.getDocument ? state.getDocument(id, signal) : Promise.resolve({ ...state.document, id }),
+  getContext: (query: string, project?: string, source?: string, signal?: AbortSignal) =>
+    state.getContext
+      ? state.getContext(query, project, source, signal)
+      : Promise.reject(new Error('Context retrieval failed (503)')),
   getDesktopSettings: () => Promise.reject(new Error('Settings are available in Cortana Desktop')),
   getDesktopInfo: () =>
     Promise.reject(new Error('Desktop information is available in Cortana Desktop')),
@@ -207,4 +251,178 @@ test('a failed search surfaces the error state and Try again recovers', async ()
   expect(screen.getByText(/Promote short-lived changes through staging/)).toBeTruthy()
   expect(screen.getByText('Read-only preview')).toBeTruthy()
   expect(screen.getByText('4 cited passages')).toBeTruthy()
+})
+
+test('stale search responses do not overwrite the latest query', async () => {
+  const oldSearch = deferred<AnswerResponse>()
+  const freshSearch = deferred<AnswerResponse>()
+  state.answer = (query?: string) => {
+    if (query === 'first query') return oldSearch.promise
+    if (query === 'latest query') return freshSearch.promise
+    return Promise.resolve(answerResponse)
+  }
+
+  render(<App />)
+  const input = screen.getByLabelText('Search your knowledge')
+  fireEvent.change(input, { target: { value: 'first query' } })
+  fireEvent.submit(input.closest('form')!)
+  fireEvent.change(input, { target: { value: 'latest query' } })
+  fireEvent.submit(input.closest('form')!)
+
+  freshSearch.resolve({
+    ...answerResponse,
+    query: 'latest query',
+    answer: 'Fresh answer content',
+    evidence: demoEvidence,
+  })
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'latest query' })).toBeTruthy()
+  )
+  oldSearch.resolve({
+    ...answerResponse,
+    query: 'first query',
+    answer: 'Stale answer content',
+    evidence: demoEvidence,
+  })
+
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'latest query' })).toBeTruthy()
+  )
+  expect(screen.getByText('Fresh answer content')).toBeTruthy()
+  expect(screen.queryByText('Stale answer content')).toBeNull()
+})
+
+test('stale document responses do not overwrite the currently selected document', async () => {
+  const staleDocument = deferred<BrainDocument>()
+  const freshDocument = deferred<BrainDocument>()
+  const first = firstDocumentsPage.documents[0]
+  const second = firstDocumentsPage.documents[1]
+  state.getDocument = (id: string) => {
+    if (id === first.id) return staleDocument.promise
+    if (id === second.id) return freshDocument.promise
+    return Promise.resolve({ ...canonicalDocument, id })
+  }
+
+  render(<App />)
+  await waitFor(() =>
+    expect(screen.getByRole('option', { name: /How do releases work/ })).toBeTruthy()
+  )
+
+  fireEvent.click(screen.getByRole('option', { name: /How do releases work/ }))
+  fireEvent.click(screen.getByRole('option', { name: /Deployment playbook/ }))
+
+  freshDocument.resolve({
+    ...canonicalDocument,
+    id: second.id,
+    title: 'Freshly selected document',
+    source: second.source,
+    source_id: second.source_id,
+    updated_at: second.updated_at,
+    project: second.project,
+  })
+
+  await waitFor(() =>
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Freshly selected document' })
+    ).toBeTruthy()
+  )
+
+  staleDocument.resolve({
+    ...canonicalDocument,
+    id: first.id,
+    title: 'Stale document result',
+    source: first.source,
+    source_id: first.source_id,
+    updated_at: first.updated_at,
+    project: first.project,
+  })
+
+  await waitFor(() =>
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Freshly selected document' })
+    ).toBeTruthy()
+  )
+  expect(screen.queryByText('Stale document result')).toBeNull()
+})
+
+test('scope-changed context request does not overwrite newer state', async () => {
+  const oldContext = deferred<ContextBundle>()
+  const newContext = deferred<ContextBundle>()
+  const oldBundle: ContextBundle = {
+    query: 'first context query',
+    context: 'Old context',
+    evidence: [
+      {
+        ...demoEvidence[1],
+        chunk_id: 'stale-context-chunk',
+        title: 'Stale context evidence',
+      },
+    ],
+    metrics: {
+      retrieved: 1,
+      included: 1,
+      omitted: 0,
+      estimated_tokens: 11,
+      max_tokens: 8000,
+    },
+  }
+  const newBundle: ContextBundle = {
+    query: 'first context query',
+    context: 'Fresh context',
+    evidence: [
+      {
+        ...demoEvidence[0],
+        chunk_id: 'fresh-context-chunk',
+        title: 'Fresh context evidence',
+      },
+    ],
+    metrics: {
+      retrieved: 1,
+      included: 1,
+      omitted: 0,
+      estimated_tokens: 19,
+      max_tokens: 8000,
+    },
+  }
+
+  state.answer = () => Promise.resolve(answerResponse)
+  state.getContext = (_query, project?: string) => {
+    if (project === 'work') return newContext.promise
+    return oldContext.promise
+  }
+
+  render(<App />)
+  const input = screen.getByLabelText('Search your knowledge')
+  fireEvent.change(input, { target: { value: 'first context query' } })
+  fireEvent.submit(input.closest('form')!)
+
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'first context query' })).toBeTruthy()
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Agent tools' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Agent tools' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Retrieve context' }))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'first context query' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
+  const workspaceSelect = await screen.findByRole('combobox')
+  fireEvent.change(workspaceSelect, { target: { value: 'work' } })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Agent tools' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Agent tools' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Retrieve context' }))
+
+  newContext.resolve(newBundle)
+  oldContext.resolve(oldBundle)
+
+  await waitFor(() => expect(screen.getByText('Fresh context evidence')).toBeTruthy())
+  expect(screen.queryByText('Stale context evidence')).toBeNull()
 })

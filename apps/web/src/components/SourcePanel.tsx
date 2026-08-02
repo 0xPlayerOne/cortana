@@ -43,6 +43,7 @@ function sourceIcon(source: string) {
 export function SourcePanel({
   open,
   status,
+  statusError,
   workspace,
   workspaces,
   documentQuery,
@@ -57,12 +58,13 @@ export function SourcePanel({
   onDocumentQueryChange,
   onSelectDocument,
   onLoadMoreDocuments,
-  onOpenSettings,
+  onOpenSourcesSettings,
   onClose,
   jobs = [],
 }: {
   open: boolean
   status: BrainStatus | null
+  statusError: string
   workspace: string
   workspaces: WorkspaceSettings[]
   documentQuery: string
@@ -77,7 +79,7 @@ export function SourcePanel({
   onDocumentQueryChange: (query: string) => void
   onSelectDocument: (id: string) => void
   onLoadMoreDocuments: () => void
-  onOpenSettings: () => void
+  onOpenSourcesSettings: () => void
   onClose: () => void
   jobs?: DesktopSourceJob[]
 }) {
@@ -98,6 +100,9 @@ export function SourcePanel({
     [sources]
   )
   const active = activeJobs(jobs)
+  const statusLoading = status === null && statusError === ''
+  const sourceModeClass = status?.ingestion.scheduled ? 'scheduled' : 'manual'
+  const sourceModeLabel = status?.ingestion.scheduled ? 'scheduled' : 'paused · manual only'
 
   return (
     <aside className={`source-panel ${open ? 'mobile-open' : ''}`}>
@@ -106,10 +111,10 @@ export function SourcePanel({
         <button className="mobile-close" aria-label="Close sources" onClick={onClose}>
           <X size={17} />
         </button>
-        <button aria-label="Add source" onClick={onOpenSettings}>
+        <button aria-label="Add source" onClick={onOpenSourcesSettings}>
           +
         </button>
-        <button aria-label="Source settings" onClick={onOpenSettings}>
+        <button aria-label="Source settings" onClick={onOpenSourcesSettings}>
           <Settings size={16} />
         </button>
       </div>
@@ -125,9 +130,9 @@ export function SourcePanel({
           ))}
         </select>
       </label>
-      <div className={`source-mode ${status?.ingestion.scheduled ? 'scheduled' : 'manual'}`}>
+      <div className={`source-mode ${sourceModeClass}`}>
         <i />
-        Ingestion {status?.ingestion.scheduled ? 'scheduled' : 'paused · manual only'}
+        Ingestion {statusLoading ? 'loading status…' : sourceModeLabel}
       </div>
       {active.length > 0 && (
         <div className="source-jobs-strip" aria-label="Active source jobs">
@@ -141,7 +146,15 @@ export function SourcePanel({
           ))}
         </div>
       )}
-      {!projects.length ? (
+      {statusLoading ? (
+        <p className="document-list-state" role="status">
+          Loading source index and health…
+        </p>
+      ) : statusError ? (
+        <p className="document-list-error" role="status">
+          {statusError}
+        </p>
+      ) : !projects.length ? (
         <div className="source-empty">
           <Database size={20} />
           <p>No indexed sources yet.</p>

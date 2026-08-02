@@ -128,6 +128,16 @@ export async function openDesktopProject(): Promise<void> {
   return invokeDesktop<void>('desktop_project_open')
 }
 
+export async function openDesktopUrl(url: string): Promise<void> {
+  if (!isDesktopApp) throw new Error('Desktop URL opens are available in Cortana Desktop')
+  const parsed = new URL(url)
+  const allowed = ['http:', 'https:', 'mailto:', 'file:']
+  if (!allowed.includes(parsed.protocol)) {
+    throw new Error(`Unsupported link scheme: ${parsed.protocol.replace(':', '')}`)
+  }
+  return invokeDesktop<void>('desktop_url_open', { url })
+}
+
 export async function startDesktopInstaller(tool: string): Promise<DesktopInstallJob> {
   if (!isDesktopApp) throw new Error('Installer is available in Cortana Desktop')
   return invokeDesktop<DesktopInstallJob>('desktop_installer_start', { tool, approved: true })
