@@ -230,6 +230,13 @@ export function App() {
       documentListRequestRef.current += 1
       documentListAbortRef.current?.abort()
       documentPageLoadingRef.current = false
+      if (view !== 'knowledge') {
+        // Settings and utility views do not consume the document list. Keep
+        // the last Knowledge snapshot so returning to it feels continuous,
+        // while the next Knowledge render still performs a fresh scoped read.
+        setDocumentsLoading(false)
+        return
+      }
       setDocuments([])
       setDocumentCursor(null)
       setDocumentsError('')
