@@ -241,7 +241,11 @@ export function SettingsView({
         </nav>
         <form id="settings-form" className="settings-form" onSubmit={submit}>
           {section === 'readiness' && (
-            <ReadinessSection autoScan={settings.needs_setup} onResult={setSetupReadiness} />
+            <ReadinessSection
+              autoScan={settings.needs_setup}
+              onResult={setSetupReadiness}
+              onOpenServices={() => setSection('services')}
+            />
           )}
           {section === 'services' && <ServicesSection />}
           {section === 'updates' && <UpdatesSection />}
@@ -1309,9 +1313,11 @@ function AuditList({ title, events }: { title: string; events: AuditEvent[] }) {
 function ReadinessSection({
   autoScan = false,
   onResult,
+  onOpenServices,
 }: {
   autoScan?: boolean
   onResult?: (readiness: DesktopReadiness | null) => void
+  onOpenServices?: () => void
 }) {
   const [readiness, setReadiness] = useState<DesktopReadiness | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -1518,6 +1524,17 @@ function ReadinessSection({
               </article>
             ))}
           </div>
+          {readiness.core && !readiness.core.passed && onOpenServices && (
+            <div className="safety-note" role="status">
+              <span>
+                Runtime checks are not passing. Confirm the API and embedding services are installed
+                and running before retrying readiness.
+              </span>
+              <button type="button" className="secondary-button" onClick={onOpenServices}>
+                Check Services
+              </button>
+            </div>
+          )}
         </>
       )}
     </SettingsSection>
