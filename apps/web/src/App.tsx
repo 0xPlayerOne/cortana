@@ -969,6 +969,13 @@ export function App() {
         ])
       )
     : []
+  const configuredSourcesForAllWorkspaces = Array.from(
+    new Set([
+      ...(desktopSettings?.sources ?? []).map((item) => item.name),
+      ...(status?.ingestion.configured_sources ?? []).map((item) => item.source),
+      ...(status?.sources ?? []).map((item) => item.source),
+    ])
+  )
   // Settings may arrive before the runtime status call. An empty settings
   // source list is not enough evidence to evict a persisted source because
   // the runtime may still report configured/indexed sources shortly after
@@ -984,12 +991,21 @@ export function App() {
   }, [workspace, workspaceScope])
 
   useEffect(() => {
-    if (!isDesktopApp || !workspace || !sourceInventoryReady) return
-    if (configuredSourcesForWorkspace.includes(source)) return
+    if (!isDesktopApp || !sourceInventoryReady || !source) return
+    const validSources = workspace
+      ? configuredSourcesForWorkspace
+      : configuredSourcesForAllWorkspaces
+    if (validSources.includes(source)) return
     writeSourceSelectionPreference('')
     setSource('')
     scopeSources(workspace, '')
-  }, [workspace, source, sourceInventoryReady, configuredSourcesForWorkspace.join('\u0000')])
+  }, [
+    workspace,
+    source,
+    sourceInventoryReady,
+    configuredSourcesForWorkspace.join('\u0000'),
+    configuredSourcesForAllWorkspaces.join('\u0000'),
+  ])
 
   return (
     <div

@@ -351,6 +351,14 @@ test('desktop shell restores workspace and source scope and clears stale selecti
     expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('')
     expect(window.localStorage.getItem('cortana.workspace-selection.v1')).toBeNull()
   })
+
+  cleanup()
+  window.localStorage.setItem('cortana.source-selection.v1', 'missing')
+  render(<App />)
+  await waitFor(() => {
+    expect(state.getDocumentsCalls.at(-1)?.source).toBeUndefined()
+    expect(window.localStorage.getItem('cortana.source-selection.v1')).toBeNull()
+  })
 })
 
 test('desktop shell ignores malformed persisted source scope', async () => {
