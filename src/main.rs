@@ -325,6 +325,7 @@ enum AclAction {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    configure_desktop_process_group();
     init_tracing();
     let cli = Cli::parse();
     if let Some(Command::Init {
@@ -817,6 +818,22 @@ async fn main() -> Result<()> {
         None => {
             println!("cortana {}", env!("CARGO_PKG_VERSION"));
             Ok(())
+        }
+    }
+}
+
+fn configure_desktop_process_group() {
+    #[cfg(unix)]
+    if std::env::var_os("CORTANA_DESKTOP_PROCESS_GROUP").is_some() {
+        // Desktop source jobs are cancelled as a unit. Keep the wrapper and
+        // its connector children in one process group without changing the
+        // terminal job-control behavior of normal CLI invocations.
+        let result = unsafe { libc::setpgid(0, 0) };
+        if result != 0 {
+            eprintln!(
+                "warning: could not isolate Desktop source job process group: {}",
+                std::io::Error::last_os_error()
+            );
         }
     }
 }
@@ -2151,7 +2168,11 @@ async fn run_connector_to_spool(
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
     #[cfg(unix)]
-    process.process_group(0);
+    if std::env::var_os("CORTANA_DESKTOP_PROCESS_GROUP").is_none() {
+        // Normal CLI/service runs isolate the connector so cancellation can
+        // terminate helpers without touching the caller's process group.
+        process.process_group(0);
+    }
     let child = process
         .spawn()
         .with_context(|| format!("failed to run connector command {executable}"));
@@ -2217,8 +2238,10 @@ async fn run_connector_to_spool(
 async fn terminate_connector(child: &mut tokio::process::Child) {
     #[cfg(unix)]
     if let Some(pid) = child.id().filter(|pid| *pid > 0 && *pid <= i32::MAX as u32) {
-        // The child is a process-group leader (`process_group(0)` above), so
-        // a negative PID terminates helpers spawned by the connector too.
+        // Normal CLI/service runs make the connector a process-group leader,
+        // so a negative PID terminates helpers spawned by it too. Desktop
+        // source jobs inherit their wrapper's isolated group and are killed
+        // as a unit by the native Desktop cancellation path instead.
         unsafe {
             let _ = libc::kill(-(pid as i32), libc::SIGKILL);
         }

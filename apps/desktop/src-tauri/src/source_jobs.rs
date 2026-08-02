@@ -402,7 +402,8 @@ impl SourceJobState {
             .shell()
             .sidecar("cortana")
             .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
-            .args(args);
+            .args(args)
+            .env("CORTANA_DESKTOP_PROCESS_GROUP", "1");
         let (mut receiver, child) = command
             .spawn()
             .map_err(|error| format!("start source {operation}: {error}"))?;
@@ -477,7 +478,7 @@ impl SourceJobState {
         job.snapshot.status = "cancelling";
         job.snapshot.summary = format!("Cancelling source {}…", job.snapshot.operation);
         if let Some(child) = job.child.take() {
-            if let Err(error) = child.kill() {
+            if let Err(error) = terminate_source_process(child) {
                 job.snapshot.status = "failed";
                 job.snapshot.summary =
                     format!("Source {} could not be cancelled.", job.snapshot.operation);
@@ -544,6 +545,23 @@ impl SourceJobState {
         job.snapshot.retryable = true;
         audit(&job.snapshot, "completed");
     }
+}
+
+fn terminate_source_process(child: CommandChild) -> Result<(), String> {
+    let pid = child.pid();
+    #[cfg(unix)]
+    if pid > 0 && pid <= i32::MAX as u32 {
+        // Source jobs opt into an isolated process group before the CLI
+        // starts any connector. Killing the negative PID includes connector
+        // helpers and avoids leaving an orphaned long-running sync behind.
+        let result = unsafe { libc::kill(-(pid as libc::pid_t), libc::SIGKILL) };
+        if result == 0 {
+            return Ok(());
+        }
+    }
+    child
+        .kill()
+        .map_err(|error| format!("kill source process: {error}"))
 }
 
 pub fn open_setup(source_name: &str) -> Result<SetupOpenOutcome, String> {

@@ -65,6 +65,8 @@ cancellable. The command cannot start sync, embedding, indexing, or reconciliati
 metadata-only lifecycle is appended to the Desktop audit log. The same command can optionally
 validate at one of the fixed initial-sync budget tiers so a later validation-gated initial sync
 has a record at equal or larger limits; validation stays read-only and bounded in every tier.
+Desktop-launched source jobs run in an isolated process group, so cancellation terminates the
+bundled wrapper and any connector helpers together instead of leaving an orphaned fetch process.
 
 Guarded trial sync reuses the source-job boundary but is intentionally distinct from validation.
 It requires explicit confirmation and a matching successful validation fingerprint, then invokes
