@@ -2143,12 +2143,16 @@ async fn run_connector_to_spool(
     let stderr = private_file(&diagnostics)?;
     let mut command = configured_connector_command(config, source)?;
     let executable = command.remove(0);
-    let child = ProcessCommand::new(&executable)
+    let mut process = ProcessCommand::new(&executable);
+    process
         .args(&command)
         .envs(&config.environment)
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
+        .stderr(Stdio::from(stderr));
+    #[cfg(unix)]
+    process.process_group(0);
+    let child = process
         .spawn()
         .with_context(|| format!("failed to run connector command {executable}"));
     let mut child = match child {
@@ -2166,8 +2170,7 @@ async fn run_connector_to_spool(
     let started = std::time::Instant::now();
     let status = loop {
         if control.cancellation.is_requested() {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
+            terminate_connector(&mut child).await;
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!("connector {} cancelled before reconciliation", source.name);
@@ -2175,8 +2178,7 @@ async fn run_connector_to_spool(
         let spool_bytes = std::fs::metadata(&spool).map_or(0, |metadata| metadata.len());
         let diagnostic_bytes = std::fs::metadata(&diagnostics).map_or(0, |metadata| metadata.len());
         if spool_bytes > maximum_spool_bytes || diagnostic_bytes > MAXIMUM_DIAGNOSTIC_BYTES {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
+            terminate_connector(&mut child).await;
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!(
@@ -2188,8 +2190,7 @@ async fn run_connector_to_spool(
             break status;
         }
         if started.elapsed() >= timeout {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
+            terminate_connector(&mut child).await;
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!(
@@ -2211,6 +2212,19 @@ async fn run_connector_to_spool(
         );
     }
     Ok((spool, diagnostics))
+}
+
+async fn terminate_connector(child: &mut tokio::process::Child) {
+    #[cfg(unix)]
+    if let Some(pid) = child.id().filter(|pid| *pid > 0 && *pid <= i32::MAX as u32) {
+        // The child is a process-group leader (`process_group(0)` above), so
+        // a negative PID terminates helpers spawned by the connector too.
+        unsafe {
+            let _ = libc::kill(-(pid as i32), libc::SIGKILL);
+        }
+    }
+    let _ = child.kill().await;
+    let _ = child.wait().await;
 }
 
 fn prepare_connector_staging(data_dir: &std::path::Path, create: bool) -> Result<PathBuf> {
