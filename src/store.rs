@@ -501,6 +501,18 @@ impl Store {
         Ok(Some(response))
     }
 
+    /// Remove one answer-cache row after the caller detects that its payload
+    /// no longer matches the current response contract. Cache cleanup is
+    /// best-effort, just like hit counters, so a busy writer must not turn a
+    /// valid retrieval into an error.
+    pub fn invalidate_cached_query(&self, cache_key: &str) -> Result<()> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        optional_write(&connection, || {
+            connection.execute("DELETE FROM query_cache WHERE cache_key=?1", [cache_key])
+        })?;
+        Ok(())
+    }
+
     pub fn cache_query(&self, cache_key: &str, response: &str, max_entries: usize) -> Result<()> {
         if max_entries == 0 {
             return Ok(());

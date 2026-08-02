@@ -213,11 +213,19 @@ impl AnswerEngine {
             .store
             .cached_query(&cache_key, self.config.cache_ttl_seconds)?
         {
-            let mut response: AnswerResponse = serde_json::from_str(&cached)?;
-            response.cached = true;
-            response.query = request.query.clone();
-            response.latency_ms = elapsed_ms(started);
-            return Ok(response);
+            match serde_json::from_str::<AnswerResponse>(&cached) {
+                Ok(mut response) => {
+                    response.cached = true;
+                    response.query = request.query.clone();
+                    response.latency_ms = elapsed_ms(started);
+                    return Ok(response);
+                }
+                Err(_) => {
+                    // A stale or interrupted cache payload must never make a
+                    // healthy query fail. Evict it and recompute normally.
+                    let _ = self.store.invalidate_cached_query(&cache_key);
+                }
+            }
         }
 
         let mut warnings = Vec::new();
@@ -929,6 +937,49 @@ mod tests {
         assert!(!refreshed.cached);
         assert_eq!(model.calls.load(Ordering::SeqCst), 4);
         assert_eq!(store.stats().expect("stats").query_cache_hits, 1);
+    }
+
+    #[tokio::test]
+    async fn malformed_cached_answers_are_evicted_and_recomputed() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        seed(
+            &store,
+            &embedder,
+            "release",
+            "Promote staging only after release checks pass.",
+        )
+        .await;
+        let engine = AnswerEngine::new(
+            store.clone(),
+            embedder,
+            None,
+            QueryConfig {
+                cache_ttl_seconds: 3600,
+                ..QueryConfig::default()
+            },
+        );
+        let request = AnswerRequest {
+            query: "release checks".into(),
+            project: Some("demo".into()),
+            source: None,
+        };
+        let cache_key = engine
+            .cache_key(&request, store.corpus_revision().expect("revision"), &["*".into()])
+            .expect("cache key");
+        store
+            .cache_query(&cache_key, "{malformed", 10)
+            .expect("malformed cache");
+
+        let response = engine.answer(request).await.expect("recomputed answer");
+        assert!(!response.cached);
+        assert!(response.answer.contains("Promote staging"));
+        let cached = store
+            .cached_query(&cache_key, 3600)
+            .expect("repaired cache")
+            .expect("recomputed cache row");
+        serde_json::from_str::<AnswerResponse>(&cached).expect("valid repaired cache");
     }
 
     #[tokio::test]
