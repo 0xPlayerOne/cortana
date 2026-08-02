@@ -323,6 +323,7 @@ export function SettingsView({
             ] as Section[]
           ).map((item) => (
             <button
+              type="button"
               key={item}
               className={section === item ? 'active' : ''}
               onClick={() => setSection(item)}

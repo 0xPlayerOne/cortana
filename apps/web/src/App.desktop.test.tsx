@@ -22,6 +22,7 @@ afterEach(() => {
   window.localStorage.removeItem('cortana.workspace-selection.v1')
   window.localStorage.removeItem('cortana.source-selection.v1')
   state.getDocumentsCalls = []
+  state.saveSettingsCalls = 0
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -77,6 +78,7 @@ const state = {
     cursor: string | null | undefined
   }>,
   statusCalls: 0,
+  saveSettingsCalls: 0,
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
   serviceAction: null as (() => Promise<DesktopServiceReport>) | null,
@@ -157,6 +159,10 @@ mock.module('./api', () => ({
   getDocument: () => Promise.reject(new Error('Document unavailable')),
   getContext: () => Promise.reject(new Error('Context retrieval failed (503)')),
   getDesktopSettings: () => Promise.resolve(state.settings),
+  saveDesktopSettings: () => {
+    state.saveSettingsCalls += 1
+    return Promise.resolve(state.settings)
+  },
   getDesktopInfo: () => Promise.resolve(desktopInfo),
   getDesktopServices: () => Promise.resolve(serviceReport),
   getDesktopSourceJobs: () => Promise.resolve([]),
@@ -359,6 +365,7 @@ test('desktop settings navigation opens the audit trail and renders both event s
   // Section navigation into the audit trail.
   fireEvent.click(screen.getByRole('button', { name: 'Audit' }))
   await waitFor(() => expect(screen.getByText('2 runtime · 1 Desktop events')).toBeTruthy())
+  expect(state.saveSettingsCalls).toBe(0)
   expect(screen.getByText('Runtime retrieval')).toBeTruthy()
   expect(screen.getByText('Desktop actions')).toBeTruthy()
   expect(screen.getByText('brain_answer')).toBeTruthy()
