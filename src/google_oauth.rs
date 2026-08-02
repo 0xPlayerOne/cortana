@@ -581,9 +581,8 @@ fn reject_symlink(path: &Path) -> Result<()> {
 }
 
 fn reject_symlink_components(path: &Path) -> Result<()> {
-    let mut current = PathBuf::new();
-    for component in path.components() {
-        current.push(component.as_os_str());
+    let mut current = path.to_path_buf();
+    loop {
         match fs::symlink_metadata(&current) {
             Ok(metadata) if metadata.file_type().is_symlink() => {
                 anyhow::ensure!(
@@ -593,9 +592,16 @@ fn reject_symlink_components(path: &Path) -> Result<()> {
                 );
             }
             Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        if parent == current {
+            break;
+        }
+        current = parent.to_path_buf();
     }
     Ok(())
 }
