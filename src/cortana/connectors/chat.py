@@ -21,6 +21,7 @@ def fetch_slack(
     channel_ids: list[str],
     project: str,
     token_env: str = "SLACK_BOT_TOKEN",
+    max_documents: int | None = None,
 ) -> Iterable[Document]:
     token = _required_env(token_env)
     headers = {"Authorization": f"Bearer {token}"}
@@ -30,13 +31,18 @@ def fetch_slack(
         timeout=30,
         follow_redirects=False,
     ) as client:
+        emitted = 0
         for channel_id in channel_ids:
             cursor = ""
             while True:
                 response = _get_with_backoff(
                     client,
                     "/conversations.history",
-                    params={"channel": channel_id, "limit": 200, "cursor": cursor},
+                    params={
+                        "channel": channel_id,
+                        "limit": min(200, max_documents or 200),
+                        "cursor": cursor,
+                    },
                 )
                 payload = _slack_payload(response)
                 for parent in _slack_messages(payload):
@@ -67,11 +73,12 @@ def fetch_slack(
                         if message.get("text")
                     )
                     if text:
-                        updated = max(
-                            _slack_timestamp(message.get("ts"))
+                        timestamps = [
+                            timestamp
                             for message in valid_thread
-                            if _slack_timestamp(message.get("ts")) is not None
-                        )
+                            if (timestamp := _slack_timestamp(message.get("ts"))) is not None
+                        ]
+                        updated = max(timestamps)
                         yield Document(
                             source="slack",
                             source_id=f"{channel_id}:{parent['ts']}",
@@ -88,6 +95,9 @@ def fetch_slack(
                                 "message_count": len(valid_thread),
                             },
                         )
+                        emitted += 1
+                        if max_documents is not None and emitted >= max_documents:
+                            return
                 response_metadata = payload.get("response_metadata")
                 cursor = str(
                     response_metadata.get("next_cursor")
@@ -103,6 +113,7 @@ def fetch_discord(
     project: str,
     token_env: str = "DISCORD_BOT_TOKEN",
     cache_dir: Path | None = None,
+    max_documents: int | None = None,
 ) -> Iterable[Document]:
     token = _required_env(token_env)
     headers = {"Authorization": f"Bot {token}"}
@@ -113,12 +124,19 @@ def fetch_discord(
         follow_redirects=False,
     ) as client:
         if cache_dir is not None:
-            yield from _fetch_discord_cached(client, channel_ids, project, cache_dir)
+            yield from _fetch_discord_cached(
+                client,
+                channel_ids,
+                project,
+                cache_dir,
+                max_documents=max_documents,
+            )
             return
+        emitted = 0
         for channel_id in channel_ids:
             before: str | None = None
             while True:
-                params: dict[str, Any] = {"limit": 100}
+                params: dict[str, Any] = {"limit": min(100, max_documents or 100)}
                 if before:
                     params["before"] = before
                 response = _get_with_backoff(
@@ -132,6 +150,9 @@ def fetch_discord(
                     document = _discord_document(message, channel_id, project)
                     if document is not None:
                         yield document
+                        emitted += 1
+                        if max_documents is not None and emitted >= max_documents:
+                            return
                 before = str(messages[-1]["id"])
                 if len(messages) < 100:
                     break
@@ -142,6 +163,7 @@ def _fetch_discord_cached(
     channel_ids: list[str],
     project: str,
     cache_dir: Path,
+    max_documents: int | None = None,
 ) -> Iterable[Document]:
     cache = _discord_cache(cache_dir)
     try:
@@ -213,6 +235,7 @@ def _fetch_discord_cached(
         rows = cache.execute(
             "SELECT rowid,channel_id,body FROM discord_messages ORDER BY CAST(id AS INTEGER)"
         )
+        emitted = 0
         for rowid, channel_id, body in rows:
             try:
                 cached_message = json.loads(str(body))
@@ -236,6 +259,9 @@ def _fetch_discord_cached(
             document = _discord_document(cached_message, str(channel_id), project)
             if document is not None:
                 yield document
+                emitted += 1
+                if max_documents is not None and emitted >= max_documents:
+                    break
         cache.commit()
     finally:
         cache.close()
@@ -392,6 +418,8 @@ def _required_env(name: str) -> str:
 
 
 def _slack_timestamp(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        return None
     try:
         timestamp = float(value)
     except (TypeError, ValueError):
