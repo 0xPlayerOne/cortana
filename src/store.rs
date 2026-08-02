@@ -156,6 +156,7 @@ impl SyncRunStatus {
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
+        reject_symlink(path)?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -1570,12 +1571,23 @@ fn verify_database(path: &Path) -> Result<()> {
 fn secure_file(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
+    reject_symlink(path)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
         .with_context(|| format!("failed to secure {}", path.display()))
 }
 
 #[cfg(not(unix))]
 fn secure_file(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+fn reject_symlink(path: &Path) -> Result<()> {
+    if std::fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        bail!("refusing to use symlinked database path {}", path.display());
+    }
     Ok(())
 }
 
@@ -2513,6 +2525,23 @@ mod tests {
 
         assert_eq!(store.prune_embedding_cache(1).expect("prune"), 1);
         assert_eq!(store.stats().expect("stats").embedding_cache_entries, 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opening_a_symlinked_database_is_rejected() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let target = directory.path().join("target.sqlite3");
+        Store::open(&target).expect("target database");
+        let linked = directory.path().join("linked.sqlite3");
+        symlink(&target, &linked).expect("database symlink");
+
+        let error = Store::open(&linked)
+            .err()
+            .expect("symlinked database must fail");
+        assert!(error.to_string().contains("symlinked database path"));
     }
 
     #[test]
