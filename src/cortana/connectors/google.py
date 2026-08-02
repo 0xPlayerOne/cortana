@@ -396,6 +396,7 @@ def _private_cache(path: Path) -> sqlite3.Connection:
 
 
 def _prepare_private_directory(path: Path) -> None:
+    _reject_symlink_components(path)
     path.mkdir(mode=0o700, parents=True, exist_ok=True)
     current = path
     while True:
@@ -411,6 +412,23 @@ def _prepare_private_directory(path: Path) -> None:
             break
         current = current.parent
     path.chmod(0o700)
+
+
+def _reject_symlink_components(path: Path) -> None:
+    current = path
+    while True:
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            if current == current.parent:
+                return
+            current = current.parent
+            continue
+        if stat.S_ISLNK(metadata.st_mode):
+            raise RuntimeError(f"Google cache directory must not contain a symlink: {current}")
+        if current == current.parent:
+            return
+        current = current.parent
 
 
 def _cached_drive_content(
