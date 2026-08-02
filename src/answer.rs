@@ -215,6 +215,7 @@ impl AnswerEngine {
         {
             let mut response: AnswerResponse = serde_json::from_str(&cached)?;
             response.cached = true;
+            response.query = request.query.clone();
             response.latency_ms = elapsed_ms(started);
             return Ok(response);
         }
@@ -389,7 +390,7 @@ impl AnswerEngine {
             "model": self.model.as_ref().map(|_| self.config.model.as_str()),
             "model_url": self.model.as_ref().map(|_| self.config.base_url.as_str()),
             "embedding": self.embedder.fingerprint(),
-            "query": request.query.trim(),
+            "query": normalize_query_for_cache(&request.query),
             "project": request.project,
             "source": request.source,
             "acl": principal_acl,
@@ -402,6 +403,10 @@ impl AnswerEngine {
         }))?;
         Ok(format!("{:x}", Sha256::digest(material)))
     }
+}
+
+fn normalize_query_for_cache(query: &str) -> String {
+    query.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 #[derive(Deserialize)]
@@ -901,8 +906,16 @@ mod tests {
         assert!(!first.cached);
         assert_eq!(model.calls.load(Ordering::SeqCst), 2);
 
-        let cached = engine.answer(request.clone()).await.expect("cached answer");
+        let whitespace_variant = AnswerRequest {
+            query: "  How should deployment be promoted?  ".into(),
+            ..request.clone()
+        };
+        let cached = engine
+            .answer(whitespace_variant.clone())
+            .await
+            .expect("cached answer");
         assert!(cached.cached);
+        assert_eq!(cached.query, whitespace_variant.query);
         assert_eq!(model.calls.load(Ordering::SeqCst), 2);
 
         seed(
