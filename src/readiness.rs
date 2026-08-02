@@ -210,9 +210,12 @@ fn backup_check(directory: &Path, max_age_hours: u64) -> ReadinessCheck {
                     .is_some_and(|extension| extension == "sqlite3")
             })
             .filter_map(|entry| {
-                entry
-                    .metadata()
-                    .and_then(|metadata| metadata.modified())
+                let metadata = std::fs::symlink_metadata(entry.path()).ok()?;
+                if !metadata.file_type().is_file() {
+                    return None;
+                }
+                metadata
+                    .modified()
                     .ok()
                     .map(|modified| (entry.path(), modified))
             })
@@ -275,6 +278,20 @@ mod tests {
         assert!(!backup_check(directory.path(), 48).passed);
         File::create(directory.path().join("backup.sqlite3")).expect("backup fixture");
         assert!(backup_check(directory.path(), 48).passed);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backup_freshness_ignores_symlinked_sqlite_files() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let outside = tempdir().expect("external temporary directory");
+        let target = outside.path().join("external.sqlite3");
+        File::create(&target).expect("external backup fixture");
+        symlink(&target, directory.path().join("backup.sqlite3")).expect("backup symlink");
+
+        assert!(!backup_check(directory.path(), 48).passed);
     }
 
     #[test]
