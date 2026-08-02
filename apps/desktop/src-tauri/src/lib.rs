@@ -275,6 +275,25 @@ fn desktop_project_open() -> Result<(), String> {
     open::that(PROJECT_URL).map_err(|error| format!("open Cortana project page: {error}"))
 }
 
+#[tauri::command]
+fn desktop_secret_file_open() -> Result<(), String> {
+    let path = settings::load()?.secret_file_path;
+    if !std::path::Path::new(&path).is_file() {
+        return Err("secret file is unavailable".into());
+    }
+    open::that_detached(&path).map_err(|error| format!("open secret file: {error}"))?;
+    let event = serde_json::json!({
+        "at_unix_seconds": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        "event": "desktop.secret_file.opened",
+        "secret_values_recorded": false,
+    });
+    let _ = settings::append_audit_event(&settings::default_config_path(), &event);
+    Ok(())
+}
+
 fn validate_external_url(url: &str) -> Result<(), String> {
     let parsed = Url::parse(url).map_err(|error| format!("invalid URL: {error}"))?;
     if !parsed.username().is_empty() || parsed.password().is_some() {
@@ -892,6 +911,7 @@ pub fn run() {
             brain_audit,
             desktop_audit,
             desktop_project_open,
+            desktop_secret_file_open,
             desktop_url_open,
             desktop_info,
             desktop_autostart_set,

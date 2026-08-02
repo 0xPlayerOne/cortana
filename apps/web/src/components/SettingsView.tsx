@@ -40,6 +40,7 @@ import {
   isDesktopApp,
   openDesktopSourceSetup,
   openDesktopProject,
+  openDesktopSecretFile,
   pickDesktopPath,
   planDesktopInitialSync,
   saveDesktopSettings,
@@ -3670,7 +3671,7 @@ function IngestionSection({ settings, update }: SettingsSectionProps) {
 }
 
 function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { dirty: boolean }) {
-  const [portableBusy, setPortableBusy] = useState<'export' | 'import' | ''>('')
+  const [portableBusy, setPortableBusy] = useState<'export' | 'import' | 'open-secret' | ''>('')
   const [portableNotice, setPortableNotice] = useState('')
   const [portableError, setPortableError] = useState('')
   const setRuntime = (patch: Partial<DesktopSettings['runtime']>) =>
@@ -3715,6 +3716,20 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
       setPortableNotice(`Imported settings are ready for review.${preserved}`)
     } catch (caught) {
       setPortableError(caught instanceof Error ? caught.message : 'Settings import failed')
+    } finally {
+      setPortableBusy('')
+    }
+  }
+
+  const openSecretFile = async () => {
+    setPortableBusy('open-secret')
+    setPortableNotice('')
+    setPortableError('')
+    try {
+      await openDesktopSecretFile()
+      setPortableNotice('Opened the active secret file in your default application.')
+    } catch (caught) {
+      setPortableError(caught instanceof Error ? caught.message : 'Unable to open secret file')
     } finally {
       setPortableBusy('')
     }
@@ -3797,6 +3812,18 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
               <Upload size={14} />
             )}
             Import preview
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(portableBusy)}
+            onClick={() => void openSecretFile()}
+          >
+            {portableBusy === 'open-secret' ? (
+              <LoaderCircle className="spin" size={14} />
+            ) : (
+              <FolderOpen size={14} />
+            )}
+            Open secret file
           </button>
         </div>
       </div>

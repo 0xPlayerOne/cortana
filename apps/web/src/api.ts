@@ -148,6 +148,11 @@ export async function openDesktopProject(): Promise<void> {
   return invokeDesktop<void>('desktop_project_open')
 }
 
+export async function openDesktopSecretFile(): Promise<void> {
+  if (!isDesktopApp) throw new Error('Secret file opens are available in Cortana Desktop')
+  return invokeDesktop<void>('desktop_secret_file_open')
+}
+
 export async function openDesktopUrl(url: string): Promise<void> {
   if (!isDesktopApp) throw new Error('Desktop URL opens are available in Cortana Desktop')
   const safe = safeSourceLink(url, { allowLocalFile: true })

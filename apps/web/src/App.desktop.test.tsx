@@ -27,6 +27,7 @@ afterEach(() => {
   state.getDesktopSettingsCalls = 0
   state.getDesktopUpdateCalls = 0
   state.serviceStatusError = null
+  state.openSecretFileCalls = 0
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -89,6 +90,7 @@ const state = {
   saveSettingsCalls: 0,
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
+  openSecretFileCalls: 0,
   serviceAction: null as (() => Promise<DesktopServiceReport>) | null,
   readinessScan: null as
     (() => Promise<Awaited<ReturnType<typeof realApi.scanDesktopReadiness>>>) | null,
@@ -179,6 +181,10 @@ mock.module('./api', () => ({
     state.getDesktopServicesCalls += 1
     if (state.serviceStatusError) return Promise.reject(state.serviceStatusError)
     return Promise.resolve(serviceReport)
+  },
+  openDesktopSecretFile: () => {
+    state.openSecretFileCalls += 1
+    return Promise.resolve()
   },
   getDesktopSourceJobs: () => Promise.resolve([]),
   installDesktopServices: () => {
@@ -1308,4 +1314,23 @@ test('honcho settings section exposes a disabled-by-default session sidecar', as
   fireEvent.click(screen.getByRole('button', { name: 'Check connection' }))
   await waitFor(() => expect(screen.getByText(/Health: disabled/)).toBeTruthy())
   expect(screen.getByRole('button', { name: 'Open Honcho status' })).toBeTruthy()
+})
+
+test('local runtime section opens active secret file path in desktop', async () => {
+  render(<App />)
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+  await waitFor(() => expect(screen.getByText('Local runtime')).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Open secret file' }))
+  await waitFor(() => expect(state.openSecretFileCalls).toBe(1))
+  expect(
+    screen.getByText('Opened the active secret file in your default application.')
+  ).toBeTruthy()
 })
