@@ -37,11 +37,13 @@ const realApi = await import('./api')
 const state = {
   statusCalls: [] as string[],
   polled: new Map<string, DesktopSourceJob | Error>(),
+  pending: null as Promise<DesktopSourceJob> | null,
 }
 
 beforeEach(() => {
   state.statusCalls = []
   state.polled.clear()
+  state.pending = null
 })
 
 mock.module('./api', () => ({
@@ -49,6 +51,7 @@ mock.module('./api', () => ({
   isDesktopApp: true,
   getDesktopSourceValidation: (id: string) => {
     state.statusCalls.push(id)
+    if (state.pending) return state.pending
     const result = state.polled.get(id)
     if (result instanceof Error) return Promise.reject(result)
     if (!result) return Promise.reject(new Error('source job was not found'))
@@ -178,4 +181,25 @@ test('the hook drops an id on a missing-job error and retains snapshots on trans
   expect(result.current.jobs).toEqual([])
   // After the drop there are no active ids left, so polling stops.
   expect(state.statusCalls).toEqual(['job-1', 'job-1'])
+})
+
+test('the hook does not overlap source status polls while one batch is pending', async () => {
+  const running = jobOf('job-1', 'running')
+  let resolvePending: ((job: DesktopSourceJob) => void) | undefined
+  state.pending = new Promise((resolve) => {
+    resolvePending = resolve
+  })
+  const { result, unmount } = renderHook(() => useSourceJobs())
+  act(() => result.current.remember(running))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 2200))
+  })
+  expect(state.statusCalls).toEqual(['job-1'])
+
+  resolvePending?.(running)
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+  unmount()
 })

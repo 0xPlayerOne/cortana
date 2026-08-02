@@ -48,6 +48,7 @@ export function activeJobIds(jobs: DesktopSourceJob[]): string[] {
 export function useSourceJobs() {
   const [jobs, setJobs] = useState<DesktopSourceJob[]>([])
   const jobsRef = useRef(jobs)
+  const pollingRef = useRef(false)
   jobsRef.current = jobs
 
   const remember = useCallback((job: DesktopSourceJob) => {
@@ -58,19 +59,25 @@ export function useSourceJobs() {
     if (!isDesktopApp) return
     let disposed = false
     const timer = window.setInterval(() => {
+      if (pollingRef.current) return
       const ids = activeJobIds(jobsRef.current)
       if (ids.length === 0) return
-      void Promise.allSettled(ids.map((id) => getDesktopSourceValidation(id))).then((results) => {
-        if (disposed) return
-        results.forEach((result, index) => {
-          if (result.status === 'fulfilled') {
-            setJobs((current) => upsertJob(current, result.value))
-          } else if (isMissingJobError(result.reason)) {
-            setJobs((current) => dropJob(current, ids[index]))
-          }
-          // Any other error retains the last snapshot: the job may still be running.
+      pollingRef.current = true
+      void Promise.allSettled(ids.map((id) => getDesktopSourceValidation(id)))
+        .then((results) => {
+          if (disposed) return
+          results.forEach((result, index) => {
+            if (result.status === 'fulfilled') {
+              setJobs((current) => upsertJob(current, result.value))
+            } else if (isMissingJobError(result.reason)) {
+              setJobs((current) => dropJob(current, ids[index]))
+            }
+            // Any other error retains the last snapshot: the job may still be running.
+          })
         })
-      })
+        .finally(() => {
+          pollingRef.current = false
+        })
     }, SOURCE_JOB_POLL_MS)
     return () => {
       disposed = true
