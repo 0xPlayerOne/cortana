@@ -456,3 +456,62 @@ test('active source jobs expose a cancellation control in the source panel', () 
   fireEvent.click(screen.getByRole('button', { name: 'Cancel work work-code validation' }))
   expect(cancelled).toBe('source-1-1')
 })
+
+test('active source jobs lock a source that uses a canonical label', () => {
+  const labeledStatus: BrainStatus = {
+    ...demoStatus,
+    ingestion: {
+      ...demoStatus.ingestion,
+      configured_sources: demoStatus.ingestion.configured_sources.map((source) =>
+        source.source === 'work-code' ? { ...source, source: 'code-label', enabled: true } : source
+      ),
+    },
+    sources: demoStatus.sources.map((source) =>
+      source.source === 'work-code' ? { ...source, source: 'code-label' } : source
+    ),
+  }
+  const job: DesktopSourceJob = {
+    id: 'source-1-1',
+    operation: 'validation',
+    source: 'work-code',
+    kind: 'filesystem',
+    project: 'work',
+    acl: ['work'],
+    status: 'running',
+    summary: 'validating',
+    log: '',
+    started_at_unix_seconds: 1785000000,
+    completed_at_unix_seconds: null,
+    exit_code: null,
+    retryable: false,
+    writes_indexed_data: false,
+    budget: null,
+  }
+  render(
+    <SourcePanel
+      open={false}
+      status={labeledStatus}
+      statusError=""
+      workspace="work"
+      workspaces={[workspace]}
+      documentQuery=""
+      selected=""
+      documents={[]}
+      selectedDocument=""
+      documentsLoading={false}
+      documentsError=""
+      hasMoreDocuments={false}
+      onSelect={() => {}}
+      onSelectWorkspace={() => {}}
+      onDocumentQueryChange={() => {}}
+      onSelectDocument={() => {}}
+      onLoadMoreDocuments={() => {}}
+      onOpenSourcesSettings={() => {}}
+      onToggleSource={() => {}}
+      onClose={() => {}}
+      jobs={[job]}
+    />
+  )
+  const toggle = screen.getByRole('switch', { name: 'Disable work-code' }) as HTMLButtonElement
+  expect(toggle.disabled).toBe(true)
+})

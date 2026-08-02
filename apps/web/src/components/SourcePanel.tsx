@@ -289,7 +289,9 @@ export function SourcePanel({
                   const needsGoogleAuthorization =
                     auth?.method === 'google_oauth' && !auth.authorized && !needsProviderSetup
                   const sourceJobActive = active.some(
-                    (job) => job.source === item.source && job.project === item.project
+                    (job) =>
+                      job.project === item.project &&
+                      (job.source === item.source || job.source === item.name)
                   )
                   return (
                     <div className="source-node" key={key}>
