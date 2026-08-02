@@ -15,7 +15,7 @@ use serde_json::Value;
 use tauri::AppHandle;
 use tauri_plugin_shell::{
     ShellExt,
-    process::{CommandChild, CommandEvent},
+    process::{CommandChild, CommandEvent, TerminatedPayload},
 };
 
 use crate::settings;
@@ -536,6 +536,13 @@ impl SourceJobState {
             }
             CommandEvent::Terminated(payload) => {
                 job.child = None;
+                // Cancellation can fail after the child handle has already
+                // been taken. Preserve that explicit failure if the process
+                // later emits its termination event; an exit code of zero
+                // must not make a failed cancellation look successful.
+                if !matches!(job.snapshot.status, "running" | "cancelling") {
+                    return;
+                }
                 job.snapshot.exit_code = payload.code;
                 job.snapshot.completed_at_unix_seconds = Some(now());
                 job.snapshot.status = if job.snapshot.status == "cancelling" {
@@ -1036,6 +1043,40 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["source-1785000000-10", "source-1785000000-9"]
         );
+    }
+
+    #[test]
+    fn termination_event_does_not_overwrite_an_explicit_cancellation_failure() {
+        let state = SourceJobState::default();
+        let mut snapshot = snapshot_for("source-1-1", 1_785_000_000);
+        snapshot.status = "failed";
+        snapshot.summary = "Source validation could not be cancelled.".into();
+        snapshot.completed_at_unix_seconds = Some(1_785_000_001);
+        snapshot.exit_code = None;
+        snapshot.retryable = true;
+        state.jobs.lock().expect("job state").insert(
+            snapshot.id.clone(),
+            SourceJob {
+                snapshot,
+                child: None,
+            },
+        );
+
+        state.handle_event(
+            "source-1-1",
+            CommandEvent::Terminated(TerminatedPayload {
+                code: Some(0),
+                signal: None,
+            }),
+        );
+
+        let snapshot = state.status("source-1-1").expect("snapshot");
+        assert_eq!(snapshot.status, "failed");
+        assert_eq!(
+            snapshot.summary,
+            "Source validation could not be cancelled."
+        );
+        assert_eq!(snapshot.exit_code, None);
     }
 
     #[test]
