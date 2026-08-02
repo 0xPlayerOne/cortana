@@ -1990,6 +1990,15 @@ fn validate_url(name: &str, value: &str) -> Result<(), String> {
     if url.scheme() == "http" && !is_loopback {
         return Err(format!("{name} cloud URL must use HTTPS"));
     }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(format!("{name} URL must not include credentials"));
+    }
+    if url.query().is_some() {
+        return Err(format!("{name} URL must not include query parameters"));
+    }
+    if url.fragment().is_some() {
+        return Err(format!("{name} URL must not include a fragment"));
+    }
     Ok(())
 }
 
@@ -2463,6 +2472,18 @@ mod tests {
 
         let mut update = valid_update(temp.path());
         update.embedding.base_url = "http://example.com/v1".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.embedding.base_url = "https://user:password@example.com/v1".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.query.base_url = "https://api.example.com/v1?api_key=secret".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.query.base_url = "https://api.example.com/v1#fragment".into();
         assert!(validate_update(&mut update).is_err());
 
         let mut update = valid_update(temp.path());
