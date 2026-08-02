@@ -112,6 +112,29 @@
   font-size: 11px;
 }
 
+.utility-cancel {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  color: #d8a8a0;
+  border: 1px solid #593937;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 11px;
+}
+
+.utility-cancel:hover:not(:disabled) {
+  color: #f0c2b8;
+  border-color: #8f514a;
+}
+
+.utility-cancel:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .utility-index {
   display: grid;
   width: 22px;

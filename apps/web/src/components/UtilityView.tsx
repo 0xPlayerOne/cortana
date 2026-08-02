@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   BookOpen,
+  CircleStop,
   Database,
   ExternalLink,
   FileText,
@@ -70,6 +71,7 @@ export function UtilityView({
   onRetrieveContext,
   onOpenSettings,
   onOpenProject,
+  onCancelSourceJob,
 }: {
   kind: UtilityKind
   status: BrainStatus | null
@@ -88,6 +90,7 @@ export function UtilityView({
   onRetrieveContext: () => void
   onOpenSettings: () => void
   onOpenProject: () => void
+  onCancelSourceJob?: (id: string) => void
 }) {
   const { eyebrow, title, description } = TITLES[kind]
   return (
@@ -101,7 +104,12 @@ export function UtilityView({
       </header>
       <div className="utility-body">
         {kind === 'inbox' && (
-          <InboxView status={status} sourceJobs={sourceJobs} onOpenSettings={onOpenSettings} />
+          <InboxView
+            status={status}
+            sourceJobs={sourceJobs}
+            onOpenSettings={onOpenSettings}
+            onCancelSourceJob={onCancelSourceJob}
+          />
         )}
         {kind === 'conversations' && (
           <ConversationsView
@@ -137,10 +145,12 @@ function InboxView({
   status,
   sourceJobs,
   onOpenSettings,
+  onCancelSourceJob,
 }: {
   status: BrainStatus | null
   sourceJobs: DesktopSourceJob[]
   onOpenSettings: () => void
+  onCancelSourceJob?: (id: string) => void
 }) {
   const attention = (status?.sync_runs ?? []).filter((run) =>
     ['running', 'failed', 'cancelled', 'budget_exceeded'].includes(run.status)
@@ -198,6 +208,17 @@ function InboxView({
                   </span>
                 </div>
                 <StatusPill status={job.status === 'cancelling' ? 'cancelled' : 'running'} />
+                {onCancelSourceJob && (
+                  <button
+                    type="button"
+                    className="utility-cancel"
+                    disabled={job.status === 'cancelling'}
+                    aria-label={`Cancel ${job.source} ${job.operation}`}
+                    onClick={() => onCancelSourceJob(job.id)}
+                  >
+                    <CircleStop size={14} /> Cancel
+                  </button>
+                )}
               </div>
             ))}
           </div>

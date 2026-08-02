@@ -20,6 +20,7 @@ import {
   getContext,
   getGraph,
   getStatus,
+  cancelDesktopSourceValidation,
   isDemoMode,
   isDesktopApp,
   openDesktopProject,
@@ -957,6 +958,15 @@ export function App() {
           onRetrieveContext={() => void retrieveAgentContext()}
           onOpenSettings={() => setView('settings')}
           onOpenProject={() => void openDesktopProject()}
+          onCancelSourceJob={(id) => {
+            void cancelDesktopSourceValidation(id)
+              .then(sourceJobs.remember)
+              .catch((caught: unknown) => {
+                setStatusError(
+                  caught instanceof Error ? caught.message : 'Source job cancellation failed'
+                )
+              })
+          }}
         />
       )}
       {commandPaletteOpen && (

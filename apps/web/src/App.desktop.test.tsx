@@ -222,6 +222,17 @@ mock.module('./api', () => ({
     }
     return Promise.resolve(state.sourceJob)
   },
+  cancelDesktopSourceValidation: (id: string) => {
+    if (!state.sourceJob || state.sourceJob.id !== id) {
+      return Promise.reject(new Error('source job was not found'))
+    }
+    state.sourceJob = {
+      ...state.sourceJob,
+      status: 'cancelling',
+      summary: 'Cancelling source validation…',
+    }
+    return Promise.resolve(state.sourceJob)
+  },
 }))
 
 const { App } = await import('./App')
@@ -645,6 +656,9 @@ test('running source jobs stay visible in the shell after leaving the settings v
     fireEvent.click(activeJobs)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Inbox' })).toBeTruthy())
     expect(screen.getByRole('heading', { name: 'Active source jobs' })).toBeTruthy()
+    const cancel = screen.getByRole('button', { name: 'Cancel work-code validation' })
+    fireEvent.click(cancel)
+    await waitFor(() => expect((cancel as HTMLButtonElement).disabled).toBe(true))
   } finally {
     window.confirm = originalConfirm
     state.settings = desktopSettings
