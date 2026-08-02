@@ -90,6 +90,7 @@ export function App() {
   const [queryHistoryIndex, setQueryHistoryIndex] = useState(-1)
   const searchRef = useRef<HTMLInputElement>(null)
   const sourceJobs = useSourceJobs()
+  const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
   const documentScopeRef = useRef(documentScope)
   const searchAbortRef = useRef<AbortController | null>(null)
@@ -300,6 +301,32 @@ export function App() {
         // The settings view will surface the local configuration error.
       })
   }, [])
+
+  useEffect(() => {
+    if (!isDesktopApp) return
+    const completed = sourceJobs.jobs.filter(
+      (job) =>
+        job.completed_at_unix_seconds !== null && !['running', 'cancelling'].includes(job.status)
+    )
+    const unseen = completed.filter((job) => !refreshedSourceJobsRef.current.has(job.id))
+    if (unseen.length === 0) return
+    unseen.forEach((job) => refreshedSourceJobsRef.current.add(job.id))
+
+    let active = true
+    void getStatus()
+      .then((next) => {
+        if (!active) return
+        setStatus(next)
+        setStatusError('')
+      })
+      .catch((caught: unknown) => {
+        if (!active) return
+        setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
+      })
+    return () => {
+      active = false
+    }
+  }, [sourceJobs.jobs])
 
   const agentContext = useMemo(
     () => buildAgentContext(activeQuery, evidence),

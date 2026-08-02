@@ -58,6 +58,7 @@ const googleSource: SourceSettings = {
 const state = {
   settings: desktopSettings as DesktopSettings,
   sourceJob: null as DesktopSourceJob | null,
+  statusCalls: 0,
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
 }
@@ -117,7 +118,10 @@ const installedServiceReport: DesktopServiceReport = {
 mock.module('./api', () => ({
   ...realApi,
   isDesktopApp: true,
-  getStatus: () => Promise.resolve(demoStatus),
+  getStatus: () => {
+    state.statusCalls += 1
+    return Promise.resolve(demoStatus)
+  },
   getDocuments: () => Promise.resolve({ documents: [], next_cursor: null }),
   getAnswer: () => Promise.reject(new Error('Answer request failed (503)')),
   getDocument: () => Promise.reject(new Error('Document unavailable')),
@@ -447,6 +451,41 @@ test('running source jobs stay visible in the shell after leaving the settings v
     const activeJobs = screen.getByLabelText('Active source jobs')
     expect(activeJobs).toBeTruthy()
     expect(activeJobs.textContent).toContain('work-code · validation · running')
+  } finally {
+    window.confirm = originalConfirm
+    state.settings = desktopSettings
+    state.sourceJob = null
+  }
+})
+
+test('completed source jobs refresh source health without waiting for the status interval', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.settings = { ...desktopSettings, sources: [workSource] }
+  state.sourceJob = null
+  state.statusCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    const initialStatusCalls = state.statusCalls
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Validate' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
+    await waitFor(() => expect(state.sourceJob?.status).toBe('running'))
+
+    state.sourceJob = {
+      ...state.sourceJob!,
+      status: 'succeeded',
+      summary: 'Validation succeeded.',
+      completed_at_unix_seconds: state.sourceJob!.started_at_unix_seconds + 1,
+      exit_code: 0,
+    }
+    await waitFor(() => expect(state.statusCalls).toBeGreaterThan(initialStatusCalls), {
+      timeout: 3_000,
+    })
   } finally {
     window.confirm = originalConfirm
     state.settings = desktopSettings
