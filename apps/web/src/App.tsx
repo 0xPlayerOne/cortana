@@ -992,7 +992,14 @@ export function App() {
         </span>
         <IngestionIndicator status={status} />
         <ActiveSourceJobs jobs={sourceJobs.jobs} />
-        <InstallerIndicator job={installerJob} />
+        <InstallerIndicator
+          job={installerJob}
+          onOpen={() => {
+            if (!canLeaveSettings()) return
+            setSettingsSection('readiness')
+            setView('settings')
+          }}
+        />
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
         {isDesktopApp && (
@@ -1061,14 +1068,26 @@ function isMissingInstallerJobError(error: unknown): boolean {
   return error instanceof Error && error.message.includes('installation job was not found')
 }
 
-function InstallerIndicator({ job }: { job: DesktopInstallJob | null }) {
+function InstallerIndicator({
+  job,
+  onOpen,
+}: {
+  job: DesktopInstallJob | null
+  onOpen: () => void
+}) {
   if (!job) return null
   const active = isActiveInstaller(job)
   const state = active ? 'running' : job.status === 'succeeded' ? 'healthy' : 'warning'
   const label = active ? `Install: ${job.tool} · ${job.status}` : `Install: ${job.status}`
   return (
-    <span className={`installer-health ${state}`} role="status" title={job.summary}>
+    <button
+      type="button"
+      className={`installer-health ${state}`}
+      aria-label={`Open installer status for ${job.tool}`}
+      title={`${job.summary}. Open readiness for details.`}
+      onClick={onOpen}
+    >
       <i /> {label}
-    </span>
+    </button>
   )
 }

@@ -472,9 +472,8 @@ test('installer progress survives settings section changes', async () => {
     await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
     expect(screen.getByText('Install: uv · running')).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open installer status for uv' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: 'Readiness' }))
     await waitFor(() => expect(screen.getByText('Installing uv')).toBeTruthy())
   } finally {
     window.confirm = originalConfirm

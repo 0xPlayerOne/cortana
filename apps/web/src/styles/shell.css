@@ -687,6 +687,13 @@
 }
 
 .installer-health {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
   color: #b8c7a8;
 }
 
