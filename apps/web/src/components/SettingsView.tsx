@@ -105,9 +105,21 @@ function useDesktopForeground(): boolean {
   )
 
   useEffect(() => {
-    const markVisible = () => setForeground(document.visibilityState !== 'hidden')
-    const markFocused = () => setForeground(document.visibilityState !== 'hidden')
-    const markBlurred = () => setForeground(false)
+    const visibility = { current: document.visibilityState !== 'hidden' }
+    const focused = { current: true }
+    const syncForeground = () => setForeground(visibility.current && focused.current)
+    const markVisible = () => {
+      visibility.current = document.visibilityState !== 'hidden'
+      syncForeground()
+    }
+    const markFocused = () => {
+      focused.current = true
+      syncForeground()
+    }
+    const markBlurred = () => {
+      focused.current = false
+      syncForeground()
+    }
 
     window.addEventListener('focus', markFocused)
     window.addEventListener('blur', markBlurred)

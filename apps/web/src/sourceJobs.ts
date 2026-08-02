@@ -172,9 +172,21 @@ export function useSourceJobs() {
   }, [])
 
   useEffect(() => {
-    const markForeground = () => setForeground(document.visibilityState !== 'hidden')
-    const markBackground = () => setForeground(false)
-    const syncVisibility = () => setForeground(document.visibilityState !== 'hidden')
+    const visibility = { current: document.visibilityState !== 'hidden' }
+    const focused = { current: true }
+    const syncForeground = () => setForeground(visibility.current && focused.current)
+    const markForeground = () => {
+      focused.current = true
+      syncForeground()
+    }
+    const markBackground = () => {
+      focused.current = false
+      syncForeground()
+    }
+    const syncVisibility = () => {
+      visibility.current = document.visibilityState !== 'hidden'
+      syncForeground()
+    }
     window.addEventListener('focus', markForeground)
     window.addEventListener('blur', markBackground)
     document.addEventListener('visibilitychange', syncVisibility)

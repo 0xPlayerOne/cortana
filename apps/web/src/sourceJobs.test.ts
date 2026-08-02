@@ -300,7 +300,12 @@ test('the hook pauses renderer polling in the background and recovers on focus',
   expect(state.statusCalls).toContain(running.id)
 
   state.statusCalls = []
-  act(() => window.dispatchEvent(new Event('blur')))
+  act(() => {
+    window.dispatchEvent(new Event('blur'))
+    // A webview can become visible again before it receives native focus. A
+    // visibility event must not resume background polling on its own.
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 1_100))
   })

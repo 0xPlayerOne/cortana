@@ -76,8 +76,8 @@ export function SourcePanel({
   onSelectDocument: (id: string) => void
   onLoadMoreDocuments: () => void
   onOpenSourcesSettings: () => void
-  onOpenSourceSetup?: (source: string) => void
-  onAuthorizeSource?: (source: string) => void
+  onOpenSourceSetup?: (source: string, project: string) => void
+  onAuthorizeSource?: (source: string, project: string) => void
   onToggleSource?: (source: string, project: string, enabled: boolean) => void
   sourceToggleBusy?: string | null
   sourceToggleDisabled?: boolean
@@ -328,7 +328,7 @@ export function SourcePanel({
                             }
                             onClick={(event) => {
                               event.stopPropagation()
-                              onOpenSourceSetup(item.source)
+                              onOpenSourceSetup(item.source, item.project)
                             }}
                           >
                             <ExternalLink size={13} />
@@ -349,7 +349,7 @@ export function SourcePanel({
                             }
                             onClick={(event) => {
                               event.stopPropagation()
-                              onAuthorizeSource(item.source)
+                              onAuthorizeSource(item.source, item.project)
                             }}
                           >
                             <KeyRound size={13} />

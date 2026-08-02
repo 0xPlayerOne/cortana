@@ -172,17 +172,34 @@ export function App() {
   contextWidthRef.current = contextWidth
 
   useEffect(() => {
+    const visibility = { current: document.visibilityState !== 'hidden' }
+    const focused = { current: true }
+    const syncForeground = () => setPageVisible(visibility.current && focused.current)
     const handleVisibilityChange = () => {
-      setPageVisible(document.visibilityState !== 'hidden')
+      visibility.current = document.visibilityState !== 'hidden'
+      syncForeground()
+    }
+    const handleFocus = () => {
+      focused.current = true
+      syncForeground()
+    }
+    const handleBlur = () => {
+      focused.current = false
+      syncForeground()
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('blur', handleBlur)
     let disposed = false
     let unlistenFocus: (() => void) | undefined
     if (isDesktopApp && '__TAURI_INTERNALS__' in window) {
       void import('@tauri-apps/api/window')
         .then(({ getCurrentWindow }) =>
           getCurrentWindow().onFocusChanged(({ payload }) => {
-            if (!disposed) setPageVisible(payload)
+            if (!disposed) {
+              focused.current = payload
+              syncForeground()
+            }
           })
         )
         .then((unlisten) => {
@@ -197,6 +214,8 @@ export function App() {
     return () => {
       disposed = true
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('blur', handleBlur)
       unlistenFocus?.()
     }
   }, [])
@@ -886,14 +905,22 @@ export function App() {
     }
   }
 
-  async function openSourceSetup(sourceName: string) {
+  async function openSourceSetup(sourceName: string, project: string) {
     if (sourceToggleBusy) return
     if (!isDesktopApp || !desktopSettings || desktopSettings.needs_setup || settingsDirty) {
       setSettingsSection('sources')
       setView('settings')
       return
     }
-    const configuredSource = desktopSettings.sources.find((source) => source.name === sourceName)
+    const configuredSource = desktopSettings.sources.find(
+      (source) => source.name === sourceName && source.project === project
+    )
+    if (!configuredSource) {
+      setSourceToggleError(
+        `${sourceName} in ${project} is not present in the saved Desktop source configuration.`
+      )
+      return
+    }
     if (
       configuredSource &&
       ['google-drive', 'gmail', 'google-calendar'].includes(configuredSource.kind)
@@ -920,16 +947,25 @@ export function App() {
     }
   }
 
-  async function authorizeSource(sourceName: string) {
+  async function authorizeSource(sourceName: string, project: string) {
     if (sourceToggleBusy) return
     if (!isDesktopApp || !desktopSettings || desktopSettings.needs_setup || settingsDirty) {
       setSettingsSection('sources')
       setView('settings')
       return
     }
+    const configuredSource = desktopSettings.sources.find(
+      (source) => source.name === sourceName && source.project === project
+    )
+    if (!configuredSource) {
+      setSourceToggleError(
+        `${sourceName} in ${project} is not present in the saved Desktop source configuration.`
+      )
+      return
+    }
     if (
       !window.confirm(
-        `Authorize ${sourceName} with Google?\n\n` +
+        `Authorize ${sourceName} in ${project} with Google?\n\n` +
           'Cortana will open the system browser and store the read-only token in the configured private file.'
       )
     ) {
@@ -1414,10 +1450,14 @@ export function App() {
               setView('settings')
             }}
             onOpenSourceSetup={
-              desktopSourceActionsReady ? (name) => void openSourceSetup(name) : undefined
+              desktopSourceActionsReady
+                ? (name, project) => void openSourceSetup(name, project)
+                : undefined
             }
             onAuthorizeSource={
-              desktopSourceActionsReady ? (name) => void authorizeSource(name) : undefined
+              desktopSourceActionsReady
+                ? (name, project) => void authorizeSource(name, project)
+                : undefined
             }
             onToggleSource={
               desktopSourceActionsReady

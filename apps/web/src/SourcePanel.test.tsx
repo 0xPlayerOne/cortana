@@ -252,7 +252,9 @@ test('source-select button is rendered as a button control', () => {
 
 test('source panel exposes setup and Google authorization actions only when required', () => {
   let setupSource = ''
+  let setupProject = ''
   let authorizedSource = ''
+  let authorizedProject = ''
   const actionStatus: BrainStatus = {
     ...demoStatus,
     ingestion: {
@@ -296,11 +298,13 @@ test('source panel exposes setup and Google authorization actions only when requ
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
       onOpenSourcesSettings={() => {}}
-      onOpenSourceSetup={(source) => {
+      onOpenSourceSetup={(source, project) => {
         setupSource = source
+        setupProject = project
       }}
-      onAuthorizeSource={(source) => {
+      onAuthorizeSource={(source, project) => {
         authorizedSource = source
+        authorizedProject = project
       }}
       onClose={() => {}}
       jobs={[]}
@@ -309,7 +313,9 @@ test('source panel exposes setup and Google authorization actions only when requ
   fireEvent.click(screen.getByRole('button', { name: 'Open team-slack setup' }))
   fireEvent.click(screen.getByRole('button', { name: 'Authorize personal-drive' }))
   expect(setupSource).toBe('team-slack')
+  expect(setupProject).toBe('work')
   expect(authorizedSource).toBe('personal-drive')
+  expect(authorizedProject).toBe('personal')
   expect(screen.queryByRole('button', { name: 'Authorize team-slack' })).toBeNull()
 })
 
