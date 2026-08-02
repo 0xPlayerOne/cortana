@@ -1230,6 +1230,7 @@ export function App() {
           >
             <strong>Commands</strong>
             <button
+              type="button"
               autoFocus
               onClick={() => {
                 setCommandPaletteOpen(false)
@@ -1239,6 +1240,7 @@ export function App() {
               Search the brain <kbd>⌘ K</kbd>
             </button>
             <button
+              type="button"
               onClick={() => {
                 setCommandPaletteOpen(false)
                 focusDocumentFilter()
@@ -1247,6 +1249,7 @@ export function App() {
               Filter documents <kbd>⌘ ⇧ F</kbd>
             </button>
             <button
+              type="button"
               onClick={() => {
                 setCommandPaletteOpen(false)
                 chooseWorkspace('')
@@ -1257,6 +1260,7 @@ export function App() {
             </button>
             {workspaces.map((item) => (
               <button
+                type="button"
                 key={item.id}
                 onClick={() => {
                   chooseWorkspace(item.id)
@@ -1267,6 +1271,7 @@ export function App() {
               </button>
             ))}
             <button
+              type="button"
               onClick={() => {
                 setCommandPaletteOpen(false)
                 setView('settings')
