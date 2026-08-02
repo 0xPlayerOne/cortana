@@ -69,5 +69,7 @@ Hindsight remains disabled when the gate fails or when no explicit operator appr
 
 ## Honcho status
 
-Honcho remains deferred to a later milestone; only this optional derived sidecar is introduced
-as a non-default integration until evaluation gates are met.
+Honcho is available as a second, non-default adapter behind the same `MemoryProvider` and outbox
+contract. It uses one deterministic Honcho session per Cortana document so session deletion can
+propagate a single document safely. See the [Honcho adapter contract](memory-honcho.md). It remains
+disabled until the same evaluation, ACL, deletion, and export gates are met.

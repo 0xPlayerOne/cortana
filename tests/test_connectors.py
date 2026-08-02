@@ -18,8 +18,8 @@ from cortana.connectors.__main__ import main
 from cortana.connectors.google import (
     GoogleSession,
     _gmail_document,
-    _private_cache,
     _plain_text,
+    _private_cache,
     _timestamp,
     fetch_calendar,
     fetch_drive,

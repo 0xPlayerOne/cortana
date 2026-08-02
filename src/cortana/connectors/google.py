@@ -66,9 +66,7 @@ class GoogleSession:
 
     def __init__(self, token_path: Path, client: httpx.Client | None = None) -> None:
         self.token_path = validate_token_path(token_path)
-        self.credentials: dict[str, Any] = json.loads(
-            self.token_path.read_text(encoding="utf-8")
-        )
+        self.credentials: dict[str, Any] = json.loads(self.token_path.read_text(encoding="utf-8"))
         self.client = client or httpx.Client(timeout=60, follow_redirects=True)
         self._owns_client = client is None
 

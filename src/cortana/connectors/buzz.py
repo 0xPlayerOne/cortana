@@ -17,7 +17,7 @@ def fetch(root: Path, project: str = "buzz") -> Iterable[Document]:
         with sqlite3.connect(uri, uri=True) as connection:
             for kind, pubkey, tag, content, created_at, raw_event in connection.execute(
                 "SELECT kind,pubkey,d_tag,content,created_at,raw_event FROM persona_events"
-                ):
+            ):
                 yield Document(
                     source="buzz",
                     source_id=f"persona:{kind}:{pubkey}:{tag}",
@@ -29,7 +29,9 @@ def fetch(root: Path, project: str = "buzz") -> Iterable[Document]:
                     metadata={"kind": kind, "pubkey": pubkey, "raw_event": json.loads(raw_event)},
                 )
     elif database.exists():
-        raise RuntimeError(f"Buzz retention database must be a regular non-symlink file: {database}")
+        raise RuntimeError(
+            f"Buzz retention database must be a regular non-symlink file: {database}"
+        )
     for path in sorted((root / "agents" / "logs").glob("*.log")):
         if path.is_symlink():
             raise RuntimeError(f"Buzz log must not be a symlink: {path}")
