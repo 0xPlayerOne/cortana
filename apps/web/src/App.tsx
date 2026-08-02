@@ -1247,6 +1247,7 @@ export function App() {
         <UtilityView
           kind={view}
           status={status}
+          statusError={statusError}
           sourceJobs={sourceJobs.jobs}
           query={activeQuery}
           answer={answer}

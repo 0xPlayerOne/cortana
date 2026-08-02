@@ -59,6 +59,7 @@ const TITLES: Record<UtilityKind, { eyebrow: string; title: string; description:
 export function UtilityView({
   kind,
   status,
+  statusError = '',
   sourceJobs,
   query,
   answer,
@@ -79,6 +80,7 @@ export function UtilityView({
 }: {
   kind: UtilityKind
   status: BrainStatus | null
+  statusError?: string
   sourceJobs: DesktopSourceJob[]
   query: string
   answer: AnswerResponse | null
@@ -111,6 +113,7 @@ export function UtilityView({
         {kind === 'inbox' && (
           <InboxView
             status={status}
+            statusError={statusError}
             sourceJobs={sourceJobs}
             sourceJobError={sourceJobError}
             onOpenSettings={onOpenSettings}
@@ -149,12 +152,14 @@ export function UtilityView({
 
 function InboxView({
   status,
+  statusError,
   sourceJobs,
   sourceJobError,
   onOpenSettings,
   onCancelSourceJob,
 }: {
   status: BrainStatus | null
+  statusError: string
   sourceJobs: DesktopSourceJob[]
   sourceJobError?: string
   onOpenSettings: () => void
@@ -173,6 +178,23 @@ function InboxView({
     activeJobs.length === 0 &&
     completedJobs.length === 0
   ) {
+    if (!status) {
+      return (
+        <UtilityEmpty
+          icon={
+            statusError ? <AlertTriangle size={26} /> : <LoaderCircle className="spin" size={26} />
+          }
+          title={statusError ? 'Sync health unavailable' : 'Loading sync health'}
+          detail={
+            statusError ||
+            'Waiting for the runtime status snapshot before reporting source health or sync history.'
+          }
+          actions={[
+            { label: 'Open settings', icon: <Settings size={15} />, onClick: onOpenSettings },
+          ]}
+        />
+      )
+    }
     return (
       <UtilityEmpty
         icon={<Inbox size={26} />}

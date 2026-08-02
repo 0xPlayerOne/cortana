@@ -298,6 +298,34 @@ test('Inbox renders current sync attention and a truthful idle empty state', asy
   expect(screen.getByRole('button', { name: 'Open settings' })).toBeTruthy()
 })
 
+test('Inbox does not claim clean sync history while runtime status is unavailable', () => {
+  render(
+    <UtilityView
+      kind="inbox"
+      status={null}
+      statusError="Runtime status unavailable"
+      sourceJobs={[]}
+      query=""
+      answer={null}
+      evidence={[]}
+      loading={false}
+      error=""
+      contextBundle={null}
+      contextLoading={false}
+      contextError=""
+      contextTokens={0}
+      desktopAvailable={false}
+      onSearchFocus={() => {}}
+      onRetrieveContext={() => {}}
+      onOpenSettings={() => {}}
+      onOpenProject={() => {}}
+    />
+  )
+  expect(screen.getByText('Sync health unavailable')).toBeTruthy()
+  expect(screen.getByText('Runtime status unavailable')).toBeTruthy()
+  expect(screen.queryByText('No sync attention')).toBeNull()
+})
+
 test('Inbox retains terminal source-job history after the job stops running', () => {
   const job: DesktopSourceJob = {
     id: 'source-1',
