@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/0xPlayerOne/cortana/compare/v0.16.0...v0.16.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* **ci:** parallelize independent desktop audit jobs ([#209](https://github.com/0xPlayerOne/cortana/issues/209)) ([8f7c087](https://github.com/0xPlayerOne/cortana/commit/8f7c08795fc2e78dc5987569fc7e00be92b3d284))
+
 ## [0.16.0](https://github.com/0xPlayerOne/cortana/compare/v0.15.2...v0.16.0) (2026-08-02)
 
 
