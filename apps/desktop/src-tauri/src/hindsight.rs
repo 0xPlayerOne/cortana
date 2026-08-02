@@ -22,7 +22,7 @@ pub struct HindsightStatus {
 pub async fn status() -> Result<HindsightStatus, String> {
     let snapshot = settings::load()?;
     let config = snapshot.hindsight;
-    let endpoint = config.base_url.clone();
+    let endpoint = endpoint_label(&config.base_url);
     let bank = config.bank.clone();
     let token = config
         .token_env
@@ -109,7 +109,14 @@ pub async fn status() -> Result<HindsightStatus, String> {
 }
 
 fn health_url(base_url: &str) -> Result<Url, String> {
-    let mut url = Url::parse(base_url).map_err(|_| "Hindsight endpoint URL is invalid".to_string())?;
+    let mut url = parse_endpoint(base_url)?;
+    let path = format!("{}/health", url.path().trim_end_matches('/'));
+    url.set_path(&path);
+    Ok(url)
+}
+
+fn parse_endpoint(base_url: &str) -> Result<Url, String> {
+    let url = Url::parse(base_url).map_err(|_| "Hindsight endpoint URL is invalid".to_string())?;
     if !matches!(url.scheme(), "http" | "https")
         || !url.username().is_empty()
         || url.password().is_some()
@@ -122,9 +129,13 @@ fn health_url(base_url: &str) -> Result<Url, String> {
     if url.scheme() == "http" && !is_loopback {
         return Err("Hindsight remote endpoint must use HTTPS".into());
     }
-    let path = format!("{}/health", url.path().trim_end_matches('/'));
-    url.set_path(&path);
     Ok(url)
+}
+
+fn endpoint_label(base_url: &str) -> String {
+    parse_endpoint(base_url)
+        .map(|url| url.to_string())
+        .unwrap_or_else(|_| "<invalid endpoint>".into())
 }
 
 fn sanitize_error(error: &str) -> String {
@@ -156,6 +167,7 @@ mod tests {
         assert!(health_url("https://example.test/?token=secret").is_err());
         assert!(health_url("http://example.test").is_err());
         assert!(health_url("file:///tmp/hindsight").is_err());
+        assert_eq!(endpoint_label("https://user:pass@example.test"), "<invalid endpoint>");
     }
 
     #[test]
