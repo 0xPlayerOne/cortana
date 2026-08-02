@@ -316,6 +316,16 @@ test('service action result is not overwritten by stale local refresh', async ()
   }
 })
 
+test('standalone updater failures stay visible instead of being swallowed', async () => {
+  render(
+    <SettingsView onSaved={() => {}} initialSection="updates" desktopSettings={state.settings} />
+  )
+
+  await waitFor(() =>
+    expect(screen.getByRole('alert').textContent).toContain('Updates unavailable')
+  )
+})
+
 test('a shared active source job locks source actions until it finishes', async () => {
   const activeJob = {
     ...jobFor('small', 'running'),

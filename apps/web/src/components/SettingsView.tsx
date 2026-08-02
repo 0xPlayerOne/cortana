@@ -1283,7 +1283,10 @@ function UpdatesSection({
       return
     }
     void getDesktopUpdate()
-      .then(setUpdate)
+      .then((next) => {
+        setUpdate(next)
+        if (!next.error) setError('')
+      })
       .catch((caught: unknown) => {
         setError(caught instanceof Error ? caught.message : 'Updater status unavailable')
       })
@@ -1295,8 +1298,13 @@ function UpdatesSection({
       if (pollInFlightRef.current) return
       pollInFlightRef.current = true
       void getDesktopUpdate()
-        .then(setUpdate)
-        .catch(() => {})
+        .then((next) => {
+          setUpdate(next)
+          if (!next.error) setError('')
+        })
+        .catch((caught: unknown) => {
+          setError(caught instanceof Error ? caught.message : 'Updater status unavailable')
+        })
         .finally(() => {
           pollInFlightRef.current = false
         })
