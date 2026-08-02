@@ -6,7 +6,9 @@ import {
   CircleStop,
   Code2,
   Database,
+  ExternalLink,
   Folder,
+  KeyRound,
   LoaderCircle,
   Mail,
   MessageCircle,
@@ -62,6 +64,8 @@ export function SourcePanel({
   onSelectDocument,
   onLoadMoreDocuments,
   onOpenSourcesSettings,
+  onOpenSourceSetup,
+  onAuthorizeSource,
   onToggleSource,
   sourceToggleBusy = null,
   sourceToggleDisabled = false,
@@ -90,6 +94,8 @@ export function SourcePanel({
   onSelectDocument: (id: string) => void
   onLoadMoreDocuments: () => void
   onOpenSourcesSettings: () => void
+  onOpenSourceSetup?: (source: string) => void
+  onAuthorizeSource?: (source: string) => void
   onToggleSource?: (source: string, project: string, enabled: boolean) => void
   sourceToggleBusy?: string | null
   sourceToggleDisabled?: boolean
@@ -257,6 +263,10 @@ export function SourcePanel({
                   // highlight every same-named connector and make a click
                   // appear to select the wrong account.
                   const isSelected = selected === item.source && workspace === item.project
+                  const auth = item.authorization
+                  const needsProviderSetup = Boolean(auth?.setup_required)
+                  const needsGoogleAuthorization =
+                    auth?.method === 'google_oauth' && !auth.authorized && !needsProviderSetup
                   return (
                     <div className="source-node" key={key}>
                       <div className="source-row">
@@ -288,6 +298,36 @@ export function SourcePanel({
                           <i className={`source-health ${health.state}`} />
                           <small>{item.documents.toLocaleString()}</small>
                         </button>
+                        {onOpenSourceSetup && needsProviderSetup && (
+                          <button
+                            type="button"
+                            className="source-action"
+                            aria-label={`Open ${item.name} setup`}
+                            title="Open the provider setup page"
+                            disabled={sourceToggleBusy !== null || sourceToggleDisabled}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onOpenSourceSetup(item.source)
+                            }}
+                          >
+                            <ExternalLink size={13} />
+                          </button>
+                        )}
+                        {onAuthorizeSource && needsGoogleAuthorization && (
+                          <button
+                            type="button"
+                            className="source-action"
+                            aria-label={`Authorize ${item.name}`}
+                            title="Authorize this Google source in your browser"
+                            disabled={sourceToggleBusy !== null || sourceToggleDisabled}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onAuthorizeSource(item.source)
+                            }}
+                          >
+                            <KeyRound size={13} />
+                          </button>
+                        )}
                         {onToggleSource && item.kind !== 'indexed' && (
                           <button
                             type="button"

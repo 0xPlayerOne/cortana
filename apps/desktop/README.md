@@ -68,7 +68,8 @@ no-reconcile sync through the same cancellable source-job boundary with visible 
 metadata-only audit events.
 The Knowledge sidebar mirrors each saved connector with a confirmation-gated enable/disable
 switch for future ingestion; it never deletes indexed data and is locked while Settings has an
-unsaved draft.
+unsaved draft. Sources that need provider setup or Google authorization also expose the matching
+browser action directly in the tree.
 
 Closing the main window hides it to the tray. Use **Quit Cortana Desktop** from the tray menu to
 exit the control plane. This does not stop the independently managed Cortana services.

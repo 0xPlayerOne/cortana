@@ -461,6 +461,32 @@
   opacity: 0.5;
 }
 
+.source-tree .source-row > .source-action {
+  display: inline-flex;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  align-items: center;
+  justify-content: center;
+  margin: 0 2px;
+  padding: 0;
+  color: #a9b6c1;
+  border: 1px solid #48515a;
+  border-radius: 4px;
+  background: #252b31;
+}
+
+.source-tree .source-row > .source-action:hover:not(:disabled) {
+  color: #fff;
+  border-color: #7e9eb8;
+  background: #303b45;
+}
+
+.source-tree .source-row > .source-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .source-node-hint {
   display: block;
   margin: -3px 10px 4px 57px;

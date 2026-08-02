@@ -24,12 +24,14 @@ import {
   getContext,
   getGraph,
   getStatus,
+  openDesktopSourceSetup,
   saveDesktopSettings,
   cancelDesktopSourceValidation,
   scanDesktopReadiness,
   isDemoMode,
   isDesktopApp,
   openDesktopProject,
+  startDesktopSourceAuthorization,
 } from './api'
 import { ContextPanel } from './components/ContextPanel'
 import { type AppView, Navigation, TitleActions } from './components/Navigation'
@@ -826,6 +828,59 @@ export function App() {
     }
   }
 
+  async function openSourceSetup(sourceName: string) {
+    if (sourceToggleBusy) return
+    if (!isDesktopApp || !desktopSettings || desktopSettings.needs_setup || settingsDirty) {
+      setSettingsSection('sources')
+      setView('settings')
+      return
+    }
+    setSourceToggleBusy(`setup:${sourceName}`)
+    setSourceToggleError('')
+    setSourceToggleNotice('')
+    try {
+      await openDesktopSourceSetup(sourceName)
+      setSourceToggleNotice('Provider setup opened in your browser.')
+    } catch (caught) {
+      setSourceToggleError(
+        caught instanceof Error ? caught.message : 'Provider setup could not open'
+      )
+    } finally {
+      setSourceToggleBusy(null)
+    }
+  }
+
+  async function authorizeSource(sourceName: string) {
+    if (sourceToggleBusy) return
+    if (!isDesktopApp || !desktopSettings || desktopSettings.needs_setup || settingsDirty) {
+      setSettingsSection('sources')
+      setView('settings')
+      return
+    }
+    if (
+      !window.confirm(
+        `Authorize ${sourceName} with Google?\n\n` +
+          'Cortana will open the system browser and store the read-only token in the configured private file.'
+      )
+    ) {
+      return
+    }
+    setSourceToggleBusy(`authorize:${sourceName}`)
+    setSourceToggleError('')
+    setSourceToggleNotice('')
+    try {
+      const job = await startDesktopSourceAuthorization(sourceName)
+      sourceJobs.remember(job)
+      setSourceToggleNotice('Google authorization opened in your browser.')
+    } catch (caught) {
+      setSourceToggleError(
+        caught instanceof Error ? caught.message : 'Google authorization could not start'
+      )
+    } finally {
+      setSourceToggleBusy(null)
+    }
+  }
+
   function chooseSource(next: string, project?: string) {
     const nextWorkspace = project ?? workspace
     const sameScope = source === next && workspace === nextWorkspace
@@ -1084,6 +1139,11 @@ export function App() {
   // launch. Treat the inventory as authoritative once status is available,
   // or once non-empty saved source settings are present.
   const sourceInventoryReady = status !== null || (desktopSettings?.sources.length ?? 0) > 0
+  const desktopSourceActionsReady =
+    isDesktopApp &&
+    desktopSettings !== null &&
+    !desktopSettings.needs_setup &&
+    desktopSettings.sources.length > 0
 
   const workspaceScope = workspaces.map((item) => item.id).join('\u0000')
   useEffect(() => {
@@ -1274,11 +1334,14 @@ export function App() {
               setSettingsSection('sources')
               setView('settings')
             }}
+            onOpenSourceSetup={
+              desktopSourceActionsReady ? (name) => void openSourceSetup(name) : undefined
+            }
+            onAuthorizeSource={
+              desktopSourceActionsReady ? (name) => void authorizeSource(name) : undefined
+            }
             onToggleSource={
-              isDesktopApp &&
-              desktopSettings &&
-              !desktopSettings.needs_setup &&
-              desktopSettings.sources.length > 0
+              desktopSourceActionsReady
                 ? (name, project, enabled) => void toggleSource(name, project, enabled)
                 : undefined
             }

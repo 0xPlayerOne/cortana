@@ -151,7 +151,9 @@ explicit channels and a validated environment-variable name. Saving or authorizi
 settings never starts ingestion. The knowledge sidebar also exposes a confirmation-gated
 enable/disable switch for each saved connector; it writes only that source's enabled flag, leaves
 existing indexed data untouched, and is disabled while a Settings draft is unsaved or first-launch
-setup is incomplete.
+setup is incomplete. When status reports missing provider setup or an unauthorized Google source,
+the same tree offers the fixed provider setup link or starts the bounded browser authorization job;
+credentials still remain outside the renderer.
 
 First launch enters a guided checklist and automatically runs only the read-only readiness scan.
 The automatic attempt is one-shot: a failure is retained as an actionable status and waits for an

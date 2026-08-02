@@ -230,6 +230,69 @@ test('source-select button is rendered as a button control', () => {
   expect(selectButton.getAttribute('aria-pressed')).toBe('true')
 })
 
+test('source panel exposes setup and Google authorization actions only when required', () => {
+  let setupSource = ''
+  let authorizedSource = ''
+  const actionStatus: BrainStatus = {
+    ...demoStatus,
+    ingestion: {
+      ...demoStatus.ingestion,
+      configured_sources: demoStatus.ingestion.configured_sources.map((source) =>
+        source.source === 'team-slack'
+          ? {
+              ...source,
+              authorization: { method: 'token' as const, setup_required: true, authorized: false },
+            }
+          : source.source === 'personal-drive'
+            ? {
+                ...source,
+                authorization: {
+                  method: 'google_oauth' as const,
+                  setup_required: false,
+                  authorized: false,
+                },
+              }
+            : source
+      ),
+    },
+  }
+  render(
+    <SourcePanel
+      open={false}
+      status={actionStatus}
+      statusError=""
+      workspace=""
+      workspaces={[workspace]}
+      documentQuery=""
+      selected=""
+      documents={[]}
+      selectedDocument=""
+      documentsLoading={false}
+      documentsError=""
+      hasMoreDocuments={false}
+      onSelect={() => {}}
+      onSelectWorkspace={() => {}}
+      onDocumentQueryChange={() => {}}
+      onSelectDocument={() => {}}
+      onLoadMoreDocuments={() => {}}
+      onOpenSourcesSettings={() => {}}
+      onOpenSourceSetup={(source) => {
+        setupSource = source
+      }}
+      onAuthorizeSource={(source) => {
+        authorizedSource = source
+      }}
+      onClose={() => {}}
+      jobs={[]}
+    />
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Open team-slack setup' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Authorize personal-drive' }))
+  expect(setupSource).toBe('team-slack')
+  expect(authorizedSource).toBe('personal-drive')
+  expect(screen.queryByRole('button', { name: 'Authorize team-slack' })).toBeNull()
+})
+
 test('active source jobs expose a cancellation control in the source panel', () => {
   let cancelled = ''
   const job: DesktopSourceJob = {
