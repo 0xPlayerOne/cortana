@@ -142,6 +142,10 @@ cortana validate-source SOURCE_NAME \
   --max-seconds 60
 ```
 
+When the three overrides are omitted, the CLI applies the same safe defaults: 25 documents,
+5 MiB, and 60 seconds. Use larger explicit limits only when you are deliberately proving coverage
+for a matching guided initial-sync or recurring-sync budget.
+
 Validation can target a disabled source by exact name. It fetches only that connector snapshot,
 enforces the wall-clock and live stdout/stderr spool bounds, parses every emitted document, then
 deletes the private spool. It never opens the index, embeds content, or reconciles records. The
