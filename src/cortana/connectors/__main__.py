@@ -79,17 +79,23 @@ def main(argv: list[str] | None = None) -> int:
 
 def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
     if arguments.connector == "apple-notes":
-        return fetch_apple_notes(arguments.project)
+        return fetch_apple_notes(arguments.project, max_documents=arguments.max_documents)
     if arguments.connector == "buzz":
-        return fetch_buzz(arguments.root, arguments.project)
+        return fetch_buzz(arguments.root, arguments.project, arguments.max_documents)
     if arguments.connector == "slack":
-        return fetch_slack(arguments.channels, arguments.project, arguments.token_env)
+        return fetch_slack(
+            arguments.channels,
+            arguments.project,
+            arguments.token_env,
+            arguments.max_documents,
+        )
     if arguments.connector == "discord":
         return fetch_discord(
             arguments.channels,
             arguments.project,
             arguments.token_env,
             cache_dir=None if arguments.no_cache else arguments.cache_dir,
+            max_documents=arguments.max_documents,
         )
     token_path = _token_path(arguments)
     if arguments.connector == "google-drive":
@@ -108,9 +114,15 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
             arguments.query,
             arguments.labels,
             cache_dir=None if arguments.no_cache else arguments.cache_dir,
+            max_documents=arguments.max_documents,
         )
     if arguments.connector == "google-calendar":
-        return fetch_calendar(token_path, arguments.project, arguments.query)
+        return fetch_calendar(
+            token_path,
+            arguments.project,
+            arguments.query,
+            max_documents=arguments.max_documents,
+        )
     raise RuntimeError(f"unsupported connector: {arguments.connector}")
 
 

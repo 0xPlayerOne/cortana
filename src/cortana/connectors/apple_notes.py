@@ -32,7 +32,11 @@ JSON.stringify(rows);
 MAX_EXPORT_BYTES = 64 * 1024 * 1024
 
 
-def fetch(project: str = "personal", timeout: int = 120) -> Iterable[Document]:
+def fetch(
+    project: str = "personal",
+    timeout: int = 120,
+    max_documents: int | None = None,
+) -> Iterable[Document]:
     try:
         result = subprocess.run(
             ["osascript", "-l", "JavaScript", "-e", SCRIPT],
@@ -57,6 +61,7 @@ def fetch(project: str = "personal", timeout: int = 120) -> Iterable[Document]:
         raise RuntimeError("Apple Notes returned malformed JSON") from error
     if not isinstance(rows, list):
         raise RuntimeError("Apple Notes returned an invalid export shape")
+    emitted = 0
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -81,6 +86,9 @@ def fetch(project: str = "personal", timeout: int = 120) -> Iterable[Document]:
             project=project,
             metadata={"account": row.get("account"), "folder": row.get("folder")},
         )
+        emitted += 1
+        if max_documents is not None and emitted >= max_documents:
+            return
 
 
 def _parse_modified(value: object) -> dt.datetime | None:
