@@ -422,6 +422,11 @@ export type DesktopServiceReport = {
   }>
 }
 
+export type DesktopSchedule = {
+  sync_interval_seconds: number
+  backup_interval_seconds: number
+}
+
 /**
  * Shell-owned status for a service control request. Native service commands
  * are awaited by the bridge, but keeping this small snapshot in App makes the

@@ -29,6 +29,7 @@ import {
   getDesktopInfo,
   getDesktopHindsightStatus,
   getDesktopHonchoStatus,
+  getDesktopSchedule,
   getDesktopServices,
   getDesktopSourceValidation,
   getDesktopSettings,
@@ -45,6 +46,7 @@ import {
   pickDesktopPath,
   planDesktopInitialSync,
   saveDesktopSettings,
+  saveDesktopSchedule,
   scanDesktopReadiness,
   setDesktopAutostart,
   startDesktopInitialSync,
@@ -68,6 +70,7 @@ import type {
   DesktopReadinessActivity,
   DesktopServiceActivity,
   DesktopServiceReport,
+  DesktopSchedule,
   DesktopSettings,
   DesktopSettingsUpdate,
   DesktopSourceJob,
@@ -641,6 +644,10 @@ function ServicesSection({
   const setInfo = onDesktopInfo ?? setLocalInfo
   const [busy, setBusy] = useState('')
   const [localError, setLocalError] = useState('')
+  const [schedule, setSchedule] = useState<DesktopSchedule | null>(null)
+  const [scheduleDraft, setScheduleDraft] = useState<DesktopSchedule | null>(null)
+  const [scheduleError, setScheduleError] = useState('')
+  const [scheduleSaving, setScheduleSaving] = useState(false)
   const error = localError || externalServicesError || ''
   const refreshInFlightRef = useRef(false)
   const actionInFlightRef = useRef(false)
@@ -691,6 +698,40 @@ function ServicesSection({
       window.clearInterval(timer)
     }
   }, [externalServices])
+
+  useEffect(() => {
+    let active = true
+    void getDesktopSchedule()
+      .then((next) => {
+        if (!active) return
+        setSchedule(next)
+        setScheduleDraft(next)
+        setScheduleError('')
+      })
+      .catch((caught) => {
+        if (!active) return
+        setScheduleError(caught instanceof Error ? caught.message : 'Schedule could not be loaded')
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const saveSchedule = async () => {
+    if (!scheduleDraft || scheduleSaving) return
+    setScheduleSaving(true)
+    setScheduleError('')
+    try {
+      const next = await saveDesktopSchedule(scheduleDraft)
+      if (!mountedRef.current) return
+      setSchedule(next)
+      setScheduleDraft(next)
+    } catch (caught) {
+      setScheduleError(caught instanceof Error ? caught.message : 'Schedule could not be saved')
+    } finally {
+      setScheduleSaving(false)
+    }
+  }
 
   const serviceAction = async (
     service: DesktopServiceReport['services'][number],
@@ -840,6 +881,17 @@ function ServicesSection({
       setLocalError(
         'Save changes before enabling recurring sync so the validated configuration is current.'
       )
+      return
+    }
+    if (!schedule || !scheduleDraft) {
+      setLocalError('Load the service schedule before enabling recurring sync.')
+      return
+    }
+    if (
+      scheduleDraft.sync_interval_seconds !== schedule.sync_interval_seconds ||
+      scheduleDraft.backup_interval_seconds !== schedule.backup_interval_seconds
+    ) {
+      setLocalError('Save the service schedule before enabling recurring sync.')
       return
     }
     if (
@@ -993,9 +1045,63 @@ function ServicesSection({
           )}
         </div>
       </div>
-      {(error || actionMessage) && (
+      {(error || scheduleError || actionMessage) && (
         <div className={`safety-note ${serviceActivity?.status === 'failed' ? 'error' : ''}`}>
-          {error || actionMessage}
+          {error || scheduleError || actionMessage}
+        </div>
+      )}
+      {scheduleDraft && (
+        <div className="service-schedule">
+          <div>
+            <strong>Background schedule</strong>
+            <p>
+              These intervals apply only when you explicitly install recurring sync. Saving them
+              never starts a service.
+            </p>
+          </div>
+          <div className="form-grid compact">
+            <NumberField
+              label="Sync interval (seconds)"
+              hint="1 minute to 7 days"
+              value={scheduleDraft.sync_interval_seconds}
+              min={60}
+              max={604800}
+              onChange={(sync_interval_seconds) =>
+                setScheduleDraft((current) =>
+                  current ? { ...current, sync_interval_seconds } : current
+                )
+              }
+            />
+            <NumberField
+              label="Backup interval (seconds)"
+              hint="5 minutes to 30 days"
+              value={scheduleDraft.backup_interval_seconds}
+              min={300}
+              max={2592000}
+              onChange={(backup_interval_seconds) =>
+                setScheduleDraft((current) =>
+                  current ? { ...current, backup_interval_seconds } : current
+                )
+              }
+            />
+          </div>
+          <div className="service-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={
+                actionInFlight ||
+                scheduleSaving ||
+                !schedule ||
+                (scheduleDraft.sync_interval_seconds === schedule.sync_interval_seconds &&
+                  scheduleDraft.backup_interval_seconds === schedule.backup_interval_seconds)
+              }
+              onClick={() => void saveSchedule()}
+            >
+              {scheduleSaving ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />}{' '}
+              Save schedule
+            </button>
+          </div>
         </div>
       )}
       <div className="service-grid">
@@ -3973,6 +4079,7 @@ function NumberField({
     <Field label={label} hint={hint}>
       <input
         type="number"
+        aria-label={label}
         value={value}
         min={min}
         max={max}

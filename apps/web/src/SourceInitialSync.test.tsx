@@ -148,6 +148,12 @@ mock.module('./api', () => ({
       autostart_enabled: false,
       platform: 'macos',
     }),
+  getDesktopSchedule: () =>
+    Promise.resolve({ sync_interval_seconds: 900, backup_interval_seconds: 86400 }),
+  saveDesktopSchedule: (schedule: {
+    sync_interval_seconds: number
+    backup_interval_seconds: number
+  }) => Promise.resolve(schedule),
   getDesktopUpdate: () => Promise.reject(new Error('Updates unavailable')),
   getDesktopServices: () => {
     state.servicesCalls += 1

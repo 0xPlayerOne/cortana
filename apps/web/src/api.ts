@@ -18,6 +18,7 @@ import type {
   DesktopHonchoStatus,
   DesktopReadiness,
   DesktopServiceReport,
+  DesktopSchedule,
   DesktopSettings,
   DesktopSettingsExport,
   DesktopSettingsImport,
@@ -82,6 +83,16 @@ export async function installDesktopServices(): Promise<DesktopServiceReport> {
 export async function installDesktopSyncService(): Promise<DesktopServiceReport> {
   if (!isDesktopApp) throw new Error('Recurring sync installation is available in Cortana Desktop')
   return invokeDesktop<DesktopServiceReport>('desktop_services_install_sync', { approved: true })
+}
+
+export async function getDesktopSchedule(): Promise<DesktopSchedule> {
+  if (!isDesktopApp) throw new Error('Service scheduling is available in Cortana Desktop')
+  return invokeDesktop<DesktopSchedule>('desktop_schedule_get')
+}
+
+export async function saveDesktopSchedule(schedule: DesktopSchedule): Promise<DesktopSchedule> {
+  if (!isDesktopApp) throw new Error('Service scheduling is available in Cortana Desktop')
+  return invokeDesktop<DesktopSchedule>('desktop_schedule_save', { schedule })
 }
 
 export async function getDesktopHindsightStatus(): Promise<DesktopHindsightStatus> {

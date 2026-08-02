@@ -28,6 +28,9 @@ afterEach(() => {
   state.getDesktopUpdateCalls = 0
   state.serviceStatusError = null
   state.serviceSyncInstallCalls = 0
+  state.schedule = { sync_interval_seconds: 900, backup_interval_seconds: 86400 }
+  state.scheduleGetCalls = 0
+  state.scheduleSaveCalls = 0
   state.openSecretFileCalls = 0
 })
 
@@ -91,6 +94,9 @@ const state = {
   saveSettingsCalls: 0,
   serviceInstallCalls: 0,
   serviceSyncInstallCalls: 0,
+  schedule: { sync_interval_seconds: 900, backup_interval_seconds: 86400 },
+  scheduleGetCalls: 0,
+  scheduleSaveCalls: 0,
   serviceRestartCalls: 0,
   openSecretFileCalls: 0,
   serviceAction: null as (() => Promise<DesktopServiceReport>) | null,
@@ -189,6 +195,18 @@ mock.module('./api', () => ({
     return Promise.resolve(state.settings)
   },
   getDesktopInfo: () => Promise.resolve(desktopInfo),
+  getDesktopSchedule: () => {
+    state.scheduleGetCalls += 1
+    return Promise.resolve(state.schedule)
+  },
+  saveDesktopSchedule: (schedule: {
+    sync_interval_seconds: number
+    backup_interval_seconds: number
+  }) => {
+    state.scheduleSaveCalls += 1
+    state.schedule = schedule
+    return Promise.resolve(schedule)
+  },
   getDesktopServices: () => {
     state.getDesktopServicesCalls += 1
     if (state.serviceStatusError) return Promise.reject(state.serviceStatusError)
@@ -753,6 +771,25 @@ test('services settings enables recurring sync only through its explicit action'
   } finally {
     window.confirm = originalConfirm
   }
+})
+
+test('services settings saves bounded recurring sync and backup intervals', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+  await waitFor(() => expect(state.scheduleGetCalls).toBe(1))
+  await waitFor(() => expect(screen.getByText('Background schedule')).toBeTruthy())
+  const syncInterval = await screen.findByLabelText('Sync interval (seconds)')
+  fireEvent.change(syncInterval, { target: { value: '1800' } })
+  fireEvent.click(screen.getByRole('button', { name: /Save schedule/ }))
+  await waitFor(() => expect(state.scheduleSaveCalls).toBe(1))
+  expect(state.schedule.sync_interval_seconds).toBe(1800)
+  expect(state.schedule.backup_interval_seconds).toBe(86400)
 })
 
 test('services settings refuses recurring sync while settings changes are unsaved', async () => {

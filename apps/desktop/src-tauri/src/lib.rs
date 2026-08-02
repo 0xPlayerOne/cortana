@@ -21,6 +21,8 @@ mod hindsight;
 mod honcho;
 mod paths;
 mod readiness;
+mod schedule;
+mod scheduled_services;
 mod services;
 mod settings;
 mod source_jobs;
@@ -460,7 +462,7 @@ async fn desktop_services_install(
     app: AppHandle,
     approved: bool,
 ) -> Result<services::ServiceReport, String> {
-    services::install(&app, approved).await
+    scheduled_services::install_core(&app, approved).await
 }
 
 #[tauri::command]
@@ -468,7 +470,19 @@ async fn desktop_services_install_sync(
     app: AppHandle,
     approved: bool,
 ) -> Result<services::ServiceReport, String> {
-    services::install_sync(&app, approved).await
+    scheduled_services::install_sync(&app, approved).await
+}
+
+#[tauri::command]
+fn desktop_schedule_get() -> Result<schedule::ScheduleSettings, String> {
+    schedule::load()
+}
+
+#[tauri::command]
+fn desktop_schedule_save(
+    schedule: schedule::ScheduleSettings,
+) -> Result<schedule::ScheduleSettings, String> {
+    schedule::save(schedule)
 }
 
 #[tauri::command]
@@ -926,6 +940,8 @@ pub fn run() {
             desktop_services_status,
             desktop_services_install,
             desktop_services_install_sync,
+            desktop_schedule_get,
+            desktop_schedule_save,
             desktop_hindsight_status,
             desktop_honcho_status,
             desktop_service_action,

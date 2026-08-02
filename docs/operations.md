@@ -112,6 +112,13 @@ Desktop-at-login is a separate setting: enabling it starts the tray/control plan
 Desktop **Start all**, **Stop all**, and **Restart all** operate only on the embedding and server
 jobs. Sync and backup are deliberately excluded from those aggregate actions.
 
+Desktop keeps its scheduler intervals in the owner-only `service-schedule.toml` beside the active
+configuration. The Services panel validates sync intervals from 60 seconds to 7 days and backup
+intervals from 5 minutes to 30 days. **Save schedule** only persists the values; **Enable recurring
+sync** is still the separate confirmation-gated action and passes the saved intervals to the
+bundled runtime. The redacted portable settings export intentionally omits this machine-local
+scheduler file.
+
 After planning each enabled source and choosing explicit budgets, opt in to the recurring job:
 
 ```bash

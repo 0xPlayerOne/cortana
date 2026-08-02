@@ -88,3 +88,8 @@ The **Advanced** panel can export a versioned JSON settings backup or import one
 preview. Portable files never include secret values or executable external-connector commands.
 Import preserves existing external connectors, validates the complete bounded settings contract,
 and writes nothing until **Save changes** creates the normal rollback copy.
+
+The Services schedule editor stores validated sync and backup intervals in the owner-only
+`service-schedule.toml` beside the active configuration. Saving the schedule never starts a job;
+the explicit **Enable recurring sync** action passes those intervals to the bundled runtime.
+Portable settings remain redacted and machine-local, so this scheduler file is not included.
