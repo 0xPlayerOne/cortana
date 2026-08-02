@@ -22,6 +22,13 @@ class OutboxError(RuntimeError):
     """Raised for operational errors from the durable outbox."""
 
 
+def _bounded_error(error: str) -> str:
+    """Keep operational errors single-line and bounded before durable storage."""
+
+    normalized = " ".join(str(error).split())
+    return (normalized or "unknown memory provider error")[:512]
+
+
 @dataclass(frozen=True)
 class OutboxEntry:
     id: int
@@ -79,6 +86,7 @@ class Outbox:
             return
         if int(row[0]) != self.SCHEMA_VERSION:
             raise OutboxError("incompatible outbox schema version")
+        self._ensure_telemetry_table()
 
     def _bootstrap_schema(self) -> None:
         self._connection.execute(
@@ -114,7 +122,21 @@ class Outbox:
         self._connection.execute(
             "INSERT INTO outbox_schema(version) VALUES (?)", (self.SCHEMA_VERSION,)
         )
+        self._ensure_telemetry_table()
         self._connection.commit()
+
+    def _ensure_telemetry_table(self) -> None:
+        """Create additive telemetry storage for existing schema-v1 outboxes."""
+
+        self._connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS memory_outbox_telemetry (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at REAL NOT NULL
+            )
+            """
+        )
 
     def enqueue_retain(self, document: MemoryDocument, *, max_attempts: int | None = None) -> int:
         return self._upsert_entry(
@@ -289,6 +311,7 @@ class Outbox:
         return [self._load_entry(entry_id) for entry_id in claimed_ids]
 
     def acknowledge(self, entry_id: int) -> None:
+        now = time.time()
         self._connection.execute(
             """
             UPDATE memory_outbox
@@ -299,8 +322,9 @@ class Outbox:
                    last_error=NULL
              WHERE id = ?
             """,
-            (time.time(), entry_id),
+            (now, entry_id),
         )
+        self._set_telemetry("last_success_at", str(now), now)
         self._connection.commit()
 
     def mark_failed(self, entry_id: int, *, error: str, retriable: bool) -> None:
@@ -314,6 +338,7 @@ class Outbox:
         attempts = int(row[0]) + 1
         max_attempts = int(row[1])
         now = time.time()
+        bounded_error = _bounded_error(error)
 
         if not retriable or attempts >= max_attempts:
             self._connection.execute(
@@ -328,7 +353,7 @@ class Outbox:
                        last_error=?
                  WHERE id = ?
                 """,
-                (attempts, now, now, error, entry_id),
+                (attempts, now, now, bounded_error, entry_id),
             )
         else:
             delay = min(30.0, 2.0**attempts)
@@ -344,8 +369,10 @@ class Outbox:
                        last_error=?
                  WHERE id = ?
                 """,
-                (attempts, now + delay, now, error, entry_id),
+                (attempts, now + delay, now, bounded_error, entry_id),
             )
+        self._set_telemetry("last_error", bounded_error, now)
+        self._set_telemetry("last_error_at", str(now), now)
         self._connection.commit()
 
     def export_rows(
@@ -406,6 +433,36 @@ class Outbox:
         for row in rows:
             result[str(row[0])] = int(row[1])
         return result
+
+    def telemetry(self) -> dict[str, object]:
+        """Return bounded queue and last-outcome metadata without document content."""
+
+        counts = self.stats()
+        last_success = self._get_telemetry("last_success_at")
+        last_error_at = self._get_telemetry("last_error_at")
+        return {
+            **counts,
+            "queue_depth": counts["pending"] + counts["in_flight"],
+            "last_success_at": (None if last_success is None else float(last_success)),
+            "last_error": self._get_telemetry("last_error"),
+            "last_error_at": None if last_error_at is None else float(last_error_at),
+        }
+
+    def _set_telemetry(self, key: str, value: str, updated_at: float) -> None:
+        self._connection.execute(
+            """
+            INSERT INTO memory_outbox_telemetry(key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at
+            """,
+            (key, value, updated_at),
+        )
+
+    def _get_telemetry(self, key: str) -> str | None:
+        row = self._connection.execute(
+            "SELECT value FROM memory_outbox_telemetry WHERE key = ?", (key,)
+        ).fetchone()
+        return None if row is None else str(row[0])
 
     def _release_expired_leases(self, now: float) -> None:
         self._connection.execute(
