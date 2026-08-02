@@ -333,7 +333,16 @@ test('standalone updater failures stay visible instead of being swallowed', asyn
 
 test('settings bridge failures expose a retry action', async () => {
   state.settingsLoadError = new Error('settings bridge unavailable')
-  render(<SettingsView onSaved={() => {}} initialSection="readiness" />)
+  const loaded = { value: null as DesktopSettings | null }
+  render(
+    <SettingsView
+      onSaved={() => {}}
+      onLoaded={(next) => {
+        loaded.value = next
+      }}
+      initialSection="readiness"
+    />
+  )
 
   await waitFor(() =>
     expect(screen.getByRole('alert').textContent).toContain('settings bridge unavailable')
@@ -341,6 +350,7 @@ test('settings bridge failures expose a retry action', async () => {
   state.settingsLoadError = null
   fireEvent.click(screen.getByRole('button', { name: 'Retry settings' }))
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+  expect(loaded.value).toEqual(state.settings)
 })
 
 test('a shared active source job locks source actions until it finishes', async () => {

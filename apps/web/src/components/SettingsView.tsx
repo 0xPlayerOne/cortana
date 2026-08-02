@@ -172,6 +172,7 @@ function useDesktopForeground(): boolean {
 
 export function SettingsView({
   desktopSettings: externalSettings,
+  onLoaded,
   onSaved,
   onDirtyChange,
   initialSection = 'readiness',
@@ -200,6 +201,8 @@ export function SettingsView({
 }: {
   /** Shell-owned settings snapshot. Standalone renders fetch their own copy. */
   desktopSettings?: DesktopSettings
+  /** Report a standalone settings load back to the Desktop shell. */
+  onLoaded?: (settings: DesktopSettings) => void
   onSaved: (settings: DesktopSettings) => void
   onDirtyChange?: (dirty: boolean) => void
   initialSection?: Section
@@ -257,6 +260,11 @@ export function SettingsView({
   const installerJob = externalInstallerJob === undefined ? localInstallerJob : externalInstallerJob
   const setInstallerJob = onInstallerJob ?? setLocalInstallerJob
 
+  const applyLoadedSettings = (next: DesktopSettings) => {
+    setSettings(next)
+    onLoaded?.(next)
+  }
+
   useEffect(() => {
     if (!isDesktopApp) return
     if (externalSettings) {
@@ -266,11 +274,11 @@ export function SettingsView({
       return
     }
     void getDesktopSettings()
-      .then(setSettings)
+      .then(applyLoadedSettings)
       .catch((caught: unknown) =>
         setError(caught instanceof Error ? caught.message : 'Unable to load settings')
       )
-  }, [externalSettings, dirty])
+  }, [externalSettings, dirty, onLoaded])
 
   useEffect(() => setSection(initialSection), [initialSection])
 
@@ -287,7 +295,7 @@ export function SettingsView({
   const retrySettingsLoad = () => {
     setError('')
     void getDesktopSettings()
-      .then(setSettings)
+      .then(applyLoadedSettings)
       .catch((caught: unknown) =>
         setError(caught instanceof Error ? caught.message : 'Unable to load settings')
       )
