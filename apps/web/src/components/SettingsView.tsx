@@ -1649,14 +1649,19 @@ function AuditSection() {
   const [desktop, setDesktop] = useState<AuditEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const refreshRequestRef = useRef(0)
 
   const refresh = async () => {
+    const requestId = ++refreshRequestRef.current
     setLoading(true)
     setError('')
     const [runtimeResult, desktopResult] = await Promise.allSettled([
       getRuntimeAudit(100),
       getDesktopAudit(100),
     ])
+    // A manual refresh can overlap the initial request. Never let a slower
+    // response replace a newer audit snapshot or clear its error state.
+    if (refreshRequestRef.current !== requestId) return
     if (runtimeResult.status === 'fulfilled') setRuntime(runtimeResult.value)
     if (desktopResult.status === 'fulfilled') setDesktop(desktopResult.value)
     const errors = [runtimeResult, desktopResult]
@@ -1670,6 +1675,9 @@ function AuditSection() {
 
   useEffect(() => {
     void refresh()
+    return () => {
+      refreshRequestRef.current += 1
+    }
   }, [])
 
   return (
