@@ -573,7 +573,10 @@ export function SettingsView({
         </form>
       </div>
       {(error || saved || settings.restart_required) && (
-        <div className={`settings-banner ${error ? 'error' : ''}`} role="status">
+        <div
+          className={`settings-banner ${error ? 'error' : ''}`}
+          role={error ? 'alert' : 'status'}
+        >
           {error ? <AlertTriangle size={16} /> : <Check size={16} />}
           {error ||
             (saved

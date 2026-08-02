@@ -84,6 +84,7 @@ test('Context panel copy action surfaces failures instead of failing silently', 
   renderPanel({ context: 'server context' })
   fireEvent.click(screen.getByRole('button', { name: 'Copy agent context' }))
   await waitFor(() => expect(screen.getByText('clipboard blocked')).toBeTruthy())
+  expect(screen.getByRole('alert').textContent).toBe('clipboard blocked')
   Object.defineProperty(navigator, 'clipboard', { value: originalClipboard, configurable: true })
 })
 

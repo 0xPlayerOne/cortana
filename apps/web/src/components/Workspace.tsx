@@ -202,7 +202,7 @@ function BrainDocumentView({
         </div>
       </div>
       {sourceOpenError && (
-        <p className="answer-warning source-link-error" role="status">
+        <p className="answer-warning source-link-error" role="alert">
           Cortana could not open the original source. Check that the source app is installed and try
           again.
         </p>
@@ -387,7 +387,7 @@ function DocumentView({
         </aside>
       </div>
       {sourceOpenError && (
-        <p className="answer-warning source-link-error" role="status">
+        <p className="answer-warning source-link-error" role="alert">
           Cortana could not open the original source. Check that the source app is installed and try
           again.
         </p>

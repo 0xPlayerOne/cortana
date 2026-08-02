@@ -119,7 +119,11 @@ export function ContextPanel({
             {contextLoading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
             {serverContext ? 'Refresh MCP-equivalent context' : 'Build MCP-equivalent context'}
           </button>
-          {contextError && <p className="context-error">{contextError}</p>}
+          {contextError && (
+            <p className="context-error" role="alert">
+              {contextError}
+            </p>
+          )}
           {serverContext && (
             <dl>
               <div>
@@ -155,7 +159,11 @@ export function ContextPanel({
               ? 'Copy MCP-equivalent context'
               : 'Copy preview context'}
         </button>
-        {copyError && <p className="context-error">{copyError}</p>}
+        {copyError && (
+          <p className="context-error" role="alert">
+            {copyError}
+          </p>
+        )}
       </div>
     </aside>
   )
