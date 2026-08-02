@@ -13,6 +13,7 @@ import type {
   DesktopServiceReport,
   DesktopSettings,
   DesktopSourceJob,
+  DesktopInstallJob,
   SourceSettings,
 } from './types'
 
@@ -61,6 +62,7 @@ const state = {
   statusCalls: 0,
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
+  installerJob: null as DesktopInstallJob | null,
 }
 
 const serviceReport: DesktopServiceReport = {
@@ -151,6 +153,48 @@ mock.module('./api', () => ({
   getRuntimeAudit: (limit: number) => Promise.resolve(runtimeAuditEvents.slice(0, limit)),
   getDesktopAudit: (limit: number) => Promise.resolve(desktopAuditEvents.slice(0, limit)),
   getDesktopUpdate: () => Promise.resolve(desktopUpdate),
+  scanDesktopReadiness: () =>
+    Promise.resolve({
+      scanned_at_unix_seconds: 1785000000,
+      platform: 'macos',
+      tools_ready: false,
+      core: null,
+      core_error: null,
+      tools: [
+        {
+          id: 'uv',
+          label: 'uv',
+          required: true,
+          available: false,
+          path: null,
+          version: null,
+          install_supported: true,
+          detail: 'uv is not installed',
+        },
+      ],
+    }),
+  startDesktopInstaller: (tool: string) => {
+    state.installerJob = {
+      id: 'install-1',
+      tool,
+      status: 'running',
+      summary: `Installing ${tool}`,
+      log: '',
+      started_at_unix_seconds: 1785000000,
+      completed_at_unix_seconds: null,
+      exit_code: null,
+      retryable: false,
+    }
+    return Promise.resolve(state.installerJob)
+  },
+  getDesktopInstaller: () =>
+    state.installerJob
+      ? Promise.resolve(state.installerJob)
+      : Promise.reject(new Error('installation job was not found')),
+  cancelDesktopInstaller: () => {
+    if (state.installerJob) state.installerJob = { ...state.installerJob, status: 'cancelling' }
+    return Promise.resolve(state.installerJob!)
+  },
   startDesktopSourceValidation: (source: string) => {
     const job: DesktopSourceJob = {
       id: 'job-validate-1',
@@ -400,6 +444,33 @@ test('services settings offers an explicit safe core-service install', async () 
   }
 })
 
+test('installer progress survives settings section changes', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.installerJob = null
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Run readiness scan' }))
+    await waitFor(() => expect(screen.getByText('uv is not installed')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+    await waitFor(() => expect(screen.getByText('Installing uv')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Readiness' }))
+    await waitFor(() => expect(screen.getByText('Installing uv')).toBeTruthy())
+    expect(screen.getByText('Status: running')).toBeTruthy()
+  } finally {
+    window.confirm = originalConfirm
+    state.installerJob = null
+  }
+})
+
 test('successful aggregate restart clears the saved-settings notice', async () => {
   const originalConfirm = window.confirm
   const originalSettings = state.settings
@@ -557,6 +628,7 @@ test('running source jobs stay visible in the shell after leaving the settings v
     window.confirm = originalConfirm
     state.settings = desktopSettings
     state.sourceJob = null
+    state.installerJob = null
   }
 })
 

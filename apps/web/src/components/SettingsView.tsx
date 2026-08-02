@@ -116,6 +116,7 @@ export function SettingsView({
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [setupReadiness, setSetupReadiness] = useState<DesktopReadiness | null>(null)
+  const [installerJob, setInstallerJob] = useState<DesktopInstallJob | null>(null)
 
   useEffect(() => {
     if (!isDesktopApp) return
@@ -255,8 +256,11 @@ export function SettingsView({
           {section === 'readiness' && (
             <ReadinessSection
               autoScan={settings.needs_setup}
+              readiness={setupReadiness}
               onResult={setSetupReadiness}
               onOpenServices={() => setSection('services')}
+              job={installerJob}
+              onJob={setInstallerJob}
             />
           )}
           {section === 'services' && (
@@ -1389,17 +1393,21 @@ function AuditList({ title, events }: { title: string; events: AuditEvent[] }) {
 
 function ReadinessSection({
   autoScan = false,
+  readiness,
   onResult,
   onOpenServices,
+  job,
+  onJob,
 }: {
   autoScan?: boolean
-  onResult?: (readiness: DesktopReadiness | null) => void
+  readiness: DesktopReadiness | null
+  onResult: (readiness: DesktopReadiness | null) => void
   onOpenServices?: () => void
+  job: DesktopInstallJob | null
+  onJob: (job: DesktopInstallJob | null) => void
 }) {
-  const [readiness, setReadiness] = useState<DesktopReadiness | null>(null)
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState('')
-  const [job, setJob] = useState<DesktopInstallJob | null>(null)
 
   useEffect(() => {
     if (!job || !['running', 'cancelling'].includes(job.status)) return
@@ -1408,16 +1416,14 @@ function ReadinessSection({
       void getDesktopInstaller(job.id)
         .then((next) => {
           if (!active) return
-          setJob(next)
+          onJob(next)
           if (next.status === 'succeeded') {
-            setReadiness(null)
-            onResult?.(null)
+            onResult(null)
             setScanning(true)
             void scanDesktopReadiness()
               .then((scan) => {
                 if (!active) return
-                setReadiness(scan)
-                onResult?.(scan)
+                onResult(scan)
               })
               .catch((caught: unknown) => {
                 if (active) {
@@ -1441,15 +1447,14 @@ function ReadinessSection({
       active = false
       window.clearTimeout(timer)
     }
-  }, [job, onResult])
+  }, [job, onJob, onResult])
 
   const scan = async () => {
     setScanning(true)
     setError('')
     try {
       const next = await scanDesktopReadiness()
-      setReadiness(next)
-      onResult?.(next)
+      onResult(next)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Readiness scan failed')
     } finally {
@@ -1465,8 +1470,7 @@ function ReadinessSection({
     void scanDesktopReadiness()
       .then((next) => {
         if (!active) return
-        setReadiness(next)
-        onResult?.(next)
+        onResult(next)
       })
       .catch((caught: unknown) => {
         if (active) {
@@ -1495,7 +1499,7 @@ function ReadinessSection({
     }
     setError('')
     try {
-      setJob(await startDesktopInstaller(tool))
+      onJob(await startDesktopInstaller(tool))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Installer failed to start')
     }
@@ -1504,7 +1508,7 @@ function ReadinessSection({
   const cancel = async () => {
     if (!job) return
     try {
-      setJob(await cancelDesktopInstaller(job.id))
+      onJob(await cancelDesktopInstaller(job.id))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Installer could not be cancelled')
     }
@@ -1566,32 +1570,6 @@ function ReadinessSection({
               </article>
             ))}
           </div>
-          {job && (
-            <div className={`installer-job ${job.status}`} role="status">
-              <div>
-                {['running', 'cancelling'].includes(job.status) ? (
-                  <LoaderCircle className="spin" size={16} />
-                ) : (
-                  <StatusGlyph passed={job.status === 'succeeded'} />
-                )}
-                <span>
-                  <strong>{job.summary}</strong>
-                  <small>Status: {job.status}</small>
-                </span>
-                {job.status === 'running' && (
-                  <button type="button" onClick={() => void cancel()}>
-                    Cancel
-                  </button>
-                )}
-                {job.retryable && (
-                  <button type="button" onClick={() => void install(job.tool, job.tool)}>
-                    Retry
-                  </button>
-                )}
-              </div>
-              {job.log && <pre>{job.log}</pre>}
-            </div>
-          )}
           <div className="core-readiness">
             <h3>Production gates</h3>
             {readiness.core_error && <p>{readiness.core_error}</p>}
@@ -1617,6 +1595,32 @@ function ReadinessSection({
             </div>
           )}
         </>
+      )}
+      {job && (
+        <div className={`installer-job ${job.status}`} role="status">
+          <div>
+            {['running', 'cancelling'].includes(job.status) ? (
+              <LoaderCircle className="spin" size={16} />
+            ) : (
+              <StatusGlyph passed={job.status === 'succeeded'} />
+            )}
+            <span>
+              <strong>{job.summary}</strong>
+              <small>Status: {job.status}</small>
+            </span>
+            {job.status === 'running' && (
+              <button type="button" onClick={() => void cancel()}>
+                Cancel
+              </button>
+            )}
+            {job.retryable && (
+              <button type="button" onClick={() => void install(job.tool, job.tool)}>
+                Retry
+              </button>
+            )}
+          </div>
+          {job.log && <pre>{job.log}</pre>}
+        </div>
       )}
     </SettingsSection>
   )
