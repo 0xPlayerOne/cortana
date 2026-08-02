@@ -20,6 +20,7 @@ jobs:
   changes:
     name: Detect desktop changes
     runs-on: ubuntu-slim
+    timeout-minutes: 5
     outputs:
       desktop: ${{ steps.detect.outputs.desktop }}
     steps:
