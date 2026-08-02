@@ -351,13 +351,22 @@ fn connector_plan(app: Option<&AppHandle>) -> Result<CommandPlan, String> {
 }
 
 fn connector_venv_dir() -> Result<PathBuf, String> {
-    if let Some(prefix) = std::env::var_os("CORTANA_INSTALL_PREFIX").map(PathBuf::from) {
+    connector_venv_dir_from(
+        std::env::var_os("CORTANA_INSTALL_PREFIX").map(PathBuf::from),
+        dirs::home_dir(),
+    )
+}
+
+fn connector_venv_dir_from(
+    prefix: Option<PathBuf>,
+    home: Option<PathBuf>,
+) -> Result<PathBuf, String> {
+    if let Some(prefix) = prefix {
         if prefix.is_absolute() {
             return Ok(prefix.join("share/cortana/venv"));
         }
     }
-    dirs::home_dir()
-        .map(|home| home.join(".local/share/cortana/venv"))
+    home.map(|home| home.join(".local/share/cortana/venv"))
         .ok_or_else(|| "cannot locate the current user's home directory".into())
 }
 
@@ -431,6 +440,30 @@ mod tests {
     fn job_ids_are_narrowly_validated() {
         assert!(validate_job_id("install-123-1").is_ok());
         assert!(validate_job_id("../other").is_err());
+    }
+
+    #[test]
+    fn connector_environment_uses_only_absolute_prefixes() {
+        let prefix = if cfg!(windows) {
+            PathBuf::from(r"C:\opt\cortana")
+        } else {
+            PathBuf::from("/opt/cortana")
+        };
+        let home = if cfg!(windows) {
+            PathBuf::from(r"C:\Users\example")
+        } else {
+            PathBuf::from("/Users/example")
+        };
+        assert_eq!(
+            connector_venv_dir_from(Some(prefix.clone()), Some(home.clone())).expect("prefix"),
+            prefix.join("share/cortana/venv")
+        );
+        assert_eq!(
+            connector_venv_dir_from(Some(PathBuf::from("relative")), Some(home.clone()))
+                .expect("home"),
+            home.join(".local/share/cortana/venv")
+        );
+        assert!(connector_venv_dir_from(None, None).is_err());
     }
 
     #[cfg(unix)]

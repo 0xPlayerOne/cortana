@@ -471,26 +471,30 @@ mod tests {
 
     #[test]
     fn connector_candidates_match_release_install_layout() {
-        let candidates = connector_candidates_from(
-            Some(PathBuf::from("/opt/cortana")),
-            Some(PathBuf::from("/Users/example")),
-        );
-        #[cfg(not(windows))]
+        let prefix = if cfg!(windows) {
+            PathBuf::from(r"C:\opt\cortana")
+        } else {
+            PathBuf::from("/opt/cortana")
+        };
+        let home = if cfg!(windows) {
+            PathBuf::from(r"C:\Users\example")
+        } else {
+            PathBuf::from("/Users/example")
+        };
+        let candidates = connector_candidates_from(Some(prefix.clone()), Some(home.clone()));
         assert_eq!(
             candidates,
             vec![
-                PathBuf::from("/opt/cortana/share/cortana/venv/bin/cortana-connectors"),
-                PathBuf::from("/Users/example/.local/share/cortana/venv/bin/cortana-connectors"),
+                prefix.join("share/cortana").join(connector_relative_path()),
+                home.join(".local/share/cortana")
+                    .join(connector_relative_path()),
             ]
         );
-        #[cfg(windows)]
         assert_eq!(
-            candidates,
+            connector_candidates_from(Some(PathBuf::from("relative")), Some(home.clone())),
             vec![
-                PathBuf::from("/opt/cortana/share/cortana/venv/Scripts/cortana-connectors.exe"),
-                PathBuf::from(
-                    "/Users/example/.local/share/cortana/venv/Scripts/cortana-connectors.exe"
-                ),
+                home.join(".local/share/cortana")
+                    .join(connector_relative_path())
             ]
         );
     }
