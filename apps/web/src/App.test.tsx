@@ -236,6 +236,9 @@ test('keyset pagination appends the next page and document selection opens the c
   expect(screen.getByRole('button', { name: 'Remove favorite' }).getAttribute('aria-pressed')).toBe(
     'true'
   )
+
+  fireEvent.click(screen.getByRole('button', { name: /Deployment rollback checklist/ }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add favorite' })).toBeTruthy())
 })
 
 test('settings navigation explains the desktop-only view in web mode', async () => {

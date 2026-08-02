@@ -160,6 +160,7 @@ function BrainDocumentView({
   onSelectDocument: (id: string) => void
 }) {
   const [favorite, setFavorite] = useState(false)
+  useEffect(() => setFavorite(false), [document.id])
   const metadata = Object.entries(document.metadata).slice(0, 24)
   return (
     <article className="document canonical-document">
@@ -303,6 +304,7 @@ function DocumentView({
   onSelect: (index: number) => void
 }) {
   const [favorite, setFavorite] = useState(false)
+  useEffect(() => setFavorite(false), [active.chunk_id])
 
   return (
     <article className="document">
