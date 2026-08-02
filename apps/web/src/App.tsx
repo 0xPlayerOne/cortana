@@ -133,6 +133,7 @@ export function App() {
   const updatePollingRef = useRef(false)
   const sidecarPollingRef = useRef(false)
   const servicesPollingRef = useRef(false)
+  const desktopServicesRequestRef = useRef(0)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
   const documentFetchReady = !isDesktopApp || desktopSettings?.needs_setup === false
@@ -405,14 +406,15 @@ export function App() {
     const refresh = () => {
       if (disposed || servicesPollingRef.current) return
       servicesPollingRef.current = true
+      const requestId = ++desktopServicesRequestRef.current
       void getDesktopServices()
         .then((next) => {
-          if (disposed) return
+          if (disposed || desktopServicesRequestRef.current !== requestId) return
           setDesktopServices(next)
           setDesktopServicesError('')
         })
         .catch((caught: unknown) => {
-          if (disposed) return
+          if (disposed || desktopServicesRequestRef.current !== requestId) return
           setDesktopServicesError(
             caught instanceof Error ? caught.message : 'Service status is unavailable'
           )
@@ -426,6 +428,7 @@ export function App() {
     return () => {
       disposed = true
       window.clearInterval(timer)
+      desktopServicesRequestRef.current += 1
     }
   }, [])
 
@@ -1101,12 +1104,15 @@ export function App() {
             // A settings save can change the configured embedding/runtime
             // services. Refresh the shell-owned snapshots immediately rather
             // than waiting for the next 15-second health tick.
+            const servicesRequestId = ++desktopServicesRequestRef.current
             void getDesktopServices()
               .then((nextServices) => {
+                if (desktopServicesRequestRef.current !== servicesRequestId) return
                 setDesktopServices(nextServices)
                 setDesktopServicesError('')
               })
               .catch((caught: unknown) => {
+                if (desktopServicesRequestRef.current !== servicesRequestId) return
                 setDesktopServicesError(
                   caught instanceof Error ? caught.message : 'Service status is unavailable'
                 )
@@ -1117,12 +1123,15 @@ export function App() {
                 // Keep the previous metadata snapshot when the refresh is
                 // unavailable; the Services panel can retry explicitly.
               })
+            const statusRequestId = ++statusRequestRef.current
             void getStatus()
               .then((nextStatus) => {
+                if (statusRequestRef.current !== statusRequestId) return
                 setStatus(nextStatus)
                 setStatusError('')
               })
               .catch(() => {
+                if (statusRequestRef.current !== statusRequestId) return
                 setStatusError('Status unavailable after saving settings')
               })
             if (workspace && !next.workspaces.some((item) => item.id === workspace)) {
