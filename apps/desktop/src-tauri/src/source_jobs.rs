@@ -934,11 +934,54 @@ fn now() -> u64 {
 mod tests {
     use super::*;
 
+    fn snapshot_for(id: &str, started_at_unix_seconds: u64) -> SourceJobSnapshot {
+        SourceJobSnapshot {
+            id: id.into(),
+            operation: "validation",
+            source: "work-code".into(),
+            kind: "filesystem".into(),
+            project: "work".into(),
+            acl: vec!["work".into()],
+            status: "succeeded",
+            summary: "done".into(),
+            log: String::new(),
+            started_at_unix_seconds,
+            completed_at_unix_seconds: Some(started_at_unix_seconds + 1),
+            exit_code: Some(0),
+            retryable: false,
+            writes_indexed_data: false,
+            budget: None,
+        }
+    }
+
     #[test]
     fn job_ids_are_narrowly_validated() {
         assert!(validate_job_id("source-123-4").is_ok());
         assert!(validate_job_id("../source").is_err());
         assert!(validate_job_id(&"x".repeat(97)).is_err());
+    }
+
+    #[test]
+    fn snapshots_return_newest_bounded_history_first() {
+        let state = SourceJobState::default();
+        let mut jobs = state.jobs.lock().expect("job state");
+        for index in 0..(MAX_JOBS + 3) {
+            let id = format!("source-{index}");
+            let snapshot = snapshot_for(&id, index as u64);
+            jobs.insert(
+                id,
+                SourceJob {
+                    snapshot,
+                    child: None,
+                },
+            );
+        }
+        drop(jobs);
+
+        let snapshots = state.snapshots().expect("snapshots");
+        assert_eq!(snapshots.len(), MAX_JOBS);
+        assert_eq!(snapshots.first().map(|item| item.id.as_str()), Some("source-22"));
+        assert_eq!(snapshots.last().map(|item| item.id.as_str()), Some("source-3"));
     }
 
     #[test]
