@@ -1133,6 +1133,24 @@ export function App() {
             setView('settings')
           }}
         />
+        <SidecarStatusIndicator
+          label="Hindsight"
+          status={hindsightStatus}
+          onOpen={() => {
+            if (!canLeaveSettings()) return
+            setSettingsSection('hindsight')
+            setView('settings')
+          }}
+        />
+        <SidecarStatusIndicator
+          label="Honcho"
+          status={honchoStatus}
+          onOpen={() => {
+            if (!canLeaveSettings()) return
+            setSettingsSection('honcho')
+            setView('settings')
+          }}
+        />
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
         {isDesktopApp && (
@@ -1280,6 +1298,38 @@ function ReadinessActivityIndicator({
       {active && <LoaderCircle className="spin" size={13} />}
       {!active && <i />}
       Readiness: {active ? 'scanning…' : activity.status === 'succeeded' ? 'ready' : 'failed'}
+    </button>
+  )
+}
+
+function SidecarStatusIndicator({
+  label,
+  status,
+  onOpen,
+}: {
+  label: string
+  status: { state: string; detail: string | null } | null
+  onOpen: () => void
+}) {
+  if (!status) return null
+  const state =
+    status.state === 'healthy'
+      ? 'healthy'
+      : status.state === 'disabled'
+        ? 'disabled'
+        : status.state === 'reachable'
+          ? 'reachable'
+          : 'warning'
+  const readable = status.state.replaceAll('_', ' ')
+  return (
+    <button
+      type="button"
+      className={`sidecar-health ${state}`}
+      aria-label={`Open ${label} status`}
+      title={`${label}: ${readable}${status.detail ? ` — ${status.detail}` : ''}`}
+      onClick={onOpen}
+    >
+      <i /> {label}: {readable}
     </button>
   )
 }
