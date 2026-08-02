@@ -1180,7 +1180,17 @@ function AccessSection({
     }))
   const add = () =>
     update((current) => {
-      const number = current.auth_principals.length + 1
+      const usedPrincipals = new Set(
+        current.auth_principals.map((principal) => principal.principal)
+      )
+      const usedTokens = new Set(current.auth_principals.map((principal) => principal.token_env))
+      let number = 1
+      while (
+        usedPrincipals.has(`agent-${number}`) ||
+        usedTokens.has(`CORTANA_AGENT_${number}_TOKEN`)
+      ) {
+        number += 1
+      }
       return {
         ...current,
         auth_principals: [
@@ -1633,7 +1643,10 @@ function WorkspaceSection({
       workspaces: [
         ...current.workspaces,
         {
-          id: `workspace-${current.workspaces.length + 1}`,
+          id: nextAvailableIdentifier(
+            'workspace',
+            current.workspaces.map((workspace) => workspace.id)
+          ),
           name: 'New workspace',
           account_label: null,
           color: '#A875D6',
@@ -2728,9 +2741,11 @@ function InitialSyncFlow({
 }
 
 function newSource(settings: DesktopSettings): SourceSettings {
-  const index = settings.sources.length + 1
   return {
-    name: `source-${index}`,
+    name: nextAvailableIdentifier(
+      'source',
+      settings.sources.map((source) => source.name)
+    ),
     kind: 'filesystem',
     enabled: false,
     project: settings.workspaces[0]?.id || 'personal',
@@ -2749,6 +2764,14 @@ function newSource(settings: DesktopSettings): SourceSettings {
     exclude: [],
     acl: [],
     editable: true,
+  }
+}
+
+function nextAvailableIdentifier(prefix: string, used: readonly string[]): string {
+  const occupied = new Set(used)
+  for (let number = 1; ; number += 1) {
+    const candidate = `${prefix}-${number}`
+    if (!occupied.has(candidate)) return candidate
   }
 }
 

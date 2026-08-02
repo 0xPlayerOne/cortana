@@ -230,6 +230,68 @@ test('query number fields keep drafts inside native bounds', async () => {
   expect(retrieval.value).toBe('100')
 })
 
+test('settings add controls avoid reusing removed identifiers', async () => {
+  const originalSettings = state.settings
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.settings = {
+    ...desktopSettings,
+    workspaces: [
+      { id: 'workspace-1', name: 'One', account_label: null, color: '#5A9BD5' },
+      { id: 'workspace-2', name: 'Two', account_label: null, color: '#E8A83B' },
+    ],
+    sources: [
+      { ...workSource, name: 'source-1' },
+      { ...workSource, name: 'source-2' },
+    ],
+    auth_principals: [
+      {
+        principal: 'agent-1',
+        token_env: 'CORTANA_AGENT_1_TOKEN',
+        scopes: ['query', 'status'],
+        acl: ['workspace-1'],
+      },
+      {
+        principal: 'agent-2',
+        token_env: 'CORTANA_AGENT_2_TOKEN',
+        scopes: ['query', 'status'],
+        acl: ['workspace-2'],
+      },
+    ],
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove One' }))
+    fireEvent.click(screen.getByRole('button', { name: /Add workspace/ }))
+    expect(
+      (screen.getAllByLabelText(/Scope ID/) as HTMLInputElement[]).map((input) => input.value)
+    ).toContain('workspace-1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove source-1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add source' }))
+    expect(
+      (screen.getAllByLabelText(/Source name/) as HTMLInputElement[]).map((input) => input.value)
+    ).toContain('source-1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Access' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add principal' }))
+    expect(
+      (screen.getAllByLabelText('Principal name') as HTMLInputElement[]).map((input) => input.value)
+    ).toContain('agent-3')
+  } finally {
+    window.confirm = originalConfirm
+    state.settings = originalSettings
+  }
+})
+
 test('settings warns before discarding dirty changes', async () => {
   const originalConfirm = window.confirm
   const responses = [false, true]
