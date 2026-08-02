@@ -85,15 +85,17 @@ impl CachedEmbedder {
                     .into_iter()
                     .next()
                     .context("embedding provider returned no vector")?;
-                if !self
-                    .store
-                    .cache_embedding_if_available(&fingerprint, text, &vector)?
-                {
-                    tracing::warn!(
-                        "embedding cache write skipped because another index writer is active"
-                    );
+                if self.max_entries > 0 {
+                    if !self
+                        .store
+                        .cache_embedding_if_available(&fingerprint, text, &vector)?
+                    {
+                        tracing::warn!(
+                            "embedding cache write skipped because another index writer is active"
+                        );
+                    }
+                    self.store.prune_embedding_cache(self.max_entries)?;
                 }
-                self.store.prune_embedding_cache(self.max_entries)?;
                 Ok(vector)
             }
             .await;
@@ -181,18 +183,20 @@ impl CachedEmbedder {
                             .cloned()
                             .zip(vectors)
                             .collect::<Vec<_>>();
-                        for (text, vector) in &pairs {
-                            if !self.store.cache_embedding_if_available(
-                                &fingerprint,
-                                text,
-                                vector,
-                            )? {
-                                tracing::warn!(
-                                    "embedding cache write skipped because another index writer is active"
-                                );
+                        if self.max_entries > 0 {
+                            for (text, vector) in &pairs {
+                                if !self.store.cache_embedding_if_available(
+                                    &fingerprint,
+                                    text,
+                                    vector,
+                                )? {
+                                    tracing::warn!(
+                                        "embedding cache write skipped because another index writer is active"
+                                    );
+                                }
                             }
+                            self.store.prune_embedding_cache(self.max_entries)?;
                         }
-                        self.store.prune_embedding_cache(self.max_entries)?;
                         Ok(pairs)
                     }
                     Err(error) => Err(error),
@@ -470,6 +474,32 @@ mod tests {
         let stats = store.stats().expect("cache stats");
         assert_eq!(stats.embedding_cache_entries, 2);
         assert_eq!(stats.embedding_cache_hits, 3);
+    }
+
+    #[tokio::test]
+    async fn zero_cache_limit_skips_embedding_cache_writes() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let inner = Arc::new(CountingEmbedder {
+            calls: AtomicUsize::new(0),
+            texts: AtomicUsize::new(0),
+        });
+        let cached = CachedEmbedder::with_limit(store.clone(), inner.clone(), 0);
+
+        cached
+            .embed(&["same".into()])
+            .await
+            .expect("first embedding");
+        cached
+            .embed(&["same".into()])
+            .await
+            .expect("second embedding");
+
+        assert_eq!(inner.calls.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            store.stats().expect("cache stats").embedding_cache_entries,
+            0
+        );
     }
 
     #[test]

@@ -272,6 +272,13 @@ test('query number fields keep drafts inside native bounds', async () => {
   expect(retrieval.value).toBe('100')
   fireEvent.change(retrieval, { target: { value: '1.5' } })
   expect(retrieval.value).toBe('100')
+
+  const cacheEntries = screen.getByLabelText(/Cache entries/) as HTMLInputElement
+  fireEvent.change(cacheEntries, { target: { value: '0' } })
+  expect(cacheEntries.value).toBe('0')
+  const cacheLifetime = screen.getByLabelText(/^Cache lifetime \(seconds\)/) as HTMLInputElement
+  fireEvent.change(cacheLifetime, { target: { value: '0' } })
+  expect(cacheLifetime.value).toBe('0')
 })
 
 test('settings add controls avoid reusing removed identifiers', async () => {

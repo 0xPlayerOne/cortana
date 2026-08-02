@@ -1116,7 +1116,7 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
     bounded(
         "embedding cache entries",
         update.embedding.cache_max_entries,
-        100,
+        0,
         5_000_000,
     )?;
     bounded(
@@ -1170,13 +1170,13 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
     bounded(
         "query cache entries",
         update.query.cache_max_entries,
-        100,
+        0,
         1_000_000,
     )?;
     bounded_u64(
         "query cache lifetime",
         update.query.cache_ttl_seconds,
-        1,
+        0,
         604_800,
     )?;
 
@@ -2834,6 +2834,13 @@ mod tests {
     #[test]
     fn rejects_unbounded_workspaces_insecure_urls_and_secret_newlines() {
         let temp = tempfile::tempdir().expect("temp directory");
+
+        let mut cache_disabled = valid_update(temp.path());
+        cache_disabled.embedding.cache_max_entries = 0;
+        cache_disabled.query.cache_max_entries = 0;
+        cache_disabled.query.cache_ttl_seconds = 0;
+        validate_update(&mut cache_disabled).expect("zero cache values are valid opt-outs");
+
         let mut update = valid_update(temp.path());
         update.workspaces.push(update.workspaces[0].clone());
         assert!(validate_update(&mut update).is_err());

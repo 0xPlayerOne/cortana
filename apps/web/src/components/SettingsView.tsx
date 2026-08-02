@@ -2909,8 +2909,9 @@ function EmbeddingSection({
         />
         <NumberField
           label="Cache entries"
+          hint="0 disables new embedding-cache writes"
           value={settings.embedding.cache_max_entries}
-          min={100}
+          min={0}
           max={5000000}
           onChange={(cache_max_entries) =>
             setEmbedding({ ...settings.embedding, cache_max_entries })
@@ -3169,15 +3170,17 @@ function QuerySection({
         />
         <NumberField
           label="Cache entries"
+          hint="0 disables new answer-cache writes"
           value={settings.query.cache_max_entries}
-          min={100}
+          min={0}
           max={1000000}
           onChange={(cache_max_entries) => setQuery({ ...settings.query, cache_max_entries })}
         />
         <NumberField
           label="Cache lifetime (seconds)"
+          hint="0 disables answer-cache reads"
           value={settings.query.cache_ttl_seconds}
-          min={1}
+          min={0}
           max={604800}
           onChange={(cache_ttl_seconds) => setQuery({ ...settings.query, cache_ttl_seconds })}
         />
@@ -3412,19 +3415,21 @@ function Field({
 
 function NumberField({
   label,
+  hint,
   value,
   min,
   max,
   onChange,
 }: {
   label: string
+  hint?: string
   value: number
   min: number
   max: number
   onChange: (value: number) => void
 }) {
   return (
-    <Field label={label}>
+    <Field label={label} hint={hint}>
       <input
         type="number"
         value={value}
