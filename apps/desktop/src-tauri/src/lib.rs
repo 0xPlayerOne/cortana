@@ -854,7 +854,7 @@ fn source_jobs_label(snapshots: &[source_jobs::SourceJobSnapshot]) -> String {
     let mut seen_sources = BTreeSet::new();
     let attention = snapshots
         .iter()
-        .filter(|job| seen_sources.insert(job.source.as_str()))
+        .filter(|job| seen_sources.insert((job.project.as_str(), job.source.as_str())))
         .filter(|job| matches!(job.status, "failed" | "cancelled" | "budget_exceeded"))
         .count();
     if attention > 0 {
@@ -1087,12 +1087,13 @@ mod tests {
 
     #[test]
     fn tray_source_job_label_uses_latest_terminal_result_per_source() {
-        let snapshot = |source: &str, status: &'static str| source_jobs::SourceJobSnapshot {
+        let snapshot =
+            |source: &str, project: &str, status: &'static str| source_jobs::SourceJobSnapshot {
             id: format!("source-1-{}", source.len()),
             operation: "validation",
             source: source.into(),
             kind: "filesystem".into(),
-            project: "work".into(),
+            project: project.into(),
             acl: Vec::new(),
             status,
             summary: String::new(),
@@ -1106,9 +1107,9 @@ mod tests {
         };
 
         let history = vec![
-            snapshot("work-code", "succeeded"),
-            snapshot("personal-mail", "succeeded"),
-            snapshot("personal-mail", "failed"),
+            snapshot("work-code", "work", "succeeded"),
+            snapshot("personal-mail", "work", "succeeded"),
+            snapshot("personal-mail", "work", "failed"),
         ];
         assert_eq!(source_jobs_label(&history), "Source jobs: idle");
 
@@ -1121,5 +1122,12 @@ mod tests {
 
         failed_latest[0].status = "running";
         assert_eq!(source_jobs_label(&failed_latest), "Source jobs: 1 active");
+
+        let duplicate_names = vec![
+            snapshot("notes", "work", "failed"),
+            snapshot("notes", "personal", "failed"),
+            snapshot("notes", "work", "succeeded"),
+        ];
+        assert_eq!(source_jobs_label(&duplicate_names), "Source jobs: 2 need attention");
     }
 }
