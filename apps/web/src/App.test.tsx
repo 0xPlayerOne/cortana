@@ -165,6 +165,31 @@ test('workspace and source selection scopes the source tree and document request
   expect(state.documentsCalls.at(-1)?.source).toBeUndefined()
 })
 
+test('changing workspace clears evidence from the previous security scope', async () => {
+  state.answer = () => Promise.resolve({ ...answerResponse, query: 'private release query' })
+
+  try {
+    render(<App />)
+    const input = screen.getByLabelText('Search your knowledge')
+    fireEvent.change(input, { target: { value: 'private release query' } })
+    fireEvent.submit(input.closest('form')!)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'private release query' })).toBeTruthy()
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'work' } })
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { level: 1, name: 'private release query' })).toBeNull()
+    )
+    expect(screen.getByText('Choose a document')).toBeTruthy()
+  } finally {
+    state.answer = null
+  }
+})
+
 test('keyset pagination appends the next page and document selection opens the canonical view', async () => {
   state.documentsCalls = []
   render(<App />)

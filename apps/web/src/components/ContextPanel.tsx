@@ -54,7 +54,7 @@ export function ContextPanel({
     <aside className={`context-panel ${open ? 'mobile-open' : ''}`}>
       <div className="context-heading">
         <strong>Agent context</strong>
-        <button aria-label="Close agent context" onClick={onClose}>
+        <button type="button" aria-label="Close agent context" onClick={onClose}>
           <X size={17} />
         </button>
       </div>
@@ -98,6 +98,7 @@ export function ContextPanel({
         <div className="evidence-list">
           {evidence.map((item, index) => (
             <button
+              type="button"
               key={item.chunk_id}
               className={selected === index ? 'selected' : ''}
               onClick={() => onSelect(index)}
@@ -122,7 +123,7 @@ export function ContextPanel({
             Build the exact bounded context returned by the HTTP and MCP query layer for this
             workspace scope.
           </p>
-          <button disabled={contextLoading} onClick={onRetrieveContext}>
+          <button type="button" disabled={contextLoading} onClick={onRetrieveContext}>
             {contextLoading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
             {serverContext ? 'Refresh MCP-equivalent context' : 'Build MCP-equivalent context'}
           </button>
@@ -149,7 +150,7 @@ export function ContextPanel({
         </section>
       </div>
       <div className="copy-area">
-        <button aria-label="Copy agent context" onClick={() => void copyContext()}>
+        <button type="button" aria-label="Copy agent context" onClick={() => void copyContext()}>
           {copied ? <Check size={17} /> : <Copy size={17} />}
           {copied
             ? 'Context copied'

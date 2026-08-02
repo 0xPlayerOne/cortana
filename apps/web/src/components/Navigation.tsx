@@ -42,13 +42,28 @@ export function TitleActions({
   if (context) {
     return (
       <div className="title-actions">
-        <button aria-label="Filter documents" title="Filter documents" onClick={onOpenFilters}>
+        <button
+          type="button"
+          aria-label="Filter documents"
+          title="Filter documents"
+          onClick={onOpenFilters}
+        >
           <Filter size={18} />
         </button>
-        <button aria-label="Open conversations" title="Open conversations" onClick={onOpenHistory}>
+        <button
+          type="button"
+          aria-label="Open conversations"
+          title="Open conversations"
+          onClick={onOpenHistory}
+        >
           <Clock3 size={18} />
         </button>
-        <button className="mobile-button" aria-label="Open agent context" onClick={onOpenContext}>
+        <button
+          type="button"
+          className="mobile-button"
+          aria-label="Open agent context"
+          onClick={onOpenContext}
+        >
           <PanelRightClose size={18} />
         </button>
       </div>
@@ -56,7 +71,12 @@ export function TitleActions({
   }
   return (
     <>
-      <button className="mobile-button" aria-label="Open sources" onClick={onOpenSources}>
+      <button
+        type="button"
+        className="mobile-button"
+        aria-label="Open sources"
+        onClick={onOpenSources}
+      >
         <Menu size={19} />
       </button>
       <div className="history-buttons" role="group" aria-label="Search history">
@@ -88,12 +108,14 @@ export type AppView =
 
 export function Navigation({
   view,
+  workspaceTab,
   onNavigate,
   onSearch,
   onOpenGraph,
   onOpenTimeline,
 }: {
   view: AppView
+  workspaceTab?: 'answer' | 'document' | 'sources' | 'graph' | 'timeline'
   onNavigate: (view: AppView) => void
   onSearch: () => void
   onOpenGraph: () => void
@@ -111,7 +133,12 @@ export function Navigation({
         active={view === 'knowledge'}
         onClick={() => onNavigate('knowledge')}
       />
-      <RailButton icon={GitFork} label="Graph" onClick={onOpenGraph} />
+      <RailButton
+        icon={GitFork}
+        label="Graph"
+        active={view === 'knowledge' && workspaceTab === 'graph'}
+        onClick={onOpenGraph}
+      />
       <RailButton
         icon={Inbox}
         label="Inbox"
@@ -130,7 +157,12 @@ export function Navigation({
         active={view === 'agent-tools'}
         onClick={() => onNavigate('agent-tools')}
       />
-      <RailButton icon={CalendarDays} label="Timeline" onClick={onOpenTimeline} />
+      <RailButton
+        icon={CalendarDays}
+        label="Timeline"
+        active={view === 'knowledge' && workspaceTab === 'timeline'}
+        onClick={onOpenTimeline}
+      />
       <RailButton
         icon={Database}
         label="Index"
@@ -168,6 +200,7 @@ function RailButton({
 }) {
   return (
     <button
+      type="button"
       className={`rail-button ${active ? 'active' : ''}`}
       aria-label={label}
       title={label}

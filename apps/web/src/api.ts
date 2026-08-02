@@ -30,6 +30,8 @@ import type {
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
 export const isDesktopApp = isTauri()
 
+let tokenPromptInFlight: Promise<string | null> | null = null
+
 export async function getDesktopSettings(): Promise<DesktopSettings> {
   if (!isDesktopApp) throw new Error('Settings are available in Cortana Desktop')
   return invokeDesktop<DesktopSettings>('desktop_settings_get')
@@ -537,11 +539,26 @@ async function authorizedFetch(input: string, init: RequestInit): Promise<Respon
   let response = await request(current)
   if (response.status !== 401) return response
 
-  window.sessionStorage.removeItem('cortana_api_token')
-  const token = window.prompt('Enter the Cortana access token')
+  // A cold web shell starts status, document, and graph requests together.
+  // Reuse one prompt for that burst instead of opening several modal dialogs.
+  if (init.signal?.aborted) return response
+  const token = await requestAccessToken()
   if (!token) return response
+
+  window.sessionStorage.removeItem('cortana_api_token')
   window.sessionStorage.setItem('cortana_api_token', token)
   response = await request(token)
   if (response.status === 401) window.sessionStorage.removeItem('cortana_api_token')
   return response
+}
+
+function requestAccessToken(): Promise<string | null> {
+  if (!tokenPromptInFlight) {
+    tokenPromptInFlight = Promise.resolve(window.prompt('Enter the Cortana access token'))
+      .then((token) => token?.trim() || null)
+      .finally(() => {
+        tokenPromptInFlight = null
+      })
+  }
+  return tokenPromptInFlight
 }

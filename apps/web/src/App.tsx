@@ -319,16 +319,43 @@ export function App() {
   }
 
   function abortSearchRequest(): void {
+    // A connector or test double may resolve after AbortController fires. The
+    // generation check keeps that stale result from returning to the shell.
+    searchRequestRef.current += 1
     searchAbortRef.current?.abort()
     setLoading(false)
     setError('')
   }
 
   function abortContextRequest(): void {
+    contextRequestRef.current += 1
     contextAbortRef.current?.abort()
     setContextBundle(null)
     setContextLoading(false)
     setContextError('')
+  }
+
+  function clearScopedResults(): void {
+    documentListRequestRef.current += 1
+    documentListAbortRef.current?.abort()
+    documentSelectRequestRef.current += 1
+    documentSelectAbortRef.current?.abort()
+    graphRequestRef.current += 1
+    graphAbortRef.current?.abort()
+    documentPageLoadingRef.current = false
+    setDocuments([])
+    setDocumentCursor(null)
+    setDocumentsLoading(true)
+    setDocumentsError('')
+    setDocumentLoading(false)
+    setAnswer(null)
+    setEvidence([])
+    setSelected(0)
+    setActiveDocument(null)
+    setWorkspaceTab('document')
+    setGraph(null)
+    setGraphError('')
+    setGraphLoading(false)
   }
 
   function scopeSources(nextWorkspace: string, nextSource = source) {
@@ -407,6 +434,7 @@ export function App() {
     const nextSource = sameScope ? '' : next
     abortSearchRequest()
     abortContextRequest()
+    clearScopedResults()
     scopeSources(nextWorkspace, nextSource)
     if (project) setWorkspace(project)
     setSource(nextSource)
@@ -416,8 +444,11 @@ export function App() {
   function chooseWorkspace(next: string) {
     const nextWorkspace = next
     const nextSource = ''
-    abortSearchRequest()
-    abortContextRequest()
+    if (nextWorkspace !== workspace || source !== nextSource) {
+      abortSearchRequest()
+      abortContextRequest()
+      clearScopedResults()
+    }
     scopeSources(nextWorkspace, nextSource)
     setWorkspace(nextWorkspace)
     setSource(nextSource)
@@ -651,6 +682,7 @@ export function App() {
       </header>
       <Navigation
         view={view}
+        workspaceTab={workspaceTab}
         onNavigate={navigate}
         onSearch={focusSearch}
         onOpenGraph={openGraph}
@@ -664,7 +696,18 @@ export function App() {
           onSaved={(next) => {
             setDesktopSettings(next)
             if (workspace && !next.workspaces.some((item) => item.id === workspace)) {
-              setWorkspace('')
+              chooseWorkspace('')
+            } else if (
+              source &&
+              !next.sources.some(
+                (item) => item.name === source && (!workspace || item.project === workspace)
+              )
+            ) {
+              abortSearchRequest()
+              abortContextRequest()
+              clearScopedResults()
+              scopeSources(workspace, '')
+              setSource('')
             }
           }}
         />
@@ -823,8 +866,7 @@ export function App() {
             <button
               onClick={() => {
                 setCommandPaletteOpen(false)
-                setSource('')
-                setWorkspace('')
+                chooseWorkspace('')
                 setDocumentQuery('')
               }}
             >

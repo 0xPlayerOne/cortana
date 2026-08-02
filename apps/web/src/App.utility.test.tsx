@@ -135,6 +135,7 @@ test('Graph and Timeline rail buttons route to the existing workspace tabs', asy
   await waitFor(() =>
     expect(screen.getByRole('tab', { name: 'Graph' }).getAttribute('aria-selected')).toBe('true')
   )
+  expect(railButton('Graph').className).toContain('active')
   expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
 
   // Timeline routes to the workspace Timeline tab and unselects Graph.
@@ -142,6 +143,8 @@ test('Graph and Timeline rail buttons route to the existing workspace tabs', asy
   await waitFor(() =>
     expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true')
   )
+  expect(railButton('Timeline').className).toContain('active')
+  expect(railButton('Graph').className).not.toContain('active')
   expect(screen.getByRole('tab', { name: 'Graph' }).getAttribute('aria-selected')).toBe('false')
 
   // Knowledge returns the workspace to its default tab.

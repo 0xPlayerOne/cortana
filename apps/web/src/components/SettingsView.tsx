@@ -682,7 +682,9 @@ function UpdatesSection() {
   useEffect(() => {
     void getDesktopUpdate()
       .then(setUpdate)
-      .catch(() => {})
+      .catch((caught: unknown) => {
+        setError(caught instanceof Error ? caught.message : 'Updater status unavailable')
+      })
   }, [])
 
   useEffect(() => {
@@ -708,7 +710,12 @@ function UpdatesSection() {
       setUpdate(await checkDesktopUpdate())
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Update check failed')
-      setUpdate(await getDesktopUpdate())
+      try {
+        setUpdate(await getDesktopUpdate())
+      } catch {
+        // Keep the existing snapshot when both the check and status fallback
+        // are unavailable; the visible error already explains the failure.
+      }
     } finally {
       setBusy('')
     }
@@ -729,7 +736,11 @@ function UpdatesSection() {
       setUpdate(await installDesktopUpdate(update.available_version, true))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Update installation failed')
-      setUpdate(await getDesktopUpdate())
+      try {
+        setUpdate(await getDesktopUpdate())
+      } catch {
+        // Keep the last known update state when the updater is unreachable.
+      }
     } finally {
       setBusy('')
     }

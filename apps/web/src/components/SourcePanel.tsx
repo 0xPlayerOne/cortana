@@ -108,13 +108,13 @@ export function SourcePanel({
     <aside className={`source-panel ${open ? 'mobile-open' : ''}`}>
       <div className="panel-heading">
         <strong>Sources</strong>
-        <button className="mobile-close" aria-label="Close sources" onClick={onClose}>
+        <button type="button" className="mobile-close" aria-label="Close sources" onClick={onClose}>
           <X size={17} />
         </button>
-        <button aria-label="Add source" onClick={onOpenSourcesSettings}>
+        <button type="button" aria-label="Add source" onClick={onOpenSourcesSettings}>
           +
         </button>
-        <button aria-label="Source settings" onClick={onOpenSourcesSettings}>
+        <button type="button" aria-label="Source settings" onClick={onOpenSourcesSettings}>
           <Settings size={16} />
         </button>
       </div>
@@ -196,6 +196,7 @@ export function SourcePanel({
                     <div className="source-node" key={key}>
                       <div className="source-row">
                         <button
+                          type="button"
                           className="tree-toggle"
                           aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
                           aria-expanded={!isCollapsed}
@@ -211,6 +212,7 @@ export function SourcePanel({
                           {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
                         </button>
                         <button
+                          type="button"
                           className={`source-select ${selected === item.source ? 'selected' : ''}`}
                           aria-pressed={selected === item.source}
                           onClick={() => onSelect(item.source, item.project)}
@@ -273,7 +275,7 @@ export function SourcePanel({
           </p>
         )}
         {hasMoreDocuments && !documentsLoading && (
-          <button className="load-more-documents" onClick={onLoadMoreDocuments}>
+          <button type="button" className="load-more-documents" onClick={onLoadMoreDocuments}>
             Load next page
           </button>
         )}
