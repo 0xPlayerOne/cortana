@@ -35,7 +35,12 @@ import { UtilityView } from './components/UtilityView'
 import { Workspace, type WorkspaceTab } from './components/Workspace'
 import { buildAgentContext, estimateTokens } from './context'
 import { embeddingLabel } from './operations'
-import { activeJobs, describeSourceJobProgress, useSourceJobs } from './sourceJobs'
+import {
+  activeJobs,
+  describeSourceJobProgress,
+  sourceJobAttention,
+  useSourceJobs,
+} from './sourceJobs'
 import type {
   AnswerResponse,
   BrainDocument,
@@ -1116,6 +1121,13 @@ export function App() {
             setView('inbox')
           }}
         />
+        <SourceJobAttentionIndicator
+          jobs={sourceJobs.jobs}
+          onOpen={() => {
+            if (!canLeaveSettings()) return
+            setView('inbox')
+          }}
+        />
         <InstallerIndicator
           job={installerJob}
           onOpen={() => {
@@ -1228,6 +1240,29 @@ function ActiveSourceJobs({ jobs, onOpen }: { jobs: DesktopSourceJob[]; onOpen: 
     >
       <LoaderCircle className="spin" size={13} /> {active.length} active source job
       {active.length === 1 ? '' : 's'}
+    </button>
+  )
+}
+
+function SourceJobAttentionIndicator({
+  jobs,
+  onOpen,
+}: {
+  jobs: DesktopSourceJob[]
+  onOpen: () => void
+}) {
+  const attention = sourceJobAttention(jobs)
+  if (attention.length === 0) return null
+  const detail = attention.map((job) => `${job.source} · ${job.status}`).join(', ')
+  return (
+    <button
+      type="button"
+      className="source-jobs status-link attention"
+      aria-label="Open source job attention"
+      title={`${detail}. Open the activity inbox.`}
+      onClick={onOpen}
+    >
+      <i /> {attention.length} source job{attention.length === 1 ? '' : 's'} need attention
     </button>
   )
 }

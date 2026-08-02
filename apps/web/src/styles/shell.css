@@ -719,6 +719,17 @@
   color: #589bd8;
 }
 
+.source-jobs.attention {
+  color: #d69a80;
+}
+
+.source-jobs.attention i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d55b51;
+}
+
 .installer-health {
   display: flex;
   align-items: center;

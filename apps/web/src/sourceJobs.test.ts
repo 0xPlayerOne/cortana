@@ -72,6 +72,7 @@ const {
   isMissingJobError,
   MAX_SOURCE_JOB_SNAPSHOTS,
   recentCompletedJobs,
+  sourceJobAttention,
   sourceJobBudgetSeconds,
   sourceJobElapsedSeconds,
   upsertJob,
@@ -139,6 +140,24 @@ test('recentCompletedJobs keeps terminal snapshots for operational history', () 
     'failed',
     'succeeded',
   ])
+})
+
+test('sourceJobAttention reports only the latest terminal failure per source', () => {
+  const jobs = [
+    jobOf('work-success', 'succeeded', { source: 'work-code' }),
+    jobOf('personal-failure', 'failed', { source: 'personal-mail' }),
+    jobOf('personal-old-success', 'succeeded', { source: 'personal-mail' }),
+    jobOf('active', 'running', { source: 'special-code' }),
+  ]
+  expect(sourceJobAttention(jobs).map((job) => job.id)).toEqual(['personal-failure'])
+
+  expect(
+    sourceJobAttention([
+      jobs[0]!,
+      jobOf('personal-new-success', 'succeeded', { source: 'personal-mail' }),
+      jobs[1]!,
+    ])
+  ).toEqual([])
 })
 
 test('source job progress reports native fixed budgets without claiming a percentage', () => {

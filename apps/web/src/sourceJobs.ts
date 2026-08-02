@@ -44,6 +44,16 @@ export function recentCompletedJobs(jobs: DesktopSourceJob[]): DesktopSourceJob[
   return jobs.filter((job) => !isActiveJob(job))
 }
 
+/** Terminal source failures whose latest result for that source needs attention. */
+export function sourceJobAttention(jobs: DesktopSourceJob[]): DesktopSourceJob[] {
+  const seenSources = new Set<string>()
+  return jobs.filter((job) => {
+    if (isActiveJob(job) || seenSources.has(job.source)) return false
+    seenSources.add(job.source)
+    return job.status === 'failed' || job.status === 'cancelled'
+  })
+}
+
 /** Return the fixed wall-clock budget enforced by the native job boundary. */
 export function sourceJobBudgetSeconds(job: DesktopSourceJob): number | null {
   if (job.operation === 'validation') {
