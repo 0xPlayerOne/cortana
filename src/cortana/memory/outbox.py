@@ -217,7 +217,6 @@ class Outbox:
                 leased_by=NULL,
                 updated_at=excluded.updated_at,
                 last_error=NULL
-            WHERE operation=excluded.operation AND document_id=excluded.document_id
             """,
             (
                 operation,

@@ -27,6 +27,7 @@ import {
   getDesktopAudit,
   getDesktopInstaller,
   getDesktopInfo,
+  getDesktopHindsightStatus,
   getDesktopServices,
   getDesktopSourceValidation,
   getDesktopSettings,
@@ -56,6 +57,7 @@ import type {
   DesktopInitialSyncPlan,
   DesktopInstallJob,
   DesktopInfo,
+  DesktopHindsightStatus,
   DesktopReadiness,
   DesktopServiceReport,
   DesktopSettings,
@@ -80,6 +82,7 @@ type Section =
   | 'sources'
   | 'embedding'
   | 'query'
+  | 'hindsight'
   | 'ingestion'
   | 'advanced'
 
@@ -131,6 +134,7 @@ export function SettingsView({
         auth_principals: settings.auth_principals,
         embedding: settings.embedding,
         query: settings.query,
+        hindsight: settings.hindsight,
         ingestion: settings.ingestion,
         runtime: settings.runtime,
         secrets: [
@@ -206,6 +210,7 @@ export function SettingsView({
               'sources',
               'embedding',
               'query',
+              'hindsight',
               'ingestion',
               'advanced',
             ] as Section[]
@@ -294,6 +299,25 @@ export function SettingsView({
             <QuerySection
               settings={settings}
               secrets={settings.secrets}
+              secretValues={secretValues}
+              onSecret={(values) => {
+                setSecretValues(values)
+                setDirty(true)
+                setSaved(false)
+              }}
+              clearedSecrets={clearedSecrets}
+              onClearSecret={(name) => {
+                setClearedSecrets((current) => new Set(current).add(name))
+                setSecretValues((current) => ({ ...current, [name]: '' }))
+                setDirty(true)
+                setSaved(false)
+              }}
+              update={update}
+            />
+          )}
+          {section === 'hindsight' && (
+            <HindsightSection
+              settings={settings}
               secretValues={secretValues}
               onSecret={(values) => {
                 setSecretValues(values)
@@ -678,6 +702,163 @@ function UpdatesSection() {
           View Cortana source on GitHub <ExternalLink size={13} />
         </button>
       )}
+    </SettingsSection>
+  )
+}
+
+function HindsightSection({
+  settings,
+  update,
+  secretValues,
+  onSecret,
+  clearedSecrets,
+  onClearSecret,
+}: SettingsSectionProps & {
+  settings: DesktopSettings
+  secretValues: Record<string, string>
+  onSecret: (values: Record<string, string>) => void
+  clearedSecrets: Set<string>
+  onClearSecret: (name: string) => void
+}) {
+  const [status, setStatus] = useState<DesktopHindsightStatus | null>(null)
+  const [checking, setChecking] = useState(false)
+  const setHindsight = (hindsight: DesktopSettings['hindsight']) =>
+    update((current) => ({ ...current, hindsight }))
+  const statusSource = settings.hindsight.token_env
+    ? settings.secrets.find((item) => item.name === settings.hindsight.token_env)
+    : undefined
+
+  const checkStatus = async () => {
+    setChecking(true)
+    try {
+      setStatus(await getDesktopHindsightStatus())
+    } catch (caught) {
+      setStatus({
+        enabled: settings.hindsight.enabled,
+        configured: false,
+        reachable: false,
+        state: 'unreachable',
+        endpoint: settings.hindsight.base_url,
+        bank: settings.hindsight.bank,
+        token_configured: false,
+        detail: caught instanceof Error ? caught.message : 'Hindsight status check failed',
+      })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="Hindsight memory sidecar"
+      description="Optional connector for outbox-based memory export. It is intentionally not wired into normal ingestion by default."
+    >
+      <div className="form-grid">
+        <label className="form-field">
+          <span>Adapter status</span>
+          <input type="text" value="Optional sidecar" disabled />
+          <small>This adapter is opt-in only.</small>
+        </label>
+        <label className="form-field">
+          <span>Ingestion integration</span>
+          <input
+            type="text"
+            value={settings.hindsight.wired_to_ingestion ? 'Enabled' : 'Disabled'}
+            disabled
+          />
+          <small>Normal source sync flow remains unchanged.</small>
+        </label>
+        <label className="form-field">
+          <span>Enabled</span>
+          <input
+            type="checkbox"
+            checked={settings.hindsight.enabled}
+            onChange={(event) =>
+              setHindsight({ ...settings.hindsight, enabled: event.target.checked })
+            }
+          />
+        </label>
+      </div>
+      <div className="safety-note" role="status">
+        <span>
+          Health: {status?.state.replace('_', ' ') || 'not checked'}
+          {status?.detail ? ` — ${status.detail}` : ''}
+        </span>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => void checkStatus()}
+          disabled={checking}
+        >
+          <RefreshCw size={14} /> {checking ? 'Checking…' : 'Check connection'}
+        </button>
+      </div>
+      <Field label="Provider" hint="Hindsight currently supports only this provider.">
+        <select
+          value={settings.hindsight.provider}
+          onChange={(event) =>
+            setHindsight({
+              ...settings.hindsight,
+              provider: event.target.value as 'hindsight',
+            })
+          }
+        >
+          <option value="hindsight">hindsight</option>
+        </select>
+      </Field>
+      <div className="form-grid">
+        <Field label="Endpoint" wide>
+          <input
+            type="url"
+            value={settings.hindsight.base_url}
+            onChange={(event) =>
+              setHindsight({ ...settings.hindsight, base_url: event.target.value })
+            }
+            required
+          />
+        </Field>
+        <Field label="Bank">
+          <input
+            value={settings.hindsight.bank}
+            onChange={(event) => setHindsight({ ...settings.hindsight, bank: event.target.value })}
+            required
+            maxLength={64}
+          />
+        </Field>
+        <Field label="Token environment variable">
+          <input
+            value={settings.hindsight.token_env || ''}
+            onChange={(event) =>
+              setHindsight({ ...settings.hindsight, token_env: event.target.value || null })
+            }
+            pattern="[A-Z_][A-Z0-9_]*"
+            placeholder="CORTANA_HINDSIGHT_TOKEN"
+          />
+        </Field>
+        <Field label="New token" hint="write-only; leave blank to retain">
+          <div className="secret-input">
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={
+                settings.hindsight.token_env ? secretValues[settings.hindsight.token_env] || '' : ''
+              }
+              disabled={!settings.hindsight.token_env}
+              onChange={(event) => {
+                if (!settings.hindsight.token_env) return
+                onSecret({ ...secretValues, [settings.hindsight.token_env]: event.target.value })
+              }}
+            />
+            {settings.hindsight.token_env &&
+              statusSource?.configured &&
+              !clearedSecrets.has(statusSource.name) && (
+                <button type="button" onClick={() => onClearSecret(settings.hindsight.token_env!)}>
+                  Clear
+                </button>
+              )}
+          </div>
+        </Field>
+      </div>
     </SettingsSection>
   )
 }

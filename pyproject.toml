@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 cortana-connectors = "cortana.connectors.__main__:entrypoint"
+cortana-memory-eval = "cortana.memory.evaluation:main"
 
 [project.optional-dependencies]
 ingestion = [

@@ -223,6 +223,16 @@ export type QuerySettings = ProviderSettings & {
   cache_ttl_seconds: number
 }
 
+export type HindsightSettings = {
+  enabled: boolean
+  provider: 'hindsight'
+  base_url: string
+  bank: string
+  token_env: string | null
+  optional: boolean
+  wired_to_ingestion: boolean
+}
+
 export type AuthPrincipalSettings = {
   principal: string
   token_env: string
@@ -240,6 +250,7 @@ export type DesktopSettings = {
   auth_principals: AuthPrincipalSettings[]
   embedding: EmbeddingSettings
   query: QuerySettings
+  hindsight: HindsightSettings
   ingestion: {
     max_documents_per_source: number
     max_bytes_per_source: number
@@ -261,7 +272,14 @@ export type DesktopSettings = {
 
 export type DesktopSettingsUpdate = Pick<
   DesktopSettings,
-  'workspaces' | 'sources' | 'auth_principals' | 'embedding' | 'query' | 'ingestion' | 'runtime'
+  | 'workspaces'
+  | 'sources'
+  | 'auth_principals'
+  | 'embedding'
+  | 'query'
+  | 'hindsight'
+  | 'ingestion'
+  | 'runtime'
 > & {
   secrets: Array<{ name: string; value?: string; clear?: boolean }>
 }
@@ -381,6 +399,17 @@ export type DesktopServiceReport = {
     pid: number | null
     last_exit_status: number | null
   }>
+}
+
+export type DesktopHindsightStatus = {
+  enabled: boolean
+  configured: boolean
+  reachable: boolean
+  state: 'disabled' | 'configuration_required' | 'healthy' | 'unreachable' | 'unhealthy'
+  endpoint: string
+  bank: string
+  token_configured: boolean
+  detail: string | null
 }
 
 export type DesktopInstallJob = {
