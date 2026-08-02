@@ -167,7 +167,8 @@ There are two distinct lifecycles:
 2. Cortana Desktop owns the window, tray, updater, and user controls.
 
 Closing the main window hides it. The tray continues to report runtime, corpus, bounded ingestion,
-and active source-job status. Quitting from the tray exits only the desktop process; it does not
+and source-job status (active work or the latest terminal attention per source). Quitting from the
+tray exits only the desktop process; it does not
 silently stop the runtime or start a sync. A second desktop launch focuses the existing window.
 
 The Services panel reads a bounded structured report from the bundled sidecar and can explicitly

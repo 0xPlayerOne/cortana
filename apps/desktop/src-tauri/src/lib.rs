@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
@@ -809,20 +810,10 @@ async fn refresh_tray(
     jobs: &source_jobs::SourceJobState,
     tray: &TrayStatus,
 ) {
-    let source_label = match jobs.snapshots() {
-        Ok(snapshots) => {
-            let active = snapshots
-                .iter()
-                .filter(|job| matches!(job.status, "running" | "cancelling"))
-                .count();
-            if active == 0 {
-                "Source jobs: idle".to_string()
-            } else {
-                format!("Source jobs: {active} active")
-            }
-        }
-        Err(_) => "Source jobs: unavailable".to_string(),
-    };
+    let source_label = jobs
+        .snapshots()
+        .map(|snapshots| source_jobs_label(&snapshots))
+        .unwrap_or_else(|_| "Source jobs: unavailable".to_string());
     let _ = tray.source_jobs.set_text(source_label);
     match backend.request(Method::GET, "/v1/status", None).await {
         Ok(status) => {
@@ -845,6 +836,31 @@ async fn refresh_tray(
             let _ = tray.corpus.set_text("Corpus: unavailable");
             let _ = tray.ingestion.set_text("Ingestion: unavailable");
         }
+    }
+}
+
+fn source_jobs_label(snapshots: &[source_jobs::SourceJobSnapshot]) -> String {
+    let active = snapshots
+        .iter()
+        .filter(|job| matches!(job.status, "running" | "cancelling"))
+        .count();
+    if active > 0 {
+        return format!("Source jobs: {active} active");
+    }
+
+    // Snapshots are newest first. Count only the latest terminal result for
+    // each source so an old failure does not keep the tray in an attention
+    // state after a later successful run.
+    let mut seen_sources = BTreeSet::new();
+    let attention = snapshots
+        .iter()
+        .filter(|job| seen_sources.insert(job.source.as_str()))
+        .filter(|job| matches!(job.status, "failed" | "cancelled" | "budget_exceeded"))
+        .count();
+    if attention > 0 {
+        format!("Source jobs: {attention} need attention")
+    } else {
+        "Source jobs: idle".to_string()
     }
 }
 
@@ -1067,5 +1083,43 @@ mod tests {
             ingestion_label(&serde_json::json!({})),
             "Ingestion: manual"
         );
+    }
+
+    #[test]
+    fn tray_source_job_label_uses_latest_terminal_result_per_source() {
+        let snapshot = |source: &str, status: &'static str| source_jobs::SourceJobSnapshot {
+            id: format!("source-1-{}", source.len()),
+            operation: "validation",
+            source: source.into(),
+            kind: "filesystem".into(),
+            project: "work".into(),
+            acl: Vec::new(),
+            status,
+            summary: String::new(),
+            log: String::new(),
+            started_at_unix_seconds: 1,
+            completed_at_unix_seconds: Some(2),
+            exit_code: Some(0),
+            retryable: false,
+            writes_indexed_data: false,
+            budget: None,
+        };
+
+        let history = vec![
+            snapshot("work-code", "succeeded"),
+            snapshot("personal-mail", "succeeded"),
+            snapshot("personal-mail", "failed"),
+        ];
+        assert_eq!(source_jobs_label(&history), "Source jobs: idle");
+
+        let mut failed_latest = history;
+        failed_latest[1].status = "failed";
+        assert_eq!(
+            source_jobs_label(&failed_latest),
+            "Source jobs: 1 need attention"
+        );
+
+        failed_latest[0].status = "running";
+        assert_eq!(source_jobs_label(&failed_latest), "Source jobs: 1 active");
     }
 }
