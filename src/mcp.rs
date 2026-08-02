@@ -277,16 +277,33 @@ impl BrainServer {
         description = "Report index health, configured source coverage, embedding identity, and persistent cache telemetry without exposing credentials"
     )]
     async fn brain_status(&self) -> String {
+        let started = Instant::now();
         if !self.principal.has_scope(STATUS_SCOPE) {
+            self.audit("mcp.brain_status", None, None, "forbidden", None, started);
             return "authorization error: status scope required".into();
         }
         match self.store.stats() {
-            Ok(stats) => serde_json::to_string(&BrainStatus {
-                stats,
-                configured_sources: self.configured_sources.clone(),
-            })
-            .unwrap_or_else(|error| error.to_string()),
-            Err(error) => format!("status error: {error}"),
+            Ok(stats) => {
+                let count = usize::try_from(stats.documents).ok();
+                let result = serde_json::to_string(&BrainStatus {
+                    stats,
+                    configured_sources: self.configured_sources.clone(),
+                });
+                match result {
+                    Ok(payload) => {
+                        self.audit("mcp.brain_status", None, None, "succeeded", count, started);
+                        payload
+                    }
+                    Err(error) => {
+                        self.audit("mcp.brain_status", None, None, "failed", None, started);
+                        error.to_string()
+                    }
+                }
+            }
+            Err(error) => {
+                self.audit("mcp.brain_status", None, None, "failed", None, started);
+                format!("status error: {error}")
+            }
         }
     }
 }
@@ -492,7 +509,8 @@ mod tests {
         );
         let audit = store.audit_events(10).expect("audit");
         assert_eq!(audit[0].principal, "work-agent");
-        assert_eq!(audit[0].action, "mcp.search");
+        assert_eq!(audit[0].action, "mcp.brain_status");
+        assert_eq!(audit[1].action, "mcp.search");
     }
 
     #[tokio::test]
