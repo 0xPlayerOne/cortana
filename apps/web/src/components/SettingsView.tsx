@@ -2294,7 +2294,12 @@ function SourcesSection({
   }
 
   const changeSource = (index: number, patch: Partial<SourceSettings>) => {
-    if (activeJob && settings.sources[index]?.name === activeJob.source) return
+    const current = settings.sources[index]
+    if (activeJob && current?.name === activeJob.source) return
+    // A native initial-sync plan is tied to the exact saved source config.
+    // Editing or renaming that source invalidates the plan; force a fresh
+    // plan/validation rather than leaving an old plan ID in the UI.
+    if (initialSync && current?.name === initialSync.source) setInitialSync(null)
     update((current) => ({
       ...current,
       sources: current.sources.map((source, position) =>
@@ -2549,6 +2554,7 @@ function SourcesSection({
                           `Remove ${source.name} from configuration? Existing indexed data is not deleted.`
                         )
                       ) {
+                        if (initialSync?.source === source.name) setInitialSync(null)
                         update((current) => ({
                           ...current,
                           sources: current.sources.filter((_, position) => position !== index),

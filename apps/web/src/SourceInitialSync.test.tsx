@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { desktopSettings } from './test/fixtures'
 import type {
@@ -281,6 +281,20 @@ test('execution requires an explicit confirmation and the plan id', async () => 
   } finally {
     window.confirm = originalConfirm
   }
+})
+
+test('editing the selected source invalidates its initial-sync plan', async () => {
+  openSources()
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Initial sync' }))
+  await waitFor(() => expect(screen.getByText('Guided initial sync')).toBeTruthy())
+  await waitFor(() => expect(screen.getByText('100 documents · 25 MiB · 15 minutes')).toBeTruthy())
+
+  await act(async () => {
+    fireEvent.change(screen.getByLabelText(/^Source name/), { target: { value: 'work-code-v2' } })
+  })
+  expect(screen.queryByText('Guided initial sync')).toBeNull()
+  expect(state.planCalls).toHaveLength(1)
 })
 
 test('a failed plan surfaces the native error and offers no start action', async () => {

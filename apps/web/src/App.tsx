@@ -135,6 +135,7 @@ export function App() {
   const servicesPollingRef = useRef(false)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
+  const documentFetchReady = !isDesktopApp || desktopSettings?.needs_setup === false
   const documentScopeRef = useRef(documentScope)
   const searchAbortRef = useRef<AbortController | null>(null)
   const searchScopeRef = useRef('')
@@ -219,6 +220,23 @@ export function App() {
   }, [])
 
   useEffect(() => {
+    // Desktop settings are the control-plane gate for the document index. On
+    // first launch the settings request can redirect the shell to setup; do
+    // not query a half-configured backend (or surface a noisy error) before
+    // the user has finished that flow. The Knowledge view is the only surface
+    // that consumes this list, so avoid background reads while managing the
+    // local runtime in Settings as well.
+    if (view !== 'knowledge' || !documentFetchReady) {
+      documentListRequestRef.current += 1
+      documentListAbortRef.current?.abort()
+      documentPageLoadingRef.current = false
+      setDocuments([])
+      setDocumentCursor(null)
+      setDocumentsError('')
+      setActiveDocument(null)
+      setDocumentsLoading(false)
+      return
+    }
     const requestId = ++documentListRequestRef.current
     documentListAbortRef.current?.abort()
     const controller = new AbortController()
@@ -269,7 +287,7 @@ export function App() {
         setDocumentsLoading(false)
       }
     }
-  }, [debouncedDocumentQuery, source, workspace])
+  }, [debouncedDocumentQuery, documentFetchReady, source, view, workspace])
 
   useEffect(() => {
     if (view !== 'knowledge' || workspaceTab !== 'graph') return

@@ -362,6 +362,21 @@ test('desktop shell ignores malformed persisted source scope', async () => {
   })
 })
 
+test('desktop setup does not query documents before the control plane is ready', async () => {
+  const originalSettings = state.settings
+  try {
+    state.settings = { ...desktopSettings, needs_setup: true }
+    render(<App />)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    expect(state.getDocumentsCalls).toHaveLength(0)
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
 test('desktop settings navigation opens the audit trail and renders both event sources', async () => {
   render(<App />)
 
