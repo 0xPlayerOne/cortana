@@ -32,6 +32,12 @@ impl Principal {
         self.scopes.contains(scope)
     }
 
+    /// Admin credentials and explicit owner ACLs can inspect the complete
+    /// local brain, including configured sources outside their named labels.
+    pub fn is_owner(&self) -> bool {
+        self.has_scope(ADMIN_SCOPE) || self.acl.contains("*")
+    }
+
     pub fn acl_labels(&self) -> Vec<String> {
         let mut labels = self.acl.iter().cloned().collect::<Vec<_>>();
         labels.sort();
@@ -181,6 +187,7 @@ mod tests {
         assert_eq!(principal.name, "work-agent");
         assert!(principal.has_scope(QUERY_SCOPE));
         assert!(!principal.has_scope(ADMIN_SCOPE));
+        assert!(!principal.is_owner());
         assert_eq!(principal.acl_labels(), vec!["work"]);
         assert!(policy.authenticate("wrong-secret").is_none());
 
@@ -190,6 +197,14 @@ mod tests {
         config.auth.tokens[0].scopes = vec![QUERY_SCOPE.into()];
         config.auth.tokens.push(config.auth.tokens[0].clone());
         assert!(AuthPolicy::from_config(&config, None).is_err());
+
+        config.auth.tokens.pop();
+        config.auth.tokens[0].scopes = vec![ADMIN_SCOPE.into()];
+        let owner = AuthPolicy::from_config(&config, None)
+            .expect("admin policy")
+            .authenticate("work-secret")
+            .expect("admin principal");
+        assert!(owner.is_owner());
     }
 
     #[test]

@@ -56,12 +56,18 @@ class HindsightHttpProvider(MemoryProvider):
             raise MemoryArgumentError("base_url must be http(s)")
         if parsed.query or parsed.fragment or parsed.username or parsed.password:
             raise MemoryArgumentError("base_url must not contain query, fragment, or credentials")
+        if parsed.scheme == "http" and parsed.host not in {"127.0.0.1", "localhost", "::1"}:
+            raise MemoryArgumentError("remote base_url must use HTTPS")
         return parsed
 
     def _build_client(self, timeout_seconds: float) -> httpx.Client:
         if timeout_seconds <= 0:
             raise MemoryArgumentError("timeout_seconds must be positive")
-        return httpx.Client(base_url=str(self._base), timeout=timeout_seconds)
+        return httpx.Client(
+            base_url=str(self._base),
+            timeout=timeout_seconds,
+            follow_redirects=False,
+        )
 
     @property
     def configured(self) -> bool:

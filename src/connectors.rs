@@ -1,9 +1,10 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
 use ignore::WalkBuilder;
+use reqwest::Url;
 use serde_json::json;
 
 use crate::model::Document;
@@ -43,7 +44,7 @@ pub fn filesystem_plan(
         .git_global(true)
         .git_exclude(true)
         .filter_entry(move |entry| {
-            !is_generated(entry.path())
+            !is_generated(entry.path(), &filter_root)
                 && !is_excluded(entry.path(), &filter_root, &filter_excludes)
         })
         .build()
@@ -108,17 +109,17 @@ pub fn filesystem_document_iter(
         .git_global(true)
         .git_exclude(true)
         .filter_entry(move |entry| {
-            !is_generated(entry.path())
+            !is_generated(entry.path(), &filter_root)
                 && !is_excluded(entry.path(), &filter_root, &filter_excludes)
         })
         .build()
-        .filter_map(Result::ok)
-        .filter_map(move |entry| {
-            match filesystem_document(&entry, &document_root, &source, &project) {
+        .filter_map(move |entry| match entry {
+            Err(error) => Some(Err(error.into())),
+            Ok(entry) => match filesystem_document(&entry, &document_root, &source, &project) {
                 Ok(Some(document)) => Some(Ok(document)),
                 Ok(None) => None,
                 Err(error) => Some(Err(error)),
-            }
+            },
         });
     Ok(Box::new(iterator))
 }
@@ -147,12 +148,15 @@ fn filesystem_document(
         .ok()
         .map(DateTime::<Utc>::from)
         .unwrap_or_else(Utc::now);
+    let uri = Url::from_file_path(path)
+        .map(|url| url.to_string())
+        .map_err(|_| anyhow!("filesystem path cannot be represented as a file URI"))?;
     Ok(Some(Document {
         source: source.to_string(),
         source_id: relative.to_string_lossy().into_owned(),
         title: relative.to_string_lossy().into_owned(),
         content,
-        uri: Some(format!("file://{}", path.to_string_lossy())),
+        uri: Some(uri),
         updated_at,
         project: project.to_string(),
         acl: Vec::new(),
@@ -178,7 +182,7 @@ fn is_text(path: &Path) -> bool {
         .is_some_and(|extension| TEXT_EXTENSIONS.contains(&extension.to_lowercase().as_str()))
 }
 
-fn is_generated(path: &Path) -> bool {
+fn is_generated(path: &Path, root: &Path) -> bool {
     const SKIP: &[&str] = &[
         ".git",
         ".worktrees",
@@ -190,7 +194,9 @@ fn is_generated(path: &Path) -> bool {
         "node_modules",
         "target",
     ];
-    path.components()
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .components()
         .filter_map(|component| component.as_os_str().to_str())
         .any(|component| SKIP.contains(&component))
 }
@@ -245,5 +251,34 @@ mod tests {
         let error = filesystem_plan(directory.path(), &[], 1, 1_000, Duration::from_secs(5))
             .expect_err("document budget");
         assert!(error.to_string().contains("1 document budget"));
+    }
+
+    #[test]
+    fn filesystem_source_allows_a_root_named_after_a_generated_directory() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let root = directory.path().join("target").join("project");
+        std::fs::create_dir_all(&root).expect("source root");
+        std::fs::write(root.join("keep.rs"), "fn keep() {}").expect("source file");
+
+        let documents = filesystem_documents(&root, "code", "work").expect("documents");
+
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].source_id, "keep.rs");
+    }
+
+    #[test]
+    fn filesystem_source_escapes_special_characters_in_file_uris() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let root = directory.path().join("project with #hash");
+        std::fs::create_dir_all(&root).expect("source root");
+        let file = root.join("notes ? draft.md");
+        std::fs::write(&file, "encoded source link").expect("source file");
+
+        let documents = filesystem_documents(&root, "code", "work").expect("documents");
+        let expected = Url::from_file_path(file.canonicalize().expect("canonical file"))
+            .expect("file URL")
+            .to_string();
+
+        assert_eq!(documents[0].uri.as_deref(), Some(expected.as_str()));
     }
 }

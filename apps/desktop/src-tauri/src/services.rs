@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
-use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::{ShellExt, process::CommandEvent};
 use tokio::time::timeout;
 
 use crate::settings;
@@ -36,7 +36,62 @@ pub struct ServiceStatus {
 
 pub async fn status(app: &AppHandle) -> Result<ServiceReport, String> {
     let output = sidecar_output(app, &["service", "status", "--json"]).await?;
-    parse_report(&output.stdout, &output.stderr, output.status.success())
+    parse_report(&output.stdout, &output.stderr, output.success)
+}
+
+/// Install the safe, query-only service set from the bundled runtime.
+///
+/// This deliberately does not install recurring ingestion. The operator can
+/// still opt into that separately with the CLI after validating source
+/// budgets, preserving the same safe default as `cortana service install`.
+pub async fn install(app: &AppHandle, approved: bool) -> Result<ServiceReport, String> {
+    if !approved {
+        return Err("service installation requires explicit approval".into());
+    }
+    let use_local_embedding = settings::load()?.embedding.provider == "local";
+    let mut args = vec!["service", "install", "--no-web"];
+    if !use_local_embedding {
+        args.push("--no-embedding-service");
+    }
+    let output = match sidecar_output(app, &args).await {
+        Ok(output) => output,
+        Err(error) => {
+            audit_action("service.install", "install", &[], "failed", None);
+            return Err(error);
+        }
+    };
+    if !output.success {
+        audit_action("service.install", "install", &[], "failed", None);
+        return Err(bounded_error(&output.stderr));
+    }
+    audit_action("service.install", "install", &[], "completed", None);
+    status(app).await
+}
+
+/// Install the explicitly approved recurring sync job after the bundled CLI
+/// re-checks validation coverage for every enabled source.
+pub async fn install_sync(app: &AppHandle, approved: bool) -> Result<ServiceReport, String> {
+    if !approved {
+        return Err("recurring sync installation requires explicit approval".into());
+    }
+    let use_local_embedding = settings::load()?.embedding.provider == "local";
+    let mut args = vec!["service", "install", "--no-web", "--enable-sync-service"];
+    if !use_local_embedding {
+        args.push("--no-embedding-service");
+    }
+    let output = match sidecar_output(app, &args).await {
+        Ok(output) => output,
+        Err(error) => {
+            audit_action("service.sync_install", "install", &["sync"], "failed", None);
+            return Err(error);
+        }
+    };
+    if !output.success {
+        audit_action("service.sync_install", "install", &["sync"], "failed", None);
+        return Err(bounded_error(&output.stderr));
+    }
+    audit_action("service.sync_install", "install", &["sync"], "completed", None);
+    status(app).await
 }
 
 pub async fn action(
@@ -67,7 +122,7 @@ pub async fn action(
             return Err(error);
         }
     };
-    if !output.status.success() {
+    if !output.success {
         audit_action(
             "service.action",
             action,
@@ -92,10 +147,14 @@ pub async fn action_all(
     if !ACTIONS.contains(&action) {
         return Err("unsupported whole-app service action".into());
     }
+    // A cloud embedding provider deliberately omits the local embedding
+    // service. Do not send a whole-app action to that absent task: doing so
+    // would make an otherwise healthy server report a failed aggregate action.
+    let core_services = core_service_names(settings::load()?.embedding.provider == "local");
     let services = if action == "stop" {
-        CORE_SERVICE_NAMES.into_iter().rev().collect::<Vec<_>>()
+        core_services.iter().rev().copied().collect::<Vec<_>>()
     } else {
-        CORE_SERVICE_NAMES.to_vec()
+        core_services.clone()
     };
     for service in services {
         let output = match sidecar_output(app, &["service", action, service]).await {
@@ -104,18 +163,18 @@ pub async fn action_all(
                 audit_action(
                     "service.action_all",
                     action,
-                    &CORE_SERVICE_NAMES,
+                    &core_services,
                     "failed",
                     Some(service),
                 );
                 return Err(error);
             }
         };
-        if !output.status.success() {
+        if !output.success {
             audit_action(
                 "service.action_all",
                 action,
-                &CORE_SERVICE_NAMES,
+                &core_services,
                 "failed",
                 Some(service),
             );
@@ -125,11 +184,19 @@ pub async fn action_all(
     audit_action(
         "service.action_all",
         action,
-        &CORE_SERVICE_NAMES,
+        &core_services,
         "completed",
         None,
     );
     status(app).await
+}
+
+fn core_service_names(use_local_embedding: bool) -> Vec<&'static str> {
+    if use_local_embedding {
+        CORE_SERVICE_NAMES.to_vec()
+    } else {
+        vec!["server"]
+    }
 }
 
 fn audit_action(
@@ -155,16 +222,73 @@ fn audit_action(
 async fn sidecar_output(
     app: &AppHandle,
     args: &[&str],
-) -> Result<tauri_plugin_shell::process::Output, String> {
+) -> Result<SidecarOutput, String> {
     let command = app
         .shell()
         .sidecar("cortana")
         .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
-        .args(args);
-    timeout(COMMAND_TIMEOUT, command.output())
-        .await
-        .map_err(|_| "Cortana service command timed out".to_string())?
-        .map_err(|error| format!("run bundled Cortana runtime: {error}"))
+        .args(args)
+        .env("CORTANA_DESKTOP_PROCESS_GROUP", "1")
+        .set_raw_out(true);
+    let (mut receiver, child) = command
+        .spawn()
+        .map_err(|error| format!("run bundled Cortana runtime: {error}"))?;
+    let result = timeout(COMMAND_TIMEOUT, async {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut success = false;
+        while let Some(event) = receiver.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => append_bounded(&mut stdout, &bytes),
+                CommandEvent::Stderr(bytes) => append_bounded(&mut stderr, &bytes),
+                CommandEvent::Error(error) => {
+                    return Err(format!("run bundled Cortana runtime: {error}"));
+                }
+                CommandEvent::Terminated(payload) => {
+                    success = payload.code == Some(0);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok(SidecarOutput {
+            success,
+            stdout,
+            stderr,
+        })
+    })
+    .await;
+    match result {
+        Ok(result) => result,
+        Err(_) => {
+            terminate_process_group(child);
+            Err("Cortana service command timed out".into())
+        }
+    }
+}
+
+struct SidecarOutput {
+    success: bool,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+fn append_bounded(buffer: &mut Vec<u8>, bytes: &[u8]) {
+    let remaining = MAX_OUTPUT_BYTES.saturating_sub(buffer.len());
+    buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
+}
+
+fn terminate_process_group(child: tauri_plugin_shell::process::CommandChild) {
+    #[cfg(unix)]
+    {
+        let pid = child.pid();
+        if pid > 0 && pid <= i32::MAX as u32 {
+            // The bundled CLI opts into this process group so a timeout also
+            // terminates connector/service helpers it may have started.
+            let _ = unsafe { libc::kill(-(pid as libc::pid_t), libc::SIGKILL) };
+        }
+    }
+    let _ = child.kill();
 }
 
 fn parse_report(stdout: &[u8], stderr: &[u8], succeeded: bool) -> Result<ServiceReport, String> {
@@ -231,5 +355,20 @@ mod tests {
         assert_eq!(bounded_error(b"bad\x1b[31m\0 result"), "bad[31m result");
         assert!(!CORE_SERVICE_NAMES.contains(&"sync"));
         assert!(!CORE_SERVICE_NAMES.contains(&"backup"));
+    }
+
+    #[test]
+    fn sidecar_output_bounds_each_stream() {
+        let mut output = Vec::new();
+        append_bounded(&mut output, &vec![b'x'; MAX_OUTPUT_BYTES + 1]);
+        assert_eq!(output.len(), MAX_OUTPUT_BYTES);
+        append_bounded(&mut output, b"more");
+        assert_eq!(output.len(), MAX_OUTPUT_BYTES);
+    }
+
+    #[test]
+    fn cloud_embedding_aggregate_actions_skip_the_absent_local_service() {
+        assert_eq!(core_service_names(false), vec!["server"]);
+        assert_eq!(core_service_names(true), CORE_SERVICE_NAMES.to_vec());
     }
 }

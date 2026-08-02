@@ -2,6 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 
 import { demoEvidence, demoStatus } from './demo'
 import { buildAgentContext, estimateTokens } from './context'
+import { safeSourceLink } from './sourceLinks'
 import type {
   AnswerResponse,
   BrainDocument,
@@ -14,8 +15,10 @@ import type {
   DesktopInstallJob,
   DesktopInfo,
   DesktopHindsightStatus,
+  DesktopHonchoStatus,
   DesktopReadiness,
   DesktopServiceReport,
+  DesktopSchedule,
   DesktopSettings,
   DesktopSettingsExport,
   DesktopSettingsImport,
@@ -29,6 +32,8 @@ import type {
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
 export const isDesktopApp = isTauri()
+
+let tokenPromptInFlight: Promise<string | null> | null = null
 
 export async function getDesktopSettings(): Promise<DesktopSettings> {
   if (!isDesktopApp) throw new Error('Settings are available in Cortana Desktop')
@@ -55,6 +60,11 @@ export async function scanDesktopReadiness(): Promise<DesktopReadiness> {
   return invokeDesktop<DesktopReadiness>('desktop_readiness_scan')
 }
 
+export async function migrateDesktopEmbeddingGeneration(from: string): Promise<string> {
+  if (!isDesktopApp) throw new Error('Embedding generation migration is available in Cortana Desktop')
+  return invokeDesktop<string>('desktop_embedding_generation_migrate', { from, approved: true })
+}
+
 export async function getDesktopInfo(): Promise<DesktopInfo> {
   if (!isDesktopApp) throw new Error('Desktop information is available in Cortana Desktop')
   return invokeDesktop<DesktopInfo>('desktop_info')
@@ -70,9 +80,34 @@ export async function getDesktopServices(): Promise<DesktopServiceReport> {
   return invokeDesktop<DesktopServiceReport>('desktop_services_status')
 }
 
+export async function installDesktopServices(): Promise<DesktopServiceReport> {
+  if (!isDesktopApp) throw new Error('Service installation is available in Cortana Desktop')
+  return invokeDesktop<DesktopServiceReport>('desktop_services_install', { approved: true })
+}
+
+export async function installDesktopSyncService(): Promise<DesktopServiceReport> {
+  if (!isDesktopApp) throw new Error('Recurring sync installation is available in Cortana Desktop')
+  return invokeDesktop<DesktopServiceReport>('desktop_services_install_sync', { approved: true })
+}
+
+export async function getDesktopSchedule(): Promise<DesktopSchedule> {
+  if (!isDesktopApp) throw new Error('Service scheduling is available in Cortana Desktop')
+  return invokeDesktop<DesktopSchedule>('desktop_schedule_get')
+}
+
+export async function saveDesktopSchedule(schedule: DesktopSchedule): Promise<DesktopSchedule> {
+  if (!isDesktopApp) throw new Error('Service scheduling is available in Cortana Desktop')
+  return invokeDesktop<DesktopSchedule>('desktop_schedule_save', { schedule })
+}
+
 export async function getDesktopHindsightStatus(): Promise<DesktopHindsightStatus> {
   if (!isDesktopApp) throw new Error('Hindsight status is available in Cortana Desktop')
   return invokeDesktop<DesktopHindsightStatus>('desktop_hindsight_status')
+}
+
+export async function getDesktopHonchoStatus(): Promise<DesktopHonchoStatus> {
+  if (!isDesktopApp) throw new Error('Honcho status is available in Cortana Desktop')
+  return invokeDesktop<DesktopHonchoStatus>('desktop_honcho_status')
 }
 
 export async function runDesktopServiceAction(
@@ -134,14 +169,16 @@ export async function openDesktopProject(): Promise<void> {
   return invokeDesktop<void>('desktop_project_open')
 }
 
+export async function openDesktopSecretFile(): Promise<void> {
+  if (!isDesktopApp) throw new Error('Secret file opens are available in Cortana Desktop')
+  return invokeDesktop<void>('desktop_secret_file_open')
+}
+
 export async function openDesktopUrl(url: string): Promise<void> {
   if (!isDesktopApp) throw new Error('Desktop URL opens are available in Cortana Desktop')
-  const parsed = new URL(url)
-  const allowed = ['http:', 'https:', 'mailto:', 'file:']
-  if (!allowed.includes(parsed.protocol)) {
-    throw new Error(`Unsupported link scheme: ${parsed.protocol.replace(':', '')}`)
-  }
-  return invokeDesktop<void>('desktop_url_open', { url })
+  const safe = safeSourceLink(url, { allowLocalFile: true })
+  if (!safe) throw new Error('Unsupported or unsafe source link')
+  return invokeDesktop<void>('desktop_url_open', { url: safe })
 }
 
 export async function startDesktopInstaller(tool: string): Promise<DesktopInstallJob> {
@@ -198,6 +235,11 @@ export async function pickDesktopPath(
 export async function getDesktopSourceValidation(id: string): Promise<DesktopSourceJob> {
   if (!isDesktopApp) throw new Error('Source validation is available in Cortana Desktop')
   return invokeDesktop<DesktopSourceJob>('desktop_source_validation_status', { id })
+}
+
+export async function getDesktopSourceJobs(): Promise<DesktopSourceJob[]> {
+  if (!isDesktopApp) throw new Error('Source jobs are available in Cortana Desktop')
+  return invokeDesktop<DesktopSourceJob[]>('desktop_source_jobs_status')
 }
 
 export async function cancelDesktopSourceValidation(id: string): Promise<DesktopSourceJob> {
@@ -311,8 +353,16 @@ export async function getDocuments(
   signal?: AbortSignal
 ): Promise<BrainDocumentPage> {
   if (isDemoMode) {
+    const normalizedQuery = query?.trim().toLowerCase()
     const documents = demoEvidence
-      .filter((item) => !source || item.source === source)
+      .filter(
+        (item) =>
+          (!source || item.source === source) &&
+          (!normalizedQuery ||
+            [item.title, item.source, item.source_id].some((value) =>
+              value.toLowerCase().includes(normalizedQuery)
+            ))
+      )
       .map((item) => ({
         id: item.chunk_id.replace(/[^a-f0-9]/gi, '').padEnd(16, '0'),
         source: item.source,
@@ -518,9 +568,7 @@ async function invokeDesktop<T>(
     return result
   } catch (caught) {
     if (caught instanceof Error) throw caught
-    throw new Error(typeof caught === 'string' ? caught : 'Desktop request failed', {
-      cause: caught,
-    })
+    throw new Error(typeof caught === 'string' ? caught : 'Desktop request failed')
   }
 }
 
@@ -534,11 +582,26 @@ async function authorizedFetch(input: string, init: RequestInit): Promise<Respon
   let response = await request(current)
   if (response.status !== 401) return response
 
+  // A cold web shell starts status, document, and graph requests together.
+  // Reuse one prompt for that burst instead of opening several modal dialogs.
+  if (init.signal?.aborted) return response
   window.sessionStorage.removeItem('cortana_api_token')
-  const token = window.prompt('Enter the Cortana access token')
-  if (!token) return response
+  const token = await requestAccessToken()
+  if (!token || init.signal?.aborted) return response
+
   window.sessionStorage.setItem('cortana_api_token', token)
   response = await request(token)
   if (response.status === 401) window.sessionStorage.removeItem('cortana_api_token')
   return response
+}
+
+function requestAccessToken(): Promise<string | null> {
+  if (!tokenPromptInFlight) {
+    tokenPromptInFlight = Promise.resolve(window.prompt('Enter the Cortana access token'))
+      .then((token) => token?.trim() || null)
+      .finally(() => {
+        tokenPromptInFlight = null
+      })
+  }
+  return tokenPromptInFlight
 }

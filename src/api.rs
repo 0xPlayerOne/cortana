@@ -1,6 +1,7 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -22,7 +23,7 @@ use tracing::Level;
 
 use crate::{
     answer::{AnswerEngine, AnswerRequest, AnswerResponse, QueryRuntimeStatus},
-    auth::{ADMIN_SCOPE, AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE},
+    auth::{ADMIN_SCOPE, AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
     config::{Config, SourceConfig, WorkspaceConfig},
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
@@ -93,6 +94,15 @@ struct RuntimeMetrics {
     contexts: AtomicU64,
     answers: AtomicU64,
     errors: AtomicU64,
+    principals: Mutex<HashMap<String, PrincipalMetrics>>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct PrincipalMetrics {
+    searches: u64,
+    contexts: u64,
+    answers: u64,
+    errors: u64,
 }
 
 impl RuntimeMetrics {
@@ -103,15 +113,62 @@ impl RuntimeMetrics {
             contexts: AtomicU64::new(0),
             answers: AtomicU64::new(0),
             errors: AtomicU64::new(0),
+            principals: Mutex::new(HashMap::new()),
         }
     }
 
     fn uptime_seconds(&self) -> u64 {
         self.started.elapsed().as_secs()
     }
+
+    fn record(&self, principal: &Principal, metric: PrincipalMetric) {
+        match metric {
+            PrincipalMetric::Search => self.searches.fetch_add(1, Ordering::Relaxed),
+            PrincipalMetric::Context => self.contexts.fetch_add(1, Ordering::Relaxed),
+            PrincipalMetric::Answer => self.answers.fetch_add(1, Ordering::Relaxed),
+            PrincipalMetric::Error => self.errors.fetch_add(1, Ordering::Relaxed),
+        };
+        let mut principals = self
+            .principals
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let counters = principals.entry(principal.name.clone()).or_default();
+        match metric {
+            PrincipalMetric::Search => counters.searches = counters.searches.saturating_add(1),
+            PrincipalMetric::Context => counters.contexts = counters.contexts.saturating_add(1),
+            PrincipalMetric::Answer => counters.answers = counters.answers.saturating_add(1),
+            PrincipalMetric::Error => counters.errors = counters.errors.saturating_add(1),
+        }
+    }
+
+    fn counters_for(&self, principal: &Principal, owner: bool) -> PrincipalMetrics {
+        if owner {
+            return PrincipalMetrics {
+                searches: self.searches.load(Ordering::Relaxed),
+                contexts: self.contexts.load(Ordering::Relaxed),
+                answers: self.answers.load(Ordering::Relaxed),
+                errors: self.errors.load(Ordering::Relaxed),
+            };
+        }
+        self.principals
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&principal.name)
+            .copied()
+            .unwrap_or_default()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum PrincipalMetric {
+    Search,
+    Context,
+    Answer,
+    Error,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SearchRequest {
     query: String,
     project: Option<String>,
@@ -121,6 +178,7 @@ struct SearchRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ContextRequest {
     query: String,
     project: Option<String>,
@@ -211,6 +269,8 @@ struct IngestionStatus {
     request_concurrency: usize,
     validation_state_error: Option<String>,
     configured_sources: Vec<ConfiguredSourceStatus>,
+    #[serde(skip)]
+    validation_fingerprints: BTreeMap<String, String>,
 }
 
 impl Default for IngestionStatus {
@@ -235,6 +295,21 @@ struct SourceAuthorizationSummary {
 }
 
 #[derive(Clone, Debug, Serialize)]
+struct SourceValidationSummary {
+    source: String,
+    project: String,
+    kind: String,
+    status: String,
+    validated_at: String,
+    documents: Option<usize>,
+    bytes: Option<u64>,
+    max_documents: usize,
+    max_bytes: u64,
+    max_seconds: u64,
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 struct ConfiguredSourceStatus {
     name: String,
     source: String,
@@ -246,7 +321,30 @@ struct ConfiguredSourceStatus {
     max_bytes: u64,
     max_duration_seconds: u64,
     authorization: SourceAuthorizationSummary,
-    validation: Option<SourceValidationStatus>,
+    validation: Option<SourceValidationSummary>,
+}
+
+fn validation_summary(status: &SourceValidationStatus) -> SourceValidationSummary {
+    SourceValidationSummary {
+        source: status.source.clone(),
+        project: status.project.clone(),
+        kind: status.kind.clone(),
+        status: status.status.clone(),
+        validated_at: status.validated_at.to_rfc3339(),
+        documents: status.documents,
+        bytes: status.bytes,
+        max_documents: status.max_documents,
+        max_bytes: status.max_bytes,
+        max_seconds: status.max_seconds,
+        // Connector diagnostics are persisted for local troubleshooting, but
+        // arbitrary connector commands may print tokens, paths, or request
+        // headers. Never send that untrusted text through the shared status
+        // API; the failure state itself is sufficient for scoped agents.
+        error: status
+            .error
+            .as_ref()
+            .map(|_| "source validation failed".into()),
+    }
 }
 
 impl IngestionStatus {
@@ -274,6 +372,15 @@ impl IngestionStatus {
                 validation: None,
             })
             .collect();
+        let validation_fingerprints = config
+            .sources
+            .iter()
+            .filter_map(|source| {
+                source_validation::configuration_fingerprint(source)
+                    .ok()
+                    .map(|fingerprint| (source.name.clone(), fingerprint))
+            })
+            .collect();
         Self {
             data_dir: config.data_dir.clone(),
             mode: if scheduled { "scheduled" } else { "manual" },
@@ -284,6 +391,7 @@ impl IngestionStatus {
             request_concurrency: config.ingestion.request_concurrency,
             validation_state_error: None,
             configured_sources,
+            validation_fingerprints,
         }
         .refreshed()
     }
@@ -294,16 +402,40 @@ impl IngestionStatus {
             Ok(validations) => {
                 status.validation_state_error = None;
                 for source in &mut status.configured_sources {
-                    source.validation = validations.get(&source.name).cloned();
+                    source.validation = validations
+                        .get(&source.name)
+                        .filter(|validation| {
+                            status
+                                .validation_fingerprints
+                                .get(&source.name)
+                                .is_some_and(|fingerprint| {
+                                    validation.configuration_fingerprint.as_deref()
+                                        == Some(fingerprint.as_str())
+                                })
+                        })
+                        .map(validation_summary);
                 }
             }
             Err(error) => {
-                status.validation_state_error = Some(error.to_string());
+                tracing::warn!(error = %error, "failed to load source validation state");
+                status.validation_state_error = Some("source validation state unavailable".into());
                 for source in &mut status.configured_sources {
                     source.validation = None;
                 }
             }
         }
+        status
+    }
+
+    fn visible_to(&self, principal: &Principal) -> Self {
+        let acl = principal.acl_labels();
+        let mut status = self.clone();
+        if principal.is_owner() {
+            return status;
+        }
+        status
+            .configured_sources
+            .retain(|source| acl_allows(&source.acl, &acl));
         status
     }
 }
@@ -313,7 +445,81 @@ fn is_google_source(kind: &str) -> bool {
 }
 
 fn regular_file_ready(path: &std::path::Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
+    std::fs::symlink_metadata(path).is_ok_and(|metadata| {
+        if !metadata.file_type().is_file() {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            return metadata.permissions().mode() & 0o077 == 0;
+        }
+        #[cfg(not(unix))]
+        {
+            true
+        }
+    })
+}
+
+fn google_token_env_ready(config: &Config, name: &str) -> bool {
+    config.environment_value(name).is_some_and(|value| {
+        let path = std::path::Path::new(value.trim());
+        path.is_absolute() && secure_regular_file_ready(path)
+    })
+}
+
+fn secure_regular_file_ready(path: &std::path::Path) -> bool {
+    regular_file_ready(path) && private_path_components_ready(path)
+}
+
+fn private_path_components_ready(path: &std::path::Path) -> bool {
+    let mut current = path.to_path_buf();
+    loop {
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata)
+                if metadata.file_type().is_symlink() && !is_allowed_system_alias(&current) =>
+            {
+                return false;
+            }
+            Ok(metadata) if current == path => {
+                if !metadata.is_file() {
+                    return false;
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if metadata.permissions().mode() & 0o077 != 0 {
+                        return false;
+                    }
+                }
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return false,
+            Err(_) => return false,
+        }
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        if parent == current {
+            break;
+        }
+        current = parent.to_path_buf();
+    }
+    true
+}
+
+fn is_allowed_system_alias(path: &std::path::Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        path == std::path::Path::new("/tmp")
+            || path == std::path::Path::new("/var")
+            || path == std::path::Path::new("/etc")
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        false
+    }
 }
 
 fn source_authorization_summary(
@@ -324,24 +530,33 @@ fn source_authorization_summary(
         let oauth_client_ready = source
             .oauth_client
             .as_ref()
-            .is_some_and(|path| regular_file_ready(path));
-        let token_env_ready = source.token_env.as_deref().is_some_and(|name| {
-            !name.trim().is_empty()
-                && config
-                    .environment_value(name)
-                    .is_some_and(|value| !value.is_empty())
-        });
+            .is_some_and(|path| secure_regular_file_ready(path));
+        let token_env_ready = source
+            .token_env
+            .as_deref()
+            .is_some_and(|name| !name.trim().is_empty() && google_token_env_ready(config, name));
         let token_file_ready = source
             .token
             .as_ref()
-            .is_some_and(|path| regular_file_ready(path));
+            .is_some_and(|path| secure_regular_file_ready(path));
+        let token_destination_ready = source
+            .token
+            .as_deref()
+            .is_some_and(google_token_destination_ready)
+            || source
+                .token_env
+                .as_deref()
+                .and_then(|name| config.environment_value(name))
+                .is_some_and(|value| google_token_destination_value_ready(&value));
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::GoogleOauth,
             // A migrated/private token file is a complete authorization path on
             // its own. Requiring an OAuth client in that case makes an already
             // authorized Google source appear unhealthy in the desktop status
             // panel and incorrectly invites the user to repeat setup.
-            setup_required: !oauth_client_ready && !token_env_ready && !token_file_ready,
+            setup_required: !(oauth_client_ready && token_destination_ready)
+                && !token_env_ready
+                && !token_file_ready,
             authorized: token_env_ready || token_file_ready,
         }
     } else if source.token_env.is_some() || source.token.is_some() {
@@ -354,7 +569,7 @@ fn source_authorization_summary(
         let token_file_ready = source
             .token
             .as_ref()
-            .is_some_and(|path| regular_file_ready(path));
+            .is_some_and(|path| secure_regular_file_ready(path));
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::Token,
             setup_required: !token_env_ready && !token_file_ready,
@@ -367,6 +582,46 @@ fn source_authorization_summary(
             authorized: true,
         }
     }
+}
+
+fn google_token_destination_value_ready(value: &str) -> bool {
+    google_token_destination_ready(Path::new(value.trim()))
+}
+
+fn google_token_destination_ready(path: &Path) -> bool {
+    if !path.is_absolute()
+        || path.parent().is_none()
+        || path.parent().is_none_or(|parent| parent.parent().is_none())
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
+    {
+        return false;
+    }
+    let mut current = path.to_path_buf();
+    loop {
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata)
+                if metadata.file_type().is_symlink() && !is_allowed_system_alias(&current) =>
+            {
+                return false;
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return false,
+        }
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        if parent == current {
+            break;
+        }
+        current = parent.to_path_buf();
+    }
+    true
 }
 
 pub fn router(state: AppState) -> Router {
@@ -493,7 +748,7 @@ async fn list_documents(
                 None,
                 started,
             );
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            state.metrics.record(&principal, PrincipalMetric::Error);
             Err(internal_error(error))
         }
     }
@@ -552,7 +807,7 @@ async fn document(
                 None,
                 started,
             );
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            state.metrics.record(&principal, PrincipalMetric::Error);
             Err(internal_error(error))
         }
     }
@@ -666,14 +921,18 @@ async fn graph(
                 None,
                 started,
             );
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            state.metrics.record(&principal, PrincipalMetric::Error);
             Err(internal_error(error))
         }
     }
 }
 
 fn validate_document_scope(name: &str, value: Option<&str>) -> Result<(), (StatusCode, String)> {
-    if value.is_some_and(|value| value.is_empty() || value.len() > MAX_DOCUMENT_SCOPE_LENGTH) {
+    if value.is_some_and(|value| {
+        value.is_empty()
+            || value.len() > MAX_DOCUMENT_SCOPE_LENGTH
+            || value.chars().any(|character| character.is_control())
+    }) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("{name} must contain 1 to {MAX_DOCUMENT_SCOPE_LENGTH} bytes"),
@@ -683,7 +942,11 @@ fn validate_document_scope(name: &str, value: Option<&str>) -> Result<(), (Statu
 }
 
 fn validate_document_query(value: Option<&str>) -> Result<(), (StatusCode, String)> {
-    if value.is_some_and(|value| value.is_empty() || value.len() > MAX_DOCUMENT_QUERY_LENGTH) {
+    if value.is_some_and(|value| {
+        value.len() > MAX_DOCUMENT_QUERY_LENGTH
+            || value.trim().is_empty()
+            || value.chars().any(|character| character.is_control())
+    }) {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("query must contain 1 to {MAX_DOCUMENT_QUERY_LENGTH} bytes"),
@@ -749,35 +1012,60 @@ async fn ready(State(state): State<AppState>) -> impl IntoResponse {
 
 async fn status(
     State(state): State<AppState>,
-    Extension(_principal): Extension<Principal>,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<Status>, (StatusCode, String)> {
-    state
-        .store
-        .stats()
-        .map(|stats| {
-            let workspaces = fallback_workspaces(
-                state.workspaces.as_ref(),
-                stats
-                    .sources
-                    .iter()
-                    .map(|source| source.project.clone())
-                    .collect::<Vec<_>>()
-                    .into_iter(),
-            );
-            Json(Status {
-                status: "ok",
-                uptime_seconds: state.metrics.uptime_seconds(),
-                searches_total: state.metrics.searches.load(Ordering::Relaxed),
-                contexts_total: state.metrics.contexts.load(Ordering::Relaxed),
-                answers_total: state.metrics.answers.load(Ordering::Relaxed),
-                errors_total: state.metrics.errors.load(Ordering::Relaxed),
-                query: state.answer.status(),
-                ingestion: state.ingestion.refreshed(),
-                workspaces,
-                stats,
-            })
-        })
-        .map_err(internal_error)
+    let acl = principal.acl_labels();
+    let owner = principal.is_owner();
+    let stats = if owner {
+        state.store.stats()
+    } else {
+        state.store.stats_scoped(&acl)
+    }
+    .map_err(internal_error)?;
+    let ingestion = state.ingestion.refreshed().visible_to(&principal);
+    let source_projects = if owner {
+        stats
+            .sources
+            .iter()
+            .map(|source| source.project.clone())
+            .collect::<Vec<_>>()
+    } else {
+        let mut projects = ingestion
+            .configured_sources
+            .iter()
+            .map(|source| source.project.clone())
+            .collect::<Vec<_>>();
+        projects.extend(stats.sources.iter().map(|source| source.project.clone()));
+        projects
+    };
+    let visible_workspaces = if owner {
+        state.workspaces.as_ref().clone()
+    } else {
+        let projects = source_projects
+            .iter()
+            .map(|project| project.to_ascii_lowercase())
+            .collect::<BTreeSet<_>>();
+        state
+            .workspaces
+            .iter()
+            .filter(|workspace| projects.contains(&workspace.id.to_ascii_lowercase()))
+            .cloned()
+            .collect()
+    };
+    let workspaces = fallback_workspaces(&visible_workspaces, source_projects);
+    let counters = state.metrics.counters_for(&principal, owner);
+    Ok(Json(Status {
+        status: "ok",
+        uptime_seconds: state.metrics.uptime_seconds(),
+        searches_total: counters.searches,
+        contexts_total: counters.contexts,
+        answers_total: counters.answers,
+        errors_total: counters.errors,
+        query: state.answer.status(),
+        ingestion,
+        workspaces,
+        stats,
+    }))
 }
 
 fn fallback_workspaces(
@@ -849,7 +1137,7 @@ async fn answer(
     let started = Instant::now();
     let project = request.project.clone();
     let source = request.source.clone();
-    state.metrics.answers.fetch_add(1, Ordering::Relaxed);
+    state.metrics.record(&principal, PrincipalMetric::Answer);
     let result = state
         .answer
         .answer_scoped(request, &principal.acl_labels())
@@ -869,7 +1157,7 @@ async fn answer(
         started,
     );
     result.map(Json).map_err(|error| {
-        state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+        state.metrics.record(&principal, PrincipalMetric::Error);
         internal_error(error)
     })
 }
@@ -882,7 +1170,7 @@ async fn search(
     validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
-    state.metrics.searches.fetch_add(1, Ordering::Relaxed);
+    state.metrics.record(&principal, PrincipalMetric::Search);
     match retrieval::retrieve_scoped(
         &state.store,
         &state.embedder,
@@ -918,7 +1206,7 @@ async fn search(
                 None,
                 started,
             );
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            state.metrics.record(&principal, PrincipalMetric::Error);
             Err(internal_error(error))
         }
     }
@@ -932,7 +1220,7 @@ async fn context(
     validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
-    state.metrics.contexts.fetch_add(1, Ordering::Relaxed);
+    state.metrics.record(&principal, PrincipalMetric::Context);
     let evidence = match retrieval::retrieve_scoped(
         &state.store,
         &state.embedder,
@@ -956,7 +1244,7 @@ async fn context(
                 None,
                 started,
             );
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            state.metrics.record(&principal, PrincipalMetric::Error);
             return Err(internal_error(error));
         }
     };
@@ -1096,7 +1384,11 @@ fn validate_retrieval_scope(
 }
 
 fn internal_error(error: anyhow::Error) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+    tracing::error!(%error, "Cortana API request failed");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Cortana could not complete the request".into(),
+    )
 }
 
 fn default_limit() -> usize {
@@ -1174,6 +1466,7 @@ async fn shutdown_signal() {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::anyhow;
     use axum::body::{Body, to_bytes};
     use axum::http::Request;
     use tempfile::tempdir;
@@ -1185,6 +1478,16 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn internal_errors_do_not_expose_server_details() {
+        let (status, message) = internal_error(anyhow!(
+            "open /Users/private/.config/cortana/store.sqlite3: permission denied"
+        ));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(message, "Cortana could not complete the request");
+        assert!(!message.contains("/Users/private"));
+    }
+
     fn test_state(token: Option<String>) -> (tempfile::TempDir, AppState) {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
@@ -1193,6 +1496,16 @@ mod tests {
             .expect("fingerprint");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
         (directory, AppState::new(store, embedder, token))
+    }
+
+    fn write_private_fixture(path: &std::path::Path, body: &str) {
+        std::fs::write(path, body).expect("write fixture");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                .expect("secure fixture");
+        }
     }
 
     fn google_source(token: Option<std::path::PathBuf>) -> SourceConfig {
@@ -1223,7 +1536,7 @@ mod tests {
     fn google_token_file_is_complete_authorization_without_oauth_client() {
         let directory = tempdir().expect("temporary directory");
         let token = directory.path().join("google-token.json");
-        std::fs::write(&token, "{}\n").expect("token fixture");
+        write_private_fixture(&token, "{}\n");
         let summary = source_authorization_summary(&Config::default(), &google_source(Some(token)));
 
         assert!(summary.authorized);
@@ -1235,11 +1548,80 @@ mod tests {
     }
 
     #[test]
-    fn google_oauth_client_can_authorize_without_existing_token() {
+    fn google_token_environment_value_must_be_an_existing_absolute_file() {
+        let directory = tempdir().expect("temporary directory");
+        let token = directory.path().join("google-token.json");
+        let mut source = google_source(None);
+        source.token_env = Some("GOOGLE_TOKEN_PATH".into());
+        let mut config = Config::default();
+
+        config
+            .environment
+            .insert("GOOGLE_TOKEN_PATH".into(), token.display().to_string());
+        let missing = source_authorization_summary(&config, &source);
+        assert!(!missing.authorized);
+        assert!(missing.setup_required);
+
+        config.environment.insert(
+            "GOOGLE_TOKEN_PATH".into(),
+            "relative/google-token.json".into(),
+        );
+        assert!(!source_authorization_summary(&config, &source).authorized);
+
+        write_private_fixture(&token, "{}\n");
+        config
+            .environment
+            .insert("GOOGLE_TOKEN_PATH".into(), token.display().to_string());
+        let ready = source_authorization_summary(&config, &source);
+        assert!(ready.authorized);
+        assert!(!ready.setup_required);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn google_token_environment_value_rejects_symlinked_parent() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let real = directory.path().join("real");
+        std::fs::create_dir(&real).expect("real token directory");
+        let token = real.join("google-token.json");
+        write_private_fixture(&token, "{}\n");
+        let linked = directory.path().join("linked");
+        symlink(&real, &linked).expect("symlink token directory");
+
+        let mut source = google_source(None);
+        source.token_env = Some("GOOGLE_TOKEN_PATH".into());
+        let mut config = Config::default();
+        config.environment.insert(
+            "GOOGLE_TOKEN_PATH".into(),
+            linked.join("google-token.json").display().to_string(),
+        );
+
+        let summary = source_authorization_summary(&config, &source);
+        assert!(!summary.authorized);
+    }
+
+    #[test]
+    fn google_oauth_requires_a_token_destination_before_authorize() {
         let directory = tempdir().expect("temporary directory");
         let client = directory.path().join("oauth-client.json");
-        std::fs::write(&client, "{}\n").expect("OAuth client fixture");
+        write_private_fixture(&client, "{}\n");
         let mut source = google_source(None);
+        source.oauth_client = Some(client);
+        let summary = source_authorization_summary(&Config::default(), &source);
+
+        assert!(!summary.authorized);
+        assert!(summary.setup_required);
+    }
+
+    #[test]
+    fn google_oauth_client_can_authorize_to_a_new_token_destination() {
+        let directory = tempdir().expect("temporary directory");
+        let client = directory.path().join("oauth-client.json");
+        let token = directory.path().join("google-token.json");
+        write_private_fixture(&client, "{}\n");
+        let mut source = google_source(Some(token));
         source.oauth_client = Some(client);
         let summary = source_authorization_summary(&Config::default(), &source);
 
@@ -1390,6 +1772,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retrieval_rejects_control_characters_in_scope_filters() {
+        let (_directory, state) = test_state(None);
+        let body = serde_json::to_vec(&serde_json::json!({
+            "query": "release",
+            "source": "slack\u{0000}work"
+        }))
+        .expect("request JSON");
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
     async fn status_reports_safe_ingestion_mode_and_configured_sources() {
         let (directory, state) = test_state(None);
         let mut config: Config = toml::from_str(
@@ -1419,6 +1823,10 @@ mod tests {
         .expect("configuration");
         config.data_dir = directory.path().to_path_buf();
         let state = state.with_config(&config, false);
+        let validation_fingerprint = source_validation::configuration_fingerprint(
+            config.sources.first().expect("configured source"),
+        )
+        .expect("validation fingerprint");
         source_validation::record(
             &config.data_dir,
             SourceValidationStatus {
@@ -1432,7 +1840,7 @@ mod tests {
                 max_documents: 25,
                 max_bytes: 4096,
                 max_seconds: 45,
-                configuration_fingerprint: None,
+                configuration_fingerprint: Some(validation_fingerprint),
                 error: None,
             },
         )
@@ -1465,6 +1873,11 @@ mod tests {
             value["ingestion"]["configured_sources"][0]["validation"]["status"],
             "succeeded"
         );
+        assert!(
+            value["ingestion"]["configured_sources"][0]["validation"]
+                .get("configuration_fingerprint")
+                .is_none()
+        );
         assert_eq!(
             value["ingestion"]["configured_sources"][0]["acl"],
             serde_json::json!(["work", "admin"])
@@ -1490,6 +1903,174 @@ mod tests {
         assert_eq!(value["workspaces"][0]["account_label"], "team@example.com");
     }
 
+    #[test]
+    fn scoped_status_source_inventory_follows_principal_acl() {
+        let directory = tempdir().expect("temporary directory");
+        let mut config: Config = toml::from_str(
+            r#"
+            [[sources]]
+            name = "work-drive"
+            kind = "google-drive"
+            project = "work"
+            acl = ["work"]
+
+            [[sources]]
+            name = "personal-notes"
+            kind = "apple-notes"
+            project = "personal"
+            acl = ["personal"]
+
+            [[sources]]
+            name = "public-reference"
+            kind = "filesystem"
+            project = "reference"
+            "#,
+        )
+        .expect("configuration");
+        config.data_dir = directory.path().to_path_buf();
+
+        let mut auth_config = Config::default();
+        auth_config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        auth_config.auth.tokens = vec![AuthTokenConfig {
+            principal: "work-agent".into(),
+            token_env: "WORK_TOKEN".into(),
+            scopes: vec![STATUS_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let principal = AuthPolicy::from_config(&auth_config, None)
+            .expect("policy")
+            .authenticate("work-secret")
+            .expect("principal");
+
+        let status = IngestionStatus::from_config(&config, false).visible_to(&principal);
+        let names = status
+            .configured_sources
+            .iter()
+            .map(|source| source.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["work-drive", "public-reference"]);
+
+        let mut admin_config = auth_config;
+        admin_config.auth.tokens[0].scopes = vec![ADMIN_SCOPE.into()];
+        let admin = AuthPolicy::from_config(&admin_config, None)
+            .expect("admin policy")
+            .authenticate("work-secret")
+            .expect("admin principal");
+        let admin_status = IngestionStatus::from_config(&config, false).visible_to(&admin);
+        let admin_names = admin_status
+            .configured_sources
+            .iter()
+            .map(|source| source.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            admin_names,
+            vec!["work-drive", "personal-notes", "public-reference"]
+        );
+    }
+
+    #[test]
+    fn stale_source_validation_is_hidden_from_status() {
+        let directory = tempdir().expect("temporary directory");
+        let mut config = Config::default();
+        config.data_dir = directory.path().to_path_buf();
+        config.sources = vec![google_source(None)];
+        let source = config.sources.first().expect("configured source");
+        let fingerprint =
+            source_validation::configuration_fingerprint(source).expect("validation fingerprint");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "succeeded".into(),
+                validated_at: chrono::Utc::now(),
+                documents: Some(1),
+                bytes: Some(1),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(fingerprint),
+                error: None,
+            },
+        )
+        .expect("validation state");
+
+        config.sources[0].query = Some("from:changed".into());
+        let status = IngestionStatus::from_config(&config, false);
+        assert!(status.configured_sources[0].validation.is_none());
+    }
+
+    #[test]
+    fn source_validation_diagnostics_are_generic_in_public_status() {
+        let directory = tempdir().expect("temporary directory");
+        let mut config = Config::default();
+        config.data_dir = directory.path().to_path_buf();
+        config.sources = vec![google_source(None)];
+        let source = config.sources.first().expect("configured source");
+        let fingerprint =
+            source_validation::configuration_fingerprint(source).expect("validation fingerprint");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "failed".into(),
+                validated_at: chrono::Utc::now(),
+                documents: None,
+                bytes: None,
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(fingerprint),
+                error: Some("Bearer top-secret /Users/amf/private".into()),
+            },
+        )
+        .expect("validation state");
+
+        let status = IngestionStatus::from_config(&config, false);
+        let validation = status.configured_sources[0]
+            .validation
+            .as_ref()
+            .expect("failed validation");
+        assert_eq!(
+            validation.error.as_deref(),
+            Some("source validation failed")
+        );
+        assert!(
+            !serde_json::to_string(validation)
+                .expect("validation JSON")
+                .contains("top-secret")
+        );
+    }
+
+    #[test]
+    fn validation_state_errors_are_generic_to_callers() {
+        let directory = tempdir().expect("temporary directory");
+        write_private_fixture(
+            &directory.path().join("source-validations.json"),
+            "{\"sources\": invalid}",
+        );
+        let mut config = Config::default();
+        config.data_dir = directory.path().to_path_buf();
+
+        let status = IngestionStatus::from_config(&config, false);
+        assert_eq!(
+            status.validation_state_error.as_deref(),
+            Some("source validation state unavailable")
+        );
+        assert!(
+            !status
+                .validation_state_error
+                .as_deref()
+                .unwrap_or_default()
+                .contains(directory.path().to_string_lossy().as_ref())
+        );
+    }
+
     #[tokio::test]
     async fn status_reports_source_authorization_readiness_for_google_and_token_backed_sources() {
         let (directory, state) = test_state(None);
@@ -1497,12 +2078,11 @@ mod tests {
         let oauth_client_path = directory.path().join("google-oauth-client.json");
         let incomplete_oauth_client_path =
             directory.path().join("missing-google-oauth-client.json");
-        std::fs::write(&token_path, "{{\"refresh_token\":\"token\"}}").expect("write token file");
-        std::fs::write(
+        write_private_fixture(&token_path, "{\"refresh_token\":\"token\"}");
+        write_private_fixture(
             &oauth_client_path,
             "{\"installed\":{\"client_id\":\"id\",\"client_secret\":\"secret\",\"auth_uri\":\"https://example.com/auth\",\"token_uri\":\"https://example.com/token\",\"auth_provider_x509_cert_url\":\"https://example.com/x509\",\"redirect_uris\":[\"http://127.0.0.1\"]}}",
-        )
-        .expect("write google client file");
+        );
 
         let mut config: Config = toml::from_str(&format!(
             r##"
@@ -1723,6 +2303,45 @@ mod tests {
             serde_json::json!("note-1")
         );
 
+        let blank_filter = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/documents?project=demo&query=%20%20&limit=10")
+                    .body(Body::empty())
+                    .expect("blank filter request"),
+            )
+            .await
+            .expect("blank filter response");
+        assert_eq!(blank_filter.status(), StatusCode::BAD_REQUEST);
+
+        let padded_filter_query = format!("%20{}%20", "x".repeat(MAX_DOCUMENT_QUERY_LENGTH));
+        let padded_filter = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/v1/documents?project=demo&query={padded_filter_query}&limit=10"
+                    ))
+                    .body(Body::empty())
+                    .expect("padded filter request"),
+            )
+            .await
+            .expect("padded filter response");
+        assert_eq!(padded_filter.status(), StatusCode::BAD_REQUEST);
+
+        let control_filter = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/documents?project=demo&query=%00&limit=10")
+                    .body(Body::empty())
+                    .expect("control filter request"),
+            )
+            .await
+            .expect("control filter response");
+        assert_eq!(control_filter.status(), StatusCode::BAD_REQUEST);
+
         let graph = app
             .clone()
             .oneshot(
@@ -1805,6 +2424,12 @@ mod tests {
                 scopes: vec!["admin".into()],
                 acl: Vec::new(),
             },
+            AuthTokenConfig {
+                principal: "personal-agent".into(),
+                token_env: "PERSONAL_TOKEN".into(),
+                scopes: vec!["query".into(), "status".into()],
+                acl: vec!["personal".into()],
+            },
         ];
         config
             .environment
@@ -1812,6 +2437,9 @@ mod tests {
         config
             .environment
             .insert("ADMIN_TOKEN".into(), "admin-secret".into());
+        config
+            .environment
+            .insert("PERSONAL_TOKEN".into(), "personal-secret".into());
         let policy = AuthPolicy::from_config(&config, None).expect("auth policy");
         let app = router(state.with_config(&config, false).with_auth_policy(policy));
         let graph = app
@@ -1863,6 +2491,67 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].source_id, "work");
 
+        let status = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("status request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(status.status(), StatusCode::OK);
+        let status_body = to_bytes(status.into_body(), 1024 * 1024)
+            .await
+            .expect("status body");
+        let status_value: serde_json::Value =
+            serde_json::from_slice(&status_body).expect("status JSON");
+        assert_eq!(status_value["documents"], 1);
+        assert_eq!(status_value["chunks"], 1);
+        assert_eq!(status_value["sources"].as_array().map(Vec::len), Some(1));
+        assert_eq!(status_value["searches_total"], 1);
+        assert_eq!(status_value["contexts_total"], 0);
+        assert_eq!(status_value["answers_total"], 0);
+        assert_eq!(status_value["errors_total"], 0);
+
+        let personal_search = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::AUTHORIZATION, "Bearer personal-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"launch phrase","project":"demo","limit":10}"#,
+                    ))
+                    .expect("personal search request"),
+            )
+            .await
+            .expect("personal search response");
+        assert_eq!(personal_search.status(), StatusCode::OK);
+
+        let work_status_after_personal_request = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("scoped status request"),
+            )
+            .await
+            .expect("scoped status response");
+        let work_status_body =
+            to_bytes(work_status_after_personal_request.into_body(), 1024 * 1024)
+                .await
+                .expect("scoped status body");
+        let work_status_value: serde_json::Value =
+            serde_json::from_slice(&work_status_body).expect("scoped status JSON");
+        assert_eq!(work_status_value["searches_total"], 1);
+
         let forbidden = app
             .clone()
             .oneshot(
@@ -1891,8 +2580,26 @@ mod tests {
             .await
             .expect("audit body");
         let value: serde_json::Value = serde_json::from_slice(&audit_body).expect("audit JSON");
-        assert_eq!(value[0]["principal"], "work-agent");
-        assert_eq!(value[0]["action"], "search");
-        assert!(value[0].get("query").is_none());
+        let search_events = value
+            .as_array()
+            .expect("audit events")
+            .iter()
+            .filter(|event| event["action"] == "search")
+            .collect::<Vec<_>>();
+        assert!(
+            search_events
+                .iter()
+                .any(|event| event["principal"] == "work-agent")
+        );
+        assert!(
+            search_events
+                .iter()
+                .any(|event| event["principal"] == "personal-agent")
+        );
+        assert!(
+            search_events
+                .iter()
+                .all(|event| event.get("query").is_none())
+        );
     }
 }

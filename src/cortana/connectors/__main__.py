@@ -11,7 +11,7 @@ import httpx
 from .apple_notes import fetch as fetch_apple_notes
 from .buzz import fetch as fetch_buzz
 from .chat import fetch_discord, fetch_slack
-from .google import fetch_calendar, fetch_drive, fetch_gmail
+from .google import fetch_calendar, fetch_drive, fetch_gmail, validate_token_path
 from .model import Document, emit
 
 
@@ -107,10 +107,7 @@ def _token_path(arguments: argparse.Namespace) -> Path:
     path = arguments.token or os.environ.get(arguments.token_env)
     if not path:
         raise RuntimeError(f"--token or {arguments.token_env} is required")
-    token_path = Path(path).expanduser()
-    if not token_path.is_file():
-        raise RuntimeError(f"Google token file does not exist: {token_path}")
-    return token_path
+    return validate_token_path(Path(path))
 
 
 def entrypoint() -> int:

@@ -21,8 +21,8 @@ then applies source diversity, optional reranking, and neighboring-context expan
 expose retrieval primitives rather than an opaque answer endpoint.
 
 Postgres and pgvector are the production store. Local/cloud embedding providers implement the same
-OpenAI-compatible contract. A model/dimension fingerprint defines an index generation, preventing
-vectors from different models from being compared.
+OpenAI-compatible contract. A provider-endpoint/model/dimension fingerprint defines an index
+generation, preventing vectors from different services or models from being compared or mixed.
 
 Hindsight remains an optional sink/source for reflective temporal memory. It cannot become the
 canonical store because its abstractions do not preserve Cortana's complete source and access

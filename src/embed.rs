@@ -4,12 +4,16 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
+use futures_util::future::join_all;
 use reqwest::{Client, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::sync::{Mutex as AsyncMutex, watch};
 
-use crate::config::EmbeddingConfig;
+use crate::config::{EmbeddingConfig, validate_provider_base_url};
 use crate::store::Store;
+
+const MAX_EMBEDDING_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 
 #[async_trait]
 pub trait Embedder: Send + Sync {
@@ -33,6 +37,7 @@ pub struct CachedEmbedder {
     inner: Arc<dyn Embedder>,
     store: Store,
     max_entries: usize,
+    inflight: Arc<AsyncMutex<HashMap<String, watch::Sender<bool>>>>,
 }
 
 impl CachedEmbedder {
@@ -45,6 +50,170 @@ impl CachedEmbedder {
             inner,
             store,
             max_entries,
+            inflight: Arc::new(AsyncMutex::new(HashMap::new())),
+        }
+    }
+
+    async fn embed_single_cached(&self, text: &str) -> Result<Vec<f32>> {
+        let fingerprint = self.fingerprint();
+        let key = format!("{fingerprint}\u{0}{text}");
+        loop {
+            if let Some(vector) = self.store.cached_embedding(&fingerprint, text)? {
+                return Ok(vector);
+            }
+
+            let (leader, mut ready) = {
+                let mut inflight = self.inflight.lock().await;
+                if let Some(sender) = inflight.get(&key) {
+                    (false, sender.subscribe())
+                } else {
+                    let (sender, receiver) = watch::channel(false);
+                    inflight.insert(key.clone(), sender);
+                    (true, receiver)
+                }
+            };
+            if !leader {
+                let _ = ready.wait_for(|value| *value).await;
+                continue;
+            }
+
+            let result = async {
+                let vectors = self.inner.embed(&[text.to_string()]).await?;
+                anyhow::ensure!(
+                    vectors.len() == 1,
+                    "embedding provider returned an unexpected vector count"
+                );
+                let vector = vectors
+                    .into_iter()
+                    .next()
+                    .context("embedding provider returned no vector")?;
+                if self.max_entries > 0 {
+                    if !self
+                        .store
+                        .cache_embedding_if_available(&fingerprint, text, &vector)?
+                    {
+                        tracing::warn!(
+                            "embedding cache write skipped because another index writer is active"
+                        );
+                    }
+                    self.store.prune_embedding_cache(self.max_entries)?;
+                }
+                Ok(vector)
+            }
+            .await;
+
+            let mut inflight = self.inflight.lock().await;
+            if let Some(sender) = inflight.remove(&key) {
+                let _ = sender.send(true);
+            }
+            drop(inflight);
+            return result;
+        }
+    }
+
+    async fn embed_batch_cached(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+        let fingerprint = self.fingerprint();
+        let mut resolved = HashMap::<String, Vec<f32>>::new();
+        let mut output = vec![None; input.len()];
+
+        loop {
+            let mut missing = HashMap::<String, Vec<usize>>::new();
+            for (index, text) in input.iter().enumerate() {
+                let vector = match resolved.get(text) {
+                    Some(vector) => Some(vector.clone()),
+                    None => self.store.cached_embedding(&fingerprint, text)?,
+                };
+                if let Some(vector) = vector {
+                    output[index] = Some(vector);
+                } else {
+                    missing.entry(text.clone()).or_default().push(index);
+                }
+            }
+            if missing.is_empty() {
+                return output
+                    .into_iter()
+                    .map(|vector| vector.context("embedding cache left a missing vector"))
+                    .collect();
+            }
+
+            let mut leaders = Vec::<(String, watch::Sender<bool>)>::new();
+            let mut waiters = Vec::<watch::Receiver<bool>>::new();
+            {
+                let mut inflight = self.inflight.lock().await;
+                for text in missing.keys() {
+                    let key = format!("{fingerprint}\u{0}{text}");
+                    if let Some(sender) = inflight.get(&key) {
+                        waiters.push(sender.subscribe());
+                    } else {
+                        let (sender, receiver) = watch::channel(false);
+                        inflight.insert(key, sender.clone());
+                        drop(receiver);
+                        leaders.push((text.clone(), sender));
+                    }
+                }
+            }
+
+            let waiting = join_all(waiters.into_iter().map(|mut receiver| async move {
+                let _ = receiver.wait_for(|value| *value).await;
+            }));
+            if leaders.is_empty() {
+                waiting.await;
+                continue;
+            }
+
+            let leader_texts = leaders
+                .iter()
+                .map(|(text, _)| text.clone())
+                .collect::<Vec<_>>();
+            let leader_keys = leaders
+                .iter()
+                .map(|(text, sender)| (format!("{fingerprint}\u{0}{text}"), sender.clone()))
+                .collect::<Vec<_>>();
+            let leader_result = async {
+                let result: Result<Vec<(String, Vec<f32>)>> = match self
+                    .inner
+                    .embed(&leader_texts)
+                    .await
+                {
+                    Ok(vectors) => {
+                        anyhow::ensure!(
+                            vectors.len() == leader_texts.len(),
+                            "embedding provider returned an unexpected vector count"
+                        );
+                        let pairs = leader_texts
+                            .iter()
+                            .cloned()
+                            .zip(vectors)
+                            .collect::<Vec<_>>();
+                        if self.max_entries > 0 {
+                            for (text, vector) in &pairs {
+                                if !self.store.cache_embedding_if_available(
+                                    &fingerprint,
+                                    text,
+                                    vector,
+                                )? {
+                                    tracing::warn!(
+                                        "embedding cache write skipped because another index writer is active"
+                                    );
+                                }
+                            }
+                            self.store.prune_embedding_cache(self.max_entries)?;
+                        }
+                        Ok(pairs)
+                    }
+                    Err(error) => Err(error),
+                };
+                let mut inflight = self.inflight.lock().await;
+                for (key, sender) in leader_keys {
+                    inflight.remove(&key);
+                    let _ = sender.send(true);
+                }
+                result
+            };
+            let (_waited, result) = tokio::join!(waiting, leader_result);
+            for (text, vector) in result? {
+                resolved.insert(text, vector);
+            }
         }
     }
 }
@@ -52,45 +221,10 @@ impl CachedEmbedder {
 #[async_trait]
 impl Embedder for CachedEmbedder {
     async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
-        let fingerprint = self.fingerprint();
-        let mut output = vec![None; input.len()];
-        let mut missing = HashMap::<&str, Vec<usize>>::new();
-        for (index, text) in input.iter().enumerate() {
-            if let Some(vector) = self.store.cached_embedding(&fingerprint, text)? {
-                output[index] = Some(vector);
-            } else {
-                missing.entry(text).or_default().push(index);
-            }
+        if input.len() == 1 {
+            return Ok(vec![self.embed_single_cached(&input[0]).await?]);
         }
-        if !missing.is_empty() {
-            let unique = missing
-                .keys()
-                .map(|text| (*text).to_string())
-                .collect::<Vec<_>>();
-            let vectors = self.inner.embed(&unique).await?;
-            anyhow::ensure!(
-                vectors.len() == unique.len(),
-                "embedding provider returned an unexpected vector count"
-            );
-            for (text, vector) in unique.iter().zip(vectors) {
-                if !self
-                    .store
-                    .cache_embedding_if_available(&fingerprint, text, &vector)?
-                {
-                    tracing::warn!(
-                        "embedding cache write skipped because another index writer is active"
-                    );
-                }
-                for index in &missing[text.as_str()] {
-                    output[*index] = Some(vector.clone());
-                }
-            }
-            self.store.prune_embedding_cache(self.max_entries)?;
-        }
-        output
-            .into_iter()
-            .map(|vector| vector.context("embedding cache left a missing vector"))
-            .collect()
+        self.embed_batch_cached(input).await
     }
 
     fn fingerprint(&self) -> String {
@@ -115,6 +249,7 @@ pub struct OpenAiEmbedder {
 
 impl OpenAiEmbedder {
     pub fn new(config: EmbeddingConfig, api_key: Option<String>) -> Result<Self> {
+        validate_provider_base_url("embedding", &config.base_url)?;
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(config.request_timeout_seconds.max(1)))
@@ -183,10 +318,27 @@ impl Embedder for OpenAiEmbedder {
                 Err(error) => return Err(error.into()),
             }
         }
-        let response = response
+        let mut response = response
             .context("embedding provider did not return a response after bounded retries")?
             .error_for_status()?;
-        let vectors = response.json::<EmbedResponse>().await?.data;
+        if response
+            .content_length()
+            .is_some_and(|length| length > MAX_EMBEDDING_RESPONSE_BYTES as u64)
+        {
+            bail!(
+                "embedding provider response exceeded the {MAX_EMBEDDING_RESPONSE_BYTES} byte safety limit"
+            );
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await? {
+            if body.len().saturating_add(chunk.len()) > MAX_EMBEDDING_RESPONSE_BYTES {
+                bail!(
+                    "embedding provider response exceeded the {MAX_EMBEDDING_RESPONSE_BYTES} byte safety limit"
+                );
+            }
+            body.extend_from_slice(&chunk);
+        }
+        let vectors = serde_json::from_slice::<EmbedResponse>(&body)?.data;
         if vectors.len() != input.len()
             || vectors
                 .iter()
@@ -198,7 +350,12 @@ impl Embedder for OpenAiEmbedder {
     }
 
     fn fingerprint(&self) -> String {
-        format!("{}:{}", self.config.model, self.config.dimension)
+        format!(
+            "openai:{}:{}:{}",
+            self.config.base_url.trim_end_matches('/'),
+            self.config.model,
+            self.config.dimension
+        )
     }
 
     fn request_concurrency(&self) -> usize {
@@ -278,6 +435,7 @@ fn normalize(mut values: Vec<f32>) -> Vec<f32> {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use axum::{Router, body::Body, routing::post};
     use tempfile::tempdir;
 
     use super::*;
@@ -285,6 +443,9 @@ mod tests {
     struct CountingEmbedder {
         calls: AtomicUsize,
         texts: AtomicUsize,
+    }
+    struct DelayedCountingEmbedder {
+        calls: AtomicUsize,
     }
 
     #[async_trait]
@@ -297,6 +458,19 @@ mod tests {
 
         fn fingerprint(&self) -> String {
             "counting:1".into()
+        }
+    }
+
+    #[async_trait]
+    impl Embedder for DelayedCountingEmbedder {
+        async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            Ok(input.iter().map(|text| vec![text.len() as f32]).collect())
+        }
+
+        fn fingerprint(&self) -> String {
+            "delayed-counting:1".into()
         }
     }
 
@@ -322,6 +496,86 @@ mod tests {
         assert_eq!(stats.embedding_cache_hits, 3);
     }
 
+    #[tokio::test]
+    async fn zero_cache_limit_skips_embedding_cache_writes() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let inner = Arc::new(CountingEmbedder {
+            calls: AtomicUsize::new(0),
+            texts: AtomicUsize::new(0),
+        });
+        let cached = CachedEmbedder::with_limit(store.clone(), inner.clone(), 0);
+
+        cached
+            .embed(&["same".into()])
+            .await
+            .expect("first embedding");
+        cached
+            .embed(&["same".into()])
+            .await
+            .expect("second embedding");
+
+        assert_eq!(inner.calls.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            store.stats().expect("cache stats").embedding_cache_entries,
+            0
+        );
+    }
+
+    #[test]
+    fn openai_fingerprint_isolated_by_provider_endpoint() {
+        let local = OpenAiEmbedder::new(EmbeddingConfig::default(), None).expect("local config");
+        let mut cloud_config = EmbeddingConfig::default();
+        cloud_config.base_url = "https://api.example.test/v1".into();
+        let cloud = OpenAiEmbedder::new(cloud_config, None).expect("cloud config");
+        let mut normalized_config = EmbeddingConfig::default();
+        normalized_config.base_url = "http://127.0.0.1:6999/v1/".into();
+        let normalized =
+            OpenAiEmbedder::new(normalized_config, None).expect("normalized local config");
+
+        assert_ne!(local.fingerprint(), cloud.fingerprint());
+        assert_eq!(local.fingerprint(), normalized.fingerprint());
+    }
+
+    #[tokio::test]
+    async fn concurrent_single_embeddings_share_one_provider_request() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let inner = Arc::new(DelayedCountingEmbedder {
+            calls: AtomicUsize::new(0),
+        });
+        let cached = CachedEmbedder::new(store, inner.clone());
+        let first_input = ["same".to_string()];
+        let second_input = ["same".to_string()];
+        let first = cached.embed(&first_input);
+        let second = cached.embed(&second_input);
+        let (first, second) = tokio::join!(first, second);
+
+        assert_eq!(
+            first.expect("first embedding"),
+            second.expect("second embedding")
+        );
+        assert_eq!(inner.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn concurrent_batches_share_requests_for_duplicate_text() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let inner = Arc::new(DelayedCountingEmbedder {
+            calls: AtomicUsize::new(0),
+        });
+        let cached = CachedEmbedder::new(store, inner.clone());
+        let first_input = vec!["same".to_string(), "other".to_string()];
+        let second_input = first_input.clone();
+        let first = cached.embed(&first_input);
+        let second = cached.embed(&second_input);
+        let (first, second) = tokio::join!(first, second);
+
+        assert_eq!(first.expect("first batch"), second.expect("second batch"));
+        assert_eq!(inner.calls.load(Ordering::SeqCst), 1);
+    }
+
     #[test]
     fn embedding_retry_policy_is_bounded_and_transient_only() {
         assert!(is_retryable(StatusCode::TOO_MANY_REQUESTS));
@@ -329,5 +583,36 @@ mod tests {
         assert!(!is_retryable(StatusCode::UNAUTHORIZED));
         assert_eq!(exponential_delay(0), Duration::from_secs(1));
         assert_eq!(exponential_delay(10), Duration::from_secs(32));
+    }
+
+    #[tokio::test]
+    async fn oversized_embedding_responses_are_rejected_before_deserialization() {
+        let app = Router::new().route(
+            "/v1/embeddings",
+            post(|| async { Body::from(vec![b'x'; MAX_EMBEDDING_RESPONSE_BYTES + 1]) }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind embedding server");
+        let address = listener.local_addr().expect("embedding address");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve embedding response");
+        });
+
+        let embedder = OpenAiEmbedder::new(
+            EmbeddingConfig {
+                base_url: format!("http://{address}/v1"),
+                ..EmbeddingConfig::default()
+            },
+            None,
+        )
+        .expect("embedding config");
+        let error = embedder
+            .embed(&["bounded".into()])
+            .await
+            .expect_err("oversized response");
+        assert!(error.to_string().contains("safety limit"));
     }
 }

@@ -64,12 +64,25 @@ else
 fi
 
 uv venv --python 3.11 --allow-existing "$venv_dir"
-uv pip install --python "$venv_dir/bin/python" "${wheel}[ingestion]"
+if [[ -x "$venv_dir/bin/python" ]]; then
+  venv_python="$venv_dir/bin/python"
+elif [[ -x "$venv_dir/Scripts/python.exe" ]]; then
+  venv_python="$venv_dir/Scripts/python.exe"
+else
+  echo "uv did not create a usable Python executable in $venv_dir" >&2
+  exit 1
+fi
+if [[ "$venv_python" == */Scripts/python.exe ]]; then
+  connector_command="$venv_dir/Scripts/cortana-connectors.exe"
+else
+  connector_command="$venv_dir/bin/cortana-connectors"
+fi
+uv pip install --python "$venv_python" "${wheel}[ingestion]"
 
 if [[ ! -f "$config_path" ]]; then
   "$bin_dir/cortana" --config "$config_path" init \
     --data-dir "$data_root" \
-    --connector-command "$venv_dir/bin/cortana-connectors"
+    --connector-command "$connector_command"
 fi
 
 if [[ "$(uname -s)" == "Darwin" && "${CORTANA_INSTALL_SERVICE:-1}" == "1" ]]; then

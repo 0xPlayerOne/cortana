@@ -20,7 +20,9 @@ The default capability grants only:
 The matching core executable is bundled as a Tauri sidecar for each release target. Native Rust
 code may invoke only that declared sidecar; the webview receives no shell capability and cannot
 replace its path or arguments. The sidecar is included inside the updater-signed desktop artifact,
-so Desktop readiness never depends on a separately downloaded Cortana executable.
+so Desktop readiness never depends on a separately downloaded Cortana executable. Each artifact also
+contains the connector package source (without credentials or a venv) as a private Tauri resource;
+the native installer can use that fixed resource to create the user's connector environment locally.
 
 Secrets and source credentials remain outside the renderer. The settings bridge returns only
 configured/unset metadata and accepts write-only named secret updates. It refuses symlinked config
@@ -36,18 +38,42 @@ native commands.
 Corpus browsing also stays behind typed native commands. The renderer may send only bounded
 project/source filters, an opaque pagination cursor, or a hex document ID. Native Rust constructs
 the fixed loopback URLs and performs the request; the renderer cannot select a host, port, path, or
-database file. The core API applies the same bearer scope and document ACL policy as retrieval,
-bounds pages to 100 summaries and content to 2 MiB, and records metadata-only list/read audits.
+database file. Original `file:` links take a second native path: the target is canonicalized and
+must remain inside a configured filesystem source root, so symlinks cannot escape the indexed
+scope. Other external links use a fixed scheme allowlist; Slack, Apple Notes, and Buzz deep links
+are accepted only when they match their exact host/path/query shape, with no credentials or
+arbitrary query fields.
+The core API applies the same bearer scope and document ACL policy as retrieval, bounds
+pages to 100 summaries and content to 2 MiB, and records metadata-only list/read audits.
 
 Readiness is user-triggered and read-only. It performs bounded version checks for uv and Python
-3.11+, locates the managed connector environment, and runs `cortana readiness` through the bundled
-sidecar. It rejects oversized or malformed reports and never starts a connector or sync.
+3.11+, locates the managed connector environment and the configured local embedding runtime, and
+runs `cortana readiness` through the bundled sidecar. A local embedding provider makes the
+`text-embeddings-router` runtime a required readiness component; on macOS with Homebrew available,
+Desktop offers a fixed, approval-gated `text-embeddings-inference` install. The model weights are
+still downloaded only when the embedding service first starts. Cloud embedding providers do not
+require the local runtime. It rejects oversized or malformed reports and never starts a connector or sync. The
+desktop shell retains the latest snapshot and scan activity across Settings navigation; successful
+installer completion schedules one shell-owned follow-up scan so readiness reflects the installed
+state even when the Settings view is not mounted.
+
+When the core report exposes a stored embedding generation that differs from the configured
+fingerprint, Settings shows an explicit confirmation-gated **Adopt stored generation** action. The
+native command passes only the exact reported fingerprint to `cortana migrate-embedding`; the CLI
+takes the sync lock, verifies and backs up SQLite, clears derived caches, and leaves indexed
+documents untouched. Operators must use it only after confirming that the model, dimension, and
+vector space are interchangeable; a true model change still requires a new generation rebuild.
 
 Tool installation is a second native boundary. The renderer can request only a fixed tool ID and
 must set an explicit approval flag after showing a confirmation. Native code maps that ID to a
 platform-specific command, permits one job at a time, bounds and sanitizes returned logs, supports
-cancellation, and writes metadata-only audit events beside the active Cortana config. Arbitrary
-programs and arguments are never accepted from the renderer.
+cancellation, and writes metadata-only audit events beside the active Cortana config. The `connectors`
+plan is a fixed two-step uv invocation against the signed bundle resource and the per-user venv;
+on success, the native boundary records the fixed installed connector path in the managed config
+when no connector command is configured (and preserves an existing command), with a rollback copy
+and metadata-only audit event. Arbitrary programs, package sources, and arguments are never
+accepted from the renderer. Installer commands run in an isolated process group on Unix so
+cancellation also terminates shell and package-manager helpers.
 
 Source validation is a third native boundary. The renderer sends only an exact configured source
 name. Native Rust reloads the owner-local configuration, rejects an unknown name, then constructs
@@ -57,6 +83,18 @@ cancellable. The command cannot start sync, embedding, indexing, or reconciliati
 metadata-only lifecycle is appended to the Desktop audit log. The same command can optionally
 validate at one of the fixed initial-sync budget tiers so a later validation-gated initial sync
 has a record at equal or larger limits; validation stays read-only and bounded in every tier.
+Desktop-launched source jobs run in an isolated process group, so cancellation terminates the
+bundled wrapper and any connector helpers together instead of leaving an orphaned fetch process.
+While a source job is active, Desktop locks that source's identity, credentials, scope, and
+per-source limits so the operation cannot race a settings edit. The status bar and Inbox expose
+the bounded progress snapshot and a cancellation control without requiring the Settings view to
+remain open. Terminal jobs retain a collapsed, bounded sanitized log in Inbox so an operator can
+diagnose a failed connector without leaving the activity surface. The native job state exposes a
+bounded history snapshot on renderer startup, so a
+webview remount recovers active and recent jobs instead of losing operational visibility; the
+Sources settings section adopts the newest recovered snapshot so an operator can cancel or retry
+it after navigating back. A failed recovery request is non-fatal and newly started jobs remain
+tracked locally.
 
 Guarded trial sync reuses the source-job boundary but is intentionally distinct from validation.
 It requires explicit confirmation and a matching successful validation fingerprint, then invokes
@@ -82,7 +120,7 @@ stale or missing.
 
 Source authorization and setup are separate fixed native boundaries. For Google sources, the
 renderer can request authorization only for an exact saved source with an absolute token
-destination and Desktop OAuth client path. Native Rust invokes the bundled sidecar with the fixed
+destination (the `token` field or the path held by `token_env`) and Desktop OAuth client path. Native Rust invokes the bundled sidecar with the fixed
 `authorize-google SOURCE` shape. The sidecar uses Authorization Code + PKCE, a random loopback
 port and state value, fixed HTTPS Google endpoints, bounded callback and token-exchange timeouts,
 minimum read-only scopes, and owner-only atomic token writes. Tokens and authorization codes never
@@ -109,18 +147,32 @@ a configured source: source assignments must be moved before their workspace ID 
 
 Provider secrets are stored in Cortana's managed `secrets.env` file with mode `0600` on Unix. An
 existing external `runtime.env_file` remains readable by the runtime but is intentionally
-read-only in Desktop.
+read-only in Desktop. When a saved source, provider, or agent reference is removed, Desktop
+retires that now-unreferenced value from its managed file while leaving external files untouched.
+Advanced settings shows the effective owner-only secret-file path so operators can verify which
+file supplies provider and connector variables without exposing any secret values.
+Embedding settings also reports whether a local service executable is explicitly configured or
+will be derived from the model and loopback endpoint; Desktop preserves explicit command arrays
+but never accepts arbitrary shell commands from the renderer.
 
 The source editor supports the native filesystem, Apple Notes, Buzz, Google Drive, Gmail, Google
 Calendar, Slack, and Discord connector schemas. It can retain, disable, or remove an existing
 external command connector, but cannot create or modify command arrays. Google token files and
 OAuth client files and local roots must be absolute non-root paths; Slack and Discord require
-explicit channels and a validated environment-variable name. Saving or authorizing source
-settings never starts ingestion.
+explicit channels and a validated environment-variable name. Canonical source labels are unique
+within each workspace, must not be padded with whitespace or contain control characters, and cannot
+merge connectors' indexed scope or health history. Saving or authorizing source
+settings never starts ingestion. The knowledge sidebar also exposes a confirmation-gated
+enable/disable switch for each saved connector; it writes only that source's enabled flag, leaves
+existing indexed data untouched, and is disabled while a Settings draft is unsaved or first-launch
+setup is incomplete. When status reports missing provider setup or an unauthorized Google source,
+the same tree offers the fixed provider setup link or starts the bounded browser authorization job;
+credentials still remain outside the renderer.
 
 First launch enters a guided checklist and automatically runs only the read-only readiness scan.
-Missing tool installers remain fixed native jobs that require explicit approval and expose bounded
-progress, cancellation, and retry state.
+The automatic attempt is one-shot: a failure is retained as an actionable status and waits for an
+explicit operator retry instead of polling in a loop. Missing tool installers remain fixed native
+jobs that require explicit approval and expose bounded progress, cancellation, and retry state.
 
 Settings portability uses a versioned, size-bounded JSON envelope selected through the native file
 dialog. Exports exclude secret values and executable connector commands. Imports reject unknown
@@ -136,15 +188,45 @@ There are two distinct lifecycles:
 1. The Cortana runtime owns the API, embedding service, opt-in ingestion, and backups.
 2. Cortana Desktop owns the window, tray, updater, and user controls.
 
-Closing the main window hides it. The tray continues to report runtime and corpus status. Quitting
-from the tray exits only the desktop process; it does not silently stop the runtime or start a
-sync. A second desktop launch focuses the existing window.
+Closing the main window hides it. The tray continues to report runtime, corpus, bounded ingestion,
+and source-job status (active work or the latest terminal attention per source). Quitting from the
+tray exits only the desktop process; it does not
+silently stop the runtime or start a sync. A second desktop launch focuses the existing window.
+When the webview is backgrounded or loses native window focus, passive status, service, source-job,
+and optional-sidecar polling pauses; the tray and long-running installer/source/update jobs continue
+independently. This boundary also applies to the standalone Settings fallback observers used before
+the shell has populated shared snapshots. The shell performs an immediate health refresh when the
+window becomes visible or focused again, avoiding background traffic without hiding active work.
 
-The Services panel reads a bounded structured report from the bundled sidecar and accepts only
-the fixed `embedding`, `server`, `sync`, and `backup` IDs with `start`, `stop`, or `restart`.
+The shell and Services panel read a bounded structured report from the bundled sidecar; the shell
+keeps a compact core-health indicator while the panel provides the full per-service controls. The
+panel can explicitly
+install the safe query-only service set (embedding when the configured provider is local, server,
+and backup) through the fixed `service install --no-web` command. macOS uses per-user launchd jobs;
+Linux uses per-user systemd units and timers without requiring root; Windows uses per-user Task
+Scheduler tasks without administrator access. It accepts only the fixed
+`embedding`, `server`, `sync`, and `backup` IDs with `start`, `stop`, or `restart`.
 Every action requires an explicit confirmation and is audited without command output or secrets.
-An uninstalled sync job remains uninstalled and cannot be enabled from this panel. Desktop
-autostart is managed separately and does not change runtime-service or ingestion state.
+An uninstalled sync job remains absent until the dedicated validation-gated **Enable recurring sync**
+action is confirmed. Desktop
+autostart is managed separately and does not change runtime-service or ingestion state. Service
+commands run in an isolated process group on Unix with a bounded timeout, so a stalled install or
+action also terminates bundled runtime helpers instead of leaving an orphaned process behind.
+Desktop stores validated sync and backup intervals in the owner-only `service-schedule.toml` beside
+the active configuration. Core and recurring installs pass those saved intervals to the bundled
+runtime; changing an installed schedule surfaces a separate explicit apply action rather than
+silently rewriting a running job.
+Each approved installer command is capped at ten minutes; a timeout is recorded as a retryable
+failure with bounded, sanitized output.
+The shell owns a compact service-activity snapshot and mirrors it in the status bar, keeping an
+install or start/stop/restart request visible while the operator changes sections or returns to
+the knowledge view; completion and sanitized failures link back to the Services panel.
+The same shell-owned boundary retains Hindsight connection results while the operator changes
+settings sections, and Desktop refreshes both optional sidecar probes on its normal status cadence;
+health checks always read the last saved sidecar configuration. Honcho exposes the same bounded
+reachability check; because hosted and self-hosted Honcho deployments do not share one stable
+health path, a response is reported as reachable and only a successful response is reported as
+healthy.
 
 Start All, Stop All, and Restart All are narrower than the individual controls: they operate only
 on `embedding` and `server`, in dependency-safe order. They always exclude `sync` and `backup`, so
@@ -153,8 +235,11 @@ a whole-app action cannot schedule ingestion or trigger a backup.
 Desktop manages named bearer principals without exposing credentials to the renderer. The webview
 edits only principal names, environment-variable references, scopes, and ACL labels. Write-only
 values go to the owner-only managed secret file. Native loopback requests resolve a matching
-private credential for `query`, `status`, or `admin` immediately before sending the request;
-bearer values never enter IPC responses or renderer state.
+private credential for `query`, `status`, or `admin` immediately before sending the request. When
+an admin-scoped credential also carries the requested `query` or `status` scope, the owner-local
+Desktop prefers it for that request so a narrow agent principal cannot hide other workspaces from
+the control plane; an admin-only credential falls back to the requested scope. Bearer values never
+enter IPC responses or renderer state.
 
 The Audit panel combines the API's bounded metadata-only retrieval events with a bounded tail of
 the owner-only Desktop action log. Runtime unavailability does not prevent local action events
@@ -184,6 +269,8 @@ Rust. The renderer can display version metadata, release notes, the compiled cha
 download progress, but cannot override the feed URL, signature key, download URL, or expected
 version. Installation requires explicit confirmation and verifies the announced signature before
 replacing the app.
+The signed download and install operation is capped at 30 minutes; a timeout preserves the
+verified pending update for an explicit retry and records a metadata-only failure audit.
 
 On macOS, an unsigned local application bundle can be produced separately:
 
