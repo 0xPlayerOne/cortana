@@ -76,7 +76,7 @@ class GoogleSession:
         if not isinstance(credentials, dict):
             raise RuntimeError(f"Google token file must contain a JSON object: {self.token_path}")
         self.credentials = credentials
-        self.client = client or httpx.Client(timeout=60, follow_redirects=True)
+        self.client = client or httpx.Client(timeout=60, follow_redirects=False)
         self._owns_client = client is None
 
     def __enter__(self) -> GoogleSession:
