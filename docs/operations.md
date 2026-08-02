@@ -105,7 +105,9 @@ cortana service restart backup
 The fixed service IDs are `embedding`, `server`, `sync`, and `backup`. Start and restart refuse an
 uninstalled job. Stop unloads the job but preserves its plist so it can be started again. The
 Desktop Services panel uses this same fixed command boundary, shows loaded state, PID, and last
-exit status, and records metadata-only action audits. It never installs the recurring sync job.
+exit status, and records metadata-only action audits. Core-service installation remains query-only;
+the separate **Enable recurring sync** action requires confirmation and the same validation gate as
+the CLI before it installs the sync schedule.
 Desktop-at-login is a separate setting: enabling it starts the tray/control plane, not ingestion.
 Desktop **Start all**, **Stop all**, and **Restart all** operate only on the embedding and server
 jobs. Sync and backup are deliberately excluded from those aggregate actions.

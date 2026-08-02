@@ -574,7 +574,8 @@ function SetupGuide({
           <span className="eyebrow">First launch</span>
           <strong>Set up Cortana safely</strong>
           <p>
-            Review each step, then save. Nothing here starts ingestion or installs recurring sync.
+            Review each step, then save. The guide itself never starts ingestion; recurring sync is
+            a separate validation-gated action in Services.
           </p>
         </div>
         <span>

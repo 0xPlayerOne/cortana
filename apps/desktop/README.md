@@ -72,10 +72,10 @@ exit the control plane. This does not stop the independently managed Cortana ser
 
 The **Services** panel shows structured launchd (macOS) or systemd user (Linux) state, can explicitly
 install the safe query-only embedding/server/backup set from the bundled runtime, and controls
-installed embedding, server, backup, and (only when explicitly installed elsewhere) sync jobs through
-fixed native actions. Installation requires confirmation and never installs or enables recurring
-ingestion. Windows service management remains unsupported until a signed per-user scheduler backend
-is added.
+installed embedding, server, backup, and sync jobs through fixed native actions. A separate,
+confirmation-gated **Enable recurring sync** action re-checks every enabled source's current
+validation coverage before installing the schedule. Windows service management remains unsupported
+until a signed per-user scheduler backend is added.
 Desktop-at-login controls only the tray application and never installs or starts ingestion.
 
 Aggregate service actions control only embedding and server; recurring sync and backup are always
