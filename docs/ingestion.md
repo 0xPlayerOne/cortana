@@ -25,7 +25,8 @@ concurrency.
 
 Configured source names are index namespaces. This prevents two Gmail accounts, Drive accounts, or
 Slack workspaces from deleting or colliding with one another. The original adapter kind is retained
-in metadata for provenance.
+in metadata for provenance. Names are unique, lower-case, and limited to 64 letters, numbers,
+dashes, or underscores; this also keeps per-source cache paths inside Cortana's data directory.
 
 ## Configure and run
 

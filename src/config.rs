@@ -4,6 +4,19 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+const MAX_CONFIGURED_SOURCES: usize = 128;
+const SUPPORTED_SOURCE_KINDS: &[&str] = &[
+    "filesystem",
+    "apple-notes",
+    "buzz",
+    "google-drive",
+    "gmail",
+    "google-calendar",
+    "slack",
+    "discord",
+    "external",
+];
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
     #[serde(default = "default_data_dir")]
@@ -306,6 +319,7 @@ impl Config {
             };
             *env_file = config_dir.join(&*env_file);
         }
+        validate_source_definitions(&config)?;
         Ok(config)
     }
 
@@ -364,6 +378,67 @@ impl Config {
             .ok()
             .or_else(|| self.environment.get(name).cloned())
     }
+}
+
+fn validate_source_definitions(config: &Config) -> Result<()> {
+    anyhow::ensure!(
+        config.sources.len() <= MAX_CONFIGURED_SOURCES,
+        "configured sources exceed the {MAX_CONFIGURED_SOURCES} source safety limit"
+    );
+    let mut workspace_ids = HashSet::new();
+    for workspace in &config.workspaces {
+        anyhow::ensure!(
+            !workspace.id.trim().is_empty(),
+            "workspace ids must not be empty"
+        );
+        anyhow::ensure!(
+            workspace_ids.insert(workspace.id.as_str()),
+            "workspace id `{}` is duplicated",
+            workspace.id
+        );
+    }
+    let mut source_names = HashSet::new();
+    for source in &config.sources {
+        anyhow::ensure!(
+            !source.name.is_empty()
+                && source.name.len() <= 64
+                && source.name.chars().all(|character| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || matches!(character, '-' | '_')
+                })
+                && source.name.chars().next().is_some_and(|character| {
+                    character.is_ascii_lowercase() || character.is_ascii_digit()
+                }),
+            "source names must be 1-64 lowercase letters, numbers, dashes, or underscores: {}",
+            source.name
+        );
+        anyhow::ensure!(
+            source_names.insert(source.name.as_str()),
+            "source name `{}` is duplicated",
+            source.name
+        );
+        anyhow::ensure!(
+            SUPPORTED_SOURCE_KINDS.contains(&source.kind.as_str()),
+            "source `{}` has unsupported kind `{}`",
+            source.name,
+            source.kind
+        );
+        anyhow::ensure!(
+            !source.project.trim().is_empty(),
+            "source `{}` requires a non-empty project",
+            source.name
+        );
+        if !workspace_ids.is_empty() {
+            anyhow::ensure!(
+                workspace_ids.contains(source.project.as_str()),
+                "source `{}` uses unknown workspace `{}`",
+                source.name,
+                source.project
+            );
+        }
+    }
+    Ok(())
 }
 
 /// Validate a provider base URL before a client can send credentials or
@@ -604,6 +679,39 @@ mod tests {
         assert_eq!(config.ingestion.max_documents_per_source, 2_000);
         assert_eq!(config.ingestion.max_bytes_per_source, 128 * 1024 * 1024);
         assert_eq!(config.ingestion.request_concurrency, 1);
+        validate_source_definitions(&config).expect("source definitions are safe");
+    }
+
+    #[test]
+    fn rejects_ambiguous_or_unsafe_source_definitions() {
+        for source_block in [
+            r#"
+            [[sources]]
+            name = "../escape"
+            kind = "filesystem"
+            project = "work"
+            "#,
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            project = "work"
+
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            project = "personal"
+            "#,
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "future-connector"
+            project = "work"
+            "#,
+        ] {
+            let config: Config = toml::from_str(source_block).expect("fixture config");
+            assert!(validate_source_definitions(&config).is_err());
+        }
     }
 
     #[test]
