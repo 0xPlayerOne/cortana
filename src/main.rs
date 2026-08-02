@@ -1535,15 +1535,18 @@ fn init(
 
 async fn doctor(store: &Store, embedder: &dyn Embedder) -> Result<()> {
     let vectors = embedder.embed(&["health check".to_string()]).await?;
+    let vector = vectors
+        .first()
+        .context("embedding provider returned no vector")?;
     anyhow::ensure!(
-        !vectors[0].is_empty(),
+        !vector.is_empty(),
         "embedding provider returned an empty vector"
     );
     let _ = store.all_chunks(None, None)?;
     println!(
         "cortana: healthy (embedding={}, dimension={})",
         embedder.fingerprint(),
-        vectors[0].len()
+        vector.len()
     );
     Ok(())
 }
