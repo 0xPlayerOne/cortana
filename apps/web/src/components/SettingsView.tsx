@@ -1072,8 +1072,10 @@ function HindsightSection({
   const status = externalStatus === undefined ? localStatus : externalStatus
   const setStatus = onHindsightStatus ?? setLocalStatus
   const [checking, setChecking] = useState(false)
-  const setHindsight = (hindsight: DesktopSettings['hindsight']) =>
+  const setHindsight = (hindsight: DesktopSettings['hindsight']) => {
+    setStatus(null)
     update((current) => ({ ...current, hindsight }))
+  }
   const statusSource = settings.hindsight.token_env
     ? settings.secrets.find((item) => item.name === settings.hindsight.token_env)
     : undefined
@@ -1241,8 +1243,10 @@ function HonchoSection({
   const status = externalStatus === undefined ? localStatus : externalStatus
   const setStatus = onHonchoStatus ?? setLocalStatus
   const [checking, setChecking] = useState(false)
-  const setHoncho = (honcho: DesktopSettings['honcho']) =>
+  const setHoncho = (honcho: DesktopSettings['honcho']) => {
+    setStatus(null)
     update((current) => ({ ...current, honcho }))
+  }
   const statusSource = settings.honcho.token_env
     ? settings.secrets.find((item) => item.name === settings.honcho.token_env)
     : undefined
