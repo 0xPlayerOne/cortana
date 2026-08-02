@@ -133,6 +133,8 @@ Provider secrets are stored in Cortana's managed `secrets.env` file with mode `0
 existing external `runtime.env_file` remains readable by the runtime but is intentionally
 read-only in Desktop. When a saved source, provider, or agent reference is removed, Desktop
 retires that now-unreferenced value from its managed file while leaving external files untouched.
+Advanced settings shows the effective owner-only secret-file path so operators can verify which
+file supplies provider and connector variables without exposing any secret values.
 
 The source editor supports the native filesystem, Apple Notes, Buzz, Google Drive, Gmail, Google
 Calendar, Slack, and Discord connector schemas. It can retain, disable, or remove an existing
@@ -176,6 +178,8 @@ action also terminates bundled runtime helpers instead of leaving an orphaned pr
 The shell owns a compact service-activity snapshot and mirrors it in the status bar, keeping an
 install or start/stop/restart request visible while the operator changes sections or returns to
 the knowledge view; completion and sanitized failures link back to the Services panel.
+The same shell-owned boundary retains Hindsight connection results while the operator changes
+settings sections; health checks always read the last saved sidecar configuration.
 
 Start All, Stop All, and Restart All are narrower than the individual controls: they operate only
 on `embedding` and `server`, in dependency-safe order. They always exclude `sync` and `backup`, so
