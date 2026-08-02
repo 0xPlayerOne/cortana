@@ -289,6 +289,7 @@ export function SettingsView({
             </button>
           )}
           <button
+            type="submit"
             className="primary-button"
             form="settings-form"
             disabled={saving || !dirty}
