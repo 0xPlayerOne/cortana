@@ -341,6 +341,19 @@ impl SourceJobState {
                     .into(),
             );
         }
+        if source.token_path.is_none() {
+            let token_env = source
+                .token_env
+                .as_deref()
+                .ok_or_else(|| "Google token path environment variable is missing".to_string())?;
+            let value = settings::secret_value_for_env(token_env)?
+                .ok_or_else(|| format!("configure {token_env} with an absolute token path first"))?;
+            if !std::path::Path::new(value.trim()).is_absolute() {
+                return Err(format!(
+                    "{token_env} must contain an absolute Google token path"
+                ));
+            }
+        }
         self.start(
             app,
             source,
