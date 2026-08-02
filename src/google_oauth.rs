@@ -565,12 +565,14 @@ fn validate_credential(label: &str, value: &str, maximum_bytes: usize) -> Result
 }
 
 fn reject_symlink(path: &Path) -> Result<()> {
-    if path.exists() {
-        anyhow::ensure!(
-            !fs::symlink_metadata(path)?.file_type().is_symlink(),
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => anyhow::ensure!(
+            !metadata.file_type().is_symlink(),
             "refusing to use symlinked file {}",
             path.display()
-        );
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
     }
     Ok(())
 }
@@ -673,6 +675,20 @@ mod tests {
             read_existing_refresh_token(&token).unwrap().as_deref(),
             Some("retained-refresh-token")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_refresh_token_rejects_dangling_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let token = directory.path().join("token.json");
+        symlink(directory.path().join("missing-token.json"), &token).unwrap();
+
+        let error = read_existing_refresh_token(&token)
+            .expect_err("dangling token symlink must be rejected");
+        assert!(error.to_string().contains("symlinked file"));
     }
 
     #[test]
