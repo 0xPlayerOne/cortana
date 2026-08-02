@@ -160,6 +160,19 @@ test('sourceJobAttention reports only the latest terminal failure per source', (
   ).toEqual([])
 })
 
+test('sourceJobAttention keeps duplicate source names isolated by workspace', () => {
+  const jobs = [
+    jobOf('work-failure', 'failed', { source: 'notes', project: 'work' }),
+    jobOf('personal-failure', 'failed', { source: 'notes', project: 'personal' }),
+    jobOf('work-old-success', 'succeeded', { source: 'notes', project: 'work' }),
+  ]
+
+  expect(sourceJobAttention(jobs).map((job) => job.id)).toEqual([
+    'work-failure',
+    'personal-failure',
+  ])
+})
+
 test('source job progress reports native fixed budgets without claiming a percentage', () => {
   const validation = jobOf('validation', 'running', {
     started_at_unix_seconds: 1_000,
