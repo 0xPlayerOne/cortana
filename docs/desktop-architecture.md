@@ -186,6 +186,8 @@ An uninstalled sync job remains uninstalled and cannot be enabled from this pane
 autostart is managed separately and does not change runtime-service or ingestion state. Service
 commands run in an isolated process group on Unix with a bounded timeout, so a stalled install or
 action also terminates bundled runtime helpers instead of leaving an orphaned process behind.
+Each approved installer command is capped at ten minutes; a timeout is recorded as a retryable
+failure with bounded, sanitized output.
 The shell owns a compact service-activity snapshot and mirrors it in the status bar, keeping an
 install or start/stop/restart request visible while the operator changes sections or returns to
 the knowledge view; completion and sanitized failures link back to the Services panel.
