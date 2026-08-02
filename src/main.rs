@@ -795,6 +795,7 @@ async fn main() -> Result<()> {
                     kind: source.kind.clone(),
                     project: source.project.clone(),
                     enabled: source.enabled,
+                    acl: source.acl.clone(),
                 })
                 .collect();
             let principal = if let Some(name) = token_env {

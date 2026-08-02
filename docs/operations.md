@@ -30,9 +30,11 @@ changed source timestamp increments the corpus revision. `cache_ttl_seconds = 0`
 entries, and cache hits without logging queries or evidence.
 
 `/v1/status` also reports whether recurring ingestion is installed, the global and per-source
-safety budgets, every configured source including disabled or not-yet-indexed sources, its configured
-ACL labels, a non-secret authorization summary, and the latest persisted validation and sync outcomes
-for each source. The authorization summary reports only the connector method (`none`, `token`, or
+safety budgets, every ACL-visible configured source including disabled or not-yet-indexed sources,
+its configured ACL labels, a non-secret authorization summary, and the latest persisted validation
+and sync outcomes for each source. The local owner sees the complete inventory; scoped principals
+see only matching source/project counters, workspaces, validation state, and sync outcomes. The
+authorization summary reports only the connector method (`none`, `token`, or
 `google_oauth`) plus setup and authorization booleans; it never exposes token values, paths, OAuth
 client paths, or environment contents. Validation proves bounded connector
 access without mutating the corpus and is shown separately from synchronization health. Sync

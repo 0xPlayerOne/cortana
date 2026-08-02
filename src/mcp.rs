@@ -11,7 +11,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auth::{Principal, QUERY_SCOPE, STATUS_SCOPE},
+    auth::{Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
     context,
     embed::Embedder,
     retrieval,
@@ -57,6 +57,8 @@ pub struct ConfiguredSourceStatus {
     pub kind: String,
     pub project: String,
     pub enabled: bool,
+    #[serde(skip)]
+    pub acl: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -296,12 +298,23 @@ impl BrainServer {
             self.audit("mcp.brain_status", None, None, "forbidden", None, started);
             return "authorization error: status scope required".into();
         }
-        match self.store.stats() {
+        let acl = self.principal.acl_labels();
+        let owner = acl.iter().any(|label| label == "*");
+        match if owner {
+            self.store.stats()
+        } else {
+            self.store.stats_scoped(&acl)
+        } {
             Ok(stats) => {
                 let count = usize::try_from(stats.documents).ok();
                 let result = serde_json::to_string(&BrainStatus {
                     stats,
-                    configured_sources: self.configured_sources.clone(),
+                    configured_sources: self
+                        .configured_sources
+                        .iter()
+                        .filter(|source| acl_allows(&source.acl, &acl))
+                        .cloned()
+                        .collect(),
                 });
                 match result {
                     Ok(payload) => {
@@ -630,6 +643,7 @@ mod tests {
                 kind: "gmail".into(),
                 project: "personal".into(),
                 enabled: false,
+                acl: vec!["personal".into()],
             },
         ]);
 
@@ -639,6 +653,65 @@ mod tests {
         assert_eq!(status["configured_sources"][0]["enabled"], false);
         assert!(status["configured_sources"][0].get("token").is_none());
         assert!(status.get("sources").is_some());
+    }
+
+    #[tokio::test]
+    async fn brain_status_filters_configured_sources_by_principal_acl() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "work-agent".into(),
+            token_env: "WORK_TOKEN".into(),
+            scopes: vec![STATUS_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let principal = AuthPolicy::from_config(&config, None)
+            .expect("policy")
+            .authenticate("work-secret")
+            .expect("principal");
+        let server = BrainServer::new(store, embedder)
+            .with_principal(principal)
+            .with_configured_sources(vec![
+                ConfiguredSourceStatus {
+                    name: "work-drive".into(),
+                    source: "work-drive".into(),
+                    kind: "google-drive".into(),
+                    project: "work".into(),
+                    enabled: true,
+                    acl: vec!["work".into()],
+                },
+                ConfiguredSourceStatus {
+                    name: "personal-notes".into(),
+                    source: "personal-notes".into(),
+                    kind: "apple-notes".into(),
+                    project: "personal".into(),
+                    enabled: true,
+                    acl: vec!["personal".into()],
+                },
+                ConfiguredSourceStatus {
+                    name: "public-reference".into(),
+                    source: "public-reference".into(),
+                    kind: "filesystem".into(),
+                    project: "reference".into(),
+                    enabled: true,
+                    acl: Vec::new(),
+                },
+            ]);
+
+        let status: serde_json::Value =
+            serde_json::from_str(&server.brain_status().await).expect("status JSON");
+        let names = status["configured_sources"]
+            .as_array()
+            .expect("configured sources")
+            .iter()
+            .filter_map(|source| source["name"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["work-drive", "public-reference"]);
     }
 
     #[test]

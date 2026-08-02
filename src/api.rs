@@ -22,7 +22,7 @@ use tracing::Level;
 
 use crate::{
     answer::{AnswerEngine, AnswerRequest, AnswerResponse, QueryRuntimeStatus},
-    auth::{ADMIN_SCOPE, AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE},
+    auth::{ADMIN_SCOPE, AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
     config::{Config, SourceConfig, WorkspaceConfig},
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
@@ -361,6 +361,15 @@ impl IngestionStatus {
                 }
             }
         }
+        status
+    }
+
+    fn visible_to(&self, principal: &Principal) -> Self {
+        let acl = principal.acl_labels();
+        let mut status = self.clone();
+        status
+            .configured_sources
+            .retain(|source| acl_allows(&source.acl, &acl));
         status
     }
 }
@@ -937,35 +946,59 @@ async fn ready(State(state): State<AppState>) -> impl IntoResponse {
 
 async fn status(
     State(state): State<AppState>,
-    Extension(_principal): Extension<Principal>,
+    Extension(principal): Extension<Principal>,
 ) -> Result<Json<Status>, (StatusCode, String)> {
-    state
-        .store
-        .stats()
-        .map(|stats| {
-            let workspaces = fallback_workspaces(
-                state.workspaces.as_ref(),
-                stats
-                    .sources
-                    .iter()
-                    .map(|source| source.project.clone())
-                    .collect::<Vec<_>>()
-                    .into_iter(),
-            );
-            Json(Status {
-                status: "ok",
-                uptime_seconds: state.metrics.uptime_seconds(),
-                searches_total: state.metrics.searches.load(Ordering::Relaxed),
-                contexts_total: state.metrics.contexts.load(Ordering::Relaxed),
-                answers_total: state.metrics.answers.load(Ordering::Relaxed),
-                errors_total: state.metrics.errors.load(Ordering::Relaxed),
-                query: state.answer.status(),
-                ingestion: state.ingestion.refreshed(),
-                workspaces,
-                stats,
-            })
-        })
-        .map_err(internal_error)
+    let acl = principal.acl_labels();
+    let owner = acl.iter().any(|label| label == "*");
+    let stats = if owner {
+        state.store.stats()
+    } else {
+        state.store.stats_scoped(&acl)
+    }
+    .map_err(internal_error)?;
+    let ingestion = state.ingestion.refreshed().visible_to(&principal);
+    let source_projects = if owner {
+        stats
+            .sources
+            .iter()
+            .map(|source| source.project.clone())
+            .collect::<Vec<_>>()
+    } else {
+        let mut projects = ingestion
+            .configured_sources
+            .iter()
+            .map(|source| source.project.clone())
+            .collect::<Vec<_>>();
+        projects.extend(stats.sources.iter().map(|source| source.project.clone()));
+        projects
+    };
+    let visible_workspaces = if owner {
+        state.workspaces.as_ref().clone()
+    } else {
+        let projects = source_projects
+            .iter()
+            .map(|project| project.to_ascii_lowercase())
+            .collect::<BTreeSet<_>>();
+        state
+            .workspaces
+            .iter()
+            .filter(|workspace| projects.contains(&workspace.id.to_ascii_lowercase()))
+            .cloned()
+            .collect()
+    };
+    let workspaces = fallback_workspaces(&visible_workspaces, source_projects);
+    Ok(Json(Status {
+        status: "ok",
+        uptime_seconds: state.metrics.uptime_seconds(),
+        searches_total: state.metrics.searches.load(Ordering::Relaxed),
+        contexts_total: state.metrics.contexts.load(Ordering::Relaxed),
+        answers_total: state.metrics.answers.load(Ordering::Relaxed),
+        errors_total: state.metrics.errors.load(Ordering::Relaxed),
+        query: state.answer.status(),
+        ingestion,
+        workspaces,
+        stats,
+    }))
 }
 
 fn fallback_workspaces(
@@ -1804,6 +1837,56 @@ mod tests {
     }
 
     #[test]
+    fn scoped_status_source_inventory_follows_principal_acl() {
+        let directory = tempdir().expect("temporary directory");
+        let mut config: Config = toml::from_str(
+            r#"
+            [[sources]]
+            name = "work-drive"
+            kind = "google-drive"
+            project = "work"
+            acl = ["work"]
+
+            [[sources]]
+            name = "personal-notes"
+            kind = "apple-notes"
+            project = "personal"
+            acl = ["personal"]
+
+            [[sources]]
+            name = "public-reference"
+            kind = "filesystem"
+            project = "reference"
+            "#,
+        )
+        .expect("configuration");
+        config.data_dir = directory.path().to_path_buf();
+
+        let mut auth_config = Config::default();
+        auth_config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        auth_config.auth.tokens = vec![AuthTokenConfig {
+            principal: "work-agent".into(),
+            token_env: "WORK_TOKEN".into(),
+            scopes: vec![STATUS_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let principal = AuthPolicy::from_config(&auth_config, None)
+            .expect("policy")
+            .authenticate("work-secret")
+            .expect("principal");
+
+        let status = IngestionStatus::from_config(&config, false).visible_to(&principal);
+        let names = status
+            .configured_sources
+            .iter()
+            .map(|source| source.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["work-drive", "public-reference"]);
+    }
+
+    #[test]
     fn stale_source_validation_is_hidden_from_status() {
         let directory = tempdir().expect("temporary directory");
         let mut config = Config::default();
@@ -2270,6 +2353,27 @@ mod tests {
         let rows: Vec<Evidence> = serde_json::from_slice(&search_body).expect("search JSON");
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].source_id, "work");
+
+        let status = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("status request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(status.status(), StatusCode::OK);
+        let status_body = to_bytes(status.into_body(), 1024 * 1024)
+            .await
+            .expect("status body");
+        let status_value: serde_json::Value =
+            serde_json::from_slice(&status_body).expect("status JSON");
+        assert_eq!(status_value["documents"], 1);
+        assert_eq!(status_value["chunks"], 1);
+        assert_eq!(status_value["sources"].as_array().map(Vec::len), Some(1));
 
         let forbidden = app
             .clone()

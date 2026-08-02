@@ -1,5 +1,5 @@
 use std::cmp::{Ordering, Reverse};
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -1206,6 +1206,121 @@ impl Store {
         })
     }
 
+    pub fn stats_scoped(&self, principal_acl: &[String]) -> Result<StoreStats> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let embedding_fingerprint = connection
+            .query_row(
+                "SELECT value FROM meta WHERE key='embedding_fingerprint'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let (embedding_cache_entries, embedding_cache_hits) = connection.query_row(
+            "SELECT COUNT(*),COALESCE(SUM(hits),0) FROM embedding_cache",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let (query_cache_entries, query_cache_hits) = connection.query_row(
+            "SELECT COUNT(*),COALESCE(SUM(hits),0) FROM query_cache",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        let mut documents = 0_i64;
+        let mut chunks = 0_i64;
+        let mut sources = BTreeMap::<(String, String), SourceStats>::new();
+        let mut document_statement = connection.prepare(
+            "SELECT d.source,d.project,d.acl_json,COUNT(c.id),MAX(d.updated_at)
+             FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
+             GROUP BY d.id,d.source,d.project,d.acl_json",
+        )?;
+        for row in document_statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })? {
+            let (source, project, acl_json, document_chunks, latest_updated_at) = row?;
+            let Ok(acl) = serde_json::from_str::<Vec<String>>(&acl_json) else {
+                continue;
+            };
+            if !acl_allows(&acl, principal_acl) {
+                continue;
+            }
+            documents += 1;
+            chunks += document_chunks;
+            let entry = sources
+                .entry((source.clone(), project.clone()))
+                .or_insert_with(|| SourceStats {
+                    source,
+                    project,
+                    documents: 0,
+                    chunks: 0,
+                    latest_updated_at: None,
+                });
+            entry.documents += 1;
+            entry.chunks += document_chunks;
+            if latest_updated_at.as_deref() > entry.latest_updated_at.as_deref() {
+                entry.latest_updated_at = latest_updated_at;
+            }
+        }
+        let allowed_sources = sources.keys().cloned().collect::<HashSet<_>>();
+        let mut sync_statement = connection.prepare(
+            "SELECT source,project,status,started_at,completed_at,documents,bytes,deleted,
+                    budget_documents,budget_bytes,budget_seconds
+             FROM (
+               SELECT sync_runs.*,
+                      ROW_NUMBER() OVER (
+                        PARTITION BY source,project
+                        ORDER BY started_at DESC,rowid DESC
+                      ) AS rank
+               FROM sync_runs
+             )
+             WHERE rank=1
+             ORDER BY project,source",
+        )?;
+        let sync_runs = sync_statement
+            .query_map([], |row| {
+                Ok(SourceSyncStats {
+                    source: row.get(0)?,
+                    project: row.get(1)?,
+                    status: row.get(2)?,
+                    started_at: row.get(3)?,
+                    completed_at: row.get(4)?,
+                    documents: row.get(5)?,
+                    bytes: row.get(6)?,
+                    deleted: row.get(7)?,
+                    budget_documents: row.get(8)?,
+                    budget_bytes: row.get(9)?,
+                    budget_seconds: row.get(10)?,
+                })
+            })?
+            .filter_map(|row| match row {
+                Ok(sync)
+                    if allowed_sources.contains(&(sync.source.clone(), sync.project.clone())) =>
+                {
+                    Some(Ok(sync))
+                }
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            })
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(StoreStats {
+            documents,
+            chunks,
+            embedding_fingerprint,
+            embedding_cache_entries,
+            embedding_cache_hits,
+            query_cache_entries,
+            query_cache_hits,
+            sources: sources.into_values().collect(),
+            sync_runs,
+        })
+    }
+
     pub fn public_acl_summary(&self) -> Result<Vec<PublicAclSummary>> {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
@@ -2235,6 +2350,29 @@ mod tests {
         assert_eq!(stats.chunks, 1);
         assert_eq!(stats.sources[0].source, "test");
         assert_eq!(stats.embedding_cache_entries, 0);
+    }
+
+    #[test]
+    fn scoped_stats_count_only_acl_visible_documents() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let mut work = document("work", "work content");
+        work.acl = vec!["work".into()];
+        let mut personal = document("personal", "personal content");
+        personal.acl = vec!["personal".into()];
+        let public = document("public", "public content");
+        for item in [&work, &personal, &public] {
+            store
+                .upsert(item, &[(item.content.clone(), vec![1.0])])
+                .expect("insert document");
+        }
+
+        let stats = store.stats_scoped(&["work".into()]).expect("scoped stats");
+        assert_eq!(stats.documents, 2);
+        assert_eq!(stats.chunks, 2);
+        assert_eq!(stats.sources.len(), 1);
+        assert_eq!(stats.sources[0].documents, 2);
+        assert_eq!(stats.sources[0].project, "demo");
     }
 
     #[test]

@@ -57,8 +57,9 @@ variable name:
 ```
 
 The token value stays in the agent process environment/private Cortana env file. Cortana maps it
-to the configured principal, enforces query/status scopes and document ACL labels inside MCP, and
-records only metadata-only audit events under that principal name.
+to the configured principal, enforces query/status scopes and document/source ACL labels inside
+MCP, scopes status counters and source inventory, and records only metadata-only audit events under
+that principal name.
 
 For an HTTP-only client, send:
 
