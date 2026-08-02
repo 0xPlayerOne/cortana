@@ -610,9 +610,7 @@ fn is_allowed_system_alias(path: &Path) -> bool {
     #[cfg(target_os = "macos")]
     {
         // macOS exposes these standard locations as symlinks into /private.
-        path == Path::new("/tmp")
-            || path == Path::new("/var")
-            || path == Path::new("/etc")
+        path == Path::new("/tmp") || path == Path::new("/var") || path == Path::new("/etc")
     }
     #[cfg(not(target_os = "macos"))]
     {
