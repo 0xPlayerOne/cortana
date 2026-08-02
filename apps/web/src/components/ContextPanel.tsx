@@ -182,7 +182,8 @@ async function writeClipboardText(value: string): Promise<void> {
   textarea.select()
   let copied = false
   try {
-    copied = document.execCommand('copy')
+    copied =
+      typeof document.execCommand === 'function' && document.execCommand.call(document, 'copy')
   } finally {
     textarea.remove()
   }
