@@ -85,6 +85,9 @@ reconciliation.
   Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
   and the minimum read-only scopes required by the Google sources that share that token. Refresh
   data is updated atomically and the token file is forced to mode `0600`.
+- A Google source may use `token_env` instead of `token` when the named environment value contains
+  an absolute OAuth token JSON path. The Desktop editor stores that path value write-only in its
+  managed secret file; it does not accept inline token JSON.
 - Apple Notes uses the local macOS Notes automation permission and stores no credential.
 - Buzz opens the retention database read-only.
 

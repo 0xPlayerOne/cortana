@@ -2028,20 +2028,23 @@ function SourcesSection({
                       </div>
                     </Field>
                     <Field
-                      label="Google token environment variable"
-                      hint="optional alternative to the private token file"
+                      label="Google token path environment variable"
+                      hint="optional; its value must be an absolute OAuth token JSON path"
                     >
                       <input
                         value={source.token_env || ''}
                         disabled={!source.editable}
                         pattern="[A-Z_][A-Z0-9_]*"
-                        placeholder="GOOGLE_TOKEN_JSON"
+                        placeholder="CORTANA_GOOGLE_TOKEN_PATH"
                         onChange={(event) =>
                           changeSource(index, { token_env: event.target.value || null })
                         }
                       />
                     </Field>
-                    <Field label="New Google token" hint="write-only; leave blank to keep existing">
+                    <Field
+                      label="Google token path value"
+                      hint="write-only path; leave blank to keep the existing value"
+                    >
                       <div className="secret-input">
                         <input
                           type="password"

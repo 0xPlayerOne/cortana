@@ -182,8 +182,10 @@ test('Google source settings expose env-backed token credentials', async () => {
       expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
-    await waitFor(() => expect(screen.getByText('Google token environment variable')).toBeTruthy())
-    expect(screen.getByText('New Google token')).toBeTruthy()
+    await waitFor(() =>
+      expect(screen.getByText('Google token path environment variable')).toBeTruthy()
+    )
+    expect(screen.getByText('Google token path value')).toBeTruthy()
   } finally {
     state.settings = desktopSettings
   }
