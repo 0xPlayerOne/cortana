@@ -159,7 +159,8 @@ The source editor supports the native filesystem, Apple Notes, Buzz, Google Driv
 Calendar, Slack, and Discord connector schemas. It can retain, disable, or remove an existing
 external command connector, but cannot create or modify command arrays. Google token files and
 OAuth client files and local roots must be absolute non-root paths; Slack and Discord require
-explicit channels and a validated environment-variable name. Saving or authorizing source
+explicit channels and a validated environment-variable name. Canonical source labels are unique
+within each workspace so connectors cannot merge their indexed scope or health history. Saving or authorizing source
 settings never starts ingestion. The knowledge sidebar also exposes a confirmation-gated
 enable/disable switch for each saved connector; it writes only that source's enabled flag, leaves
 existing indexed data untouched, and is disabled while a Settings draft is unsaved or first-launch
