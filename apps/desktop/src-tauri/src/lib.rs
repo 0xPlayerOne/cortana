@@ -275,7 +275,13 @@ fn desktop_project_open() -> Result<(), String> {
 fn validate_external_url(url: &str) -> Result<(), String> {
     let parsed = Url::parse(url).map_err(|error| format!("invalid URL: {error}"))?;
     match parsed.scheme() {
-        "http" | "https" | "mailto" => Ok(()),
+        "http" | "https" => {
+            if !parsed.username().is_empty() || parsed.password().is_some() {
+                return Err("external links must not contain embedded credentials".into());
+            }
+            Ok(())
+        }
+        "mailto" => Ok(()),
         "file" => {
             if parsed
                 .host_str()
@@ -886,6 +892,7 @@ mod tests {
     fn validates_external_url_schemes_for_open_bridge() {
         assert!(validate_external_url("https://example.com").is_ok());
         assert!(validate_external_url("http://127.0.0.1").is_ok());
+        assert!(validate_external_url("https://user:password@example.com").is_err());
         assert!(validate_external_url("mailto:help@example.com").is_ok());
         assert!(validate_external_url("file:///tmp/cv.pdf").is_ok());
         assert!(validate_external_url("file://remote.example/cv.pdf").is_err());
