@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 
 import { demoStatus } from './demo'
-import { operationalSources, sourceHealth } from './operations'
+import { embeddingLabel, operationalSources, sourceHealth } from './operations'
 
 describe('operational source visibility', () => {
   test('includes configured disabled sources that remain indexed', () => {
@@ -76,5 +76,19 @@ describe('operational source visibility', () => {
     const source = operationalSources(status).find((item) => item.name === 'buzz')
     expect(sourceHealth(source!).state).toBe('healthy')
     expect(sourceHealth(source!).label).toContain('Connector validated')
+  })
+})
+
+describe('embedding status labels', () => {
+  test('keeps URL colons from truncating the model label', () => {
+    expect(embeddingLabel('openai:http://127.0.0.1:6999/v1:Qwen/Qwen3-Embedding-0.6B:1024')).toBe(
+      'Qwen/Qwen3-Embedding-0.6B · 1024d'
+    )
+  })
+
+  test('does not invent a model label for short or malformed fingerprints', () => {
+    expect(embeddingLabel('deterministic:16')).toBe('deterministic:16')
+    expect(embeddingLabel('openai:missing-dimension')).toBe('openai:missing-dimension')
+    expect(embeddingLabel(null)).toBe('—')
   })
 })

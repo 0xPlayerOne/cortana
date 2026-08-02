@@ -29,6 +29,7 @@ import { SourcePanel } from './components/SourcePanel'
 import { UtilityView } from './components/UtilityView'
 import { Workspace, type WorkspaceTab } from './components/Workspace'
 import { buildAgentContext, estimateTokens } from './context'
+import { embeddingLabel } from './operations'
 import { activeJobs, describeSourceJobProgress, useSourceJobs } from './sourceJobs'
 import type {
   AnswerResponse,
@@ -906,7 +907,9 @@ export function App() {
         <span className={statusError ? 'health error' : 'health'}>
           <i /> Index {statusError ? 'offline' : status ? 'online' : 'checking'}
         </span>
-        <span>Embedding: {status?.embedding_fingerprint?.split(':')[1] ?? '—'}</span>
+        <span title={status?.embedding_fingerprint ?? undefined}>
+          Embedding: {embeddingLabel(status?.embedding_fingerprint)}
+        </span>
         <span>Query: {status?.query.mode ?? '—'}</span>
         <span>
           <FileText size={13} /> Docs: {(status?.documents ?? 0).toLocaleString()}

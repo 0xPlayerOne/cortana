@@ -1,5 +1,21 @@
 import type { BrainStatus, ConfiguredSourceSummary, SourceSyncSummary } from './types'
 
+export function embeddingLabel(fingerprint: string | null | undefined): string {
+  if (!fingerprint) return '—'
+  const dimensionSeparator = fingerprint.lastIndexOf(':')
+  if (dimensionSeparator <= 0 || dimensionSeparator === fingerprint.length - 1) {
+    return fingerprint
+  }
+  const dimension = fingerprint.slice(dimensionSeparator + 1)
+  if (!/^\d+$/.test(dimension)) return fingerprint
+  const modelSeparator = fingerprint.lastIndexOf(':', dimensionSeparator - 1)
+  if (modelSeparator <= 0 || modelSeparator === dimensionSeparator - 1) {
+    return fingerprint
+  }
+  const model = fingerprint.slice(modelSeparator + 1, dimensionSeparator)
+  return model ? `${model} · ${dimension}d` : fingerprint
+}
+
 export type OperationalSource = {
   name: string
   source: string
