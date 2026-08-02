@@ -1044,7 +1044,7 @@ function ServicesSection({
             <button
               type="button"
               className="secondary-button"
-              disabled={actionInFlight}
+              disabled={actionInFlight || report?.supported !== true}
               onClick={() => void installSync()}
             >
               {busy === 'sync-install' ? (
