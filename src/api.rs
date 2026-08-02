@@ -844,6 +844,7 @@ async fn answer(
     Extension(principal): Extension<Principal>,
     Json(request): Json<AnswerRequest>,
 ) -> Result<Json<AnswerResponse>, (StatusCode, String)> {
+    validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
     let project = request.project.clone();
@@ -878,6 +879,7 @@ async fn search(
     Extension(principal): Extension<Principal>,
     Json(request): Json<SearchRequest>,
 ) -> Result<Json<Vec<Evidence>>, (StatusCode, String)> {
+    validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
     state.metrics.searches.fetch_add(1, Ordering::Relaxed);
@@ -927,6 +929,7 @@ async fn context(
     Extension(principal): Extension<Principal>,
     Json(request): Json<ContextRequest>,
 ) -> Result<Json<ContextBundle>, (StatusCode, String)> {
+    validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
     state.metrics.contexts.fetch_add(1, Ordering::Relaxed);
@@ -1082,6 +1085,14 @@ fn validate_query(query: &str) -> Result<(), (StatusCode, String)> {
     } else {
         Ok(())
     }
+}
+
+fn validate_retrieval_scope(
+    project: Option<&str>,
+    source: Option<&str>,
+) -> Result<(), (StatusCode, String)> {
+    validate_document_scope("project", project)?;
+    validate_document_scope("source", source)
 }
 
 fn internal_error(error: anyhow::Error) -> (StatusCode, String) {
@@ -1354,6 +1365,28 @@ mod tests {
             .await
             .expect("response");
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn retrieval_rejects_oversized_scope_filters() {
+        let (_directory, state) = test_state(None);
+        let body = serde_json::to_vec(&serde_json::json!({
+            "query": "release",
+            "project": "x".repeat(MAX_DOCUMENT_SCOPE_LENGTH + 1)
+        }))
+        .expect("request JSON");
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
