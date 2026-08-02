@@ -415,6 +415,19 @@ export type DesktopServiceReport = {
   }>
 }
 
+/**
+ * Shell-owned status for a service control request. Native service commands
+ * are awaited by the bridge, but keeping this small snapshot in App makes the
+ * operation visible when the user changes Settings sections or returns to the
+ * knowledge view before the command finishes.
+ */
+export type DesktopServiceActivity = {
+  target: string
+  action: 'install' | 'start' | 'stop' | 'restart'
+  status: 'running' | 'succeeded' | 'failed'
+  detail: string | null
+}
+
 export type DesktopHindsightStatus = {
   enabled: boolean
   configured: boolean

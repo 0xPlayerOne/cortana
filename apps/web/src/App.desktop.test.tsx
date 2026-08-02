@@ -62,6 +62,7 @@ const state = {
   statusCalls: 0,
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
+  serviceAction: null as (() => Promise<DesktopServiceReport>) | null,
   installerJob: null as DesktopInstallJob | null,
 }
 
@@ -131,13 +132,14 @@ mock.module('./api', () => ({
   getDesktopSettings: () => Promise.resolve(state.settings),
   getDesktopInfo: () => Promise.resolve(desktopInfo),
   getDesktopServices: () => Promise.resolve(serviceReport),
+  getDesktopSourceJobs: () => Promise.resolve([]),
   installDesktopServices: () => {
     state.serviceInstallCalls += 1
     return Promise.resolve(installedServiceReport)
   },
   runDesktopServicesActionAll: (action: 'start' | 'stop' | 'restart') => {
     if (action === 'restart') state.serviceRestartCalls += 1
-    return Promise.resolve(installedServiceReport)
+    return state.serviceAction ? state.serviceAction() : Promise.resolve(installedServiceReport)
   },
   getDesktopHindsightStatus: () =>
     Promise.resolve({
@@ -458,6 +460,41 @@ test('services settings offers an explicit safe core-service install', async () 
     expect(screen.getByText('3 loaded')).toBeTruthy()
     expect(screen.getByText(/sync service remains absent/)).toBeTruthy()
   } finally {
+    window.confirm = originalConfirm
+  }
+})
+
+test('service activity survives leaving Settings while a native action is running', async () => {
+  const originalConfirm = window.confirm
+  const originalAction = state.serviceAction
+  let resolveAction: ((report: DesktopServiceReport) => void) | undefined
+  window.confirm = () => true
+  state.serviceAction = () =>
+    new Promise<DesktopServiceReport>((resolve) => {
+      resolveAction = resolve
+    })
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Restart all' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
+    await waitFor(() => expect(screen.getByText('Service: restart core services…')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
+    await waitFor(() => expect(screen.getByText('Service: restart core services…')).toBeTruthy())
+
+    resolveAction?.(installedServiceReport)
+    await waitFor(() =>
+      expect(screen.getByText('Service: restart core services · done')).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open service activity' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+    expect(screen.getByText('Restart core services completed.')).toBeTruthy()
+  } finally {
+    state.serviceAction = originalAction
     window.confirm = originalConfirm
   }
 })

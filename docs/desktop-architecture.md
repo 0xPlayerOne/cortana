@@ -73,7 +73,9 @@ bundled wrapper and any connector helpers together instead of leaving an orphane
 While a source job is active, Desktop locks that source's identity, credentials, scope, and
 per-source limits so the operation cannot race a settings edit. The status bar and Inbox expose
 the bounded progress snapshot and a cancellation control without requiring the Settings view to
-remain open.
+remain open. The native job state exposes a bounded history snapshot on renderer startup, so a
+webview remount recovers active and recent jobs instead of losing operational visibility; a failed
+recovery request is non-fatal and newly started jobs remain tracked locally.
 
 Guarded trial sync reuses the source-job boundary but is intentionally distinct from validation.
 It requires explicit confirmation and a matching successful validation fingerprint, then invokes
@@ -168,6 +170,9 @@ An uninstalled sync job remains uninstalled and cannot be enabled from this pane
 autostart is managed separately and does not change runtime-service or ingestion state. Service
 commands run in an isolated process group on Unix with a bounded timeout, so a stalled install or
 action also terminates bundled runtime helpers instead of leaving an orphaned process behind.
+The shell owns a compact service-activity snapshot and mirrors it in the status bar, keeping an
+install or start/stop/restart request visible while the operator changes sections or returns to
+the knowledge view; completion and sanitized failures link back to the Services panel.
 
 Start All, Stop All, and Restart All are narrower than the individual controls: they operate only
 on `embedding` and `server`, in dependency-safe order. They always exclude `sync` and `backup`, so

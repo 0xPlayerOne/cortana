@@ -205,6 +205,11 @@ export async function getDesktopSourceValidation(id: string): Promise<DesktopSou
   return invokeDesktop<DesktopSourceJob>('desktop_source_validation_status', { id })
 }
 
+export async function getDesktopSourceJobs(): Promise<DesktopSourceJob[]> {
+  if (!isDesktopApp) throw new Error('Source jobs are available in Cortana Desktop')
+  return invokeDesktop<DesktopSourceJob[]>('desktop_source_jobs_status')
+}
+
 export async function cancelDesktopSourceValidation(id: string): Promise<DesktopSourceJob> {
   if (!isDesktopApp) throw new Error('Source validation is available in Cortana Desktop')
   return invokeDesktop<DesktopSourceJob>('desktop_source_validation_cancel', { id })

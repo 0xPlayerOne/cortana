@@ -44,6 +44,7 @@ import type {
   DesktopSettings,
   DesktopInfo,
   DesktopInstallJob,
+  DesktopServiceActivity,
   DesktopSourceJob,
   DesktopUpdate,
   Evidence,
@@ -71,11 +72,12 @@ export function App() {
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null)
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null)
   const [settingsSection, setSettingsSection] = useState<
-    'readiness' | 'updates' | 'sources' | 'hindsight' | 'honcho'
+    'readiness' | 'services' | 'updates' | 'sources' | 'hindsight' | 'honcho'
   >('readiness')
   const [settingsDirty, setSettingsDirty] = useState(false)
   const [installerJob, setInstallerJob] = useState<DesktopInstallJob | null>(null)
   const [desktopUpdate, setDesktopUpdate] = useState<DesktopUpdate | null>(null)
+  const [serviceActivity, setServiceActivity] = useState<DesktopServiceActivity | null>(null)
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
   const [documentsLoading, setDocumentsLoading] = useState(true)
@@ -813,6 +815,8 @@ export function App() {
           onInstallerJob={setInstallerJob}
           desktopUpdate={desktopUpdate}
           onDesktopUpdate={setDesktopUpdate}
+          serviceActivity={serviceActivity}
+          onServiceActivity={setServiceActivity}
           onSaved={(next) => {
             setDesktopSettings(next)
             setSettingsDirty(false)
@@ -1058,6 +1062,14 @@ export function App() {
             setView('settings')
           }}
         />
+        <ServiceActivityIndicator
+          activity={serviceActivity}
+          onOpen={() => {
+            if (!canLeaveSettings()) return
+            setSettingsSection('services')
+            setView('settings')
+          }}
+        />
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
         {isDesktopApp && (
@@ -1153,6 +1165,33 @@ function InstallerIndicator({
       onClick={onOpen}
     >
       <i /> {label}
+    </button>
+  )
+}
+
+function ServiceActivityIndicator({
+  activity,
+  onOpen,
+}: {
+  activity: DesktopServiceActivity | null
+  onOpen: () => void
+}) {
+  if (!activity) return null
+  const active = activity.status === 'running'
+  const state = active ? 'running' : activity.status === 'succeeded' ? 'healthy' : 'warning'
+  const action = activity.action === 'install' ? 'Install' : activity.action
+  return (
+    <button
+      type="button"
+      className={`service-activity-health ${state}`}
+      aria-label="Open service activity"
+      title={`${action} ${activity.target}${activity.detail ? `: ${activity.detail}` : ''}. Open services for details.`}
+      onClick={onOpen}
+    >
+      {active && <LoaderCircle className="spin" size={13} />}
+      {!active && <i />}
+      Service: {action} {activity.target}
+      {active ? '…' : activity.status === 'succeeded' ? ' · done' : ' · failed'}
     </button>
   )
 }

@@ -193,6 +193,11 @@ export function SourcePanel({
                   const health = sourceHealth(item)
                   const key = `${item.project}:${item.source}`
                   const isCollapsed = collapsed.has(key)
+                  // Source names are only unique inside a workspace. When the
+                  // panel shows all workspaces, matching by name alone would
+                  // highlight every same-named connector and make a click
+                  // appear to select the wrong account.
+                  const isSelected = selected === item.source && workspace === item.project
                   return (
                     <div className="source-node" key={key}>
                       <div className="source-row">
@@ -214,8 +219,8 @@ export function SourcePanel({
                         </button>
                         <button
                           type="button"
-                          className={`source-select ${selected === item.source ? 'selected' : ''}`}
-                          aria-pressed={selected === item.source}
+                          className={`source-select ${isSelected ? 'selected' : ''}`}
+                          aria-pressed={isSelected}
                           onClick={() => onSelect(item.source, item.project)}
                           title={health.label}
                         >

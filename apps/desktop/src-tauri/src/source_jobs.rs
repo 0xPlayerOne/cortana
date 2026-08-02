@@ -463,6 +463,26 @@ impl SourceJobState {
             .ok_or_else(|| "source job was not found".into())
     }
 
+    /// Return the bounded in-memory job history so a remounted webview can
+    /// recover activity that started before the current renderer instance.
+    pub fn snapshots(&self) -> Result<Vec<SourceJobSnapshot>, String> {
+        let mut snapshots = self
+            .jobs
+            .lock()
+            .map_err(|_| "source job state is unavailable".to_string())?
+            .values()
+            .map(|job| job.snapshot.clone())
+            .collect::<Vec<_>>();
+        snapshots.sort_by(|left, right| {
+            right
+                .started_at_unix_seconds
+                .cmp(&left.started_at_unix_seconds)
+                .then_with(|| right.id.cmp(&left.id))
+        });
+        snapshots.truncate(MAX_JOBS);
+        Ok(snapshots)
+    }
+
     pub fn cancel(&self, id: &str) -> Result<SourceJobSnapshot, String> {
         validate_job_id(id)?;
         let mut jobs = self

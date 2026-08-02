@@ -38,17 +38,20 @@ const state = {
   statusCalls: [] as string[],
   polled: new Map<string, DesktopSourceJob | Error>(),
   pending: null as Promise<DesktopSourceJob> | null,
+  recovered: [] as DesktopSourceJob[],
 }
 
 beforeEach(() => {
   state.statusCalls = []
   state.polled.clear()
   state.pending = null
+  state.recovered = []
 })
 
 mock.module('./api', () => ({
   ...realApi,
   isDesktopApp: true,
+  getDesktopSourceJobs: () => Promise.resolve(state.recovered),
   getDesktopSourceValidation: (id: string) => {
     state.statusCalls.push(id)
     if (state.pending) return state.pending
@@ -197,6 +200,17 @@ test('the hook polls only active ids and keeps the latest snapshot', async () =>
   expect(result.current.jobs[0]?.status).toBe('cancelling')
   expect(result.current.jobs[0]?.summary).toBe('cancelling now')
   expect(result.current.jobs).toHaveLength(2)
+})
+
+test('the hook recovers native source-job snapshots on mount', async () => {
+  state.recovered = [jobOf('recovered-running', 'running'), jobOf('recovered-done', 'succeeded')]
+  const { result, unmount } = renderHook(() => useSourceJobs())
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+  expect(result.current.jobs.map((job) => job.id)).toEqual(['recovered-running', 'recovered-done'])
+  unmount()
 })
 
 test('the hook drops an id on a missing-job error and retains snapshots on transient errors', async () => {

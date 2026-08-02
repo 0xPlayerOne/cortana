@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { getDesktopSourceValidation, isDesktopApp } from './api'
+import { getDesktopSourceJobs, getDesktopSourceValidation, isDesktopApp } from './api'
 import type { DesktopSourceJob } from './types'
 
 /** Bounded snapshot list: the most recent job snapshots, newest first. */
@@ -112,6 +112,22 @@ export function useSourceJobs() {
   useEffect(() => {
     if (!isDesktopApp) return
     let disposed = false
+    void getDesktopSourceJobs()
+      .then((next) => {
+        if (disposed) return
+        setJobs((current) => {
+          const known = new Set(current.map((job) => job.id))
+          return [...current, ...next.filter((job) => !known.has(job.id))].slice(
+            0,
+            MAX_SOURCE_JOB_SNAPSHOTS
+          )
+        })
+      })
+      .catch(() => {
+        // A fresh native process may have no source-job state yet. The
+        // renderer can still discover jobs started during this session via
+        // remember(), so an unavailable recovery snapshot is non-fatal.
+      })
     const timer = window.setInterval(() => {
       if (pollingRef.current) return
       const ids = activeJobIds(jobsRef.current)

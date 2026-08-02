@@ -61,6 +61,7 @@ import type {
   DesktopInfo,
   DesktopHindsightStatus,
   DesktopReadiness,
+  DesktopServiceActivity,
   DesktopServiceReport,
   DesktopSettings,
   DesktopSettingsUpdate,
@@ -99,6 +100,8 @@ export function SettingsView({
   onInstallerJob,
   desktopUpdate: externalDesktopUpdate,
   onDesktopUpdate,
+  serviceActivity,
+  onServiceActivity,
 }: {
   onSaved: (settings: DesktopSettings) => void
   onDirtyChange?: (dirty: boolean) => void
@@ -120,6 +123,9 @@ export function SettingsView({
   /** Optional shell-owned updater snapshot shared across Settings mounts. */
   desktopUpdate?: DesktopUpdate | null
   onDesktopUpdate?: (update: DesktopUpdate) => void
+  /** Shell-owned service action status shared across Settings mounts. */
+  serviceActivity?: DesktopServiceActivity | null
+  onServiceActivity?: (activity: DesktopServiceActivity | null) => void
 }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
   const [section, setSection] = useState<Section>(initialSection)
@@ -283,6 +289,8 @@ export function SettingsView({
           {section === 'services' && (
             <ServicesSection
               settings={settings}
+              serviceActivity={serviceActivity}
+              onServiceActivity={onServiceActivity}
               onRestarted={() =>
                 setSettings((current) =>
                   current ? { ...current, restart_required: false } : current
@@ -498,9 +506,13 @@ function SetupGuide({
 
 function ServicesSection({
   settings,
+  serviceActivity,
+  onServiceActivity,
   onRestarted,
 }: {
   settings: DesktopSettings
+  serviceActivity?: DesktopServiceActivity | null
+  onServiceActivity?: (activity: DesktopServiceActivity | null) => void
   onRestarted?: () => void
 }) {
   const [report, setReport] = useState<DesktopServiceReport | null>(null)
@@ -547,10 +559,29 @@ function ServicesSection({
     if (!window.confirm(`${action} ${service.label}?${warning}`)) return
     setBusy(`${service.name}:${action}`)
     setError('')
+    onServiceActivity?.({
+      target: service.name,
+      action,
+      status: 'running',
+      detail: null,
+    })
     try {
       setReport(await runDesktopServiceAction(service.name, action))
+      onServiceActivity?.({
+        target: service.name,
+        action,
+        status: 'succeeded',
+        detail: null,
+      })
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Service action failed')
+      const message = caught instanceof Error ? caught.message : 'Service action failed'
+      setError(message)
+      onServiceActivity?.({
+        target: service.name,
+        action,
+        status: 'failed',
+        detail: message,
+      })
     } finally {
       setBusy('')
     }
@@ -578,11 +609,20 @@ function ServicesSection({
     }
     setBusy(`all:${action}`)
     setError('')
+    onServiceActivity?.({ target: 'core services', action, status: 'running', detail: null })
     try {
       setReport(await runDesktopServicesActionAll(action))
+      onServiceActivity?.({ target: 'core services', action, status: 'succeeded', detail: null })
       if (action === 'restart') onRestarted?.()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Whole-app service action failed')
+      const message = caught instanceof Error ? caught.message : 'Whole-app service action failed'
+      setError(message)
+      onServiceActivity?.({
+        target: 'core services',
+        action,
+        status: 'failed',
+        detail: message,
+      })
     } finally {
       setBusy('')
     }
@@ -598,10 +638,30 @@ function ServicesSection({
     }
     setBusy('install')
     setError('')
+    onServiceActivity?.({
+      target: 'core services',
+      action: 'install',
+      status: 'running',
+      detail: null,
+    })
     try {
       setReport(await installDesktopServices())
+      onServiceActivity?.({
+        target: 'core services',
+        action: 'install',
+        status: 'succeeded',
+        detail: null,
+      })
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Cortana services could not be installed')
+      const message =
+        caught instanceof Error ? caught.message : 'Cortana services could not be installed'
+      setError(message)
+      onServiceActivity?.({
+        target: 'core services',
+        action: 'install',
+        status: 'failed',
+        detail: message,
+      })
     } finally {
       setBusy('')
     }
@@ -615,6 +675,10 @@ function ServicesSection({
         (service.name !== 'embedding' || settings.embedding.provider === 'local') &&
         !service.installed
     )
+  const actionInFlight = Boolean(busy) || serviceActivity?.status === 'running'
+  const actionMessage = serviceActivity
+    ? `${serviceActivity.action === 'install' ? 'Install' : serviceActivity.action[0].toUpperCase() + serviceActivity.action.slice(1)} ${serviceActivity.target}${serviceActivity.status === 'running' ? ' in progress…' : serviceActivity.status === 'succeeded' ? ' completed.' : ` failed: ${serviceActivity.detail || 'unknown error'}`}`
+    : ''
 
   return (
     <SettingsSection
@@ -648,21 +712,21 @@ function ServicesSection({
         <div className="service-actions">
           <button
             type="button"
-            disabled={Boolean(busy) || report?.supported !== true}
+            disabled={actionInFlight || report?.supported !== true}
             onClick={() => void groupAction('start')}
           >
             <Play size={14} /> Start all
           </button>
           <button
             type="button"
-            disabled={Boolean(busy) || report?.supported !== true}
+            disabled={actionInFlight || report?.supported !== true}
             onClick={() => void groupAction('stop')}
           >
             <CircleStop size={14} /> Stop all
           </button>
           <button
             type="button"
-            disabled={Boolean(busy) || report?.supported !== true}
+            disabled={actionInFlight || report?.supported !== true}
             onClick={() => void groupAction('restart')}
           >
             <RefreshCw size={14} /> Restart all
@@ -674,7 +738,7 @@ function ServicesSection({
             <button
               type="button"
               className="primary-button"
-              disabled={Boolean(busy)}
+              disabled={actionInFlight}
               onClick={() => void install()}
             >
               {busy === 'install' ? (
@@ -687,7 +751,11 @@ function ServicesSection({
           )}
         </div>
       </div>
-      {error && <div className="safety-note">{error}</div>}
+      {(error || actionMessage) && (
+        <div className={`safety-note ${serviceActivity?.status === 'failed' ? 'error' : ''}`}>
+          {error || actionMessage}
+        </div>
+      )}
       <div className="service-grid">
         {report?.services.map((service) => {
           const running = service.loaded && service.state === 'running'
@@ -713,21 +781,21 @@ function ServicesSection({
               <div className="service-actions">
                 <button
                   type="button"
-                  disabled={!report.supported || !service.installed || running || Boolean(busy)}
+                  disabled={!report.supported || !service.installed || running || actionInFlight}
                   onClick={() => void serviceAction(service, 'start')}
                 >
                   <Play size={14} /> Start
                 </button>
                 <button
                   type="button"
-                  disabled={!report.supported || !service.loaded || Boolean(busy)}
+                  disabled={!report.supported || !service.loaded || actionInFlight}
                   onClick={() => void serviceAction(service, 'stop')}
                 >
                   <CircleStop size={14} /> Stop
                 </button>
                 <button
                   type="button"
-                  disabled={!report.supported || !service.installed || Boolean(busy)}
+                  disabled={!report.supported || !service.installed || actionInFlight}
                   onClick={() => void serviceAction(service, 'restart')}
                 >
                   <RefreshCw size={14} /> Restart

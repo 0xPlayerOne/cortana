@@ -612,6 +612,13 @@ fn desktop_source_validation_status(
 }
 
 #[tauri::command]
+fn desktop_source_jobs_status(
+    jobs: State<'_, source_jobs::SourceJobState>,
+) -> Result<Vec<source_jobs::SourceJobSnapshot>, String> {
+    jobs.snapshots()
+}
+
+#[tauri::command]
 fn desktop_source_validation_cancel(
     jobs: State<'_, source_jobs::SourceJobState>,
     id: String,
@@ -866,6 +873,7 @@ pub fn run() {
             desktop_source_setup_open,
             desktop_source_initial_sync,
             desktop_source_validation_status,
+            desktop_source_jobs_status,
             desktop_source_validation_cancel
         ])
         .setup(move |app| {

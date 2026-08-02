@@ -8,6 +8,7 @@ import type {
   DesktopSourceJob,
   WorkspaceSettings,
 } from './types'
+import { demoStatus } from './demo'
 import { SourcePanel, sourceIconForKind } from './components/SourcePanel'
 
 afterEach(cleanup)
@@ -99,4 +100,48 @@ test('source icons use the exact configured connector kind', () => {
   expect(sourceIconForKind('slack')).toBe(MessageCircle)
   expect(sourceIconForKind('buzz')).toBe(Bot)
   expect(sourceIconForKind('slack-archive')).toBe(Database)
+})
+
+test('source selection is scoped to the active workspace when names repeat', () => {
+  const duplicateStatus: BrainStatus = {
+    ...demoStatus,
+    ingestion: {
+      ...demoStatus.ingestion,
+      configured_sources: [
+        ...demoStatus.ingestion.configured_sources,
+        {
+          ...demoStatus.ingestion.configured_sources[0],
+          project: 'personal',
+          acl: ['personal'],
+        },
+      ],
+    },
+  }
+  render(
+    <SourcePanel
+      open={false}
+      status={duplicateStatus}
+      statusError=""
+      workspace="work"
+      workspaces={[workspace]}
+      documentQuery=""
+      selected="work-code"
+      documents={[]}
+      selectedDocument=""
+      documentsLoading={false}
+      documentsError=""
+      hasMoreDocuments={false}
+      onSelect={() => {}}
+      onSelectWorkspace={() => {}}
+      onDocumentQueryChange={() => {}}
+      onSelectDocument={() => {}}
+      onLoadMoreDocuments={() => {}}
+      onOpenSourcesSettings={() => {}}
+      onClose={() => {}}
+      jobs={[]}
+    />
+  )
+  const rows = screen.getAllByRole('button', { name: /work-code/ })
+  expect(rows).toHaveLength(2)
+  expect(rows.filter((row) => row.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
 })
