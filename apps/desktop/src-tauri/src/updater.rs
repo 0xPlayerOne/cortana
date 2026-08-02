@@ -46,6 +46,7 @@ impl Default for UpdateSnapshot {
 
 #[derive(Clone, Default)]
 pub struct UpdaterState {
+    operation: Arc<AsyncMutex<()>>,
     pending: Arc<AsyncMutex<Option<Update>>>,
     snapshot: Arc<Mutex<UpdateSnapshot>>,
 }
@@ -59,6 +60,7 @@ impl UpdaterState {
     }
 
     pub async fn check(&self, app: &AppHandle) -> Result<UpdateSnapshot, String> {
+        let _operation = self.operation.lock().await;
         self.update_snapshot(|snapshot| {
             snapshot.phase = "checking";
             snapshot.error = None;
@@ -122,6 +124,7 @@ impl UpdaterState {
         approved: bool,
         restart: bool,
     ) -> Result<UpdateSnapshot, String> {
+        let _operation = self.operation.lock().await;
         if !approved {
             return Err("update installation requires explicit approval".into());
         }
