@@ -41,6 +41,7 @@ import { UtilityView } from './components/UtilityView'
 import { Workspace, type WorkspaceTab } from './components/Workspace'
 import { buildAgentContext, estimateTokens } from './context'
 import { embeddingLabel } from './operations'
+import { shortcutLabel } from './shortcuts'
 import {
   readSourceSelectionPreference,
   readWorkspacePreference,
@@ -1275,7 +1276,11 @@ export function App() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          {loading ? <LoaderCircle className="spin" size={16} /> : <kbd>⌘ K</kbd>}
+          {loading ? (
+            <LoaderCircle className="spin" size={16} />
+          ) : (
+            <kbd>{shortcutLabel('MOD K')}</kbd>
+          )}
         </form>
         <TitleActions
           context
@@ -1540,7 +1545,7 @@ export function App() {
                 focusSearch()
               }}
             >
-              Search the brain <kbd>⌘ K</kbd>
+              Search the brain <kbd>{shortcutLabel('MOD K')}</kbd>
             </button>
             <button
               type="button"
@@ -1549,7 +1554,7 @@ export function App() {
                 focusDocumentFilter()
               }}
             >
-              Filter documents <kbd>⌘ ⇧ F</kbd>
+              Filter documents <kbd>{shortcutLabel('MOD ⇧ F')}</kbd>
             </button>
             <button
               type="button"

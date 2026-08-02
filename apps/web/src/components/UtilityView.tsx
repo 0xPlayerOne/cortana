@@ -26,6 +26,7 @@ import type {
 } from '../types'
 import { describeSourceJobProgress, recentCompletedJobs } from '../sourceJobs'
 import { describeSyncRunProgress } from '../operations'
+import { shortcutLabel } from '../shortcuts'
 import { useClipboardCopy } from '../useClipboardCopy'
 
 export type UtilityKind = 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
@@ -649,9 +650,9 @@ function HelpView({
   onOpenProject: () => void
 }) {
   const shortcuts = [
-    { keys: '⌘ K', action: 'Focus the search bar' },
-    { keys: '⌘ P', action: 'Toggle the command palette' },
-    { keys: '⌘ ⇧ F', action: 'Open the document filter' },
+    { keys: shortcutLabel('MOD K'), action: 'Focus the search bar' },
+    { keys: shortcutLabel('MOD P'), action: 'Toggle the command palette' },
+    { keys: shortcutLabel('MOD ⇧ F'), action: 'Open the document filter' },
     { keys: 'Esc', action: 'Close panels and the palette' },
   ]
   const links = [
