@@ -363,16 +363,27 @@ pub fn validate_provider_base_url(name: &str, value: &str) -> Result<()> {
 }
 
 fn validate_secret_file(path: &Path) -> Result<()> {
+    let metadata = std::fs::symlink_metadata(path).with_context(|| {
+        format!(
+            "environment file is missing or inaccessible: {}",
+            path.display()
+        )
+    })?;
     anyhow::ensure!(
-        path.is_file(),
-        "environment file is missing: {}",
+        !metadata.file_type().is_symlink(),
+        "environment file must not be a symlink: {}",
+        path.display()
+    );
+    anyhow::ensure!(
+        metadata.file_type().is_file(),
+        "environment file is not a regular file: {}",
         path.display()
     );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
 
-        let mode = std::fs::metadata(path)?.permissions().mode();
+        let mode = metadata.permissions().mode();
         anyhow::ensure!(
             mode & 0o077 == 0,
             "environment file must not be accessible by group or others: {}",
@@ -656,5 +667,30 @@ mod tests {
             Some(&"loaded".into())
         );
         assert!(std::env::var_os("CORTANA_TEST_PRIVATE").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_environment_files() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let target = directory.path().join("real-secrets.env");
+        std::fs::write(&target, "CORTANA_TEST_LINKED=secret\n").expect("write secrets");
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600))
+            .expect("set permissions");
+        let linked = directory.path().join("secrets.env");
+        symlink(&target, &linked).expect("symlink secrets");
+        let mut config = Config {
+            runtime: RuntimeConfig {
+                env_file: Some(linked),
+            },
+            ..Config::default()
+        };
+
+        let error = config
+            .load_environment()
+            .expect_err("symlinked environment files must fail");
+        assert!(error.to_string().contains("must not be a symlink"));
     }
 }
