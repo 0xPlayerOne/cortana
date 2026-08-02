@@ -481,7 +481,12 @@ fn fuse(result_sets: Vec<Vec<Evidence>>, limit: usize) -> Vec<Evidence> {
         }
     }
     let mut rows = combined.into_values().collect::<Vec<_>>();
-    rows.sort_by(|left, right| right.1.total_cmp(&left.1));
+    rows.sort_by(|left, right| {
+        right
+            .1
+            .total_cmp(&left.1)
+            .then_with(|| left.0.chunk_id.cmp(&right.0.chunk_id))
+    });
     rows.into_iter()
         .take(limit)
         .map(|(mut row, score)| {
@@ -722,6 +727,35 @@ mod tests {
         )
         .expect("wrapped plan");
         assert_eq!(queries, vec!["Who owns deploys?", "release {owner}"]);
+    }
+
+    #[test]
+    fn equal_fusion_scores_are_sorted_by_chunk_id() {
+        let evidence = |chunk_id: &str| Evidence {
+            chunk_id: chunk_id.into(),
+            source: "notes".into(),
+            source_id: chunk_id.into(),
+            title: chunk_id.into(),
+            uri: None,
+            content: "shared context".into(),
+            score: 0.0,
+            semantic_rank: None,
+            lexical_rank: None,
+            updated_at: Utc::now(),
+        };
+
+        let fused = fuse(
+            vec![vec![evidence("chunk-b")], vec![evidence("chunk-a")]],
+            10,
+        );
+
+        assert_eq!(
+            fused
+                .iter()
+                .map(|item| item.chunk_id.as_str())
+                .collect::<Vec<_>>(),
+            ["chunk-a", "chunk-b"]
+        );
     }
 
     #[test]
