@@ -1267,6 +1267,15 @@ function UpdatesSection({
     }
   }
 
+  const openProject = async () => {
+    setError('')
+    try {
+      await openDesktopProject()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to open the Cortana project page')
+    }
+  }
+
   const percent =
     update?.total_bytes && update.total_bytes > 0
       ? Math.min(100, Math.round((update.downloaded_bytes / update.total_bytes) * 100))
@@ -1341,7 +1350,7 @@ function UpdatesSection({
         <pre>{update?.changelog || 'Loading changelog…'}</pre>
       </div>
       {update && (
-        <button type="button" className="link-button" onClick={() => void openDesktopProject()}>
+        <button type="button" className="link-button" onClick={() => void openProject()}>
           View Cortana source on GitHub <ExternalLink size={13} />
         </button>
       )}

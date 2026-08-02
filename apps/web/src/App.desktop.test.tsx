@@ -38,6 +38,8 @@ afterEach(() => {
   state.openSecretFileCalls = 0
   state.embeddingMigrationCalls = []
   state.openUrlCalls = []
+  state.openProjectCalls = 0
+  state.openProjectError = null
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -110,6 +112,8 @@ const state = {
   scheduleSaveCalls: 0,
   serviceRestartCalls: 0,
   openSecretFileCalls: 0,
+  openProjectCalls: 0,
+  openProjectError: null as Error | null,
   serviceAction: null as (() => Promise<DesktopServiceReport>) | null,
   readinessScan: null as
     (() => Promise<Awaited<ReturnType<typeof realApi.scanDesktopReadiness>>>) | null,
@@ -234,6 +238,10 @@ mock.module('./api', () => ({
   openDesktopSecretFile: () => {
     state.openSecretFileCalls += 1
     return Promise.resolve()
+  },
+  openDesktopProject: () => {
+    state.openProjectCalls += 1
+    return state.openProjectError ? Promise.reject(state.openProjectError) : Promise.resolve()
   },
   getDesktopSourceJobs: () => Promise.resolve([]),
   installDesktopServices: () => {
@@ -543,6 +551,24 @@ test('desktop settings navigation opens the audit trail and renders both event s
   // Refreshing keeps the audit list stable.
   fireEvent.click(screen.getByRole('button', { name: /Refresh/ }))
   await waitFor(() => expect(screen.getByText('2 runtime · 1 Desktop events')).toBeTruthy())
+})
+
+test('updates project link surfaces native browser failures', async () => {
+  const originalError = state.openProjectError
+  state.openProjectError = new Error('browser unavailable')
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Updates' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Updates' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'View Cortana source on GitHub' }))
+    await waitFor(() => expect(screen.getByText('browser unavailable')).toBeTruthy())
+    expect(state.openProjectCalls).toBe(1)
+  } finally {
+    state.openProjectError = originalError
+  }
 })
 
 test('desktop shell surfaces optional sidecar health without opening settings', async () => {
