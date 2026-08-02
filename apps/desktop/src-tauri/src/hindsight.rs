@@ -144,8 +144,8 @@ fn sanitize_error(error: &str) -> String {
         .map(|character| if character.is_control() { ' ' } else { character })
         .collect::<String>();
     let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
-    if value.len() > 512 {
-        value[..512].to_string()
+    if value.chars().count() > 512 {
+        value.chars().take(512).collect()
     } else if value.is_empty() {
         "Hindsight health request failed".into()
     } else {
@@ -174,6 +174,10 @@ mod tests {
     fn errors_are_bounded_and_free_of_control_characters() {
         let error = sanitize_error("failed\nwith\rsecret\u{0000}");
         assert_eq!(error, "failed with secret");
-        assert!(sanitize_error(&"x".repeat(600)).len() <= 512);
+        assert_eq!(sanitize_error(&"x".repeat(600)).chars().count(), 512);
+        // Truncation is character-safe even when the boundary falls inside a
+        // multibyte UTF-8 code point.
+        let unicode = format!("{}éé", "x".repeat(511));
+        assert_eq!(sanitize_error(&unicode).chars().count(), 512);
     }
 }
