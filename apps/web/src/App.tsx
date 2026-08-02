@@ -392,7 +392,7 @@ export function App() {
       disposed = true
       window.clearInterval(timer)
     }
-  }, [desktopSettings])
+  }, [])
 
   useEffect(() => {
     if (!isDesktopApp || !desktopSettings) return
@@ -1029,6 +1029,12 @@ export function App() {
           onReadinessScan={runReadinessScan}
           desktopUpdate={desktopUpdate}
           onDesktopUpdate={setDesktopUpdate}
+          services={desktopServices}
+          onServices={setDesktopServices}
+          servicesError={desktopServicesError}
+          onServicesError={setDesktopServicesError}
+          desktopInfo={desktopInfo}
+          onDesktopInfo={setDesktopInfo}
           serviceActivity={serviceActivity}
           onServiceActivity={setServiceActivity}
           hindsightStatus={hindsightStatus}

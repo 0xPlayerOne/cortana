@@ -23,6 +23,7 @@ afterEach(() => {
   window.localStorage.removeItem('cortana.source-selection.v1')
   state.getDocumentsCalls = []
   state.saveSettingsCalls = 0
+  state.getDesktopServicesCalls = 0
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -78,6 +79,7 @@ const state = {
     cursor: string | null | undefined
   }>,
   statusCalls: 0,
+  getDesktopServicesCalls: 0,
   saveSettingsCalls: 0,
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
@@ -164,7 +166,10 @@ mock.module('./api', () => ({
     return Promise.resolve(state.settings)
   },
   getDesktopInfo: () => Promise.resolve(desktopInfo),
-  getDesktopServices: () => Promise.resolve(serviceReport),
+  getDesktopServices: () => {
+    state.getDesktopServicesCalls += 1
+    return Promise.resolve(serviceReport)
+  },
   getDesktopSourceJobs: () => Promise.resolve([]),
   installDesktopServices: () => {
     state.serviceInstallCalls += 1
@@ -659,6 +664,19 @@ test('services settings offers an explicit safe core-service install', async () 
   } finally {
     window.confirm = originalConfirm
   }
+})
+
+test('services settings reuses the shell service snapshot without a duplicate poll', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+  await waitFor(() => expect(state.getDesktopServicesCalls).toBe(1))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+
+  expect(state.getDesktopServicesCalls).toBe(1)
 })
 
 test('service activity survives leaving Settings while a native action is running', async () => {

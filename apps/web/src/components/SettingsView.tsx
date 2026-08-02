@@ -107,6 +107,12 @@ export function SettingsView({
   onReadinessScan,
   desktopUpdate: externalDesktopUpdate,
   onDesktopUpdate,
+  services: externalServices,
+  onServices,
+  servicesError: externalServicesError,
+  onServicesError,
+  desktopInfo: externalDesktopInfo,
+  onDesktopInfo,
   serviceActivity,
   onServiceActivity,
   hindsightStatus: externalHindsightStatus,
@@ -139,6 +145,13 @@ export function SettingsView({
   /** Optional shell-owned updater snapshot shared across Settings mounts. */
   desktopUpdate?: DesktopUpdate | null
   onDesktopUpdate?: (update: DesktopUpdate) => void
+  /** Shell-owned service status shared with the tray/health indicator. */
+  services?: DesktopServiceReport | null
+  onServices?: (report: DesktopServiceReport) => void
+  servicesError?: string
+  onServicesError?: (error: string) => void
+  desktopInfo?: DesktopInfo | null
+  onDesktopInfo?: (info: DesktopInfo) => void
   /** Shell-owned service action status shared across Settings mounts. */
   serviceActivity?: DesktopServiceActivity | null
   onServiceActivity?: (activity: DesktopServiceActivity | null) => void
@@ -357,6 +370,12 @@ export function SettingsView({
           {section === 'services' && (
             <ServicesSection
               settings={settings}
+              services={externalServices}
+              onServices={onServices}
+              servicesError={externalServicesError}
+              onServicesError={onServicesError}
+              desktopInfo={externalDesktopInfo}
+              onDesktopInfo={onDesktopInfo}
               serviceActivity={serviceActivity}
               onServiceActivity={onServiceActivity}
               onRestarted={() =>
@@ -578,47 +597,69 @@ function SetupGuide({
 
 function ServicesSection({
   settings,
+  services: externalServices,
+  onServices,
+  servicesError: externalServicesError,
+  onServicesError,
+  desktopInfo: externalDesktopInfo,
+  onDesktopInfo,
   serviceActivity,
   onServiceActivity,
   onRestarted,
 }: {
   settings: DesktopSettings
+  services?: DesktopServiceReport | null
+  onServices?: (report: DesktopServiceReport) => void
+  servicesError?: string
+  onServicesError?: (error: string) => void
+  desktopInfo?: DesktopInfo | null
+  onDesktopInfo?: (info: DesktopInfo) => void
   serviceActivity?: DesktopServiceActivity | null
   onServiceActivity?: (activity: DesktopServiceActivity | null) => void
   onRestarted?: () => void
 }) {
-  const [report, setReport] = useState<DesktopServiceReport | null>(null)
-  const [info, setInfo] = useState<DesktopInfo | null>(null)
+  const [localReport, setLocalReport] = useState<DesktopServiceReport | null>(null)
+  const report = externalServices === undefined ? localReport : externalServices
+  const setReport = onServices ?? setLocalReport
+  const [localInfo, setLocalInfo] = useState<DesktopInfo | null>(null)
+  const info = externalDesktopInfo === undefined ? localInfo : externalDesktopInfo
+  const setInfo = onDesktopInfo ?? setLocalInfo
   const [busy, setBusy] = useState('')
-  const [error, setError] = useState('')
+  const [localError, setLocalError] = useState('')
+  const error = localError || externalServicesError || ''
   const refreshInFlightRef = useRef(false)
   const mountedRef = useRef(true)
 
   const refresh = async () => {
     if (refreshInFlightRef.current) return
     refreshInFlightRef.current = true
-    setError('')
+    setLocalError('')
     try {
       const [nextReport, nextInfo] = await Promise.all([getDesktopServices(), getDesktopInfo()])
       if (!mountedRef.current) return
       setReport(nextReport)
       setInfo(nextInfo)
+      onServicesError?.('')
     } catch (caught) {
       if (!mountedRef.current) return
-      setError(caught instanceof Error ? caught.message : 'Service status could not be loaded')
+      const message =
+        caught instanceof Error ? caught.message : 'Service status could not be loaded'
+      setLocalError(message)
+      onServicesError?.(message)
     } finally {
       refreshInFlightRef.current = false
     }
   }
 
   useEffect(() => {
+    if (externalServices !== undefined) return
     void refresh()
     const timer = window.setInterval(() => void refresh(), 15_000)
     return () => {
       mountedRef.current = false
       window.clearInterval(timer)
     }
-  }, [])
+  }, [externalServices])
 
   const serviceAction = async (
     service: DesktopServiceReport['services'][number],
@@ -630,7 +671,7 @@ function ServicesSection({
         : ''
     if (!window.confirm(`${action} ${service.label}?${warning}`)) return
     setBusy(`${service.name}:${action}`)
-    setError('')
+    setLocalError('')
     onServiceActivity?.({
       target: service.name,
       action,
@@ -647,7 +688,7 @@ function ServicesSection({
       })
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Service action failed'
-      setError(message)
+      setLocalError(message)
       onServiceActivity?.({
         target: service.name,
         action,
@@ -661,11 +702,13 @@ function ServicesSection({
 
   const toggleAutostart = async (enabled: boolean) => {
     setBusy('autostart')
-    setError('')
+    setLocalError('')
     try {
       setInfo(await setDesktopAutostart(enabled))
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Desktop autostart could not be changed')
+      setLocalError(
+        caught instanceof Error ? caught.message : 'Desktop autostart could not be changed'
+      )
     } finally {
       setBusy('')
     }
@@ -680,7 +723,7 @@ function ServicesSection({
       return
     }
     setBusy(`all:${action}`)
-    setError('')
+    setLocalError('')
     onServiceActivity?.({ target: 'core services', action, status: 'running', detail: null })
     try {
       setReport(await runDesktopServicesActionAll(action))
@@ -688,7 +731,7 @@ function ServicesSection({
       if (action === 'restart') onRestarted?.()
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Whole-app service action failed'
-      setError(message)
+      setLocalError(message)
       onServiceActivity?.({
         target: 'core services',
         action,
@@ -709,7 +752,7 @@ function ServicesSection({
       return
     }
     setBusy('install')
-    setError('')
+    setLocalError('')
     onServiceActivity?.({
       target: 'core services',
       action: 'install',
@@ -727,7 +770,7 @@ function ServicesSection({
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : 'Cortana services could not be installed'
-      setError(message)
+      setLocalError(message)
       onServiceActivity?.({
         target: 'core services',
         action: 'install',
@@ -2910,9 +2953,7 @@ function SourcesSection({
                 type="button"
                 disabled={!canValidate || Boolean(activeJob)}
                 onClick={() => {
-                  const source = settings.sources.find(
-                    (item) => item.name === observedJob.source
-                  )
+                  const source = settings.sources.find((item) => item.name === observedJob.source)
                   if (source) {
                     if (observedJob.operation === 'authorization') void authorizeSource(source)
                     else if (observedJob.operation === 'trial-sync') void trialSyncSource(source)
