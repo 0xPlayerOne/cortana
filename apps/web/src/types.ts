@@ -233,6 +233,18 @@ export type HindsightSettings = {
   wired_to_ingestion: boolean
 }
 
+export type HonchoSettings = {
+  enabled: boolean
+  provider: 'honcho'
+  base_url: string
+  workspace_id: string
+  peer_id: string
+  session_prefix: string
+  token_env: string | null
+  optional: boolean
+  wired_to_ingestion: boolean
+}
+
 export type AuthPrincipalSettings = {
   principal: string
   token_env: string
@@ -251,6 +263,7 @@ export type DesktopSettings = {
   embedding: EmbeddingSettings
   query: QuerySettings
   hindsight: HindsightSettings
+  honcho: HonchoSettings
   ingestion: {
     max_documents_per_source: number
     max_bytes_per_source: number
@@ -278,6 +291,7 @@ export type DesktopSettingsUpdate = Pick<
   | 'embedding'
   | 'query'
   | 'hindsight'
+  | 'honcho'
   | 'ingestion'
   | 'runtime'
 > & {

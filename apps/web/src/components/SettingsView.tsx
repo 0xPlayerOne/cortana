@@ -83,6 +83,7 @@ type Section =
   | 'embedding'
   | 'query'
   | 'hindsight'
+  | 'honcho'
   | 'ingestion'
   | 'advanced'
 
@@ -142,6 +143,7 @@ export function SettingsView({
         embedding: settings.embedding,
         query: settings.query,
         hindsight: settings.hindsight,
+        honcho: settings.honcho,
         ingestion: settings.ingestion,
         runtime: settings.runtime,
         secrets: [
@@ -218,6 +220,7 @@ export function SettingsView({
               'embedding',
               'query',
               'hindsight',
+              'honcho',
               'ingestion',
               'advanced',
             ] as Section[]
@@ -325,6 +328,25 @@ export function SettingsView({
           )}
           {section === 'hindsight' && (
             <HindsightSection
+              settings={settings}
+              secretValues={secretValues}
+              onSecret={(values) => {
+                setSecretValues(values)
+                setDirty(true)
+                setSaved(false)
+              }}
+              clearedSecrets={clearedSecrets}
+              onClearSecret={(name) => {
+                setClearedSecrets((current) => new Set(current).add(name))
+                setSecretValues((current) => ({ ...current, [name]: '' }))
+                setDirty(true)
+                setSaved(false)
+              }}
+              update={update}
+            />
+          )}
+          {section === 'honcho' && (
+            <HonchoSection
               settings={settings}
               secretValues={secretValues}
               onSecret={(values) => {
@@ -883,6 +905,143 @@ function HindsightSection({
               statusSource?.configured &&
               !clearedSecrets.has(statusSource.name) && (
                 <button type="button" onClick={() => onClearSecret(settings.hindsight.token_env!)}>
+                  Clear
+                </button>
+              )}
+          </div>
+        </Field>
+      </div>
+    </SettingsSection>
+  )
+}
+
+function HonchoSection({
+  settings,
+  update,
+  secretValues,
+  onSecret,
+  clearedSecrets,
+  onClearSecret,
+}: SettingsSectionProps & {
+  settings: DesktopSettings
+  secretValues: Record<string, string>
+  onSecret: (values: Record<string, string>) => void
+  clearedSecrets: Set<string>
+  onClearSecret: (name: string) => void
+}) {
+  const setHoncho = (honcho: DesktopSettings['honcho']) =>
+    update((current) => ({ ...current, honcho }))
+  const statusSource = settings.honcho.token_env
+    ? settings.secrets.find((item) => item.name === settings.honcho.token_env)
+    : undefined
+
+  return (
+    <SettingsSection
+      title="Honcho memory sidecar"
+      description="Optional session memory for deliberately selected agent episodes. It is not the source of truth and is never wired into normal ingestion by default."
+    >
+      <div className="form-grid">
+        <label className="form-field">
+          <span>Adapter status</span>
+          <input type="text" value="Optional sidecar" disabled />
+          <small>
+            Saving records configuration only; it does not copy the corpus or start a worker.
+          </small>
+        </label>
+        <label className="form-field">
+          <span>Ingestion integration</span>
+          <input
+            type="text"
+            value={settings.honcho.wired_to_ingestion ? 'Enabled' : 'Disabled'}
+            disabled
+          />
+          <small>Normal source sync remains unchanged.</small>
+        </label>
+        <label className="form-field">
+          <span>Enabled</span>
+          <input
+            type="checkbox"
+            checked={settings.honcho.enabled}
+            onChange={(event) => setHoncho({ ...settings.honcho, enabled: event.target.checked })}
+          />
+        </label>
+      </div>
+      <div className="safety-note" role="status">
+        Honcho uses one deterministic session per retained Cortana document so deletion can remove
+        only that document. Keep it disabled until the evaluation, ACL, deletion, and export gates
+        pass.
+      </div>
+      <Field label="Provider" hint="Honcho currently supports only its v3 HTTP API.">
+        <select value={settings.honcho.provider} disabled>
+          <option value="honcho">honcho</option>
+        </select>
+      </Field>
+      <div className="form-grid">
+        <Field label="Endpoint" wide>
+          <input
+            type="url"
+            value={settings.honcho.base_url}
+            onChange={(event) => setHoncho({ ...settings.honcho, base_url: event.target.value })}
+            required
+          />
+        </Field>
+        <Field label="Workspace ID" hint="letters, numbers, dots, dashes, or underscores">
+          <input
+            value={settings.honcho.workspace_id}
+            onChange={(event) =>
+              setHoncho({ ...settings.honcho, workspace_id: event.target.value })
+            }
+            pattern="[A-Za-z0-9._-]{1,128}"
+            maxLength={128}
+            required
+          />
+        </Field>
+        <Field label="Peer ID" hint="the Honcho agent peer identity">
+          <input
+            value={settings.honcho.peer_id}
+            onChange={(event) => setHoncho({ ...settings.honcho, peer_id: event.target.value })}
+            pattern="[A-Za-z0-9._-]{1,128}"
+            maxLength={128}
+            required
+          />
+        </Field>
+        <Field label="Session prefix" hint="stable namespace prefix for per-document sessions">
+          <input
+            value={settings.honcho.session_prefix}
+            onChange={(event) =>
+              setHoncho({ ...settings.honcho, session_prefix: event.target.value })
+            }
+            pattern="[A-Za-z0-9._-]{1,128}"
+            maxLength={128}
+            required
+          />
+        </Field>
+        <Field label="Token environment variable">
+          <input
+            value={settings.honcho.token_env || ''}
+            onChange={(event) =>
+              setHoncho({ ...settings.honcho, token_env: event.target.value || null })
+            }
+            pattern="[A-Z_][A-Z0-9_]*"
+            placeholder="CORTANA_HONCHO_TOKEN"
+          />
+        </Field>
+        <Field label="New token" hint="write-only; leave blank to retain">
+          <div className="secret-input">
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={settings.honcho.token_env ? secretValues[settings.honcho.token_env] || '' : ''}
+              disabled={!settings.honcho.token_env}
+              onChange={(event) => {
+                if (!settings.honcho.token_env) return
+                onSecret({ ...secretValues, [settings.honcho.token_env]: event.target.value })
+              }}
+            />
+            {settings.honcho.token_env &&
+              statusSource?.configured &&
+              !clearedSecrets.has(statusSource.name) && (
+                <button type="button" onClick={() => onClearSecret(settings.honcho.token_env!)}>
                   Clear
                 </button>
               )}

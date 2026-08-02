@@ -251,3 +251,22 @@ test('hindsight status section remains explicit about being optional', async () 
   fireEvent.click(screen.getByRole('button', { name: 'Check connection' }))
   await waitFor(() => expect(screen.getByText(/Health: disabled/)).toBeTruthy())
 })
+
+test('honcho settings section exposes a disabled-by-default session sidecar', async () => {
+  render(<App />)
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Honcho' }))
+  expect(screen.getByText('Honcho memory sidecar')).toBeTruthy()
+  expect(screen.getByText(/not the source of truth/i)).toBeTruthy()
+  expect(screen.getByDisplayValue('https://api.honcho.dev')).toBeTruthy()
+  expect(screen.getByDisplayValue('default')).toBeTruthy()
+  expect(screen.getAllByDisplayValue('cortana')).toHaveLength(2)
+  expect(screen.getByLabelText('Enabled')).toBeTruthy()
+})

@@ -131,6 +131,17 @@ export const desktopSettings: DesktopSettings = {
     optional: true,
     wired_to_ingestion: false,
   },
+  honcho: {
+    enabled: false,
+    provider: 'honcho',
+    base_url: 'https://api.honcho.dev',
+    workspace_id: 'default',
+    peer_id: 'cortana',
+    session_prefix: 'cortana',
+    token_env: null,
+    optional: true,
+    wired_to_ingestion: false,
+  },
   ingestion: {
     max_documents_per_source: 2000,
     max_bytes_per_source: 134217728,

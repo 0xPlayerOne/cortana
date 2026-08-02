@@ -86,6 +86,36 @@ pub struct HindsightSettings {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct HonchoSettings {
+    pub enabled: bool,
+    pub provider: String,
+    pub base_url: String,
+    pub workspace_id: String,
+    pub peer_id: String,
+    pub session_prefix: String,
+    pub token_env: Option<String>,
+    pub optional: bool,
+    pub wired_to_ingestion: bool,
+}
+
+impl Default for HonchoSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: "honcho".into(),
+            base_url: "https://api.honcho.dev".into(),
+            workspace_id: "default".into(),
+            peer_id: "cortana".into(),
+            session_prefix: "cortana".into(),
+            token_env: None,
+            optional: true,
+            wired_to_ingestion: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct IngestionSettings {
     pub max_documents_per_source: usize,
     pub max_bytes_per_source: u64,
@@ -153,6 +183,7 @@ pub struct SettingsUpdate {
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
     pub hindsight: HindsightSettings,
+    pub honcho: HonchoSettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
     #[serde(default)]
@@ -178,6 +209,7 @@ pub struct SettingsSnapshot {
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
     pub hindsight: HindsightSettings,
+    pub honcho: HonchoSettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
     pub secrets: Vec<SecretState>,
@@ -192,6 +224,8 @@ pub struct PortableSettings {
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
     pub hindsight: HindsightSettings,
+    #[serde(default)]
+    pub honcho: HonchoSettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
 }
@@ -451,6 +485,7 @@ fn export_portable_at(config_path: &Path, path: &Path) -> Result<PortableExport,
         embedding: snapshot.embedding,
         query: snapshot.query,
         hindsight: snapshot.hindsight,
+        honcho: snapshot.honcho,
         ingestion: snapshot.ingestion,
         runtime: snapshot.runtime,
     };
@@ -556,6 +591,7 @@ impl PortableSettings {
             embedding: self.embedding,
             query: self.query,
             hindsight: self.hindsight,
+            honcho: self.honcho,
             ingestion: self.ingestion,
             runtime: self.runtime,
             secrets: Vec::new(),
@@ -570,6 +606,7 @@ impl PortableSettings {
             embedding: update.embedding,
             query: update.query,
             hindsight: update.hindsight,
+            honcho: update.honcho,
             ingestion: update.ingestion,
             runtime: update.runtime,
         }
@@ -589,10 +626,12 @@ fn snapshot(
     let embedding_api_key_env = optional_string(root, "embedding", "api_key_env");
     let query_api_key_env = optional_string(root, "query", "api_key_env");
     let hindsight_token_env = optional_string(root, "hindsight", "token_env");
+    let honcho_token_env = optional_string(root, "honcho", "token_env");
     let mut secret_names = BTreeSet::new();
     secret_names.extend(embedding_api_key_env.iter().cloned());
     secret_names.extend(query_api_key_env.iter().cloned());
     secret_names.extend(hindsight_token_env.iter().cloned());
+    secret_names.extend(honcho_token_env.iter().cloned());
     secret_names.extend(
         sources
             .iter()
@@ -665,6 +704,17 @@ fn snapshot(
             token_env: optional_string(root, "hindsight", "token_env"),
             optional: bool_value(root, "hindsight", "optional", true),
             wired_to_ingestion: bool_value(root, "hindsight", "wired_to_ingestion", false),
+        },
+        honcho: HonchoSettings {
+            enabled: bool_value(root, "honcho", "enabled", false),
+            provider: string(root, "honcho", "provider", "honcho"),
+            base_url: string(root, "honcho", "base_url", "https://api.honcho.dev"),
+            workspace_id: string(root, "honcho", "workspace_id", "default"),
+            peer_id: string(root, "honcho", "peer_id", "cortana"),
+            session_prefix: string(root, "honcho", "session_prefix", "cortana"),
+            token_env: honcho_token_env,
+            optional: bool_value(root, "honcho", "optional", true),
+            wired_to_ingestion: bool_value(root, "honcho", "wired_to_ingestion", false),
         },
         ingestion: IngestionSettings {
             max_documents_per_source: usize_value(
@@ -995,6 +1045,31 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
     }
     validate_optional_env(&update.hindsight.token_env)?;
 
+    if update.honcho.provider != "honcho" {
+        return Err("honcho provider must be `honcho`".into());
+    }
+    if !update.honcho.optional {
+        return Err("honcho is fixed as optional and cannot be changed".into());
+    }
+    if update.honcho.wired_to_ingestion {
+        return Err("honcho cannot be wired into normal ingestion by default".into());
+    }
+    update.honcho.base_url = update.honcho.base_url.trim().to_string();
+    update.honcho.workspace_id = update.honcho.workspace_id.trim().to_string();
+    update.honcho.peer_id = update.honcho.peer_id.trim().to_string();
+    update.honcho.session_prefix = update.honcho.session_prefix.trim().to_string();
+    if update.honcho.enabled && update.honcho.token_env.is_none() {
+        return Err("honcho enabled requires a token environment variable".into());
+    }
+    if update.honcho.base_url.is_empty() {
+        update.honcho.base_url = "https://api.honcho.dev".into();
+    }
+    validate_hindsight_url("honcho", &update.honcho.base_url)?;
+    validate_honcho_identifier("honcho workspace", &update.honcho.workspace_id)?;
+    validate_honcho_identifier("honcho peer", &update.honcho.peer_id)?;
+    validate_honcho_identifier("honcho session prefix", &update.honcho.session_prefix)?;
+    validate_optional_env(&update.honcho.token_env)?;
+
     bounded(
         "documents per source",
         update.ingestion.max_documents_per_source,
@@ -1183,6 +1258,16 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
     set_optional_string(root, "hindsight", "token_env", &update.hindsight.token_env);
     set_bool(root, "hindsight", "optional", update.hindsight.optional);
     set_bool(root, "hindsight", "wired_to_ingestion", update.hindsight.wired_to_ingestion);
+
+    set_string(root, "honcho", "provider", &update.honcho.provider);
+    set_bool(root, "honcho", "enabled", update.honcho.enabled);
+    set_string(root, "honcho", "base_url", &update.honcho.base_url);
+    set_string(root, "honcho", "workspace_id", &update.honcho.workspace_id);
+    set_string(root, "honcho", "peer_id", &update.honcho.peer_id);
+    set_string(root, "honcho", "session_prefix", &update.honcho.session_prefix);
+    set_optional_string(root, "honcho", "token_env", &update.honcho.token_env);
+    set_bool(root, "honcho", "optional", update.honcho.optional);
+    set_bool(root, "honcho", "wired_to_ingestion", update.honcho.wired_to_ingestion);
 
     for (key, value) in [
         (
@@ -1430,6 +1515,7 @@ fn validate_mutable_sections(root: &Table) -> Result<(), String> {
         "connectors",
         "auth",
         "runtime",
+        "honcho",
     ] {
         if root.get(section).is_some_and(|value| !value.is_table()) {
             return Err(format!("settings section `{section}` must be a TOML table"));
@@ -2074,6 +2160,20 @@ fn validate_hindsight_bank(value: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_honcho_identifier(name: &str, value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+        })
+    {
+        return Err(format!(
+            "{name} must be 1-128 letters, numbers, dots, dashes, or underscores"
+        ));
+    }
+    Ok(())
+}
+
 fn validate_optional_env(value: &Option<String>) -> Result<(), String> {
     if let Some(value) = value {
         validate_env_name(value)?;
@@ -2371,6 +2471,17 @@ mod tests {
                 optional: true,
                 wired_to_ingestion: false,
             },
+            honcho: HonchoSettings {
+                enabled: false,
+                provider: "honcho".into(),
+                base_url: "https://api.honcho.dev".into(),
+                workspace_id: "default".into(),
+                peer_id: "cortana".into(),
+                session_prefix: "cortana".into(),
+                token_env: Some("CORTANA_HONCHO_TOKEN".into()),
+                optional: true,
+                wired_to_ingestion: false,
+            },
             ingestion: IngestionSettings {
                 max_documents_per_source: 2000,
                 max_bytes_per_source: 128 * 1024 * 1024,
@@ -2399,6 +2510,11 @@ mod tests {
                     value: Some("hindsight-secret".into()),
                     clear: false,
                 },
+                SecretUpdate {
+                    name: "CORTANA_HONCHO_TOKEN".into(),
+                    value: Some("honcho-secret".into()),
+                    clear: false,
+                },
             ],
         }
     }
@@ -2422,14 +2538,17 @@ mod tests {
         assert!(secret_names.contains(&"CORTANA_QUERY_API_KEY"));
         assert!(secret_names.contains(&"CORTANA_WORK_AGENT_TOKEN"));
         assert!(secret_names.contains(&"CORTANA_HINDSIGHT_TOKEN"));
+        assert!(secret_names.contains(&"CORTANA_HONCHO_TOKEN"));
         assert!(!format!("{state:?}").contains("not-returned"));
         assert!(!format!("{state:?}").contains("private-bearer"));
         assert!(!format!("{state:?}").contains("hindsight-secret"));
+        assert!(!format!("{state:?}").contains("honcho-secret"));
         let secret_body =
             fs::read_to_string(temp.path().join("config/secrets.env")).expect("secret file");
         assert!(secret_body.contains("CORTANA_QUERY_API_KEY=not-returned"));
         assert!(secret_body.contains("CORTANA_WORK_AGENT_TOKEN=private-bearer"));
         assert!(secret_body.contains("CORTANA_HINDSIGHT_TOKEN=hindsight-secret"));
+        assert!(secret_body.contains("CORTANA_HONCHO_TOKEN=honcho-secret"));
         assert_eq!(
             bearer_for_scope_at(&store.config_path, "query").expect("query bearer"),
             Some("private-bearer".into())
@@ -2531,6 +2650,23 @@ mod tests {
         let mut update = valid_update(temp.path());
         update.hindsight.token_env = Some("bad-env".into());
         assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.honcho.enabled = true;
+        update.honcho.token_env = None;
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.honcho.base_url = "http://honcho.example/v3".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.honcho.workspace_id = "work space".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.honcho.provider = "openai".into();
+        assert!(validate_update(&mut update).is_err());
     }
 
     #[test]
@@ -2583,6 +2719,14 @@ mod tests {
         assert_eq!(state.hindsight.bank, "default");
         assert!(state.hindsight.optional);
         assert!(!state.hindsight.wired_to_ingestion);
+        assert!(!state.honcho.enabled);
+        assert_eq!(state.honcho.provider, "honcho");
+        assert_eq!(state.honcho.base_url, "https://api.honcho.dev");
+        assert_eq!(state.honcho.workspace_id, "default");
+        assert_eq!(state.honcho.peer_id, "cortana");
+        assert_eq!(state.honcho.session_prefix, "cortana");
+        assert!(state.honcho.optional);
+        assert!(!state.honcho.wired_to_ingestion);
 
         fs::create_dir_all(store.config_path.parent().expect("config parent"))
             .expect("config directory");

@@ -64,7 +64,7 @@ export function App() {
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null)
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null)
   const [settingsSection, setSettingsSection] = useState<
-    'readiness' | 'updates' | 'sources' | 'hindsight'
+    'readiness' | 'updates' | 'sources' | 'hindsight' | 'honcho'
   >('readiness')
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
