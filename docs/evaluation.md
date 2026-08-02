@@ -39,7 +39,9 @@ cortana readiness \
 It checks the live API liveness endpoint, embedding probe, embedding/index generation compatibility,
 SQLite integrity, backup freshness, query mode, and recurring-sync installation state. A mismatch
 is reported with the index and configured fingerprints instead of silently rebuilding or mixing
-vectors. It never invokes a connector, starts a sync, or writes indexed content. The safe default
-fails when a recurring sync service is installed.
+vectors. The JSON also exposes `embedding_generation.stored` and
+`embedding_generation.configured` so Desktop can offer the same explicit, confirmation-gated
+adoption path. It never invokes a connector, starts a sync, or writes indexed content. The safe
+default fails when a recurring sync service is installed.
 After every source has been explicitly validated, `--allow-sync-service` records that operational
 acknowledgement for the check; it does not install or start the service.
