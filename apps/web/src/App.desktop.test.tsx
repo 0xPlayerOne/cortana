@@ -25,6 +25,7 @@ afterEach(() => {
   state.saveSettingsCalls = 0
   state.getDesktopServicesCalls = 0
   state.getDesktopSettingsCalls = 0
+  state.getDesktopUpdateCalls = 0
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -82,6 +83,7 @@ const state = {
   statusCalls: 0,
   getDesktopSettingsCalls: 0,
   getDesktopServicesCalls: 0,
+  getDesktopUpdateCalls: 0,
   saveSettingsCalls: 0,
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
@@ -209,7 +211,10 @@ mock.module('./api', () => ({
     }),
   getRuntimeAudit: (limit: number) => Promise.resolve(runtimeAuditEvents.slice(0, limit)),
   getDesktopAudit: (limit: number) => Promise.resolve(desktopAuditEvents.slice(0, limit)),
-  getDesktopUpdate: () => Promise.resolve(desktopUpdate),
+  getDesktopUpdate: () => {
+    state.getDesktopUpdateCalls += 1
+    return Promise.resolve(desktopUpdate)
+  },
   scanDesktopReadiness: () =>
     state.readinessScan
       ? state.readinessScan()
@@ -693,6 +698,19 @@ test('settings view reuses the shell settings snapshot without a duplicate read'
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
 
   expect(state.getDesktopSettingsCalls).toBe(1)
+})
+
+test('updates settings reuses the shell updater snapshot without a duplicate read', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+  await waitFor(() => expect(state.getDesktopUpdateCalls).toBe(1))
+
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Updates' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Updates' })).toBeTruthy())
+
+  expect(state.getDesktopUpdateCalls).toBe(1)
 })
 
 test('service activity survives leaving Settings while a native action is running', async () => {

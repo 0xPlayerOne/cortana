@@ -1028,7 +1028,7 @@ export function App() {
           onReadiness={setDesktopReadiness}
           readinessActivity={readinessActivity}
           onReadinessScan={runReadinessScan}
-          desktopUpdate={desktopUpdate}
+          desktopUpdate={desktopUpdate ?? undefined}
           onDesktopUpdate={setDesktopUpdate}
           services={desktopServices}
           onServices={setDesktopServices}
