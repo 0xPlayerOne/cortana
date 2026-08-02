@@ -43,7 +43,7 @@ pub fn filesystem_plan(
         .git_global(true)
         .git_exclude(true)
         .filter_entry(move |entry| {
-            !is_generated(entry.path())
+            !is_generated(entry.path(), &filter_root)
                 && !is_excluded(entry.path(), &filter_root, &filter_excludes)
         })
         .build()
@@ -108,7 +108,7 @@ pub fn filesystem_document_iter(
         .git_global(true)
         .git_exclude(true)
         .filter_entry(move |entry| {
-            !is_generated(entry.path())
+            !is_generated(entry.path(), &filter_root)
                 && !is_excluded(entry.path(), &filter_root, &filter_excludes)
         })
         .build()
@@ -178,7 +178,7 @@ fn is_text(path: &Path) -> bool {
         .is_some_and(|extension| TEXT_EXTENSIONS.contains(&extension.to_lowercase().as_str()))
 }
 
-fn is_generated(path: &Path) -> bool {
+fn is_generated(path: &Path, root: &Path) -> bool {
     const SKIP: &[&str] = &[
         ".git",
         ".worktrees",
@@ -190,7 +190,9 @@ fn is_generated(path: &Path) -> bool {
         "node_modules",
         "target",
     ];
-    path.components()
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .components()
         .filter_map(|component| component.as_os_str().to_str())
         .any(|component| SKIP.contains(&component))
 }
@@ -245,5 +247,18 @@ mod tests {
         let error = filesystem_plan(directory.path(), &[], 1, 1_000, Duration::from_secs(5))
             .expect_err("document budget");
         assert!(error.to_string().contains("1 document budget"));
+    }
+
+    #[test]
+    fn filesystem_source_allows_a_root_named_after_a_generated_directory() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let root = directory.path().join("target").join("project");
+        std::fs::create_dir_all(&root).expect("source root");
+        std::fs::write(root.join("keep.rs"), "fn keep() {}").expect("source file");
+
+        let documents = filesystem_documents(&root, "code", "work").expect("documents");
+
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].source_id, "keep.rs");
     }
 }
