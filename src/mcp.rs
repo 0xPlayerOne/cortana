@@ -134,7 +134,11 @@ impl BrainServer {
             );
             return "authorization error: query scope required".into();
         }
-        if let Err(error) = validate_scopes(params.project.as_deref(), params.source.as_deref()) {
+        if let Err(error) = validate_request(
+            &params.query,
+            params.project.as_deref(),
+            params.source.as_deref(),
+        ) {
             self.audit(
                 "mcp.search",
                 params.project.as_deref(),
@@ -151,7 +155,10 @@ impl BrainServer {
             &params.query,
             params.project.as_deref(),
             params.source.as_deref(),
-            params.limit.unwrap_or(10),
+            params
+                .limit
+                .unwrap_or(10)
+                .clamp(1, retrieval::MAX_RESULT_LIMIT),
             &self.principal.acl_labels(),
         )
         .await
@@ -197,7 +204,11 @@ impl BrainServer {
             );
             return "authorization error: query scope required".into();
         }
-        if let Err(error) = validate_scopes(params.project.as_deref(), params.source.as_deref()) {
+        if let Err(error) = validate_request(
+            &params.query,
+            params.project.as_deref(),
+            params.source.as_deref(),
+        ) {
             self.audit(
                 "mcp.context",
                 params.project.as_deref(),
@@ -214,7 +225,10 @@ impl BrainServer {
             &params.query,
             params.project.as_deref(),
             params.source.as_deref(),
-            params.limit.unwrap_or(20),
+            params
+                .limit
+                .unwrap_or(20)
+                .clamp(1, retrieval::MAX_RESULT_LIMIT),
             &self.principal.acl_labels(),
         )
         .await
@@ -327,7 +341,7 @@ impl BrainServer {
             );
             return "authorization error: query scope required".into();
         }
-        if let Err(error) = validate_scopes(params.project.as_deref(), None) {
+        if let Err(error) = validate_request(&params.query, params.project.as_deref(), None) {
             self.audit(
                 action,
                 params.project.as_deref(),
@@ -431,6 +445,23 @@ fn validate_scopes(project: Option<&str>, source: Option<&str>) -> Result<(), St
         }
     }
     Ok(())
+}
+
+fn validate_request(
+    query: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+) -> Result<(), String> {
+    if query.trim().is_empty() {
+        return Err("query must not be empty".into());
+    }
+    if query.len() > retrieval::MAX_QUERY_BYTES {
+        return Err(format!(
+            "query exceeds {} bytes",
+            retrieval::MAX_QUERY_BYTES
+        ));
+    }
+    validate_scopes(project, source)
 }
 
 pub async fn serve(server: BrainServer) -> anyhow::Result<()> {
@@ -620,5 +651,19 @@ mod tests {
             serde_json::from_str::<SearchParams>(r#"{"query":"work","unexpected":"field"}"#)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn mcp_requests_reject_empty_and_oversized_queries() {
+        assert_eq!(
+            validate_request(" \n\t", None, None).expect_err("blank query"),
+            "query must not be empty"
+        );
+        assert!(
+            validate_request(&"x".repeat(retrieval::MAX_QUERY_BYTES + 1), None, None)
+                .expect_err("oversized query")
+                .contains("query exceeds")
+        );
+        assert!(validate_request("work", Some("engineering"), Some("notes")).is_ok());
     }
 }
