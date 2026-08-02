@@ -259,6 +259,30 @@ test('services settings offers an explicit safe core-service install', async () 
   }
 })
 
+test('services settings surfaces a non-zero last exit as a failed service', async () => {
+  const original = serviceReport.services[1]
+  serviceReport.services[1] = {
+    ...original,
+    installed: true,
+    loaded: true,
+    state: 'exited',
+    last_exit_status: 1,
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByText(/last exit 1/)).toBeTruthy())
+    expect(screen.getByText(/exited/)).toBeTruthy()
+  } finally {
+    serviceReport.services[1] = original
+  }
+})
+
 test('Google source settings expose env-backed token credentials', async () => {
   state.settings = { ...desktopSettings, sources: [googleSource] }
   try {

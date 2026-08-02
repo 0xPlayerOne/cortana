@@ -611,10 +611,11 @@ function ServicesSection() {
       <div className="service-grid">
         {report?.services.map((service) => {
           const running = service.loaded && service.state === 'running'
+          const failed = service.last_exit_status !== null && service.last_exit_status !== 0
           return (
             <article className="service-card" key={service.name}>
               <header>
-                <i className={`service-state ${running ? 'ready' : ''}`} />
+                <i className={`service-state ${running ? 'ready' : failed ? 'failed' : ''}`} />
                 <div>
                   <strong>{service.name[0].toUpperCase() + service.name.slice(1)}</strong>
                   <small>{service.label}</small>
@@ -627,6 +628,7 @@ function ServicesSection() {
                     ? service.state || 'Loaded'
                     : 'Installed, not loaded'}
                 {service.pid ? ` · PID ${service.pid}` : ''}
+                {failed ? ` · last exit ${service.last_exit_status}` : ''}
               </p>
               <div className="service-actions">
                 <button
