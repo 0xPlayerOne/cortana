@@ -336,7 +336,14 @@ fn validation_summary(status: &SourceValidationStatus) -> SourceValidationSummar
         max_documents: status.max_documents,
         max_bytes: status.max_bytes,
         max_seconds: status.max_seconds,
-        error: status.error.clone(),
+        // Connector diagnostics are persisted for local troubleshooting, but
+        // arbitrary connector commands may print tokens, paths, or request
+        // headers. Never send that untrusted text through the shared status
+        // API; the failure state itself is sufficient for scoped agents.
+        error: status
+            .error
+            .as_ref()
+            .map(|_| "source validation failed".into()),
     }
 }
 
@@ -1994,6 +2001,50 @@ mod tests {
         config.sources[0].query = Some("from:changed".into());
         let status = IngestionStatus::from_config(&config, false);
         assert!(status.configured_sources[0].validation.is_none());
+    }
+
+    #[test]
+    fn source_validation_diagnostics_are_generic_in_public_status() {
+        let directory = tempdir().expect("temporary directory");
+        let mut config = Config::default();
+        config.data_dir = directory.path().to_path_buf();
+        config.sources = vec![google_source(None)];
+        let source = config.sources.first().expect("configured source");
+        let fingerprint =
+            source_validation::configuration_fingerprint(source).expect("validation fingerprint");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "failed".into(),
+                validated_at: chrono::Utc::now(),
+                documents: None,
+                bytes: None,
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(fingerprint),
+                error: Some("Bearer top-secret /Users/amf/private".into()),
+            },
+        )
+        .expect("validation state");
+
+        let status = IngestionStatus::from_config(&config, false);
+        let validation = status.configured_sources[0]
+            .validation
+            .as_ref()
+            .expect("failed validation");
+        assert_eq!(
+            validation.error.as_deref(),
+            Some("source validation failed")
+        );
+        assert!(
+            !serde_json::to_string(validation)
+                .expect("validation JSON")
+                .contains("top-secret")
+        );
     }
 
     #[test]

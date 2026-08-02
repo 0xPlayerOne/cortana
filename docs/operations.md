@@ -38,7 +38,9 @@ admin-scoped principal may inspect the complete operational view. The
 authorization summary reports only the connector method (`none`, `token`, or
 `google_oauth`) plus setup and authorization booleans; it never exposes token values, paths, OAuth
 client paths, or environment contents. Validation proves bounded connector
-access without mutating the corpus and is shown separately from synchronization health. Sync
+access without mutating the corpus and is shown separately from synchronization health. Public
+status exposes only a generic validation-failure marker; raw connector diagnostics remain in the
+owner-local validation state and Desktop job log. Sync
 outcomes are recorded as `running`, `succeeded`,
 `failed`, `cancelled`, or `budget_exceeded`. A process interruption intentionally leaves a
 `running` record behind so the workspace can distinguish an interrupted run from a source that
