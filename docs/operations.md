@@ -44,7 +44,9 @@ outcomes are recorded as `running`, `succeeded`,
 `running` record behind so the workspace can distinguish an interrupted run from a source that
 never started. The workspace refreshes this status every 15 seconds and keeps query availability
 separate from ingestion health. Cortana retains the newest 100 run records per source to keep this
-operational history bounded.
+operational history bounded. Runtime request counters in a scoped status response are maintained
+per authenticated principal; only the local owner or an admin-scoped principal receives the
+process-wide totals used for operations dashboards.
 
 Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
 queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS

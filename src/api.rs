@@ -1,6 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -93,6 +94,15 @@ struct RuntimeMetrics {
     contexts: AtomicU64,
     answers: AtomicU64,
     errors: AtomicU64,
+    principals: Mutex<HashMap<String, PrincipalMetrics>>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct PrincipalMetrics {
+    searches: u64,
+    contexts: u64,
+    answers: u64,
+    errors: u64,
 }
 
 impl RuntimeMetrics {
@@ -103,12 +113,58 @@ impl RuntimeMetrics {
             contexts: AtomicU64::new(0),
             answers: AtomicU64::new(0),
             errors: AtomicU64::new(0),
+            principals: Mutex::new(HashMap::new()),
         }
     }
 
     fn uptime_seconds(&self) -> u64 {
         self.started.elapsed().as_secs()
     }
+
+    fn record(&self, principal: &Principal, metric: PrincipalMetric) {
+        match metric {
+            PrincipalMetric::Search => self.searches.fetch_add(1, Ordering::Relaxed),
+            PrincipalMetric::Context => self.contexts.fetch_add(1, Ordering::Relaxed),
+            PrincipalMetric::Answer => self.answers.fetch_add(1, Ordering::Relaxed),
+            PrincipalMetric::Error => self.errors.fetch_add(1, Ordering::Relaxed),
+        };
+        let mut principals = self
+            .principals
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let counters = principals.entry(principal.name.clone()).or_default();
+        match metric {
+            PrincipalMetric::Search => counters.searches = counters.searches.saturating_add(1),
+            PrincipalMetric::Context => counters.contexts = counters.contexts.saturating_add(1),
+            PrincipalMetric::Answer => counters.answers = counters.answers.saturating_add(1),
+            PrincipalMetric::Error => counters.errors = counters.errors.saturating_add(1),
+        }
+    }
+
+    fn counters_for(&self, principal: &Principal, owner: bool) -> PrincipalMetrics {
+        if owner {
+            return PrincipalMetrics {
+                searches: self.searches.load(Ordering::Relaxed),
+                contexts: self.contexts.load(Ordering::Relaxed),
+                answers: self.answers.load(Ordering::Relaxed),
+                errors: self.errors.load(Ordering::Relaxed),
+            };
+        }
+        self.principals
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(&principal.name)
+            .copied()
+            .unwrap_or_default()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum PrincipalMetric {
+    Search,
+    Context,
+    Answer,
+    Error,
 }
 
 #[derive(Debug, Deserialize)]
@@ -682,7 +738,7 @@ async fn list_documents(
                 None,
                 started,
             );
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            state.metrics.record(&principal, PrincipalMetric::Error);
             Err(internal_error(error))
         }
     }
@@ -741,7 +797,7 @@ async fn document(
                 None,
                 started,
             );
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            state.metrics.record(&principal, PrincipalMetric::Error);
             Err(internal_error(error))
         }
     }
@@ -855,7 +911,7 @@ async fn graph(
                 None,
                 started,
             );
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            state.metrics.record(&principal, PrincipalMetric::Error);
             Err(internal_error(error))
         }
     }
@@ -987,13 +1043,14 @@ async fn status(
             .collect()
     };
     let workspaces = fallback_workspaces(&visible_workspaces, source_projects);
+    let counters = state.metrics.counters_for(&principal, owner);
     Ok(Json(Status {
         status: "ok",
         uptime_seconds: state.metrics.uptime_seconds(),
-        searches_total: state.metrics.searches.load(Ordering::Relaxed),
-        contexts_total: state.metrics.contexts.load(Ordering::Relaxed),
-        answers_total: state.metrics.answers.load(Ordering::Relaxed),
-        errors_total: state.metrics.errors.load(Ordering::Relaxed),
+        searches_total: counters.searches,
+        contexts_total: counters.contexts,
+        answers_total: counters.answers,
+        errors_total: counters.errors,
         query: state.answer.status(),
         ingestion,
         workspaces,
@@ -1070,7 +1127,7 @@ async fn answer(
     let started = Instant::now();
     let project = request.project.clone();
     let source = request.source.clone();
-    state.metrics.answers.fetch_add(1, Ordering::Relaxed);
+    state.metrics.record(&principal, PrincipalMetric::Answer);
     let result = state
         .answer
         .answer_scoped(request, &principal.acl_labels())
@@ -1090,7 +1147,7 @@ async fn answer(
         started,
     );
     result.map(Json).map_err(|error| {
-        state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+        state.metrics.record(&principal, PrincipalMetric::Error);
         internal_error(error)
     })
 }
@@ -1103,7 +1160,7 @@ async fn search(
     validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
-    state.metrics.searches.fetch_add(1, Ordering::Relaxed);
+    state.metrics.record(&principal, PrincipalMetric::Search);
     match retrieval::retrieve_scoped(
         &state.store,
         &state.embedder,
@@ -1139,7 +1196,7 @@ async fn search(
                 None,
                 started,
             );
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            state.metrics.record(&principal, PrincipalMetric::Error);
             Err(internal_error(error))
         }
     }
@@ -1153,7 +1210,7 @@ async fn context(
     validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
-    state.metrics.contexts.fetch_add(1, Ordering::Relaxed);
+    state.metrics.record(&principal, PrincipalMetric::Context);
     let evidence = match retrieval::retrieve_scoped(
         &state.store,
         &state.embedder,
@@ -1177,7 +1234,7 @@ async fn context(
                 None,
                 started,
             );
-            state.metrics.errors.fetch_add(1, Ordering::Relaxed);
+            state.metrics.record(&principal, PrincipalMetric::Error);
             return Err(internal_error(error));
         }
     };
@@ -2296,6 +2353,12 @@ mod tests {
                 scopes: vec!["admin".into()],
                 acl: Vec::new(),
             },
+            AuthTokenConfig {
+                principal: "personal-agent".into(),
+                token_env: "PERSONAL_TOKEN".into(),
+                scopes: vec!["query".into(), "status".into()],
+                acl: vec!["personal".into()],
+            },
         ];
         config
             .environment
@@ -2303,6 +2366,9 @@ mod tests {
         config
             .environment
             .insert("ADMIN_TOKEN".into(), "admin-secret".into());
+        config
+            .environment
+            .insert("PERSONAL_TOKEN".into(), "personal-secret".into());
         let policy = AuthPolicy::from_config(&config, None).expect("auth policy");
         let app = router(state.with_config(&config, false).with_auth_policy(policy));
         let graph = app
@@ -2374,6 +2440,46 @@ mod tests {
         assert_eq!(status_value["documents"], 1);
         assert_eq!(status_value["chunks"], 1);
         assert_eq!(status_value["sources"].as_array().map(Vec::len), Some(1));
+        assert_eq!(status_value["searches_total"], 1);
+        assert_eq!(status_value["contexts_total"], 0);
+        assert_eq!(status_value["answers_total"], 0);
+        assert_eq!(status_value["errors_total"], 0);
+
+        let personal_search = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::AUTHORIZATION, "Bearer personal-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"launch phrase","project":"demo","limit":10}"#,
+                    ))
+                    .expect("personal search request"),
+            )
+            .await
+            .expect("personal search response");
+        assert_eq!(personal_search.status(), StatusCode::OK);
+
+        let work_status_after_personal_request = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("scoped status request"),
+            )
+            .await
+            .expect("scoped status response");
+        let work_status_body =
+            to_bytes(work_status_after_personal_request.into_body(), 1024 * 1024)
+                .await
+                .expect("scoped status body");
+        let work_status_value: serde_json::Value =
+            serde_json::from_slice(&work_status_body).expect("scoped status JSON");
+        assert_eq!(work_status_value["searches_total"], 1);
 
         let forbidden = app
             .clone()
@@ -2403,8 +2509,26 @@ mod tests {
             .await
             .expect("audit body");
         let value: serde_json::Value = serde_json::from_slice(&audit_body).expect("audit JSON");
-        assert_eq!(value[0]["principal"], "work-agent");
-        assert_eq!(value[0]["action"], "search");
-        assert!(value[0].get("query").is_none());
+        let search_events = value
+            .as_array()
+            .expect("audit events")
+            .iter()
+            .filter(|event| event["action"] == "search")
+            .collect::<Vec<_>>();
+        assert!(
+            search_events
+                .iter()
+                .any(|event| event["principal"] == "work-agent")
+        );
+        assert!(
+            search_events
+                .iter()
+                .any(|event| event["principal"] == "personal-agent")
+        );
+        assert!(
+            search_events
+                .iter()
+                .all(|event| event.get("query").is_none())
+        );
     }
 }
