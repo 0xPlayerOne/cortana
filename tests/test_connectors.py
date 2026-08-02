@@ -125,6 +125,26 @@ def test_apple_notes_normalizes_jxa_rows(monkeypatch: pytest.MonkeyPatch) -> Non
     assert documents[0].metadata == {"account": "iCloud", "folder": "Notes"}
 
 
+def test_apple_notes_honors_document_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [
+        {
+            "id": f"x-coredata://note/{index}",
+            "name": f"Note {index}",
+            "body": f"Body {index}",
+            "modified": "2026-07-29T10:00:00.000Z",
+        }
+        for index in range(3)
+    ]
+    completed = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout=json.dumps(rows), stderr=""
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: completed)
+
+    documents = list(apple_notes.fetch(project="personal", max_documents=1))
+
+    assert [document.source_id for document in documents] == ["x-coredata://note/0"]
+
+
 def test_apple_notes_reports_actionable_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     def timeout(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(["osascript"], 120)
@@ -194,6 +214,17 @@ def test_buzz_reads_personas_and_logs_read_only(tmp_path: Path) -> None:
     assert documents[0].uri == "buzz://persona/pub/profile"
     assert documents[0].metadata["raw_event"]["id"] == "event"
     assert documents[1].metadata["raw_event"] is None
+
+
+def test_buzz_honors_document_cap(tmp_path: Path) -> None:
+    logs = tmp_path / "agents" / "logs"
+    logs.mkdir(parents=True)
+    (logs / "first.log").write_text("first", encoding="utf-8")
+    (logs / "second.log").write_text("second", encoding="utf-8")
+
+    documents = list(buzz.fetch(tmp_path, max_documents=1))
+
+    assert [document.source_id for document in documents] == ["log:first.log"]
 
 
 def test_buzz_rejects_symlinked_retention_files_and_logs(tmp_path: Path) -> None:
@@ -374,15 +405,62 @@ def test_chat_connectors_reassemble_slack_and_normalize_discord(
 ) -> None:
     monkeypatch.setenv("SLACK_TEST_TOKEN", "secret")
     monkeypatch.setattr(chat.httpx, "Client", FakeSlackClient)
-    slack_documents = list(chat.fetch_slack(["C1"], "work", "SLACK_TEST_TOKEN"))
+    slack_documents = list(chat.fetch_slack(["C1"], "work", "SLACK_TEST_TOKEN", max_documents=1))
     assert slack_documents[0].content == "U1: Launch?\nU2: Yes"
     assert slack_documents[0].metadata["participants"] == ["U1", "U2"]
 
     monkeypatch.setenv("DISCORD_TEST_TOKEN", "secret")
     monkeypatch.setattr(chat.httpx, "Client", FakeDiscordClient)
-    discord_documents = list(chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN"))
+    discord_documents = list(
+        chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN", max_documents=1)
+    )
     assert "https://files.test/report.pdf" in discord_documents[0].content
     assert discord_documents[0].metadata["author_id"] == "u1"
+
+
+def test_discord_cached_connector_honors_document_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DISCORD_TEST_TOKEN", "secret")
+    real_client = httpx.Client
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response(
+                [
+                    {
+                        "id": "100",
+                        "content": "First",
+                        "attachments": [],
+                        "timestamp": "2026-07-29T12:00:00Z",
+                        "author": {"id": "u1", "username": "Ada"},
+                    },
+                    {
+                        "id": "99",
+                        "content": "Second",
+                        "attachments": [],
+                        "timestamp": "2026-07-29T11:00:00Z",
+                        "author": {"id": "u2", "username": "Grace"},
+                    },
+                ],
+                request=request,
+            )
+        raise AssertionError(f"unexpected Discord request: {request.url}")
+
+    monkeypatch.setattr(
+        chat.httpx,
+        "Client",
+        lambda **_kwargs: real_client(
+            base_url="https://discord.test",
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    cache = tmp_path / "cache"
+    documents = list(
+        chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN", cache_dir=cache, max_documents=1)
+    )
+
+    assert [document.source_id for document in documents] == ["99"]
 
 
 def test_slack_message_pages_fail_closed_on_invalid_shapes() -> None:
@@ -837,6 +915,49 @@ def test_google_gmail_decodes_message_body(tmp_path: Path) -> None:
     assert documents[0].metadata["thread_id"] == "t1"
 
 
+def test_google_gmail_caps_listing_page_and_documents(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    listing_limits: list[str] = []
+    detail_requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            listing_limits.append(request.url.params.get("maxResults", ""))
+            return response(
+                {"messages": [{"id": "m1"}, {"id": "m2"}]},
+                request=request,
+            )
+        detail_requests.append(request.url.path)
+        message_id = request.url.path.rsplit("/", 1)[-1]
+        return response(
+            {
+                "id": message_id,
+                "payload": {
+                    "headers": [{"name": "Subject", "value": message_id}],
+                    "mimeType": "text/plain",
+                    "body": {
+                        "data": base64.urlsafe_b64encode(message_id.encode()).decode(),
+                    },
+                },
+            },
+            request=request,
+        )
+
+    documents = list(
+        fetch_gmail(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+            max_documents=1,
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["m1"]
+    assert listing_limits == ["1"]
+    assert detail_requests == ["/gmail/v1/users/me/messages/m1"]
+
+
 def test_google_gmail_skips_malformed_listing_records(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1009,6 +1130,50 @@ def test_google_calendar_normalizes_events(tmp_path: Path) -> None:
     assert documents[0].source_id == "primary:event-1"
     assert "Approve the rollout." in documents[0].content
     assert documents[0].metadata["attendees"] == ["ada@example.test"]
+
+
+def test_google_calendar_caps_listing_page_and_documents(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    event_limits: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/calendarList"):
+            return response({"items": [{"id": "primary", "summary": "Work"}]}, request=request)
+        event_limits.append(request.url.params.get("maxResults", ""))
+        return response(
+            {
+                "items": [
+                    {
+                        "id": "event-1",
+                        "summary": "First",
+                        "start": {"dateTime": "2026-07-29T12:00:00Z"},
+                        "end": {"dateTime": "2026-07-29T12:30:00Z"},
+                        "updated": "2026-07-29T11:00:00Z",
+                    },
+                    {
+                        "id": "event-2",
+                        "summary": "Second",
+                        "start": {"dateTime": "2026-07-29T13:00:00Z"},
+                        "end": {"dateTime": "2026-07-29T13:30:00Z"},
+                        "updated": "2026-07-29T11:00:00Z",
+                    },
+                ]
+            },
+            request=request,
+        )
+
+    documents = list(
+        fetch_calendar(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+            max_documents=1,
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["primary:event-1"]
+    assert event_limits == ["1"]
 
 
 def test_google_calendar_collapses_recurring_occurrences(tmp_path: Path) -> None:
