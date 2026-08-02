@@ -354,7 +354,8 @@ impl IngestionStatus {
                 }
             }
             Err(error) => {
-                status.validation_state_error = Some(error.to_string());
+                tracing::warn!(error = %error, "failed to load source validation state");
+                status.validation_state_error = Some("source validation state unavailable".into());
                 for source in &mut status.configured_sources {
                     source.validation = None;
                 }
@@ -1685,6 +1686,30 @@ mod tests {
         config.sources[0].query = Some("from:changed".into());
         let status = IngestionStatus::from_config(&config, false);
         assert!(status.configured_sources[0].validation.is_none());
+    }
+
+    #[test]
+    fn validation_state_errors_are_generic_to_callers() {
+        let directory = tempdir().expect("temporary directory");
+        write_private_fixture(
+            &directory.path().join("source-validations.json"),
+            "{\"sources\": invalid}",
+        );
+        let mut config = Config::default();
+        config.data_dir = directory.path().to_path_buf();
+
+        let status = IngestionStatus::from_config(&config, false);
+        assert_eq!(
+            status.validation_state_error.as_deref(),
+            Some("source validation state unavailable")
+        );
+        assert!(
+            !status
+                .validation_state_error
+                .as_deref()
+                .unwrap_or_default()
+                .contains(directory.path().to_string_lossy().as_ref())
+        );
     }
 
     #[tokio::test]

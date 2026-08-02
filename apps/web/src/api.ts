@@ -2,6 +2,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 
 import { demoEvidence, demoStatus } from './demo'
 import { buildAgentContext, estimateTokens } from './context'
+import { safeSourceLink } from './sourceLinks'
 import type {
   AnswerResponse,
   BrainDocument,
@@ -143,12 +144,9 @@ export async function openDesktopProject(): Promise<void> {
 
 export async function openDesktopUrl(url: string): Promise<void> {
   if (!isDesktopApp) throw new Error('Desktop URL opens are available in Cortana Desktop')
-  const parsed = new URL(url)
-  const allowed = ['http:', 'https:', 'mailto:', 'file:']
-  if (!allowed.includes(parsed.protocol)) {
-    throw new Error(`Unsupported link scheme: ${parsed.protocol.replace(':', '')}`)
-  }
-  return invokeDesktop<void>('desktop_url_open', { url })
+  const safe = safeSourceLink(url, { allowLocalFile: true })
+  if (!safe) throw new Error('Unsupported or unsafe source link')
+  return invokeDesktop<void>('desktop_url_open', { url: safe })
 }
 
 export async function startDesktopInstaller(tool: string): Promise<DesktopInstallJob> {
