@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 
+from .http import json_payload
 from .model import Document
 
 
@@ -124,7 +125,7 @@ def fetch_discord(
                     client, f"/channels/{channel_id}/messages", params=params
                 )
                 response.raise_for_status()
-                messages = _discord_page(response.json())
+                messages = _discord_page(json_payload(response))
                 if not messages:
                     break
                 for message in messages:
@@ -163,7 +164,7 @@ def _fetch_discord_cached(
                     client, f"/channels/{channel_id}/messages", params=params
                 )
                 response.raise_for_status()
-                messages = _discord_page(response.json())
+                messages = _discord_page(json_payload(response))
                 if not messages:
                     break
                 for message in messages:
@@ -424,10 +425,10 @@ def _retry_after(response: httpx.Response, attempt: int) -> float:
         except ValueError:
             pass
     try:
-        payload = response.json()
+        payload = json_payload(response)
         if isinstance(payload, dict) and payload.get("retry_after") is not None:
             return min(max(float(payload["retry_after"]), 0.0), 60.0)
-    except (TypeError, ValueError):
+    except (RuntimeError, TypeError, ValueError):
         pass
     return min(float(2**attempt), 30.0)
 
@@ -448,7 +449,7 @@ def _respect_rate_limit_headers(response: httpx.Response) -> None:
 
 def _slack_payload(response: httpx.Response) -> dict[str, Any]:
     response.raise_for_status()
-    raw_payload = response.json()
+    raw_payload = json_payload(response)
     if not isinstance(raw_payload, dict):
         raise RuntimeError("Slack API returned an invalid response")
     payload: dict[str, Any] = raw_payload

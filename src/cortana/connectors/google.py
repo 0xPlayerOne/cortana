@@ -23,6 +23,7 @@ from urllib.parse import quote
 
 import httpx
 
+from .http import json_payload
 from .model import Document
 
 DRIVE_FIELDS = "nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink,owners(displayName))"
@@ -74,7 +75,11 @@ def _reject_token_symlink_components(path: Path) -> None:
             metadata = None
         except OSError as error:
             raise RuntimeError(f"Google token path could not be inspected: {current}") from error
-        if metadata is not None and stat.S_ISLNK(metadata.st_mode) and not _is_token_system_alias(current):
+        if (
+            metadata is not None
+            and stat.S_ISLNK(metadata.st_mode)
+            and not _is_token_system_alias(current)
+        ):
             raise RuntimeError(f"Google token path component must not be a symlink: {current}")
         parent = current.parent
         if parent == current:
@@ -148,7 +153,9 @@ class GoogleSession:
             data=data,
         )
         response.raise_for_status()
-        refreshed: dict[str, Any] = response.json()
+        refreshed = json_payload(response)
+        if not isinstance(refreshed, dict):
+            raise RuntimeError("Google OAuth provider returned an invalid response")
         self.credentials["token"] = refreshed["access_token"]
         self.credentials["access_token"] = refreshed["access_token"]
         self.credentials["expiry"] = (
@@ -211,9 +218,10 @@ def fetch_drive(
                 }
                 if page_token:
                     params["pageToken"] = page_token
-                payload = session.request(
+                response = session.request(
                     "GET", "https://www.googleapis.com/drive/v3/files", params=params
-                ).json()
+                )
+                payload = json_payload(response)
                 if not isinstance(payload, dict):
                     print(
                         "Drive listing skipped: provider returned a non-object value",
@@ -331,11 +339,12 @@ def fetch_gmail(
                     params["labelIds"] = labels
                 if page_token:
                     params["pageToken"] = page_token
-                listing = session.request(
+                response = session.request(
                     "GET",
                     "https://gmail.googleapis.com/gmail/v1/users/me/messages",
                     params=params,
-                ).json()
+                )
+                listing = json_payload(response)
                 if not isinstance(listing, dict):
                     print(
                         "Gmail listing skipped: provider returned a non-object value",
@@ -420,7 +429,7 @@ def _fetch_gmail_message(session: GoogleSession, message_id: str) -> dict[str, A
             file=sys.stderr,
         )
         return None
-    message = response.json()
+    message = json_payload(response)
     if not isinstance(message, dict) or not str(message.get("id") or "").strip():
         _warn_skipped_record(
             "Gmail message",
@@ -554,9 +563,10 @@ def fetch_calendar(
     client: httpx.Client | None = None,
 ) -> Iterable[Document]:
     with GoogleSession(token_path, client) as session:
-        calendars = session.request(
+        response = session.request(
             "GET", "https://www.googleapis.com/calendar/v3/users/me/calendarList"
-        ).json()
+        )
+        calendars = json_payload(response)
         if not isinstance(calendars, dict):
             print(
                 "Calendar listing skipped: provider returned a non-object value",
@@ -581,11 +591,12 @@ def fetch_calendar(
                     params["q"] = query
                 if page_token:
                     params["pageToken"] = page_token
-                payload = session.request(
+                response = session.request(
                     "GET",
                     f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events",
                     params=params,
-                ).json()
+                )
+                payload = json_payload(response)
                 if not isinstance(payload, dict):
                     print(
                         "Calendar events skipped: provider returned a non-object value",

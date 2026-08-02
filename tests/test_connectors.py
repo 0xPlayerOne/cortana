@@ -27,6 +27,7 @@ from cortana.connectors.google import (
     fetch_gmail,
     validate_token_path,
 )
+from cortana.connectors.http import MAX_JSON_RESPONSE_BYTES, json_payload
 from cortana.connectors.model import Document, emit
 
 
@@ -42,6 +43,23 @@ def write_token(path: Path, body: str) -> None:
     path.write_text(body, encoding="utf-8")
     if os.name == "posix":
         path.chmod(0o600)
+
+
+def test_connector_json_payload_is_bounded_and_reports_invalid_bodies() -> None:
+    request = httpx.Request("GET", "https://example.test")
+    assert json_payload(httpx.Response(200, json={"ok": True}, request=request)) == {"ok": True}
+
+    oversized = httpx.Response(
+        200,
+        content=b"{}" + b" " * MAX_JSON_RESPONSE_BYTES,
+        request=request,
+    )
+    with pytest.raises(RuntimeError, match="exceeds"):
+        json_payload(oversized)
+
+    invalid = httpx.Response(200, content=b"not-json", request=request)
+    with pytest.raises(RuntimeError, match="invalid JSON"):
+        json_payload(invalid)
 
 
 def test_document_jsonl_emit_uses_utc_and_skips_empty() -> None:
