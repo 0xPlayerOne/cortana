@@ -12,6 +12,7 @@ import {
 import type {
   DesktopServiceReport,
   DesktopSettings,
+  DesktopSettingsUpdate,
   DesktopSourceJob,
   DesktopInstallJob,
   SourceSettings,
@@ -23,6 +24,8 @@ afterEach(() => {
   window.localStorage.removeItem('cortana.source-selection.v1')
   state.getDocumentsCalls = []
   state.saveSettingsCalls = 0
+  state.applySettingsUpdate = false
+  state.lastSettingsUpdate = null
   state.getDesktopServicesCalls = 0
   state.getDesktopSettingsCalls = 0
   state.getDesktopUpdateCalls = 0
@@ -92,6 +95,8 @@ const state = {
   getDesktopUpdateCalls: 0,
   serviceStatusError: null as Error | null,
   saveSettingsCalls: 0,
+  applySettingsUpdate: false,
+  lastSettingsUpdate: null as DesktopSettingsUpdate | null,
   serviceInstallCalls: 0,
   serviceSyncInstallCalls: 0,
   schedule: { sync_interval_seconds: 900, backup_interval_seconds: 86400 },
@@ -190,8 +195,12 @@ mock.module('./api', () => ({
     state.getDesktopSettingsCalls += 1
     return Promise.resolve(state.settings)
   },
-  saveDesktopSettings: () => {
+  saveDesktopSettings: (update: DesktopSettingsUpdate) => {
     state.saveSettingsCalls += 1
+    state.lastSettingsUpdate = update
+    if (state.applySettingsUpdate) {
+      state.settings = { ...state.settings, ...update, secrets: state.settings.secrets }
+    }
     return Promise.resolve(state.settings)
   },
   getDesktopInfo: () => Promise.resolve(desktopInfo),
@@ -724,6 +733,32 @@ test('source settings opens the Sources section directly', async () => {
 
   const sources = screen.getByRole('button', { name: 'Sources' })
   expect(sources.className).toContain('active')
+})
+
+test('source tree toggles a saved connector without touching indexed data', async () => {
+  const originalConfirm = window.confirm
+  const originalSettings = state.settings
+  window.confirm = () => true
+  state.applySettingsUpdate = true
+  state.settings = { ...desktopSettings, sources: [{ ...workSource, enabled: false }] }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByLabelText('Open sources'))
+    const toggle = await screen.findByRole('switch', { name: 'Enable work-code' })
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
+    expect(state.lastSettingsUpdate?.sources).toEqual([
+      expect.objectContaining({ name: 'work-code', project: 'work', enabled: true }),
+    ])
+    expect(state.lastSettingsUpdate?.secrets).toEqual([])
+  } finally {
+    window.confirm = originalConfirm
+    state.settings = originalSettings
+    state.applySettingsUpdate = false
+    state.lastSettingsUpdate = null
+  }
 })
 
 test('services settings offers an explicit safe core-service install', async () => {

@@ -24,6 +24,7 @@ import {
   getContext,
   getGraph,
   getStatus,
+  saveDesktopSettings,
   cancelDesktopSourceValidation,
   scanDesktopReadiness,
   isDemoMode,
@@ -106,6 +107,8 @@ export function App() {
   const [readinessActivity, setReadinessActivity] = useState<DesktopReadinessActivity | null>(null)
   const [serviceActivity, setServiceActivity] = useState<DesktopServiceActivity | null>(null)
   const [sourceJobError, setSourceJobError] = useState('')
+  const [sourceToggleBusy, setSourceToggleBusy] = useState<string | null>(null)
+  const [sourceToggleError, setSourceToggleError] = useState('')
   const [hindsightStatus, setHindsightStatus] = useState<DesktopHindsightStatus | null>(null)
   const [honchoStatus, setHonchoStatus] = useState<DesktopHonchoStatus | null>(null)
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
@@ -749,6 +752,73 @@ export function App() {
     if (query.trim()) void runSearch(query.trim())
   }
 
+  async function toggleSource(nextSource: string, project: string, enabled: boolean) {
+    const key = `${project}:${nextSource}`
+    if (sourceToggleBusy) return
+    if (!isDesktopApp || !desktopSettings) {
+      setSettingsSection('sources')
+      setView('settings')
+      return
+    }
+    if (settingsDirty) {
+      setSourceToggleError('Save or discard settings changes before toggling a source.')
+      setSettingsSection('sources')
+      setView('settings')
+      return
+    }
+    const current = desktopSettings.sources.find(
+      (candidate) => candidate.name === nextSource && candidate.project === project
+    )
+    if (!current || current.enabled === enabled) {
+      setSourceToggleError(
+        current ? '' : `${nextSource} is not present in the saved Desktop source configuration.`
+      )
+      return
+    }
+    if (
+      !window.confirm(
+        `${enabled ? 'Enable' : 'Disable'} ${nextSource} in ${project}?\n\n` +
+          'This changes future ingestion only. Existing indexed data remains queryable and is not deleted.'
+      )
+    ) {
+      return
+    }
+    setSourceToggleBusy(key)
+    setSourceToggleError('')
+    try {
+      const next = await saveDesktopSettings({
+        workspaces: desktopSettings.workspaces,
+        sources: desktopSettings.sources.map((candidate) =>
+          candidate === current ? { ...candidate, enabled } : candidate
+        ),
+        auth_principals: desktopSettings.auth_principals,
+        embedding: desktopSettings.embedding,
+        query: desktopSettings.query,
+        hindsight: desktopSettings.hindsight,
+        honcho: desktopSettings.honcho,
+        ingestion: desktopSettings.ingestion,
+        runtime: desktopSettings.runtime,
+        secrets: [],
+      })
+      setDesktopSettings(next)
+      try {
+        const nextStatus = await getStatus()
+        setStatus(nextStatus)
+        setStatusError('')
+      } catch (caught) {
+        // The source setting is already persisted. Keep that success visible
+        // and report only the best-effort health refresh failure.
+        setStatusError(caught instanceof Error ? caught.message : 'Source status refresh failed')
+      }
+    } catch (caught) {
+      setSourceToggleError(
+        caught instanceof Error ? caught.message : 'Source setting could not be saved'
+      )
+    } finally {
+      setSourceToggleBusy(null)
+    }
+  }
+
   function chooseSource(next: string, project?: string) {
     const nextWorkspace = project ?? workspace
     const sameScope = source === next && workspace === nextWorkspace
@@ -1197,6 +1267,12 @@ export function App() {
               setSettingsSection('sources')
               setView('settings')
             }}
+            onToggleSource={(name, project, enabled) => void toggleSource(name, project, enabled)}
+            sourceToggleBusy={sourceToggleBusy}
+            sourceToggleDisabled={
+              settingsDirty || desktopSettings === null || Boolean(desktopSettings?.needs_setup)
+            }
+            sourceToggleError={sourceToggleError}
             onClose={() => setLeftOpen(false)}
             onCancelSourceJob={cancelSourceJob}
             jobs={sourceJobs.jobs}

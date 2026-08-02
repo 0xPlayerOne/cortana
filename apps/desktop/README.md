@@ -66,6 +66,9 @@ read-only validation at equal or larger limits (with a **Validate for this budge
 the latest record is smaller), and then runs a separately confirmed, validation-gated,
 no-reconcile sync through the same cancellable source-job boundary with visible progress and
 metadata-only audit events.
+The Knowledge sidebar mirrors each saved connector with a confirmation-gated enable/disable
+switch for future ingestion; it never deletes indexed data and is locked while Settings has an
+unsaved draft.
 
 Closing the main window hides it to the tray. Use **Quit Cortana Desktop** from the tray menu to
 exit the control plane. This does not stop the independently managed Cortana services.

@@ -198,6 +198,38 @@ test('source selection is scoped to the active workspace when names repeat', () 
   expect(rows.filter((row) => row.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
 })
 
+test('source-select button is rendered as a button control', () => {
+  render(
+    <SourcePanel
+      open={false}
+      status={demoStatus}
+      statusError=""
+      workspace="work"
+      workspaces={[workspace]}
+      documentQuery=""
+      selected="work-code"
+      documents={[]}
+      selectedDocument=""
+      documentsLoading={false}
+      documentsError=""
+      hasMoreDocuments={false}
+      onSelect={() => {}}
+      onSelectWorkspace={() => {}}
+      onDocumentQueryChange={() => {}}
+      onSelectDocument={() => {}}
+      onLoadMoreDocuments={() => {}}
+      onOpenSourcesSettings={() => {}}
+      onClose={() => {}}
+      jobs={[]}
+    />
+  )
+  const selectButton = screen.getByRole('button', { name: /work-code \d+/ })
+  expect(selectButton).toBeTruthy()
+  expect(selectButton.className).toContain('source-select')
+  expect(selectButton.getAttribute('type')).toBe('button')
+  expect(selectButton.getAttribute('aria-pressed')).toBe('true')
+})
+
 test('active source jobs expose a cancellation control in the source panel', () => {
   let cancelled = ''
   const job: DesktopSourceJob = {

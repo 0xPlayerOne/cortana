@@ -415,6 +415,52 @@
   padding: 0 10px 0 2px;
 }
 
+.source-tree .source-row > .source-enable-toggle {
+  position: relative;
+  display: inline-flex;
+  width: 28px;
+  height: 18px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: flex-start;
+  margin: 0 7px 0 3px;
+  padding: 2px;
+  border: 1px solid #5a5b57;
+  border-radius: 999px;
+  background: #292a27;
+  cursor: pointer;
+}
+
+.source-tree .source-row > .source-enable-toggle span {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #9b9c96;
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
+}
+
+.source-tree .source-row > .source-enable-toggle.enabled {
+  border-color: #397d49;
+  background: #1c3923;
+}
+
+.source-tree .source-row > .source-enable-toggle.enabled span {
+  background: #65c777;
+  transform: translateX(10px);
+}
+
+.source-tree .source-row > .source-enable-toggle:hover:not(:disabled) {
+  border-color: #8b8d86;
+}
+
+.source-tree .source-row > .source-enable-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .source-node-hint {
   display: block;
   margin: -3px 10px 4px 57px;

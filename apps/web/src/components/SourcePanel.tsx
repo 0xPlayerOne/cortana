@@ -62,6 +62,10 @@ export function SourcePanel({
   onSelectDocument,
   onLoadMoreDocuments,
   onOpenSourcesSettings,
+  onToggleSource,
+  sourceToggleBusy = null,
+  sourceToggleDisabled = false,
+  sourceToggleError = '',
   onClose,
   onCancelSourceJob,
   jobs = [],
@@ -85,6 +89,10 @@ export function SourcePanel({
   onSelectDocument: (id: string) => void
   onLoadMoreDocuments: () => void
   onOpenSourcesSettings: () => void
+  onToggleSource?: (source: string, project: string, enabled: boolean) => void
+  sourceToggleBusy?: string | null
+  sourceToggleDisabled?: boolean
+  sourceToggleError?: string
   onClose: () => void
   onCancelSourceJob?: (id: string) => void
   jobs?: DesktopSourceJob[]
@@ -181,6 +189,11 @@ export function SourcePanel({
           {sourceJobError}
         </p>
       )}
+      {sourceToggleError && (
+        <p className="document-list-error source-job-error" role="alert">
+          {sourceToggleError}
+        </p>
+      )}
       {statusError && status && (
         <p className="document-list-error" role="status">
           {statusError} Showing the last known source index.
@@ -268,6 +281,27 @@ export function SourcePanel({
                           <i className={`source-health ${health.state}`} />
                           <small>{item.documents.toLocaleString()}</small>
                         </button>
+                        {onToggleSource && item.kind !== 'indexed' && (
+                          <button
+                            type="button"
+                            role="switch"
+                            className={`source-enable-toggle ${item.enabled ? 'enabled' : ''}`}
+                            aria-checked={item.enabled}
+                            aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.name}`}
+                            title={
+                              sourceToggleDisabled
+                                ? 'Save or discard settings changes before toggling a source'
+                                : `${item.enabled ? 'Disable' : 'Enable'} ${item.name}`
+                            }
+                            disabled={sourceToggleDisabled || sourceToggleBusy === key}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              onToggleSource(item.source, item.project, !item.enabled)
+                            }}
+                          >
+                            <span />
+                          </button>
+                        )}
                       </div>
                       {!isCollapsed && (
                         <span className="source-node-hint">
