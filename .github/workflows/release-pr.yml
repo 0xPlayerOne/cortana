@@ -19,7 +19,7 @@ jobs:
   release-pr:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     name: Release PR
-    uses: 0xPlayerOne/code-foundry/.github/workflows/release-pr.yml@v0.34.2
+    uses: 0xPlayerOne/code-foundry/.github/workflows/release-pr.yml@v0.34.3
     with:
       runner: ubuntu-slim
     secrets:
