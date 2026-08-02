@@ -76,7 +76,7 @@ impl BackendClient {
             _ => "query",
         };
         let mut request = self.http.request(method, url);
-        if let Some(token) = settings::bearer_for_scope(scope)? {
+        if let Some(token) = desktop_bearer_for_scope(scope)? {
             request = request.bearer_auth(token);
         }
         if let Some(body) = body {
@@ -117,6 +117,20 @@ impl BackendClient {
         serde_json::from_slice(&body)
             .map_err(|error| format!("Cortana runtime returned an invalid response: {error}"))
     }
+}
+
+/// Desktop is the owner-local control plane. If named auth principals are
+/// configured, prefer an admin credential for its loopback requests so the
+/// UI does not accidentally render a narrow agent's ACL as the whole corpus.
+/// Fall back to the requested scope when no admin credential is configured.
+fn desktop_bearer_for_scope(scope: &str) -> Result<Option<String>, String> {
+    if scope != "admin" {
+        let admin = settings::bearer_for_scope("admin").ok().flatten();
+        if let Some(token) = admin {
+            return Ok(Some(token));
+        }
+    }
+    settings::bearer_for_scope(scope)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
