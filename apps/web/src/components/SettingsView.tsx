@@ -1210,13 +1210,20 @@ function HindsightSection({
               disabled={!settings.hindsight.token_env}
               onChange={(event) => {
                 if (!settings.hindsight.token_env) return
+                setStatus(null)
                 onSecret({ ...secretValues, [settings.hindsight.token_env]: event.target.value })
               }}
             />
             {settings.hindsight.token_env &&
               statusSource?.configured &&
               !clearedSecrets.has(statusSource.name) && (
-                <button type="button" onClick={() => onClearSecret(settings.hindsight.token_env!)}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatus(null)
+                    onClearSecret(settings.hindsight.token_env!)
+                  }}
+                >
                   Clear
                 </button>
               )}
@@ -1398,13 +1405,20 @@ function HonchoSection({
               disabled={!settings.honcho.token_env}
               onChange={(event) => {
                 if (!settings.honcho.token_env) return
+                setStatus(null)
                 onSecret({ ...secretValues, [settings.honcho.token_env]: event.target.value })
               }}
             />
             {settings.honcho.token_env &&
               statusSource?.configured &&
               !clearedSecrets.has(statusSource.name) && (
-                <button type="button" onClick={() => onClearSecret(settings.honcho.token_env!)}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatus(null)
+                    onClearSecret(settings.honcho.token_env!)
+                  }}
+                >
                   Clear
                 </button>
               )}
