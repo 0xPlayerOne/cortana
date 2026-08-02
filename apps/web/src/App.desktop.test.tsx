@@ -819,6 +819,7 @@ test('settings warns before discarding dirty changes', async () => {
 
 test('settings can discard a draft without leaving the control plane', async () => {
   const originalConfirm = window.confirm
+  const originalSettings = state.settings
   window.confirm = () => true
   try {
     render(<App />)
@@ -830,14 +831,36 @@ test('settings can discard a draft without leaving the control plane', async () 
     fireEvent.change(displayName, { target: { value: 'Draft work' } })
     expect(screen.getByRole('button', { name: 'Discard' })).toBeTruthy()
 
+    // Make the native reload differ from the shell snapshot. Discard must
+    // reconcile both so remounting Settings cannot resurrect the old draft.
+    state.settings = {
+      ...originalSettings,
+      workspaces: originalSettings.workspaces.map((workspace, index) =>
+        index === 0 ? { ...workspace, name: 'Reloaded work' } : workspace
+      ),
+    }
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
     await waitFor(() =>
-      expect((screen.getAllByLabelText('Display name')[0] as HTMLInputElement).value).toBe('Work')
+      expect((screen.getAllByLabelText('Display name')[0] as HTMLInputElement).value).toBe(
+        'Reloaded work'
+      )
     )
     expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Save changes' }).hasAttribute('disabled')).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    await waitFor(() =>
+      expect((screen.getAllByLabelText('Display name')[0] as HTMLInputElement).value).toBe(
+        'Reloaded work'
+      )
+    )
   } finally {
     window.confirm = originalConfirm
+    state.settings = originalSettings
   }
 })
 

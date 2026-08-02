@@ -308,7 +308,7 @@ export function SettingsView({
     setError('')
     try {
       const next = await getDesktopSettings()
-      setSettings(next)
+      applyLoadedSettings(next)
       setSecretValues({})
       setClearedSecrets(new Set())
       setSaved(false)
