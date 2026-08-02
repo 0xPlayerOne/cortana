@@ -39,6 +39,16 @@ No bulk copy of the canonical source corpus is performed. Hindsight only receive
 canonical-document operations (retain/delete) for selected memory events so Cortana remains
 source-of-truth for evidence, provenance, and retention.
 
+## Desktop configuration
+
+The Tauri settings view exposes this adapter under **Settings → Hindsight**. It is disabled by
+default and the panel always reports that it is not wired into normal ingestion. Configure the
+Hindsight API origin (the local server defaults to `http://127.0.0.1:8888`), bank, and token
+environment name there. Token values are write-only and are stored through Cortana's private
+secret-file mechanism; snapshots, portable exports, and audit events contain no token values.
+Saving this section only records the optional provider configuration. It does not start Hindsight,
+populate the outbox, or perform a corpus sync.
+
 ## Honcho status
 
 Honcho remains deferred to a later milestone; only this optional derived sidecar is introduced

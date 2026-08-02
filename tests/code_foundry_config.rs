@@ -230,19 +230,20 @@ fn desktop_linux_release_compile_is_gated() {
     }
 
     // The fast aggregate keeps the stable required-check name and fans out to
-    // every parallel job. It always runs after needs (`!cancelled()`), fails
-    // only on dependency failure or cancellation, and treats skipped
-    // dependencies (release-please version PRs) as acceptable.
+    // the detector plus every parallel job. It always runs after needs
+    // (`!cancelled()`), fails only on dependency failure or cancellation, and
+    // treats skipped dependencies (release-please version PRs) as acceptable.
     let aggregate = job_block(&desktop, "aggregate");
     assert!(
         aggregate.contains("name: Tauri 2 / Linux"),
         "aggregate job must keep the stable `Tauri 2 / Linux` required-check name:\n{aggregate}"
     );
     assert!(
-        aggregate.contains(
-            "needs: [gtk_provenance, gtk_iterator, security_audit, desktop_test, desktop_clippy, release]"
-        ),
-        "aggregate job must depend on all six parallel jobs:\n{aggregate}"
+        aggregate.contains("needs:")
+            && aggregate.contains(
+                "[changes, gtk_provenance, gtk_iterator, security_audit, desktop_test, desktop_clippy, release]"
+            ),
+        "aggregate job must depend on the detector and all six parallel jobs:\n{aggregate}"
     );
     assert!(
         aggregate.contains("if: ${{ !cancelled() }}"),
@@ -253,6 +254,8 @@ fn desktop_linux_release_compile_is_gated() {
         "aggregate job must define a timeout:\n{aggregate}"
     );
     for token in [
+        "needs.changes.result == 'failure'",
+        "needs.changes.result == 'cancelled'",
         "needs.gtk_provenance.result == 'failure'",
         "needs.gtk_provenance.result == 'cancelled'",
         "needs.gtk_iterator.result == 'failure'",

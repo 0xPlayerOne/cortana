@@ -14,6 +14,7 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 
 mod installer;
+mod hindsight;
 mod paths;
 mod readiness;
 mod services;
@@ -299,6 +300,11 @@ fn desktop_autostart_set(app: AppHandle, enabled: bool) -> Result<DesktopInfo, S
 #[tauri::command]
 async fn desktop_services_status(app: AppHandle) -> Result<services::ServiceReport, String> {
     services::status(&app).await
+}
+
+#[tauri::command]
+async fn desktop_hindsight_status() -> Result<hindsight::HindsightStatus, String> {
+    hindsight::status().await
 }
 
 #[tauri::command]
@@ -647,6 +653,7 @@ pub fn run() {
             desktop_info,
             desktop_autostart_set,
             desktop_services_status,
+            desktop_hindsight_status,
             desktop_service_action,
             desktop_services_action_all,
             desktop_update_status,

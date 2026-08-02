@@ -122,6 +122,15 @@ export const desktopSettings: DesktopSettings = {
     cache_max_entries: 10000,
     cache_ttl_seconds: 3600,
   },
+  hindsight: {
+    enabled: false,
+    provider: 'hindsight',
+    base_url: 'http://127.0.0.1:8888',
+    bank: 'default',
+    token_env: null,
+    optional: true,
+    wired_to_ingestion: false,
+  },
   ingestion: {
     max_documents_per_source: 2000,
     max_bytes_per_source: 134217728,

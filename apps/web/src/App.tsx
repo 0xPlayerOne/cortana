@@ -59,9 +59,9 @@ export function App() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('document')
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null)
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null)
-  const [settingsSection, setSettingsSection] = useState<'readiness' | 'updates' | 'sources'>(
-    'readiness'
-  )
+  const [settingsSection, setSettingsSection] = useState<
+    'readiness' | 'updates' | 'sources' | 'hindsight'
+  >('readiness')
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
   const [documentsLoading, setDocumentsLoading] = useState(true)

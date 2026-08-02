@@ -74,6 +74,18 @@ pub struct QuerySettings {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct HindsightSettings {
+    pub enabled: bool,
+    pub provider: String,
+    pub base_url: String,
+    pub bank: String,
+    pub token_env: Option<String>,
+    pub optional: bool,
+    pub wired_to_ingestion: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct IngestionSettings {
     pub max_documents_per_source: usize,
     pub max_bytes_per_source: u64,
@@ -140,6 +152,7 @@ pub struct SettingsUpdate {
     pub auth_principals: Vec<AuthPrincipalSettings>,
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
+    pub hindsight: HindsightSettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
     #[serde(default)]
@@ -164,6 +177,7 @@ pub struct SettingsSnapshot {
     pub auth_principals: Vec<AuthPrincipalSettings>,
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
+    pub hindsight: HindsightSettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
     pub secrets: Vec<SecretState>,
@@ -177,6 +191,7 @@ pub struct PortableSettings {
     pub auth_principals: Vec<AuthPrincipalSettings>,
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
+    pub hindsight: HindsightSettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
 }
@@ -233,6 +248,19 @@ pub fn configured_source(name: &str) -> Result<SourceSettings, String> {
 
 pub(crate) fn bearer_for_scope(scope: &str) -> Result<Option<String>, String> {
     bearer_for_scope_at(&default_config_path(), scope)
+}
+
+pub(crate) fn secret_value_for_env(name: &str) -> Result<Option<String>, String> {
+    validate_env_name(name)?;
+    let config_path = default_config_path();
+    let root = read_config(&config_path)?;
+    let path = secret_path(&root, &config_path)?;
+    let secrets = read_secret_map(&path)?;
+    Ok(secrets
+        .get(name)
+        .cloned()
+        .or_else(|| std::env::var(name).ok())
+        .filter(|value| !value.is_empty()))
 }
 
 fn bearer_for_scope_at(config_path: &Path, scope: &str) -> Result<Option<String>, String> {
@@ -422,6 +450,7 @@ fn export_portable_at(config_path: &Path, path: &Path) -> Result<PortableExport,
         auth_principals: snapshot.auth_principals,
         embedding: snapshot.embedding,
         query: snapshot.query,
+        hindsight: snapshot.hindsight,
         ingestion: snapshot.ingestion,
         runtime: snapshot.runtime,
     };
@@ -526,6 +555,7 @@ impl PortableSettings {
             auth_principals: self.auth_principals,
             embedding: self.embedding,
             query: self.query,
+            hindsight: self.hindsight,
             ingestion: self.ingestion,
             runtime: self.runtime,
             secrets: Vec::new(),
@@ -539,6 +569,7 @@ impl PortableSettings {
             auth_principals: update.auth_principals,
             embedding: update.embedding,
             query: update.query,
+            hindsight: update.hindsight,
             ingestion: update.ingestion,
             runtime: update.runtime,
         }
@@ -557,9 +588,11 @@ fn snapshot(
     let auth_principals = configured_auth_principals(root);
     let embedding_api_key_env = optional_string(root, "embedding", "api_key_env");
     let query_api_key_env = optional_string(root, "query", "api_key_env");
+    let hindsight_token_env = optional_string(root, "hindsight", "token_env");
     let mut secret_names = BTreeSet::new();
     secret_names.extend(embedding_api_key_env.iter().cloned());
     secret_names.extend(query_api_key_env.iter().cloned());
+    secret_names.extend(hindsight_token_env.iter().cloned());
     secret_names.extend(
         sources
             .iter()
@@ -623,6 +656,15 @@ fn snapshot(
             request_concurrency: usize_value(root, "query", "request_concurrency", 4),
             cache_max_entries: usize_value(root, "query", "cache_max_entries", 10_000),
             cache_ttl_seconds: u64_value(root, "query", "cache_ttl_seconds", 3600),
+        },
+        hindsight: HindsightSettings {
+            enabled: bool_value(root, "hindsight", "enabled", false),
+            provider: string(root, "hindsight", "provider", "hindsight"),
+            base_url: string(root, "hindsight", "base_url", "http://127.0.0.1:8888"),
+            bank: string(root, "hindsight", "bank", "default"),
+            token_env: optional_string(root, "hindsight", "token_env"),
+            optional: bool_value(root, "hindsight", "optional", true),
+            wired_to_ingestion: bool_value(root, "hindsight", "wired_to_ingestion", false),
         },
         ingestion: IngestionSettings {
             max_documents_per_source: usize_value(
@@ -921,6 +963,38 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
         604_800,
     )?;
 
+    if update.hindsight.provider != "hindsight" {
+        return Err("hindsight provider must be `hindsight`".into());
+    }
+    if !update.hindsight.optional {
+        return Err("hindsight is fixed as optional and cannot be changed".into());
+    }
+    if update.hindsight.wired_to_ingestion {
+        return Err("hindsight cannot be wired into normal ingestion by default".into());
+    }
+    update.hindsight.base_url = update.hindsight.base_url.trim().to_string();
+    update.hindsight.bank = update.hindsight.bank.trim().to_string();
+    if update.hindsight.enabled {
+        if update.hindsight.base_url.is_empty() {
+            return Err("hindsight enabled requires a base URL".into());
+        }
+        if update.hindsight.token_env.is_none() {
+            return Err("hindsight enabled requires a token environment variable".into());
+        }
+        validate_hindsight_bank(&update.hindsight.bank)?;
+        validate_hindsight_url("hindsight", &update.hindsight.base_url)?;
+    } else {
+        if update.hindsight.base_url.is_empty() {
+            update.hindsight.base_url = "http://127.0.0.1:8888".into();
+        }
+        if update.hindsight.bank.is_empty() {
+            update.hindsight.bank = "default".into();
+        }
+        validate_hindsight_url("hindsight", &update.hindsight.base_url)?;
+        validate_hindsight_bank(&update.hindsight.bank)?;
+    }
+    validate_optional_env(&update.hindsight.token_env)?;
+
     bounded(
         "documents per source",
         update.ingestion.max_documents_per_source,
@@ -1098,6 +1172,14 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
     ] {
         set_integer(root, "query", key, value);
     }
+
+    set_string(root, "hindsight", "provider", &update.hindsight.provider);
+    set_bool(root, "hindsight", "enabled", update.hindsight.enabled);
+    set_string(root, "hindsight", "base_url", &update.hindsight.base_url);
+    set_string(root, "hindsight", "bank", &update.hindsight.bank);
+    set_optional_string(root, "hindsight", "token_env", &update.hindsight.token_env);
+    set_bool(root, "hindsight", "optional", update.hindsight.optional);
+    set_bool(root, "hindsight", "wired_to_ingestion", update.hindsight.wired_to_ingestion);
 
     for (key, value) in [
         (
@@ -1340,6 +1422,7 @@ fn validate_mutable_sections(root: &Table) -> Result<(), String> {
     for section in [
         "embedding",
         "query",
+        "hindsight",
         "ingestion",
         "connectors",
         "auth",
@@ -1907,6 +1990,27 @@ fn validate_url(name: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_hindsight_url(name: &str, value: &str) -> Result<(), String> {
+    let url = reqwest::Url::parse(value).map_err(|_| format!("{name} URL is invalid"))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(format!("{name} URL must use HTTP or HTTPS"));
+    }
+    let is_loopback = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
+    if url.scheme() == "http" && !is_loopback {
+        return Err(format!("{name} cloud URL must use HTTPS"));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(format!("{name} URL must not include credentials"));
+    }
+    if url.query().is_some() {
+        return Err(format!("{name} URL must not include query parameters"));
+    }
+    if url.fragment().is_some() {
+        return Err(format!("{name} URL must not include a fragment"));
+    }
+    Ok(())
+}
+
 fn validate_provider_url(name: &str, provider: &str, value: &str) -> Result<(), String> {
     let url = reqwest::Url::parse(value).map_err(|_| format!("{name} URL is invalid"))?;
     let is_loopback = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
@@ -1933,6 +2037,26 @@ fn validate_workspace_id(value: &str) -> Result<(), String> {
     {
         return Err(
             "workspace ids must be 1-32 lowercase letters, numbers, dashes, or underscores".into(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_hindsight_bank(value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > 64
+        || !value.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '-' | '_')
+        })
+        || !value
+            .chars()
+            .next()
+            .is_some_and(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
+    {
+        return Err(
+            "hindsight bank must be 1-64 lowercase letters, numbers, dashes, or underscores".into(),
         );
     }
     Ok(())
@@ -2214,7 +2338,7 @@ mod tests {
                 provider: "local".into(),
                 base_url: "http://127.0.0.1:8080/v1".into(),
                 model: "local".into(),
-                api_key_env: None,
+                api_key_env: Some("CORTANA_QUERY_API_KEY".into()),
                 max_planned_queries: 4,
                 retrieval_limit: 20,
                 result_limit: 8,
@@ -2225,6 +2349,15 @@ mod tests {
                 request_concurrency: 4,
                 cache_max_entries: 10_000,
                 cache_ttl_seconds: 3600,
+            },
+            hindsight: HindsightSettings {
+                enabled: false,
+                provider: "hindsight".into(),
+                base_url: "http://127.0.0.1:8888".into(),
+                bank: "default".into(),
+                token_env: Some("CORTANA_HINDSIGHT_TOKEN".into()),
+                optional: true,
+                wired_to_ingestion: false,
             },
             ingestion: IngestionSettings {
                 max_documents_per_source: 2000,
@@ -2249,6 +2382,11 @@ mod tests {
                     value: Some("private-bearer".into()),
                     clear: false,
                 },
+                SecretUpdate {
+                    name: "CORTANA_HINDSIGHT_TOKEN".into(),
+                    value: Some("hindsight-secret".into()),
+                    clear: false,
+                },
             ],
         }
     }
@@ -2264,12 +2402,22 @@ mod tests {
             .expect("save settings");
         assert_eq!(state.workspaces[0].id, "work");
         assert_eq!(state.auth_principals[0].principal, "work-agent");
+        let secret_names = state
+            .secrets
+            .iter()
+            .map(|secret| secret.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(secret_names.contains(&"CORTANA_QUERY_API_KEY"));
+        assert!(secret_names.contains(&"CORTANA_WORK_AGENT_TOKEN"));
+        assert!(secret_names.contains(&"CORTANA_HINDSIGHT_TOKEN"));
         assert!(!format!("{state:?}").contains("not-returned"));
         assert!(!format!("{state:?}").contains("private-bearer"));
+        assert!(!format!("{state:?}").contains("hindsight-secret"));
         let secret_body =
             fs::read_to_string(temp.path().join("config/secrets.env")).expect("secret file");
         assert!(secret_body.contains("CORTANA_QUERY_API_KEY=not-returned"));
         assert!(secret_body.contains("CORTANA_WORK_AGENT_TOKEN=private-bearer"));
+        assert!(secret_body.contains("CORTANA_HINDSIGHT_TOKEN=hindsight-secret"));
         assert_eq!(
             bearer_for_scope_at(&store.config_path, "query").expect("query bearer"),
             Some("private-bearer".into())
@@ -2321,6 +2469,40 @@ mod tests {
         let mut update = valid_update(temp.path());
         update.auth_principals[0].scopes = vec!["root".into()];
         assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.hindsight.enabled = true;
+        update.hindsight.token_env = None;
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.hindsight.base_url = "http://127.0.0.1:9000/v1?x=1".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.hindsight.base_url = "http://hindsight.example/v1".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.hindsight.provider = "openai".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.hindsight.provider = "hindsight".into();
+        update.hindsight.optional = false;
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.hindsight.bank = "bad Bank".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.hindsight.base_url = "https://127.0.0.1/v1#section".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.hindsight.token_env = Some("bad-env".into());
+        assert!(validate_update(&mut update).is_err());
     }
 
     #[test]
@@ -2367,6 +2549,12 @@ mod tests {
         assert_eq!(state.ingestion.document_batch_size, 16);
         assert_eq!(state.ingestion.request_concurrency, 1);
         assert_eq!(state.runtime.connector_timeout_seconds, 21_600);
+        assert!(!state.hindsight.enabled);
+        assert_eq!(state.hindsight.provider, "hindsight");
+        assert_eq!(state.hindsight.base_url, "http://127.0.0.1:8888");
+        assert_eq!(state.hindsight.bank, "default");
+        assert!(state.hindsight.optional);
+        assert!(!state.hindsight.wired_to_ingestion);
 
         fs::create_dir_all(store.config_path.parent().expect("config parent"))
             .expect("config directory");
