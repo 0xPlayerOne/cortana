@@ -501,6 +501,12 @@ impl SettingsStore {
 
         let mut root = read_config(&self.config_path)?;
         let secret_path = secret_path(&root, &self.config_path)?;
+        let previous_secret_names = referenced_secret_names(&root);
+        let next_secret_names = update_secret_names(&update);
+        let removed_secret_names = previous_secret_names
+            .difference(&next_secret_names)
+            .cloned()
+            .collect::<Vec<_>>();
         let previous_auth_tokens = configured_auth_principals(&root)
             .into_iter()
             .map(|principal| principal.token_env)
@@ -522,7 +528,21 @@ impl SettingsStore {
             ensure_managed_secret_path(&secret_path, &self.config_path)?;
             let mut secrets = read_secret_map(&secret_path)?;
             apply_secret_updates(&mut secrets, &update.secrets)?;
-            for name in &removed_auth_tokens {
+            for name in &removed_secret_names {
+                secrets.remove(name);
+            }
+            atomic_write(&secret_path, render_secrets(&secrets).as_bytes())?;
+        } else if !removed_secret_names.is_empty()
+            && self
+                .config_path
+                .parent()
+                .is_some_and(|parent| secret_path == parent.join("secrets.env"))
+        {
+            // Desktop owns the default secret file, so stale values from a
+            // removed source/provider reference can be safely retired. An
+            // externally managed runtime.env_file is never modified here.
+            let mut secrets = read_secret_map(&secret_path)?;
+            for name in &removed_secret_names {
                 secrets.remove(name);
             }
             atomic_write(&secret_path, render_secrets(&secrets).as_bytes())?;
@@ -985,6 +1005,70 @@ fn prioritized_workspace_projects(projects: BTreeSet<String>) -> Vec<WorkspaceSe
     }
     result.truncate(MAX_WORKSPACES);
     result
+}
+
+fn referenced_secret_names(root: &Table) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for (section, key) in [
+        ("embedding", "api_key_env"),
+        ("query", "api_key_env"),
+        ("hindsight", "token_env"),
+        ("honcho", "token_env"),
+    ] {
+        if let Some(name) = optional_string(root, section, key) {
+            names.insert(name);
+        }
+    }
+    if let Some(sources) = root.get("sources").and_then(Value::as_array) {
+        for name in sources
+            .iter()
+            .filter_map(Value::as_table)
+            .filter_map(|source| table_optional_string(source, "token_env"))
+        {
+            names.insert(name);
+        }
+    }
+    if let Some(principals) = table(root, "auth")
+        .and_then(|auth| auth.get("tokens"))
+        .and_then(Value::as_array)
+    {
+        for name in principals
+            .iter()
+            .filter_map(Value::as_table)
+            .filter_map(|principal| table_optional_string(principal, "token_env"))
+        {
+            names.insert(name);
+        }
+    }
+    names
+}
+
+fn update_secret_names(update: &SettingsUpdate) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for name in [
+        update.embedding.api_key_env.as_ref(),
+        update.query.api_key_env.as_ref(),
+        update.hindsight.token_env.as_ref(),
+        update.honcho.token_env.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        names.insert(name.clone());
+    }
+    names.extend(
+        update
+            .sources
+            .iter()
+            .filter_map(|source| source.token_env.as_ref().cloned()),
+    );
+    names.extend(
+        update
+            .auth_principals
+            .iter()
+            .map(|principal| principal.token_env.clone()),
+    );
+    names
 }
 
 fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
@@ -2716,6 +2800,35 @@ mod tests {
                 0o600
             );
         }
+    }
+
+    #[test]
+    fn retires_secret_file_values_when_references_are_removed() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let store = SettingsStore {
+            config_path: temp.path().join("config/config.toml"),
+        };
+        let mut initial = valid_update(temp.path());
+        let mut slack = source_settings("team-slack", "slack");
+        slack.token_env = Some("CORTANA_SLACK_TOKEN".into());
+        initial.sources.push(slack);
+        initial.secrets.push(SecretUpdate {
+            name: "CORTANA_SLACK_TOKEN".into(),
+            value: Some("slack-secret".into()),
+            clear: false,
+        });
+        store.save(initial).expect("save source secret");
+        let secret_path = temp.path().join("config/secrets.env");
+        assert!(fs::read_to_string(&secret_path)
+            .expect("secret file")
+            .contains("CORTANA_SLACK_TOKEN=slack-secret"));
+
+        store
+            .save(valid_update(temp.path()))
+            .expect("remove source");
+        let secret_body = fs::read_to_string(&secret_path).expect("secret file after removal");
+        assert!(!secret_body.contains("CORTANA_SLACK_TOKEN"));
+        assert!(secret_body.contains("CORTANA_QUERY_API_KEY=not-returned"));
     }
 
     #[test]
