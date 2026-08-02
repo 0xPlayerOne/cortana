@@ -112,6 +112,7 @@ const state = {
   validationCalls: [] as Array<{ source: string; budget?: InitialSyncBudget }>,
   planOverrides: {} as Partial<DesktopInitialSyncPlan>,
   planError: null as Error | null,
+  settingsLoadError: null as Error | null,
   runningJob: null as DesktopSourceJob | null,
   cancelCalls: [] as string[],
   pollCount: 0,
@@ -128,6 +129,7 @@ beforeEach(() => {
   state.validationCalls = []
   state.planOverrides = {}
   state.planError = null
+  state.settingsLoadError = null
   state.runningJob = null
   state.cancelCalls = []
   state.pollCount = 0
@@ -140,7 +142,10 @@ beforeEach(() => {
 mock.module('./api', () => ({
   ...realApi,
   isDesktopApp: true,
-  getDesktopSettings: () => Promise.resolve(state.settings),
+  getDesktopSettings: () =>
+    state.settingsLoadError
+      ? Promise.reject(state.settingsLoadError)
+      : Promise.resolve(state.settings),
   getDesktopInfo: () =>
     Promise.resolve({
       desktop_version: '0.11.4',
@@ -324,6 +329,18 @@ test('standalone updater failures stay visible instead of being swallowed', asyn
   await waitFor(() =>
     expect(screen.getByRole('alert').textContent).toContain('Updates unavailable')
   )
+})
+
+test('settings bridge failures expose a retry action', async () => {
+  state.settingsLoadError = new Error('settings bridge unavailable')
+  render(<SettingsView onSaved={() => {}} initialSection="readiness" />)
+
+  await waitFor(() =>
+    expect(screen.getByRole('alert').textContent).toContain('settings bridge unavailable')
+  )
+  state.settingsLoadError = null
+  fireEvent.click(screen.getByRole('button', { name: 'Retry settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
 })
 
 test('a shared active source job locks source actions until it finishes', async () => {

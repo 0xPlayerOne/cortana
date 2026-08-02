@@ -284,6 +284,15 @@ export function SettingsView({
     setDirty(true)
   }
 
+  const retrySettingsLoad = () => {
+    setError('')
+    void getDesktopSettings()
+      .then(setSettings)
+      .catch((caught: unknown) =>
+        setError(caught instanceof Error ? caught.message : 'Unable to load settings')
+      )
+  }
+
   const discard = async () => {
     if (!dirty || saving) return
     if (!window.confirm('Discard unsaved Cortana settings changes?')) return
@@ -363,7 +372,12 @@ export function SettingsView({
     return (
       <main className="settings-view settings-unavailable">
         <Settings2 size={34} />
-        <h1>{error || 'Loading local settings…'}</h1>
+        <h1 role={error ? 'alert' : 'status'}>{error || 'Loading local settings…'}</h1>
+        {error && (
+          <button type="button" className="secondary-button" onClick={retrySettingsLoad}>
+            <RefreshCw size={15} /> Retry settings
+          </button>
+        )}
       </main>
     )
   }
