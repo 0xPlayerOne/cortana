@@ -33,9 +33,7 @@ def fetch_slack(
                     params={"channel": channel_id, "limit": 200, "cursor": cursor},
                 )
                 payload = _slack_payload(response)
-                for parent in payload.get("messages", []):
-                    if not isinstance(parent, dict):
-                        continue
+                for parent in _slack_messages(payload):
                     parent_timestamp = _slack_timestamp(parent.get("ts"))
                     if parent_timestamp is None:
                         continue
@@ -50,9 +48,7 @@ def fetch_slack(
                             "/conversations.replies",
                             params={"channel": channel_id, "ts": parent["ts"], "limit": 200},
                         )
-                        reply_messages = _slack_payload(replies).get("messages")
-                        if isinstance(reply_messages, list):
-                            thread = reply_messages
+                        thread = _slack_messages(_slack_payload(replies))
                     valid_thread = [
                         message
                         for message in thread
@@ -86,7 +82,12 @@ def fetch_slack(
                                 "message_count": len(valid_thread),
                             },
                         )
-                cursor = str(payload.get("response_metadata", {}).get("next_cursor") or "")
+                response_metadata = payload.get("response_metadata")
+                cursor = str(
+                    response_metadata.get("next_cursor")
+                    if isinstance(response_metadata, dict)
+                    else ""
+                )
                 if not cursor:
                     break
 
@@ -446,6 +447,20 @@ def _slack_payload(response: httpx.Response) -> dict[str, Any]:
     if not payload.get("ok"):
         raise RuntimeError(f"Slack API error: {payload.get('error', 'unknown')}")
     return payload
+
+
+def _slack_messages(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    value = payload.get("messages")
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise RuntimeError("Slack API returned an invalid message page")
+    messages = [message for message in value if isinstance(message, dict)]
+    if value and not messages:
+        raise RuntimeError("Slack API message page contained no usable records")
+    if len(messages) != len(value):
+        print("connector warning: skipping malformed Slack message records", file=sys.stderr)
+    return messages
 
 
 def _title(text: str, fallback: str) -> str:

@@ -365,6 +365,14 @@ def test_chat_connectors_reassemble_slack_and_normalize_discord(
     assert discord_documents[0].metadata["author_id"] == "u1"
 
 
+def test_slack_message_pages_fail_closed_on_invalid_shapes() -> None:
+    assert chat._slack_messages({"messages": [None, {"ts": "1.0"}]}) == [{"ts": "1.0"}]
+    with pytest.raises(RuntimeError, match="invalid message page"):
+        chat._slack_messages({"messages": "not-a-list"})
+    with pytest.raises(RuntimeError, match="no usable records"):
+        chat._slack_messages({"messages": [None]})
+
+
 def test_discord_skips_malformed_messages_without_aborting_the_batch() -> None:
     assert (
         chat._discord_document(
