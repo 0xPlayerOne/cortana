@@ -47,6 +47,7 @@ function deferred<T>(): Deferred<T> {
 
 const state = {
   status: demoStatus as BrainStatus,
+  statusRequest: null as (() => Promise<BrainStatus>) | null,
   documents: ((_project, _source, _query, cursor) =>
     Promise.resolve(cursor ? secondDocumentsPage : firstDocumentsPage)) as (
     project?: string,
@@ -79,7 +80,7 @@ mock.module('./api', () => ({
   ...realApi,
   isDesktopApp: false,
   isDemoMode: false,
-  getStatus: () => Promise.resolve(state.status),
+  getStatus: () => (state.statusRequest ? state.statusRequest() : Promise.resolve(state.status)),
   getDocuments: (project?: string, source?: string, query?: string, cursor?: string) => {
     state.documentsCalls.push({ project, source, query, cursor })
     return state.documents(project, source, query, cursor)
@@ -290,6 +291,33 @@ test('stale search responses do not overwrite the latest query', async () => {
   )
   expect(screen.getByText('Fresh answer content')).toBeTruthy()
   expect(screen.queryByText('Stale answer content')).toBeNull()
+})
+
+test('initial status completion does not hide a search that started first', async () => {
+  const status = deferred<BrainStatus>()
+  const answer = deferred<AnswerResponse>()
+  state.statusRequest = () => status.promise
+  state.answer = () => answer.promise
+
+  try {
+    render(<App />)
+    const input = screen.getByLabelText('Search your knowledge')
+    fireEvent.change(input, { target: { value: 'status race query' } })
+    fireEvent.submit(input.closest('form')!)
+
+    // Health can arrive after the query has started, but the query remains
+    // visibly in flight until its own response settles.
+    status.resolve(demoStatus)
+    await waitFor(() => expect(screen.getByText('Searching your brain')).toBeTruthy())
+
+    answer.resolve({ ...answerResponse, query: 'status race query' })
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'status race query' })).toBeTruthy()
+    )
+  } finally {
+    state.statusRequest = null
+    state.answer = null
+  }
 })
 
 test('stale document responses do not overwrite the currently selected document', async () => {

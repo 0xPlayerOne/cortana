@@ -113,7 +113,10 @@ export function App() {
         setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
       })
     void statusRequest.finally(() => {
-      if (!controller.signal.aborted) setLoading(false)
+      // Status is independent from an in-flight query. If a user submits a
+      // search before the first health request finishes, the status response
+      // must not hide the query's loading state.
+      if (!controller.signal.aborted && searchRequestRef.current === 0) setLoading(false)
     })
     return () => controller.abort()
   }, [])
@@ -296,6 +299,10 @@ export function App() {
     const requestedScope = searchScope(nextSource, nextWorkspace, value)
     setLoading(true)
     setError('')
+    // Keep the active result surface visible while retrieval is in flight.
+    // Otherwise a search started from the document tab looks idle until the
+    // answer arrives.
+    setWorkspaceTab('answer')
     searchScopeRef.current = requestedScope
     const controller = new AbortController()
     searchAbortRef.current?.abort()

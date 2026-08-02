@@ -39,7 +39,15 @@ pub struct ReadinessSnapshot {
 }
 
 pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
-    let bundled_version = sidecar_output(app, &["--version"], VERSION_TIMEOUT).await;
+    // These probes are independent and each has its own bounded timeout. Run
+    // them together so first-launch readiness is limited by the slowest local
+    // tool instead of the sum of every probe.
+    let (bundled_version, uv, connector, rust) = tokio::join!(
+        sidecar_output(app, &["--version"], VERSION_TIMEOUT),
+        tool_status("uv", "uv", &["uv"], true, uv_install_supported()),
+        connector_status(),
+        tool_status("rust", "Rust toolchain", &["rustc"], false, false),
+    );
     let cortana = if let Ok(version) = &bundled_version {
         ToolStatus {
             id: "cortana",
@@ -54,10 +62,7 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
     } else {
         tool_status("cortana", "Cortana runtime", &["cortana"], true, false).await
     };
-    let uv = tool_status("uv", "uv", &["uv"], true, uv_install_supported()).await;
     let python = python_status(uv.available).await;
-    let connector = connector_status().await;
-    let rust = tool_status("rust", "Rust toolchain", &["rustc"], false, false).await;
     let tools = vec![cortana.clone(), uv, python, connector, rust];
     let (core, core_error) = if bundled_version.is_ok() {
         match sidecar_readiness(app).await {
