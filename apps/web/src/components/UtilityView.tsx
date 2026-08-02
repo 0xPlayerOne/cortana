@@ -16,6 +16,7 @@ import {
   TerminalSquare,
 } from 'lucide-react'
 
+import { openDesktopUrl } from '../api'
 import type {
   AnswerResponse,
   BrainStatus,
@@ -682,7 +683,21 @@ function HelpView({
         <h2>Project and docs</h2>
         <div className="utility-list">
           {links.map(({ label, href, detail }) => (
-            <a className="utility-link" href={href} target="_blank" rel="noreferrer" key={href}>
+            <a
+              className="utility-link"
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              key={href}
+              onClick={(event) => {
+                if (!desktopAvailable) return
+                event.preventDefault()
+                void openDesktopUrl(href).catch(() => {
+                  // The native URL policy remains authoritative. Keep the
+                  // Help surface usable if the system browser rejects it.
+                })
+              }}
+            >
               <BookOpen size={16} />
               <span>
                 <strong>{label}</strong>

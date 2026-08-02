@@ -36,6 +36,7 @@ afterEach(() => {
   state.scheduleSaveCalls = 0
   state.openSecretFileCalls = 0
   state.embeddingMigrationCalls = []
+  state.openUrlCalls = []
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -85,6 +86,7 @@ const state = {
   sourceJob: null as DesktopSourceJob | null,
   authorizationCalls: [] as string[],
   embeddingMigrationCalls: [] as string[],
+  openUrlCalls: [] as string[],
   getDocumentsCalls: [] as Array<{
     workspace: string | undefined
     source: string | undefined
@@ -294,6 +296,10 @@ mock.module('./api', () => ({
   migrateDesktopEmbeddingGeneration: (from: string) => {
     state.embeddingMigrationCalls.push(from)
     return Promise.resolve('embedding generation migrated')
+  },
+  openDesktopUrl: (url: string) => {
+    state.openUrlCalls.push(url)
+    return Promise.resolve()
   },
   startDesktopInstaller: (tool: string) => {
     state.installerJob = {
@@ -523,6 +529,17 @@ test('desktop shell surfaces optional sidecar health without opening settings', 
   expect(screen.getByText('Services: core attention')).toBeTruthy()
   expect(screen.getByText('Hindsight: disabled')).toBeTruthy()
   expect(screen.getByText('Honcho: disabled')).toBeTruthy()
+})
+
+test('desktop Help links use the native external URL bridge', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Help' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Help' }))
+  const documentation = screen.getByRole('link', { name: /Documentation/ })
+  fireEvent.click(documentation)
+  await waitFor(() =>
+    expect(state.openUrlCalls).toEqual(['https://github.com/0xPlayerOne/cortana/tree/main/docs'])
+  )
 })
 
 test('desktop shell does not present a stale service report after refresh failure', () => {
