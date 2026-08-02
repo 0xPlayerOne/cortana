@@ -2,7 +2,9 @@ import {
   AlertTriangle,
   BookOpen,
   Check,
+  CheckCircle2,
   CircleStop,
+  CircleX,
   Copy,
   ExternalLink,
   FileText,
@@ -754,6 +756,12 @@ function HelpView({
 function SyncIcon({ status }: { status: string }) {
   if (status === 'running' || status === 'cancelling') {
     return <LoaderCircle className="spin" size={16} />
+  }
+  if (status === 'succeeded') {
+    return <CheckCircle2 size={16} />
+  }
+  if (status === 'cancelled') {
+    return <CircleX size={16} />
   }
   return <AlertTriangle size={16} />
 }
