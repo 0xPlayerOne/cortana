@@ -187,8 +187,7 @@ async fn connector_status(app: &AppHandle) -> ToolStatus {
 pub(crate) fn bundled_connector_resource_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     if let Ok(resource_dir) = app.path().resource_dir() {
-        candidates.push(resource_dir.join("resources/cortana-connectors"));
-        candidates.push(resource_dir.join("cortana-connectors"));
+        candidates.extend(bundled_connector_candidates(&resource_dir));
     }
     candidates.push(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -202,6 +201,13 @@ pub(crate) fn bundled_connector_resource_dir(app: &AppHandle) -> Result<PathBuf,
                 && candidate.join("src").join("cortana").is_dir()
         })
         .ok_or_else(|| "bundled connector workspace is unavailable".into())
+}
+
+fn bundled_connector_candidates(resource_dir: &Path) -> Vec<PathBuf> {
+    ["resources/cortana-connectors", "cortana-connectors"]
+        .into_iter()
+        .map(|relative| resource_dir.join(relative))
+        .collect()
 }
 
 fn connector_candidates() -> Vec<PathBuf> {
@@ -495,6 +501,19 @@ mod tests {
             vec![
                 home.join(".local/share/cortana")
                     .join(connector_relative_path())
+            ]
+        );
+    }
+
+    #[test]
+    fn bundled_connector_candidates_prefer_tauri_resource_prefix() {
+        assert_eq!(
+            bundled_connector_candidates(Path::new("/Applications/Cortana.app/Contents/Resources")),
+            vec![
+                PathBuf::from(
+                    "/Applications/Cortana.app/Contents/Resources/resources/cortana-connectors"
+                ),
+                PathBuf::from("/Applications/Cortana.app/Contents/Resources/cortana-connectors"),
             ]
         );
     }
