@@ -1415,9 +1415,13 @@ function ReadinessSection({
   }, [autoScan, onResult])
 
   const install = async (tool: string, label: string) => {
+    const action =
+      tool === 'connectors'
+        ? 'Cortana will create the per-user connector environment from the signed Desktop bundle and install its bounded ingestion dependencies with uv.'
+        : 'Cortana will run its fixed, platform-specific installer.'
     if (
       !window.confirm(
-        `Install ${label} on this computer?\n\nCortana will run its fixed, platform-specific installer. No ingestion or sync will start.`
+        `Install ${label} on this computer?\n\n${action} No ingestion or sync will start.`
       )
     ) {
       return

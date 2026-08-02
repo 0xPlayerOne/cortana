@@ -187,6 +187,7 @@ async fn connector_status(app: &AppHandle) -> ToolStatus {
 pub(crate) fn bundled_connector_resource_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("resources/cortana-connectors"));
         candidates.push(resource_dir.join("cortana-connectors"));
     }
     #[cfg(debug_assertions)]
