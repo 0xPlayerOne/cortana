@@ -165,6 +165,7 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationO
 
 fn read_client_file(path: &Path) -> Result<InstalledClient> {
     reject_symlink(path)?;
+    reject_symlink_components(path)?;
     let metadata =
         fs::metadata(path).with_context(|| format!("inspect OAuth client {}", path.display()))?;
     anyhow::ensure!(metadata.is_file(), "OAuth client must be a regular file");
@@ -185,6 +186,7 @@ fn read_client_file(path: &Path) -> Result<InstalledClient> {
 
 fn read_existing_refresh_token(path: &Path) -> Result<Option<String>> {
     reject_symlink(path)?;
+    reject_symlink_components(path)?;
     if !path.exists() {
         return Ok(None);
     }
@@ -488,6 +490,7 @@ fn verify_granted_scopes(requested: &[String], granted: Option<&str>) -> Result<
 
 fn write_token(path: &Path, token: &StoredToken<'_>) -> Result<()> {
     reject_symlink(path)?;
+    reject_symlink_components(path)?;
     let parent = path.parent().context("Google token path has no parent")?;
     let created_parent = !parent.exists();
     fs::create_dir_all(parent)
@@ -575,6 +578,41 @@ fn reject_symlink(path: &Path) -> Result<()> {
         Err(error) => return Err(error.into()),
     }
     Ok(())
+}
+
+fn reject_symlink_components(path: &Path) -> Result<()> {
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                anyhow::ensure!(
+                    is_allowed_system_alias(&current),
+                    "refusing to use symlinked path component {}",
+                    current.display()
+                );
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => break,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
+
+fn is_allowed_system_alias(path: &Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        // macOS exposes these standard locations as symlinks into /private.
+        return path == Path::new("/tmp")
+            || path == Path::new("/var")
+            || path == Path::new("/etc");
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        false
+    }
 }
 
 fn random_secret() -> String {
@@ -689,6 +727,27 @@ mod tests {
         let error = read_existing_refresh_token(&token)
             .expect_err("dangling token symlink must be rejected");
         assert!(error.to_string().contains("symlinked file"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn token_paths_reject_symlinked_parent_components() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let real = directory.path().join("real");
+        fs::create_dir(&real).unwrap();
+        fs::write(
+            real.join("token.json"),
+            r#"{"refresh_token":"retained-refresh-token"}"#,
+        )
+        .unwrap();
+        let linked = directory.path().join("linked");
+        symlink(&real, &linked).unwrap();
+
+        let error = read_existing_refresh_token(&linked.join("token.json"))
+            .expect_err("symlinked token parent must be rejected");
+        assert!(error.to_string().contains("symlinked path component"));
     }
 
     #[test]
