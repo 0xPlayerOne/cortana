@@ -234,7 +234,11 @@ export function App() {
       setDocumentCursor(null)
       setDocumentsError('')
       setActiveDocument(null)
-      setDocumentsLoading(false)
+      // Keep the Knowledge pane honest during the one transient state where
+      // Desktop settings have not arrived yet. Once setup is known to be
+      // required, or while Settings is open, there is no document request to
+      // wait for and the empty state should be calm instead of spinning.
+      setDocumentsLoading(view === 'knowledge' && isDesktopApp && desktopSettings === null)
       return
     }
     const requestId = ++documentListRequestRef.current
