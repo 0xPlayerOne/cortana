@@ -299,6 +299,7 @@ test('Inbox renders current sync attention and a truthful idle empty state', asy
 })
 
 test('Inbox does not claim clean sync history while runtime status is unavailable', () => {
+  let retries = 0
   render(
     <UtilityView
       kind="inbox"
@@ -319,11 +320,16 @@ test('Inbox does not claim clean sync history while runtime status is unavailabl
       onRetrieveContext={() => {}}
       onOpenSettings={() => {}}
       onOpenProject={() => {}}
+      onRetryStatus={() => {
+        retries += 1
+      }}
     />
   )
   expect(screen.getByText('Sync health unavailable')).toBeTruthy()
   expect(screen.getByText('Runtime status unavailable')).toBeTruthy()
   expect(screen.queryByText('No sync attention')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Retry status' }))
+  expect(retries).toBe(1)
 })
 
 test('Inbox retains terminal source-job history after the job stops running', () => {

@@ -1474,6 +1474,7 @@ export function App() {
           kind={view}
           status={status}
           statusError={statusError}
+          onRetryStatus={retryStatus}
           sourceJobs={sourceJobs.jobs}
           query={activeQuery}
           answer={answer}

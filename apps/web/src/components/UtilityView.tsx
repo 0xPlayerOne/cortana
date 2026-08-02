@@ -9,6 +9,7 @@ import {
   Inbox,
   LoaderCircle,
   MessageCircle,
+  RefreshCw,
   Search,
   Settings,
   Sparkles,
@@ -60,6 +61,7 @@ export function UtilityView({
   kind,
   status,
   statusError = '',
+  onRetryStatus,
   sourceJobs,
   query,
   answer,
@@ -81,6 +83,7 @@ export function UtilityView({
   kind: UtilityKind
   status: BrainStatus | null
   statusError?: string
+  onRetryStatus?: () => void
   sourceJobs: DesktopSourceJob[]
   query: string
   answer: AnswerResponse | null
@@ -117,6 +120,7 @@ export function UtilityView({
             sourceJobs={sourceJobs}
             sourceJobError={sourceJobError}
             onOpenSettings={onOpenSettings}
+            onRetryStatus={onRetryStatus}
             onCancelSourceJob={onCancelSourceJob}
           />
         )}
@@ -142,7 +146,12 @@ export function UtilityView({
           />
         )}
         {kind === 'index' && (
-          <IndexView status={status} statusError={statusError} onOpenSettings={onOpenSettings} />
+          <IndexView
+            status={status}
+            statusError={statusError}
+            onOpenSettings={onOpenSettings}
+            onRetryStatus={onRetryStatus}
+          />
         )}
         {kind === 'help' && (
           <HelpView desktopAvailable={desktopAvailable} onOpenProject={onOpenProject} />
@@ -158,6 +167,7 @@ function InboxView({
   sourceJobs,
   sourceJobError,
   onOpenSettings,
+  onRetryStatus,
   onCancelSourceJob,
 }: {
   status: BrainStatus | null
@@ -165,6 +175,7 @@ function InboxView({
   sourceJobs: DesktopSourceJob[]
   sourceJobError?: string
   onOpenSettings: () => void
+  onRetryStatus?: () => void
   onCancelSourceJob?: (id: string) => void
 }) {
   const attention = (status?.sync_runs ?? []).filter((run) =>
@@ -192,6 +203,9 @@ function InboxView({
             'Waiting for the runtime status snapshot before reporting source health or sync history.'
           }
           actions={[
+            ...(onRetryStatus
+              ? [{ label: 'Retry status', icon: <RefreshCw size={15} />, onClick: onRetryStatus }]
+              : []),
             { label: 'Open settings', icon: <Settings size={15} />, onClick: onOpenSettings },
           ]}
         />
@@ -221,7 +235,12 @@ function InboxView({
       )}
       {statusError && status && (
         <p className="utility-error" role="status">
-          {statusError} Showing the last known sync snapshot.
+          {statusError} Showing the last known sync snapshot.{' '}
+          {onRetryStatus && (
+            <button type="button" className="link-button" onClick={onRetryStatus}>
+              Retry status
+            </button>
+          )}
         </p>
       )}
       {attention.length > 0 && (
@@ -537,10 +556,12 @@ function IndexView({
   status,
   statusError,
   onOpenSettings,
+  onRetryStatus,
 }: {
   status: BrainStatus | null
   statusError: string
   onOpenSettings: () => void
+  onRetryStatus?: () => void
 }) {
   if (!status) {
     return (
@@ -554,6 +575,9 @@ function IndexView({
           'Waiting for the runtime status snapshot before reporting live index metrics.'
         }
         actions={[
+          ...(onRetryStatus
+            ? [{ label: 'Retry status', icon: <RefreshCw size={15} />, onClick: onRetryStatus }]
+            : []),
           { label: 'Open settings', icon: <Settings size={15} />, onClick: onOpenSettings },
         ]}
       />
