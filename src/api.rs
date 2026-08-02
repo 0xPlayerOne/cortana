@@ -389,8 +389,12 @@ fn regular_file_ready(path: &std::path::Path) -> bool {
 fn google_token_env_ready(config: &Config, name: &str) -> bool {
     config.environment_value(name).is_some_and(|value| {
         let path = std::path::Path::new(value.trim());
-        path.is_absolute() && regular_file_ready(path) && private_path_components_ready(path)
+        path.is_absolute() && secure_regular_file_ready(path)
     })
+}
+
+fn secure_regular_file_ready(path: &std::path::Path) -> bool {
+    regular_file_ready(path) && private_path_components_ready(path)
 }
 
 fn private_path_components_ready(path: &std::path::Path) -> bool {
@@ -439,7 +443,7 @@ fn source_authorization_summary(
         let oauth_client_ready = source
             .oauth_client
             .as_ref()
-            .is_some_and(|path| regular_file_ready(path));
+            .is_some_and(|path| secure_regular_file_ready(path));
         let token_env_ready = source
             .token_env
             .as_deref()
@@ -447,7 +451,7 @@ fn source_authorization_summary(
         let token_file_ready = source
             .token
             .as_ref()
-            .is_some_and(|path| regular_file_ready(path));
+            .is_some_and(|path| secure_regular_file_ready(path));
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::GoogleOauth,
             // A migrated/private token file is a complete authorization path on
@@ -467,7 +471,7 @@ fn source_authorization_summary(
         let token_file_ready = source
             .token
             .as_ref()
-            .is_some_and(|path| regular_file_ready(path));
+            .is_some_and(|path| secure_regular_file_ready(path));
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::Token,
             setup_required: !token_env_ready && !token_file_ready,
