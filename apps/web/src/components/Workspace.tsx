@@ -14,14 +14,16 @@ const tabs = [
   { id: 'timeline', label: 'Timeline', icon: History },
 ] as const
 
-async function openSourceLink(href: string) {
-  if (!isDesktopApp) return
-  if (!safeSourceLink(href, { allowLocalFile: true })) return
+async function openSourceLink(href: string): Promise<boolean> {
+  if (!isDesktopApp) return false
+  if (!safeSourceLink(href, { allowLocalFile: true })) return false
   try {
     await openDesktopUrl(href)
+    return true
   } catch {
     // Desktop URL policy is enforced natively. Never fall back to a renderer
     // window, which could bypass the configured-root check for file links.
+    return false
   }
 }
 
@@ -155,7 +157,9 @@ function BrainDocumentView({
   onSelectDocument: (id: string) => void
 }) {
   const [favorite, setFavorite] = useState(() => isFavoriteDocument(document.id))
+  const [sourceOpenError, setSourceOpenError] = useState(false)
   useEffect(() => setFavorite(isFavoriteDocument(document.id)), [document.id])
+  useEffect(() => setSourceOpenError(false), [document.id])
   const metadata = Object.entries(document.metadata).slice(0, 24)
   const sourceHref = document.uri
     ? safeSourceLink(document.uri, { allowLocalFile: isDesktopApp })
@@ -186,7 +190,10 @@ function BrainDocumentView({
                 if (!isDesktopApp) return
                 const uri = sourceHref
                 event.preventDefault()
-                void openSourceLink(uri)
+                setSourceOpenError(false)
+                void openSourceLink(uri).then((opened) => {
+                  if (!opened) setSourceOpenError(true)
+                })
               }}
             >
               <Link2 size={17} />
@@ -194,6 +201,12 @@ function BrainDocumentView({
           )}
         </div>
       </div>
+      {sourceOpenError && (
+        <p className="answer-warning source-link-error" role="status">
+          Cortana could not open the original source. Check that the source app is installed and try
+          again.
+        </p>
+      )}
       <div className="document-grid">
         <div className="document-body">
           <h1>{document.title}</h1>
@@ -302,7 +315,9 @@ function DocumentView({
   onSelect: (index: number) => void
 }) {
   const [favorite, setFavorite] = useState(() => isFavoriteDocument(active.chunk_id))
+  const [sourceOpenError, setSourceOpenError] = useState(false)
   useEffect(() => setFavorite(isFavoriteDocument(active.chunk_id)), [active.chunk_id])
+  useEffect(() => setSourceOpenError(false), [active.chunk_id])
   const sourceHref = active.uri
     ? safeSourceLink(active.uri, { allowLocalFile: isDesktopApp })
     : null
@@ -331,7 +346,10 @@ function DocumentView({
               onClick={(event) => {
                 if (!isDesktopApp) return
                 event.preventDefault()
-                void openSourceLink(sourceHref)
+                setSourceOpenError(false)
+                void openSourceLink(sourceHref).then((opened) => {
+                  if (!opened) setSourceOpenError(true)
+                })
               }}
             >
               <Link2 size={17} />
@@ -368,6 +386,12 @@ function DocumentView({
           <small>{evidence.length} linked results</small>
         </aside>
       </div>
+      {sourceOpenError && (
+        <p className="answer-warning source-link-error" role="status">
+          Cortana could not open the original source. Check that the source app is installed and try
+          again.
+        </p>
+      )}
     </article>
   )
 }

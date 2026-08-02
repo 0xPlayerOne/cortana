@@ -381,6 +381,10 @@
   font-size: 12px;
 }
 
+.source-link-error {
+  margin: 14px 28px 0;
+}
+
 .answer-source {
   display: grid;
   width: 100%;
