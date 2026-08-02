@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use reqwest::{Client, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 
 use crate::config::EmbeddingConfig;
 use crate::store::Store;
@@ -33,6 +34,7 @@ pub struct CachedEmbedder {
     inner: Arc<dyn Embedder>,
     store: Store,
     max_entries: usize,
+    inflight: Arc<AsyncMutex<HashMap<String, Arc<Notify>>>>,
 }
 
 impl CachedEmbedder {
@@ -45,6 +47,61 @@ impl CachedEmbedder {
             inner,
             store,
             max_entries,
+            inflight: Arc::new(AsyncMutex::new(HashMap::new())),
+        }
+    }
+
+    async fn embed_single_cached(&self, text: &str) -> Result<Vec<f32>> {
+        let fingerprint = self.fingerprint();
+        let key = format!("{fingerprint}\u{0}{text}");
+        loop {
+            if let Some(vector) = self.store.cached_embedding(&fingerprint, text)? {
+                return Ok(vector);
+            }
+
+            let (leader, notify) = {
+                let mut inflight = self.inflight.lock().await;
+                if let Some(notify) = inflight.get(&key) {
+                    (false, notify.clone())
+                } else {
+                    let notify = Arc::new(Notify::new());
+                    inflight.insert(key.clone(), notify.clone());
+                    (true, notify)
+                }
+            };
+            if !leader {
+                notify.notified().await;
+                continue;
+            }
+
+            let result = async {
+                let vectors = self.inner.embed(&[text.to_string()]).await?;
+                anyhow::ensure!(
+                    vectors.len() == 1,
+                    "embedding provider returned an unexpected vector count"
+                );
+                let vector = vectors
+                    .into_iter()
+                    .next()
+                    .context("embedding provider returned no vector")?;
+                if !self
+                    .store
+                    .cache_embedding_if_available(&fingerprint, text, &vector)?
+                {
+                    tracing::warn!(
+                        "embedding cache write skipped because another index writer is active"
+                    );
+                }
+                self.store.prune_embedding_cache(self.max_entries)?;
+                Ok(vector)
+            }
+            .await;
+
+            let mut inflight = self.inflight.lock().await;
+            inflight.remove(&key);
+            notify.notify_waiters();
+            drop(inflight);
+            return result;
         }
     }
 }
@@ -52,6 +109,9 @@ impl CachedEmbedder {
 #[async_trait]
 impl Embedder for CachedEmbedder {
     async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+        if input.len() == 1 {
+            return Ok(vec![self.embed_single_cached(&input[0]).await?]);
+        }
         let fingerprint = self.fingerprint();
         let mut output = vec![None; input.len()];
         let mut missing = HashMap::<&str, Vec<usize>>::new();
@@ -286,6 +346,9 @@ mod tests {
         calls: AtomicUsize,
         texts: AtomicUsize,
     }
+    struct DelayedCountingEmbedder {
+        calls: AtomicUsize,
+    }
 
     #[async_trait]
     impl Embedder for CountingEmbedder {
@@ -297,6 +360,19 @@ mod tests {
 
         fn fingerprint(&self) -> String {
             "counting:1".into()
+        }
+    }
+
+    #[async_trait]
+    impl Embedder for DelayedCountingEmbedder {
+        async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(Duration::from_millis(25)).await;
+            Ok(input.iter().map(|text| vec![text.len() as f32]).collect())
+        }
+
+        fn fingerprint(&self) -> String {
+            "delayed-counting:1".into()
         }
     }
 
@@ -320,6 +396,27 @@ mod tests {
         let stats = store.stats().expect("cache stats");
         assert_eq!(stats.embedding_cache_entries, 2);
         assert_eq!(stats.embedding_cache_hits, 3);
+    }
+
+    #[tokio::test]
+    async fn concurrent_single_embeddings_share_one_provider_request() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let inner = Arc::new(DelayedCountingEmbedder {
+            calls: AtomicUsize::new(0),
+        });
+        let cached = CachedEmbedder::new(store, inner.clone());
+        let first_input = ["same".to_string()];
+        let second_input = ["same".to_string()];
+        let first = cached.embed(&first_input);
+        let second = cached.embed(&second_input);
+        let (first, second) = tokio::join!(first, second);
+
+        assert_eq!(
+            first.expect("first embedding"),
+            second.expect("second embedding")
+        );
+        assert_eq!(inner.calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]
