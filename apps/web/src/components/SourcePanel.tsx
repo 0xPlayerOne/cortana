@@ -44,6 +44,7 @@ export function SourcePanel({
   onDocumentQueryChange,
   onSelectDocument,
   onLoadMoreDocuments,
+  onRetryDocuments,
   onOpenSourcesSettings,
   onOpenSourceSetup,
   onAuthorizeSource,
@@ -75,6 +76,7 @@ export function SourcePanel({
   onDocumentQueryChange: (query: string) => void
   onSelectDocument: (id: string) => void
   onLoadMoreDocuments: () => void
+  onRetryDocuments?: () => void
   onOpenSourcesSettings: () => void
   onOpenSourceSetup?: (source: string, project: string) => void
   onAuthorizeSource?: (source: string, project: string) => void
@@ -423,7 +425,12 @@ export function SourcePanel({
         </label>
         {documentsError ? (
           <p className="document-list-error" role="alert">
-            {documentsError}
+            {documentsError}{' '}
+            {onRetryDocuments && (
+              <button type="button" className="link-button" onClick={onRetryDocuments}>
+                Retry documents
+              </button>
+            )}
           </p>
         ) : documents.length ? (
           <VirtualDocumentList

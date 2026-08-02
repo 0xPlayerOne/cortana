@@ -119,6 +119,7 @@ export function App() {
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
   const [documentsLoading, setDocumentsLoading] = useState(true)
   const [documentsError, setDocumentsError] = useState('')
+  const [documentRetryNonce, setDocumentRetryNonce] = useState(0)
   const [activeDocument, setActiveDocument] = useState<BrainDocument | null>(null)
   const [documentLoading, setDocumentLoading] = useState(false)
   const [documentQuery, setDocumentQuery] = useState('')
@@ -387,7 +388,7 @@ export function App() {
         setDocumentsLoading(false)
       }
     }
-  }, [debouncedDocumentQuery, documentFetchReady, source, view, workspace])
+  }, [debouncedDocumentQuery, documentFetchReady, documentRetryNonce, source, view, workspace])
 
   useEffect(() => {
     if (view !== 'knowledge' || workspaceTab !== 'graph' || !documentFetchReady) {
@@ -1199,6 +1200,11 @@ export function App() {
     statusRefreshRef.current?.()
   }, [])
 
+  const retryDocuments = useCallback(() => {
+    setDocumentsError('')
+    setDocumentRetryNonce((current) => current + 1)
+  }, [])
+
   function openGraph() {
     if (!canLeaveSettings()) return
     setView('knowledge')
@@ -1471,6 +1477,7 @@ export function App() {
             onDocumentQueryChange={setDocumentQuery}
             onSelectDocument={(id) => void chooseDocument(id)}
             onLoadMoreDocuments={() => void loadMoreDocuments()}
+            onRetryDocuments={retryDocuments}
             onOpenSourcesSettings={() => {
               setSettingsSection('sources')
               setView('settings')

@@ -84,6 +84,40 @@ test('SourcePanel keeps the last known source index visible during a refresh fai
   expect(screen.getByRole('button', { name: /^work-code/ })).toBeTruthy()
 })
 
+test('SourcePanel exposes a retry action for document list failures', () => {
+  let retries = 0
+  render(
+    <SourcePanel
+      open={false}
+      status={demoStatus}
+      statusError=""
+      workspace=""
+      workspaces={[workspace]}
+      documentQuery=""
+      selected=""
+      documents={[]}
+      selectedDocument=""
+      documentsLoading={false}
+      documentsError="Document list unavailable"
+      hasMoreDocuments={false}
+      onSelect={() => {}}
+      onSelectWorkspace={() => {}}
+      onDocumentQueryChange={() => {}}
+      onSelectDocument={() => {}}
+      onLoadMoreDocuments={() => {}}
+      onRetryDocuments={() => {
+        retries += 1
+      }}
+      onOpenSourcesSettings={() => {}}
+      onClose={() => {}}
+      jobs={[]}
+    />
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Retry documents' }))
+  expect(retries).toBe(1)
+})
+
 test('SourcePanel keeps cancellation failures separate from runtime health', () => {
   renderPanel(demoStatus, '', 'Source job cancellation failed')
   expect(screen.getByRole('alert').textContent).toBe('Source job cancellation failed')
