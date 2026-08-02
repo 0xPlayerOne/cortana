@@ -705,7 +705,7 @@ fn fallback_workspaces(
     source_projects: impl IntoIterator<Item = String>,
 ) -> Vec<WorkspaceConfig> {
     if !configured.is_empty() {
-        return configured.to_vec();
+        return configured.iter().take(3).cloned().collect();
     }
     let mut project_ids: BTreeSet<String> = source_projects
         .into_iter()
@@ -1133,6 +1133,16 @@ mod tests {
             Some("owner@example.com")
         );
         assert_eq!(preserved[0].color.as_deref(), Some("#123456"));
+
+        let oversized = (0..4)
+            .map(|index| WorkspaceConfig {
+                id: format!("workspace-{index}"),
+                name: format!("Workspace {index}"),
+                account_label: None,
+                color: None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(fallback_workspaces(&oversized, std::iter::empty()).len(), 3);
     }
 
     #[tokio::test]
