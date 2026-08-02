@@ -91,11 +91,13 @@ type Section =
 
 export function SettingsView({
   onSaved,
+  onDirtyChange,
   initialSection = 'readiness',
   onJob,
   sourceJobs,
 }: {
   onSaved: (settings: DesktopSettings) => void
+  onDirtyChange?: (dirty: boolean) => void
   initialSection?: Section
   onJob?: (job: DesktopSourceJob) => void
   /**
@@ -125,6 +127,10 @@ export function SettingsView({
   }, [])
 
   useEffect(() => setSection(initialSection), [initialSection])
+
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
 
   const update = (change: (draft: DesktopSettings) => DesktopSettings) => {
     setSettings((current) => (current ? change(current) : current))

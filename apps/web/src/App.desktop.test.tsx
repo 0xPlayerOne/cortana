@@ -210,6 +210,34 @@ test('desktop settings navigation opens the audit trail and renders both event s
   await waitFor(() => expect(screen.getByText('2 runtime · 1 Desktop events')).toBeTruthy())
 })
 
+test('settings warns before discarding dirty changes', async () => {
+  const originalConfirm = window.confirm
+  const responses = [false, true]
+  window.confirm = () => responses.shift() ?? true
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    fireEvent.change(screen.getAllByLabelText('Display name')[0], {
+      target: { value: 'Draft work' },
+    })
+    expect(screen.getByRole('button', { name: 'Save changes' }).hasAttribute('disabled')).toBe(
+      false
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
 test('the footer updates shortcut opens the updates section directly', async () => {
   render(<App />)
   await waitFor(() =>

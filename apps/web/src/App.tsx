@@ -67,6 +67,7 @@ export function App() {
   const [settingsSection, setSettingsSection] = useState<
     'readiness' | 'updates' | 'sources' | 'hindsight' | 'honcho'
   >('readiness')
+  const [settingsDirty, setSettingsDirty] = useState(false)
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
   const [documentsLoading, setDocumentsLoading] = useState(true)
@@ -566,29 +567,41 @@ export function App() {
     }
   }
 
+  function canLeaveSettings() {
+    if (view !== 'settings' || !settingsDirty) return true
+    const leave = window.confirm('Discard unsaved Cortana settings changes?')
+    if (leave) setSettingsDirty(false)
+    return leave
+  }
+
   function navigate(next: AppView) {
+    if (next !== 'settings' && !canLeaveSettings()) return
     setView(next)
     if (next === 'knowledge') setWorkspaceTab('document')
   }
 
   function focusSearch() {
+    if (!canLeaveSettings()) return
     setView('knowledge')
     searchRef.current?.focus()
     searchRef.current?.select()
   }
 
   function focusDocumentFilter() {
+    if (!canLeaveSettings()) return
     setView('knowledge')
     setLeftOpen(true)
     window.setTimeout(() => document.getElementById('document-filter')?.focus(), 0)
   }
 
   function openGraph() {
+    if (!canLeaveSettings()) return
     setView('knowledge')
     setWorkspaceTab('graph')
   }
 
   function openTimeline() {
+    if (!canLeaveSettings()) return
     setView('knowledge')
     setWorkspaceTab('timeline')
   }
@@ -678,7 +691,7 @@ export function App() {
           context
           onOpenContext={() => setRightOpen(true)}
           onOpenFilters={focusDocumentFilter}
-          onOpenHistory={() => setView('conversations')}
+          onOpenHistory={() => navigate('conversations')}
         />
       </header>
       <Navigation
@@ -692,10 +705,12 @@ export function App() {
       {view === 'settings' ? (
         <SettingsView
           initialSection={settingsSection}
+          onDirtyChange={setSettingsDirty}
           onJob={sourceJobs.remember}
           sourceJobs={sourceJobs.jobs}
           onSaved={(next) => {
             setDesktopSettings(next)
+            setSettingsDirty(false)
             void getStatus()
               .then((nextStatus) => {
                 setStatus(nextStatus)
@@ -858,7 +873,7 @@ export function App() {
               autoFocus
               onClick={() => {
                 setCommandPaletteOpen(false)
-                searchRef.current?.focus()
+                focusSearch()
               }}
             >
               Search the brain <kbd>⌘ K</kbd>
@@ -866,8 +881,7 @@ export function App() {
             <button
               onClick={() => {
                 setCommandPaletteOpen(false)
-                setLeftOpen(true)
-                window.setTimeout(() => document.getElementById('document-filter')?.focus(), 0)
+                focusDocumentFilter()
               }}
             >
               Filter documents <kbd>⌘ ⇧ F</kbd>
