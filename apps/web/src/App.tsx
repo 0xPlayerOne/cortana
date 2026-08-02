@@ -1343,7 +1343,7 @@ export function App() {
         </span>
         <span>Query: {status?.query.mode ?? '—'}</span>
         <span>
-          <FileText size={13} /> Docs: {(status?.documents ?? 0).toLocaleString()}
+          <FileText size={13} /> Docs: {status ? status.documents.toLocaleString() : '—'}
         </span>
         <IngestionIndicator status={status} />
         <ActiveSourceJobs

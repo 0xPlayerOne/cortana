@@ -199,7 +199,11 @@ function InboxView({
       <UtilityEmpty
         icon={<Inbox size={26} />}
         title="No sync attention"
-        detail="Every configured source is idle and the last sync of each source finished cleanly. New sync activity will appear here as it happens."
+        detail={
+          statusError
+            ? `${statusError} No attention is recorded in the last known snapshot.`
+            : 'Every configured source is idle and the last sync of each source finished cleanly. New sync activity will appear here as it happens.'
+        }
         actions={[
           { label: 'Open settings', icon: <Settings size={15} />, onClick: onOpenSettings },
         ]}
@@ -211,6 +215,11 @@ function InboxView({
       {sourceJobError && (
         <p className="utility-error" role="alert">
           {sourceJobError}
+        </p>
+      )}
+      {statusError && status && (
+        <p className="utility-error" role="status">
+          {statusError} Showing the last known sync snapshot.
         </p>
       )}
       {attention.length > 0 && (
