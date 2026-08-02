@@ -41,9 +41,14 @@ do not require release secrets. macOS Developer ID signing and notarization requ
 credentials and are reported independently from the updater signature.
 
 The Settings **Readiness** panel runs an explicit, read-only scan. It checks the bundled runtime,
-uv, Python 3.11+, the connector environment, and the core production gates without starting an
-ingestion run. Fixed tool installers require a confirmation and native approval, expose bounded
-logs, and can be cancelled or retried. On a first launch, the guided setup opens this panel and
+uv, Python 3.11+, the connector environment, the configured local embedding runtime, and the core
+production gates without starting an ingestion run. A local embedding provider requires
+`text-embeddings-router`; on macOS with Homebrew available, the panel offers the fixed
+`text-embeddings-inference` install after confirmation. Cloud embedding providers do not require
+that local runtime. Installing the runtime does not download model weights or start a service;
+weights are fetched by the embedding service on its first approved start. Fixed tool installers
+require a confirmation and native approval, expose bounded logs, and can be cancelled or retried.
+On a first launch, the guided setup opens this panel and
 runs the read-only scan automatically; every installation still requires separate approval. Tauri
 release bundles carry the connector source and metadata needed for the approved **Install** action:
 it creates the per-user `~/.local/share/cortana/venv` environment with uv and installs the bounded
