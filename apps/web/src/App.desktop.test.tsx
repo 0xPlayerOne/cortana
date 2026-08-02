@@ -594,6 +594,16 @@ test('desktop Help links use the native external URL bridge', async () => {
   )
 })
 
+test('desktop Help project action surfaces native browser failures', async () => {
+  state.openProjectError = new Error('browser unavailable')
+  render(<App />)
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Help' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Help' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Open project page' }))
+  await waitFor(() => expect(screen.getByText('browser unavailable')).toBeTruthy())
+  expect(state.openProjectCalls).toBe(1)
+})
+
 test('desktop shell does not present a stale service report after refresh failure', () => {
   render(
     <ServiceHealthIndicator

@@ -1527,7 +1527,7 @@ export function App() {
           onSearchFocus={focusSearch}
           onRetrieveContext={() => void retrieveAgentContext()}
           onOpenSettings={() => setView('settings')}
-          onOpenProject={() => void openDesktopProject()}
+          onOpenProject={() => openDesktopProject()}
           onCancelSourceJob={cancelSourceJob}
         />
       )}

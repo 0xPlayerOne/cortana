@@ -15,6 +15,7 @@ import {
   Sparkles,
   TerminalSquare,
 } from 'lucide-react'
+import { useState } from 'react'
 
 import { openDesktopUrl } from '../api'
 import type {
@@ -101,7 +102,7 @@ export function UtilityView({
   onSearchFocus: () => void
   onRetrieveContext: () => void
   onOpenSettings: () => void
-  onOpenProject: () => void
+  onOpenProject: () => void | Promise<void>
   onCancelSourceJob?: (id: string) => void
 }) {
   const { eyebrow, title, description } = TITLES[kind]
@@ -647,8 +648,9 @@ function HelpView({
   onOpenProject,
 }: {
   desktopAvailable: boolean
-  onOpenProject: () => void
+  onOpenProject: () => void | Promise<void>
 }) {
+  const [projectError, setProjectError] = useState('')
   const shortcuts = [
     { keys: shortcutLabel('MOD K'), action: 'Focus the search bar' },
     { keys: shortcutLabel('MOD P'), action: 'Toggle the command palette' },
@@ -710,10 +712,28 @@ function HelpView({
         </div>
         {desktopAvailable && (
           <div className="utility-actions">
-            <button type="button" className="secondary-button" onClick={onOpenProject}>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setProjectError('')
+                void Promise.resolve(onOpenProject()).catch((caught: unknown) => {
+                  setProjectError(
+                    caught instanceof Error
+                      ? caught.message
+                      : 'Unable to open the Cortana project page'
+                  )
+                })
+              }}
+            >
               <ExternalLink size={15} /> Open project page
             </button>
           </div>
+        )}
+        {projectError && (
+          <p className="utility-error" role="alert">
+            {projectError}
+          </p>
         )}
         <p className="utility-note">
           Cortana is local-first: your index, context bundles, and settings stay on this machine.
