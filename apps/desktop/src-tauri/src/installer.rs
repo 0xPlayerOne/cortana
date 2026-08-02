@@ -321,9 +321,13 @@ fn connector_plan(app: Option<&AppHandle>) -> Result<CommandPlan, String> {
     let uv = crate::readiness::find_executable("uv")
         .ok_or_else(|| "install uv before installing the connector environment".to_string())?;
     let venv_dir = connector_venv_dir()?;
+    Ok(connector_plan_for(uv, resource_dir, venv_dir))
+}
+
+fn connector_plan_for(uv: PathBuf, resource_dir: PathBuf, venv_dir: PathBuf) -> CommandPlan {
     let python = connector_python_path(&venv_dir);
     let package = format!("{}[ingestion]", resource_dir.display());
-    Ok(CommandPlan {
+    CommandPlan {
         commands: vec![
             CommandSpec {
                 program: uv.clone(),
@@ -347,7 +351,7 @@ fn connector_plan(app: Option<&AppHandle>) -> Result<CommandPlan, String> {
             },
         ],
         summary: "Install bundled ingestion connectors with uv".into(),
-    })
+    }
 }
 
 fn connector_venv_dir() -> Result<PathBuf, String> {
@@ -464,6 +468,40 @@ mod tests {
             home.join(".local/share/cortana/venv")
         );
         assert!(connector_venv_dir_from(None, None).is_err());
+    }
+
+    #[test]
+    fn connector_plan_is_a_fixed_two_command_sequence() {
+        let uv = PathBuf::from("/usr/local/bin/uv");
+        let resource = PathBuf::from("/bundle/cortana-connectors");
+        let venv = PathBuf::from("/home/example/.local/share/cortana/venv");
+        let plan = connector_plan_for(uv.clone(), resource.clone(), venv.clone());
+        assert_eq!(plan.commands.len(), 2);
+        assert_eq!(plan.commands[0].program, uv);
+        assert_eq!(plan.commands[1].program, plan.commands[0].program);
+        assert_eq!(
+            plan.commands[0].args,
+            vec![
+                "venv".to_string(),
+                "--python".to_string(),
+                "3.11".to_string(),
+                "--allow-existing".to_string(),
+                venv.display().to_string()
+            ]
+        );
+        assert_eq!(
+            plan.commands[1].args[0..4],
+            [
+                "pip".to_string(),
+                "install".to_string(),
+                "--python".to_string(),
+                connector_python_path(&venv).display().to_string(),
+            ]
+        );
+        assert_eq!(
+            plan.commands[1].args[4],
+            format!("{}[ingestion]", resource.display())
+        );
     }
 
     #[cfg(unix)]

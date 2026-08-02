@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { cpSync, mkdirSync, rmSync } from 'node:fs'
+import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -10,6 +10,10 @@ const destination = resolve(root, 'apps/desktop/src-tauri/resources/cortana-conn
 
 rmSync(destination, { recursive: true, force: true })
 mkdirSync(destination, { recursive: true })
+writeFileSync(
+  resolve(destination, '.gitkeep'),
+  '# Generated connector resources are prepared before Tauri dev, test, and release builds.\n'
+)
 cpSync(resolve(root, 'pyproject.toml'), resolve(destination, 'pyproject.toml'))
 cpSync(resolve(root, 'README.md'), resolve(destination, 'README.md'))
 cpSync(resolve(root, 'LICENSE'), resolve(destination, 'LICENSE'))
