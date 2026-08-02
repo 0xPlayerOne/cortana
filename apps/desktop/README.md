@@ -91,5 +91,7 @@ and writes nothing until **Save changes** creates the normal rollback copy.
 
 The Services schedule editor stores validated sync and backup intervals in the owner-only
 `service-schedule.toml` beside the active configuration. Saving the schedule never starts a job;
-the explicit **Enable recurring sync** action passes those intervals to the bundled runtime.
+the explicit **Enable recurring sync** action passes those intervals to the bundled runtime. If a
+job is already installed, saving changed intervals exposes **Apply recurring sync schedule** until
+the updated job is explicitly confirmed.
 Portable settings remain redacted and machine-local, so this scheduler file is not included.

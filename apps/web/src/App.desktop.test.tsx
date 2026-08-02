@@ -792,6 +792,36 @@ test('services settings saves bounded recurring sync and backup intervals', asyn
   expect(state.schedule.backup_interval_seconds).toBe(86400)
 })
 
+test('services settings requires explicit apply after changing an installed schedule', async () => {
+  const originalConfirm = window.confirm
+  const originalServices = serviceReport.services.map((service) => ({ ...service }))
+  window.confirm = () => true
+  serviceReport.services = serviceReport.services.map((service) =>
+    service.name === 'sync'
+      ? { ...service, installed: true, loaded: true, state: 'running' }
+      : service
+  )
+  state.serviceSyncInstallCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    const syncInterval = await screen.findByLabelText('Sync interval (seconds)')
+    fireEvent.change(syncInterval, { target: { value: '1800' } })
+    fireEvent.click(screen.getByRole('button', { name: /Save schedule/ }))
+    const apply = await screen.findByRole('button', { name: /Apply recurring sync schedule/ })
+    fireEvent.click(apply)
+    await waitFor(() => expect(state.serviceSyncInstallCalls).toBe(1))
+  } finally {
+    window.confirm = originalConfirm
+    serviceReport.services.splice(0, serviceReport.services.length, ...originalServices)
+  }
+})
+
 test('services settings refuses recurring sync while settings changes are unsaved', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true

@@ -648,6 +648,7 @@ function ServicesSection({
   const [scheduleDraft, setScheduleDraft] = useState<DesktopSchedule | null>(null)
   const [scheduleError, setScheduleError] = useState('')
   const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleApplyPending, setScheduleApplyPending] = useState(false)
   const error = localError || externalServicesError || ''
   const refreshInFlightRef = useRef(false)
   const actionInFlightRef = useRef(false)
@@ -726,6 +727,9 @@ function ServicesSection({
       if (!mountedRef.current) return
       setSchedule(next)
       setScheduleDraft(next)
+      if (report?.services.some((service) => service.name === 'sync' && service.installed)) {
+        setScheduleApplyPending(true)
+      }
     } catch (caught) {
       setScheduleError(caught instanceof Error ? caught.message : 'Schedule could not be saved')
     } finally {
@@ -894,9 +898,15 @@ function ServicesSection({
       setLocalError('Save the service schedule before enabling recurring sync.')
       return
     }
+    const applyingExistingSchedule =
+      scheduleApplyPending &&
+      !(report?.services.some((service) => service.name === 'sync' && !service.installed) ?? false)
+    const actionLabel = applyingExistingSchedule
+      ? 'Apply the updated recurring sync schedule'
+      : 'Enable recurring source sync'
     if (
       !window.confirm(
-        'Enable recurring source sync for this user?\n\nCortana will re-check that every enabled source has a current successful validation covering its configured safety budgets before installing the schedule. The first run is delayed by the platform scheduler; existing indexed data is not deleted.'
+        `${actionLabel} for this user?\n\nCortana will re-check that every enabled source has a current successful validation covering its configured safety budgets before installing the schedule. The first run is delayed by the platform scheduler; existing indexed data is not deleted.`
       )
     ) {
       return
@@ -915,6 +925,7 @@ function ServicesSection({
       const next = await installDesktopSyncService()
       if (!mountedRef.current) return
       setReport(next)
+      setScheduleApplyPending(false)
       onServicesError?.('')
       onServiceActivity?.({
         target: 'recurring sync',
@@ -949,6 +960,7 @@ function ServicesSection({
   const needsSyncInstall =
     report?.supported === true &&
     report.services.some((service) => service.name === 'sync' && !service.installed)
+  const syncScheduleNeedsApply = needsSyncInstall || scheduleApplyPending
   const actionInFlight = Boolean(busy) || serviceActivity?.status === 'running'
   const actionMessage = serviceActivity
     ? `${serviceActivity.action === 'install' ? 'Install' : serviceActivity.action[0].toUpperCase() + serviceActivity.action.slice(1)} ${serviceActivity.target}${serviceActivity.status === 'running' ? ' in progress…' : serviceActivity.status === 'succeeded' ? ' completed.' : ` failed: ${serviceActivity.detail || 'unknown error'}`}`
@@ -1028,7 +1040,7 @@ function ServicesSection({
               Install core services
             </button>
           )}
-          {needsSyncInstall && (
+          {syncScheduleNeedsApply && (
             <button
               type="button"
               className="secondary-button"
@@ -1040,7 +1052,9 @@ function ServicesSection({
               ) : (
                 <Download size={14} />
               )}{' '}
-              Enable recurring sync
+              {scheduleApplyPending && !needsSyncInstall
+                ? 'Apply recurring sync schedule'
+                : 'Enable recurring sync'}
             </button>
           )}
         </div>

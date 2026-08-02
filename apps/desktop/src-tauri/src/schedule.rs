@@ -76,6 +76,12 @@ pub fn save(settings: ScheduleSettings) -> Result<ScheduleSettings, String> {
         .as_nanos();
     let temporary = parent.join(format!(".cortana-service-{nonce}.tmp"));
     reject_symlink(&temporary)?;
+    if path.exists() {
+        let backup = path.with_extension("toml.backup");
+        reject_symlink(&backup)?;
+        fs::copy(&path, &backup).map_err(|error| format!("back up service schedule: {error}"))?;
+        set_owner_only_path(&backup)?;
+    }
     let mut file = OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -149,6 +155,20 @@ fn set_owner_only(file: &std::fs::File) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
         file.set_permissions(std::fs::Permissions::from_mode(0o600))
             .map_err(|error| format!("secure service schedule: {error}"))?;
+    }
+    Ok(())
+}
+
+fn set_owner_only_path(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let metadata = fs::metadata(path)
+            .map_err(|error| format!("inspect service schedule backup: {error}"))?;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(0o600);
+        fs::set_permissions(path, permissions)
+            .map_err(|error| format!("secure service schedule backup: {error}"))?;
     }
     Ok(())
 }

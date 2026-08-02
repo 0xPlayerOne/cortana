@@ -116,7 +116,9 @@ Desktop keeps its scheduler intervals in the owner-only `service-schedule.toml` 
 configuration. The Services panel validates sync intervals from 60 seconds to 7 days and backup
 intervals from 5 minutes to 30 days. **Save schedule** only persists the values; **Enable recurring
 sync** is still the separate confirmation-gated action and passes the saved intervals to the
-bundled runtime. The redacted portable settings export intentionally omits this machine-local
+bundled runtime. If a sync job is already installed, saving a changed schedule exposes an explicit
+**Apply recurring sync schedule** action; the running job keeps its previous interval until that
+action is confirmed. The redacted portable settings export intentionally omits this machine-local
 scheduler file.
 
 After planning each enabled source and choosing explicit budgets, opt in to the recurring job:
