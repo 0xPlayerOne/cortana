@@ -119,7 +119,8 @@ a configured source: source assignments must be moved before their workspace ID 
 
 Provider secrets are stored in Cortana's managed `secrets.env` file with mode `0600` on Unix. An
 existing external `runtime.env_file` remains readable by the runtime but is intentionally
-read-only in Desktop.
+read-only in Desktop. When a saved source, provider, or agent reference is removed, Desktop
+retires that now-unreferenced value from its managed file while leaving external files untouched.
 
 The source editor supports the native filesystem, Apple Notes, Buzz, Google Drive, Gmail, Google
 Calendar, Slack, and Discord connector schemas. It can retain, disable, or remove an existing
