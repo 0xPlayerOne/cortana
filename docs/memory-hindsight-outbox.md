@@ -49,6 +49,22 @@ secret-file mechanism; snapshots, portable exports, and audit events contain no 
 Saving this section only records the optional provider configuration. It does not start Hindsight,
 populate the outbox, or perform a corpus sync.
 
+## Comparative evaluation gate
+
+The versioned offline fixture compares captured Cortana-only rankings with a combined ranking and
+requires a material improvement in both recall@5 and mean reciprocal rank before an operator
+enables derived memory. It never contacts Cortana, Hindsight, or a connector and contains no
+personal corpus data:
+
+```bash
+uv run cortana-memory-eval > memory-evaluation-v1.json
+jq '{version, material_gain, recall_gain, mrr_gain}' memory-evaluation-v1.json
+```
+
+`material_gain: true` is evidence for a deliberate enablement review, not an automatic configuration
+change. The benchmark output is deterministic and includes per-case metrics for auditability.
+Hindsight remains disabled when the gate fails or when no explicit operator approval is recorded.
+
 ## Honcho status
 
 Honcho remains deferred to a later milestone; only this optional derived sidecar is introduced
