@@ -203,6 +203,13 @@ test('sourceJobAttention keeps duplicate source names isolated by workspace', ()
   ])
 })
 
+test('sourceJobAttention suppresses an older failure while a newer retry is active', () => {
+  const activeRetry = jobOf('new-retry', 'running', { source: 'notes' })
+  const oldFailure = jobOf('old-failure', 'failed', { source: 'notes' })
+
+  expect(sourceJobAttention([activeRetry, oldFailure])).toEqual([])
+})
+
 test('source job progress reports native fixed budgets without claiming a percentage', () => {
   const validation = jobOf('validation', 'running', {
     started_at_unix_seconds: 1_000,

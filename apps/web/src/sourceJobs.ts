@@ -73,9 +73,9 @@ export function sourceJobAttention(jobs: DesktopSourceJob[]): DesktopSourceJob[]
   const seenSources = new Set<string>()
   return jobs.filter((job) => {
     const scope = `${job.project}\u0000${job.source}`
-    if (isActiveJob(job) || seenSources.has(scope)) return false
+    if (seenSources.has(scope)) return false
     seenSources.add(scope)
-    return job.status === 'failed' || job.status === 'cancelled'
+    return !isActiveJob(job) && (job.status === 'failed' || job.status === 'cancelled')
   })
 }
 
