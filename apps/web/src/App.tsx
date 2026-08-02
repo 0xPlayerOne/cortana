@@ -73,6 +73,8 @@ import type {
 
 const STATUS_REFRESH_MS = 15_000
 const INSTALLER_POLL_MS = 1_000
+const MAX_DOCUMENT_QUERY_BYTES = 256
+const textEncoder = new TextEncoder()
 
 export function App() {
   const [query, setQuery] = useState('How do releases work?')
@@ -172,7 +174,9 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => setDebouncedDocumentQuery(documentQuery.trim()), 250)
+    const timeout = window.setTimeout(() => {
+      setDebouncedDocumentQuery(boundDocumentQuery(documentQuery).trim())
+    }, 250)
     return () => window.clearTimeout(timeout)
   }, [documentQuery])
 
@@ -612,6 +616,22 @@ export function App() {
 
   function searchScope(nextSource: string, nextWorkspace: string, query: string) {
     return `${nextWorkspace}\u0000${nextSource}\u0000${query}`
+  }
+
+  function boundDocumentQuery(query: string) {
+    if (textEncoder.encode(query).length <= MAX_DOCUMENT_QUERY_BYTES) {
+      return query
+    }
+
+    const parts: string[] = []
+    let bytes = 0
+    for (const token of query) {
+      const nextBytes = textEncoder.encode(token).length
+      if (bytes + nextBytes > MAX_DOCUMENT_QUERY_BYTES) break
+      bytes += nextBytes
+      parts.push(token)
+    }
+    return parts.join('')
   }
 
   function contextScope(nextQuery: string, nextWorkspace: string, nextSource: string) {

@@ -165,6 +165,40 @@ test('workspace and source selection scopes the source tree and document request
   expect(state.documentsCalls.at(-1)?.source).toBeUndefined()
 })
 
+test('document filter bounds requests to the native query byte budget', async () => {
+  const longUnicodeQuery = 'é'.repeat(200)
+  const expectedQuery = (() => {
+    const parts: string[] = []
+    let bytes = 0
+    for (const token of longUnicodeQuery) {
+      const tokenBytes = new TextEncoder().encode(token).length
+      if (bytes + tokenBytes > 256) break
+      bytes += tokenBytes
+      parts.push(token)
+    }
+    return parts.join('')
+  })()
+
+  state.documentsCalls = []
+  render(<App />)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
+  const filter = await screen.findByRole('textbox', { name: 'Filter documents' })
+  fireEvent.change(filter, { target: { value: longUnicodeQuery } })
+
+  await waitFor(() => expect(state.documentsCalls.at(-1)?.query).toBe(expectedQuery))
+  const lastQuery = state.documentsCalls.at(-1)?.query ?? ''
+  expect(new TextEncoder().encode(lastQuery).length).toBeLessThanOrEqual(256)
+  expect(new TextEncoder().encode(longUnicodeQuery).length).toBeGreaterThan(256)
+  expect(lastQuery).toBe(expectedQuery)
+  expect(new TextEncoder().encode(lastQuery).length).toBeLessThan(
+    new TextEncoder().encode(longUnicodeQuery).length
+  )
+
+  // Unicode characters should be counted as UTF-8 bytes, not code points.
+  expect(lastQuery.length).toBeLessThan(longUnicodeQuery.length)
+})
+
 test('changing workspace clears evidence from the previous security scope', async () => {
   state.answer = () => Promise.resolve({ ...answerResponse, query: 'private release query' })
 
