@@ -3115,6 +3115,7 @@ function SourcesSection({
                 )}
                 <Field label="Source label" hint="identifier stored on indexed documents">
                   <input
+                    aria-label="Source label"
                     value={source.source || ''}
                     disabled={sourceLocked || !source.editable}
                     maxLength={128}
