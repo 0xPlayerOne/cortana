@@ -1447,7 +1447,10 @@ function ActiveSourceJobs({ jobs, onOpen }: { jobs: DesktopSourceJob[]; onOpen: 
   const active = activeJobs(jobs)
   if (active.length === 0) return null
   const detail = active
-    .map((job) => `${job.source} · ${job.operation} · ${describeSourceJobProgress(job)}`)
+    .map(
+      (job) =>
+        `${job.project} · ${job.source} · ${job.operation} · ${describeSourceJobProgress(job)}`
+    )
     .join(', ')
   return (
     <button
@@ -1472,7 +1475,7 @@ function SourceJobAttentionIndicator({
 }) {
   const attention = sourceJobAttention(jobs)
   if (attention.length === 0) return null
-  const detail = attention.map((job) => `${job.source} · ${job.status}`).join(', ')
+  const detail = attention.map((job) => `${job.project} · ${job.source} · ${job.status}`).join(', ')
   return (
     <button
       type="button"

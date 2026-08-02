@@ -146,7 +146,8 @@ export function SourcePanel({
             <div className="source-job-item" key={job.id}>
               <LoaderCircle className="spin" size={12} />
               <span>
-                {job.source} · {job.operation} · {job.status} · {describeSourceJobProgress(job)}
+                {job.project} · {job.source} · {job.operation} · {job.status} ·{' '}
+                {describeSourceJobProgress(job)}
               </span>
               {onCancelSourceJob && (
                 <button
