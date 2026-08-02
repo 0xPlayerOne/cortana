@@ -77,8 +77,10 @@ While a source job is active, Desktop locks that source's identity, credentials,
 per-source limits so the operation cannot race a settings edit. The status bar and Inbox expose
 the bounded progress snapshot and a cancellation control without requiring the Settings view to
 remain open. The native job state exposes a bounded history snapshot on renderer startup, so a
-webview remount recovers active and recent jobs instead of losing operational visibility; a failed
-recovery request is non-fatal and newly started jobs remain tracked locally.
+webview remount recovers active and recent jobs instead of losing operational visibility; the
+Sources settings section adopts the newest recovered snapshot so an operator can cancel or retry
+it after navigating back. A failed recovery request is non-fatal and newly started jobs remain
+tracked locally.
 
 Guarded trial sync reuses the source-job boundary but is intentionally distinct from validation.
 It requires explicit confirmation and a matching successful validation fingerprint, then invokes

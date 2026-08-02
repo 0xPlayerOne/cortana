@@ -2086,7 +2086,14 @@ function SourcesSection({
   // SourcePanel, the tray/status bar, and Settings all observe the same
   // snapshots. A standalone SettingsView still uses its local observer.
   useEffect(() => {
-    if (!sourceJobs || !job) return
+    if (!sourceJobs) return
+    // A job may have started while Settings was unmounted. Adopt the newest
+    // recovered snapshot so this section can show and cancel it immediately,
+    // instead of only locking the editor in the background.
+    if (!job) {
+      if (sourceJobs[0]) setJob(sourceJobs[0])
+      return
+    }
     const next = sourceJobs.find((candidate) => candidate.id === job.id)
     if (next && next !== job) setJob(next)
   }, [job, sourceJobs])
@@ -2115,6 +2122,7 @@ function SourcesSection({
   const activeJob =
     (job && ['running', 'cancelling'].includes(job.status) ? job : undefined) ??
     sourceJobs?.find((candidate) => ['running', 'cancelling'].includes(candidate.status))
+  const observedJob = activeJob ?? job ?? sourceJobs?.[0]
   const sourceLocked = Boolean(activeJob)
   const requestPlan = async (source: string, budget: InitialSyncBudget) => {
     setInitialSync((current) =>
@@ -2149,19 +2157,19 @@ function SourcesSection({
   // implementation and prevents duplicate plan requests on rerenders.
   useEffect(() => {
     if (
-      !job ||
-      job.status !== 'succeeded' ||
-      job.operation !== 'validation' ||
+      !observedJob ||
+      observedJob.status !== 'succeeded' ||
+      observedJob.operation !== 'validation' ||
       !initialSync ||
-      initialSync.source !== job.source
+      initialSync.source !== observedJob.source
     ) {
       return
     }
-    const key = `${job.id}:${initialSync.budget}`
+    const key = `${observedJob.id}:${initialSync.budget}`
     if (validationPlanKey.current === key) return
     validationPlanKey.current = key
-    void requestPlan(job.source, initialSync.budget)
-  }, [initialSync, job])
+    void requestPlan(observedJob.source, initialSync.budget)
+  }, [initialSync, observedJob])
 
   const openInitialSync = (source: SourceSettings, budget: InitialSyncBudget = 'small') => {
     setInitialSync({
@@ -2329,9 +2337,9 @@ function SourcesSection({
   }
 
   const cancel = async () => {
-    if (!job) return
+    if (!observedJob) return
     try {
-      applyJob(await cancelDesktopSourceValidation(job.id))
+      applyJob(await cancelDesktopSourceValidation(observedJob.id))
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : 'Source validation could not be cancelled'
@@ -2865,41 +2873,43 @@ function SourcesSection({
       )}
 
       {error && <div className="safety-note">{error}</div>}
-      {job && (
-        <div className={`source-validation-job ${job.status}`}>
+      {observedJob && (
+        <div className={`source-validation-job ${observedJob.status}`}>
           <div>
             <StatusGlyph
-              passed={job.status === 'succeeded'}
-              optional={job.status === 'cancelled'}
+              passed={observedJob.status === 'succeeded'}
+              optional={observedJob.status === 'cancelled'}
             />
             <span>
               <strong>
-                {job.source} · {job.operation} · {job.status}
+                {observedJob.source} · {observedJob.operation} · {observedJob.status}
               </strong>
-              <small>{job.summary}</small>
+              <small>{observedJob.summary}</small>
             </span>
-            {['running', 'cancelling'].includes(job.status) && (
+            {['running', 'cancelling'].includes(observedJob.status) && (
               <button
                 type="button"
-                disabled={job.status === 'cancelling'}
+                disabled={observedJob.status === 'cancelling'}
                 onClick={() => void cancel()}
               >
                 <CircleStop size={14} /> Cancel
               </button>
             )}
-            {job.retryable && (
+            {observedJob.retryable && (
               <button
                 type="button"
                 disabled={!canValidate || sourceLocked}
                 onClick={() => {
-                  const source = settings.sources.find((item) => item.name === job.source)
+                  const source = settings.sources.find(
+                    (item) => item.name === observedJob.source
+                  )
                   if (source) {
-                    if (job.operation === 'authorization') void authorizeSource(source)
-                    else if (job.operation === 'trial-sync') void trialSyncSource(source)
-                    else if (job.operation === 'initial-sync') {
+                    if (observedJob.operation === 'authorization') void authorizeSource(source)
+                    else if (observedJob.operation === 'trial-sync') void trialSyncSource(source)
+                    else if (observedJob.operation === 'initial-sync') {
                       void openInitialSync(
                         source,
-                        (job.budget as InitialSyncBudget | null) || 'small'
+                        (observedJob.budget as InitialSyncBudget | null) || 'small'
                       )
                     } else void validateSource(source)
                   }
@@ -2909,7 +2919,7 @@ function SourcesSection({
               </button>
             )}
           </div>
-          {job.log && <pre>{job.log}</pre>}
+          {observedJob.log && <pre>{observedJob.log}</pre>}
         </div>
       )}
 

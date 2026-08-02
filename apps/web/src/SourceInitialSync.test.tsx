@@ -99,6 +99,7 @@ const state = {
   planOverrides: {} as Partial<DesktopInitialSyncPlan>,
   planError: null as Error | null,
   runningJob: null as DesktopSourceJob | null,
+  cancelCalls: [] as string[],
   pollCount: 0,
 }
 
@@ -110,6 +111,7 @@ beforeEach(() => {
   state.planOverrides = {}
   state.planError = null
   state.runningJob = null
+  state.cancelCalls = []
   state.pollCount = 0
 })
 
@@ -160,7 +162,10 @@ mock.module('./api', () => ({
     }
     return Promise.resolve(state.runningJob)
   },
-  cancelDesktopSourceValidation: () => Promise.resolve(jobFor('small', 'cancelled')),
+  cancelDesktopSourceValidation: (id: string) => {
+    state.cancelCalls.push(id)
+    return Promise.resolve(jobFor('small', 'cancelled'))
+  },
 }))
 
 const { SettingsView } = await import('./components/SettingsView')
@@ -178,6 +183,9 @@ test('a shared active source job locks source actions until it finishes', async 
   render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
 
   await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+  expect(screen.getByText('work-code · trial-sync · running')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: /Cancel/ }))
+  await waitFor(() => expect(state.cancelCalls).toEqual(['source-1-1']))
   for (const label of ['Validate', 'Trial sync', 'Initial sync', 'Remove work-code']) {
     expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(true)
   }
