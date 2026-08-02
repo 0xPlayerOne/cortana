@@ -63,7 +63,11 @@ class HindsightHttpProvider(MemoryProvider):
     def _build_client(self, timeout_seconds: float) -> httpx.Client:
         if timeout_seconds <= 0:
             raise MemoryArgumentError("timeout_seconds must be positive")
-        return httpx.Client(base_url=str(self._base), timeout=timeout_seconds)
+        return httpx.Client(
+            base_url=str(self._base),
+            timeout=timeout_seconds,
+            follow_redirects=False,
+        )
 
     @property
     def configured(self) -> bool:
