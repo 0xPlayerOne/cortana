@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/0xPlayerOne/cortana/compare/v0.17.1...v0.18.0) (2026-08-02)
+
+
+### Features
+
+* **memory:** add optional Hindsight outbox sidecar ([#218](https://github.com/0xPlayerOne/cortana/issues/218)) ([9a4f2b2](https://github.com/0xPlayerOne/cortana/commit/9a4f2b2603c9a83fec7f253154f5e41c3a899580))
+
 ## [0.17.1](https://github.com/0xPlayerOne/cortana/compare/v0.17.0...v0.17.1) (2026-08-02)
 
 
