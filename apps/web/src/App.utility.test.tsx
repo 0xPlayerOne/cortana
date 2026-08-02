@@ -331,6 +331,7 @@ test('Inbox retains terminal source-job history after the job stops running', ()
       contextError=""
       contextTokens={0}
       desktopAvailable={false}
+      sourceJobError="Source job cancellation failed"
       onSearchFocus={() => {}}
       onRetrieveContext={() => {}}
       onOpenSettings={() => {}}
@@ -341,6 +342,7 @@ test('Inbox retains terminal source-job history after the job stops running', ()
   expect(screen.getByText('work-code · validation')).toBeTruthy()
   expect(screen.getByText('Failed')).toBeTruthy()
   expect(screen.getByText(/Connector validation failed/)).toBeTruthy()
+  expect(screen.getByRole('alert').textContent).toBe('Source job cancellation failed')
 })
 
 test('Index renders live BrainStatus metrics and an offline empty state', async () => {

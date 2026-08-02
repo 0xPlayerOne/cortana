@@ -67,6 +67,7 @@ export function UtilityView({
   contextError,
   contextTokens,
   desktopAvailable,
+  sourceJobError,
   onSearchFocus,
   onRetrieveContext,
   onOpenSettings,
@@ -86,6 +87,7 @@ export function UtilityView({
   contextError: string
   contextTokens: number
   desktopAvailable: boolean
+  sourceJobError?: string
   onSearchFocus: () => void
   onRetrieveContext: () => void
   onOpenSettings: () => void
@@ -107,6 +109,7 @@ export function UtilityView({
           <InboxView
             status={status}
             sourceJobs={sourceJobs}
+            sourceJobError={sourceJobError}
             onOpenSettings={onOpenSettings}
             onCancelSourceJob={onCancelSourceJob}
           />
@@ -144,11 +147,13 @@ export function UtilityView({
 function InboxView({
   status,
   sourceJobs,
+  sourceJobError,
   onOpenSettings,
   onCancelSourceJob,
 }: {
   status: BrainStatus | null
   sourceJobs: DesktopSourceJob[]
+  sourceJobError?: string
   onOpenSettings: () => void
   onCancelSourceJob?: (id: string) => void
 }) {
@@ -159,7 +164,12 @@ function InboxView({
     (job) => job.status === 'running' || job.status === 'cancelling'
   )
   const completedJobs = recentCompletedJobs(sourceJobs)
-  if (attention.length === 0 && activeJobs.length === 0 && completedJobs.length === 0) {
+  if (
+    !sourceJobError &&
+    attention.length === 0 &&
+    activeJobs.length === 0 &&
+    completedJobs.length === 0
+  ) {
     return (
       <UtilityEmpty
         icon={<Inbox size={26} />}
@@ -173,6 +183,11 @@ function InboxView({
   }
   return (
     <>
+      {sourceJobError && (
+        <p className="utility-error" role="alert">
+          {sourceJobError}
+        </p>
+      )}
       {attention.length > 0 && (
         <section className="utility-section">
           <h2>Sync attention</h2>

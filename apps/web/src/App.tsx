@@ -1027,6 +1027,7 @@ export function App() {
           contextError={contextError}
           contextTokens={estimateTokens(agentContext)}
           desktopAvailable={isDesktopApp}
+          sourceJobError={sourceJobError}
           onSearchFocus={focusSearch}
           onRetrieveContext={() => void retrieveAgentContext()}
           onOpenSettings={() => setView('settings')}
