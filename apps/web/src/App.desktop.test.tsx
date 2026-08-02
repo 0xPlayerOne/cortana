@@ -29,6 +29,8 @@ afterEach(() => {
   state.lastSettingsUpdate = null
   state.getDesktopServicesCalls = 0
   state.getDesktopSettingsCalls = 0
+  state.deferDesktopSettings = false
+  state.deferredDesktopSettings = []
   state.getDesktopUpdateCalls = 0
   state.serviceStatusError = null
   state.serviceSyncInstallCalls = 0
@@ -101,6 +103,8 @@ const state = {
   getGraphCalls: 0,
   statusCalls: 0,
   getDesktopSettingsCalls: 0,
+  deferDesktopSettings: false,
+  deferredDesktopSettings: [] as Array<(settings: DesktopSettings) => void>,
   getDesktopServicesCalls: 0,
   getDesktopUpdateCalls: 0,
   serviceStatusError: null as Error | null,
@@ -209,6 +213,11 @@ mock.module('./api', () => ({
   getContext: () => Promise.reject(new Error('Context retrieval failed (503)')),
   getDesktopSettings: () => {
     state.getDesktopSettingsCalls += 1
+    if (state.deferDesktopSettings) {
+      return new Promise<DesktopSettings>((resolve) => {
+        state.deferredDesktopSettings.push(resolve)
+      })
+    }
     return Promise.resolve(state.settings)
   },
   saveDesktopSettings: (update: DesktopSettingsUpdate) => {
@@ -860,6 +869,41 @@ test('settings can discard a draft without leaving the control plane', async () 
     )
   } finally {
     window.confirm = originalConfirm
+    state.settings = originalSettings
+  }
+})
+
+test('late desktop bootstrap settings cannot overwrite a shell-reconciled snapshot', async () => {
+  const originalSettings = state.settings
+  const reloadedSettings = {
+    ...originalSettings,
+    workspaces: originalSettings.workspaces.map((workspace, index) =>
+      index === 0 ? { ...workspace, name: 'Reloaded work' } : workspace
+    ),
+  }
+  state.deferDesktopSettings = true
+  try {
+    render(<App />)
+    await waitFor(() => expect(state.deferredDesktopSettings.length).toBe(1))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(state.deferredDesktopSettings.length).toBe(2))
+
+    // Settings completes its own read first; the App bootstrap request then
+    // resolves with the stale snapshot it started with.
+    state.deferredDesktopSettings[1]!(reloadedSettings)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    state.deferredDesktopSettings[0]!(originalSettings)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    await waitFor(() =>
+      expect((screen.getAllByLabelText('Display name')[0] as HTMLInputElement).value).toBe(
+        'Reloaded work'
+      )
+    )
+  } finally {
+    state.deferDesktopSettings = false
+    state.deferredDesktopSettings = []
     state.settings = originalSettings
   }
 })

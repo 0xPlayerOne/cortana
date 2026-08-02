@@ -149,6 +149,7 @@ export function App() {
       ? sourceJobs.retry
       : undefined
   const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
+  const desktopSettingsRequestRef = useRef(0)
   const desktopServicesRequestRef = useRef(0)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
@@ -173,6 +174,14 @@ export function App() {
   documentScopeRef.current = documentScope
   sourceWidthRef.current = sourceWidth
   contextWidthRef.current = contextWidth
+
+  const applyDesktopSettings = useCallback((next: DesktopSettings) => {
+    // Invalidate the one-shot bootstrap read when Settings completes a
+    // reload/save. Otherwise a slower initial request can restore an older
+    // snapshot after the operator has already reconciled a newer one.
+    desktopSettingsRequestRef.current += 1
+    setDesktopSettings(next)
+  }, [])
 
   useEffect(() => {
     const visibility = { current: document.visibilityState !== 'hidden' }
@@ -491,13 +500,16 @@ export function App() {
 
   useEffect(() => {
     if (!isDesktopApp) return
+    const requestId = ++desktopSettingsRequestRef.current
+    let active = true
     void getDesktopSettings()
       .then((next) => {
+        if (!active || desktopSettingsRequestRef.current !== requestId) return
         setDesktopSettings(next)
         if (next.needs_setup) setView('settings')
       })
       .catch(() => {
-        setView('settings')
+        if (active && desktopSettingsRequestRef.current === requestId) setView('settings')
       })
     void getDesktopInfo()
       .then(setDesktopInfo)
@@ -509,6 +521,12 @@ export function App() {
       .catch(() => {
         // The Updates section will surface a more specific updater error.
       })
+    return () => {
+      active = false
+      if (desktopSettingsRequestRef.current === requestId) {
+        desktopSettingsRequestRef.current += 1
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -915,7 +933,7 @@ export function App() {
         runtime: desktopSettings.runtime,
         secrets: [],
       })
-      setDesktopSettings(next)
+      applyDesktopSettings(next)
       setSourceToggleNotice(
         next.restart_required
           ? 'Source setting saved. Restart the affected services from Settings to apply it.'
@@ -1385,7 +1403,7 @@ export function App() {
       {view === 'settings' ? (
         <SettingsView
           desktopSettings={desktopSettings ?? undefined}
-          onLoaded={setDesktopSettings}
+          onLoaded={applyDesktopSettings}
           initialSection={settingsSection}
           onDirtyChange={setSettingsDirty}
           onJob={sourceJobs.remember}
@@ -1411,7 +1429,7 @@ export function App() {
           honchoStatus={honchoStatus}
           onHonchoStatus={setHonchoStatus}
           onSaved={(next) => {
-            setDesktopSettings(next)
+            applyDesktopSettings(next)
             setSettingsDirty(false)
             setHindsightStatus(null)
             setHonchoStatus(null)
