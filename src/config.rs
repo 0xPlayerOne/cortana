@@ -1,8 +1,21 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+
+const MAX_CONFIGURED_SOURCES: usize = 128;
+const SUPPORTED_SOURCE_KINDS: &[&str] = &[
+    "filesystem",
+    "apple-notes",
+    "buzz",
+    "google-drive",
+    "gmail",
+    "google-calendar",
+    "slack",
+    "discord",
+    "external",
+];
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Config {
@@ -289,7 +302,25 @@ impl Config {
         }
         let body = std::fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        toml::from_str(&body).with_context(|| format!("invalid config {}", path.display()))
+        let mut config: Self =
+            toml::from_str(&body).with_context(|| format!("invalid config {}", path.display()))?;
+        if let Some(env_file) = config.runtime.env_file.as_mut()
+            && !env_file.is_absolute()
+        {
+            let config_dir = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .map(Path::to_path_buf)
+                .context("configuration path has no parent directory")?;
+            let config_dir = if config_dir.is_absolute() {
+                config_dir
+            } else {
+                std::env::current_dir()?.join(config_dir)
+            };
+            *env_file = config_dir.join(&*env_file);
+        }
+        validate_source_definitions(&config)?;
+        Ok(config)
     }
 
     pub fn database_path(&self) -> PathBuf {
@@ -301,6 +332,7 @@ impl Config {
             return Ok(());
         };
         validate_secret_file(path)?;
+        let mut names = HashSet::new();
         for (line_number, raw) in std::fs::read_to_string(path)?.lines().enumerate() {
             let line = raw.trim();
             if line.is_empty() || line.starts_with('#') {
@@ -323,9 +355,20 @@ impl Config {
                 path.display(),
                 line_number + 1
             );
-            self.environment
-                .entry(name.to_string())
-                .or_insert_with(|| value.trim().trim_matches(['"', '\'']).to_string());
+            anyhow::ensure!(
+                names.insert(name),
+                "duplicate environment variable at {}:{}",
+                path.display(),
+                line_number + 1
+            );
+            let value = value.trim().trim_matches(['"', '\'']).to_string();
+            anyhow::ensure!(
+                !value.contains('\0'),
+                "environment variable value contains NUL at {}:{}",
+                path.display(),
+                line_number + 1
+            );
+            self.environment.entry(name.to_string()).or_insert(value);
         }
         Ok(())
     }
@@ -337,17 +380,130 @@ impl Config {
     }
 }
 
-fn validate_secret_file(path: &Path) -> Result<()> {
+fn validate_source_definitions(config: &Config) -> Result<()> {
     anyhow::ensure!(
-        path.is_file(),
-        "environment file is missing: {}",
+        config.sources.len() <= MAX_CONFIGURED_SOURCES,
+        "configured sources exceed the {MAX_CONFIGURED_SOURCES} source safety limit"
+    );
+    let mut workspace_ids = HashSet::new();
+    for workspace in &config.workspaces {
+        anyhow::ensure!(
+            !workspace.id.trim().is_empty(),
+            "workspace ids must not be empty"
+        );
+        anyhow::ensure!(
+            workspace_ids.insert(workspace.id.as_str()),
+            "workspace id `{}` is duplicated",
+            workspace.id
+        );
+    }
+    let mut source_names = HashSet::new();
+    let mut source_scopes = HashSet::new();
+    for source in &config.sources {
+        anyhow::ensure!(
+            !source.name.is_empty()
+                && source.name.len() <= 64
+                && source.name.chars().all(|character| {
+                    character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || matches!(character, '-' | '_')
+                })
+                && source.name.chars().next().is_some_and(|character| {
+                    character.is_ascii_lowercase() || character.is_ascii_digit()
+                }),
+            "source names must be 1-64 lowercase letters, numbers, dashes, or underscores: {}",
+            source.name
+        );
+        anyhow::ensure!(
+            source_names.insert(source.name.as_str()),
+            "source name `{}` is duplicated",
+            source.name
+        );
+        let canonical_source = source.source.as_deref().unwrap_or(&source.name);
+        anyhow::ensure!(
+            !canonical_source.is_empty()
+                && canonical_source == canonical_source.trim()
+                && !canonical_source.trim().is_empty()
+                && canonical_source.len() <= 128
+                && !canonical_source.chars().any(char::is_control),
+            "source `{}` has an invalid canonical identifier",
+            source.name
+        );
+        anyhow::ensure!(
+            source_scopes.insert((source.project.as_str(), canonical_source)),
+            "source identifier `{canonical_source}` is duplicated in project `{}`",
+            source.project
+        );
+        anyhow::ensure!(
+            SUPPORTED_SOURCE_KINDS.contains(&source.kind.as_str()),
+            "source `{}` has unsupported kind `{}`",
+            source.name,
+            source.kind
+        );
+        anyhow::ensure!(
+            !source.project.trim().is_empty(),
+            "source `{}` requires a non-empty project",
+            source.name
+        );
+        if !workspace_ids.is_empty() {
+            anyhow::ensure!(
+                workspace_ids.contains(source.project.as_str()),
+                "source `{}` uses unknown workspace `{}`",
+                source.name,
+                source.project
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Validate a provider base URL before a client can send credentials or
+/// document-derived content. Local HTTP is limited to loopback; remote
+/// providers must use HTTPS and may not hide credentials in URL components.
+pub fn validate_provider_base_url(name: &str, value: &str) -> Result<()> {
+    let url =
+        reqwest::Url::parse(value).with_context(|| format!("{name} provider URL is invalid"))?;
+    anyhow::ensure!(
+        matches!(url.scheme(), "http" | "https"),
+        "{name} provider URL must use HTTP or HTTPS"
+    );
+    anyhow::ensure!(
+        url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none(),
+        "{name} provider URL must not include credentials, query parameters, or a fragment"
+    );
+    let loopback = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
+    anyhow::ensure!(
+        url.scheme() != "http" || loopback,
+        "{name} remote provider URL must use HTTPS"
+    );
+    Ok(())
+}
+
+fn validate_secret_file(path: &Path) -> Result<()> {
+    let metadata = std::fs::symlink_metadata(path).with_context(|| {
+        format!(
+            "environment file is missing or inaccessible: {}",
+            path.display()
+        )
+    })?;
+    anyhow::ensure!(
+        !metadata.file_type().is_symlink(),
+        "environment file must not be a symlink: {}",
+        path.display()
+    );
+    anyhow::ensure!(
+        metadata.file_type().is_file(),
+        "environment file is not a regular file: {}",
         path.display()
     );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
 
-        let mode = std::fs::metadata(path)?.permissions().mode();
+        let mode = metadata.permissions().mode();
         anyhow::ensure!(
             mode & 0o077 == 0,
             "environment file must not be accessible by group or others: {}",
@@ -539,11 +695,95 @@ mod tests {
         assert_eq!(config.ingestion.max_documents_per_source, 2_000);
         assert_eq!(config.ingestion.max_bytes_per_source, 128 * 1024 * 1024);
         assert_eq!(config.ingestion.request_concurrency, 1);
+        validate_source_definitions(&config).expect("source definitions are safe");
+    }
+
+    #[test]
+    fn rejects_ambiguous_or_unsafe_source_definitions() {
+        for source_block in [
+            r#"
+            [[sources]]
+            name = "../escape"
+            kind = "filesystem"
+            project = "work"
+            "#,
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            project = "work"
+
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            project = "personal"
+            "#,
+            r#"
+            [[sources]]
+            name = "drive"
+            kind = "filesystem"
+            project = "work"
+            source = "shared"
+
+            [[sources]]
+            name = "code"
+            kind = "filesystem"
+            project = "work"
+            source = "shared"
+            "#,
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "future-connector"
+            project = "work"
+            "#,
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            project = "work"
+            source = " notes "
+            "#,
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            project = "work"
+            source = "   "
+            "#,
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            project = "work"
+            source = "line\nbreak"
+            "#,
+        ] {
+            let config: Config = toml::from_str(source_block).expect("fixture config");
+            assert!(validate_source_definitions(&config).is_err());
+        }
     }
 
     #[test]
     fn reserves_enough_memory_for_the_default_local_embedding_model() {
         assert_eq!(Config::default().embedding.service.memory_limit_mb, 4_096);
+    }
+
+    #[test]
+    fn provider_urls_allow_loopback_http_and_require_secure_remote_transport() {
+        assert!(validate_provider_base_url("embedding", "http://127.0.0.1:6999/v1").is_ok());
+        assert!(validate_provider_base_url("query", "https://api.example.test/v1").is_ok());
+        for value in [
+            "http://api.example.test/v1",
+            "https://user:secret@api.example.test/v1",
+            "https://api.example.test/v1?token=secret",
+            "https://api.example.test/v1#fragment",
+        ] {
+            assert!(
+                validate_provider_base_url("provider", value).is_err(),
+                "{value}"
+            );
+        }
     }
 
     #[test]
@@ -571,6 +811,32 @@ mod tests {
             Some("me@example.com")
         );
         assert_eq!(config.sources[0].project, "personal");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolves_relative_environment_files_against_the_config_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let config_path = directory.path().join("config.toml");
+        let secret_path = directory.path().join("secrets.env");
+        std::fs::write(&secret_path, "CORTANA_RELATIVE_SECRET=loaded\n").expect("write secrets");
+        std::fs::set_permissions(&secret_path, std::fs::Permissions::from_mode(0o600))
+            .expect("secure secrets");
+        std::fs::write(&config_path, "[runtime]\nenv_file = \"secrets.env\"\n")
+            .expect("write config");
+
+        let mut config = Config::load(Some(&config_path)).expect("load config");
+        config.load_environment().expect("load relative secrets");
+        assert_eq!(
+            config.runtime.env_file.as_deref(),
+            Some(secret_path.as_path())
+        );
+        assert_eq!(
+            config.environment.get("CORTANA_RELATIVE_SECRET"),
+            Some(&"loaded".into())
+        );
     }
 
     #[cfg(unix)]
@@ -614,5 +880,66 @@ mod tests {
             Some(&"loaded".into())
         );
         assert!(std::env::var_os("CORTANA_TEST_PRIVATE").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_ambiguous_or_untransportable_environment_entries() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("secrets.env");
+        std::fs::write(
+            &path,
+            b"CORTANA_DUPLICATE=first\nCORTANA_DUPLICATE=second\n",
+        )
+        .expect("write duplicate secrets");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .expect("secure duplicate fixture");
+        let mut config = Config {
+            runtime: RuntimeConfig {
+                env_file: Some(path.clone()),
+            },
+            ..Config::default()
+        };
+        let duplicate = config
+            .load_environment()
+            .expect_err("duplicate environment names must fail closed");
+        assert!(
+            duplicate
+                .to_string()
+                .contains("duplicate environment variable")
+        );
+
+        std::fs::write(&path, b"CORTANA_NUL=bad\0value\n").expect("write NUL secret");
+        let nul = config
+            .load_environment()
+            .expect_err("NUL environment values cannot cross a process boundary");
+        assert!(nul.to_string().contains("contains NUL"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_environment_files() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let target = directory.path().join("real-secrets.env");
+        std::fs::write(&target, "CORTANA_TEST_LINKED=secret\n").expect("write secrets");
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600))
+            .expect("set permissions");
+        let linked = directory.path().join("secrets.env");
+        symlink(&target, &linked).expect("symlink secrets");
+        let mut config = Config {
+            runtime: RuntimeConfig {
+                env_file: Some(linked),
+            },
+            ..Config::default()
+        };
+
+        let error = config
+            .load_environment()
+            .expect_err("symlinked environment files must fail");
+        assert!(error.to_string().contains("must not be a symlink"));
     }
 }

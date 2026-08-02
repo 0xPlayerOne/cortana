@@ -86,6 +86,36 @@ pub struct HindsightSettings {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+pub struct HonchoSettings {
+    pub enabled: bool,
+    pub provider: String,
+    pub base_url: String,
+    pub workspace_id: String,
+    pub peer_id: String,
+    pub session_prefix: String,
+    pub token_env: Option<String>,
+    pub optional: bool,
+    pub wired_to_ingestion: bool,
+}
+
+impl Default for HonchoSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: "honcho".into(),
+            base_url: "https://api.honcho.dev".into(),
+            workspace_id: "default".into(),
+            peer_id: "cortana".into(),
+            session_prefix: "cortana".into(),
+            token_env: None,
+            optional: true,
+            wired_to_ingestion: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct IngestionSettings {
     pub max_documents_per_source: usize,
     pub max_bytes_per_source: u64,
@@ -153,6 +183,7 @@ pub struct SettingsUpdate {
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
     pub hindsight: HindsightSettings,
+    pub honcho: HonchoSettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
     #[serde(default)]
@@ -170,6 +201,8 @@ pub struct SecretState {
 pub struct SettingsSnapshot {
     pub config_path: String,
     pub secret_file_path: String,
+    pub secret_file_managed: bool,
+    pub embedding_service_program: Option<String>,
     pub needs_setup: bool,
     pub restart_required: bool,
     pub workspaces: Vec<WorkspaceSettings>,
@@ -178,6 +211,7 @@ pub struct SettingsSnapshot {
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
     pub hindsight: HindsightSettings,
+    pub honcho: HonchoSettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
     pub secrets: Vec<SecretState>,
@@ -192,6 +226,8 @@ pub struct PortableSettings {
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
     pub hindsight: HindsightSettings,
+    #[serde(default)]
+    pub honcho: HonchoSettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
 }
@@ -227,6 +263,88 @@ pub fn load() -> Result<SettingsSnapshot, String> {
 
 pub fn save(update: SettingsUpdate) -> Result<SettingsSnapshot, String> {
     SettingsStore::default().save(update)
+}
+
+pub(crate) fn configure_connector_command(path: &Path) -> Result<(), String> {
+    configure_connector_command_at(&default_config_path(), path)
+}
+
+fn configure_connector_command_at(config_path: &Path, path: &Path) -> Result<(), String> {
+    if !path.is_absolute()
+        || path.parent().is_none()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
+    {
+        return Err("connector command must be an absolute, normalized path".into());
+    }
+    let expected_name = if cfg!(windows) {
+        "cortana-connectors.exe"
+    } else {
+        "cortana-connectors"
+    };
+    if path.file_name().and_then(|name| name.to_str()) != Some(expected_name) {
+        return Err("connector command must use the bundled cortana-connectors executable".into());
+    }
+    reject_symlink(config_path)?;
+    let mut root = read_config(config_path)?;
+    let connectors = root
+        .entry("connectors")
+        .or_insert_with(|| Value::Table(Table::new()))
+        .as_table_mut()
+        .ok_or_else(|| "connectors settings must be a TOML table".to_string())?;
+    if let Some(existing) = connectors.get("command") {
+        match existing {
+            Value::Array(values) if !values.is_empty() => {
+                if values.iter().any(|value| !value.is_str()) {
+                    return Err("existing connector command must contain only strings".into());
+                }
+                return append_audit_event(
+                    config_path,
+                    &serde_json::json!({
+                        "at_unix_seconds": SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .map_err(|error| error.to_string())?
+                            .as_secs(),
+                        "event": "connectors.command_preserved",
+                        "command_configured": false,
+                        "secret_values_recorded": false,
+                    }),
+                );
+            }
+            Value::Array(_) => {}
+            _ => return Err("existing connector command must be a TOML array".into()),
+        }
+    }
+    connectors.insert(
+        "command".into(),
+        Value::Array(vec![Value::String(path.display().to_string())]),
+    );
+    let rendered = toml::to_string_pretty(&root)
+        .map_err(|error| format!("serialize connector settings: {error}"))?;
+    if config_path.exists() {
+        let backup = config_path.with_extension("toml.backup");
+        reject_symlink(&backup)?;
+        fs::copy(config_path, &backup)
+            .map_err(|error| format!("back up Cortana settings: {error}"))?;
+        set_owner_only(&backup)?;
+    }
+    atomic_write(config_path, rendered.as_bytes())?;
+    append_audit_event(
+        config_path,
+        &serde_json::json!({
+            "at_unix_seconds": SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|error| error.to_string())?
+                .as_secs(),
+            "event": "connectors.command_configured",
+            "command_configured": true,
+            "secret_values_recorded": false,
+        }),
+    )
 }
 
 pub fn export_portable(path: &Path) -> Result<PortableExport, String> {
@@ -369,12 +487,13 @@ impl SettingsStore {
         let root = read_config(&self.config_path)?;
         let secret_path = secret_path(&root, &self.config_path)?;
         let secrets = read_secret_map(&secret_path)?;
+        let needs_setup = !existed || configured_sources(&root).is_empty();
         Ok(snapshot(
             &root,
             &self.config_path,
             &secret_path,
             &secrets,
-            !existed,
+            needs_setup,
         ))
     }
 
@@ -384,6 +503,12 @@ impl SettingsStore {
 
         let mut root = read_config(&self.config_path)?;
         let secret_path = secret_path(&root, &self.config_path)?;
+        let previous_secret_names = referenced_secret_names(&root);
+        let next_secret_names = update_secret_names(&update);
+        let removed_secret_names = previous_secret_names
+            .difference(&next_secret_names)
+            .cloned()
+            .collect::<Vec<_>>();
         let previous_auth_tokens = configured_auth_principals(&root)
             .into_iter()
             .map(|principal| principal.token_env)
@@ -405,7 +530,21 @@ impl SettingsStore {
             ensure_managed_secret_path(&secret_path, &self.config_path)?;
             let mut secrets = read_secret_map(&secret_path)?;
             apply_secret_updates(&mut secrets, &update.secrets)?;
-            for name in &removed_auth_tokens {
+            for name in &removed_secret_names {
+                secrets.remove(name);
+            }
+            atomic_write(&secret_path, render_secrets(&secrets).as_bytes())?;
+        } else if !removed_secret_names.is_empty()
+            && self
+                .config_path
+                .parent()
+                .is_some_and(|parent| secret_path == parent.join("secrets.env"))
+        {
+            // Desktop owns the default secret file, so stale values from a
+            // removed source/provider reference can be safely retired. An
+            // externally managed runtime.env_file is never modified here.
+            let mut secrets = read_secret_map(&secret_path)?;
+            for name in &removed_secret_names {
                 secrets.remove(name);
             }
             atomic_write(&secret_path, render_secrets(&secrets).as_bytes())?;
@@ -451,6 +590,7 @@ fn export_portable_at(config_path: &Path, path: &Path) -> Result<PortableExport,
         embedding: snapshot.embedding,
         query: snapshot.query,
         hindsight: snapshot.hindsight,
+        honcho: snapshot.honcho,
         ingestion: snapshot.ingestion,
         runtime: snapshot.runtime,
     };
@@ -556,6 +696,7 @@ impl PortableSettings {
             embedding: self.embedding,
             query: self.query,
             hindsight: self.hindsight,
+            honcho: self.honcho,
             ingestion: self.ingestion,
             runtime: self.runtime,
             secrets: Vec::new(),
@@ -570,6 +711,7 @@ impl PortableSettings {
             embedding: update.embedding,
             query: update.query,
             hindsight: update.hindsight,
+            honcho: update.honcho,
             ingestion: update.ingestion,
             runtime: update.runtime,
         }
@@ -589,10 +731,19 @@ fn snapshot(
     let embedding_api_key_env = optional_string(root, "embedding", "api_key_env");
     let query_api_key_env = optional_string(root, "query", "api_key_env");
     let hindsight_token_env = optional_string(root, "hindsight", "token_env");
+    let honcho_token_env = optional_string(root, "honcho", "token_env");
+    let embedding_service_program = nested_table(root, "embedding", "service")
+        .map(|service| table_string_array(service, "command"))
+        .and_then(|command| command.into_iter().next());
+    let secret_file_managed = config_path
+        .parent()
+        .map(|parent| parent.join("secrets.env") == secret_path)
+        .unwrap_or(false);
     let mut secret_names = BTreeSet::new();
     secret_names.extend(embedding_api_key_env.iter().cloned());
     secret_names.extend(query_api_key_env.iter().cloned());
     secret_names.extend(hindsight_token_env.iter().cloned());
+    secret_names.extend(honcho_token_env.iter().cloned());
     secret_names.extend(
         sources
             .iter()
@@ -607,6 +758,8 @@ fn snapshot(
     SettingsSnapshot {
         config_path: config_path.display().to_string(),
         secret_file_path: secret_path.display().to_string(),
+        secret_file_managed,
+        embedding_service_program,
         needs_setup,
         restart_required: false,
         workspaces,
@@ -665,6 +818,17 @@ fn snapshot(
             token_env: optional_string(root, "hindsight", "token_env"),
             optional: bool_value(root, "hindsight", "optional", true),
             wired_to_ingestion: bool_value(root, "hindsight", "wired_to_ingestion", false),
+        },
+        honcho: HonchoSettings {
+            enabled: bool_value(root, "honcho", "enabled", false),
+            provider: string(root, "honcho", "provider", "honcho"),
+            base_url: string(root, "honcho", "base_url", "https://api.honcho.dev"),
+            workspace_id: string(root, "honcho", "workspace_id", "default"),
+            peer_id: string(root, "honcho", "peer_id", "cortana"),
+            session_prefix: string(root, "honcho", "session_prefix", "cortana"),
+            token_env: honcho_token_env,
+            optional: bool_value(root, "honcho", "optional", true),
+            wired_to_ingestion: bool_value(root, "honcho", "wired_to_ingestion", false),
         },
         ingestion: IngestionSettings {
             max_documents_per_source: usize_value(
@@ -854,6 +1018,70 @@ fn prioritized_workspace_projects(projects: BTreeSet<String>) -> Vec<WorkspaceSe
     result
 }
 
+fn referenced_secret_names(root: &Table) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for (section, key) in [
+        ("embedding", "api_key_env"),
+        ("query", "api_key_env"),
+        ("hindsight", "token_env"),
+        ("honcho", "token_env"),
+    ] {
+        if let Some(name) = optional_string(root, section, key) {
+            names.insert(name);
+        }
+    }
+    if let Some(sources) = root.get("sources").and_then(Value::as_array) {
+        for name in sources
+            .iter()
+            .filter_map(Value::as_table)
+            .filter_map(|source| table_optional_string(source, "token_env"))
+        {
+            names.insert(name);
+        }
+    }
+    if let Some(principals) = table(root, "auth")
+        .and_then(|auth| auth.get("tokens"))
+        .and_then(Value::as_array)
+    {
+        for name in principals
+            .iter()
+            .filter_map(Value::as_table)
+            .filter_map(|principal| table_optional_string(principal, "token_env"))
+        {
+            names.insert(name);
+        }
+    }
+    names
+}
+
+fn update_secret_names(update: &SettingsUpdate) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for name in [
+        update.embedding.api_key_env.as_ref(),
+        update.query.api_key_env.as_ref(),
+        update.hindsight.token_env.as_ref(),
+        update.honcho.token_env.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        names.insert(name.clone());
+    }
+    names.extend(
+        update
+            .sources
+            .iter()
+            .filter_map(|source| source.token_env.as_ref().cloned()),
+    );
+    names.extend(
+        update
+            .auth_principals
+            .iter()
+            .map(|principal| principal.token_env.clone()),
+    );
+    names
+}
+
 fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
     if update.workspaces.is_empty() || update.workspaces.len() > MAX_WORKSPACES {
         return Err(format!(
@@ -899,7 +1127,7 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
     bounded(
         "embedding cache entries",
         update.embedding.cache_max_entries,
-        100,
+        0,
         5_000_000,
     )?;
     bounded(
@@ -953,13 +1181,13 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
     bounded(
         "query cache entries",
         update.query.cache_max_entries,
-        100,
+        0,
         1_000_000,
     )?;
     bounded_u64(
         "query cache lifetime",
         update.query.cache_ttl_seconds,
-        1,
+        0,
         604_800,
     )?;
 
@@ -994,6 +1222,31 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
         validate_hindsight_bank(&update.hindsight.bank)?;
     }
     validate_optional_env(&update.hindsight.token_env)?;
+
+    if update.honcho.provider != "honcho" {
+        return Err("honcho provider must be `honcho`".into());
+    }
+    if !update.honcho.optional {
+        return Err("honcho is fixed as optional and cannot be changed".into());
+    }
+    if update.honcho.wired_to_ingestion {
+        return Err("honcho cannot be wired into normal ingestion by default".into());
+    }
+    update.honcho.base_url = update.honcho.base_url.trim().to_string();
+    update.honcho.workspace_id = update.honcho.workspace_id.trim().to_string();
+    update.honcho.peer_id = update.honcho.peer_id.trim().to_string();
+    update.honcho.session_prefix = update.honcho.session_prefix.trim().to_string();
+    if update.honcho.enabled && update.honcho.token_env.is_none() {
+        return Err("honcho enabled requires a token environment variable".into());
+    }
+    if update.honcho.base_url.is_empty() {
+        update.honcho.base_url = "https://api.honcho.dev".into();
+    }
+    validate_hindsight_url("honcho", &update.honcho.base_url)?;
+    validate_honcho_identifier("honcho workspace", &update.honcho.workspace_id)?;
+    validate_honcho_identifier("honcho peer", &update.honcho.peer_id)?;
+    validate_honcho_identifier("honcho session prefix", &update.honcho.session_prefix)?;
+    validate_optional_env(&update.honcho.token_env)?;
 
     bounded(
         "documents per source",
@@ -1038,12 +1291,22 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
         1_000_000,
     )?;
     let data_path = Path::new(update.runtime.data_dir.trim());
-    if !data_path.is_absolute() || data_path.parent().is_none() {
+    if !data_path.is_absolute()
+        || data_path.parent().is_none()
+        || data_path.parent().is_none_or(|parent| parent.parent().is_none())
+    {
         return Err("data directory must be an absolute non-root path".into());
     }
     update.runtime.data_dir = data_path.display().to_string();
+    let referenced_secrets = update_secret_names(update);
     for secret in &update.secrets {
         validate_env_name(&secret.name)?;
+        if !referenced_secrets.contains(&secret.name) {
+            return Err(format!(
+                "secret `{}` is not referenced by the saved settings",
+                secret.name
+            ));
+        }
         if secret.clear && secret.value.is_some() {
             return Err(format!(
                 "secret `{}` cannot be set and cleared together",
@@ -1180,6 +1443,16 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
     set_optional_string(root, "hindsight", "token_env", &update.hindsight.token_env);
     set_bool(root, "hindsight", "optional", update.hindsight.optional);
     set_bool(root, "hindsight", "wired_to_ingestion", update.hindsight.wired_to_ingestion);
+
+    set_string(root, "honcho", "provider", &update.honcho.provider);
+    set_bool(root, "honcho", "enabled", update.honcho.enabled);
+    set_string(root, "honcho", "base_url", &update.honcho.base_url);
+    set_string(root, "honcho", "workspace_id", &update.honcho.workspace_id);
+    set_string(root, "honcho", "peer_id", &update.honcho.peer_id);
+    set_string(root, "honcho", "session_prefix", &update.honcho.session_prefix);
+    set_optional_string(root, "honcho", "token_env", &update.honcho.token_env);
+    set_bool(root, "honcho", "optional", update.honcho.optional);
+    set_bool(root, "honcho", "wired_to_ingestion", update.honcho.wired_to_ingestion);
 
     for (key, value) in [
         (
@@ -1427,6 +1700,7 @@ fn validate_mutable_sections(root: &Table) -> Result<(), String> {
         "connectors",
         "auth",
         "runtime",
+        "honcho",
     ] {
         if root.get(section).is_some_and(|value| !value.is_table()) {
             return Err(format!("settings section `{section}` must be a TOML table"));
@@ -1701,20 +1975,20 @@ fn normalize_string_list(
 }
 
 fn read_config(path: &Path) -> Result<Table, String> {
+    reject_symlink(path)?;
     if !path.exists() {
         return Ok(Table::new());
     }
-    reject_symlink(path)?;
     let body =
         fs::read_to_string(path).map_err(|error| format!("read Cortana settings: {error}"))?;
     toml::from_str(&body).map_err(|error| format!("parse Cortana settings: {error}"))
 }
 
 fn read_secret_map(path: &Path) -> Result<BTreeMap<String, String>, String> {
+    reject_symlink(path)?;
     if !path.exists() {
         return Ok(BTreeMap::new());
     }
-    reject_symlink(path)?;
     let body = fs::read_to_string(path).map_err(|error| format!("read secret file: {error}"))?;
     let mut values = BTreeMap::new();
     for (line_number, raw) in body.lines().enumerate() {
@@ -1745,6 +2019,7 @@ fn render_secrets(values: &BTreeMap<String, String>) -> String {
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    reject_symlink(path)?;
     let parent = path
         .parent()
         .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
@@ -1923,15 +2198,14 @@ pub(crate) fn append_audit_event(
 }
 
 fn reject_symlink(path: &Path) -> Result<(), String> {
-    if path.exists()
-        && fs::symlink_metadata(path)
-            .map_err(|error| format!("inspect {}: {error}", path.display()))?
-            .file_type()
-            .is_symlink()
-    {
-        return Err(format!("refusing to use symlinked file {}", path.display()));
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err(format!("refusing to use symlinked file {}", path.display()))
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("inspect {}: {error}", path.display())),
     }
-    Ok(())
 }
 
 #[cfg(unix)]
@@ -1986,6 +2260,15 @@ fn validate_url(name: &str, value: &str) -> Result<(), String> {
     let is_loopback = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
     if url.scheme() == "http" && !is_loopback {
         return Err(format!("{name} cloud URL must use HTTPS"));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(format!("{name} URL must not include credentials"));
+    }
+    if url.query().is_some() {
+        return Err(format!("{name} URL must not include query parameters"));
+    }
+    if url.fragment().is_some() {
+        return Err(format!("{name} URL must not include a fragment"));
     }
     Ok(())
 }
@@ -2058,6 +2341,20 @@ fn validate_hindsight_bank(value: &str) -> Result<(), String> {
         return Err(
             "hindsight bank must be 1-64 lowercase letters, numbers, dashes, or underscores".into(),
         );
+    }
+    Ok(())
+}
+
+fn validate_honcho_identifier(name: &str, value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+        })
+    {
+        return Err(format!(
+            "{name} must be 1-128 letters, numbers, dots, dashes, or underscores"
+        ));
     }
     Ok(())
 }
@@ -2359,6 +2656,17 @@ mod tests {
                 optional: true,
                 wired_to_ingestion: false,
             },
+            honcho: HonchoSettings {
+                enabled: false,
+                provider: "honcho".into(),
+                base_url: "https://api.honcho.dev".into(),
+                workspace_id: "default".into(),
+                peer_id: "cortana".into(),
+                session_prefix: "cortana".into(),
+                token_env: Some("CORTANA_HONCHO_TOKEN".into()),
+                optional: true,
+                wired_to_ingestion: false,
+            },
             ingestion: IngestionSettings {
                 max_documents_per_source: 2000,
                 max_bytes_per_source: 128 * 1024 * 1024,
@@ -2387,8 +2695,66 @@ mod tests {
                     value: Some("hindsight-secret".into()),
                     clear: false,
                 },
+                SecretUpdate {
+                    name: "CORTANA_HONCHO_TOKEN".into(),
+                    value: Some("honcho-secret".into()),
+                    clear: false,
+                },
             ],
         }
+    }
+
+    #[test]
+    fn connector_command_configuration_is_atomic_audited_and_keeps_setup_visible() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let config_path = temp.path().join("config/config.toml");
+        let first = if cfg!(windows) {
+            PathBuf::from(
+                r"C:\Users\example\.local\share\cortana\venv\Scripts\cortana-connectors.exe",
+            )
+        } else {
+            PathBuf::from("/Users/example/.local/share/cortana/venv/bin/cortana-connectors")
+        };
+        let second = if cfg!(windows) {
+            PathBuf::from(r"C:\opt\cortana\share\cortana\venv\Scripts\cortana-connectors.exe")
+        } else {
+            PathBuf::from("/opt/cortana/share/cortana/venv/bin/cortana-connectors")
+        };
+
+        assert!(
+            configure_connector_command_at(&config_path, &PathBuf::from("relative")).is_err()
+        );
+        assert!(
+            configure_connector_command_at(&config_path, Path::new("/tmp/not-a-connector")).is_err()
+        );
+        fs::create_dir_all(config_path.parent().expect("config parent"))
+            .expect("config directory");
+        fs::write(&config_path, "[runtime]\ndata_dir = \"/tmp/cortana-data\"\n")
+            .expect("initial config");
+        configure_connector_command_at(&config_path, &first).expect("first connector command");
+        let state = SettingsStore {
+            config_path: config_path.clone(),
+        }
+        .load()
+        .expect("settings state");
+        assert!(state.needs_setup);
+        let first_body = fs::read_to_string(&config_path).expect("config body");
+        assert!(first_body.contains(&first.display().to_string()));
+        configure_connector_command_at(&config_path, &second).expect("second connector command");
+        let backup = config_path.with_extension("toml.backup");
+        assert!(fs::read_to_string(backup)
+            .expect("config backup")
+            .contains("data_dir"));
+        assert!(fs::read_to_string(&config_path)
+            .expect("preserved config")
+            .contains(&first.display().to_string()));
+        let audit = desktop_audit_events_at(&config_path, 10).expect("desktop audit");
+        assert_eq!(audit.len(), 2);
+        assert!(
+            audit
+                .iter()
+                .all(|event| event["secret_values_recorded"] == false)
+        );
     }
 
     #[test]
@@ -2410,14 +2776,17 @@ mod tests {
         assert!(secret_names.contains(&"CORTANA_QUERY_API_KEY"));
         assert!(secret_names.contains(&"CORTANA_WORK_AGENT_TOKEN"));
         assert!(secret_names.contains(&"CORTANA_HINDSIGHT_TOKEN"));
+        assert!(secret_names.contains(&"CORTANA_HONCHO_TOKEN"));
         assert!(!format!("{state:?}").contains("not-returned"));
         assert!(!format!("{state:?}").contains("private-bearer"));
         assert!(!format!("{state:?}").contains("hindsight-secret"));
+        assert!(!format!("{state:?}").contains("honcho-secret"));
         let secret_body =
             fs::read_to_string(temp.path().join("config/secrets.env")).expect("secret file");
         assert!(secret_body.contains("CORTANA_QUERY_API_KEY=not-returned"));
         assert!(secret_body.contains("CORTANA_WORK_AGENT_TOKEN=private-bearer"));
         assert!(secret_body.contains("CORTANA_HINDSIGHT_TOKEN=hindsight-secret"));
+        assert!(secret_body.contains("CORTANA_HONCHO_TOKEN=honcho-secret"));
         assert_eq!(
             bearer_for_scope_at(&store.config_path, "query").expect("query bearer"),
             Some("private-bearer".into())
@@ -2452,8 +2821,44 @@ mod tests {
     }
 
     #[test]
+    fn retires_secret_file_values_when_references_are_removed() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let store = SettingsStore {
+            config_path: temp.path().join("config/config.toml"),
+        };
+        let mut initial = valid_update(temp.path());
+        let mut slack = source_settings("team-slack", "slack");
+        slack.token_env = Some("CORTANA_SLACK_TOKEN".into());
+        initial.sources.push(slack);
+        initial.secrets.push(SecretUpdate {
+            name: "CORTANA_SLACK_TOKEN".into(),
+            value: Some("slack-secret".into()),
+            clear: false,
+        });
+        store.save(initial).expect("save source secret");
+        let secret_path = temp.path().join("config/secrets.env");
+        assert!(fs::read_to_string(&secret_path)
+            .expect("secret file")
+            .contains("CORTANA_SLACK_TOKEN=slack-secret"));
+
+        store
+            .save(valid_update(temp.path()))
+            .expect("remove source");
+        let secret_body = fs::read_to_string(&secret_path).expect("secret file after removal");
+        assert!(!secret_body.contains("CORTANA_SLACK_TOKEN"));
+        assert!(secret_body.contains("CORTANA_QUERY_API_KEY=not-returned"));
+    }
+
+    #[test]
     fn rejects_unbounded_workspaces_insecure_urls_and_secret_newlines() {
         let temp = tempfile::tempdir().expect("temp directory");
+
+        let mut cache_disabled = valid_update(temp.path());
+        cache_disabled.embedding.cache_max_entries = 0;
+        cache_disabled.query.cache_max_entries = 0;
+        cache_disabled.query.cache_ttl_seconds = 0;
+        validate_update(&mut cache_disabled).expect("zero cache values are valid opt-outs");
+
         let mut update = valid_update(temp.path());
         update.workspaces.push(update.workspaces[0].clone());
         assert!(validate_update(&mut update).is_err());
@@ -2463,7 +2868,31 @@ mod tests {
         assert!(validate_update(&mut update).is_err());
 
         let mut update = valid_update(temp.path());
+        update.embedding.base_url = "https://user:password@example.com/v1".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.query.base_url = "https://api.example.com/v1?api_key=secret".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.query.base_url = "https://api.example.com/v1#fragment".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
         update.secrets[0].value = Some("secret\nINJECTED=yes".into());
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.secrets.push(SecretUpdate {
+            name: "CORTANA_UNUSED_TOKEN".into(),
+            value: Some("must-not-be-written".into()),
+            clear: false,
+        });
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.runtime.data_dir = "/Users".into();
         assert!(validate_update(&mut update).is_err());
 
         let mut update = valid_update(temp.path());
@@ -2502,6 +2931,23 @@ mod tests {
 
         let mut update = valid_update(temp.path());
         update.hindsight.token_env = Some("bad-env".into());
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.honcho.enabled = true;
+        update.honcho.token_env = None;
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.honcho.base_url = "http://honcho.example/v3".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.honcho.workspace_id = "work space".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.honcho.provider = "openai".into();
         assert!(validate_update(&mut update).is_err());
     }
 
@@ -2555,6 +3001,14 @@ mod tests {
         assert_eq!(state.hindsight.bank, "default");
         assert!(state.hindsight.optional);
         assert!(!state.hindsight.wired_to_ingestion);
+        assert!(!state.honcho.enabled);
+        assert_eq!(state.honcho.provider, "honcho");
+        assert_eq!(state.honcho.base_url, "https://api.honcho.dev");
+        assert_eq!(state.honcho.workspace_id, "default");
+        assert_eq!(state.honcho.peer_id, "cortana");
+        assert_eq!(state.honcho.session_prefix, "cortana");
+        assert!(state.honcho.optional);
+        assert!(!state.honcho.wired_to_ingestion);
 
         fs::create_dir_all(store.config_path.parent().expect("config parent"))
             .expect("config directory");
@@ -2816,6 +3270,15 @@ mod tests {
             assert!(
                 import_portable_at(&config_path, &linked)
                     .expect_err("symlinked settings must fail")
+                    .contains("symlinked")
+            );
+
+            let dangling = temp.path().join("dangling-secrets.env");
+            symlink(temp.path().join("missing-secrets.env"), &dangling)
+                .expect("dangling secret symlink");
+            assert!(
+                read_secret_map(&dangling)
+                    .expect_err("dangling secret symlink must fail")
                     .contains("symlinked")
             );
         }

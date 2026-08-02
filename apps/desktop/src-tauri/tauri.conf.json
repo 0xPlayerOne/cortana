@@ -4,9 +4,9 @@
   "version": "0.18.0",
   "identifier": "ai.cortana.desktop",
   "build": {
-    "beforeDevCommand": "bun run prepare:sidecar && bun run --cwd ../web dev",
+    "beforeDevCommand": "bun run prepare:resources && bun run prepare:sidecar && bun run --cwd ../web dev",
     "devUrl": "http://127.0.0.1:4173",
-    "beforeBuildCommand": "bun run prepare:sidecar -- --release && bun run --cwd ../web build",
+    "beforeBuildCommand": "bun run prepare:resources && bun run prepare:sidecar -- --release && bun run --cwd ../web build",
     "frontendDist": "../../web/dist"
   },
   "app": {
@@ -33,6 +33,9 @@
     "active": true,
     "externalBin": [
       "binaries/cortana"
+    ],
+    "resources": [
+      "resources/cortana-connectors"
     ],
     "category": "Productivity",
     "copyright": "Copyright 2026 Cortana contributors",

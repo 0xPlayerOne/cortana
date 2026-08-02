@@ -17,7 +17,7 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 
 import {
   cancelDesktopInstaller,
@@ -28,19 +28,26 @@ import {
   getDesktopInstaller,
   getDesktopInfo,
   getDesktopHindsightStatus,
+  getDesktopHonchoStatus,
+  getDesktopSchedule,
   getDesktopServices,
   getDesktopSourceValidation,
   getDesktopSettings,
   getDesktopUpdate,
   getRuntimeAudit,
   installDesktopUpdate,
+  installDesktopServices,
+  installDesktopSyncService,
   importDesktopSettings,
+  migrateDesktopEmbeddingGeneration,
   isDesktopApp,
   openDesktopSourceSetup,
   openDesktopProject,
+  openDesktopSecretFile,
   pickDesktopPath,
   planDesktopInitialSync,
   saveDesktopSettings,
+  saveDesktopSchedule,
   scanDesktopReadiness,
   setDesktopAutostart,
   startDesktopInitialSync,
@@ -53,13 +60,18 @@ import {
 } from '../api'
 import { buildSetupSteps } from '../setup'
 import { INITIAL_SYNC_BUDGETS } from '../types'
+import { isLoopbackUrl } from '../operations'
 import type {
   DesktopInitialSyncPlan,
   DesktopInstallJob,
   DesktopInfo,
   DesktopHindsightStatus,
+  DesktopHonchoStatus,
   DesktopReadiness,
+  DesktopReadinessActivity,
+  DesktopServiceActivity,
   DesktopServiceReport,
+  DesktopSchedule,
   DesktopSettings,
   DesktopSettingsUpdate,
   DesktopSourceJob,
@@ -83,19 +95,157 @@ type Section =
   | 'embedding'
   | 'query'
   | 'hindsight'
+  | 'honcho'
   | 'ingestion'
   | 'advanced'
 
+function useDesktopForeground(): boolean {
+  const [foreground, setForeground] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
+  )
+
+  useEffect(() => {
+    const visibility = { current: document.visibilityState !== 'hidden' }
+    const focused = { current: true }
+    const syncForeground = () => setForeground(visibility.current && focused.current)
+    const markVisible = () => {
+      visibility.current = document.visibilityState !== 'hidden'
+      syncForeground()
+    }
+    const markFocused = () => {
+      focused.current = true
+      syncForeground()
+    }
+    const markBlurred = () => {
+      focused.current = false
+      syncForeground()
+    }
+
+    window.addEventListener('focus', markFocused)
+    window.addEventListener('blur', markBlurred)
+    document.addEventListener('visibilitychange', markVisible)
+    let disposed = false
+    let unlistenFocus: (() => void) | undefined
+    if (isDesktopApp && '__TAURI_INTERNALS__' in window) {
+      void import('@tauri-apps/api/window')
+        .then(({ getCurrentWindow }) => {
+          const currentWindow = getCurrentWindow()
+          void currentWindow
+            .isFocused()
+            .then((payload) => {
+              if (!disposed) {
+                focused.current = payload
+                syncForeground()
+              }
+            })
+            .catch(() => {
+              // Browser focus events remain the fallback when the native
+              // startup snapshot is unavailable.
+            })
+          return currentWindow.onFocusChanged(({ payload }) => {
+            if (!disposed) {
+              focused.current = payload
+              syncForeground()
+            }
+          })
+        })
+        .then((unlisten) => {
+          if (disposed) unlisten()
+          else unlistenFocus = unlisten
+        })
+        .catch(() => {
+          // Browser focus events remain the fallback when the native focus
+          // listener cannot be registered during startup.
+        })
+    }
+    return () => {
+      disposed = true
+      window.removeEventListener('focus', markFocused)
+      window.removeEventListener('blur', markBlurred)
+      document.removeEventListener('visibilitychange', markVisible)
+      unlistenFocus?.()
+    }
+  }, [])
+
+  return foreground
+}
+
 export function SettingsView({
+  desktopSettings: externalSettings,
+  onLoaded,
   onSaved,
+  onDirtyChange,
   initialSection = 'readiness',
   onJob,
+  sourceJobs,
+  installerJob: externalInstallerJob,
+  onInstallerJob,
+  readiness: externalReadiness,
+  onReadiness,
+  readinessActivity,
+  onReadinessScan,
+  desktopUpdate: externalDesktopUpdate,
+  onDesktopUpdate,
+  services: externalServices,
+  onServices,
+  servicesError: externalServicesError,
+  onServicesError,
+  desktopInfo: externalDesktopInfo,
+  onDesktopInfo,
+  serviceActivity,
+  onServiceActivity,
+  hindsightStatus: externalHindsightStatus,
+  onHindsightStatus,
+  honchoStatus: externalHonchoStatus,
+  onHonchoStatus,
 }: {
+  /** Shell-owned settings snapshot. Standalone renders fetch their own copy. */
+  desktopSettings?: DesktopSettings
+  /** Report a standalone settings load back to the Desktop shell. */
+  onLoaded?: (settings: DesktopSettings) => void
   onSaved: (settings: DesktopSettings) => void
+  onDirtyChange?: (dirty: boolean) => void
   initialSection?: Section
   onJob?: (job: DesktopSourceJob) => void
+  /**
+   * Shared snapshots from the shell-level source-job poller. Standalone
+   * renders (for example the web fallback and focused tests) omit this prop
+   * and keep the local observer below.
+   */
+  sourceJobs?: DesktopSourceJob[]
+  /**
+   * Optional shell-owned installer state. The app shell supplies this so an
+   * install remains observable while SettingsView is unmounted. Standalone
+   * renders keep the local state below.
+   */
+  installerJob?: DesktopInstallJob | null
+  onInstallerJob?: (job: DesktopInstallJob | null) => void
+  /** Optional shell-owned readiness snapshot shared across Settings mounts. */
+  readiness?: DesktopReadiness | null
+  onReadiness?: (readiness: DesktopReadiness | null) => void
+  readinessActivity?: DesktopReadinessActivity | null
+  onReadinessScan?: () => Promise<DesktopReadiness>
+  /** Optional shell-owned updater snapshot shared across Settings mounts. */
+  desktopUpdate?: DesktopUpdate | null
+  onDesktopUpdate?: (update: DesktopUpdate) => void
+  /** Shell-owned service status shared with the tray/health indicator. */
+  services?: DesktopServiceReport | null
+  onServices?: (report: DesktopServiceReport) => void
+  servicesError?: string
+  onServicesError?: (error: string) => void
+  desktopInfo?: DesktopInfo | null
+  onDesktopInfo?: (info: DesktopInfo) => void
+  /** Shell-owned service action status shared across Settings mounts. */
+  serviceActivity?: DesktopServiceActivity | null
+  onServiceActivity?: (activity: DesktopServiceActivity | null) => void
+  /** Shell-owned Hindsight health snapshot shared across Settings mounts. */
+  hindsightStatus?: DesktopHindsightStatus | null
+  onHindsightStatus?: (status: DesktopHindsightStatus | null) => void
+  /** Shell-owned Honcho health snapshot shared across Settings mounts. */
+  honchoStatus?: DesktopHonchoStatus | null
+  onHonchoStatus?: (status: DesktopHonchoStatus | null) => void
 }) {
-  const [settings, setSettings] = useState<DesktopSettings | null>(null)
+  const [settings, setSettings] = useState<DesktopSettings | null>(externalSettings ?? null)
   const [section, setSection] = useState<Section>(initialSection)
   const [secretValues, setSecretValues] = useState<Record<string, string>>({})
   const [clearedSecrets, setClearedSecrets] = useState<Set<string>>(new Set())
@@ -103,18 +253,38 @@ export function SettingsView({
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
-  const [setupReadiness, setSetupReadiness] = useState<DesktopReadiness | null>(null)
+  const [localReadiness, setLocalReadiness] = useState<DesktopReadiness | null>(null)
+  const setupReadiness = externalReadiness === undefined ? localReadiness : externalReadiness
+  const setSetupReadiness = onReadiness ?? setLocalReadiness
+  const [localInstallerJob, setLocalInstallerJob] = useState<DesktopInstallJob | null>(null)
+  const installerJob = externalInstallerJob === undefined ? localInstallerJob : externalInstallerJob
+  const setInstallerJob = onInstallerJob ?? setLocalInstallerJob
+
+  const applyLoadedSettings = (next: DesktopSettings) => {
+    setSettings(next)
+    onLoaded?.(next)
+  }
 
   useEffect(() => {
     if (!isDesktopApp) return
+    if (externalSettings) {
+      // The shell owns the saved snapshot. Do not replace an in-progress local
+      // draft when a parent status update re-renders this view.
+      if (!dirty) setSettings(externalSettings)
+      return
+    }
     void getDesktopSettings()
-      .then(setSettings)
+      .then(applyLoadedSettings)
       .catch((caught: unknown) =>
         setError(caught instanceof Error ? caught.message : 'Unable to load settings')
       )
-  }, [])
+  }, [externalSettings, dirty, onLoaded])
 
   useEffect(() => setSection(initialSection), [initialSection])
+
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+  }, [dirty, onDirtyChange])
 
   const update = (change: (draft: DesktopSettings) => DesktopSettings) => {
     setSettings((current) => (current ? change(current) : current))
@@ -122,12 +292,49 @@ export function SettingsView({
     setDirty(true)
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault()
-    if (!settings) return
+  const retrySettingsLoad = () => {
+    setError('')
+    void getDesktopSettings()
+      .then(applyLoadedSettings)
+      .catch((caught: unknown) =>
+        setError(caught instanceof Error ? caught.message : 'Unable to load settings')
+      )
+  }
+
+  const discard = async () => {
+    if (!dirty || saving) return
+    if (!window.confirm('Discard unsaved Cortana settings changes?')) return
     setSaving(true)
     setError('')
     try {
+      const next = await getDesktopSettings()
+      applyLoadedSettings(next)
+      setSecretValues({})
+      setClearedSecrets(new Set())
+      setSaved(false)
+      setDirty(false)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to discard settings changes')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    // Enter can submit a form even when the visible Save button is disabled.
+    // Avoid creating a no-op settings audit event or touching secrets when
+    // there is no draft to persist.
+    if (!settings || !dirty || saving) return
+    const sourceIdentityError = validateSourceIdentityScopes(settings.sources)
+    if (sourceIdentityError) {
+      setError(sourceIdentityError)
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      const referencedSecrets = referencedSecretNames(settings)
       const payload: DesktopSettingsUpdate = {
         workspaces: settings.workspaces,
         sources: settings.sources,
@@ -135,13 +342,19 @@ export function SettingsView({
         embedding: settings.embedding,
         query: settings.query,
         hindsight: settings.hindsight,
+        honcho: settings.honcho,
         ingestion: settings.ingestion,
         runtime: settings.runtime,
         secrets: [
           ...Object.entries(secretValues)
-            .filter(([name, value]) => value.length > 0 && !clearedSecrets.has(name))
+            .filter(
+              ([name, value]) =>
+                referencedSecrets.has(name) && value.length > 0 && !clearedSecrets.has(name)
+            )
             .map(([name, value]) => ({ name, value })),
-          ...Array.from(clearedSecrets, (name) => ({ name, clear: true })),
+          ...Array.from(clearedSecrets)
+            .filter((name) => referencedSecrets.has(name))
+            .map((name) => ({ name, clear: true })),
         ],
       }
       const next = await saveDesktopSettings(payload)
@@ -172,7 +385,12 @@ export function SettingsView({
     return (
       <main className="settings-view settings-unavailable">
         <Settings2 size={34} />
-        <h1>{error || 'Loading local settings…'}</h1>
+        <h1 role={error ? 'alert' : 'status'}>{error || 'Loading local settings…'}</h1>
+        {error && (
+          <button type="button" className="secondary-button" onClick={retrySettingsLoad}>
+            <RefreshCw size={15} /> Retry settings
+          </button>
+        )}
       </main>
     )
   }
@@ -185,9 +403,27 @@ export function SettingsView({
           <h1>Settings</h1>
           <p>Changes are written locally and audited. Secret values never return to this window.</p>
         </div>
-        <button className="primary-button" form="settings-form" disabled={saving}>
-          <Save size={16} /> {saving ? 'Saving…' : 'Save changes'}
-        </button>
+        <div className="settings-header-actions">
+          {dirty && (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={saving}
+              onClick={() => void discard()}
+            >
+              <X size={15} /> Discard
+            </button>
+          )}
+          <button
+            type="submit"
+            className="primary-button"
+            form="settings-form"
+            disabled={saving || !dirty}
+            title={dirty ? undefined : 'Make a change before saving'}
+          >
+            <Save size={16} /> {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
       </header>
       {settings.needs_setup && (
         <SetupGuide
@@ -211,11 +447,13 @@ export function SettingsView({
               'embedding',
               'query',
               'hindsight',
+              'honcho',
               'ingestion',
               'advanced',
             ] as Section[]
           ).map((item) => (
             <button
+              type="button"
               key={item}
               className={section === item ? 'active' : ''}
               onClick={() => setSection(item)}
@@ -230,10 +468,43 @@ export function SettingsView({
         </nav>
         <form id="settings-form" className="settings-form" onSubmit={submit}>
           {section === 'readiness' && (
-            <ReadinessSection autoScan={settings.needs_setup} onResult={setSetupReadiness} />
+            <ReadinessSection
+              autoScan={settings.needs_setup}
+              readiness={setupReadiness}
+              onResult={setSetupReadiness}
+              onOpenServices={() => setSection('services')}
+              job={installerJob}
+              onJob={setInstallerJob}
+              readinessActivity={readinessActivity}
+              onReadinessScan={onReadinessScan}
+              pollInstaller={externalInstallerJob === undefined}
+            />
           )}
-          {section === 'services' && <ServicesSection />}
-          {section === 'updates' && <UpdatesSection />}
+          {section === 'services' && (
+            <ServicesSection
+              settings={settings}
+              dirty={dirty}
+              services={externalServices}
+              onServices={onServices}
+              servicesError={externalServicesError}
+              onServicesError={onServicesError}
+              desktopInfo={externalDesktopInfo}
+              onDesktopInfo={onDesktopInfo}
+              serviceActivity={serviceActivity}
+              onServiceActivity={onServiceActivity}
+              onRestarted={() =>
+                setSettings((current) =>
+                  current ? { ...current, restart_required: false } : current
+                )
+              }
+            />
+          )}
+          {section === 'updates' && (
+            <UpdatesSection
+              desktopUpdate={externalDesktopUpdate}
+              onDesktopUpdate={onDesktopUpdate}
+            />
+          )}
           {section === 'access' && (
             <AccessSection
               settings={settings}
@@ -274,6 +545,7 @@ export function SettingsView({
                 setSaved(false)
               }}
               onJob={onJob}
+              sourceJobs={sourceJobs}
             />
           )}
           {section === 'embedding' && (
@@ -332,6 +604,29 @@ export function SettingsView({
                 setSaved(false)
               }}
               update={update}
+              hindsightStatus={externalHindsightStatus}
+              onHindsightStatus={onHindsightStatus}
+            />
+          )}
+          {section === 'honcho' && (
+            <HonchoSection
+              settings={settings}
+              secretValues={secretValues}
+              onSecret={(values) => {
+                setSecretValues(values)
+                setDirty(true)
+                setSaved(false)
+              }}
+              clearedSecrets={clearedSecrets}
+              onClearSecret={(name) => {
+                setClearedSecrets((current) => new Set(current).add(name))
+                setSecretValues((current) => ({ ...current, [name]: '' }))
+                setDirty(true)
+                setSaved(false)
+              }}
+              update={update}
+              honchoStatus={externalHonchoStatus}
+              onHonchoStatus={onHonchoStatus}
             />
           )}
           {section === 'ingestion' && <IngestionSection settings={settings} update={update} />}
@@ -341,12 +636,24 @@ export function SettingsView({
         </form>
       </div>
       {(error || saved || settings.restart_required) && (
-        <div className={`settings-banner ${error ? 'error' : ''}`} role="status">
+        <div
+          className={`settings-banner ${error ? 'error' : ''}`}
+          role={error ? 'alert' : 'status'}
+        >
           {error ? <AlertTriangle size={16} /> : <Check size={16} />}
           {error ||
             (saved
               ? 'Settings saved. Restart affected services to apply them.'
               : 'A service restart is required.')}
+          {!error && settings.restart_required && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setSection('services')}
+            >
+              Open services
+            </button>
+          )}
         </div>
       )}
     </main>
@@ -373,7 +680,8 @@ function SetupGuide({
           <span className="eyebrow">First launch</span>
           <strong>Set up Cortana safely</strong>
           <p>
-            Review each step, then save. Nothing here starts ingestion or installs recurring sync.
+            Review each step, then save. The guide itself never starts ingestion; recurring sync is
+            a separate validation-gated action in Services.
           </p>
         </div>
         <span>
@@ -405,28 +713,140 @@ function SetupGuide({
   )
 }
 
-function ServicesSection() {
-  const [report, setReport] = useState<DesktopServiceReport | null>(null)
-  const [info, setInfo] = useState<DesktopInfo | null>(null)
+function ServicesSection({
+  settings,
+  dirty,
+  services: externalServices,
+  onServices,
+  servicesError: externalServicesError,
+  onServicesError,
+  desktopInfo: externalDesktopInfo,
+  onDesktopInfo,
+  serviceActivity,
+  onServiceActivity,
+  onRestarted,
+}: {
+  settings: DesktopSettings
+  dirty: boolean
+  services?: DesktopServiceReport | null
+  onServices?: (report: DesktopServiceReport) => void
+  servicesError?: string
+  onServicesError?: (error: string) => void
+  desktopInfo?: DesktopInfo | null
+  onDesktopInfo?: (info: DesktopInfo) => void
+  serviceActivity?: DesktopServiceActivity | null
+  onServiceActivity?: (activity: DesktopServiceActivity | null) => void
+  onRestarted?: () => void
+}) {
+  const foreground = useDesktopForeground()
+  const [localReport, setLocalReport] = useState<DesktopServiceReport | null>(null)
+  const report = externalServices === undefined ? localReport : externalServices
+  const setReport = onServices ?? setLocalReport
+  const [localInfo, setLocalInfo] = useState<DesktopInfo | null>(null)
+  const info = externalDesktopInfo === undefined ? localInfo : externalDesktopInfo
+  const setInfo = onDesktopInfo ?? setLocalInfo
   const [busy, setBusy] = useState('')
-  const [error, setError] = useState('')
+  const [localError, setLocalError] = useState('')
+  const [schedule, setSchedule] = useState<DesktopSchedule | null>(null)
+  const [scheduleDraft, setScheduleDraft] = useState<DesktopSchedule | null>(null)
+  const [scheduleError, setScheduleError] = useState('')
+  const [scheduleSaving, setScheduleSaving] = useState(false)
+  const [scheduleApplyPending, setScheduleApplyPending] = useState(false)
+  const error = localError || externalServicesError || ''
+  const refreshInFlightRef = useRef(false)
+  const actionInFlightRef = useRef(false)
+  const mountedRef = useRef(true)
+  const servicesRequestRef = useRef(0)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  const isFreshServicesRequest = (requestId: number) => {
+    return mountedRef.current && requestId === servicesRequestRef.current
+  }
+
+  // Desktop shells own service status errors. When a parent shell refresh
+  // succeeds after a previous section-local failure, clear stale local messages
+  // so the user-visible banner is driven by the latest snapshot.
+  useEffect(() => {
+    if (externalServicesError !== undefined && externalServicesError.length === 0) {
+      setLocalError('')
+    }
+  }, [externalServicesError])
 
   const refresh = async () => {
-    setError('')
+    if (refreshInFlightRef.current || actionInFlightRef.current) return
+    refreshInFlightRef.current = true
+    const requestId = ++servicesRequestRef.current
+    setLocalError('')
     try {
       const [nextReport, nextInfo] = await Promise.all([getDesktopServices(), getDesktopInfo()])
+      if (!isFreshServicesRequest(requestId)) return
       setReport(nextReport)
       setInfo(nextInfo)
+      onServicesError?.('')
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Service status could not be loaded')
+      if (!isFreshServicesRequest(requestId)) return
+      const message =
+        caught instanceof Error ? caught.message : 'Service status could not be loaded'
+      setLocalError(message)
+      onServicesError?.(message)
+    } finally {
+      if (servicesRequestRef.current === requestId) refreshInFlightRef.current = false
     }
   }
 
   useEffect(() => {
+    if (externalServices !== undefined || !foreground) return
     void refresh()
     const timer = window.setInterval(() => void refresh(), 15_000)
-    return () => window.clearInterval(timer)
+    return () => {
+      window.clearInterval(timer)
+      servicesRequestRef.current += 1
+      refreshInFlightRef.current = false
+    }
+  }, [externalServices, foreground])
+
+  useEffect(() => {
+    let active = true
+    void getDesktopSchedule()
+      .then((next) => {
+        if (!active) return
+        setSchedule(next)
+        setScheduleDraft(next)
+        setScheduleError('')
+      })
+      .catch((caught) => {
+        if (!active) return
+        setScheduleError(caught instanceof Error ? caught.message : 'Schedule could not be loaded')
+      })
+    return () => {
+      active = false
+    }
   }, [])
+
+  const saveSchedule = async () => {
+    if (!scheduleDraft || scheduleSaving) return
+    setScheduleSaving(true)
+    setScheduleError('')
+    try {
+      const next = await saveDesktopSchedule(scheduleDraft)
+      if (!mountedRef.current) return
+      setSchedule(next)
+      setScheduleDraft(next)
+      if (report?.services.some((service) => service.name === 'sync' && service.installed)) {
+        setScheduleApplyPending(true)
+      }
+    } catch (caught) {
+      setScheduleError(caught instanceof Error ? caught.message : 'Schedule could not be saved')
+    } finally {
+      setScheduleSaving(false)
+    }
+  }
 
   const serviceAction = async (
     service: DesktopServiceReport['services'][number],
@@ -438,58 +858,247 @@ function ServicesSection() {
         : ''
     if (!window.confirm(`${action} ${service.label}?${warning}`)) return
     setBusy(`${service.name}:${action}`)
-    setError('')
+    actionInFlightRef.current = true
+    refreshInFlightRef.current = false
+    servicesRequestRef.current += 1
+    setLocalError('')
+    onServiceActivity?.({
+      target: service.name,
+      action,
+      status: 'running',
+      detail: null,
+    })
     try {
-      setReport(await runDesktopServiceAction(service.name, action))
+      const next = await runDesktopServiceAction(service.name, action)
+      if (mountedRef.current || onServices) {
+        setReport(next)
+        onServicesError?.('')
+      }
+      onServiceActivity?.({
+        target: service.name,
+        action,
+        status: 'succeeded',
+        detail: null,
+      })
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Service action failed')
+      const message = caught instanceof Error ? caught.message : 'Service action failed'
+      if (mountedRef.current) setLocalError(message)
+      onServiceActivity?.({
+        target: service.name,
+        action,
+        status: 'failed',
+        detail: message,
+      })
     } finally {
-      setBusy('')
+      actionInFlightRef.current = false
+      if (mountedRef.current) setBusy('')
     }
   }
 
   const toggleAutostart = async (enabled: boolean) => {
     setBusy('autostart')
-    setError('')
+    actionInFlightRef.current = true
+    refreshInFlightRef.current = false
+    servicesRequestRef.current += 1
+    setLocalError('')
     try {
-      setInfo(await setDesktopAutostart(enabled))
+      const next = await setDesktopAutostart(enabled)
+      if (mountedRef.current) setInfo(next)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Desktop autostart could not be changed')
+      setLocalError(
+        caught instanceof Error ? caught.message : 'Desktop autostart could not be changed'
+      )
     } finally {
+      actionInFlightRef.current = false
       setBusy('')
     }
   }
 
   const groupAction = async (action: 'start' | 'stop' | 'restart') => {
+    const coreServices =
+      settings.embedding.provider === 'local' ? 'the server and embedding services' : 'the server'
     if (
       !window.confirm(
-        `${action} the Cortana server and embedding services?\n\nRecurring sync and backup are explicitly excluded.`
+        `${action} ${coreServices}?\n\nRecurring sync and backup are explicitly excluded.`
       )
     ) {
       return
     }
     setBusy(`all:${action}`)
-    setError('')
+    actionInFlightRef.current = true
+    refreshInFlightRef.current = false
+    servicesRequestRef.current += 1
+    setLocalError('')
+    onServiceActivity?.({ target: 'core services', action, status: 'running', detail: null })
     try {
-      setReport(await runDesktopServicesActionAll(action))
+      const next = await runDesktopServicesActionAll(action)
+      if (mountedRef.current || onServices) {
+        setReport(next)
+        onServicesError?.('')
+      }
+      onServiceActivity?.({ target: 'core services', action, status: 'succeeded', detail: null })
+      if (mountedRef.current && action === 'restart') onRestarted?.()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Whole-app service action failed')
+      const message = caught instanceof Error ? caught.message : 'Whole-app service action failed'
+      if (mountedRef.current) setLocalError(message)
+      onServiceActivity?.({
+        target: 'core services',
+        action,
+        status: 'failed',
+        detail: message,
+      })
     } finally {
-      setBusy('')
+      actionInFlightRef.current = false
+      if (mountedRef.current) setBusy('')
     }
   }
+
+  const install = async () => {
+    if (
+      !window.confirm(
+        'Install Cortana background services for this user?\n\nThis installs the API, local embedding (when configured), and verified backup jobs. It does not install or enable recurring ingestion.'
+      )
+    ) {
+      return
+    }
+    setBusy('install')
+    actionInFlightRef.current = true
+    refreshInFlightRef.current = false
+    servicesRequestRef.current += 1
+    setLocalError('')
+    onServiceActivity?.({
+      target: 'core services',
+      action: 'install',
+      status: 'running',
+      detail: null,
+    })
+    try {
+      const next = await installDesktopServices()
+      if (mountedRef.current || onServices) {
+        setReport(next)
+        onServicesError?.('')
+      }
+      onServiceActivity?.({
+        target: 'core services',
+        action: 'install',
+        status: 'succeeded',
+        detail: null,
+      })
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : 'Cortana services could not be installed'
+      if (mountedRef.current) setLocalError(message)
+      onServiceActivity?.({
+        target: 'core services',
+        action: 'install',
+        status: 'failed',
+        detail: message,
+      })
+    } finally {
+      actionInFlightRef.current = false
+      if (mountedRef.current) setBusy('')
+    }
+  }
+
+  const installSync = async () => {
+    if (dirty) {
+      setLocalError(
+        'Save changes before enabling recurring sync so the validated configuration is current.'
+      )
+      return
+    }
+    if (!schedule || !scheduleDraft) {
+      setLocalError('Load the service schedule before enabling recurring sync.')
+      return
+    }
+    if (
+      scheduleDraft.sync_interval_seconds !== schedule.sync_interval_seconds ||
+      scheduleDraft.backup_interval_seconds !== schedule.backup_interval_seconds
+    ) {
+      setLocalError('Save the service schedule before enabling recurring sync.')
+      return
+    }
+    const applyingExistingSchedule =
+      scheduleApplyPending &&
+      !(report?.services.some((service) => service.name === 'sync' && !service.installed) ?? false)
+    const actionLabel = applyingExistingSchedule
+      ? 'Apply the updated recurring sync schedule'
+      : 'Enable recurring source sync'
+    if (
+      !window.confirm(
+        `${actionLabel} for this user?\n\nCortana will re-check that every enabled source has a current successful validation covering its configured safety budgets before installing the schedule. The first run is delayed by the platform scheduler; existing indexed data is not deleted.`
+      )
+    ) {
+      return
+    }
+    setBusy('sync-install')
+    actionInFlightRef.current = true
+    refreshInFlightRef.current = false
+    servicesRequestRef.current += 1
+    setLocalError('')
+    onServiceActivity?.({
+      target: 'recurring sync',
+      action: 'install',
+      status: 'running',
+      detail: null,
+    })
+    try {
+      const next = await installDesktopSyncService()
+      if (mountedRef.current || onServices) {
+        setReport(next)
+        if (mountedRef.current) setScheduleApplyPending(false)
+        onServicesError?.('')
+      }
+      onServiceActivity?.({
+        target: 'recurring sync',
+        action: 'install',
+        status: 'succeeded',
+        detail: null,
+      })
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : 'Recurring sync could not be installed'
+      if (mountedRef.current) setLocalError(message)
+      onServiceActivity?.({
+        target: 'recurring sync',
+        action: 'install',
+        status: 'failed',
+        detail: message,
+      })
+    } finally {
+      actionInFlightRef.current = false
+      if (mountedRef.current) setBusy('')
+    }
+  }
+
+  const needsCoreInstall =
+    report?.supported === true &&
+    report.services.some(
+      (service) =>
+        service.name !== 'sync' &&
+        (service.name !== 'embedding' || settings.embedding.provider === 'local') &&
+        !service.installed
+    )
+  const needsSyncInstall =
+    report?.supported === true &&
+    report.services.some((service) => service.name === 'sync' && !service.installed)
+  const syncScheduleNeedsApply = needsSyncInstall || scheduleApplyPending
+  const actionInFlight = Boolean(busy) || serviceActivity?.status === 'running'
+  const actionMessage = serviceActivity
+    ? `${serviceActivity.action === 'install' ? 'Install' : serviceActivity.action[0].toUpperCase() + serviceActivity.action.slice(1)} ${serviceActivity.target}${serviceActivity.status === 'running' ? ' in progress…' : serviceActivity.status === 'succeeded' ? ' completed.' : ` failed: ${serviceActivity.detail || 'unknown error'}`}`
+    : ''
 
   return (
     <SettingsSection
       title="Services"
-      description="Inspect and control installed Cortana runtime services. Service actions never install or enable recurring ingestion."
+      description="Inspect and control Cortana runtime services. Recurring ingestion stays absent until its dedicated, validation-gated action is confirmed."
     >
       <div className="service-autostart">
         <label className="source-enable">
           <input
             type="checkbox"
             checked={info?.autostart_enabled || false}
-            disabled={!info || busy === 'autostart'}
+            disabled={!info || busy === 'autostart' || actionInFlight}
             onChange={(event) => void toggleAutostart(event.target.checked)}
           />
           <span>
@@ -509,32 +1118,136 @@ function ServicesSection() {
               : 'Checking services…'}
         </span>
         <div className="service-actions">
-          <button type="button" disabled={Boolean(busy)} onClick={() => void groupAction('start')}>
+          <button
+            type="button"
+            disabled={actionInFlight || report?.supported !== true}
+            onClick={() => void groupAction('start')}
+          >
             <Play size={14} /> Start all
           </button>
-          <button type="button" disabled={Boolean(busy)} onClick={() => void groupAction('stop')}>
+          <button
+            type="button"
+            disabled={actionInFlight || report?.supported !== true}
+            onClick={() => void groupAction('stop')}
+          >
             <CircleStop size={14} /> Stop all
           </button>
           <button
             type="button"
-            disabled={Boolean(busy)}
+            disabled={actionInFlight || report?.supported !== true}
             onClick={() => void groupAction('restart')}
           >
             <RefreshCw size={14} /> Restart all
           </button>
-          <button type="button" className="secondary-button" onClick={() => void refresh()}>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={actionInFlight}
+            onClick={() => void refresh()}
+          >
             <RefreshCw size={14} /> Refresh
           </button>
+          {needsCoreInstall && (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={actionInFlight}
+              onClick={() => void install()}
+            >
+              {busy === 'install' ? (
+                <LoaderCircle className="spin" size={14} />
+              ) : (
+                <Download size={14} />
+              )}{' '}
+              Install core services
+            </button>
+          )}
+          {syncScheduleNeedsApply && (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={actionInFlight || report?.supported !== true}
+              onClick={() => void installSync()}
+            >
+              {busy === 'sync-install' ? (
+                <LoaderCircle className="spin" size={14} />
+              ) : (
+                <Download size={14} />
+              )}{' '}
+              {scheduleApplyPending && !needsSyncInstall
+                ? 'Apply recurring sync schedule'
+                : 'Enable recurring sync'}
+            </button>
+          )}
         </div>
       </div>
-      {error && <div className="safety-note">{error}</div>}
+      {(error || scheduleError || actionMessage) && (
+        <div className={`safety-note ${serviceActivity?.status === 'failed' ? 'error' : ''}`}>
+          {error || scheduleError || actionMessage}
+        </div>
+      )}
+      {scheduleDraft && (
+        <div className="service-schedule">
+          <div>
+            <strong>Background schedule</strong>
+            <p>
+              These intervals apply only when you explicitly install recurring sync. Saving them
+              never starts a service.
+            </p>
+          </div>
+          <div className="form-grid compact">
+            <NumberField
+              label="Sync interval (seconds)"
+              hint="1 minute to 7 days"
+              value={scheduleDraft.sync_interval_seconds}
+              min={60}
+              max={604800}
+              onChange={(sync_interval_seconds) =>
+                setScheduleDraft((current) =>
+                  current ? { ...current, sync_interval_seconds } : current
+                )
+              }
+            />
+            <NumberField
+              label="Backup interval (seconds)"
+              hint="5 minutes to 30 days"
+              value={scheduleDraft.backup_interval_seconds}
+              min={300}
+              max={2592000}
+              onChange={(backup_interval_seconds) =>
+                setScheduleDraft((current) =>
+                  current ? { ...current, backup_interval_seconds } : current
+                )
+              }
+            />
+          </div>
+          <div className="service-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={
+                actionInFlight ||
+                scheduleSaving ||
+                !schedule ||
+                (scheduleDraft.sync_interval_seconds === schedule.sync_interval_seconds &&
+                  scheduleDraft.backup_interval_seconds === schedule.backup_interval_seconds)
+              }
+              onClick={() => void saveSchedule()}
+            >
+              {scheduleSaving ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />}{' '}
+              Save schedule
+            </button>
+          </div>
+        </div>
+      )}
       <div className="service-grid">
         {report?.services.map((service) => {
           const running = service.loaded && service.state === 'running'
+          const failed = service.last_exit_status !== null && service.last_exit_status !== 0
           return (
             <article className="service-card" key={service.name}>
               <header>
-                <i className={`service-state ${running ? 'ready' : ''}`} />
+                <i className={`service-state ${running ? 'ready' : failed ? 'failed' : ''}`} />
                 <div>
                   <strong>{service.name[0].toUpperCase() + service.name.slice(1)}</strong>
                   <small>{service.label}</small>
@@ -547,25 +1260,26 @@ function ServicesSection() {
                     ? service.state || 'Loaded'
                     : 'Installed, not loaded'}
                 {service.pid ? ` · PID ${service.pid}` : ''}
+                {failed ? ` · last exit ${service.last_exit_status}` : ''}
               </p>
               <div className="service-actions">
                 <button
                   type="button"
-                  disabled={!report.supported || !service.installed || running || Boolean(busy)}
+                  disabled={!report.supported || !service.installed || running || actionInFlight}
                   onClick={() => void serviceAction(service, 'start')}
                 >
                   <Play size={14} /> Start
                 </button>
                 <button
                   type="button"
-                  disabled={!report.supported || !service.loaded || Boolean(busy)}
+                  disabled={!report.supported || !service.loaded || actionInFlight}
                   onClick={() => void serviceAction(service, 'stop')}
                 >
                   <CircleStop size={14} /> Stop
                 </button>
                 <button
                   type="button"
-                  disabled={!report.supported || !service.installed || Boolean(busy)}
+                  disabled={!report.supported || !service.installed || actionInFlight}
                   onClick={() => void serviceAction(service, 'restart')}
                 >
                   <RefreshCw size={14} /> Restart
@@ -576,29 +1290,62 @@ function ServicesSection() {
         })}
       </div>
       <p className="settings-note">
-        The sync service remains absent unless it was installed explicitly outside this screen.
+        Recurring sync is opt-in and requires current source validation before installation.
         Starting the server, embedding, or backup service does not run ingestion.
       </p>
     </SettingsSection>
   )
 }
 
-function UpdatesSection() {
-  const [update, setUpdate] = useState<DesktopUpdate | null>(null)
+function UpdatesSection({
+  desktopUpdate: externalDesktopUpdate,
+  onDesktopUpdate,
+}: {
+  desktopUpdate?: DesktopUpdate | null
+  onDesktopUpdate?: (update: DesktopUpdate) => void
+}) {
+  const foreground = useDesktopForeground()
+  const [localUpdate, setLocalUpdate] = useState<DesktopUpdate | null>(null)
+  const update = externalDesktopUpdate === undefined ? localUpdate : externalDesktopUpdate
+  const setUpdate = onDesktopUpdate ?? setLocalUpdate
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
+    if ((externalDesktopUpdate !== undefined && externalDesktopUpdate !== null) || !foreground) {
+      return
+    }
     void getDesktopUpdate()
-      .then(setUpdate)
-      .catch(() => {})
-  }, [])
+      .then((next) => {
+        setUpdate(next)
+        if (!next.error) setError('')
+      })
+      .catch((caught: unknown) => {
+        setError(caught instanceof Error ? caught.message : 'Updater status unavailable')
+      })
+  }, [externalDesktopUpdate, foreground, setUpdate])
 
   useEffect(() => {
-    if (busy !== 'install') return
-    const timer = window.setInterval(() => void getDesktopUpdate().then(setUpdate), 400)
+    if (externalDesktopUpdate !== undefined || busy !== 'install' || !foreground) return
+    let requestInFlight = false
+    const poll = () => {
+      if (requestInFlight) return
+      requestInFlight = true
+      void getDesktopUpdate()
+        .then((next) => {
+          setUpdate(next)
+          if (!next.error) setError('')
+        })
+        .catch((caught: unknown) => {
+          setError(caught instanceof Error ? caught.message : 'Updater status unavailable')
+        })
+        .finally(() => {
+          requestInFlight = false
+        })
+    }
+    const timer = window.setInterval(poll, 400)
     return () => window.clearInterval(timer)
-  }, [busy])
+  }, [busy, externalDesktopUpdate, foreground])
 
   const check = async () => {
     setBusy('check')
@@ -607,7 +1354,12 @@ function UpdatesSection() {
       setUpdate(await checkDesktopUpdate())
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Update check failed')
-      setUpdate(await getDesktopUpdate())
+      try {
+        setUpdate(await getDesktopUpdate())
+      } catch {
+        // Keep the existing snapshot when both the check and status fallback
+        // are unavailable; the visible error already explains the failure.
+      }
     } finally {
       setBusy('')
     }
@@ -624,13 +1376,33 @@ function UpdatesSection() {
     }
     setBusy('install')
     setError('')
+    setUpdate({
+      ...update,
+      phase: 'downloading',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      error: null,
+    })
     try {
       setUpdate(await installDesktopUpdate(update.available_version, true))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Update installation failed')
-      setUpdate(await getDesktopUpdate())
+      try {
+        setUpdate(await getDesktopUpdate())
+      } catch {
+        // Keep the last known update state when the updater is unreachable.
+      }
     } finally {
       setBusy('')
+    }
+  }
+
+  const openProject = async () => {
+    setError('')
+    try {
+      await openDesktopProject()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to open the Cortana project page')
     }
   }
 
@@ -638,6 +1410,10 @@ function UpdatesSection() {
     update?.total_bytes && update.total_bytes > 0
       ? Math.min(100, Math.round((update.downloaded_bytes / update.total_bytes) * 100))
       : null
+  const updateInFlight =
+    busy === 'install' || update?.phase === 'downloading' || update?.phase === 'installing'
+  const canInstall =
+    Boolean(update?.available_version) && !update?.restart_required && update?.phase !== 'installed'
 
   return (
     <SettingsSection
@@ -657,7 +1433,11 @@ function UpdatesSection() {
           </small>
         </div>
         <div className="service-actions">
-          <button type="button" disabled={Boolean(busy)} onClick={() => void check()}>
+          <button
+            type="button"
+            disabled={Boolean(busy) || updateInFlight}
+            onClick={() => void check()}
+          >
             {busy === 'check' ? (
               <LoaderCircle className="spin" size={14} />
             ) : (
@@ -668,11 +1448,13 @@ function UpdatesSection() {
           <button
             type="button"
             className="primary-button"
-            disabled={!update?.available_version || Boolean(busy)}
+            disabled={!canInstall || Boolean(busy) || updateInFlight}
             onClick={() => void install()}
           >
-            {busy === 'install' ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />}
-            Install and restart
+            {updateInFlight ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />}
+            {update?.restart_required || update?.phase === 'installed'
+              ? 'Restart required'
+              : 'Install and restart'}
           </button>
         </div>
       </div>
@@ -683,7 +1465,7 @@ function UpdatesSection() {
         </div>
       )}
       {(error || update?.error) && (
-        <div className="safety-note">
+        <div className="safety-note" role="alert">
           <AlertTriangle size={16} /> <span>{error || update?.error}</span>
         </div>
       )}
@@ -698,7 +1480,7 @@ function UpdatesSection() {
         <pre>{update?.changelog || 'Loading changelog…'}</pre>
       </div>
       {update && (
-        <button type="button" className="link-button" onClick={() => void openDesktopProject()}>
+        <button type="button" className="link-button" onClick={() => void openProject()}>
           View Cortana source on GitHub <ExternalLink size={13} />
         </button>
       )}
@@ -713,17 +1495,25 @@ function HindsightSection({
   onSecret,
   clearedSecrets,
   onClearSecret,
+  hindsightStatus: externalStatus,
+  onHindsightStatus,
 }: SettingsSectionProps & {
   settings: DesktopSettings
   secretValues: Record<string, string>
   onSecret: (values: Record<string, string>) => void
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
+  hindsightStatus?: DesktopHindsightStatus | null
+  onHindsightStatus?: (status: DesktopHindsightStatus | null) => void
 }) {
-  const [status, setStatus] = useState<DesktopHindsightStatus | null>(null)
+  const [localStatus, setLocalStatus] = useState<DesktopHindsightStatus | null>(null)
+  const status = externalStatus === undefined ? localStatus : externalStatus
+  const setStatus = onHindsightStatus ?? setLocalStatus
   const [checking, setChecking] = useState(false)
-  const setHindsight = (hindsight: DesktopSettings['hindsight']) =>
+  const setHindsight = (hindsight: DesktopSettings['hindsight']) => {
+    setStatus(null)
     update((current) => ({ ...current, hindsight }))
+  }
   const statusSource = settings.hindsight.token_env
     ? settings.secrets.find((item) => item.name === settings.hindsight.token_env)
     : undefined
@@ -793,6 +1583,12 @@ function HindsightSection({
           <RefreshCw size={14} /> {checking ? 'Checking…' : 'Check connection'}
         </button>
       </div>
+      {externalStatus && (
+        <p className="settings-note">
+          This health snapshot is retained while you move between Desktop settings sections. It
+          reads the last saved Hindsight configuration; save changes before checking again.
+        </p>
+      )}
       <Field label="Provider" hint="Hindsight currently supports only this provider.">
         <select
           value={settings.hindsight.provider}
@@ -846,13 +1642,215 @@ function HindsightSection({
               disabled={!settings.hindsight.token_env}
               onChange={(event) => {
                 if (!settings.hindsight.token_env) return
+                setStatus(null)
                 onSecret({ ...secretValues, [settings.hindsight.token_env]: event.target.value })
               }}
             />
             {settings.hindsight.token_env &&
               statusSource?.configured &&
               !clearedSecrets.has(statusSource.name) && (
-                <button type="button" onClick={() => onClearSecret(settings.hindsight.token_env!)}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatus(null)
+                    onClearSecret(settings.hindsight.token_env!)
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+          </div>
+        </Field>
+      </div>
+    </SettingsSection>
+  )
+}
+
+function HonchoSection({
+  settings,
+  update,
+  secretValues,
+  onSecret,
+  clearedSecrets,
+  onClearSecret,
+  honchoStatus: externalStatus,
+  onHonchoStatus,
+}: SettingsSectionProps & {
+  settings: DesktopSettings
+  secretValues: Record<string, string>
+  onSecret: (values: Record<string, string>) => void
+  clearedSecrets: Set<string>
+  onClearSecret: (name: string) => void
+  honchoStatus?: DesktopHonchoStatus | null
+  onHonchoStatus?: (status: DesktopHonchoStatus | null) => void
+}) {
+  const [localStatus, setLocalStatus] = useState<DesktopHonchoStatus | null>(null)
+  const status = externalStatus === undefined ? localStatus : externalStatus
+  const setStatus = onHonchoStatus ?? setLocalStatus
+  const [checking, setChecking] = useState(false)
+  const setHoncho = (honcho: DesktopSettings['honcho']) => {
+    setStatus(null)
+    update((current) => ({ ...current, honcho }))
+  }
+  const statusSource = settings.honcho.token_env
+    ? settings.secrets.find((item) => item.name === settings.honcho.token_env)
+    : undefined
+
+  const checkStatus = async () => {
+    setChecking(true)
+    try {
+      setStatus(await getDesktopHonchoStatus())
+    } catch (caught) {
+      setStatus({
+        enabled: settings.honcho.enabled,
+        configured: false,
+        reachable: false,
+        state: 'unreachable',
+        endpoint: settings.honcho.base_url,
+        workspace_id: settings.honcho.workspace_id,
+        peer_id: settings.honcho.peer_id,
+        token_configured: false,
+        detail: caught instanceof Error ? caught.message : 'Honcho status check failed',
+      })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  return (
+    <SettingsSection
+      title="Honcho memory sidecar"
+      description="Optional session memory for deliberately selected agent episodes. It is not the source of truth and is never wired into normal ingestion by default."
+    >
+      <div className="form-grid">
+        <label className="form-field">
+          <span>Adapter status</span>
+          <input type="text" value="Optional sidecar" disabled />
+          <small>
+            Saving records configuration only; it does not copy the corpus or start a worker.
+          </small>
+        </label>
+        <label className="form-field">
+          <span>Ingestion integration</span>
+          <input
+            type="text"
+            value={settings.honcho.wired_to_ingestion ? 'Enabled' : 'Disabled'}
+            disabled
+          />
+          <small>Normal source sync remains unchanged.</small>
+        </label>
+        <label className="form-field">
+          <span>Enabled</span>
+          <input
+            type="checkbox"
+            checked={settings.honcho.enabled}
+            onChange={(event) => setHoncho({ ...settings.honcho, enabled: event.target.checked })}
+          />
+        </label>
+      </div>
+      <div className="safety-note" role="status">
+        Honcho uses one deterministic session per retained Cortana document so deletion can remove
+        only that document. Keep it disabled until the evaluation, ACL, deletion, and export gates
+        pass.
+      </div>
+      <div className="safety-note" role="status">
+        <span>
+          Health: {status?.state.replace('_', ' ') || 'not checked'}
+          {status?.detail ? ` — ${status.detail}` : ''}
+        </span>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => void checkStatus()}
+          disabled={checking}
+        >
+          <RefreshCw size={14} /> {checking ? 'Checking…' : 'Check connection'}
+        </button>
+      </div>
+      {externalStatus && (
+        <p className="settings-note">
+          This health snapshot is retained while you move between Desktop settings sections. It
+          reads the last saved Honcho configuration; save changes before checking again.
+        </p>
+      )}
+      <Field label="Provider" hint="Honcho currently supports only its v3 HTTP API.">
+        <select value={settings.honcho.provider} disabled>
+          <option value="honcho">honcho</option>
+        </select>
+      </Field>
+      <div className="form-grid">
+        <Field label="Endpoint" wide>
+          <input
+            type="url"
+            value={settings.honcho.base_url}
+            onChange={(event) => setHoncho({ ...settings.honcho, base_url: event.target.value })}
+            required
+          />
+        </Field>
+        <Field label="Workspace ID" hint="letters, numbers, dots, dashes, or underscores">
+          <input
+            value={settings.honcho.workspace_id}
+            onChange={(event) =>
+              setHoncho({ ...settings.honcho, workspace_id: event.target.value })
+            }
+            pattern="[A-Za-z0-9._-]{1,128}"
+            maxLength={128}
+            required
+          />
+        </Field>
+        <Field label="Peer ID" hint="the Honcho agent peer identity">
+          <input
+            value={settings.honcho.peer_id}
+            onChange={(event) => setHoncho({ ...settings.honcho, peer_id: event.target.value })}
+            pattern="[A-Za-z0-9._-]{1,128}"
+            maxLength={128}
+            required
+          />
+        </Field>
+        <Field label="Session prefix" hint="stable namespace prefix for per-document sessions">
+          <input
+            value={settings.honcho.session_prefix}
+            onChange={(event) =>
+              setHoncho({ ...settings.honcho, session_prefix: event.target.value })
+            }
+            pattern="[A-Za-z0-9._-]{1,128}"
+            maxLength={128}
+            required
+          />
+        </Field>
+        <Field label="Token environment variable">
+          <input
+            value={settings.honcho.token_env || ''}
+            onChange={(event) =>
+              setHoncho({ ...settings.honcho, token_env: event.target.value || null })
+            }
+            pattern="[A-Z_][A-Z0-9_]*"
+            placeholder="CORTANA_HONCHO_TOKEN"
+          />
+        </Field>
+        <Field label="New token" hint="write-only; leave blank to retain">
+          <div className="secret-input">
+            <input
+              type="password"
+              autoComplete="new-password"
+              value={settings.honcho.token_env ? secretValues[settings.honcho.token_env] || '' : ''}
+              disabled={!settings.honcho.token_env}
+              onChange={(event) => {
+                if (!settings.honcho.token_env) return
+                setStatus(null)
+                onSecret({ ...secretValues, [settings.honcho.token_env]: event.target.value })
+              }}
+            />
+            {settings.honcho.token_env &&
+              statusSource?.configured &&
+              !clearedSecrets.has(statusSource.name) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStatus(null)
+                    onClearSecret(settings.honcho.token_env!)
+                  }}
+                >
                   Clear
                 </button>
               )}
@@ -885,7 +1883,17 @@ function AccessSection({
     }))
   const add = () =>
     update((current) => {
-      const number = current.auth_principals.length + 1
+      const usedPrincipals = new Set(
+        current.auth_principals.map((principal) => principal.principal)
+      )
+      const usedTokens = new Set(current.auth_principals.map((principal) => principal.token_env))
+      let number = 1
+      while (
+        usedPrincipals.has(`agent-${number}`) ||
+        usedTokens.has(`CORTANA_AGENT_${number}_TOKEN`)
+      ) {
+        number += 1
+      }
       return {
         ...current,
         auth_principals: [
@@ -916,6 +1924,7 @@ function AccessSection({
                 <button
                   type="button"
                   aria-label={`Remove ${principal.principal}`}
+                  title={`Remove ${principal.principal}`}
                   onClick={() =>
                     update((current) => ({
                       ...current,
@@ -1013,14 +2022,19 @@ function AuditSection() {
   const [desktop, setDesktop] = useState<AuditEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const refreshRequestRef = useRef(0)
 
   const refresh = async () => {
+    const requestId = ++refreshRequestRef.current
     setLoading(true)
     setError('')
     const [runtimeResult, desktopResult] = await Promise.allSettled([
       getRuntimeAudit(100),
       getDesktopAudit(100),
     ])
+    // A manual refresh can overlap the initial request. Never let a slower
+    // response replace a newer audit snapshot or clear its error state.
+    if (refreshRequestRef.current !== requestId) return
     if (runtimeResult.status === 'fulfilled') setRuntime(runtimeResult.value)
     if (desktopResult.status === 'fulfilled') setDesktop(desktopResult.value)
     const errors = [runtimeResult, desktopResult]
@@ -1034,6 +2048,9 @@ function AuditSection() {
 
   useEffect(() => {
     void refresh()
+    return () => {
+      refreshRequestRef.current += 1
+    }
   }, [])
 
   return (
@@ -1050,7 +2067,11 @@ function AuditSection() {
           Refresh
         </button>
       </div>
-      {error && <div className="safety-note">{error}</div>}
+      {error && (
+        <div className="safety-note" role="alert">
+          {error}
+        </div>
+      )}
       <AuditList title="Runtime retrieval" events={runtime} />
       <AuditList title="Desktop actions" events={desktop} />
     </SettingsSection>
@@ -1084,33 +2105,49 @@ function AuditList({ title, events }: { title: string; events: AuditEvent[] }) {
 
 function ReadinessSection({
   autoScan = false,
+  readiness,
   onResult,
+  onOpenServices,
+  job,
+  onJob,
+  readinessActivity,
+  onReadinessScan,
+  pollInstaller = true,
 }: {
   autoScan?: boolean
-  onResult?: (readiness: DesktopReadiness | null) => void
+  readiness: DesktopReadiness | null
+  onResult: (readiness: DesktopReadiness | null) => void
+  onOpenServices?: () => void
+  job: DesktopInstallJob | null
+  onJob: (job: DesktopInstallJob | null) => void
+  readinessActivity?: DesktopReadinessActivity | null
+  onReadinessScan?: () => Promise<DesktopReadiness>
+  pollInstaller?: boolean
 }) {
-  const [readiness, setReadiness] = useState<DesktopReadiness | null>(null)
+  const foreground = useDesktopForeground()
   const [scanning, setScanning] = useState(false)
+  const [migratingGeneration, setMigratingGeneration] = useState(false)
   const [error, setError] = useState('')
-  const [job, setJob] = useState<DesktopInstallJob | null>(null)
+  const [migrationNotice, setMigrationNotice] = useState('')
+  const autoScanAttemptedRef = useRef(false)
 
   useEffect(() => {
-    if (!job || !['running', 'cancelling'].includes(job.status)) return
+    if (!pollInstaller || !foreground || !job || !['running', 'cancelling'].includes(job.status)) {
+      return
+    }
     let active = true
     const timer = window.setTimeout(() => {
       void getDesktopInstaller(job.id)
         .then((next) => {
           if (!active) return
-          setJob(next)
+          onJob(next)
           if (next.status === 'succeeded') {
-            setReadiness(null)
-            onResult?.(null)
+            onResult(null)
             setScanning(true)
-            void scanDesktopReadiness()
+            void (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
               .then((scan) => {
                 if (!active) return
-                setReadiness(scan)
-                onResult?.(scan)
+                onResult(scan)
               })
               .catch((caught: unknown) => {
                 if (active) {
@@ -1134,15 +2171,15 @@ function ReadinessSection({
       active = false
       window.clearTimeout(timer)
     }
-  }, [job, onResult])
+  }, [foreground, job, onJob, onReadinessScan, onResult, pollInstaller])
 
   const scan = async () => {
     setScanning(true)
     setError('')
+    setMigrationNotice('')
     try {
-      const next = await scanDesktopReadiness()
-      setReadiness(next)
-      onResult?.(next)
+      const next = await (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
+      onResult(next)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Readiness scan failed')
     } finally {
@@ -1150,16 +2187,60 @@ function ReadinessSection({
     }
   }
 
+  const migrateGeneration = async () => {
+    const generation = readiness?.core?.embedding_generation
+    if (!generation?.stored || generation.stored === generation.configured) return
+    const from = generation.stored
+    if (
+      !window.confirm(
+        `Adopt the stored embedding generation?\n\n${from}\n\nUse this only when the configured model, dimension, and vector space are unchanged and only the provider fingerprint changed. Cortana will create a verified backup, update generation metadata, and clear derived caches. Indexed documents will not be rebuilt. Continue?`
+      )
+    ) {
+      return
+    }
+    setMigratingGeneration(true)
+    setError('')
+    setMigrationNotice('')
+    try {
+      await migrateDesktopEmbeddingGeneration(from)
+      try {
+        const next = await (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
+        onResult(next)
+        const nextGeneration = next.core?.embedding_generation
+        if (!nextGeneration || nextGeneration.stored !== nextGeneration.configured) {
+          setError(
+            'Embedding generation was adopted, but the follow-up readiness scan still reports a mismatch.'
+          )
+        } else {
+          setMigrationNotice('Embedding generation adopted and readiness was rescanned.')
+        }
+      } catch (caught) {
+        setError(
+          caught instanceof Error
+            ? `Embedding generation was adopted, but readiness could not be rescanned: ${caught.message}`
+            : 'Embedding generation was adopted, but readiness could not be rescanned'
+        )
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Embedding generation migration failed')
+    } finally {
+      setMigratingGeneration(false)
+    }
+  }
+
   useEffect(() => {
-    if (!autoScan) return
+    if (!autoScan || readiness || autoScanAttemptedRef.current) return
+    // First-launch readiness is intentionally one-shot. A failed scan is
+    // surfaced for the operator to retry explicitly; it must not loop every
+    // time the shell-owned activity status changes to failed.
+    autoScanAttemptedRef.current = true
     let active = true
     setScanning(true)
     setError('')
-    void scanDesktopReadiness()
+    void (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
       .then((next) => {
         if (!active) return
-        setReadiness(next)
-        onResult?.(next)
+        onResult(next)
       })
       .catch((caught: unknown) => {
         if (active) {
@@ -1172,19 +2253,34 @@ function ReadinessSection({
     return () => {
       active = false
     }
-  }, [autoScan, onResult])
+  }, [autoScan, onReadinessScan, onResult, readiness])
+
+  const readinessInFlight =
+    scanning || migratingGeneration || readinessActivity?.status === 'running'
+  const readinessActivityError =
+    readinessActivity?.status === 'failed' ? readinessActivity.detail : null
+  const embeddingGeneration = readiness?.core?.embedding_generation
+  const embeddingGenerationMismatch = Boolean(
+    embeddingGeneration?.stored && embeddingGeneration.stored !== embeddingGeneration.configured
+  )
 
   const install = async (tool: string, label: string) => {
+    const action =
+      tool === 'connectors'
+        ? 'Cortana will create the per-user connector environment from the signed Desktop bundle and install its bounded ingestion dependencies with uv.'
+        : tool === 'embedding-runtime'
+          ? 'Cortana will install the text-embeddings-inference runtime with Homebrew. The model itself is downloaded by the runtime on first start and no ingestion will begin.'
+          : 'Cortana will run its fixed, platform-specific installer.'
     if (
       !window.confirm(
-        `Install ${label} on this computer?\n\nCortana will run its fixed, platform-specific installer. No ingestion or sync will start.`
+        `Install ${label} on this computer?\n\n${action} No ingestion or sync will start.`
       )
     ) {
       return
     }
     setError('')
     try {
-      setJob(await startDesktopInstaller(tool))
+      onJob(await startDesktopInstaller(tool))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Installer failed to start')
     }
@@ -1193,7 +2289,7 @@ function ReadinessSection({
   const cancel = async () => {
     if (!job) return
     try {
-      setJob(await cancelDesktopInstaller(job.id))
+      onJob(await cancelDesktopInstaller(job.id))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Installer could not be cancelled')
     }
@@ -1205,9 +2301,18 @@ function ReadinessSection({
       description="A read-only scan checks local tools and Cortana's production gates. It never starts a connector, installs a schedule, or writes indexed data."
     >
       <div className="readiness-actions">
-        <button type="button" className="secondary-button" disabled={scanning} onClick={scan}>
-          {scanning ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
-          {scanning ? 'Checking system…' : readiness ? 'Run again' : 'Run readiness scan'}
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={readinessInFlight}
+          onClick={scan}
+        >
+          {readinessInFlight ? (
+            <LoaderCircle className="spin" size={15} />
+          ) : (
+            <RefreshCw size={15} />
+          )}
+          {readinessInFlight ? 'Checking system…' : readiness ? 'Run again' : 'Run readiness scan'}
         </button>
         {readiness && (
           <span>
@@ -1215,9 +2320,14 @@ function ReadinessSection({
           </span>
         )}
       </div>
-      {error && (
-        <div className="safety-note">
-          <AlertTriangle size={16} /> <span>{error}</span>
+      {(error || readinessActivityError) && (
+        <div className="safety-note" role="alert">
+          <AlertTriangle size={16} /> <span>{error || readinessActivityError}</span>
+        </div>
+      )}
+      {migrationNotice && (
+        <div className="safety-note" role="status">
+          <Check size={16} /> <span>{migrationNotice}</span>
         </div>
       )}
       {readiness && (
@@ -1255,32 +2365,6 @@ function ReadinessSection({
               </article>
             ))}
           </div>
-          {job && (
-            <div className={`installer-job ${job.status}`} role="status">
-              <div>
-                {['running', 'cancelling'].includes(job.status) ? (
-                  <LoaderCircle className="spin" size={16} />
-                ) : (
-                  <StatusGlyph passed={job.status === 'succeeded'} />
-                )}
-                <span>
-                  <strong>{job.summary}</strong>
-                  <small>Status: {job.status}</small>
-                </span>
-                {job.status === 'running' && (
-                  <button type="button" onClick={() => void cancel()}>
-                    Cancel
-                  </button>
-                )}
-                {job.retryable && (
-                  <button type="button" onClick={() => void install(job.tool, job.tool)}>
-                    Retry
-                  </button>
-                )}
-              </div>
-              {job.log && <pre>{job.log}</pre>}
-            </div>
-          )}
           <div className="core-readiness">
             <h3>Production gates</h3>
             {readiness.core_error && <p>{readiness.core_error}</p>}
@@ -1293,8 +2377,62 @@ function ReadinessSection({
                 </div>
               </article>
             ))}
+            {embeddingGenerationMismatch && (
+              <div className="safety-note" role="status">
+                <span>
+                  The index uses a different embedding generation. Adopt it only after confirming
+                  that the vectors are interchangeable; otherwise rebuild or import a new
+                  generation.
+                </span>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={readinessInFlight}
+                  onClick={() => void migrateGeneration()}
+                >
+                  {migratingGeneration ? 'Adopting generation…' : 'Adopt stored generation'}
+                </button>
+              </div>
+            )}
           </div>
+          {readiness.core && !readiness.core.passed && onOpenServices && (
+            <div className="safety-note" role="status">
+              <span>
+                Runtime checks are not passing. Confirm the API and embedding services are installed
+                and running before retrying readiness.
+              </span>
+              <button type="button" className="secondary-button" onClick={onOpenServices}>
+                Check Services
+              </button>
+            </div>
+          )}
         </>
+      )}
+      {job && (
+        <div className={`installer-job ${job.status}`} role="status">
+          <div>
+            {['running', 'cancelling'].includes(job.status) ? (
+              <LoaderCircle className="spin" size={16} />
+            ) : (
+              <StatusGlyph passed={job.status === 'succeeded'} />
+            )}
+            <span>
+              <strong>{job.summary}</strong>
+              <small>Status: {job.status}</small>
+            </span>
+            {job.status === 'running' && (
+              <button type="button" onClick={() => void cancel()}>
+                Cancel
+              </button>
+            )}
+            {job.retryable && (
+              <button type="button" onClick={() => void install(job.tool, job.tool)}>
+                Retry
+              </button>
+            )}
+          </div>
+          {job.log && <pre>{job.log}</pre>}
+        </div>
       )}
     </SettingsSection>
   )
@@ -1321,7 +2459,10 @@ function WorkspaceSection({
       workspaces: [
         ...current.workspaces,
         {
-          id: `workspace-${current.workspaces.length + 1}`,
+          id: nextAvailableIdentifier(
+            'workspace',
+            current.workspaces.map((workspace) => workspace.id)
+          ),
           name: 'New workspace',
           account_label: null,
           color: '#A875D6',
@@ -1350,6 +2491,12 @@ function WorkspaceSection({
                 <button
                   type="button"
                   aria-label={`Remove ${workspace.name}`}
+                  disabled={settings.sources.some((source) => source.project === workspace.id)}
+                  title={
+                    settings.sources.some((source) => source.project === workspace.id)
+                      ? 'Move assigned sources before removing this workspace'
+                      : 'Remove workspace'
+                  }
                   onClick={() =>
                     update((current) => ({
                       ...current,
@@ -1372,6 +2519,12 @@ function WorkspaceSection({
             <Field label="Scope ID" hint="lowercase letters, numbers, dashes">
               <input
                 value={workspace.id}
+                disabled={settings.sources.some((source) => source.project === workspace.id)}
+                title={
+                  settings.sources.some((source) => source.project === workspace.id)
+                    ? 'Move assigned sources before changing this workspace ID'
+                    : undefined
+                }
                 onChange={(event) => changeWorkspace(index, { id: event.target.value })}
                 required
                 maxLength={32}
@@ -1430,6 +2583,7 @@ function SourcesSection({
   clearedSecrets,
   onClearSecret,
   onJob,
+  sourceJobs,
 }: SettingsSectionProps & {
   canValidate: boolean
   secretValues: Record<string, string>
@@ -1437,6 +2591,7 @@ function SourcesSection({
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
   onJob?: (job: DesktopSourceJob) => void
+  sourceJobs?: DesktopSourceJob[]
 }) {
   const [job, setJob] = useState<DesktopSourceJob | null>(null)
   const applyJob = (next: DesktopSourceJob) => {
@@ -1451,8 +2606,37 @@ function SourcesSection({
     planning: boolean
     flowError: string
   } | null>(null)
+  const validationPlanKey = useRef('')
+  const sharedJobIds = useRef(new Set<string>())
+  const foreground = useDesktopForeground()
+
+  // In the full Desktop shell, App owns one poller for the source-job list so
+  // SourcePanel, the tray/status bar, and Settings all observe the same
+  // snapshots. A standalone SettingsView still uses its local observer.
+  useEffect(() => {
+    if (!sourceJobs) return
+    const currentIds = new Set(sourceJobs.map((candidate) => candidate.id))
+    sourceJobs.forEach((candidate) => sharedJobIds.current.add(candidate.id))
+    for (const id of sharedJobIds.current) {
+      if (!currentIds.has(id) && id !== job?.id) sharedJobIds.current.delete(id)
+    }
+    // A job may have started while Settings was unmounted. Adopt the newest
+    // recovered snapshot so this section can show and cancel it immediately,
+    // instead of only locking the editor in the background.
+    if (!job) {
+      if (sourceJobs[0]) setJob(sourceJobs[0])
+      return
+    }
+    const next = sourceJobs.find((candidate) => candidate.id === job.id)
+    if (next && next !== job) setJob(next)
+    else if (!next && sharedJobIds.current.has(job.id)) {
+      sharedJobIds.current.delete(job.id)
+      setJob(null)
+    }
+  }, [job, sourceJobs])
 
   useEffect(() => {
+    if (sourceJobs || !foreground) return
     if (!job || !['running', 'cancelling'].includes(job.status)) return
     let active = true
     const timer = window.setTimeout(() => {
@@ -1460,13 +2644,6 @@ function SourcesSection({
         .then((next) => {
           if (!active) return
           applyJob(next)
-          if (
-            next.status === 'succeeded' &&
-            job.operation === 'validation' &&
-            initialSync?.source === job.source
-          ) {
-            void requestPlan(job.source, initialSync.budget)
-          }
         })
         .catch((caught: unknown) => {
           if (active) {
@@ -1478,7 +2655,14 @@ function SourcesSection({
       active = false
       window.clearTimeout(timer)
     }
-  }, [job, initialSync, onJob])
+  }, [foreground, job, initialSync, onJob])
+  const activeJob =
+    (job && ['running', 'cancelling'].includes(job.status) ? job : undefined) ??
+    sourceJobs?.find((candidate) => ['running', 'cancelling'].includes(candidate.status))
+  const observedJob = activeJob ?? job ?? sourceJobs?.[0]
+  const initialSyncSource = initialSync
+    ? settings.sources.find((item) => item.name === initialSync.source)
+    : undefined
   const requestPlan = async (source: string, budget: InitialSyncBudget) => {
     setInitialSync((current) =>
       current && current.source === source
@@ -1505,6 +2689,26 @@ function SourcesSection({
       )
     }
   }
+
+  // Whether polling is owned by this section or by App, a successful
+  // validation must unlock a fresh plan for the selected initial-sync budget.
+  // Keeping this transition here avoids coupling the flow to one polling
+  // implementation and prevents duplicate plan requests on rerenders.
+  useEffect(() => {
+    if (
+      !observedJob ||
+      observedJob.status !== 'succeeded' ||
+      observedJob.operation !== 'validation' ||
+      !initialSync ||
+      initialSync.source !== observedJob.source
+    ) {
+      return
+    }
+    const key = `${observedJob.id}:${initialSync.budget}`
+    if (validationPlanKey.current === key) return
+    validationPlanKey.current = key
+    void requestPlan(observedJob.source, initialSync.budget)
+  }, [initialSync, observedJob])
 
   const openInitialSync = (source: SourceSettings, budget: InitialSyncBudget = 'small') => {
     setInitialSync({
@@ -1564,13 +2768,20 @@ function SourcesSection({
     }
   }
 
-  const changeSource = (index: number, patch: Partial<SourceSettings>) =>
+  const changeSource = (index: number, patch: Partial<SourceSettings>) => {
+    const current = settings.sources[index]
+    if (activeJob && current?.name === activeJob.source) return
+    // A native initial-sync plan is tied to the exact saved source config.
+    // Editing or renaming that source invalidates the plan; force a fresh
+    // plan/validation rather than leaving an old plan ID in the UI.
+    if (initialSync && current?.name === initialSync.source) setInitialSync(null)
     update((current) => ({
       ...current,
       sources: current.sources.map((source, position) =>
         position === index ? { ...source, ...patch } : source
       ),
     }))
+  }
 
   const addSource = () =>
     update((current) => ({
@@ -1670,9 +2881,9 @@ function SourcesSection({
   }
 
   const cancel = async () => {
-    if (!job) return
+    if (!observedJob) return
     try {
-      applyJob(await cancelDesktopSourceValidation(job.id))
+      applyJob(await cancelDesktopSourceValidation(observedJob.id))
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : 'Source validation could not be cancelled'
@@ -1700,6 +2911,13 @@ function SourcesSection({
         </button>
       </div>
 
+      {activeJob && (
+        <div className="safety-note" role="status">
+          Settings for {activeJob.source} are locked while its operation is running. Other sources
+          remain configurable, but source actions still wait until this operation finishes.
+        </div>
+      )}
+
       <div className="source-settings-list">
         {settings.sources.length === 0 && (
           <div className="empty-source-settings">
@@ -1711,8 +2929,8 @@ function SourcesSection({
           const secret = source.token_env
             ? settings.secrets.find((item) => item.name === source.token_env)
             : undefined
-          const runningThis =
-            job?.source === source.name && ['running', 'cancelling'].includes(job.status)
+          const runningThis = activeJob?.source === source.name
+          const sourceLocked = runningThis
           return (
             <article className="source-settings-card" key={`${source.name}:${index}`}>
               <header>
@@ -1720,6 +2938,7 @@ function SourcesSection({
                   <input
                     type="checkbox"
                     checked={source.enabled}
+                    disabled={sourceLocked}
                     onChange={(event) => changeSource(index, { enabled: event.target.checked })}
                   />
                   <span>
@@ -1734,7 +2953,7 @@ function SourcesSection({
                   {hasBrowserSetup(source.kind) && (
                     <button
                       type="button"
-                      disabled={!canValidate}
+                      disabled={!canValidate || sourceLocked}
                       title="Open the official provider setup page"
                       onClick={() => void openSetup(source)}
                     >
@@ -1746,14 +2965,14 @@ function SourcesSection({
                       type="button"
                       disabled={
                         !canValidate ||
-                        !source.token_path ||
+                        (!source.token_path && !source.token_env) ||
                         !source.oauth_client_path ||
-                        Boolean(job && ['running', 'cancelling'].includes(job.status))
+                        Boolean(activeJob)
                       }
                       title="Authorize read-only Google access with PKCE"
                       onClick={() => void authorizeSource(source)}
                     >
-                      {runningThis && job?.operation === 'authorization' ? (
+                      {runningThis && activeJob?.operation === 'authorization' ? (
                         <LoaderCircle className="spin" size={14} />
                       ) : (
                         <KeyRound size={14} />
@@ -1763,18 +2982,11 @@ function SourcesSection({
                   )}
                   <button
                     type="button"
-                    disabled={
-                      !canValidate ||
-                      Boolean(
-                        job &&
-                        runningThis === false &&
-                        ['running', 'cancelling'].includes(job.status)
-                      )
-                    }
+                    disabled={!canValidate || Boolean(activeJob)}
                     title={canValidate ? 'Read-only bounded validation' : 'Save changes first'}
                     onClick={() => void validateSource(source)}
                   >
-                    {runningThis && job?.operation === 'validation' ? (
+                    {runningThis && activeJob?.operation === 'validation' ? (
                       <LoaderCircle className="spin" size={14} />
                     ) : (
                       <Play size={14} />
@@ -1783,15 +2995,11 @@ function SourcesSection({
                   </button>
                   <button
                     type="button"
-                    disabled={
-                      !canValidate ||
-                      !source.enabled ||
-                      Boolean(job && ['running', 'cancelling'].includes(job.status))
-                    }
+                    disabled={!canValidate || !source.enabled || Boolean(activeJob)}
                     title="Validation-gated trial sync; max 25 documents, 5 MiB, no reconciliation"
                     onClick={() => void trialSyncSource(source)}
                   >
-                    {runningThis && job?.operation === 'trial-sync' ? (
+                    {runningThis && activeJob?.operation === 'trial-sync' ? (
                       <LoaderCircle className="spin" size={14} />
                     ) : (
                       <Play size={14} />
@@ -1800,15 +3008,11 @@ function SourcesSection({
                   </button>
                   <button
                     type="button"
-                    disabled={
-                      !canValidate ||
-                      !source.enabled ||
-                      Boolean(job && ['running', 'cancelling'].includes(job.status))
-                    }
+                    disabled={!canValidate || !source.enabled || Boolean(activeJob)}
                     title="Guided initial sync; fixed budget, validation-gated, no reconciliation"
                     onClick={() => openInitialSync(source)}
                   >
-                    {runningThis && job?.operation === 'initial-sync' ? (
+                    {runningThis && activeJob?.operation === 'initial-sync' ? (
                       <LoaderCircle className="spin" size={14} />
                     ) : (
                       <Zap size={14} />
@@ -1818,12 +3022,15 @@ function SourcesSection({
                   <button
                     type="button"
                     aria-label={`Remove ${source.name}`}
+                    disabled={sourceLocked}
+                    title={`Remove ${source.name}`}
                     onClick={() => {
                       if (
                         window.confirm(
                           `Remove ${source.name} from configuration? Existing indexed data is not deleted.`
                         )
                       ) {
+                        if (initialSync?.source === source.name) setInitialSync(null)
                         update((current) => ({
                           ...current,
                           sources: current.sources.filter((_, position) => position !== index),
@@ -1847,7 +3054,7 @@ function SourcesSection({
                 <Field label="Source name" hint="stable lowercase identifier">
                   <input
                     value={source.name}
-                    disabled={!source.editable}
+                    disabled={sourceLocked || !source.editable}
                     required
                     maxLength={64}
                     pattern="[a-z0-9][a-z0-9_-]*"
@@ -1857,7 +3064,7 @@ function SourcesSection({
                 <Field label="Connector">
                   <select
                     value={source.kind}
-                    disabled={!source.editable}
+                    disabled={sourceLocked || !source.editable}
                     onChange={(event) =>
                       changeSource(index, {
                         kind: event.target.value as SourceKind,
@@ -1878,6 +3085,7 @@ function SourcesSection({
                 <Field label="Workspace">
                   <select
                     value={source.project}
+                    disabled={sourceLocked}
                     onChange={(event) => changeSource(index, { project: event.target.value })}
                   >
                     {settings.workspaces.map((workspace) => (
@@ -1896,7 +3104,7 @@ function SourcesSection({
                     <div className="path-input">
                       <input
                         value={source.root || ''}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         required={source.enabled}
                         placeholder="/Users/you/Documents"
                         onChange={(event) =>
@@ -1905,8 +3113,9 @@ function SourcesSection({
                       />
                       <button
                         type="button"
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         aria-label="Choose source directory"
+                        title="Choose source directory"
                         onClick={() => void choosePath(index, 'directory', 'root')}
                       >
                         <FolderOpen size={14} />
@@ -1914,41 +3123,40 @@ function SourcesSection({
                     </div>
                   </Field>
                 )}
+                <Field label="Source label" hint="identifier stored on indexed documents">
+                  <input
+                    aria-label="Source label"
+                    value={source.source || ''}
+                    disabled={sourceLocked || !source.editable}
+                    maxLength={128}
+                    placeholder={source.name}
+                    onChange={(event) =>
+                      changeSource(index, { source: event.target.value || null })
+                    }
+                  />
+                </Field>
                 {source.kind === 'filesystem' && (
-                  <>
-                    <Field label="Source label" hint="identifier stored on indexed documents">
-                      <input
-                        value={source.source || ''}
-                        disabled={!source.editable}
-                        maxLength={128}
-                        placeholder={source.name}
-                        onChange={(event) =>
-                          changeSource(index, { source: event.target.value || null })
-                        }
-                      />
-                    </Field>
-                    <Field label="Excluded paths" hint="comma or line separated, relative paths">
-                      <input
-                        value={source.exclude.join(', ')}
-                        disabled={!source.editable}
-                        onChange={(event) =>
-                          changeSource(index, { exclude: splitList(event.target.value) })
-                        }
-                      />
-                    </Field>
-                  </>
+                  <Field label="Excluded paths" hint="comma or line separated, relative paths">
+                    <input
+                      value={source.exclude.join(', ')}
+                      disabled={sourceLocked || !source.editable}
+                      onChange={(event) =>
+                        changeSource(index, { exclude: splitList(event.target.value) })
+                      }
+                    />
+                  </Field>
                 )}
                 {isGoogleSource(source.kind) && (
                   <>
                     <Field
                       label="Google OAuth token file"
-                      hint="private token created by Cortana after authorization"
+                      hint="private token created by Cortana; optional when a token path environment variable is configured"
                       wide
                     >
                       <div className="path-input">
                         <input
                           value={source.token_path || ''}
-                          disabled={!source.editable}
+                          disabled={sourceLocked || !source.editable}
                           required={source.enabled && !source.token_env}
                           placeholder="/Users/you/.config/cortana/google-token.json"
                           onChange={(event) =>
@@ -1957,8 +3165,9 @@ function SourcesSection({
                         />
                         <button
                           type="button"
-                          disabled={!source.editable}
+                          disabled={sourceLocked || !source.editable}
                           aria-label="Choose Google token destination"
+                          title="Choose Google token destination"
                           onClick={() => void choosePath(index, 'google-token', 'token_path')}
                         >
                           <FolderOpen size={14} />
@@ -1973,7 +3182,7 @@ function SourcesSection({
                       <div className="path-input">
                         <input
                           value={source.oauth_client_path || ''}
-                          disabled={!source.editable}
+                          disabled={sourceLocked || !source.editable}
                           placeholder="/Users/you/Downloads/google-oauth-client.json"
                           onChange={(event) =>
                             changeSource(index, {
@@ -1983,8 +3192,9 @@ function SourcesSection({
                         />
                         <button
                           type="button"
-                          disabled={!source.editable}
+                          disabled={sourceLocked || !source.editable}
                           aria-label="Choose Google OAuth client JSON"
+                          title="Choose Google OAuth client JSON"
                           onClick={() =>
                             void choosePath(index, 'oauth-client', 'oauth_client_path')
                           }
@@ -1993,10 +3203,56 @@ function SourcesSection({
                         </button>
                       </div>
                     </Field>
+                    <Field
+                      label="Google token path environment variable"
+                      hint="optional; its value must be an absolute OAuth token JSON path"
+                    >
+                      <input
+                        value={source.token_env || ''}
+                        disabled={sourceLocked || !source.editable}
+                        pattern="[A-Z_][A-Z0-9_]*"
+                        placeholder="CORTANA_GOOGLE_TOKEN_PATH"
+                        onChange={(event) =>
+                          changeSource(index, { token_env: event.target.value || null })
+                        }
+                      />
+                    </Field>
+                    <Field
+                      label="Google token path value"
+                      hint="write-only path; leave blank to keep the existing value"
+                    >
+                      <div className="secret-input">
+                        <input
+                          type="password"
+                          autoComplete="new-password"
+                          disabled={sourceLocked || !source.editable || !source.token_env}
+                          value={source.token_env ? secretValues[source.token_env] || '' : ''}
+                          onChange={(event) => {
+                            if (source.token_env) {
+                              onSecret({
+                                ...secretValues,
+                                [source.token_env]: event.target.value,
+                              })
+                            }
+                          }}
+                        />
+                        {source.token_env &&
+                          secret?.configured &&
+                          !clearedSecrets.has(secret.name) && (
+                            <button
+                              type="button"
+                              disabled={sourceLocked}
+                              onClick={() => onClearSecret(source.token_env!)}
+                            >
+                              Clear
+                            </button>
+                          )}
+                      </div>
+                    </Field>
                     <Field label="Google query" hint="optional provider-native filter" wide>
                       <input
                         value={source.query || ''}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         maxLength={2048}
                         placeholder={source.kind === 'gmail' ? 'newer_than:1y' : ''}
                         onChange={(event) =>
@@ -2011,7 +3267,7 @@ function SourcesSection({
                     <Field label="Channel IDs" hint="comma or line separated" wide>
                       <input
                         value={source.channels.join(', ')}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         required={source.enabled}
                         onChange={(event) =>
                           changeSource(index, { channels: splitList(event.target.value) })
@@ -2028,7 +3284,7 @@ function SourcesSection({
                     >
                       <input
                         value={source.token_env || ''}
-                        disabled={!source.editable}
+                        disabled={sourceLocked || !source.editable}
                         required={source.enabled}
                         pattern="[A-Z_][A-Z0-9_]*"
                         onChange={(event) =>
@@ -2041,18 +3297,25 @@ function SourcesSection({
                         <input
                           type="password"
                           autoComplete="new-password"
-                          disabled={!source.editable || !source.token_env}
+                          disabled={sourceLocked || !source.editable || !source.token_env}
                           value={source.token_env ? secretValues[source.token_env] || '' : ''}
                           onChange={(event) => {
                             if (source.token_env) {
-                              onSecret({ ...secretValues, [source.token_env]: event.target.value })
+                              onSecret({
+                                ...secretValues,
+                                [source.token_env]: event.target.value,
+                              })
                             }
                           }}
                         />
                         {source.token_env &&
                           secret?.configured &&
                           !clearedSecrets.has(secret.name) && (
-                            <button type="button" onClick={() => onClearSecret(source.token_env!)}>
+                            <button
+                              type="button"
+                              disabled={sourceLocked}
+                              onClick={() => onClearSecret(source.token_env!)}
+                            >
                               Clear
                             </button>
                           )}
@@ -2065,6 +3328,7 @@ function SourcesSection({
                     <Field label="Document limit" hint="blank uses global budget">
                       <input
                         type="number"
+                        disabled={sourceLocked}
                         min={1}
                         max={1000000}
                         value={source.max_documents ?? ''}
@@ -2078,11 +3342,62 @@ function SourcesSection({
                     <Field label="Content limit (bytes)" hint="blank uses global budget">
                       <input
                         type="number"
+                        disabled={sourceLocked}
                         min={1024}
                         max={1099511627776}
                         value={source.max_bytes ?? ''}
                         onChange={(event) =>
                           changeSource(index, { max_bytes: optionalNumber(event.target.value) })
+                        }
+                      />
+                    </Field>
+                    <Field label="Content limit (characters)" hint="blank uses connector defaults">
+                      <input
+                        type="number"
+                        disabled={sourceLocked}
+                        min={1}
+                        max={10000000}
+                        value={source.max_content_chars ?? ''}
+                        onChange={(event) =>
+                          changeSource(index, {
+                            max_content_chars: optionalNumber(event.target.value),
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Duration limit (seconds)" hint="blank uses the global budget">
+                      <input
+                        type="number"
+                        disabled={sourceLocked}
+                        min={1}
+                        max={86400}
+                        value={source.max_duration_seconds ?? ''}
+                        onChange={(event) =>
+                          changeSource(index, {
+                            max_duration_seconds: optionalNumber(event.target.value),
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Document labels" hint="comma or line separated" wide>
+                      <input
+                        disabled={sourceLocked}
+                        value={source.labels.join(', ')}
+                        onChange={(event) =>
+                          changeSource(index, { labels: splitList(event.target.value) })
+                        }
+                      />
+                    </Field>
+                    <Field
+                      label="Document ACL labels"
+                      hint="comma or line separated; leave blank only for public data"
+                      wide
+                    >
+                      <input
+                        disabled={sourceLocked}
+                        value={source.acl.join(', ')}
+                        onChange={(event) =>
+                          changeSource(index, { acl: splitList(event.target.value) })
                         }
                       />
                     </Field>
@@ -2094,11 +3409,11 @@ function SourcesSection({
         })}
       </div>
 
-      {initialSync && settings.sources.find((item) => item.name === initialSync.source) && (
+      {initialSync && initialSyncSource && (
         <InitialSyncFlow
-          source={settings.sources.find((item) => item.name === initialSync.source)!}
+          source={initialSyncSource}
           flow={initialSync}
-          busy={Boolean(job && ['running', 'cancelling'].includes(job.status)) || !canValidate}
+          busy={Boolean(activeJob) || !canValidate}
           onBudget={(budget) => void requestPlan(initialSync.source, budget)}
           onValidate={() => void validateInitialSyncBudget(sourceOf(settings, initialSync.source))}
           onStart={() => void startInitialSync(sourceOf(settings, initialSync.source))}
@@ -2106,42 +3421,46 @@ function SourcesSection({
         />
       )}
 
-      {error && <div className="safety-note">{error}</div>}
-      {job && (
-        <div className={`source-validation-job ${job.status}`}>
+      {error && (
+        <div className="safety-note" role="alert">
+          {error}
+        </div>
+      )}
+      {observedJob && (
+        <div className={`source-validation-job ${observedJob.status}`}>
           <div>
             <StatusGlyph
-              passed={job.status === 'succeeded'}
-              optional={job.status === 'cancelled'}
+              passed={observedJob.status === 'succeeded'}
+              optional={observedJob.status === 'cancelled'}
             />
             <span>
               <strong>
-                {job.source} · {job.operation} · {job.status}
+                {observedJob.source} · {observedJob.operation} · {observedJob.status}
               </strong>
-              <small>{job.summary}</small>
+              <small>{observedJob.summary}</small>
             </span>
-            {['running', 'cancelling'].includes(job.status) && (
+            {['running', 'cancelling'].includes(observedJob.status) && (
               <button
                 type="button"
-                disabled={job.status === 'cancelling'}
+                disabled={observedJob.status === 'cancelling'}
                 onClick={() => void cancel()}
               >
                 <CircleStop size={14} /> Cancel
               </button>
             )}
-            {job.retryable && (
+            {observedJob.retryable && (
               <button
                 type="button"
-                disabled={!canValidate}
+                disabled={!canValidate || Boolean(activeJob)}
                 onClick={() => {
-                  const source = settings.sources.find((item) => item.name === job.source)
+                  const source = settings.sources.find((item) => item.name === observedJob.source)
                   if (source) {
-                    if (job.operation === 'authorization') void authorizeSource(source)
-                    else if (job.operation === 'trial-sync') void trialSyncSource(source)
-                    else if (job.operation === 'initial-sync') {
+                    if (observedJob.operation === 'authorization') void authorizeSource(source)
+                    else if (observedJob.operation === 'trial-sync') void trialSyncSource(source)
+                    else if (observedJob.operation === 'initial-sync') {
                       void openInitialSync(
                         source,
-                        (job.budget as InitialSyncBudget | null) || 'small'
+                        (observedJob.budget as InitialSyncBudget | null) || 'small'
                       )
                     } else void validateSource(source)
                   }
@@ -2151,7 +3470,7 @@ function SourcesSection({
               </button>
             )}
           </div>
-          {job.log && <pre>{job.log}</pre>}
+          {observedJob.log && <pre>{observedJob.log}</pre>}
         </div>
       )}
 
@@ -2220,7 +3539,12 @@ function InitialSyncFlow({
           <span className="eyebrow">Guided initial sync</span>
           <strong>{source.name}</strong>
         </div>
-        <button type="button" aria-label="Close initial sync plan" onClick={onClose}>
+        <button
+          type="button"
+          aria-label="Close initial sync plan"
+          title="Close initial sync plan"
+          onClick={onClose}
+        >
           <X size={15} />
         </button>
       </header>
@@ -2243,7 +3567,11 @@ function InitialSyncFlow({
         ))}
       </div>
       {flow.planning && <p className="initial-sync-state">Requesting a native plan…</p>}
-      {flow.flowError && <div className="safety-note">{flow.flowError}</div>}
+      {flow.flowError && (
+        <div className="safety-note" role="alert">
+          {flow.flowError}
+        </div>
+      )}
       {plan && (
         <>
           <dl className="initial-sync-plan">
@@ -2317,9 +3645,11 @@ function InitialSyncFlow({
 }
 
 function newSource(settings: DesktopSettings): SourceSettings {
-  const index = settings.sources.length + 1
   return {
-    name: `source-${index}`,
+    name: nextAvailableIdentifier(
+      'source',
+      settings.sources.map((source) => source.name)
+    ),
     kind: 'filesystem',
     enabled: false,
     project: settings.workspaces[0]?.id || 'personal',
@@ -2338,6 +3668,14 @@ function newSource(settings: DesktopSettings): SourceSettings {
     exclude: [],
     acl: [],
     editable: true,
+  }
+}
+
+function nextAvailableIdentifier(prefix: string, used: readonly string[]): string {
+  const occupied = new Set(used)
+  for (let number = 1; ; number += 1) {
+    const candidate = `${prefix}-${number}`
+    if (!occupied.has(candidate)) return candidate
   }
 }
 
@@ -2363,7 +3701,52 @@ function splitList(value: string) {
 }
 
 function optionalNumber(value: string): number | null {
-  return value === '' ? null : Number(value)
+  if (value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function referencedSecretNames(settings: DesktopSettings): Set<string> {
+  const names = new Set<string>()
+  for (const name of [
+    settings.embedding.api_key_env,
+    settings.query.api_key_env,
+    settings.hindsight.token_env,
+    settings.honcho.token_env,
+  ]) {
+    if (name) names.add(name)
+  }
+  settings.sources.forEach((source) => {
+    if (source.token_env) names.add(source.token_env)
+  })
+  settings.auth_principals.forEach((principal) => names.add(principal.token_env))
+  return names
+}
+
+function validateSourceIdentityScopes(sources: readonly SourceSettings[]): string | null {
+  const seen = new Map<string, string>()
+  for (const source of sources) {
+    const configured = source.source
+    if (
+      configured !== null &&
+      (configured.trim().length === 0 ||
+        configured !== configured.trim() ||
+        Array.from(configured).some((character) => {
+          const codePoint = character.codePointAt(0) ?? 0
+          return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f)
+        }))
+    ) {
+      return `Source label for \`${source.name}\` must not be empty, padded with whitespace, or contain control characters.`
+    }
+    const canonical = configured ?? source.name.trim()
+    const scope = `${source.project}\u0000${canonical}`
+    const previous = seen.get(scope)
+    if (previous) {
+      return `Source identifier \`${canonical}\` is duplicated in workspace \`${source.project}\` (\`${previous}\` and \`${source.name}\`). Choose a unique source label before saving.`
+    }
+    seen.set(scope, source.name)
+  }
+  return null
 }
 
 type ProviderValue = DesktopSettings['embedding'] | DesktopSettings['query']
@@ -2397,6 +3780,13 @@ function EmbeddingSection({
       onClearSecret={onClearSecret}
       update={setEmbedding}
     >
+      <div className="settings-note">
+        <strong>Local service command:</strong>{' '}
+        {settings.embedding_service_program
+          ? `${settings.embedding_service_program} (managed in config.toml)`
+          : 'automatic command derived from the model and loopback endpoint'}
+        . Desktop preserves explicit executable commands but does not edit shell command arrays.
+      </div>
       <div className="form-grid compact">
         <NumberField
           label="Vector dimension"
@@ -2407,8 +3797,9 @@ function EmbeddingSection({
         />
         <NumberField
           label="Cache entries"
+          hint="0 disables new embedding-cache writes"
           value={settings.embedding.cache_max_entries}
-          min={100}
+          min={0}
           max={5000000}
           onChange={(cache_max_entries) =>
             setEmbedding({ ...settings.embedding, cache_max_entries })
@@ -2487,7 +3878,7 @@ function ProviderSection<T extends ProviderValue>({
             value={provider.provider}
             onChange={(event) => {
               const nextProvider = event.target.value as 'local' | 'cloud'
-              const loopback = /localhost|127\.0\.0\.1|\[::1\]/.test(provider.base_url)
+              const loopback = isLoopbackUrl(provider.base_url)
               const base_url =
                 nextProvider === 'cloud' && loopback
                   ? 'https://api.openai.com/v1'
@@ -2667,15 +4058,17 @@ function QuerySection({
         />
         <NumberField
           label="Cache entries"
+          hint="0 disables new answer-cache writes"
           value={settings.query.cache_max_entries}
-          min={100}
+          min={0}
           max={1000000}
           onChange={(cache_max_entries) => setQuery({ ...settings.query, cache_max_entries })}
         />
         <NumberField
           label="Cache lifetime (seconds)"
+          hint="0 disables answer-cache reads"
           value={settings.query.cache_ttl_seconds}
-          min={1}
+          min={0}
           max={604800}
           onChange={(cache_ttl_seconds) => setQuery({ ...settings.query, cache_ttl_seconds })}
         />
@@ -2741,7 +4134,7 @@ function IngestionSection({ settings, update }: SettingsSectionProps) {
 }
 
 function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { dirty: boolean }) {
-  const [portableBusy, setPortableBusy] = useState<'export' | 'import' | ''>('')
+  const [portableBusy, setPortableBusy] = useState<'export' | 'import' | 'open-secret' | ''>('')
   const [portableNotice, setPortableNotice] = useState('')
   const [portableError, setPortableError] = useState('')
   const setRuntime = (patch: Partial<DesktopSettings['runtime']>) =>
@@ -2791,12 +4184,42 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
     }
   }
 
+  const openSecretFile = async () => {
+    setPortableBusy('open-secret')
+    setPortableNotice('')
+    setPortableError('')
+    try {
+      await openDesktopSecretFile()
+      setPortableNotice('Opened the active secret file in your default application.')
+    } catch (caught) {
+      setPortableError(caught instanceof Error ? caught.message : 'Unable to open secret file')
+    } finally {
+      setPortableBusy('')
+    }
+  }
+
   return (
     <SettingsSection
       title="Local runtime"
       description="Storage and audit configuration for this machine. Moving the data directory requires a restart and does not copy existing data."
     >
       <div className="form-grid">
+        <Field
+          label="Effective secret file"
+          hint={
+            settings.secret_file_managed
+              ? 'Owner-only Desktop-managed path for provider, connector, and agent tokens'
+              : 'Externally managed runtime.env_file; Desktop will not write this path'
+          }
+          wide
+        >
+          <input
+            value={settings.secret_file_path}
+            title={settings.secret_file_path}
+            readOnly
+            aria-readonly="true"
+          />
+        </Field>
         <Field label="Data directory" wide>
           <input
             value={settings.runtime.data_dir}
@@ -2852,6 +4275,18 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
               <Upload size={14} />
             )}
             Import preview
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(portableBusy)}
+            onClick={() => void openSecretFile()}
+          >
+            {portableBusy === 'open-secret' ? (
+              <LoaderCircle className="spin" size={14} />
+            ) : (
+              <FolderOpen size={14} />
+            )}
+            Open secret file
           </button>
         </div>
       </div>
@@ -2910,25 +4345,34 @@ function Field({
 
 function NumberField({
   label,
+  hint,
   value,
   min,
   max,
   onChange,
 }: {
   label: string
+  hint?: string
   value: number
   min: number
   max: number
   onChange: (value: number) => void
 }) {
   return (
-    <Field label={label}>
+    <Field label={label} hint={hint}>
       <input
         type="number"
+        aria-label={label}
         value={value}
         min={min}
         max={max}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onChange={(event) => {
+          const raw = event.target.value
+          if (!raw) return
+          const next = Number(raw)
+          if (!Number.isFinite(next) || !Number.isInteger(next)) return
+          onChange(Math.min(max, Math.max(min, next)))
+        }}
         required
       />
     </Field>

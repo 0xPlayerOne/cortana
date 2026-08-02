@@ -100,6 +100,7 @@ pub fn require_success(
     source: &SourceConfig,
     max_documents: usize,
     max_bytes: u64,
+    max_seconds: u64,
 ) -> Result<()> {
     let validations = load(data_dir)?;
     let validation = validations
@@ -124,6 +125,11 @@ pub fn require_success(
     anyhow::ensure!(
         validation.max_documents >= max_documents && validation.max_bytes >= max_bytes,
         "source {} validation limits were smaller than this sync",
+        source.name
+    );
+    anyhow::ensure!(
+        validation.max_seconds >= max_seconds,
+        "source {} validation duration limit was smaller than this sync",
         source.name
     );
     Ok(())
@@ -350,11 +356,12 @@ mod tests {
             },
         )
         .unwrap();
-        require_success(directory.path(), &source, 25, 1024).unwrap();
-        assert!(require_success(directory.path(), &source, 26, 1024).is_err());
+        require_success(directory.path(), &source, 25, 1024, 60).unwrap();
+        assert!(require_success(directory.path(), &source, 26, 1024, 60).is_err());
+        assert!(require_success(directory.path(), &source, 25, 1024, 61).is_err());
         let mut changed = source;
         changed.query = Some("from:someone@example.com".into());
-        assert!(require_success(directory.path(), &changed, 25, 1024).is_err());
+        assert!(require_success(directory.path(), &changed, 25, 1024, 60).is_err());
     }
 
     #[cfg(unix)]

@@ -7,6 +7,9 @@ Cortana separates agent retrieval from human-facing answers.
 - MCP also exposes `search_code`, `search_messages`, and `who_knows`. These tools search only the
   enabled source groups derived from configuration, embed the query once across the group, and
   return evidence rather than inferred people profiles.
+- MCP request validation is identical to the HTTP and CLI retrieval contract: queries must be
+  non-empty and at most 16 KiB, scope filters are bounded, and each tool returns at most 50 rows.
+  Oversized or blank requests are rejected before embedding work begins.
 - The workspace uses `/v1/answer`, which can plan several searches and synthesize a cited response.
 - Both paths share the same project/source filters and hybrid lexical, semantic, IDF, and recency
   ranking.
@@ -28,9 +31,11 @@ The Obsidian-style sidebar uses the canonical index rather than search results:
   display bounds. It also includes the stable source ID, ACL labels, up to 12 explicit metadata
   backlinks, and up to eight nearby documents from the same source. All relations are ACL-filtered
   before serialization. Missing and unauthorized IDs deliberately share the same `404` response.
-- `GET /v1/graph` exposes the bounded, paginated graph contract used by the future corpus graph. A
+- `GET /v1/graph` exposes the bounded, paginated graph contract used by the Desktop graph view. A
   page contains workspace, source, and document nodes plus `contains` edges; it accepts the same
-  filters and cursor as the document list and never materializes the corpus at once.
+  filters and cursor as the document list and never materializes the corpus at once. The Desktop
+  renders a bounded overview of the returned document nodes and keeps graph loading separate from
+  retrieval and embedding work.
 - Every list and read is filtered by the authenticated principal's ACL labels and recorded in the
   metadata-only audit trail. Document content and query strings are never written to audit events.
 

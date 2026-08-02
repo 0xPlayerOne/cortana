@@ -59,6 +59,11 @@ The aggregate fails on any dependency failure or cancellation rather than
 silently skipping, so a real regression can never hide behind the release-please
 fast path.
 
+Desktop artifacts also carry the connector package source as a Tauri resource. The
+application never embeds credentials or a machine-specific virtual environment; after an
+explicit Readiness approval, native Rust uses the local `uv` executable to create the per-user
+connector environment and install the bounded ingestion extra.
+
 ## Binary archive verification
 
 Before uploading a binary archive, the release workflow runs

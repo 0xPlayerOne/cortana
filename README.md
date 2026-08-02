@@ -77,6 +77,10 @@ explicit, one-time agent setting. Point the MCP command at the installed
 
 Use `--offline` for a deterministic, zero-network evaluation index. Offline and production
 embeddings are intentionally fingerprinted as different index generations and cannot be mixed.
+If only an endpoint fingerprint changed and you have verified that the stored vectors are still
+the same model, dimension, and vector space, use the explicit `migrate-embedding --from ...
+--force` command to adopt the generation without a corpus rebuild; otherwise rebuild or import
+vectors into a new generation.
 See [the ingestion guide](docs/ingestion.md) and
 [`config.example.toml`](config.example.toml) for Google Drive, Gmail, Calendar, Apple Notes, Slack,
 Discord, Buzz, filesystem/code, and external adapters.
@@ -155,10 +159,11 @@ planned multi-user store; the canonical model intentionally does not depend on e
 OpenAI-compatible embedding APIs make the existing local Qwen/TEI service and cloud embedding
 providers interchangeable without mixing vector spaces inside an index generation.
 
-Hindsight is retained as an optional derived memory adapter for temporal/reflection workflows. It
-is not the system of record: source evidence, provenance, permissions, and retrieval remain native
-to Cortana. Honcho will be evaluated behind the same optional memory interface after the canonical
-pipeline is measurable.
+Hindsight is retained as an optional derived memory adapter for temporal/reflection workflows, and
+Honcho now has a bounded session adapter behind the same durable outbox. Neither is the system of
+record: source evidence, provenance, permissions, and retrieval remain native to Cortana. Both
+remain disabled until the versioned evaluation, replacement, and deletion/ACL gates pass; see the [Hindsight
+outbox guide](docs/memory-hindsight-outbox.md) and [Honcho adapter contract](docs/memory-honcho.md).
 
 ## Development
 

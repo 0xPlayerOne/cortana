@@ -47,6 +47,7 @@ function deferred<T>(): Deferred<T> {
 
 const state = {
   status: demoStatus as BrainStatus,
+  statusRequest: null as (() => Promise<BrainStatus>) | null,
   documents: ((_project, _source, _query, cursor) =>
     Promise.resolve(cursor ? secondDocumentsPage : firstDocumentsPage)) as (
     project?: string,
@@ -79,7 +80,7 @@ mock.module('./api', () => ({
   ...realApi,
   isDesktopApp: false,
   isDemoMode: false,
-  getStatus: () => Promise.resolve(state.status),
+  getStatus: () => (state.statusRequest ? state.statusRequest() : Promise.resolve(state.status)),
   getDocuments: (project?: string, source?: string, query?: string, cursor?: string) => {
     state.documentsCalls.push({ project, source, query, cursor })
     return state.documents(project, source, query, cursor)
@@ -164,6 +165,67 @@ test('workspace and source selection scopes the source tree and document request
   expect(state.documentsCalls.at(-1)?.source).toBeUndefined()
 })
 
+test('document filter bounds requests to the native query byte budget', async () => {
+  const longUnicodeQuery = 'é'.repeat(200)
+  const expectedQuery = (() => {
+    const parts: string[] = []
+    let bytes = 0
+    for (const token of longUnicodeQuery) {
+      const tokenBytes = new TextEncoder().encode(token).length
+      if (bytes + tokenBytes > 256) break
+      bytes += tokenBytes
+      parts.push(token)
+    }
+    return parts.join('')
+  })()
+
+  state.documentsCalls = []
+  render(<App />)
+
+  const openSources = screen.getByRole('button', { name: 'Open sources' })
+  expect(openSources.getAttribute('title')).toBe('Open sources')
+  fireEvent.click(openSources)
+  const filter = await screen.findByRole('textbox', { name: 'Filter documents' })
+  fireEvent.change(filter, { target: { value: longUnicodeQuery } })
+
+  await waitFor(() => expect(state.documentsCalls.at(-1)?.query).toBe(expectedQuery))
+  const lastQuery = state.documentsCalls.at(-1)?.query ?? ''
+  expect(new TextEncoder().encode(lastQuery).length).toBeLessThanOrEqual(256)
+  expect(new TextEncoder().encode(longUnicodeQuery).length).toBeGreaterThan(256)
+  expect(lastQuery).toBe(expectedQuery)
+  expect(new TextEncoder().encode(lastQuery).length).toBeLessThan(
+    new TextEncoder().encode(longUnicodeQuery).length
+  )
+
+  // Unicode characters should be counted as UTF-8 bytes, not code points.
+  expect(lastQuery.length).toBeLessThan(longUnicodeQuery.length)
+})
+
+test('changing workspace clears evidence from the previous security scope', async () => {
+  state.answer = () => Promise.resolve({ ...answerResponse, query: 'private release query' })
+
+  try {
+    render(<App />)
+    const input = screen.getByLabelText('Search your knowledge')
+    fireEvent.change(input, { target: { value: 'private release query' } })
+    fireEvent.submit(input.closest('form')!)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'private release query' })).toBeTruthy()
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'work' } })
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { level: 1, name: 'private release query' })).toBeNull()
+    )
+    expect(screen.getByText('Choose a document')).toBeTruthy()
+  } finally {
+    state.answer = null
+  }
+})
+
 test('keyset pagination appends the next page and document selection opens the canonical view', async () => {
   state.documentsCalls = []
   render(<App />)
@@ -210,6 +272,9 @@ test('keyset pagination appends the next page and document selection opens the c
   expect(screen.getByRole('button', { name: 'Remove favorite' }).getAttribute('aria-pressed')).toBe(
     'true'
   )
+
+  fireEvent.click(screen.getByRole('button', { name: /Deployment rollback checklist/ }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Add favorite' })).toBeTruthy())
 })
 
 test('settings navigation explains the desktop-only view in web mode', async () => {
@@ -290,6 +355,33 @@ test('stale search responses do not overwrite the latest query', async () => {
   )
   expect(screen.getByText('Fresh answer content')).toBeTruthy()
   expect(screen.queryByText('Stale answer content')).toBeNull()
+})
+
+test('initial status completion does not hide a search that started first', async () => {
+  const status = deferred<BrainStatus>()
+  const answer = deferred<AnswerResponse>()
+  state.statusRequest = () => status.promise
+  state.answer = () => answer.promise
+
+  try {
+    render(<App />)
+    const input = screen.getByLabelText('Search your knowledge')
+    fireEvent.change(input, { target: { value: 'status race query' } })
+    fireEvent.submit(input.closest('form')!)
+
+    // Health can arrive after the query has started, but the query remains
+    // visibly in flight until its own response settles.
+    status.resolve(demoStatus)
+    await waitFor(() => expect(screen.getByText('Searching your brain')).toBeTruthy())
+
+    answer.resolve({ ...answerResponse, query: 'status race query' })
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'status race query' })).toBeTruthy()
+    )
+  } finally {
+    state.statusRequest = null
+    state.answer = null
+  }
 })
 
 test('stale document responses do not overwrite the currently selected document', async () => {

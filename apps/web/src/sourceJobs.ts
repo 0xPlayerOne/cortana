@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { getDesktopSourceValidation, isDesktopApp } from './api'
+import { getDesktopSourceJobs, getDesktopSourceValidation, isDesktopApp } from './api'
 import type { DesktopSourceJob } from './types'
 
 /** Bounded snapshot list: the most recent job snapshots, newest first. */
@@ -24,7 +24,49 @@ export function isMissingJobError(error: unknown): boolean {
 
 /** Pure upsert: the latest snapshot is placed first and the list stays bounded. */
 export function upsertJob(jobs: DesktopSourceJob[], next: DesktopSourceJob): DesktopSourceJob[] {
+  const existing = jobs.find((job) => job.id === next.id)
+  // A poll can resolve after the action boundary has already remembered a
+  // newer result. Never let that older in-flight snapshot make a completed
+  // job look active again or replace its terminal summary in the shell.
+  if (existing && snapshotRegresses(existing, next)) return jobs
   return [next, ...jobs.filter((job) => job.id !== next.id)].slice(0, MAX_SOURCE_JOB_SNAPSHOTS)
+}
+
+/** Merge a native recovery snapshot without regressing a newer renderer state. */
+export function mergeJobSnapshots(
+  jobs: DesktopSourceJob[],
+  recovered: DesktopSourceJob[]
+): DesktopSourceJob[] {
+  // Native snapshots are newest-first. Apply them oldest-first so the final
+  // list keeps the same newest-first ordering as upsertJob while still using
+  // its stale-poll protection for ids already remembered by the shell.
+  const merged = [...recovered].reverse().reduce(upsertJob, jobs)
+  return merged.sort(compareJobRecency).slice(0, MAX_SOURCE_JOB_SNAPSHOTS)
+}
+
+function compareJobRecency(left: DesktopSourceJob, right: DesktopSourceJob): number {
+  if (left.started_at_unix_seconds !== right.started_at_unix_seconds) {
+    return right.started_at_unix_seconds - left.started_at_unix_seconds
+  }
+  const leftSequence = jobSequence(left.id)
+  const rightSequence = jobSequence(right.id)
+  if (leftSequence !== null && rightSequence !== null && leftSequence !== rightSequence) {
+    return rightSequence - leftSequence
+  }
+  return 0
+}
+
+function jobSequence(id: string): number | null {
+  const value = id.slice(id.lastIndexOf('-') + 1)
+  return /^\d+$/.test(value) ? Number(value) : null
+}
+
+function snapshotRegresses(existing: DesktopSourceJob, next: DesktopSourceJob): boolean {
+  if (existing.completed_at_unix_seconds !== null) {
+    if (next.completed_at_unix_seconds === null) return true
+    if (next.completed_at_unix_seconds < existing.completed_at_unix_seconds) return true
+  }
+  return existing.status === 'cancelling' && next.status === 'running'
 }
 
 export function dropJob(jobs: DesktopSourceJob[], id: string): DesktopSourceJob[] {
@@ -39,6 +81,75 @@ export function activeJobIds(jobs: DesktopSourceJob[]): string[] {
   return activeJobs(jobs).map((job) => job.id)
 }
 
+/** Terminal snapshots retained for the Inbox's bounded operational history. */
+export function recentCompletedJobs(jobs: DesktopSourceJob[]): DesktopSourceJob[] {
+  return jobs.filter((job) => !isActiveJob(job))
+}
+
+/** Terminal source failures whose latest result for that workspace/source needs attention. */
+export function sourceJobAttention(jobs: DesktopSourceJob[]): DesktopSourceJob[] {
+  const seenSources = new Set<string>()
+  return jobs.filter((job) => {
+    const scope = `${job.project}\u0000${job.source}`
+    if (seenSources.has(scope)) return false
+    seenSources.add(scope)
+    return !isActiveJob(job) && (job.status === 'failed' || job.status === 'cancelled')
+  })
+}
+
+/** Return the fixed wall-clock budget enforced by the native job boundary. */
+export function sourceJobBudgetSeconds(job: DesktopSourceJob): number | null {
+  // Google OAuth uses a five-minute native loopback callback timeout. Keep
+  // authorization activity bounded in the shell just like validation and
+  // sync, while the token exchange remains covered by the sidecar timeout.
+  if (job.operation === 'authorization') return 5 * 60
+  if (job.operation === 'validation') {
+    return job.budget === 'small'
+      ? 15 * 60
+      : job.budget === 'medium'
+        ? 30 * 60
+        : job.budget === 'large'
+          ? 60 * 60
+          : 60
+  }
+  if (job.operation === 'trial-sync') return 5 * 60
+  if (job.operation === 'initial-sync') {
+    return job.budget === 'small'
+      ? 15 * 60
+      : job.budget === 'medium'
+        ? 30 * 60
+        : job.budget === 'large'
+          ? 60 * 60
+          : null
+  }
+  return null
+}
+
+export function sourceJobElapsedSeconds(
+  job: DesktopSourceJob,
+  nowSeconds = Math.floor(Date.now() / 1000)
+): number {
+  const end = job.completed_at_unix_seconds ?? nowSeconds
+  return Math.max(0, end - job.started_at_unix_seconds)
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`
+}
+
+/** Human-readable elapsed/budget telemetry for active-job surfaces. */
+export function describeSourceJobProgress(
+  job: DesktopSourceJob,
+  nowSeconds = Math.floor(Date.now() / 1000)
+): string {
+  const elapsed = formatDuration(sourceJobElapsedSeconds(job, nowSeconds))
+  const budget = sourceJobBudgetSeconds(job)
+  return budget === null ? `${elapsed} elapsed` : `${elapsed} / ${formatDuration(budget)}`
+}
+
 /**
  * Owns the cross-view source-job snapshot list. SettingsView reports started
  * jobs through remember(); while the view is unmounted the list survives here
@@ -47,36 +158,148 @@ export function activeJobIds(jobs: DesktopSourceJob[]): string[] {
  */
 export function useSourceJobs() {
   const [jobs, setJobs] = useState<DesktopSourceJob[]>([])
+  const [error, setError] = useState('')
+  const [foreground, setForeground] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
+  )
+  const [retryNonce, setRetryNonce] = useState(0)
   const jobsRef = useRef(jobs)
   jobsRef.current = jobs
 
   const remember = useCallback((job: DesktopSourceJob) => {
+    setError('')
     setJobs((current) => upsertJob(current, job))
   }, [])
 
   useEffect(() => {
-    if (!isDesktopApp) return
+    const visibility = { current: document.visibilityState !== 'hidden' }
+    const focused = { current: true }
+    const syncForeground = () => setForeground(visibility.current && focused.current)
+    const markForeground = () => {
+      focused.current = true
+      syncForeground()
+    }
+    const markBackground = () => {
+      focused.current = false
+      syncForeground()
+    }
+    const syncVisibility = () => {
+      visibility.current = document.visibilityState !== 'hidden'
+      syncForeground()
+    }
+    window.addEventListener('focus', markForeground)
+    window.addEventListener('blur', markBackground)
+    document.addEventListener('visibilitychange', syncVisibility)
     let disposed = false
+    let unlistenFocus: (() => void) | undefined
+    if (isDesktopApp && '__TAURI_INTERNALS__' in window) {
+      void import('@tauri-apps/api/window')
+        .then(({ getCurrentWindow }) => {
+          const currentWindow = getCurrentWindow()
+          void currentWindow
+            .isFocused()
+            .then((payload) => {
+              if (!disposed) {
+                focused.current = payload
+                syncForeground()
+              }
+            })
+            .catch(() => {
+              // Browser focus events remain the fallback when the native
+              // startup snapshot is unavailable.
+            })
+          return currentWindow.onFocusChanged(({ payload }) => {
+            if (!disposed) {
+              focused.current = payload
+              syncForeground()
+            }
+          })
+        })
+        .then((unlisten) => {
+          if (disposed) unlisten()
+          else unlistenFocus = unlisten
+        })
+        .catch(() => {
+          // Browser focus events remain the fallback when the native focus
+          // listener cannot be registered during startup.
+        })
+    }
+    return () => {
+      disposed = true
+      window.removeEventListener('focus', markForeground)
+      window.removeEventListener('blur', markBackground)
+      document.removeEventListener('visibilitychange', syncVisibility)
+      unlistenFocus?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    // Source jobs continue in the native process while the window is hidden;
+    // only their renderer snapshot polling pauses. Re-entering the foreground
+    // starts with a native recovery read so the UI does not resume from stale
+    // progress.
+    if (!isDesktopApp || !foreground) return
+    let disposed = false
+    let polling = false
+    void getDesktopSourceJobs()
+      .then((next) => {
+        if (disposed) return
+        setJobs((current) => mergeJobSnapshots(current, next))
+        setError('')
+      })
+      .catch((caught: unknown) => {
+        if (disposed) return
+        // A failed recovery read is distinct from an empty native history:
+        // preserve remembered jobs, but tell the operator that the snapshot
+        // may be stale and expose the same explicit retry action used by the
+        // active poller.
+        setError(caught instanceof Error ? caught.message : 'Source job history unavailable')
+      })
     const timer = window.setInterval(() => {
+      if (polling) return
       const ids = activeJobIds(jobsRef.current)
       if (ids.length === 0) return
-      void Promise.allSettled(ids.map((id) => getDesktopSourceValidation(id))).then((results) => {
-        if (disposed) return
-        results.forEach((result, index) => {
-          if (result.status === 'fulfilled') {
-            setJobs((current) => upsertJob(current, result.value))
-          } else if (isMissingJobError(result.reason)) {
-            setJobs((current) => dropJob(current, ids[index]))
+      polling = true
+      void Promise.allSettled(ids.map((id) => getDesktopSourceValidation(id)))
+        .then((results) => {
+          if (disposed) return
+          let nextError: string | null = null
+          results.forEach((result, index) => {
+            if (result.status === 'fulfilled') {
+              setJobs((current) => upsertJob(current, result.value))
+            } else if (isMissingJobError(result.reason)) {
+              setJobs((current) => dropJob(current, ids[index]))
+            } else if (result.reason instanceof Error) {
+              nextError = result.reason.message || 'Source job status unavailable'
+            } else {
+              nextError = 'Source job status unavailable'
+            }
+          })
+          if (nextError) setError(nextError)
+          else if (
+            results.every(
+              (result) =>
+                result.status === 'fulfilled' ||
+                isMissingJobError(result.status === 'rejected' ? result.reason : undefined)
+            )
+          ) {
+            setError('')
           }
-          // Any other error retains the last snapshot: the job may still be running.
         })
-      })
+        .finally(() => {
+          polling = false
+        })
     }, SOURCE_JOB_POLL_MS)
     return () => {
       disposed = true
       window.clearInterval(timer)
     }
+  }, [foreground, retryNonce])
+
+  const retry = useCallback(() => {
+    setError('')
+    setRetryNonce((current) => current + 1)
   }, [])
 
-  return { jobs, remember, track: remember }
+  return { jobs, remember, track: remember, error, retry }
 }

@@ -616,6 +616,7 @@ name = "cortana-desktop"
 version = "0.18.0" # x-release-please-version
 dependencies = [
  "dirs 6.0.0",
+ "libc",
  "open",
  "reqwest",
  "serde",
