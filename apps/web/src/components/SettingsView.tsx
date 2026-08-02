@@ -639,6 +639,15 @@ function ServicesSection({
   const refreshInFlightRef = useRef(false)
   const mountedRef = useRef(true)
 
+  // Desktop shells own service status errors. When a parent shell refresh
+  // succeeds after a previous section-local failure, clear stale local messages
+  // so the user-visible banner is driven by the latest snapshot.
+  useEffect(() => {
+    if (externalServicesError !== undefined && externalServicesError.length === 0) {
+      setLocalError('')
+    }
+  }, [externalServicesError])
+
   const refresh = async () => {
     if (refreshInFlightRef.current) return
     refreshInFlightRef.current = true

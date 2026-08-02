@@ -805,7 +805,9 @@ fn validate_document_scope(name: &str, value: Option<&str>) -> Result<(), (Statu
 
 fn validate_document_query(value: Option<&str>) -> Result<(), (StatusCode, String)> {
     if value.is_some_and(|value| {
-        value.trim().is_empty() || value.len() > MAX_DOCUMENT_QUERY_LENGTH
+        value.len() > MAX_DOCUMENT_QUERY_LENGTH
+            || value.trim().is_empty()
+            || value.chars().any(|character| character.is_control())
     }) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -2039,6 +2041,18 @@ mod tests {
             .await
             .expect("padded filter response");
         assert_eq!(padded_filter.status(), StatusCode::BAD_REQUEST);
+
+        let control_filter = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/documents?project=demo&query=%00&limit=10")
+                    .body(Body::empty())
+                    .expect("control filter request"),
+            )
+            .await
+            .expect("control filter response");
+        assert_eq!(control_filter.status(), StatusCode::BAD_REQUEST);
 
         let graph = app
             .clone()

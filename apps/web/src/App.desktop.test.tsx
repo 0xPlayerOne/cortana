@@ -796,6 +796,40 @@ test('successful service actions clear a stale shell service error immediately',
   }
 })
 
+test('saving settings clears stale local service errors', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.serviceStatusError = new Error('service status transport failed')
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(screen.getByText('service status transport failed')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Workspaces' })).toBeTruthy())
+    state.serviceStatusError = null
+    fireEvent.change(screen.getAllByLabelText('Display name')[0], {
+      target: { value: 'Work settings' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+    await waitFor(() => expect(screen.queryByText('service status transport failed')).toBeNull())
+  } finally {
+    window.confirm = originalConfirm
+    state.serviceStatusError = null
+  }
+})
+
 test('service activity survives leaving Settings while a native action is running', async () => {
   const originalConfirm = window.confirm
   const originalAction = state.serviceAction
