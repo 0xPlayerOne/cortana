@@ -22,6 +22,8 @@ that is intentionally disabled by default:
   - retry/reconciliation exports and stats.
 - `MemorySyncWorker` drains only due rows, calls provider operations, and marks entries
   succeeded or failed according to transient vs non-transient outcomes.
+- `Outbox.telemetry()` exposes only queue counts and bounded last-success/error metadata; it never
+  returns document content, metadata, ACL tags, or provider credentials.
 - `HindsightHttpProvider` uses documented retain/delete endpoints with bank scope and
   preserves a configured HTTP base URL.
 
