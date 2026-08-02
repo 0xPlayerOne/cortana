@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
+use futures_util::future::join_all;
 use reqwest::{Client, StatusCode, header::RETRY_AFTER};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -104,6 +105,107 @@ impl CachedEmbedder {
             return result;
         }
     }
+
+    async fn embed_batch_cached(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+        let fingerprint = self.fingerprint();
+        let mut resolved = HashMap::<String, Vec<f32>>::new();
+        let mut output = vec![None; input.len()];
+
+        loop {
+            let mut missing = HashMap::<String, Vec<usize>>::new();
+            for (index, text) in input.iter().enumerate() {
+                let vector = match resolved.get(text) {
+                    Some(vector) => Some(vector.clone()),
+                    None => self.store.cached_embedding(&fingerprint, text)?,
+                };
+                if let Some(vector) = vector {
+                    output[index] = Some(vector);
+                } else {
+                    missing.entry(text.clone()).or_default().push(index);
+                }
+            }
+            if missing.is_empty() {
+                return output
+                    .into_iter()
+                    .map(|vector| vector.context("embedding cache left a missing vector"))
+                    .collect();
+            }
+
+            let mut leaders = Vec::<(String, Arc<Notify>)>::new();
+            let mut waiters = Vec::<Arc<Notify>>::new();
+            {
+                let mut inflight = self.inflight.lock().await;
+                for text in missing.keys() {
+                    let key = format!("{fingerprint}\u{0}{text}");
+                    if let Some(notify) = inflight.get(&key) {
+                        waiters.push(notify.clone());
+                    } else {
+                        let notify = Arc::new(Notify::new());
+                        inflight.insert(key, notify.clone());
+                        leaders.push((text.clone(), notify));
+                    }
+                }
+            }
+
+            let waiting = join_all(waiters.into_iter().map(|notify| notify.notified_owned()));
+            if leaders.is_empty() {
+                waiting.await;
+                continue;
+            }
+
+            let leader_texts = leaders
+                .iter()
+                .map(|(text, _)| text.clone())
+                .collect::<Vec<_>>();
+            let leader_keys = leaders
+                .iter()
+                .map(|(text, notify)| (format!("{fingerprint}\u{0}{text}"), notify.clone()))
+                .collect::<Vec<_>>();
+            let leader_result = async {
+                let result: Result<Vec<(String, Vec<f32>)>> = match self
+                    .inner
+                    .embed(&leader_texts)
+                    .await
+                {
+                    Ok(vectors) => {
+                        anyhow::ensure!(
+                            vectors.len() == leader_texts.len(),
+                            "embedding provider returned an unexpected vector count"
+                        );
+                        let pairs = leader_texts
+                            .iter()
+                            .cloned()
+                            .zip(vectors)
+                            .collect::<Vec<_>>();
+                        for (text, vector) in &pairs {
+                            if !self.store.cache_embedding_if_available(
+                                &fingerprint,
+                                text,
+                                vector,
+                            )? {
+                                tracing::warn!(
+                                    "embedding cache write skipped because another index writer is active"
+                                );
+                            }
+                        }
+                        self.store.prune_embedding_cache(self.max_entries)?;
+                        Ok(pairs)
+                    }
+                    Err(error) => Err(error),
+                };
+                let mut inflight = self.inflight.lock().await;
+                for (key, notify) in leader_keys {
+                    inflight.remove(&key);
+                    notify.notify_waiters();
+                }
+                result
+            };
+            let (_waited, result) = tokio::join!(waiting, leader_result);
+            for (text, vector) in result? {
+                resolved.insert(text, vector);
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -112,45 +214,7 @@ impl Embedder for CachedEmbedder {
         if input.len() == 1 {
             return Ok(vec![self.embed_single_cached(&input[0]).await?]);
         }
-        let fingerprint = self.fingerprint();
-        let mut output = vec![None; input.len()];
-        let mut missing = HashMap::<&str, Vec<usize>>::new();
-        for (index, text) in input.iter().enumerate() {
-            if let Some(vector) = self.store.cached_embedding(&fingerprint, text)? {
-                output[index] = Some(vector);
-            } else {
-                missing.entry(text).or_default().push(index);
-            }
-        }
-        if !missing.is_empty() {
-            let unique = missing
-                .keys()
-                .map(|text| (*text).to_string())
-                .collect::<Vec<_>>();
-            let vectors = self.inner.embed(&unique).await?;
-            anyhow::ensure!(
-                vectors.len() == unique.len(),
-                "embedding provider returned an unexpected vector count"
-            );
-            for (text, vector) in unique.iter().zip(vectors) {
-                if !self
-                    .store
-                    .cache_embedding_if_available(&fingerprint, text, &vector)?
-                {
-                    tracing::warn!(
-                        "embedding cache write skipped because another index writer is active"
-                    );
-                }
-                for index in &missing[text.as_str()] {
-                    output[*index] = Some(vector.clone());
-                }
-            }
-            self.store.prune_embedding_cache(self.max_entries)?;
-        }
-        output
-            .into_iter()
-            .map(|vector| vector.context("embedding cache left a missing vector"))
-            .collect()
+        self.embed_batch_cached(input).await
     }
 
     fn fingerprint(&self) -> String {
@@ -417,6 +481,24 @@ mod tests {
             first.expect("first embedding"),
             second.expect("second embedding")
         );
+        assert_eq!(inner.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn concurrent_batches_share_requests_for_duplicate_text() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let inner = Arc::new(DelayedCountingEmbedder {
+            calls: AtomicUsize::new(0),
+        });
+        let cached = CachedEmbedder::new(store, inner.clone());
+        let first_input = vec!["same".to_string(), "other".to_string()];
+        let second_input = first_input.clone();
+        let first = cached.embed(&first_input);
+        let second = cached.embed(&second_input);
+        let (first, second) = tokio::join!(first, second);
+
+        assert_eq!(first.expect("first batch"), second.expect("second batch"));
         assert_eq!(inner.calls.load(Ordering::SeqCst), 1);
     }
 
