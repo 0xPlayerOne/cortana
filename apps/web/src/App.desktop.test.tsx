@@ -23,6 +23,7 @@ afterEach(() => {
   window.localStorage.removeItem('cortana.workspace-selection.v1')
   window.localStorage.removeItem('cortana.source-selection.v1')
   state.getDocumentsCalls = []
+  state.getGraphCalls = 0
   state.saveSettingsCalls = 0
   state.applySettingsUpdate = false
   state.lastSettingsUpdate = null
@@ -93,6 +94,7 @@ const state = {
     query: string | undefined
     cursor: string | null | undefined
   }>,
+  getGraphCalls: 0,
   statusCalls: 0,
   getDesktopSettingsCalls: 0,
   getDesktopServicesCalls: 0,
@@ -191,6 +193,10 @@ mock.module('./api', () => ({
       cursor,
     })
     return Promise.resolve({ documents: [], next_cursor: null })
+  },
+  getGraph: () => {
+    state.getGraphCalls += 1
+    return Promise.resolve({ nodes: [], edges: [], next_cursor: null })
   },
   getAnswer: () => Promise.reject(new Error('Answer request failed (503)')),
   getDocument: () => Promise.reject(new Error('Document unavailable')),
@@ -463,6 +469,12 @@ test('desktop setup does not query documents before the control plane is ready',
       expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
     )
     expect(state.getDocumentsCalls).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Graph' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'No graph data' })).toBeTruthy()
+    )
+    expect(state.getGraphCalls).toBe(0)
   } finally {
     state.settings = originalSettings
   }

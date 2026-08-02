@@ -357,7 +357,14 @@ export function App() {
   }, [debouncedDocumentQuery, documentFetchReady, source, view, workspace])
 
   useEffect(() => {
-    if (view !== 'knowledge' || workspaceTab !== 'graph') return
+    if (view !== 'knowledge' || workspaceTab !== 'graph' || !documentFetchReady) {
+      graphRequestRef.current += 1
+      graphAbortRef.current?.abort()
+      setGraph(null)
+      setGraphError('')
+      setGraphLoading(false)
+      return
+    }
     const requestId = ++graphRequestRef.current
     graphAbortRef.current?.abort()
     const controller = new AbortController()
@@ -387,7 +394,7 @@ export function App() {
         }
       })
     return () => controller.abort()
-  }, [debouncedDocumentQuery, source, view, workspace, workspaceTab])
+  }, [debouncedDocumentQuery, documentFetchReady, source, view, workspace, workspaceTab])
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
