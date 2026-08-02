@@ -182,7 +182,8 @@ and backup) through the fixed `service install --no-web` command. macOS uses per
 Linux uses per-user systemd units and timers without requiring root. It accepts only the fixed
 `embedding`, `server`, `sync`, and `backup` IDs with `start`, `stop`, or `restart`.
 Every action requires an explicit confirmation and is audited without command output or secrets.
-An uninstalled sync job remains uninstalled and cannot be enabled from this panel. Desktop
+An uninstalled sync job remains absent until the dedicated validation-gated **Enable recurring sync**
+action is confirmed. Desktop
 autostart is managed separately and does not change runtime-service or ingestion state. Service
 commands run in an isolated process group on Unix with a bounded timeout, so a stalled install or
 action also terminates bundled runtime helpers instead of leaving an orphaned process behind.
