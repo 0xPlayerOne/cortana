@@ -91,9 +91,21 @@ export function Workspace({
       ) : evidence.length === 0 ? (
         <EmptyState title="No evidence found" detail="Try a broader phrase or another source." />
       ) : tab === 'graph' ? (
-        <GraphView evidence={evidence} onSelect={onSelect} />
+        <GraphView
+          evidence={evidence}
+          onSelect={(index) => {
+            onSelect(index)
+            onTabChange('sources')
+          }}
+        />
       ) : tab === 'timeline' ? (
-        <TimelineView evidence={evidence} onSelect={onSelect} />
+        <TimelineView
+          evidence={evidence}
+          onSelect={(index) => {
+            onSelect(index)
+            onTabChange('sources')
+          }}
+        />
       ) : tab === 'answer' ? (
         <AnswerView
           query={query}
@@ -383,6 +395,7 @@ function GraphView({
       {evidence.slice(0, 8).map((item, index) => (
         <button
           key={item.chunk_id}
+          aria-label={`Graph evidence: ${item.title}`}
           style={
             {
               '--angle': `${(index / Math.min(evidence.length, 8)) * Math.PI * 2}rad`,
@@ -412,7 +425,11 @@ function TimelineView({
         .map((item, index) => ({ item, index }))
         .sort((left, right) => right.item.updated_at.localeCompare(left.item.updated_at))
         .map(({ item, index }) => (
-          <button key={item.chunk_id} onClick={() => onSelect(index)}>
+          <button
+            key={item.chunk_id}
+            aria-label={`Timeline evidence: ${item.title}`}
+            onClick={() => onSelect(index)}
+          >
             <time>{new Date(item.updated_at).toLocaleDateString()}</time>
             <i />
             <div>
