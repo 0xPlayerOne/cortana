@@ -593,7 +593,7 @@ def _drive_content(session: GoogleSession, item: dict[str, Any]) -> str:
             params={"alt": "media"},
         )
         try:
-            from pypdf import PdfReader
+            from pypdf import PdfReader  # type: ignore[import-not-found]
         except ImportError as error:
             raise RuntimeError("PDF ingestion requires `uv sync --extra ingestion`") from error
         return "\n\n".join(
