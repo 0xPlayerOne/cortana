@@ -536,7 +536,11 @@ function AgentToolsView({
             ]}
           />
         )}
-        {contextError && <p className="utility-error">{contextError}</p>}
+        {contextError && (
+          <p className="utility-error" role="alert">
+            {contextError}
+          </p>
+        )}
       </section>
       <section className="utility-section">
         <h2>Agent context window</h2>

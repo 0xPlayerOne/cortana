@@ -1367,7 +1367,7 @@ function UpdatesSection({
         </div>
       )}
       {(error || update?.error) && (
-        <div className="safety-note">
+        <div className="safety-note" role="alert">
           <AlertTriangle size={16} /> <span>{error || update?.error}</span>
         </div>
       )}
@@ -1969,7 +1969,11 @@ function AuditSection() {
           Refresh
         </button>
       </div>
-      {error && <div className="safety-note">{error}</div>}
+      {error && (
+        <div className="safety-note" role="alert">
+          {error}
+        </div>
+      )}
       <AuditList title="Runtime retrieval" events={runtime} />
       <AuditList title="Desktop actions" events={desktop} />
     </SettingsSection>
@@ -2219,7 +2223,7 @@ function ReadinessSection({
         )}
       </div>
       {(error || readinessActivityError) && (
-        <div className="safety-note">
+        <div className="safety-note" role="alert">
           <AlertTriangle size={16} /> <span>{error || readinessActivityError}</span>
         </div>
       )}
@@ -3317,7 +3321,11 @@ function SourcesSection({
         />
       )}
 
-      {error && <div className="safety-note">{error}</div>}
+      {error && (
+        <div className="safety-note" role="alert">
+          {error}
+        </div>
+      )}
       {observedJob && (
         <div className={`source-validation-job ${observedJob.status}`}>
           <div>
@@ -3459,7 +3467,11 @@ function InitialSyncFlow({
         ))}
       </div>
       {flow.planning && <p className="initial-sync-state">Requesting a native plan…</p>}
-      {flow.flowError && <div className="safety-note">{flow.flowError}</div>}
+      {flow.flowError && (
+        <div className="safety-note" role="alert">
+          {flow.flowError}
+        </div>
+      )}
       {plan && (
         <>
           <dl className="initial-sync-plan">
