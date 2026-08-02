@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -213,6 +213,8 @@ struct IngestionStatus {
     request_concurrency: usize,
     validation_state_error: Option<String>,
     configured_sources: Vec<ConfiguredSourceStatus>,
+    #[serde(skip)]
+    validation_fingerprints: BTreeMap<String, String>,
 }
 
 impl Default for IngestionStatus {
@@ -237,6 +239,21 @@ struct SourceAuthorizationSummary {
 }
 
 #[derive(Clone, Debug, Serialize)]
+struct SourceValidationSummary {
+    source: String,
+    project: String,
+    kind: String,
+    status: String,
+    validated_at: String,
+    documents: Option<usize>,
+    bytes: Option<u64>,
+    max_documents: usize,
+    max_bytes: u64,
+    max_seconds: u64,
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 struct ConfiguredSourceStatus {
     name: String,
     source: String,
@@ -248,7 +265,23 @@ struct ConfiguredSourceStatus {
     max_bytes: u64,
     max_duration_seconds: u64,
     authorization: SourceAuthorizationSummary,
-    validation: Option<SourceValidationStatus>,
+    validation: Option<SourceValidationSummary>,
+}
+
+fn validation_summary(status: &SourceValidationStatus) -> SourceValidationSummary {
+    SourceValidationSummary {
+        source: status.source.clone(),
+        project: status.project.clone(),
+        kind: status.kind.clone(),
+        status: status.status.clone(),
+        validated_at: status.validated_at.to_rfc3339(),
+        documents: status.documents,
+        bytes: status.bytes,
+        max_documents: status.max_documents,
+        max_bytes: status.max_bytes,
+        max_seconds: status.max_seconds,
+        error: status.error.clone(),
+    }
 }
 
 impl IngestionStatus {
@@ -276,6 +309,15 @@ impl IngestionStatus {
                 validation: None,
             })
             .collect();
+        let validation_fingerprints = config
+            .sources
+            .iter()
+            .filter_map(|source| {
+                source_validation::configuration_fingerprint(source)
+                    .ok()
+                    .map(|fingerprint| (source.name.clone(), fingerprint))
+            })
+            .collect();
         Self {
             data_dir: config.data_dir.clone(),
             mode: if scheduled { "scheduled" } else { "manual" },
@@ -286,6 +328,7 @@ impl IngestionStatus {
             request_concurrency: config.ingestion.request_concurrency,
             validation_state_error: None,
             configured_sources,
+            validation_fingerprints,
         }
         .refreshed()
     }
@@ -296,7 +339,18 @@ impl IngestionStatus {
             Ok(validations) => {
                 status.validation_state_error = None;
                 for source in &mut status.configured_sources {
-                    source.validation = validations.get(&source.name).cloned();
+                    source.validation = validations
+                        .get(&source.name)
+                        .filter(|validation| {
+                            status
+                                .validation_fingerprints
+                                .get(&source.name)
+                                .is_some_and(|fingerprint| {
+                                    validation.configuration_fingerprint.as_deref()
+                                        == Some(fingerprint.as_str())
+                                })
+                        })
+                        .map(validation_summary);
                 }
             }
             Err(error) => {
@@ -1520,6 +1574,10 @@ mod tests {
         .expect("configuration");
         config.data_dir = directory.path().to_path_buf();
         let state = state.with_config(&config, false);
+        let validation_fingerprint = source_validation::configuration_fingerprint(
+            config.sources.first().expect("configured source"),
+        )
+        .expect("validation fingerprint");
         source_validation::record(
             &config.data_dir,
             SourceValidationStatus {
@@ -1533,7 +1591,7 @@ mod tests {
                 max_documents: 25,
                 max_bytes: 4096,
                 max_seconds: 45,
-                configuration_fingerprint: None,
+                configuration_fingerprint: Some(validation_fingerprint),
                 error: None,
             },
         )
@@ -1566,6 +1624,11 @@ mod tests {
             value["ingestion"]["configured_sources"][0]["validation"]["status"],
             "succeeded"
         );
+        assert!(
+            value["ingestion"]["configured_sources"][0]["validation"]
+                .get("configuration_fingerprint")
+                .is_none()
+        );
         assert_eq!(
             value["ingestion"]["configured_sources"][0]["acl"],
             serde_json::json!(["work", "admin"])
@@ -1589,6 +1652,39 @@ mod tests {
         assert_eq!(value["sync_runs"], serde_json::json!([]));
         assert_eq!(value["workspaces"][0]["id"], "work");
         assert_eq!(value["workspaces"][0]["account_label"], "team@example.com");
+    }
+
+    #[test]
+    fn stale_source_validation_is_hidden_from_status() {
+        let directory = tempdir().expect("temporary directory");
+        let mut config = Config::default();
+        config.data_dir = directory.path().to_path_buf();
+        config.sources = vec![google_source(None)];
+        let source = config.sources.first().expect("configured source");
+        let fingerprint =
+            source_validation::configuration_fingerprint(source).expect("validation fingerprint");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "succeeded".into(),
+                validated_at: chrono::Utc::now(),
+                documents: Some(1),
+                bytes: Some(1),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(fingerprint),
+                error: None,
+            },
+        )
+        .expect("validation state");
+
+        config.sources[0].query = Some("from:changed".into());
+        let status = IngestionStatus::from_config(&config, false);
+        assert!(status.configured_sources[0].validation.is_none());
     }
 
     #[tokio::test]
