@@ -169,6 +169,7 @@ fn read_client_file(path: &Path) -> Result<InstalledClient> {
     let metadata =
         fs::metadata(path).with_context(|| format!("inspect OAuth client {}", path.display()))?;
     anyhow::ensure!(metadata.is_file(), "OAuth client must be a regular file");
+    ensure_owner_only(&metadata, "OAuth client")?;
     anyhow::ensure!(
         metadata.len() <= MAX_CLIENT_FILE_BYTES,
         "OAuth client file exceeds 64 KiB"
@@ -193,6 +194,7 @@ fn read_existing_refresh_token(path: &Path) -> Result<Option<String>> {
     let metadata =
         fs::metadata(path).with_context(|| format!("inspect Google token {}", path.display()))?;
     anyhow::ensure!(metadata.is_file(), "Google token must be a regular file");
+    ensure_owner_only(&metadata, "Google token")?;
     anyhow::ensure!(
         metadata.len() <= MAX_CLIENT_FILE_BYTES,
         "Google token file exceeds 64 KiB"
@@ -651,6 +653,20 @@ fn set_directory_owner_only(_path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn ensure_owner_only(metadata: &fs::Metadata, label: &str) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        anyhow::ensure!(
+            metadata.permissions().mode() & 0o077 == 0,
+            "{label} file must not be accessible by group or others"
+        );
+    }
+    let _ = (metadata, label);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -713,10 +729,37 @@ mod tests {
             r#"{"access_token":"not-returned","refresh_token":"retained-refresh-token"}"#,
         )
         .unwrap();
+        #[cfg(unix)]
+        set_owner_only(&token).unwrap();
         assert_eq!(
             read_existing_refresh_token(&token).unwrap().as_deref(),
             Some("retained-refresh-token")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn oauth_inputs_reject_group_or_world_readable_files() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let token = directory.path().join("token.json");
+        fs::write(&token, r#"{"refresh_token":"retained-refresh-token"}"#).unwrap();
+        fs::set_permissions(&token, fs::Permissions::from_mode(0o644)).unwrap();
+        let error = read_existing_refresh_token(&token)
+            .expect_err("group-readable Google token must be rejected");
+        assert!(error.to_string().contains("must not be accessible"));
+
+        let client = directory.path().join("client.json");
+        fs::write(
+            &client,
+            r#"{"installed":{"client_id":"client.apps.googleusercontent.com"}}"#,
+        )
+        .unwrap();
+        fs::set_permissions(&client, fs::Permissions::from_mode(0o644)).unwrap();
+        let error =
+            read_client_file(&client).expect_err("group-readable OAuth client must be rejected");
+        assert!(error.to_string().contains("must not be accessible"));
     }
 
     #[cfg(unix)]
