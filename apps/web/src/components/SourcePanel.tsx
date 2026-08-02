@@ -169,11 +169,16 @@ export function SourcePanel({
           {sourceJobError}
         </p>
       )}
+      {statusError && status && (
+        <p className="document-list-error" role="status">
+          {statusError} Showing the last known source index.
+        </p>
+      )}
       {statusLoading ? (
         <p className="document-list-state" role="status">
           Loading source index and health…
         </p>
-      ) : statusError ? (
+      ) : statusError && !status ? (
         <p className="document-list-error" role="status">
           {statusError}
         </p>

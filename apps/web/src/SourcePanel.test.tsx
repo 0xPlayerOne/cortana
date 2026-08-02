@@ -61,6 +61,12 @@ test('SourcePanel surfaces status errors instead of empty-source phantom state',
   expect(screen.queryByText('No indexed sources yet.')).toBeNull()
 })
 
+test('SourcePanel keeps the last known source index visible during a refresh failure', () => {
+  renderPanel(demoStatus, 'Status refresh failed')
+  expect(screen.getByText(/Status refresh failed Showing the last known source index/)).toBeTruthy()
+  expect(screen.getByRole('button', { name: /^work-code/ })).toBeTruthy()
+})
+
 test('SourcePanel keeps cancellation failures separate from runtime health', () => {
   renderPanel(demoStatus, '', 'Source job cancellation failed')
   expect(screen.getByRole('alert').textContent).toBe('Source job cancellation failed')
