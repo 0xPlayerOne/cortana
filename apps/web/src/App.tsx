@@ -1267,7 +1267,14 @@ export function App() {
               setSettingsSection('sources')
               setView('settings')
             }}
-            onToggleSource={(name, project, enabled) => void toggleSource(name, project, enabled)}
+            onToggleSource={
+              isDesktopApp &&
+              desktopSettings &&
+              !desktopSettings.needs_setup &&
+              desktopSettings.sources.length > 0
+                ? (name, project, enabled) => void toggleSource(name, project, enabled)
+                : undefined
+            }
             sourceToggleBusy={sourceToggleBusy}
             sourceToggleDisabled={
               settingsDirty || desktopSettings === null || Boolean(desktopSettings?.needs_setup)
