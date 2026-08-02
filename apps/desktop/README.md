@@ -48,6 +48,8 @@ runs the read-only scan automatically; every installation still requires separat
 release bundles carry the connector source and metadata needed for the approved **Install** action:
 it creates the per-user `~/.local/share/cortana/venv` environment with uv and installs the bounded
 `ingestion` dependency set. The bundle never includes credentials or an existing user's venv.
+Unbundled local release binaries use the generated checkout resource while packaged applications
+prefer their embedded resource directory.
 
 The Settings **Sources** panel edits typed connector configuration, workspace assignments,
 credential references, and per-source safety budgets. Secret values are write-only. External

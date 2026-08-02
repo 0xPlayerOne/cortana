@@ -190,7 +190,6 @@ pub(crate) fn bundled_connector_resource_dir(app: &AppHandle) -> Result<PathBuf,
         candidates.push(resource_dir.join("resources/cortana-connectors"));
         candidates.push(resource_dir.join("cortana-connectors"));
     }
-    #[cfg(debug_assertions)]
     candidates.push(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("resources")
