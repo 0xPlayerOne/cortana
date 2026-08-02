@@ -95,6 +95,8 @@ export function SettingsView({
   initialSection = 'readiness',
   onJob,
   sourceJobs,
+  installerJob: externalInstallerJob,
+  onInstallerJob,
 }: {
   onSaved: (settings: DesktopSettings) => void
   onDirtyChange?: (dirty: boolean) => void
@@ -106,6 +108,13 @@ export function SettingsView({
    * and keep the local observer below.
    */
   sourceJobs?: DesktopSourceJob[]
+  /**
+   * Optional shell-owned installer state. The app shell supplies this so an
+   * install remains observable while SettingsView is unmounted. Standalone
+   * renders keep the local state below.
+   */
+  installerJob?: DesktopInstallJob | null
+  onInstallerJob?: (job: DesktopInstallJob | null) => void
 }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
   const [section, setSection] = useState<Section>(initialSection)
@@ -116,7 +125,9 @@ export function SettingsView({
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
   const [setupReadiness, setSetupReadiness] = useState<DesktopReadiness | null>(null)
-  const [installerJob, setInstallerJob] = useState<DesktopInstallJob | null>(null)
+  const [localInstallerJob, setLocalInstallerJob] = useState<DesktopInstallJob | null>(null)
+  const installerJob = externalInstallerJob === undefined ? localInstallerJob : externalInstallerJob
+  const setInstallerJob = onInstallerJob ?? setLocalInstallerJob
 
   useEffect(() => {
     if (!isDesktopApp) return
@@ -261,6 +272,7 @@ export function SettingsView({
               onOpenServices={() => setSection('services')}
               job={installerJob}
               onJob={setInstallerJob}
+              pollInstaller={externalInstallerJob === undefined}
             />
           )}
           {section === 'services' && (
@@ -1398,6 +1410,7 @@ function ReadinessSection({
   onOpenServices,
   job,
   onJob,
+  pollInstaller = true,
 }: {
   autoScan?: boolean
   readiness: DesktopReadiness | null
@@ -1405,12 +1418,13 @@ function ReadinessSection({
   onOpenServices?: () => void
   job: DesktopInstallJob | null
   onJob: (job: DesktopInstallJob | null) => void
+  pollInstaller?: boolean
 }) {
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!job || !['running', 'cancelling'].includes(job.status)) return
+    if (!pollInstaller || !job || !['running', 'cancelling'].includes(job.status)) return
     let active = true
     const timer = window.setTimeout(() => {
       void getDesktopInstaller(job.id)
@@ -1447,7 +1461,7 @@ function ReadinessSection({
       active = false
       window.clearTimeout(timer)
     }
-  }, [job, onJob, onResult])
+  }, [job, onJob, onResult, pollInstaller])
 
   const scan = async () => {
     setScanning(true)

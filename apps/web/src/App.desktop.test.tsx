@@ -465,6 +465,17 @@ test('installer progress survives settings section changes', async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Readiness' }))
     await waitFor(() => expect(screen.getByText('Installing uv')).toBeTruthy())
     expect(screen.getByText('Status: running')).toBeTruthy()
+
+    // The shell owns the installer snapshot, so leaving Settings does not
+    // discard progress or stop native status polling.
+    fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    expect(screen.getByText('Install: uv · running')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Readiness' }))
+    await waitFor(() => expect(screen.getByText('Installing uv')).toBeTruthy())
   } finally {
     window.confirm = originalConfirm
     state.installerJob = null

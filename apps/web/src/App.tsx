@@ -12,6 +12,7 @@ import {
 import {
   getAnswer,
   getDesktopInfo,
+  getDesktopInstaller,
   getDesktopSettings,
   getDocument,
   getDocuments,
@@ -40,11 +41,13 @@ import type {
   ContextBundle,
   DesktopSettings,
   DesktopInfo,
+  DesktopInstallJob,
   DesktopSourceJob,
   Evidence,
 } from './types'
 
 const STATUS_REFRESH_MS = 15_000
+const INSTALLER_POLL_MS = 1_000
 
 export function App() {
   const [query, setQuery] = useState('How do releases work?')
@@ -68,6 +71,7 @@ export function App() {
     'readiness' | 'updates' | 'sources' | 'hindsight' | 'honcho'
   >('readiness')
   const [settingsDirty, setSettingsDirty] = useState(false)
+  const [installerJob, setInstallerJob] = useState<DesktopInstallJob | null>(null)
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
   const [documentsLoading, setDocumentsLoading] = useState(true)
@@ -90,6 +94,7 @@ export function App() {
   const [queryHistoryIndex, setQueryHistoryIndex] = useState(-1)
   const searchRef = useRef<HTMLInputElement>(null)
   const sourceJobs = useSourceJobs()
+  const installerPollingRef = useRef(false)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
   const documentScopeRef = useRef(documentScope)
@@ -327,6 +332,34 @@ export function App() {
       active = false
     }
   }, [sourceJobs.jobs])
+
+  useEffect(() => {
+    if (!isDesktopApp || !installerJob || !isActiveInstaller(installerJob)) return
+    let disposed = false
+    const poll = () => {
+      if (disposed || installerPollingRef.current) return
+      installerPollingRef.current = true
+      void getDesktopInstaller(installerJob.id)
+        .then((next) => {
+          if (!disposed) setInstallerJob(next)
+        })
+        .catch((caught: unknown) => {
+          // Installer jobs are held in native memory. If a Desktop restart
+          // discarded the job, clear the stale shell snapshot instead of
+          // showing an install that can no longer be inspected.
+          if (!disposed && isMissingInstallerJobError(caught)) setInstallerJob(null)
+        })
+        .finally(() => {
+          installerPollingRef.current = false
+        })
+    }
+    poll()
+    const timer = window.setInterval(poll, INSTALLER_POLL_MS)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+    }
+  }, [installerJob])
 
   const agentContext = useMemo(
     () => buildAgentContext(activeQuery, evidence),
@@ -735,6 +768,8 @@ export function App() {
           onDirtyChange={setSettingsDirty}
           onJob={sourceJobs.remember}
           sourceJobs={sourceJobs.jobs}
+          installerJob={installerJob}
+          onInstallerJob={setInstallerJob}
           onSaved={(next) => {
             setDesktopSettings(next)
             setSettingsDirty(false)
@@ -957,6 +992,7 @@ export function App() {
         </span>
         <IngestionIndicator status={status} />
         <ActiveSourceJobs jobs={sourceJobs.jobs} />
+        <InstallerIndicator job={installerJob} />
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
         {isDesktopApp && (
@@ -1013,6 +1049,26 @@ function ActiveSourceJobs({ jobs }: { jobs: DesktopSourceJob[] }) {
     <span className="source-jobs" role="status" title={detail}>
       <LoaderCircle className="spin" size={13} /> {active.length} active source job
       {active.length === 1 ? '' : 's'}
+    </span>
+  )
+}
+
+function isActiveInstaller(job: DesktopInstallJob): boolean {
+  return job.status === 'running' || job.status === 'cancelling'
+}
+
+function isMissingInstallerJobError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('installation job was not found')
+}
+
+function InstallerIndicator({ job }: { job: DesktopInstallJob | null }) {
+  if (!job) return null
+  const active = isActiveInstaller(job)
+  const state = active ? 'running' : job.status === 'succeeded' ? 'healthy' : 'warning'
+  const label = active ? `Install: ${job.tool} · ${job.status}` : `Install: ${job.status}`
+  return (
+    <span className={`installer-health ${state}`} role="status" title={job.summary}>
+      <i /> {label}
     </span>
   )
 }
