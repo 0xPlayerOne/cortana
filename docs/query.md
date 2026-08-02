@@ -7,6 +7,9 @@ Cortana separates agent retrieval from human-facing answers.
 - MCP also exposes `search_code`, `search_messages`, and `who_knows`. These tools search only the
   enabled source groups derived from configuration, embed the query once across the group, and
   return evidence rather than inferred people profiles.
+- MCP request validation is identical to the HTTP and CLI retrieval contract: queries must be
+  non-empty and at most 16 KiB, scope filters are bounded, and each tool returns at most 50 rows.
+  Oversized or blank requests are rejected before embedding work begins.
 - The workspace uses `/v1/answer`, which can plan several searches and synthesize a cited response.
 - Both paths share the same project/source filters and hybrid lexical, semantic, IDF, and recency
   ranking.

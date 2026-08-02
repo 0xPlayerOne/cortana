@@ -66,6 +66,10 @@ For an HTTP-only client, send:
 {
   "method": "POST",
   "url": "http://127.0.0.1:7331/v1/context",
+  "headers": {
+    "Authorization": "Bearer $CORTANA_SHARED_AGENT_TOKEN",
+    "Content-Type": "application/json"
+  },
   "json": {
     "query": "the concrete question",
     "project": "optional-project",
@@ -73,6 +77,12 @@ For an HTTP-only client, send:
   }
 }
 ```
+
+Use the `Authorization` header for a configured shared principal; do not send a token in the
+request body or URL. HTTP and MCP share the same retrieval limits: queries must be non-empty and
+at most 16 KiB, and each tool returns at most 50 evidence rows. A local owner-only HTTP server may
+omit the header when no `[[auth.tokens]]` are configured, but shared agents must use a scoped
+bearer principal so ACL labels and status/query permissions are enforced.
 
 For a CLI-only client (no MCP integration and no server running), run:
 
