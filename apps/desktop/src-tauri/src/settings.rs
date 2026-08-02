@@ -1873,20 +1873,20 @@ fn normalize_string_list(
 }
 
 fn read_config(path: &Path) -> Result<Table, String> {
+    reject_symlink(path)?;
     if !path.exists() {
         return Ok(Table::new());
     }
-    reject_symlink(path)?;
     let body =
         fs::read_to_string(path).map_err(|error| format!("read Cortana settings: {error}"))?;
     toml::from_str(&body).map_err(|error| format!("parse Cortana settings: {error}"))
 }
 
 fn read_secret_map(path: &Path) -> Result<BTreeMap<String, String>, String> {
+    reject_symlink(path)?;
     if !path.exists() {
         return Ok(BTreeMap::new());
     }
-    reject_symlink(path)?;
     let body = fs::read_to_string(path).map_err(|error| format!("read secret file: {error}"))?;
     let mut values = BTreeMap::new();
     for (line_number, raw) in body.lines().enumerate() {
@@ -1917,6 +1917,7 @@ fn render_secrets(values: &BTreeMap<String, String>) -> String {
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    reject_symlink(path)?;
     let parent = path
         .parent()
         .ok_or_else(|| format!("{} has no parent directory", path.display()))?;
@@ -2095,15 +2096,14 @@ pub(crate) fn append_audit_event(
 }
 
 fn reject_symlink(path: &Path) -> Result<(), String> {
-    if path.exists()
-        && fs::symlink_metadata(path)
-            .map_err(|error| format!("inspect {}: {error}", path.display()))?
-            .file_type()
-            .is_symlink()
-    {
-        return Err(format!("refusing to use symlinked file {}", path.display()));
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            Err(format!("refusing to use symlinked file {}", path.display()))
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("inspect {}: {error}", path.display())),
     }
-    Ok(())
 }
 
 #[cfg(unix)]
@@ -3124,6 +3124,15 @@ mod tests {
             assert!(
                 import_portable_at(&config_path, &linked)
                     .expect_err("symlinked settings must fail")
+                    .contains("symlinked")
+            );
+
+            let dangling = temp.path().join("dangling-secrets.env");
+            symlink(temp.path().join("missing-secrets.env"), &dangling)
+                .expect("dangling secret symlink");
+            assert!(
+                read_secret_map(&dangling)
+                    .expect_err("dangling secret symlink must fail")
                     .contains("symlinked")
             );
         }
