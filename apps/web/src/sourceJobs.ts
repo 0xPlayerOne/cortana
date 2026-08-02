@@ -44,6 +44,55 @@ export function recentCompletedJobs(jobs: DesktopSourceJob[]): DesktopSourceJob[
   return jobs.filter((job) => !isActiveJob(job))
 }
 
+/** Return the fixed wall-clock budget enforced by the native job boundary. */
+export function sourceJobBudgetSeconds(job: DesktopSourceJob): number | null {
+  if (job.operation === 'validation') {
+    return job.budget === 'small'
+      ? 15 * 60
+      : job.budget === 'medium'
+        ? 30 * 60
+        : job.budget === 'large'
+          ? 60 * 60
+          : 60
+  }
+  if (job.operation === 'trial-sync') return 5 * 60
+  if (job.operation === 'initial-sync') {
+    return job.budget === 'small'
+      ? 15 * 60
+      : job.budget === 'medium'
+        ? 30 * 60
+        : job.budget === 'large'
+          ? 60 * 60
+          : null
+  }
+  return null
+}
+
+export function sourceJobElapsedSeconds(
+  job: DesktopSourceJob,
+  nowSeconds = Math.floor(Date.now() / 1000)
+): number {
+  const end = job.completed_at_unix_seconds ?? nowSeconds
+  return Math.max(0, end - job.started_at_unix_seconds)
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`
+}
+
+/** Human-readable elapsed/budget telemetry for active-job surfaces. */
+export function describeSourceJobProgress(
+  job: DesktopSourceJob,
+  nowSeconds = Math.floor(Date.now() / 1000)
+): string {
+  const elapsed = formatDuration(sourceJobElapsedSeconds(job, nowSeconds))
+  const budget = sourceJobBudgetSeconds(job)
+  return budget === null ? `${elapsed} elapsed` : `${elapsed} / ${formatDuration(budget)}`
+}
+
 /**
  * Owns the cross-view source-job snapshot list. SettingsView reports started
  * jobs through remember(); while the view is unmounted the list survives here

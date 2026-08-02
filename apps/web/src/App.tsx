@@ -29,7 +29,7 @@ import { SourcePanel } from './components/SourcePanel'
 import { UtilityView } from './components/UtilityView'
 import { Workspace, type WorkspaceTab } from './components/Workspace'
 import { buildAgentContext, estimateTokens } from './context'
-import { activeJobs, useSourceJobs } from './sourceJobs'
+import { activeJobs, describeSourceJobProgress, useSourceJobs } from './sourceJobs'
 import type {
   AnswerResponse,
   BrainDocument,
@@ -912,7 +912,9 @@ function IngestionIndicator({ status }: { status: BrainStatus | null }) {
 function ActiveSourceJobs({ jobs }: { jobs: DesktopSourceJob[] }) {
   const active = activeJobs(jobs)
   if (active.length === 0) return null
-  const detail = active.map((job) => `${job.source} · ${job.operation}`).join(', ')
+  const detail = active
+    .map((job) => `${job.source} · ${job.operation} · ${describeSourceJobProgress(job)}`)
+    .join(', ')
   return (
     <span className="source-jobs" role="status" title={detail}>
       <LoaderCircle className="spin" size={13} /> {active.length} active source job

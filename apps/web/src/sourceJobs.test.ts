@@ -62,12 +62,15 @@ mock.module('./api', () => ({
 const {
   activeJobIds,
   activeJobs,
+  describeSourceJobProgress,
   describeSourceJob,
   dropJob,
   isActiveJob,
   isMissingJobError,
   MAX_SOURCE_JOB_SNAPSHOTS,
   recentCompletedJobs,
+  sourceJobBudgetSeconds,
+  sourceJobElapsedSeconds,
   upsertJob,
   useSourceJobs,
 } = await import('./sourceJobs')
@@ -133,6 +136,28 @@ test('recentCompletedJobs keeps terminal snapshots for operational history', () 
     'failed',
     'succeeded',
   ])
+})
+
+test('source job progress reports native fixed budgets without claiming a percentage', () => {
+  const validation = jobOf('validation', 'running', {
+    started_at_unix_seconds: 1_000,
+    budget: null,
+  })
+  const trial = jobOf('trial', 'running', {
+    operation: 'trial-sync',
+    started_at_unix_seconds: 1_000,
+  })
+  const initial = jobOf('initial', 'running', {
+    operation: 'initial-sync',
+    budget: 'medium',
+    started_at_unix_seconds: 1_000,
+  })
+  expect(sourceJobBudgetSeconds(validation)).toBe(60)
+  expect(sourceJobBudgetSeconds(trial)).toBe(300)
+  expect(sourceJobBudgetSeconds(initial)).toBe(1_800)
+  expect(sourceJobElapsedSeconds(validation, 1_065)).toBe(65)
+  expect(describeSourceJobProgress(validation, 1_065)).toBe('1m 5s / 1m')
+  expect(describeSourceJobProgress(initial, 1_065)).toBe('1m 5s / 30m')
 })
 
 test('isMissingJobError matches only the native missing-job message', () => {

@@ -20,7 +20,7 @@ import type {
   DesktopSourceJob,
   Evidence,
 } from '../types'
-import { recentCompletedJobs } from '../sourceJobs'
+import { describeSourceJobProgress, recentCompletedJobs } from '../sourceJobs'
 
 export type UtilityKind = 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
 
@@ -193,7 +193,7 @@ function InboxView({
                 <div className="utility-item-main">
                   <strong>{job.source}</strong>
                   <span>
-                    {job.project} · {job.operation} ·{' '}
+                    {job.project} · {job.operation} · {describeSourceJobProgress(job)} · started{' '}
                     {new Date(job.started_at_unix_seconds * 1000).toLocaleString()}
                   </span>
                 </div>

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { activeJobs } from '../sourceJobs'
+import { activeJobs, describeSourceJobProgress } from '../sourceJobs'
 import { operationalSources, sourceHealth, type OperationalSource } from '../operations'
 import type {
   BrainDocumentSummary,
@@ -140,7 +140,7 @@ export function SourcePanel({
             <div className="source-job-item" key={job.id}>
               <LoaderCircle className="spin" size={12} />
               <span>
-                {job.source} · {job.operation} · {job.status}
+                {job.source} · {job.operation} · {job.status} · {describeSourceJobProgress(job)}
               </span>
             </div>
           ))}
