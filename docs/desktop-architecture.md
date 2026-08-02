@@ -174,7 +174,9 @@ and source-job status (active work or the latest terminal attention per source).
 tray exits only the desktop process; it does not
 silently stop the runtime or start a sync. A second desktop launch focuses the existing window.
 
-The Services panel reads a bounded structured report from the bundled sidecar and can explicitly
+The shell and Services panel read a bounded structured report from the bundled sidecar; the shell
+keeps a compact core-health indicator while the panel provides the full per-service controls. The
+panel can explicitly
 install the safe query-only service set (embedding when the configured provider is local, server,
 and backup) through the fixed `service install --no-web` command. macOS uses per-user launchd jobs;
 Linux uses per-user systemd units and timers without requiring root. It accepts only the fixed
