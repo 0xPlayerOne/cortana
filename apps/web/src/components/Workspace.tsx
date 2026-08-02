@@ -2,6 +2,7 @@ import { BookOpen, FileText, History, Link2, Network, Sparkles, Star } from 'luc
 import { type CSSProperties, useEffect, useState } from 'react'
 
 import { isDesktopApp, openDesktopUrl } from '../api'
+import { safeSourceLink } from '../sourceLinks'
 import type { AnswerResponse, BrainDocument, BrainGraphPage, Evidence } from '../types'
 
 const tabs = [
@@ -12,16 +13,9 @@ const tabs = [
   { id: 'timeline', label: 'Timeline', icon: History },
 ] as const
 
-const externalUrlSchemes = new Set(['http:', 'https:', 'mailto:', 'file:'])
-
 async function openSourceLink(href: string) {
   if (!isDesktopApp) return
-  try {
-    const parsed = new URL(href)
-    if (!externalUrlSchemes.has(parsed.protocol)) return
-  } catch {
-    return
-  }
+  if (!safeSourceLink(href)) return
   try {
     await openDesktopUrl(href)
   } catch {
@@ -162,6 +156,7 @@ function BrainDocumentView({
   const [favorite, setFavorite] = useState(false)
   useEffect(() => setFavorite(false), [document.id])
   const metadata = Object.entries(document.metadata).slice(0, 24)
+  const sourceHref = document.uri ? safeSourceLink(document.uri) : null
   return (
     <article className="document canonical-document">
       <div className="breadcrumbs">
@@ -177,16 +172,15 @@ function BrainDocumentView({
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
           </button>
-          {document.uri && (
+          {sourceHref && (
             <a
-              href={document.uri}
+              href={sourceHref}
               target={isDesktopApp ? undefined : '_blank'}
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
               onClick={(event) => {
                 if (!isDesktopApp) return
-                const uri = document.uri
-                if (!uri) return
+                const uri = sourceHref
                 event.preventDefault()
                 void openSourceLink(uri)
               }}
