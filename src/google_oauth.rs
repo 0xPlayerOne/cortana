@@ -252,7 +252,7 @@ fn configured_token_path(config: &Config, source: &SourceConfig) -> Result<PathB
     let value = config.environment_value(token_env).with_context(|| {
         format!("Google token path environment variable {token_env} is not set")
     })?;
-    let path = PathBuf::from(value);
+    let path = PathBuf::from(value.trim());
     Ok(required_secure_path(source, Some(&path), "token")?.to_path_buf())
 }
 
@@ -278,7 +278,7 @@ fn scopes_for_token(config: &Config, token_path: &Path) -> Result<Vec<String>> {
                 .token_env
                 .as_deref()
                 .and_then(|name| config.environment_value(name))
-                .is_some_and(|value| Path::new(&value) == token_path)
+                .is_some_and(|value| Path::new(value.trim()) == token_path)
     }) {
         let scope = match source.kind.as_str() {
             "google-drive" => DRIVE_SCOPE,
