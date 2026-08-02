@@ -872,6 +872,18 @@ export function App() {
       setView('settings')
       return
     }
+    const configuredSource = desktopSettings.sources.find((source) => source.name === sourceName)
+    if (
+      configuredSource &&
+      ['google-drive', 'gmail', 'google-calendar'].includes(configuredSource.kind)
+    ) {
+      // Google authorization needs both an OAuth client and a writable token
+      // destination. Keep incomplete setup in the typed source editor instead
+      // of opening a provider URL that cannot fix the saved configuration.
+      setSettingsSection('sources')
+      setView('settings')
+      return
+    }
     setSourceToggleBusy(`setup:${sourceName}`)
     setSourceToggleError('')
     setSourceToggleNotice('')

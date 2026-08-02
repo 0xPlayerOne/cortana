@@ -406,6 +406,18 @@ fn private_path_components_ready(path: &std::path::Path) -> bool {
             {
                 return false;
             }
+            Ok(metadata) if current == path => {
+                if !metadata.is_file() {
+                    return false;
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if metadata.permissions().mode() & 0o077 != 0 {
+                        return false;
+                    }
+                }
+            }
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return false,
             Err(_) => return false,
@@ -452,13 +464,24 @@ fn source_authorization_summary(
             .token
             .as_ref()
             .is_some_and(|path| secure_regular_file_ready(path));
+        let token_destination_ready = source
+            .token
+            .as_deref()
+            .is_some_and(google_token_destination_ready)
+            || source
+                .token_env
+                .as_deref()
+                .and_then(|name| config.environment_value(name))
+                .is_some_and(|value| google_token_destination_value_ready(&value));
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::GoogleOauth,
             // A migrated/private token file is a complete authorization path on
             // its own. Requiring an OAuth client in that case makes an already
             // authorized Google source appear unhealthy in the desktop status
             // panel and incorrectly invites the user to repeat setup.
-            setup_required: !oauth_client_ready && !token_env_ready && !token_file_ready,
+            setup_required: !(oauth_client_ready && token_destination_ready)
+                && !token_env_ready
+                && !token_file_ready,
             authorized: token_env_ready || token_file_ready,
         }
     } else if source.token_env.is_some() || source.token.is_some() {
@@ -484,6 +507,46 @@ fn source_authorization_summary(
             authorized: true,
         }
     }
+}
+
+fn google_token_destination_value_ready(value: &str) -> bool {
+    google_token_destination_ready(Path::new(value.trim()))
+}
+
+fn google_token_destination_ready(path: &Path) -> bool {
+    if !path.is_absolute()
+        || path.parent().is_none()
+        || path.parent().is_none_or(|parent| parent.parent().is_none())
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
+    {
+        return false;
+    }
+    let mut current = path.to_path_buf();
+    loop {
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata)
+                if metadata.file_type().is_symlink() && !is_allowed_system_alias(&current) =>
+            {
+                return false;
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return false,
+        }
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        if parent == current {
+            break;
+        }
+        current = parent.to_path_buf();
+    }
+    true
 }
 
 pub fn router(state: AppState) -> Router {
@@ -1440,11 +1503,25 @@ mod tests {
     }
 
     #[test]
-    fn google_oauth_client_can_authorize_without_existing_token() {
+    fn google_oauth_requires_a_token_destination_before_authorize() {
         let directory = tempdir().expect("temporary directory");
         let client = directory.path().join("oauth-client.json");
         write_private_fixture(&client, "{}\n");
         let mut source = google_source(None);
+        source.oauth_client = Some(client);
+        let summary = source_authorization_summary(&Config::default(), &source);
+
+        assert!(!summary.authorized);
+        assert!(summary.setup_required);
+    }
+
+    #[test]
+    fn google_oauth_client_can_authorize_to_a_new_token_destination() {
+        let directory = tempdir().expect("temporary directory");
+        let client = directory.path().join("oauth-client.json");
+        let token = directory.path().join("google-token.json");
+        write_private_fixture(&client, "{}\n");
+        let mut source = google_source(Some(token));
         source.oauth_client = Some(client);
         let summary = source_authorization_summary(&Config::default(), &source);
 

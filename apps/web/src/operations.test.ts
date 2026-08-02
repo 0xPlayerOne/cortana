@@ -69,7 +69,7 @@ describe('operational source visibility', () => {
     const source = operationalSources(status).find((item) => item.name === 'personal-gmail')
     const health = sourceHealth(source!)
     expect(health.state).toBe('warning')
-    expect(health.label).toContain('Google OAuth client setup required')
+    expect(health.label).toContain('Google OAuth setup required')
   })
 
   test('distinguishes a validated connector from an unproven source', () => {

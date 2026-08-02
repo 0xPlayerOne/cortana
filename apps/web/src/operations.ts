@@ -112,7 +112,7 @@ export function sourceHealth(source: OperationalSource) {
         state: 'warning',
         label:
           source.authorization.method === 'google_oauth' && source.authorization.setup_required
-            ? 'Google OAuth client setup required'
+            ? 'Google OAuth setup required'
             : source.authorization.method === 'google_oauth'
               ? 'Google token authorization required'
               : 'Source token required for connector authorization',
