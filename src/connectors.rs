@@ -112,13 +112,13 @@ pub fn filesystem_document_iter(
                 && !is_excluded(entry.path(), &filter_root, &filter_excludes)
         })
         .build()
-        .filter_map(Result::ok)
-        .filter_map(move |entry| {
-            match filesystem_document(&entry, &document_root, &source, &project) {
+        .filter_map(move |entry| match entry {
+            Err(error) => Some(Err(error.into())),
+            Ok(entry) => match filesystem_document(&entry, &document_root, &source, &project) {
                 Ok(Some(document)) => Some(Ok(document)),
                 Ok(None) => None,
                 Err(error) => Some(Err(error)),
-            }
+            },
         });
     Ok(Box::new(iterator))
 }
