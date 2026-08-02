@@ -387,6 +387,20 @@ mock.module('./api', () => ({
 
 const { App, ServiceHealthIndicator } = await import('./App')
 
+test('global command shortcuts do not hijack editable fields', async () => {
+  render(<App />)
+  const search = await screen.findByRole('textbox', { name: 'Search your knowledge' })
+
+  act(() => fireEvent.keyDown(search, { key: 'p', ctrlKey: true }))
+  expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull()
+
+  act(() => fireEvent.keyDown(window, { key: 'p', ctrlKey: true }))
+  expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy()
+
+  act(() => fireEvent.keyDown(search, { key: 'Escape' }))
+  expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull()
+})
+
 test('desktop shell restores workspace and source scope and clears stale selections', async () => {
   window.localStorage.setItem('cortana.workspace-selection.v1', 'work')
   window.localStorage.setItem('cortana.source-selection.v1', 'work-code')

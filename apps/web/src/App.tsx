@@ -391,21 +391,33 @@ export function App() {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       const modifier = event.metaKey || event.ctrlKey
-      if (modifier && event.key.toLowerCase() === 'k') {
-        event.preventDefault()
-        searchRef.current?.focus()
-        searchRef.current?.select()
-      } else if (modifier && event.key.toLowerCase() === 'p') {
-        event.preventDefault()
-        setCommandPaletteOpen((open) => !open)
-      } else if (modifier && event.shiftKey && event.key.toLowerCase() === 'f') {
-        event.preventDefault()
-        setLeftOpen(true)
-        window.setTimeout(() => document.getElementById('document-filter')?.focus(), 0)
-      } else if (event.key === 'Escape') {
+      const target = event.target as HTMLElement | null
+      const editing =
+        target?.isContentEditable === true ||
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT'
+      const key = event.key.toLowerCase()
+      if (event.key === 'Escape') {
         setCommandPaletteOpen(false)
         setLeftOpen(false)
         setRightOpen(false)
+        return
+      }
+      // Keep command/filter shortcuts out of text fields. Cmd/Ctrl+K remains
+      // intentionally global because it is the app's primary search action.
+      if (editing && !(modifier && key === 'k')) return
+      if (modifier && key === 'k') {
+        event.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select()
+      } else if (modifier && key === 'p') {
+        event.preventDefault()
+        setCommandPaletteOpen((open) => !open)
+      } else if (modifier && event.shiftKey && key === 'f') {
+        event.preventDefault()
+        setLeftOpen(true)
+        window.setTimeout(() => document.getElementById('document-filter')?.focus(), 0)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
