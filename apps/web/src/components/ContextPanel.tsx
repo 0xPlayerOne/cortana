@@ -1,8 +1,7 @@
 import { Check, Copy, LoaderCircle, RefreshCw, X } from 'lucide-react'
-import { useState } from 'react'
 
-import { writeClipboardText } from '../clipboard'
 import type { AnswerResponse, BrainStatus, ContextBundle, Evidence } from '../types'
+import { useClipboardCopy } from '../useClipboardCopy'
 
 export function ContextPanel({
   open,
@@ -35,21 +34,8 @@ export function ContextPanel({
   onSelect: (index: number) => void
   onClose: () => void
 }) {
-  const [copied, setCopied] = useState(false)
-  const [copyError, setCopyError] = useState('')
   const copyValue = serverContext?.context ?? context
-
-  async function copyContext() {
-    setCopyError('')
-    try {
-      await writeClipboardText(copyValue)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
-    } catch (caught) {
-      setCopied(false)
-      setCopyError(caught instanceof Error ? caught.message : 'Unable to copy context')
-    }
-  }
+  const { copied, copyError, copy } = useClipboardCopy(copyValue)
 
   return (
     <aside className={`context-panel ${open ? 'mobile-open' : ''}`}>
@@ -151,7 +137,7 @@ export function ContextPanel({
         </section>
       </div>
       <div className="copy-area">
-        <button type="button" aria-label="Copy agent context" onClick={() => void copyContext()}>
+        <button type="button" aria-label="Copy agent context" onClick={() => void copy()}>
           {copied ? <Check size={17} /> : <Copy size={17} />}
           {copied
             ? 'Context copied'

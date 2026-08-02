@@ -15,9 +15,7 @@ import {
   Sparkles,
   TerminalSquare,
 } from 'lucide-react'
-import { useState } from 'react'
 
-import { writeClipboardText } from '../clipboard'
 import type {
   AnswerResponse,
   BrainStatus,
@@ -26,6 +24,7 @@ import type {
   Evidence,
 } from '../types'
 import { describeSourceJobProgress, recentCompletedJobs } from '../sourceJobs'
+import { useClipboardCopy } from '../useClipboardCopy'
 
 export type UtilityKind = 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
 
@@ -408,21 +407,7 @@ function AgentToolsView({
   contextTokens: number
   onRetrieveContext: () => void
 }) {
-  const [copied, setCopied] = useState(false)
-  const [copyError, setCopyError] = useState('')
-
-  async function copyContext() {
-    if (!contextBundle) return
-    setCopyError('')
-    try {
-      await writeClipboardText(contextBundle.context)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
-    } catch (caught) {
-      setCopied(false)
-      setCopyError(caught instanceof Error ? caught.message : 'Unable to copy context')
-    }
-  }
+  const { copied, copyError, copy } = useClipboardCopy(contextBundle?.context ?? null)
 
   return (
     <>
@@ -469,7 +454,7 @@ function AgentToolsView({
                 type="button"
                 className="secondary-button"
                 aria-label="Copy MCP-equivalent context"
-                onClick={() => void copyContext()}
+                onClick={() => void copy()}
               >
                 {copied ? <Check size={15} /> : <Copy size={15} />}
                 {copied ? 'Context copied' : 'Copy MCP-equivalent context'}
