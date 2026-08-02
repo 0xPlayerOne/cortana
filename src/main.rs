@@ -474,11 +474,7 @@ async fn main() -> Result<()> {
         return validate_configured_source(
             &config,
             source,
-            SyncOverrides {
-                max_documents: *max_documents,
-                max_bytes: *max_bytes,
-                max_seconds: *max_seconds,
-            },
+            validation_overrides(*max_documents, *max_bytes, *max_seconds),
         )
         .await;
     }
@@ -2686,12 +2682,25 @@ mod tests {
     use super::{
         Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
         chunk, cleanup_connector_spools, context_bundle, ensure_recurring_sync_validated,
-        ingest_documents, private_file, run_connector_to_spool,
+        ingest_documents, private_file, run_connector_to_spool, validation_overrides,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
     use cortana::model::Document;
     use cortana::store::Store;
+
+    #[test]
+    fn validate_source_defaults_to_safe_read_only_bounds() {
+        let defaults = validation_overrides(None, None, None);
+        assert_eq!(defaults.max_documents, Some(25));
+        assert_eq!(defaults.max_bytes, Some(5 * 1024 * 1024));
+        assert_eq!(defaults.max_seconds, Some(60));
+
+        let explicit = validation_overrides(Some(100), Some(64 * 1024 * 1024), Some(900));
+        assert_eq!(explicit.max_documents, Some(100));
+        assert_eq!(explicit.max_bytes, Some(64 * 1024 * 1024));
+        assert_eq!(explicit.max_seconds, Some(900));
+    }
 
     #[test]
     fn recurring_sync_requires_current_validation_for_each_enabled_source() {
