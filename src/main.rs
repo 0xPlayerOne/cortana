@@ -1,6 +1,6 @@
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
-use std::process::{Command as ProcessCommand, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -18,6 +18,7 @@ use cortana::{api, google_oauth, mcp, migration, service, source_validation, sup
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
 use serde::Deserialize;
+use tokio::process::Command as ProcessCommand;
 
 // Leave half of the default local TEI permits available for interactive agents.
 const EMBEDDING_REQUEST_SIZE: usize = 8;
@@ -449,7 +450,8 @@ async fn main() -> Result<()> {
                 max_bytes: *max_bytes,
                 max_seconds: *max_seconds,
             },
-        );
+        )
+        .await;
     }
     if let Some(Command::AuthorizeGoogle { source }) = cli.command.as_ref() {
         let outcome = google_oauth::authorize(&config, source).await?;
@@ -1138,7 +1140,7 @@ fn acl_alignment_errors(config: &Config, mappings: &[(String, Vec<String>)]) -> 
     errors
 }
 
-fn validate_configured_source(
+async fn validate_configured_source(
     config: &Config,
     selected: &str,
     overrides: SyncOverrides,
@@ -1155,7 +1157,7 @@ fn validate_configured_source(
         started: Instant::now(),
         cancellation: &cancellation,
     };
-    let validation = (|| -> Result<serde_json::Value> {
+    let validation: Result<serde_json::Value> = async {
         if source.kind == "filesystem" {
             let root = source
                 .root
@@ -1175,7 +1177,7 @@ fn validate_configured_source(
             }));
         }
         cleanup_connector_spools(&config.data_dir)?;
-        let (spool, diagnostics) = run_connector_to_spool(config, source, &control)?;
+        let (spool, diagnostics) = run_connector_to_spool(config, source, &control).await?;
         let validation = validate_connector_spool(&spool, source, &control);
         let _ = std::fs::remove_file(&spool);
         let _ = std::fs::remove_file(&diagnostics);
@@ -1185,7 +1187,8 @@ fn validate_configured_source(
             "bytes": scope.bytes,
             "inspection": "connector snapshot"
         }))
-    })();
+    }
+    .await;
     cancellation.stop();
     let validated_at = chrono::Utc::now();
     let result = match validation {
@@ -1988,7 +1991,7 @@ async fn sync_source_documents(
         });
     }
 
-    let (spool, diagnostics) = run_connector_to_spool(config, source, control)?;
+    let (spool, diagnostics) = run_connector_to_spool(config, source, control).await?;
     let result = async {
         let scope = validate_connector_spool(&spool, source, control)?;
         let reader = std::io::BufReader::new(
@@ -2090,7 +2093,7 @@ fn validate_connector_spool(
     })
 }
 
-fn run_connector_to_spool(
+async fn run_connector_to_spool(
     config: &Config,
     source: &SourceConfig,
     control: &SourceControl<'_>,
@@ -2127,8 +2130,8 @@ fn run_connector_to_spool(
     let started = std::time::Instant::now();
     let status = loop {
         if control.cancellation.is_requested() {
-            let _ = child.kill();
-            let _ = child.wait();
+            let _ = child.kill().await;
+            let _ = child.wait().await;
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!("connector {} cancelled before reconciliation", source.name);
@@ -2136,8 +2139,8 @@ fn run_connector_to_spool(
         let spool_bytes = std::fs::metadata(&spool).map_or(0, |metadata| metadata.len());
         let diagnostic_bytes = std::fs::metadata(&diagnostics).map_or(0, |metadata| metadata.len());
         if spool_bytes > maximum_spool_bytes || diagnostic_bytes > MAXIMUM_DIAGNOSTIC_BYTES {
-            let _ = child.kill();
-            let _ = child.wait();
+            let _ = child.kill().await;
+            let _ = child.wait().await;
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!(
@@ -2149,8 +2152,8 @@ fn run_connector_to_spool(
             break status;
         }
         if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
+            let _ = child.kill().await;
+            let _ = child.wait().await;
             let _ = std::fs::remove_file(&spool);
             let _ = std::fs::remove_file(&diagnostics);
             anyhow::bail!(
@@ -2159,7 +2162,7 @@ fn run_connector_to_spool(
                 timeout.as_secs()
             );
         }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        tokio::time::sleep(Duration::from_millis(100)).await;
     };
     if !status.success() {
         let message = std::fs::read_to_string(&diagnostics).unwrap_or_default();
@@ -2412,9 +2415,11 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        Cli, Command, DEFAULT_CONTEXT_LIMIT, SyncLock, chunk, cleanup_connector_spools,
-        context_bundle, ingest_documents, private_file,
+        Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
+        chunk, cleanup_connector_spools, context_bundle, ingest_documents, private_file,
+        run_connector_to_spool,
     };
+    use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
     use cortana::model::Document;
     use cortana::store::Store;
@@ -2503,6 +2508,68 @@ mod tests {
         assert_eq!(
             cleanup_connector_spools(directory.path()).expect("repeat cleanup"),
             0
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn connector_polling_does_not_block_other_async_tasks() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config::default();
+        config.data_dir = directory.path().to_path_buf();
+        config.connectors.timeout_seconds = 2;
+        let source = SourceConfig {
+            name: "slow-external".into(),
+            kind: "external".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: Some(1),
+            max_bytes: Some(1024),
+            max_duration_seconds: Some(2),
+            exclude: Vec::new(),
+            command: vec!["sh".into(), "-c".into(), "sleep 0.2; printf done".into()],
+            acl: Vec::new(),
+        };
+        let cancellation = Cancellation::inert();
+        let control = SourceControl {
+            limits: SourceLimits {
+                max_documents: 1,
+                max_bytes: 1024,
+                max_seconds: 2,
+                document_batch_size: 1,
+                request_concurrency: 1,
+            },
+            started: std::time::Instant::now(),
+            cancellation: &cancellation,
+        };
+        let ticks = Arc::new(AtomicUsize::new(0));
+        let tick_counter = Arc::clone(&ticks);
+        let heartbeat = tokio::spawn(async move {
+            for _ in 0..10 {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                tick_counter.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        let result = run_connector_to_spool(&config, &source, &control).await;
+        heartbeat.abort();
+        cancellation.stop();
+
+        let (spool, diagnostics) = result.expect("connector should finish");
+        let _ = std::fs::remove_file(spool);
+        let _ = std::fs::remove_file(diagnostics);
+        assert!(
+            ticks.load(Ordering::SeqCst) > 0,
+            "connector polling blocked the Tokio runtime"
         );
     }
 
