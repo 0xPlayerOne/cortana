@@ -860,6 +860,14 @@ export function App() {
     if (query.trim()) void runSearch(query.trim())
   }
 
+  function configuredSourceFor(sourceName: string, project: string) {
+    return desktopSettings?.sources.find(
+      (candidate) =>
+        candidate.project === project &&
+        (candidate.name === sourceName || candidate.source === sourceName)
+    )
+  }
+
   async function toggleSource(nextSource: string, project: string, enabled: boolean) {
     const key = `${project}:${nextSource}`
     if (sourceToggleBusy) return
@@ -874,9 +882,7 @@ export function App() {
       setView('settings')
       return
     }
-    const current = desktopSettings.sources.find(
-      (candidate) => candidate.name === nextSource && candidate.project === project
-    )
+    const current = configuredSourceFor(nextSource, project)
     if (!current || current.enabled === enabled) {
       setSourceToggleError(
         current ? '' : `${nextSource} is not present in the saved Desktop source configuration.`
@@ -940,9 +946,7 @@ export function App() {
       setView('settings')
       return
     }
-    const configuredSource = desktopSettings.sources.find(
-      (source) => source.name === sourceName && source.project === project
-    )
+    const configuredSource = configuredSourceFor(sourceName, project)
     if (!configuredSource) {
       setSourceToggleError(
         `${sourceName} in ${project} is not present in the saved Desktop source configuration.`
@@ -964,7 +968,7 @@ export function App() {
     setSourceToggleError('')
     setSourceToggleNotice('')
     try {
-      await openDesktopSourceSetup(sourceName)
+      await openDesktopSourceSetup(configuredSource.name)
       setSourceToggleNotice('Provider setup opened in your browser.')
     } catch (caught) {
       setSourceToggleError(
@@ -982,9 +986,7 @@ export function App() {
       setView('settings')
       return
     }
-    const configuredSource = desktopSettings.sources.find(
-      (source) => source.name === sourceName && source.project === project
-    )
+    const configuredSource = configuredSourceFor(sourceName, project)
     if (!configuredSource) {
       setSourceToggleError(
         `${sourceName} in ${project} is not present in the saved Desktop source configuration.`
@@ -1003,7 +1005,7 @@ export function App() {
     setSourceToggleError('')
     setSourceToggleNotice('')
     try {
-      const job = await startDesktopSourceAuthorization(sourceName)
+      const job = await startDesktopSourceAuthorization(configuredSource.name)
       sourceJobs.remember(job)
       setSourceToggleNotice('Google authorization opened in your browser.')
     } catch (caught) {
@@ -1270,7 +1272,9 @@ export function App() {
         new Set([
           ...(desktopSettings?.sources ?? [])
             .filter((item) => item.project === workspace)
-            .map((item) => item.name),
+            .flatMap((item) =>
+              [item.name, item.source].filter((value): value is string => Boolean(value))
+            ),
           ...(status?.ingestion.configured_sources ?? [])
             .filter((item) => item.project === workspace)
             .map((item) => item.source),
@@ -1449,7 +1453,9 @@ export function App() {
             } else if (
               source &&
               !next.sources.some(
-                (item) => item.name === source && (!workspace || item.project === workspace)
+                (item) =>
+                  (item.name === source || item.source === source) &&
+                  (!workspace || item.project === workspace)
               )
             ) {
               abortSearchRequest()

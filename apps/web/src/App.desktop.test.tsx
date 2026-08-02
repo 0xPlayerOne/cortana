@@ -920,6 +920,46 @@ test('source tree toggles a saved connector without touching indexed data', asyn
   }
 })
 
+test('source tree actions resolve a configured source by its canonical label', async () => {
+  const originalConfirm = window.confirm
+  const originalSettings = state.settings
+  const originalConfiguredSources = demoStatus.ingestion.configured_sources
+  const originalIndexedSources = demoStatus.sources
+  window.confirm = () => true
+  state.applySettingsUpdate = true
+  const labeledSource = { ...workSource, source: 'code-label', enabled: false }
+  state.settings = { ...desktopSettings, sources: [labeledSource] }
+  demoStatus.ingestion = {
+    ...demoStatus.ingestion,
+    configured_sources: demoStatus.ingestion.configured_sources.map((item) =>
+      item.name === 'work-code' ? { ...item, source: 'code-label', enabled: false } : item
+    ),
+  }
+  demoStatus.sources = demoStatus.sources.map((item) =>
+    item.source === 'work-code' ? { ...item, source: 'code-label' } : item
+  )
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByLabelText('Open sources'))
+    const toggle = await screen.findByRole('switch', { name: 'Enable work-code' })
+    fireEvent.click(toggle)
+
+    await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
+    expect(screen.getByText('Source setting saved for future ingestion.')).toBeTruthy()
+    expect(state.lastSettingsUpdate?.sources).toEqual([
+      expect.objectContaining({ name: 'work-code', source: 'code-label', enabled: true }),
+    ])
+  } finally {
+    window.confirm = originalConfirm
+    state.settings = originalSettings
+    state.applySettingsUpdate = false
+    state.lastSettingsUpdate = null
+    demoStatus.ingestion = { ...demoStatus.ingestion, configured_sources: originalConfiguredSources }
+    demoStatus.sources = originalIndexedSources
+  }
+})
+
 test('services settings offers an explicit safe core-service install', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true
