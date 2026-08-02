@@ -79,6 +79,9 @@ browser action directly in the tree.
 
 Closing the main window hides it to the tray. Use **Quit Cortana Desktop** from the tray menu to
 exit the control plane. This does not stop the independently managed Cortana services.
+When the window is hidden or unfocused, passive renderer health polling pauses and resumes with an
+immediate refresh when the window returns. Installer, source-job, and updater progress remains
+owned by the shell and continues while the app is in the background.
 
 The **Services** panel shows structured launchd (macOS) or systemd user (Linux) state, can explicitly
 install the safe query-only embedding/server/backup set from the bundled runtime, and controls
