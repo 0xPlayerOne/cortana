@@ -764,14 +764,14 @@ test('settings save refreshes shell service metadata immediately', async () => {
   await waitFor(() => expect(state.getDesktopServicesCalls).toBe(2))
 })
 
-test('successful service actions clear a stale shell service error', async () => {
+test('successful service actions clear a stale shell service error immediately', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true
+  state.serviceStatusError = null
   state.serviceRestartCalls = 0
   try {
     render(<App />)
     await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
-    await waitFor(() => expect(state.getDesktopServicesCalls).toBe(1))
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
@@ -782,14 +782,17 @@ test('successful service actions clear a stale shell service error', async () =>
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => expect(screen.getByText('service status transport failed')).toBeTruthy())
 
-    state.serviceStatusError = null
     fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
     await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
+
     fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
     await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
-    expect(screen.queryByText('Services: unavailable')).toBeNull()
+    const serviceHealth = await screen.findByRole('button', { name: 'Open service health' })
+    expect(serviceHealth.textContent).toContain('Services:')
+    expect(serviceHealth.textContent).not.toContain('unavailable')
   } finally {
     window.confirm = originalConfirm
+    state.serviceStatusError = null
   }
 })
 

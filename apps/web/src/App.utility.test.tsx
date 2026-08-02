@@ -425,7 +425,7 @@ test('Inbox keeps a cancelling source job visibly in progress until it exits', (
   ).toBe(true)
 })
 
-test('Index renders live BrainStatus metrics and an offline empty state', async () => {
+test('Index renders live BrainStatus metrics and a truthful loading empty state', async () => {
   await renderApp()
   fireEvent.click(railButton('Index'))
   await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Index' })).toBeTruthy())
@@ -436,12 +436,13 @@ test('Index renders live BrainStatus metrics and an offline empty state', async 
   expect(screen.getByText('42,891 entries')).toBeTruthy()
   expect(screen.getByText('synthesized')).toBeTruthy()
 
-  // An unreachable brain renders the offline empty state.
+  // Without a status error, the shell is still waiting for the runtime rather
+  // than claiming that the index is offline.
   cleanup()
   state.status = null
   await renderApp()
   fireEvent.click(railButton('Index'))
-  await waitFor(() => expect(screen.getByText('Index offline')).toBeTruthy())
+  await waitFor(() => expect(screen.getByText('Loading index')).toBeTruthy())
   expect(screen.getByText('Open settings')).toBeTruthy()
 })
 

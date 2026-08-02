@@ -107,8 +107,20 @@ export function SourcePanel({
   )
   const active = activeJobs(jobs)
   const statusLoading = status === null && statusError === ''
-  const sourceModeClass = status?.ingestion.scheduled ? 'scheduled' : 'manual'
-  const sourceModeLabel = status?.ingestion.scheduled ? 'scheduled' : 'paused · manual only'
+  const sourceModeClass = status
+    ? status.ingestion.scheduled
+      ? 'scheduled'
+      : 'manual'
+    : statusError
+      ? 'unavailable'
+      : 'manual'
+  const sourceModeLabel = status
+    ? status.ingestion.scheduled
+      ? 'scheduled'
+      : 'paused · manual only'
+    : statusError
+      ? 'status unavailable'
+      : 'loading status…'
 
   return (
     <aside className={`source-panel ${open ? 'mobile-open' : ''}`}>

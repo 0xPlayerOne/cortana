@@ -688,7 +688,8 @@ function ServicesSection({
       detail: null,
     })
     try {
-      setReport(await runDesktopServiceAction(service.name, action))
+      const next = await runDesktopServiceAction(service.name, action)
+      setReport(next)
       onServicesError?.('')
       onServiceActivity?.({
         target: service.name,
@@ -736,7 +737,8 @@ function ServicesSection({
     setLocalError('')
     onServiceActivity?.({ target: 'core services', action, status: 'running', detail: null })
     try {
-      setReport(await runDesktopServicesActionAll(action))
+      const next = await runDesktopServicesActionAll(action)
+      setReport(next)
       onServicesError?.('')
       onServiceActivity?.({ target: 'core services', action, status: 'succeeded', detail: null })
       if (action === 'restart') onRestarted?.()
@@ -771,7 +773,8 @@ function ServicesSection({
       detail: null,
     })
     try {
-      setReport(await installDesktopServices())
+      const next = await installDesktopServices()
+      setReport(next)
       onServicesError?.('')
       onServiceActivity?.({
         target: 'core services',

@@ -253,6 +253,10 @@
   background: #55b966;
 }
 
+.source-mode.unavailable i {
+  background: #d48b5a;
+}
+
 .source-jobs-strip {
   display: flex;
   padding: 8px 14px;

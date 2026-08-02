@@ -58,6 +58,7 @@ test('SourcePanel reports loading while status is still resolving', () => {
 test('SourcePanel surfaces status errors instead of empty-source phantom state', () => {
   renderPanel(null, 'Status unavailable')
   expect(screen.getByText('Status unavailable')).toBeTruthy()
+  expect(screen.getByText('Ingestion status unavailable')).toBeTruthy()
   expect(screen.queryByText('No indexed sources yet.')).toBeNull()
 })
 

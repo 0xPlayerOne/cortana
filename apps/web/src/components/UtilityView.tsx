@@ -4,7 +4,6 @@ import {
   Check,
   CircleStop,
   Copy,
-  Database,
   ExternalLink,
   FileText,
   Inbox,
@@ -141,7 +140,9 @@ export function UtilityView({
             onRetrieveContext={onRetrieveContext}
           />
         )}
-        {kind === 'index' && <IndexView status={status} onOpenSettings={onOpenSettings} />}
+        {kind === 'index' && (
+          <IndexView status={status} statusError={statusError} onOpenSettings={onOpenSettings} />
+        )}
         {kind === 'help' && (
           <HelpView desktopAvailable={desktopAvailable} onOpenProject={onOpenProject} />
         )}
@@ -532,17 +533,24 @@ function AgentToolsView({
 
 function IndexView({
   status,
+  statusError,
   onOpenSettings,
 }: {
   status: BrainStatus | null
+  statusError: string
   onOpenSettings: () => void
 }) {
   if (!status) {
     return (
       <UtilityEmpty
-        icon={<Database size={26} />}
-        title="Index offline"
-        detail="The brain is not reachable, so no live metrics are available. Start the Rust API or add ?demo=1 to preview the workspace."
+        icon={
+          statusError ? <AlertTriangle size={26} /> : <LoaderCircle className="spin" size={26} />
+        }
+        title={statusError ? 'Index unavailable' : 'Loading index'}
+        detail={
+          statusError ||
+          'Waiting for the runtime status snapshot before reporting live index metrics.'
+        }
         actions={[
           { label: 'Open settings', icon: <Settings size={15} />, onClick: onOpenSettings },
         ]}
