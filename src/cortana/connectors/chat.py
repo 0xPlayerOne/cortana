@@ -23,7 +23,12 @@ def fetch_slack(
 ) -> Iterable[Document]:
     token = _required_env(token_env)
     headers = {"Authorization": f"Bearer {token}"}
-    with httpx.Client(base_url="https://slack.com/api", headers=headers, timeout=30) as client:
+    with httpx.Client(
+        base_url="https://slack.com/api",
+        headers=headers,
+        timeout=30,
+        follow_redirects=False,
+    ) as client:
         for channel_id in channel_ids:
             cursor = ""
             while True:
@@ -101,7 +106,10 @@ def fetch_discord(
     token = _required_env(token_env)
     headers = {"Authorization": f"Bot {token}"}
     with httpx.Client(
-        base_url="https://discord.com/api/v10", headers=headers, timeout=30
+        base_url="https://discord.com/api/v10",
+        headers=headers,
+        timeout=30,
+        follow_redirects=False,
     ) as client:
         if cache_dir is not None:
             yield from _fetch_discord_cached(client, channel_ids, project, cache_dir)
