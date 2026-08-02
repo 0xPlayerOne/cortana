@@ -216,6 +216,17 @@ def test_buzz_reads_personas_and_logs_read_only(tmp_path: Path) -> None:
     assert documents[1].metadata["raw_event"] is None
 
 
+def test_buzz_honors_document_cap(tmp_path: Path) -> None:
+    logs = tmp_path / "agents" / "logs"
+    logs.mkdir(parents=True)
+    (logs / "first.log").write_text("first", encoding="utf-8")
+    (logs / "second.log").write_text("second", encoding="utf-8")
+
+    documents = list(buzz.fetch(tmp_path, max_documents=1))
+
+    assert [document.source_id for document in documents] == ["log:first.log"]
+
+
 def test_buzz_rejects_symlinked_retention_files_and_logs(tmp_path: Path) -> None:
     agents = tmp_path / "agents"
     logs = agents / "logs"
@@ -405,6 +416,51 @@ def test_chat_connectors_reassemble_slack_and_normalize_discord(
     )
     assert "https://files.test/report.pdf" in discord_documents[0].content
     assert discord_documents[0].metadata["author_id"] == "u1"
+
+
+def test_discord_cached_connector_honors_document_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DISCORD_TEST_TOKEN", "secret")
+    real_client = httpx.Client
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response(
+                [
+                    {
+                        "id": "100",
+                        "content": "First",
+                        "attachments": [],
+                        "timestamp": "2026-07-29T12:00:00Z",
+                        "author": {"id": "u1", "username": "Ada"},
+                    },
+                    {
+                        "id": "99",
+                        "content": "Second",
+                        "attachments": [],
+                        "timestamp": "2026-07-29T11:00:00Z",
+                        "author": {"id": "u2", "username": "Grace"},
+                    },
+                ],
+                request=request,
+            )
+        raise AssertionError(f"unexpected Discord request: {request.url}")
+
+    monkeypatch.setattr(
+        chat.httpx,
+        "Client",
+        lambda **_kwargs: real_client(
+            base_url="https://discord.test",
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    cache = tmp_path / "cache"
+    documents = list(
+        chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN", cache_dir=cache, max_documents=1)
+    )
+
+    assert [document.source_id for document in documents] == ["99"]
 
 
 def test_slack_message_pages_fail_closed_on_invalid_shapes() -> None:
@@ -814,6 +870,49 @@ def test_google_gmail_decodes_message_body(tmp_path: Path) -> None:
     assert documents[0].title == "Release"
     assert "Deployment is green" in documents[0].content
     assert documents[0].metadata["thread_id"] == "t1"
+
+
+def test_google_gmail_caps_listing_page_and_documents(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    listing_limits: list[str] = []
+    detail_requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            listing_limits.append(request.url.params.get("maxResults", ""))
+            return response(
+                {"messages": [{"id": "m1"}, {"id": "m2"}]},
+                request=request,
+            )
+        detail_requests.append(request.url.path)
+        message_id = request.url.path.rsplit("/", 1)[-1]
+        return response(
+            {
+                "id": message_id,
+                "payload": {
+                    "headers": [{"name": "Subject", "value": message_id}],
+                    "mimeType": "text/plain",
+                    "body": {
+                        "data": base64.urlsafe_b64encode(message_id.encode()).decode(),
+                    },
+                },
+            },
+            request=request,
+        )
+
+    documents = list(
+        fetch_gmail(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+            max_documents=1,
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["m1"]
+    assert listing_limits == ["1"]
+    assert detail_requests == ["/gmail/v1/users/me/messages/m1"]
 
 
 def test_google_gmail_skips_malformed_listing_records(
