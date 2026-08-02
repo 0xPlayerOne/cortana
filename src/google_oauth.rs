@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration as ChronoDuration, Utc};
 use reqwest::{Client, Url, redirect::Policy};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -24,6 +24,7 @@ const AUTHORIZATION_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/au
 const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_CLIENT_FILE_BYTES: u64 = 64 * 1024;
+const MAX_TOKEN_RESPONSE_BYTES: usize = 64 * 1024;
 const MAX_CALLBACK_BYTES: usize = 8 * 1024;
 const MAX_CALLBACK_CONNECTIONS: usize = 20;
 const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
@@ -494,10 +495,31 @@ async fn exchange_code(
         "Google token exchange failed with status {}",
         response.status().as_u16()
     );
-    response
-        .json()
+    bounded_json(response, MAX_TOKEN_RESPONSE_BYTES)
         .await
         .context("Google token response was invalid")
+}
+
+async fn bounded_json<T: DeserializeOwned>(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<T> {
+    anyhow::ensure!(max_bytes > 0, "JSON response safety limit must be positive");
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes as u64)
+    {
+        anyhow::bail!("Google token response exceeded {max_bytes} bytes");
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        anyhow::ensure!(
+            body.len().saturating_add(chunk.len()) <= max_bytes,
+            "Google token response exceeded {max_bytes} bytes"
+        );
+        body.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&body).context("JSON response body was invalid")
 }
 
 fn verify_granted_scopes(requested: &[String], granted: Option<&str>) -> Result<()> {

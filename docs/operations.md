@@ -174,8 +174,9 @@ the corpus. Recurring sync fails the safe default unless the operator explicitly
 
 An optional `[runtime].env_file` supplies connector, cloud-provider, and HTTP-token environment
 variables without putting values in launchd or systemd definitions. On Unix, Cortana refuses to
-read this file if any group or other permission bit is set. Use mode `0600`; process environment
-variables take precedence.
+read this file if any group or other permission bit is set. Relative paths are resolved from the
+directory containing `config.toml`, so service working directories do not change which secrets are
+loaded. Use mode `0600`; process environment variables take precedence.
 
 For shared agents, configure one bearer principal per environment variable under `[[auth.tokens]]`.
 `query`, `status`, and `admin` scopes are enforced independently. Document ACLs are public when

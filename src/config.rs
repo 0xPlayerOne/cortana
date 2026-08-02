@@ -289,7 +289,24 @@ impl Config {
         }
         let body = std::fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
-        toml::from_str(&body).with_context(|| format!("invalid config {}", path.display()))
+        let mut config: Self =
+            toml::from_str(&body).with_context(|| format!("invalid config {}", path.display()))?;
+        if let Some(env_file) = config.runtime.env_file.as_mut()
+            && !env_file.is_absolute()
+        {
+            let config_dir = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+                .map(Path::to_path_buf)
+                .context("configuration path has no parent directory")?;
+            let config_dir = if config_dir.is_absolute() {
+                config_dir
+            } else {
+                std::env::current_dir()?.join(config_dir)
+            };
+            *env_file = config_dir.join(&*env_file);
+        }
+        Ok(config)
     }
 
     pub fn database_path(&self) -> PathBuf {
@@ -636,6 +653,32 @@ mod tests {
             Some("me@example.com")
         );
         assert_eq!(config.sources[0].project, "personal");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolves_relative_environment_files_against_the_config_directory() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let config_path = directory.path().join("config.toml");
+        let secret_path = directory.path().join("secrets.env");
+        std::fs::write(&secret_path, "CORTANA_RELATIVE_SECRET=loaded\n").expect("write secrets");
+        std::fs::set_permissions(&secret_path, std::fs::Permissions::from_mode(0o600))
+            .expect("secure secrets");
+        std::fs::write(&config_path, "[runtime]\nenv_file = \"secrets.env\"\n")
+            .expect("write config");
+
+        let mut config = Config::load(Some(&config_path)).expect("load config");
+        config.load_environment().expect("load relative secrets");
+        assert_eq!(
+            config.runtime.env_file.as_deref(),
+            Some(secret_path.as_path())
+        );
+        assert_eq!(
+            config.environment.get("CORTANA_RELATIVE_SECRET"),
+            Some(&"loaded".into())
+        );
     }
 
     #[cfg(unix)]
