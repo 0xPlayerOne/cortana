@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/0xPlayerOne/cortana/compare/v0.19.0...v0.19.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* **validation:** apply bounded defaults to source preflight ([#246](https://github.com/0xPlayerOne/cortana/issues/246)) ([2e9e4fe](https://github.com/0xPlayerOne/cortana/commit/2e9e4fe2b42515ff25ba13aefe64ea384648c32d))
+
 ## [0.19.0](https://github.com/0xPlayerOne/cortana/compare/v0.18.0...v0.19.0) (2026-08-02)
 
 
