@@ -521,6 +521,24 @@ test('a failed plan surfaces the native error and offers no start action', async
   expect(screen.queryByRole('button', { name: 'Start initial sync' })).toBeNull()
 })
 
+test('initial sync flow disappears safely when its source is reloaded away', async () => {
+  const view = render(
+    <SettingsView onSaved={() => {}} initialSection="sources" desktopSettings={state.settings} />
+  )
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Initial sync' }))
+  await waitFor(() => expect(screen.getByText('Guided initial sync')).toBeTruthy())
+
+  view.rerender(
+    <SettingsView
+      onSaved={() => {}}
+      initialSection="sources"
+      desktopSettings={{ ...state.settings, sources: [] }}
+    />
+  )
+  await waitFor(() => expect(screen.queryByText('Guided initial sync')).toBeNull())
+})
+
 test('a plan without validation coverage gates the start behind budget validation', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true

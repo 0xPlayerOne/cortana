@@ -2660,6 +2660,9 @@ function SourcesSection({
     (job && ['running', 'cancelling'].includes(job.status) ? job : undefined) ??
     sourceJobs?.find((candidate) => ['running', 'cancelling'].includes(candidate.status))
   const observedJob = activeJob ?? job ?? sourceJobs?.[0]
+  const initialSyncSource = initialSync
+    ? settings.sources.find((item) => item.name === initialSync.source)
+    : undefined
   const requestPlan = async (source: string, budget: InitialSyncBudget) => {
     setInitialSync((current) =>
       current && current.source === source
@@ -3406,9 +3409,9 @@ function SourcesSection({
         })}
       </div>
 
-      {initialSync && settings.sources.find((item) => item.name === initialSync.source) && (
+      {initialSync && initialSyncSource && (
         <InitialSyncFlow
-          source={settings.sources.find((item) => item.name === initialSync.source)!}
+          source={initialSyncSource}
           flow={initialSync}
           busy={Boolean(activeJob) || !canValidate}
           onBudget={(budget) => void requestPlan(initialSync.source, budget)}
