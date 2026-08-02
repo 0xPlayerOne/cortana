@@ -156,9 +156,9 @@ There are two distinct lifecycles:
 1. The Cortana runtime owns the API, embedding service, opt-in ingestion, and backups.
 2. Cortana Desktop owns the window, tray, updater, and user controls.
 
-Closing the main window hides it. The tray continues to report runtime, corpus, and bounded
-ingestion status. Quitting from the tray exits only the desktop process; it does not silently stop
-the runtime or start a sync. A second desktop launch focuses the existing window.
+Closing the main window hides it. The tray continues to report runtime, corpus, bounded ingestion,
+and active source-job status. Quitting from the tray exits only the desktop process; it does not
+silently stop the runtime or start a sync. A second desktop launch focuses the existing window.
 
 The Services panel reads a bounded structured report from the bundled sidecar and can explicitly
 install the safe query-only service set (embedding when the configured provider is local, server,

@@ -146,6 +146,7 @@ struct TrayStatus {
     health: MenuItem<Wry>,
     corpus: MenuItem<Wry>,
     ingestion: MenuItem<Wry>,
+    source_jobs: MenuItem<Wry>,
 }
 
 #[tauri::command]
@@ -717,9 +718,11 @@ fn install_tray(app: &mut tauri::App) -> tauri::Result<TrayStatus> {
     let corpus = MenuItem::with_id(app, "corpus", "Corpus: checking", false, None::<&str>)?;
     let ingestion =
         MenuItem::with_id(app, "ingestion", "Ingestion: checking", false, None::<&str>)?;
+    let source_jobs =
+        MenuItem::with_id(app, "source-jobs", "Source jobs: checking", false, None::<&str>)?;
     let show = MenuItem::with_id(app, "show", "Show Cortana", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Cortana Desktop", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&health, &corpus, &ingestion, &show, &quit])?;
+    let menu = Menu::with_items(app, &[&health, &corpus, &ingestion, &source_jobs, &show, &quit])?;
 
     let mut builder = TrayIconBuilder::with_id("cortana")
         .menu(&menu)
@@ -754,6 +757,7 @@ fn install_tray(app: &mut tauri::App) -> tauri::Result<TrayStatus> {
         health,
         corpus,
         ingestion,
+        source_jobs,
     })
 }
 
@@ -794,7 +798,26 @@ fn ingestion_label(status: &Value) -> String {
     }
 }
 
-async fn refresh_tray(backend: &BackendClient, tray: &TrayStatus) {
+async fn refresh_tray(
+    backend: &BackendClient,
+    jobs: &source_jobs::SourceJobState,
+    tray: &TrayStatus,
+) {
+    let source_label = match jobs.snapshots() {
+        Ok(snapshots) => {
+            let active = snapshots
+                .iter()
+                .filter(|job| matches!(job.status, "running" | "cancelling"))
+                .count();
+            if active == 0 {
+                "Source jobs: idle".to_string()
+            } else {
+                format!("Source jobs: {active} active")
+            }
+        }
+        Err(_) => "Source jobs: unavailable".to_string(),
+    };
+    let _ = tray.source_jobs.set_text(source_label);
     match backend.request(Method::GET, "/v1/status", None).await {
         Ok(status) => {
             let documents = status
@@ -879,9 +902,10 @@ pub fn run() {
         .setup(move |app| {
             let tray = install_tray(app)?;
             let backend = backend.clone();
+            let jobs = app.state::<source_jobs::SourceJobState>().inner().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    refresh_tray(&backend, &tray).await;
+                    refresh_tray(&backend, &jobs, &tray).await;
                     tokio::time::sleep(Duration::from_secs(15)).await;
                 }
             });
