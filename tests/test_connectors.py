@@ -681,6 +681,49 @@ def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
     assert documents[0].metadata["owners"] == ["Ada"]
 
 
+def test_google_drive_bounded_validation_caps_listing_page_and_documents(
+    tmp_path: Path,
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    files = [
+        {
+            "id": f"doc{index}",
+            "name": f"Document {index}",
+            "mimeType": "text/plain",
+            "modifiedTime": "2026-07-29T12:00:00Z",
+        }
+        for index in range(3)
+    ]
+    listing_page_sizes: list[str] = []
+    content_requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            page_size = request.url.params.get("pageSize", "")
+            listing_page_sizes.append(page_size)
+            size = int(page_size)
+            payload: dict[str, Any] = {"files": files[:size]}
+            if size < len(files):
+                payload["nextPageToken"] = "next"
+            return response(payload, request=request)
+        content_requests.append(request.url.path)
+        return httpx.Response(200, text="bounded content", request=request)
+
+    documents = list(
+        fetch_drive(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+            max_documents=2,
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["doc0", "doc1"]
+    assert listing_page_sizes == ["2"]
+    assert len(content_requests) == 2
+
+
 def test_google_drive_skips_malformed_listing_records(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
