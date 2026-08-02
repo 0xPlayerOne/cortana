@@ -250,6 +250,19 @@ pub(crate) fn bearer_for_scope(scope: &str) -> Result<Option<String>, String> {
     bearer_for_scope_at(&default_config_path(), scope)
 }
 
+pub(crate) fn secret_value_for_env(name: &str) -> Result<Option<String>, String> {
+    validate_env_name(name)?;
+    let config_path = default_config_path();
+    let root = read_config(&config_path)?;
+    let path = secret_path(&root, &config_path)?;
+    let secrets = read_secret_map(&path)?;
+    Ok(secrets
+        .get(name)
+        .cloned()
+        .or_else(|| std::env::var(name).ok())
+        .filter(|value| !value.is_empty()))
+}
+
 fn bearer_for_scope_at(config_path: &Path, scope: &str) -> Result<Option<String>, String> {
     if !matches!(scope, "query" | "status" | "admin") {
         return Err("unsupported desktop bearer scope".into());

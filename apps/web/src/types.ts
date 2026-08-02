@@ -401,6 +401,17 @@ export type DesktopServiceReport = {
   }>
 }
 
+export type DesktopHindsightStatus = {
+  enabled: boolean
+  configured: boolean
+  reachable: boolean
+  state: 'disabled' | 'configuration_required' | 'healthy' | 'unreachable' | 'unhealthy'
+  endpoint: string
+  bank: string
+  token_configured: boolean
+  detail: string | null
+}
+
 export type DesktopInstallJob = {
   id: string
   tool: string

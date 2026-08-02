@@ -27,6 +27,7 @@ import {
   getDesktopAudit,
   getDesktopInstaller,
   getDesktopInfo,
+  getDesktopHindsightStatus,
   getDesktopServices,
   getDesktopSourceValidation,
   getDesktopSettings,
@@ -56,6 +57,7 @@ import type {
   DesktopInitialSyncPlan,
   DesktopInstallJob,
   DesktopInfo,
+  DesktopHindsightStatus,
   DesktopReadiness,
   DesktopServiceReport,
   DesktopSettings,
@@ -718,11 +720,33 @@ function HindsightSection({
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
 }) {
+  const [status, setStatus] = useState<DesktopHindsightStatus | null>(null)
+  const [checking, setChecking] = useState(false)
   const setHindsight = (hindsight: DesktopSettings['hindsight']) =>
     update((current) => ({ ...current, hindsight }))
   const statusSource = settings.hindsight.token_env
     ? settings.secrets.find((item) => item.name === settings.hindsight.token_env)
     : undefined
+
+  const checkStatus = async () => {
+    setChecking(true)
+    try {
+      setStatus(await getDesktopHindsightStatus())
+    } catch (caught) {
+      setStatus({
+        enabled: settings.hindsight.enabled,
+        configured: false,
+        reachable: false,
+        state: 'unreachable',
+        endpoint: settings.hindsight.base_url,
+        bank: settings.hindsight.bank,
+        token_configured: false,
+        detail: caught instanceof Error ? caught.message : 'Hindsight status check failed',
+      })
+    } finally {
+      setChecking(false)
+    }
+  }
 
   return (
     <SettingsSection
@@ -754,6 +778,20 @@ function HindsightSection({
             }
           />
         </label>
+      </div>
+      <div className="safety-note" role="status">
+        <span>
+          Health: {status?.state.replace('_', ' ') || 'not checked'}
+          {status?.detail ? ` — ${status.detail}` : ''}
+        </span>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => void checkStatus()}
+          disabled={checking}
+        >
+          <RefreshCw size={14} /> {checking ? 'Checking…' : 'Check connection'}
+        </button>
       </div>
       <Field label="Provider" hint="Hindsight currently supports only this provider.">
         <select
