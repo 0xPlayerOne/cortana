@@ -186,6 +186,10 @@ An uninstalled sync job remains uninstalled and cannot be enabled from this pane
 autostart is managed separately and does not change runtime-service or ingestion state. Service
 commands run in an isolated process group on Unix with a bounded timeout, so a stalled install or
 action also terminates bundled runtime helpers instead of leaving an orphaned process behind.
+Desktop stores validated sync and backup intervals in the owner-only `service-schedule.toml` beside
+the active configuration. Core and recurring installs pass those saved intervals to the bundled
+runtime; changing an installed schedule surfaces a separate explicit apply action rather than
+silently rewriting a running job.
 Each approved installer command is capped at ten minutes; a timeout is recorded as a retryable
 failure with bounded, sanitized output.
 The shell owns a compact service-activity snapshot and mirrors it in the status bar, keeping an
