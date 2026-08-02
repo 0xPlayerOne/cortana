@@ -381,9 +381,15 @@ def _drive_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
 def _private_cache(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     path.parent.chmod(0o700)
-    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
-    os.close(descriptor)
-    path.chmod(0o600)
+    if path.is_symlink():
+        raise RuntimeError(f"Google cache path must not be a symlink: {path}")
+    flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        os.fchmod(descriptor, 0o600)
+    finally:
+        os.close(descriptor)
     connection = sqlite3.connect(path)
     connection.execute("PRAGMA journal_mode=MEMORY")
     connection.execute("PRAGMA synchronous=NORMAL")

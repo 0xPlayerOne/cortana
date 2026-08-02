@@ -18,6 +18,7 @@ from cortana.connectors.__main__ import main
 from cortana.connectors.google import (
     GoogleSession,
     _gmail_document,
+    _private_cache,
     _plain_text,
     _timestamp,
     fetch_calendar,
@@ -353,6 +354,19 @@ def test_google_token_path_is_absolute_bounded_and_not_symlinked(tmp_path: Path)
     else:
         with pytest.raises(RuntimeError, match="must not be a symlink"):
             validate_token_path(linked)
+
+
+def test_google_private_cache_rejects_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "cache-target.sqlite3"
+    target.touch()
+    linked = tmp_path / "cache.sqlite3"
+    try:
+        linked.symlink_to(target)
+    except (NotImplementedError, OSError):
+        return
+
+    with pytest.raises(RuntimeError, match="must not be a symlink"):
+        _private_cache(linked)
 
 
 def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
