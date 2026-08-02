@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{Mutex as AsyncMutex, Notify};
 
-use crate::config::EmbeddingConfig;
+use crate::config::{EmbeddingConfig, validate_provider_base_url};
 use crate::store::Store;
 
 #[async_trait]
@@ -175,6 +175,7 @@ pub struct OpenAiEmbedder {
 
 impl OpenAiEmbedder {
     pub fn new(config: EmbeddingConfig, api_key: Option<String>) -> Result<Self> {
+        validate_provider_base_url("embedding", &config.base_url)?;
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(config.request_timeout_seconds.max(1)))

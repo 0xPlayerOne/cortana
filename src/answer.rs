@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
 
-use crate::config::QueryConfig;
+use crate::config::{QueryConfig, validate_provider_base_url};
 use crate::context;
 use crate::embed::Embedder;
 use crate::model::Evidence;
@@ -83,6 +83,7 @@ pub struct OpenAiLanguageModel {
 
 impl OpenAiLanguageModel {
     pub fn new(config: &QueryConfig, api_key: Option<String>) -> Result<Self> {
+        validate_provider_base_url("query", &config.base_url)?;
         Ok(Self {
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(config.request_timeout_seconds.max(1)))

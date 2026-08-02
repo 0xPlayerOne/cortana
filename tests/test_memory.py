@@ -106,6 +106,10 @@ def test_hindsight_invalid_config_and_request_errors_are_retriable_and_opaque() 
         HindsightHttpProvider(
             HindsightConfig(base_url="https://user:pass@example.test", bank="b", token="t")
         )
+    with pytest.raises(MemoryArgumentError, match="HTTPS"):
+        HindsightHttpProvider(
+            HindsightConfig(base_url="http://remote.example.test", bank="b", token="t")
+        )
     with pytest.raises(MemoryArgumentError):
         HindsightHttpProvider(
             HindsightConfig(base_url="https://example.test/?token=secret", bank="b", token="t")

@@ -337,6 +337,31 @@ impl Config {
     }
 }
 
+/// Validate a provider base URL before a client can send credentials or
+/// document-derived content. Local HTTP is limited to loopback; remote
+/// providers must use HTTPS and may not hide credentials in URL components.
+pub fn validate_provider_base_url(name: &str, value: &str) -> Result<()> {
+    let url =
+        reqwest::Url::parse(value).with_context(|| format!("{name} provider URL is invalid"))?;
+    anyhow::ensure!(
+        matches!(url.scheme(), "http" | "https"),
+        "{name} provider URL must use HTTP or HTTPS"
+    );
+    anyhow::ensure!(
+        url.username().is_empty()
+            && url.password().is_none()
+            && url.query().is_none()
+            && url.fragment().is_none(),
+        "{name} provider URL must not include credentials, query parameters, or a fragment"
+    );
+    let loopback = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
+    anyhow::ensure!(
+        url.scheme() != "http" || loopback,
+        "{name} remote provider URL must use HTTPS"
+    );
+    Ok(())
+}
+
 fn validate_secret_file(path: &Path) -> Result<()> {
     anyhow::ensure!(
         path.is_file(),
@@ -544,6 +569,23 @@ mod tests {
     #[test]
     fn reserves_enough_memory_for_the_default_local_embedding_model() {
         assert_eq!(Config::default().embedding.service.memory_limit_mb, 4_096);
+    }
+
+    #[test]
+    fn provider_urls_allow_loopback_http_and_require_secure_remote_transport() {
+        assert!(validate_provider_base_url("embedding", "http://127.0.0.1:6999/v1").is_ok());
+        assert!(validate_provider_base_url("query", "https://api.example.test/v1").is_ok());
+        for value in [
+            "http://api.example.test/v1",
+            "https://user:secret@api.example.test/v1",
+            "https://api.example.test/v1?token=secret",
+            "https://api.example.test/v1#fragment",
+        ] {
+            assert!(
+                validate_provider_base_url("provider", value).is_err(),
+                "{value}"
+            );
+        }
     }
 
     #[test]
