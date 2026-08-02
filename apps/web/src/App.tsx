@@ -142,6 +142,7 @@ export function App() {
   const [queryHistoryIndex, setQueryHistoryIndex] = useState(-1)
   const searchRef = useRef<HTMLInputElement>(null)
   const sourceJobs = useSourceJobs()
+  const sourceCancelInFlightRef = useRef(new Set<string>())
   const sourceJobsError = sourceJobError || sourceJobs.error
   const sourceJobsRetry = sourceJobError
     ? undefined
@@ -875,7 +876,13 @@ export function App() {
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (query.trim()) void runSearch(query.trim())
+    const value = query.trim()
+    if (!value || !canLeaveSettings()) return
+    // The title-bar search is global, so submitting it from a utility or
+    // settings view must return to the answer surface; otherwise the request
+    // succeeds behind the current page and looks like a broken search action.
+    setView('knowledge')
+    void runSearch(value)
   }
 
   function configuredSourceFor(sourceName: string, project: string) {
@@ -1210,14 +1217,32 @@ export function App() {
   }
 
   function cancelSourceJob(id: string) {
+    if (sourceCancelInFlightRef.current.has(id)) return
+    const current = sourceJobs.jobs.find((job) => job.id === id)
+    if (!current || current.status !== 'running') return
+    sourceCancelInFlightRef.current.add(id)
     setSourceJobError('')
+    // Mark the job as cancelling before the native round-trip completes. This
+    // keeps every surface (sidebar, Inbox, and footer) honest and prevents a
+    // slow connector from receiving duplicate cancellation requests.
+    sourceJobs.remember({
+      ...current,
+      status: 'cancelling',
+      summary: `Cancelling source ${current.operation}…`,
+    })
     void cancelDesktopSourceValidation(id)
       .then(sourceJobs.remember)
       .then(() => setSourceJobError(''))
       .catch((caught: unknown) => {
+        // If the native cancellation failed before it could change the job,
+        // restore the last known running snapshot so the operator can retry.
+        sourceJobs.remember(current)
         setSourceJobError(
           caught instanceof Error ? caught.message : 'Source job cancellation failed'
         )
+      })
+      .finally(() => {
+        sourceCancelInFlightRef.current.delete(id)
       })
   }
 
