@@ -498,10 +498,18 @@ impl SettingsStore {
     }
 
     fn save(&self, mut update: SettingsUpdate) -> Result<SettingsSnapshot, String> {
-        validate_update(&mut update)?;
         reject_symlink(&self.config_path)?;
 
         let mut root = read_config(&self.config_path)?;
+        let visible_workspace_ids = configured_workspaces(&root)
+            .into_iter()
+            .map(|workspace| workspace.id)
+            .collect::<BTreeSet<_>>();
+        let legacy_source_scopes = configured_source_projects(&root)
+            .difference(&visible_workspace_ids)
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        validate_update_with_legacy_scopes(&mut update, &legacy_source_scopes)?;
         let secret_path = secret_path(&root, &self.config_path)?;
         let previous_secret_names = referenced_secret_names(&root);
         let next_secret_names = update_secret_names(&update);
@@ -669,7 +677,12 @@ fn import_portable_at(config_path: &Path, path: &Path) -> Result<PortableImport,
             .into_iter()
             .filter(|source| source.kind == "external"),
     );
-    validate_update(&mut update)?;
+    let portable_source_scopes = update
+        .sources
+        .iter()
+        .map(|source| source.project.trim().to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    validate_update_with_legacy_scopes(&mut update, &portable_source_scopes)?;
     let root = read_config(config_path)?;
     validate_external_sources(&root, &update.sources)?;
     let settings = PortableSettings::from_update(update);
@@ -685,6 +698,72 @@ fn import_portable_at(config_path: &Path, path: &Path) -> Result<PortableImport,
         preserved_external_sources,
         settings,
     })
+}
+
+fn workspace_value(workspace: &WorkspaceSettings) -> Value {
+    let mut table = Table::new();
+    table.insert("id".into(), Value::String(workspace.id.clone()));
+    table.insert("name".into(), Value::String(workspace.name.clone()));
+    insert_optional_string(&mut table, "account_label", &workspace.account_label);
+    insert_optional_string(&mut table, "color", &workspace.color);
+    Value::Table(table)
+}
+
+/// Keep source scopes that predate the three-workspace Desktop surface.
+///
+/// The backend permits arbitrary project scopes when no explicit workspace
+/// table exists, and existing installations may therefore contain sources
+/// such as `community` or `agents`. Desktop intentionally renders only the
+/// first three workspaces, but a save must not orphan those source scopes and
+/// make the backend reject its own configuration on the next restart.
+fn workspace_values(root: &Table, update: &SettingsUpdate) -> Vec<Value> {
+    let mut values = update.workspaces.iter().map(workspace_value).collect::<Vec<_>>();
+    let mut known = update
+        .workspaces
+        .iter()
+        .map(|workspace| workspace.id.clone())
+        .collect::<BTreeSet<_>>();
+    let existing = root
+        .get("workspaces")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_table)
+        .filter_map(|table| {
+            Some(WorkspaceSettings {
+                id: table.get("id")?.as_str()?.to_ascii_lowercase(),
+                name: table.get("name")?.as_str()?.to_string(),
+                account_label: table
+                    .get("account_label")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                color: table
+                    .get("color")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+            })
+        })
+        .map(|workspace| (workspace.id.clone(), workspace))
+        .collect::<BTreeMap<_, _>>();
+
+    let source_scopes = update
+        .sources
+        .iter()
+        .map(|source| source.project.trim().to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    for id in source_scopes {
+        if !known.insert(id.clone()) {
+            continue;
+        }
+        let workspace = existing.get(&id).cloned().unwrap_or_else(|| WorkspaceSettings {
+            id: id.clone(),
+            name: title_case(&id),
+            account_label: None,
+            color: None,
+        });
+        values.push(workspace_value(&workspace));
+    }
+    values
 }
 
 impl PortableSettings {
@@ -932,6 +1011,13 @@ fn configured_sources(root: &Table) -> Vec<SourceSettings> {
         .unwrap_or_default()
 }
 
+fn configured_source_projects(root: &Table) -> BTreeSet<String> {
+    configured_sources(root)
+        .into_iter()
+        .map(|source| source.project.trim().to_ascii_lowercase())
+        .collect()
+}
+
 fn configured_workspaces(root: &Table) -> Vec<WorkspaceSettings> {
     let explicit = root
         .get("workspaces")
@@ -1082,7 +1168,15 @@ fn update_secret_names(update: &SettingsUpdate) -> BTreeSet<String> {
     names
 }
 
+#[cfg(test)]
 fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
+    validate_update_with_legacy_scopes(update, &BTreeSet::new())
+}
+
+fn validate_update_with_legacy_scopes(
+    update: &mut SettingsUpdate,
+    legacy_source_scopes: &BTreeSet<String>,
+) -> Result<(), String> {
     if update.workspaces.is_empty() || update.workspaces.len() > MAX_WORKSPACES {
         return Err(format!(
             "configure between 1 and {MAX_WORKSPACES} workspaces"
@@ -1111,7 +1205,7 @@ fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
             return Err("workspace colors must use #RRGGBB".into());
         }
     }
-    validate_sources(&mut update.sources, &ids)?;
+    validate_sources(&mut update.sources, &ids, legacy_source_scopes)?;
     validate_auth_principals(&mut update.auth_principals)?;
 
     validate_provider("embedding", &update.embedding.provider)?;
@@ -1335,20 +1429,7 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
     );
     root.insert(
         "workspaces".into(),
-        Value::Array(
-            update
-                .workspaces
-                .iter()
-                .map(|workspace| {
-                    let mut table = Table::new();
-                    table.insert("id".into(), Value::String(workspace.id.clone()));
-                    table.insert("name".into(), Value::String(workspace.name.clone()));
-                    insert_optional_string(&mut table, "account_label", &workspace.account_label);
-                    insert_optional_string(&mut table, "color", &workspace.color);
-                    Value::Table(table)
-                })
-                .collect(),
-        ),
+        Value::Array(workspace_values(root, update)),
     );
     apply_sources(root, &update.sources);
     apply_auth_principals(root, &update.auth_principals);
@@ -1740,6 +1821,7 @@ fn validate_external_sources(root: &Table, sources: &[SourceSettings]) -> Result
 fn validate_sources(
     sources: &mut [SourceSettings],
     workspace_ids: &BTreeSet<String>,
+    legacy_source_scopes: &BTreeSet<String>,
 ) -> Result<(), String> {
     if sources.len() > MAX_SOURCES {
         return Err(format!("configure no more than {MAX_SOURCES} sources"));
@@ -1750,13 +1832,16 @@ fn validate_sources(
         source.kind = source.kind.trim().to_ascii_lowercase();
         source.project = source.project.trim().to_ascii_lowercase();
         validate_source_name(&source.name)?;
+        validate_workspace_id(&source.project)?;
         if !names.insert(source.name.clone()) {
             return Err(format!("source name `{}` is duplicated", source.name));
         }
         if !SOURCE_KINDS.contains(&source.kind.as_str()) {
             return Err(format!("source `{}` has an unsupported kind", source.name));
         }
-        if !workspace_ids.contains(&source.project) {
+        if !workspace_ids.contains(&source.project)
+            && !legacy_source_scopes.contains(&source.project)
+        {
             return Err(format!(
                 "source `{}` uses unknown workspace `{}`",
                 source.name, source.project
@@ -3068,6 +3153,73 @@ mod tests {
         let ids: Vec<_> = workspaces.iter().map(|workspace| workspace.id.as_str()).collect();
         assert_eq!(ids, vec!["work", "personal", "special"]);
         assert_eq!(workspaces[2].name, "Special");
+    }
+
+    #[test]
+    fn settings_save_preserves_legacy_source_scopes_outside_visible_workspaces() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let config_path = temp.path().join("config/config.toml");
+        fs::create_dir_all(config_path.parent().expect("config parent"))
+            .expect("config directory");
+        fs::write(
+            &config_path,
+            r##"
+            [[sources]]
+            name = "work-notes"
+            kind = "filesystem"
+            enabled = false
+            project = "work"
+
+            [[sources]]
+            name = "personal-notes"
+            kind = "filesystem"
+            enabled = false
+            project = "personal"
+
+            [[sources]]
+            name = "special-notes"
+            kind = "filesystem"
+            enabled = false
+            project = "special"
+
+            [[sources]]
+            name = "community-discord"
+            kind = "discord"
+            enabled = false
+            project = "community"
+
+            [[sources]]
+            name = "agent-buzz"
+            kind = "buzz"
+            enabled = false
+            project = "agents"
+            "##,
+        )
+        .expect("legacy source configuration");
+        let store = SettingsStore {
+            config_path: config_path.clone(),
+        };
+        let current = store.load().expect("load legacy source configuration");
+        assert_eq!(
+            current
+                .workspaces
+                .iter()
+                .map(|workspace| workspace.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["work", "personal", "special"]
+        );
+
+        let mut update = valid_update(temp.path());
+        update.workspaces = current.workspaces;
+        update.sources = current.sources;
+        store
+            .save(update)
+            .expect("saving visible settings must retain hidden source scopes");
+
+        let saved = fs::read_to_string(&config_path).expect("saved configuration");
+        assert!(saved.contains("id = \"community\""));
+        assert!(saved.contains("id = \"agents\""));
+        assert_eq!(store.load().expect("reload saved configuration").sources.len(), 5);
     }
 
     #[test]
