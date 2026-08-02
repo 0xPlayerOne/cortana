@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import time
 from collections.abc import Sequence
@@ -58,12 +59,15 @@ class Outbox:
     SCHEMA_VERSION = 1
 
     def __init__(self, path: Path) -> None:
+        self._path = path
+        _prepare_private_sqlite_path(path)
         self._connection = sqlite3.connect(path)
         self._connection.row_factory = sqlite3.Row
         self._connection.execute("PRAGMA journal_mode=WAL")
         self._connection.execute("PRAGMA foreign_keys=ON")
         self._connection.execute("PRAGMA synchronous=NORMAL")
         self._ensure_schema()
+        _secure_sqlite_artifacts(path)
 
     def close(self) -> None:
         self._connection.close()
@@ -508,3 +512,65 @@ class Outbox:
             leased_by=None if row["leased_by"] is None else str(row["leased_by"]),
             updated_at=float(row["updated_at"]),
         )
+
+
+def _prepare_private_sqlite_path(path: Path) -> None:
+    """Create or validate an owner-only outbox and reject symlink/hard-link targets."""
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise OutboxError(f"prepare outbox directory: {error}") from error
+
+    if path.exists() or path.is_symlink():
+        _validate_sqlite_artifact(path)
+        try:
+            path.chmod(0o600)
+        except OSError as error:
+            raise OutboxError(f"secure outbox permissions: {error}") from error
+    else:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        try:
+            descriptor = os.open(path, flags, 0o600)
+        except OSError as error:
+            raise OutboxError(f"create private outbox: {error}") from error
+        else:
+            os.close(descriptor)
+        _validate_sqlite_artifact(path)
+
+    for artifact in (Path(f"{path}-wal"), Path(f"{path}-shm")):
+        if artifact.exists() or artifact.is_symlink():
+            _validate_sqlite_artifact(artifact)
+            try:
+                artifact.chmod(0o600)
+            except OSError as error:
+                raise OutboxError(f"secure outbox artifact permissions: {error}") from error
+
+
+def _secure_sqlite_artifacts(path: Path) -> None:
+    """Validate SQLite's sidecar files after initialization and keep them owner-only."""
+
+    for artifact in (path, Path(f"{path}-wal"), Path(f"{path}-shm")):
+        if not artifact.exists() and not artifact.is_symlink():
+            continue
+        _validate_sqlite_artifact(artifact)
+        try:
+            artifact.chmod(0o600)
+        except OSError as error:
+            raise OutboxError(f"secure outbox artifact permissions: {error}") from error
+
+
+def _validate_sqlite_artifact(path: Path) -> None:
+    try:
+        metadata = path.lstat()
+    except OSError as error:
+        raise OutboxError(f"inspect outbox artifact: {error}") from error
+    if path.is_symlink() or not path.is_file():
+        raise OutboxError(f"outbox artifact must be a regular non-symlink file: {path}")
+    if metadata.st_nlink != 1:
+        raise OutboxError(f"outbox artifact must not be hard-linked: {path}")
+    getuid = getattr(os, "getuid", None)
+    if getuid is not None and metadata.st_uid != getuid():
+        raise OutboxError(f"outbox artifact is not owned by the current user: {path}")

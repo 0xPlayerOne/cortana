@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import httpx
 import pytest
@@ -12,6 +13,7 @@ from cortana.memory import (
     MemorySyncWorker,
     Outbox,
     OutboxEntry,
+    OutboxError,
     stable_document_id,
 )
 from cortana.memory.hindsight import HindsightConfig, HindsightHttpProvider
@@ -443,3 +445,28 @@ def test_outbox_validation_for_limits_and_leases(tmp_path) -> None:
                 ),
                 max_attempts=0,
             )
+
+
+def test_outbox_rejects_symlinked_paths_and_keeps_sqlite_private(tmp_path) -> None:
+    target = tmp_path / "target.sqlite3"
+    target.write_bytes(b"not an outbox")
+    linked = tmp_path / "linked.sqlite3"
+    if not hasattr(os, "symlink"):
+        pytest.skip("symlink support is unavailable")
+    try:
+        linked.symlink_to(target)
+    except OSError:
+        pytest.skip("symlinks are unavailable in this test environment")
+
+    with pytest.raises(OutboxError, match="non-symlink"):
+        Outbox(linked)
+
+    private = tmp_path / "private.sqlite3"
+    with Outbox(private) as outbox:
+        outbox.enqueue_retain(
+            MemoryDocument(project="work", source="notes", source_id="1", title="t", content="c")
+        )
+        assert private.stat().st_mode & 0o777 == 0o600
+    for sidecar in (tmp_path / "private.sqlite3-wal", tmp_path / "private.sqlite3-shm"):
+        if sidecar.exists():
+            assert sidecar.stat().st_mode & 0o777 == 0o600

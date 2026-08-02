@@ -26,7 +26,7 @@ from .models import (
     stable_document_id,
     workspace_acl_tags,
 )
-from .outbox import Outbox, OutboxEntry
+from .outbox import Outbox, OutboxEntry, OutboxError
 from .provider import MemoryProvider, ProviderError
 from .worker import MemorySyncWorker
 
@@ -38,6 +38,7 @@ __all__ = [
     "MemoryOperation",
     "Outbox",
     "OutboxEntry",
+    "OutboxError",
     "MemoryProvider",
     "ProviderError",
     "HindsightConfig",
