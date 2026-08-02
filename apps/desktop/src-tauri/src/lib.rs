@@ -274,13 +274,11 @@ fn desktop_project_open() -> Result<(), String> {
 
 fn validate_external_url(url: &str) -> Result<(), String> {
     let parsed = Url::parse(url).map_err(|error| format!("invalid URL: {error}"))?;
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("external links must not contain embedded credentials".into());
+    }
     match parsed.scheme() {
-        "http" | "https" => {
-            if !parsed.username().is_empty() || parsed.password().is_some() {
-                return Err("external links must not contain embedded credentials".into());
-            }
-            Ok(())
-        }
+        "http" | "https" => Ok(()),
         "mailto" => Ok(()),
         "file" => {
             if parsed
@@ -895,7 +893,9 @@ mod tests {
         assert!(validate_external_url("http://127.0.0.1").is_ok());
         assert!(validate_external_url("https://user:password@example.com").is_err());
         assert!(validate_external_url("mailto:help@example.com").is_ok());
+        assert!(validate_external_url("mailto://user:password@example.com").is_err());
         assert!(validate_external_url("file:///tmp/cv.pdf").is_ok());
+        assert!(validate_external_url("file://user@localhost/tmp/cv.pdf").is_err());
         assert!(validate_external_url("file://remote.example/cv.pdf").is_err());
         assert!(validate_external_url("file:///tmp/cv.pdf?download=1").is_err());
         assert!(validate_external_url("ftp://example.com").is_err());
