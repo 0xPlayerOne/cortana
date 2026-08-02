@@ -30,8 +30,8 @@ changed source timestamp increments the corpus revision. `cache_ttl_seconds = 0`
 entries, and cache hits without logging queries or evidence.
 
 `/v1/status` also reports whether recurring ingestion is installed, the global and per-source
-safety budgets, every configured source including disabled or not-yet-indexed sources, and the
-latest persisted validation and sync outcomes for each source. Validation proves bounded connector
+safety budgets, every configured source including disabled or not-yet-indexed sources, its configured
+ACL labels, and the latest persisted validation and sync outcomes for each source. Validation proves bounded connector
 access without mutating the corpus and is shown separately from synchronization health. Sync
 outcomes are recorded as `running`, `succeeded`,
 `failed`, `cancelled`, or `budget_exceeded`. A process interruption intentionally leaves a
