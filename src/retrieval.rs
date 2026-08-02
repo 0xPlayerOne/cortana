@@ -156,7 +156,10 @@ async fn query_embedding(
     query: &str,
     embedding_timeout: Duration,
 ) -> Option<Vec<f32>> {
-    match tokio::time::timeout(embedding_timeout, embedder.embed(&[query.to_string()])).await {
+    // Keep the lexical query untouched, but collapse insignificant whitespace
+    // before embedding so equivalent UI/MCP inputs reuse one cache entry.
+    let embedding_query = query.split_whitespace().collect::<Vec<_>>().join(" ");
+    match tokio::time::timeout(embedding_timeout, embedder.embed(&[embedding_query])).await {
         Ok(Ok(vectors)) => vectors.into_iter().next(),
         Ok(Err(error)) => {
             tracing::warn!(%error, "query embedding unavailable; using lexical retrieval");
@@ -387,7 +390,10 @@ fn evidence(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     use anyhow::bail;
     use async_trait::async_trait;
@@ -401,6 +407,7 @@ mod tests {
     struct UnavailableEmbedder;
     struct SlowEmbedder;
     struct CountingEmbedder(Arc<AtomicUsize>);
+    struct RecordingEmbedder(Arc<Mutex<Vec<String>>>);
 
     #[async_trait]
     impl Embedder for UnavailableEmbedder {
@@ -433,6 +440,21 @@ mod tests {
 
         async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
             self.0.fetch_add(1, Ordering::Relaxed);
+            Ok(input.iter().map(|_| vec![1.0, 0.0]).collect())
+        }
+    }
+
+    #[async_trait]
+    impl Embedder for RecordingEmbedder {
+        fn fingerprint(&self) -> String {
+            "recording:2".into()
+        }
+
+        async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+            self.0
+                .lock()
+                .expect("recording lock")
+                .extend(input.iter().cloned());
             Ok(input.iter().map(|_| vec![1.0, 0.0]).collect())
         }
     }
@@ -617,6 +639,31 @@ mod tests {
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         assert_eq!(evidence.len(), 2);
         assert!(evidence.iter().all(|item| item.score > 0.0));
+    }
+
+    #[tokio::test]
+    async fn query_embedding_collapses_insignificant_whitespace_for_cache_reuse() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let queries = Arc::new(Mutex::new(Vec::new()));
+        let embedder: Arc<dyn Embedder> = Arc::new(RecordingEmbedder(queries.clone()));
+
+        retrieve_sources_scoped(
+            &store,
+            &embedder,
+            "  release\n\tplaybook  ",
+            None,
+            &["notes".into()],
+            10,
+            &["*".into()],
+        )
+        .await
+        .expect("retrieval with no indexed rows");
+
+        assert_eq!(
+            queries.lock().expect("recording lock").as_slice(),
+            ["release playbook"]
+        );
     }
 
     #[tokio::test]
