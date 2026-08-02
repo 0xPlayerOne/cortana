@@ -212,12 +212,16 @@ async fn run_command(
     command: &CommandSpec,
     cancelled: &Arc<AtomicBool>,
 ) -> Result<(Option<i32>, String), String> {
-    let mut child = Command::new(&command.program)
+    let mut process = Command::new(&command.program);
+    process
         .args(&command.args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true)
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    process.process_group(0);
+    let mut child = process
         .spawn()
         .map_err(|error| format!("start {}: {error}", command.program.display()))?;
     let stdout = child
@@ -230,12 +234,11 @@ async fn run_command(
         .ok_or_else(|| "installer stderr is unavailable".to_string())?;
     let stdout_task = tauri::async_runtime::spawn(read_bounded(stdout));
     let stderr_task = tauri::async_runtime::spawn(read_bounded(stderr));
+    let mut cancellation_sent = false;
     let status = loop {
-        if cancelled.load(Ordering::SeqCst) {
-            child
-                .kill()
-                .await
-                .map_err(|error| format!("cancel installer: {error}"))?;
+        if cancelled.load(Ordering::SeqCst) && !cancellation_sent {
+            cancellation_sent = true;
+            terminate_installer_process(&mut child).await;
         }
         if let Some(status) = child
             .try_wait()
@@ -262,6 +265,19 @@ async fn run_command(
         String::from_utf8_lossy(&stderr)
     ));
     Ok((status.code(), log))
+}
+
+async fn terminate_installer_process(child: &mut tokio::process::Child) {
+    #[cfg(unix)]
+    if let Some(pid) = child.id().filter(|pid| *pid > 0 && *pid <= i32::MAX as u32) {
+        // Installer commands may launch shell, curl, or package-manager
+        // helpers. They are all placed in one group so cancellation cannot
+        // leave a detached child modifying the user's environment.
+        unsafe {
+            let _ = libc::kill(-(pid as libc::pid_t), libc::SIGKILL);
+        }
+    }
+    let _ = child.kill().await;
 }
 
 async fn read_bounded<R: tokio::io::AsyncRead + Unpin>(reader: R) -> Result<Vec<u8>, String> {
@@ -565,7 +581,7 @@ mod tests {
                 CommandPlan {
                     commands: vec![CommandSpec {
                         program: "sh".into(),
-                        args: vec!["-c".into(), "sleep 5".into()],
+                        args: vec!["-c".into(), "sleep 5 & wait".into()],
                     }],
                     summary: "test".into(),
                     connector_command: None,
