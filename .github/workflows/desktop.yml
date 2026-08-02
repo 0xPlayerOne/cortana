@@ -3,14 +3,6 @@ name: Desktop
 on:
   pull_request:
     branches: [main]
-    paths:
-      - '.github/workflows/desktop.yml'
-      - 'apps/desktop/**'
-      - 'apps/web/**'
-      - 'bun.lock'
-      - 'package.json'
-      - 'scripts/verify-vendored-glib.mjs'
-      - 'third_party/glib-0.18.5/**'
   # Explicit manual final audit path: dispatch this workflow to force the
   # Linux release compilation on any branch, independent of PR state.
   workflow_dispatch:
@@ -23,17 +15,55 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Keep the required aggregate check present on every main PR without
+  # starting the expensive desktop jobs for backend-only changes.
+  changes:
+    name: Detect desktop changes
+    runs-on: ubuntu-slim
+    outputs:
+      desktop: ${{ steps.detect.outputs.desktop }}
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect desktop paths
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "desktop=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=false
+          while IFS= read -r path; do
+            case "$path" in
+              .github/workflows/desktop.yml|apps/desktop/*|apps/web/*|bun.lock|package.json|scripts/verify-vendored-glib.mjs|third_party/glib-0.18.5/*)
+                changed=true
+                break
+                ;;
+            esac
+          done < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          echo "desktop=$changed" >> "$GITHUB_OUTPUT"
+
   # GTK provenance checks are independent from the iterator test, so run
   # them in parallel to avoid one expensive Rust test blocking the other.
   gtk_provenance:
     name: GTK Provenance
+    needs: changes
     # Job-level final-audit gate: run only for PRs targeting main and manual
     # dispatch, excluding release-please version PRs.
     if: >-
+      needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -73,13 +103,15 @@ jobs:
   # single failing check does not hide unrelated status in the other.
   gtk_iterator:
     name: GTK iterator (release)
+    needs: changes
     # Job-level final-audit gate: run only for PRs targeting main and manual
     # dispatch, excluding release-please version PRs.
     if: >-
+      needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -117,14 +149,16 @@ jobs:
 
   security_audit:
     name: Security Audit (cargo-audit)
+    needs: changes
     # Keep the dependency scan independent from the provenance and build
     # setup. It needs only the lockfile and the pinned cargo-audit binary;
     # the Rust cache accelerates cold cargo-audit compiles.
     if: >-
+      needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -163,13 +197,15 @@ jobs:
   # delay test-only feedback, and a test-only fail does not block clippy output.
   desktop_test:
     name: Desktop Tests
+    needs: changes
     # Job-level final-audit gate: run only for PRs targeting main and manual
     # dispatch, excluding release-please version PRs.
     if: >-
+      needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -210,13 +246,15 @@ jobs:
 
   desktop_clippy:
     name: Desktop Clippy
+    needs: changes
     # Job-level final-audit gate: run only for PRs targeting main and manual
     # dispatch, excluding release-please version PRs.
     if: >-
+      needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -257,13 +295,15 @@ jobs:
 
   release:
     name: Release Compilation
+    needs: changes
     # Job-level final-audit gate: run only for PRs targeting main and manual
     # dispatch, excluding release-please version PRs.
     if: >-
+      needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -318,13 +358,15 @@ jobs:
   # version-only PRs) are acceptable and leave the check green.
   aggregate:
     name: Tauri 2 / Linux
-    needs: [gtk_provenance, gtk_iterator, security_audit, desktop_test, desktop_clippy, release]
+    needs:
+      [changes, gtk_provenance, gtk_iterator, security_audit, desktop_test, desktop_clippy, release]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Fail if any desktop job failed or was cancelled
         if: >-
+          needs.changes.result == 'failure' || needs.changes.result == 'cancelled' ||
           needs.gtk_provenance.result == 'failure' || needs.gtk_provenance.result == 'cancelled' ||
           needs.gtk_iterator.result == 'failure' || needs.gtk_iterator.result == 'cancelled' ||
           needs.security_audit.result == 'failure' || needs.security_audit.result == 'cancelled' ||
