@@ -685,11 +685,10 @@ fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), S
             return Err(format!("{name} must contain 1 to {MAX_SCOPE_LENGTH} bytes"));
         }
     }
-    if request
-        .query
-        .as_ref()
-        .is_some_and(|query| query.is_empty() || query.len() > MAX_SCOPE_LENGTH)
-    {
+    if request.query.as_ref().is_some_and(|query| {
+        let query = query.trim();
+        query.is_empty() || query.len() > MAX_SCOPE_LENGTH
+    }) {
         return Err(format!("query must contain 1 to {MAX_SCOPE_LENGTH} bytes"));
     }
     if request
@@ -1003,6 +1002,14 @@ mod tests {
             limit: 50,
         };
         assert!(validate_document_list_request(&invalid_query).is_err());
+        let whitespace_query = DocumentListRequest {
+            project: None,
+            source: None,
+            query: Some("   ".into()),
+            cursor: None,
+            limit: 50,
+        };
+        assert!(validate_document_list_request(&whitespace_query).is_err());
         let invalid_scope = DocumentListRequest {
             project: Some("work\u{0000}personal".into()),
             source: None,
