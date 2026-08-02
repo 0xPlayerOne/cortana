@@ -1483,10 +1483,11 @@ function ServiceHealthIndicator({
     ['embedding', 'server'].includes(service.name)
   )
   const coreLoaded = core.filter((service) => service.loaded).length
-  const attention = core.some(
+  const coreExitFailure = core.some(
     (service) => service.last_exit_status !== null && service.last_exit_status !== 0
   )
-  const state = !report.supported || attention || coreLoaded < core.length ? 'warning' : 'healthy'
+  const coreAttention = core.length === 0 || coreLoaded < core.length || coreExitFailure
+  const state = !report.supported || coreAttention ? 'warning' : 'healthy'
   const detail = report.services
     .map(
       (service) =>
@@ -1495,7 +1496,7 @@ function ServiceHealthIndicator({
     .join(' · ')
   const label = !report.supported
     ? `Services: unsupported on ${report.platform}`
-    : attention
+    : coreAttention
       ? 'Services: core attention'
       : `Services: core ${coreLoaded}/${core.length} online`
   return (

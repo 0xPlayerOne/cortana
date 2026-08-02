@@ -89,17 +89,17 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationO
         "source {} is not a Google connector",
         source.name
     );
-    let token_path = required_secure_path(source, source.token.as_ref(), "token")?;
+    let token_path = configured_token_path(config, source)?;
     let client_path = required_secure_path(source, source.oauth_client.as_ref(), "OAuth client")?;
-    ensure_outside_filesystem_roots(config, token_path, "token")?;
+    ensure_outside_filesystem_roots(config, &token_path, "token")?;
     ensure_outside_filesystem_roots(config, client_path, "OAuth client")?;
     anyhow::ensure!(
-        token_path != client_path,
+        token_path.as_path() != client_path,
         "Google token and OAuth client paths must be different"
     );
     let client = read_client_file(client_path)?;
-    let scopes = scopes_for_token(config, token_path)?;
-    let existing_refresh_token = read_existing_refresh_token(token_path)?;
+    let scopes = scopes_for_token(config, &token_path)?;
+    let existing_refresh_token = read_existing_refresh_token(&token_path)?;
 
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -152,7 +152,7 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationO
             + ChronoDuration::seconds(i64::try_from(token.expires_in).unwrap_or(3600)))
         .to_rfc3339(),
     };
-    write_token(token_path, &stored)?;
+    write_token(&token_path, &stored)?;
 
     Ok(AuthorizationOutcome {
         source: source.name.clone(),
@@ -235,6 +235,27 @@ fn required_secure_path<'a>(
     Ok(path)
 }
 
+fn configured_token_path(config: &Config, source: &SourceConfig) -> Result<PathBuf> {
+    if let Some(path) = source.token.as_ref() {
+        return Ok(required_secure_path(source, Some(path), "token")?.to_path_buf());
+    }
+    let token_env = source
+        .token_env
+        .as_deref()
+        .filter(|name| !name.is_empty())
+        .with_context(|| {
+            format!(
+                "Google source {} requires a token file or token path environment variable",
+                source.name
+            )
+        })?;
+    let value = config.environment_value(token_env).with_context(|| {
+        format!("Google token path environment variable {token_env} is not set")
+    })?;
+    let path = PathBuf::from(value);
+    Ok(required_secure_path(source, Some(&path), "token")?.to_path_buf())
+}
+
 fn ensure_outside_filesystem_roots(config: &Config, path: &Path, label: &str) -> Result<()> {
     for source in config.sources.iter().filter(|source| {
         source.kind == "filesystem" && source.root.as_deref().is_some_and(Path::is_absolute)
@@ -251,11 +272,14 @@ fn ensure_outside_filesystem_roots(config: &Config, path: &Path, label: &str) ->
 
 fn scopes_for_token(config: &Config, token_path: &Path) -> Result<Vec<String>> {
     let mut scopes = Vec::new();
-    for source in config
-        .sources
-        .iter()
-        .filter(|source| source.token.as_deref() == Some(token_path))
-    {
+    for source in config.sources.iter().filter(|source| {
+        source.token.as_deref() == Some(token_path)
+            || source
+                .token_env
+                .as_deref()
+                .and_then(|name| config.environment_value(name))
+                .is_some_and(|value| Path::new(&value) == token_path)
+    }) {
         let scope = match source.kind.as_str() {
             "google-drive" => DRIVE_SCOPE,
             "gmail" => GMAIL_SCOPE,
@@ -833,6 +857,76 @@ mod tests {
             scopes_for_token(&config, &token).unwrap(),
             [CALENDAR_SCOPE, DRIVE_SCOPE, GMAIL_SCOPE]
         );
+    }
+
+    #[test]
+    fn token_path_environment_value_can_authorize_and_share_scopes() {
+        let token = PathBuf::from("/tmp/cortana/env-token.json");
+        let source = |name: &str, kind: &str| SourceConfig {
+            name: name.into(),
+            kind: kind.into(),
+            enabled: false,
+            project: "personal".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: Some("GOOGLE_TOKEN_PATH".into()),
+            token: None,
+            oauth_client: Some(PathBuf::from("/tmp/cortana/client.json")),
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        let mut config = Config {
+            sources: vec![source("drive", "google-drive"), source("mail", "gmail")],
+            ..Config::default()
+        };
+        config
+            .environment
+            .insert("GOOGLE_TOKEN_PATH".into(), token.display().to_string());
+
+        assert_eq!(
+            configured_token_path(&config, &config.sources[0]).unwrap(),
+            token
+        );
+        assert_eq!(
+            scopes_for_token(&config, &token).unwrap(),
+            [DRIVE_SCOPE, GMAIL_SCOPE]
+        );
+    }
+
+    #[test]
+    fn token_path_environment_value_is_required_when_no_explicit_file_exists() {
+        let source = SourceConfig {
+            name: "drive".into(),
+            kind: "google-drive".into(),
+            enabled: false,
+            project: "personal".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: Some("MISSING_GOOGLE_TOKEN_PATH".into()),
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        let error = configured_token_path(&Config::default(), &source)
+            .expect_err("missing token path environment value must fail closed");
+        assert!(error.to_string().contains("MISSING_GOOGLE_TOKEN_PATH"));
     }
 
     #[test]

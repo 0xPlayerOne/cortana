@@ -333,9 +333,11 @@ impl SourceJobState {
         ) {
             return Err("browser authorization is available only for Google sources".into());
         }
-        if source.token_path.is_none() || source.oauth_client_path.is_none() {
+        if (source.token_path.is_none() && source.token_env.is_none())
+            || source.oauth_client_path.is_none()
+        {
             return Err(
-                "save both the Google token destination and Desktop OAuth client paths first"
+                "save a Google token destination (file or path environment variable) and Desktop OAuth client path first"
                     .into(),
             );
         }

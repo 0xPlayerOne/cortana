@@ -108,7 +108,7 @@ stale or missing.
 
 Source authorization and setup are separate fixed native boundaries. For Google sources, the
 renderer can request authorization only for an exact saved source with an absolute token
-destination and Desktop OAuth client path. Native Rust invokes the bundled sidecar with the fixed
+destination (the `token` field or the path held by `token_env`) and Desktop OAuth client path. Native Rust invokes the bundled sidecar with the fixed
 `authorize-google SOURCE` shape. The sidecar uses Authorization Code + PKCE, a random loopback
 port and state value, fixed HTTPS Google endpoints, bounded callback and token-exchange timeouts,
 minimum read-only scopes, and owner-only atomic token writes. Tokens and authorization codes never

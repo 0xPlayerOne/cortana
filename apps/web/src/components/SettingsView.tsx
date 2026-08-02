@@ -2425,7 +2425,7 @@ function SourcesSection({
                       type="button"
                       disabled={
                         !canValidate ||
-                        !source.token_path ||
+                        (!source.token_path && !source.token_env) ||
                         !source.oauth_client_path ||
                         Boolean(activeJob)
                       }
@@ -2608,7 +2608,7 @@ function SourcesSection({
                   <>
                     <Field
                       label="Google OAuth token file"
-                      hint="private token created by Cortana after authorization"
+                      hint="private token created by Cortana; optional when a token path environment variable is configured"
                       wide
                     >
                       <div className="path-input">

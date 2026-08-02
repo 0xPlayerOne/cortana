@@ -56,6 +56,11 @@ const googleSource: SourceSettings = {
   oauth_client_path: '/Users/you/Downloads/google-oauth-client.json',
 }
 
+const googleEnvOnlySource: SourceSettings = {
+  ...googleSource,
+  token_path: null,
+}
+
 const state = {
   settings: desktopSettings as DesktopSettings,
   sourceJob: null as DesktopSourceJob | null,
@@ -901,6 +906,22 @@ test('Google source authorization action starts a tracked browser job', async ()
     state.sourceJob = null
     state.authorizationCalls = []
     window.confirm = originalConfirm
+  }
+})
+
+test('Google authorization accepts a token path supplied through the configured environment variable', async () => {
+  const originalSettings = state.settings
+  state.settings = { ...desktopSettings, sources: [googleEnvOnlySource] }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    const authorize = await screen.findByRole('button', { name: 'Authorize' })
+    expect(authorize.hasAttribute('disabled')).toBe(false)
+  } finally {
+    state.settings = originalSettings
   }
 })
 

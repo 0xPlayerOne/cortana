@@ -123,6 +123,8 @@ Use separate token paths for different Google accounts or trust domains. The OAu
 configuration, not a user token, but Cortana still rejects symlinks, broad permissions, and
 oversized client files.
 The token destination must be outside a filesystem source root.
+When `token_env` is used instead of `token`, its configured value is the private token destination;
+Desktop authorization can create or update that file after the OAuth client path is supplied.
 
 Authorization does not validate, sync, embed, index, or reconcile the source. After consent,
 run the bounded validation described below. Google may not return a new refresh token on a later
