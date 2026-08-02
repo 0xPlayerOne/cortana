@@ -23,6 +23,7 @@ import type {
   Evidence,
 } from '../types'
 import { describeSourceJobProgress, recentCompletedJobs } from '../sourceJobs'
+import { describeSyncRunProgress } from '../operations'
 import { useClipboardCopy } from '../useClipboardCopy'
 
 export type UtilityKind = 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
@@ -234,7 +235,8 @@ function InboxView({
                   <strong>{run.source}</strong>
                   <span>
                     {run.project} · started {new Date(run.started_at).toLocaleString()} ·{' '}
-                    {run.documents ?? '—'} documents · {run.bytes ?? '—'} bytes
+                    {describeSyncRunProgress(run)} · {run.documents ?? '—'} documents ·{' '}
+                    {run.bytes ?? '—'} bytes
                   </span>
                 </div>
                 <StatusPill status={run.status} />

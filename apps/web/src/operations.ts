@@ -25,6 +25,36 @@ export function embeddingLabel(fingerprint: string | null | undefined): string {
   return model ? `${model} · ${dimension}d` : fingerprint
 }
 
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainder = seconds % 60
+  if (minutes < 60) return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`
+}
+
+/**
+ * Return bounded wall-clock telemetry for a persisted source sync. The API
+ * records a budget even while a run is active, so the UI can show progress
+ * without inventing document counts that are only known after completion.
+ */
+export function describeSyncRunProgress(
+  run: SourceSyncSummary,
+  nowMilliseconds = Date.now()
+): string {
+  const started = Date.parse(run.started_at)
+  if (!Number.isFinite(started)) return 'elapsed unavailable'
+  const completed = run.completed_at ? Date.parse(run.completed_at) : nowMilliseconds
+  const end = Number.isFinite(completed) ? completed : nowMilliseconds
+  const elapsed = Math.max(0, Math.floor((end - started) / 1000))
+  const budget = Math.max(0, Math.floor(run.budget_seconds))
+  return budget > 0
+    ? `${formatDuration(elapsed)} / ${formatDuration(budget)}`
+    : `${formatDuration(elapsed)} elapsed`
+}
+
 export type OperationalSource = {
   name: string
   source: string

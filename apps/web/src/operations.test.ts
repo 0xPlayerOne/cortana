@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 
 import { demoStatus } from './demo'
-import { embeddingLabel, isLoopbackUrl, operationalSources, sourceHealth } from './operations'
+import {
+  describeSyncRunProgress,
+  embeddingLabel,
+  isLoopbackUrl,
+  operationalSources,
+  sourceHealth,
+} from './operations'
 
 describe('operational source visibility', () => {
   test('includes configured disabled sources that remain indexed', () => {
@@ -20,6 +26,16 @@ describe('operational source visibility', () => {
 
     expect(discord?.sync?.status).toBe('budget_exceeded')
     expect(sourceHealth(discord!).state).toBe('failed')
+  })
+
+  test('reports elapsed sync time against the persisted safety budget', () => {
+    const run = {
+      ...demoStatus.sync_runs[0],
+      started_at: '2026-01-01T00:00:00Z',
+      completed_at: null,
+      budget_seconds: 900,
+    }
+    expect(describeSyncRunProgress(run, Date.parse('2026-01-01T00:01:05Z'))).toBe('1m 5s / 15m')
   })
 
   test('surfaces authorization readiness warnings in source health', () => {
