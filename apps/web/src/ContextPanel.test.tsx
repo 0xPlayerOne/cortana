@@ -108,3 +108,30 @@ test('Context panel copy action confirms successful copy', async () => {
 
   Object.defineProperty(navigator, 'clipboard', { value: originalClipboard, configurable: true })
 })
+
+test('Context panel copy falls back when the async clipboard API is unavailable', async () => {
+  const originalClipboard = navigator.clipboard
+  const originalExecCommand = document.execCommand
+  let copiedCommand = ''
+  Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+  Object.defineProperty(document, 'execCommand', {
+    value: (command: string) => {
+      copiedCommand = command
+      return true
+    },
+    configurable: true,
+  })
+
+  try {
+    renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: 'Copy agent context' }))
+    await waitFor(() => expect(screen.getByText('Context copied')).toBeTruthy())
+    expect(copiedCommand).toBe('copy')
+  } finally {
+    Object.defineProperty(navigator, 'clipboard', { value: originalClipboard, configurable: true })
+    Object.defineProperty(document, 'execCommand', {
+      value: originalExecCommand,
+      configurable: true,
+    })
+  }
+})
