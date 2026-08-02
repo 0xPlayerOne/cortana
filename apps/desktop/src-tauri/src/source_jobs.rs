@@ -473,12 +473,7 @@ impl SourceJobState {
             .values()
             .map(|job| job.snapshot.clone())
             .collect::<Vec<_>>();
-        snapshots.sort_by(|left, right| {
-            right
-                .started_at_unix_seconds
-                .cmp(&left.started_at_unix_seconds)
-                .then_with(|| right.id.cmp(&left.id))
-        });
+        snapshots.sort_by(|left, right| compare_job_order(right, left));
         snapshots.truncate(MAX_JOBS);
         Ok(snapshots)
     }
@@ -617,7 +612,8 @@ fn prune_jobs(jobs: &mut BTreeMap<String, SourceJob>) {
     while jobs.len() >= MAX_JOBS {
         let completed = jobs
             .iter()
-            .find(|(_, job)| !matches!(job.snapshot.status, "running" | "cancelling"))
+            .filter(|(_, job)| !matches!(job.snapshot.status, "running" | "cancelling"))
+            .min_by(|(_, left), (_, right)| compare_job_order(&left.snapshot, &right.snapshot))
             .map(|(id, _)| id.clone());
         if let Some(id) = completed {
             jobs.remove(&id);
@@ -625,6 +621,23 @@ fn prune_jobs(jobs: &mut BTreeMap<String, SourceJob>) {
             break;
         }
     }
+}
+
+/// Job ids include a monotonic process-local sequence after the launch time.
+/// Compare that suffix numerically so jobs created within one second retain
+/// their actual launch order instead of relying on lexicographic ordering.
+fn compare_job_order(left: &SourceJobSnapshot, right: &SourceJobSnapshot) -> std::cmp::Ordering {
+    left.started_at_unix_seconds
+        .cmp(&right.started_at_unix_seconds)
+        .then_with(|| match (job_sequence(&left.id), job_sequence(&right.id)) {
+            (Some(left), Some(right)) => left.cmp(&right),
+            _ => left.id.cmp(&right.id),
+        })
+        .then_with(|| left.id.cmp(&right.id))
+}
+
+fn job_sequence(id: &str) -> Option<u64> {
+    id.rsplit_once('-')?.1.parse().ok()
 }
 
 fn validation_args(source: &str) -> Vec<String> {
@@ -980,8 +993,40 @@ mod tests {
 
         let snapshots = state.snapshots().expect("snapshots");
         assert_eq!(snapshots.len(), MAX_JOBS);
-        assert_eq!(snapshots.first().map(|item| item.id.as_str()), Some("source-22"));
-        assert_eq!(snapshots.last().map(|item| item.id.as_str()), Some("source-3"));
+        assert_eq!(
+            snapshots.first().map(|item| item.id.as_str()),
+            Some("source-22")
+        );
+        assert_eq!(
+            snapshots.last().map(|item| item.id.as_str()),
+            Some("source-3")
+        );
+    }
+
+    #[test]
+    fn snapshots_order_same_second_jobs_by_numeric_sequence() {
+        let state = SourceJobState::default();
+        let mut jobs = state.jobs.lock().expect("job state");
+        for id in ["source-1785000000-9", "source-1785000000-10"] {
+            let snapshot = snapshot_for(id, 1_785_000_000);
+            jobs.insert(
+                id.into(),
+                SourceJob {
+                    snapshot,
+                    child: None,
+                },
+            );
+        }
+        drop(jobs);
+
+        let snapshots = state.snapshots().expect("snapshots");
+        assert_eq!(
+            snapshots
+                .iter()
+                .map(|snapshot| snapshot.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["source-1785000000-10", "source-1785000000-9"]
+        );
     }
 
     #[test]
