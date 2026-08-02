@@ -64,7 +64,15 @@ else
 fi
 
 uv venv --python 3.11 --allow-existing "$venv_dir"
-uv pip install --python "$venv_dir/bin/python" "${wheel}[ingestion]"
+if [[ -x "$venv_dir/bin/python" ]]; then
+  venv_python="$venv_dir/bin/python"
+elif [[ -x "$venv_dir/Scripts/python.exe" ]]; then
+  venv_python="$venv_dir/Scripts/python.exe"
+else
+  echo "uv did not create a usable Python executable in $venv_dir" >&2
+  exit 1
+fi
+uv pip install --python "$venv_python" "${wheel}[ingestion]"
 
 if [[ ! -f "$config_path" ]]; then
   "$bin_dir/cortana" --config "$config_path" init \

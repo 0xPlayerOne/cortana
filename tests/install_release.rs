@@ -16,7 +16,7 @@ fn executable(path: &Path, body: &str) {
     fs::set_permissions(path, permissions).expect("set executable permissions");
 }
 
-fn release_fixture() -> (tempfile::TempDir, PathBuf, PathBuf) {
+fn release_fixture(uname: &str) -> (tempfile::TempDir, PathBuf, PathBuf) {
     let directory = tempdir().expect("temporary directory");
     let root = directory.path();
     let archive = root.join("archive");
@@ -61,18 +61,30 @@ set -eu
 if [[ "${1:-}" == "venv" ]]; then
   for argument in "$@"; do destination="$argument"; done
   mkdir -p "$destination/bin"
+  touch "$destination/bin/python"
+  chmod 755 "$destination/bin/python"
+  if [[ "${CORTANA_TEST_WINDOWS_VENV:-0}" == "1" ]]; then
+    mkdir -p "$destination/Scripts"
+    touch "$destination/Scripts/python.exe"
+    chmod 755 "$destination/Scripts/python.exe"
+    rm -f "$destination/bin/python"
+  fi
 fi
 "#,
     );
     executable(
         &fake_bin.join("uname"),
-        "#!/usr/bin/env bash\nprintf 'Darwin\\n'\n",
+        &format!("#!/usr/bin/env bash\nprintf '{}\\n'\n", uname),
     );
     (directory, archive, log)
 }
 
 fn run_installer(enable_sync: bool) -> String {
-    let (directory, archive, log) = release_fixture();
+    run_installer_for_platform(enable_sync, "Darwin", false)
+}
+
+fn run_installer_for_platform(enable_sync: bool, uname: &str, windows_venv: bool) -> String {
+    let (directory, archive, log) = release_fixture(uname);
     let root = directory.path();
     let path = format!(
         "{}:{}",
@@ -89,6 +101,10 @@ fn run_installer(enable_sync: bool) -> String {
         .env("CORTANA_INSTALL_PREFIX", root.join("prefix"))
         .env("CORTANA_CONFIG", root.join("config/cortana/config.toml"))
         .env("CORTANA_TEST_LOG", &log)
+        .env(
+            "CORTANA_TEST_WINDOWS_VENV",
+            if windows_venv { "1" } else { "0" },
+        )
         .env(
             "CORTANA_ENABLE_SYNC_SERVICE",
             if enable_sync { "1" } else { "0" },
@@ -117,4 +133,10 @@ fn release_install_requires_explicit_sync_opt_in() {
         .find(|line| line.contains(" service install "))
         .expect("service install invocation");
     assert!(service.contains("--enable-sync-service"));
+}
+
+#[test]
+fn release_install_supports_windows_uv_venv_layout() {
+    let log = run_installer_for_platform(false, "MINGW64_NT", true);
+    assert!(log.lines().any(|line| line.contains(" init ")));
 }
