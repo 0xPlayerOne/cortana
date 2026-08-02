@@ -195,14 +195,27 @@ export function App() {
     let unlistenFocus: (() => void) | undefined
     if (isDesktopApp && '__TAURI_INTERNALS__' in window) {
       void import('@tauri-apps/api/window')
-        .then(({ getCurrentWindow }) =>
-          getCurrentWindow().onFocusChanged(({ payload }) => {
+        .then(({ getCurrentWindow }) => {
+          const currentWindow = getCurrentWindow()
+          void currentWindow
+            .isFocused()
+            .then((payload) => {
+              if (!disposed) {
+                focused.current = payload
+                syncForeground()
+              }
+            })
+            .catch(() => {
+              // The browser visibility and focus events remain the fallback
+              // when the native focus snapshot is unavailable at startup.
+            })
+          return currentWindow.onFocusChanged(({ payload }) => {
             if (!disposed) {
               focused.current = payload
               syncForeground()
             }
           })
-        )
+        })
         .then((unlisten) => {
           if (disposed) unlisten()
           else unlistenFocus = unlisten
