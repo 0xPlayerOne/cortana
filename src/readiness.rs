@@ -31,17 +31,18 @@ pub async fn run(
     max_backup_age_hours: u64,
     allow_sync_service: bool,
 ) -> ReadinessReport {
-    let mut checks = Vec::new();
-    checks.push(database_check(store));
-    checks.push(public_acl_check(config, store));
-    checks.push(embedding_check(embedder).await);
-    checks.push(api_check(api_url).await);
-    checks.push(backup_check(
-        &config.data_dir.join("backups"),
-        max_backup_age_hours,
-    ));
-    checks.push(sync_check(allow_sync_service));
-    checks.push(query_check(config).await);
+    let database = database_check(store);
+    let acl = public_acl_check(config, store);
+    let backup = backup_check(&config.data_dir.join("backups"), max_backup_age_hours);
+    let sync = sync_check(allow_sync_service);
+    // These probes do not share mutable state. Run them together so readiness
+    // is bounded by the slowest external dependency rather than their sum.
+    let (embedding, api, query) = tokio::join!(
+        embedding_check(embedder),
+        api_check(api_url),
+        query_check(config),
+    );
+    let checks = vec![database, acl, embedding, api, backup, sync, query];
     ReadinessReport {
         passed: checks.iter().all(|check| check.passed),
         query_mode: if config.query.synthesis_enabled {
