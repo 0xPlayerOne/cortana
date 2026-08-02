@@ -680,6 +680,13 @@ function ServicesSection({
   const mountedRef = useRef(true)
   const servicesRequestRef = useRef(0)
 
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
   const isFreshServicesRequest = (requestId: number) => {
     return mountedRef.current && requestId === servicesRequestRef.current
   }
@@ -716,16 +723,10 @@ function ServicesSection({
   }
 
   useEffect(() => {
-    mountedRef.current = true
-    if (externalServices !== undefined || !foreground) {
-      return () => {
-        mountedRef.current = false
-      }
-    }
+    if (externalServices !== undefined || !foreground) return
     void refresh()
     const timer = window.setInterval(() => void refresh(), 15_000)
     return () => {
-      mountedRef.current = false
       window.clearInterval(timer)
     }
   }, [externalServices, foreground])
@@ -788,9 +789,10 @@ function ServicesSection({
     })
     try {
       const next = await runDesktopServiceAction(service.name, action)
-      if (!mountedRef.current) return
-      setReport(next)
-      onServicesError?.('')
+      if (mountedRef.current || onServices) {
+        setReport(next)
+        onServicesError?.('')
+      }
       onServiceActivity?.({
         target: service.name,
         action,
@@ -799,7 +801,7 @@ function ServicesSection({
       })
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Service action failed'
-      setLocalError(message)
+      if (mountedRef.current) setLocalError(message)
       onServiceActivity?.({
         target: service.name,
         action,
@@ -808,7 +810,7 @@ function ServicesSection({
       })
     } finally {
       actionInFlightRef.current = false
-      setBusy('')
+      if (mountedRef.current) setBusy('')
     }
   }
 
@@ -847,14 +849,15 @@ function ServicesSection({
     onServiceActivity?.({ target: 'core services', action, status: 'running', detail: null })
     try {
       const next = await runDesktopServicesActionAll(action)
-      if (!mountedRef.current) return
-      setReport(next)
-      onServicesError?.('')
+      if (mountedRef.current || onServices) {
+        setReport(next)
+        onServicesError?.('')
+      }
       onServiceActivity?.({ target: 'core services', action, status: 'succeeded', detail: null })
-      if (action === 'restart') onRestarted?.()
+      if (mountedRef.current && action === 'restart') onRestarted?.()
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : 'Whole-app service action failed'
-      setLocalError(message)
+      if (mountedRef.current) setLocalError(message)
       onServiceActivity?.({
         target: 'core services',
         action,
@@ -863,7 +866,7 @@ function ServicesSection({
       })
     } finally {
       actionInFlightRef.current = false
-      setBusy('')
+      if (mountedRef.current) setBusy('')
     }
   }
 
