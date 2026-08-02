@@ -1,6 +1,7 @@
 import { BookOpen, FileText, History, Link2, Network, Sparkles, Star } from 'lucide-react'
 import { type CSSProperties, useEffect, useState } from 'react'
 
+import { isDesktopApp, openDesktopUrl } from '../api'
 import type { AnswerResponse, BrainDocument, Evidence } from '../types'
 
 const tabs = [
@@ -10,6 +11,23 @@ const tabs = [
   { id: 'graph', label: 'Graph', icon: Network },
   { id: 'timeline', label: 'Timeline', icon: History },
 ] as const
+
+const externalUrlSchemes = new Set(['http:', 'https:', 'mailto:', 'file:'])
+
+async function openSourceLink(href: string) {
+  if (!isDesktopApp) return
+  try {
+    const parsed = new URL(href)
+    if (!externalUrlSchemes.has(parsed.protocol)) return
+  } catch {
+    return
+  }
+  try {
+    await openDesktopUrl(href)
+  } catch {
+    window.open(href, '_blank', 'noopener,noreferrer')
+  }
+}
 
 export type WorkspaceTab = (typeof tabs)[number]['id']
 
@@ -43,6 +61,14 @@ export function Workspace({
   onRetry: () => void
 }) {
   const active = evidence[selected] ?? null
+  const selectEvidenceByChunkId = (chunkId: string) => {
+    const next = evidence.findIndex((item) => item.chunk_id === chunkId)
+    if (next >= 0) {
+      onSelect(next)
+      onTabChange('sources')
+    }
+  }
+
   useEffect(() => {
     if (document) onTabChange('document')
   }, [document, onTabChange])
@@ -91,21 +117,9 @@ export function Workspace({
       ) : evidence.length === 0 ? (
         <EmptyState title="No evidence found" detail="Try a broader phrase or another source." />
       ) : tab === 'graph' ? (
-        <GraphView
-          evidence={evidence}
-          onSelect={(index) => {
-            onSelect(index)
-            onTabChange('sources')
-          }}
-        />
+        <GraphView evidence={evidence} onSelect={selectEvidenceByChunkId} />
       ) : tab === 'timeline' ? (
-        <TimelineView
-          evidence={evidence}
-          onSelect={(index) => {
-            onSelect(index)
-            onTabChange('sources')
-          }}
-        />
+        <TimelineView evidence={evidence} onSelect={selectEvidenceByChunkId} />
       ) : tab === 'answer' ? (
         <AnswerView
           query={query}
@@ -150,9 +164,16 @@ function BrainDocumentView({
           {document.uri && (
             <a
               href={document.uri}
-              target="_blank"
-              rel="noreferrer"
+              target={isDesktopApp ? undefined : '_blank'}
+              rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
+              onClick={(event) => {
+                if (!isDesktopApp) return
+                const uri = document.uri
+                if (!uri) return
+                event.preventDefault()
+                void openSourceLink(uri)
+              }}
             >
               <Link2 size={17} />
             </a>
@@ -275,7 +296,19 @@ function DocumentView({
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
           </button>
           {active.uri && (
-            <a href={active.uri} target="_blank" rel="noreferrer" aria-label="Open original source">
+            <a
+              href={active.uri}
+              target={isDesktopApp ? undefined : '_blank'}
+              rel={isDesktopApp ? undefined : 'noreferrer'}
+              aria-label="Open original source"
+              onClick={(event) => {
+                if (!isDesktopApp) return
+                const uri = active.uri
+                if (!uri) return
+                event.preventDefault()
+                void openSourceLink(uri)
+              }}
+            >
               <Link2 size={17} />
             </a>
           )}
@@ -385,7 +418,7 @@ function GraphView({
   onSelect,
 }: {
   evidence: Evidence[]
-  onSelect: (index: number) => void
+  onSelect: (chunkId: string) => void
 }) {
   return (
     <div className="graph-view">
@@ -401,7 +434,7 @@ function GraphView({
               '--angle': `${(index / Math.min(evidence.length, 8)) * Math.PI * 2}rad`,
             } as CSSProperties
           }
-          onClick={() => onSelect(index)}
+          onClick={() => onSelect(item.chunk_id)}
         >
           <FileText size={17} />
           <span>{item.title}</span>
@@ -416,19 +449,19 @@ function TimelineView({
   onSelect,
 }: {
   evidence: Evidence[]
-  onSelect: (index: number) => void
+  onSelect: (chunkId: string) => void
 }) {
   return (
     <div className="timeline-view">
       <h1>Evidence timeline</h1>
       {evidence
-        .map((item, index) => ({ item, index }))
-        .sort((left, right) => right.item.updated_at.localeCompare(left.item.updated_at))
-        .map(({ item, index }) => (
+        .map((item) => item)
+        .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+        .map((item) => (
           <button
             key={item.chunk_id}
             aria-label={`Timeline evidence: ${item.title}`}
-            onClick={() => onSelect(index)}
+            onClick={() => onSelect(item.chunk_id)}
           >
             <time>{new Date(item.updated_at).toLocaleDateString()}</time>
             <i />

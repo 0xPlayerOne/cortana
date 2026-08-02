@@ -248,6 +248,20 @@ fn desktop_project_open() -> Result<(), String> {
     open::that(PROJECT_URL).map_err(|error| format!("open Cortana project page: {error}"))
 }
 
+fn validate_external_url(url: &str) -> Result<(), String> {
+    let parsed = Url::parse(url).map_err(|error| format!("invalid URL: {error}"))?;
+    match parsed.scheme() {
+        "http" | "https" | "mailto" | "file" => Ok(()),
+        _ => Err(format!("unsupported URL scheme: {}", parsed.scheme())),
+    }
+}
+
+#[tauri::command]
+fn desktop_url_open(url: String) -> Result<(), String> {
+    validate_external_url(&url)?;
+    open::that_detached(url).map_err(|error| format!("open external URL: {error}"))
+}
+
 #[tauri::command]
 fn desktop_info(app: AppHandle) -> DesktopInfo {
     DesktopInfo {
@@ -629,6 +643,7 @@ pub fn run() {
             brain_audit,
             desktop_audit,
             desktop_project_open,
+            desktop_url_open,
             desktop_info,
             desktop_autostart_set,
             desktop_services_status,
@@ -736,5 +751,15 @@ mod tests {
         assert!(validate_document_list_request(&invalid_query).is_err());
         assert!(validate_document_id(&"a".repeat(64)).is_ok());
         assert!(validate_document_id("../store.sqlite3").is_err());
+    }
+
+    #[test]
+    fn validates_external_url_schemes_for_open_bridge() {
+        assert!(validate_external_url("https://example.com").is_ok());
+        assert!(validate_external_url("http://127.0.0.1").is_ok());
+        assert!(validate_external_url("mailto:help@example.com").is_ok());
+        assert!(validate_external_url("file:///tmp/cv.pdf").is_ok());
+        assert!(validate_external_url("ftp://example.com").is_err());
+        assert!(validate_external_url("javascript:alert(1)").is_err());
     }
 }

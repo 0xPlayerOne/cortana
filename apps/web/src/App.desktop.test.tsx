@@ -137,6 +137,19 @@ test('the footer updates shortcut opens the updates section directly', async () 
   await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
 })
 
+test('source settings opens the Sources section directly', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+
+  fireEvent.click(screen.getByLabelText('Source settings'))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+  )
+
+  const sources = screen.getByRole('button', { name: 'Sources' })
+  expect(sources.className).toContain('active')
+})
+
 test('running source jobs stay visible in the shell after leaving the settings view', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true

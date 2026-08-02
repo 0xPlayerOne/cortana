@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 
 import { demoEvidence, demoStatus } from './demo'
 import { answerResponse } from './test/fixtures'
-import type { AnswerResponse, BrainStatus, ContextBundle } from './types'
+import type { AnswerResponse, BrainDocument, BrainStatus, ContextBundle } from './types'
 
 afterEach(cleanup)
 
@@ -28,6 +28,15 @@ const state = {
   status: demoStatus as BrainStatus | null,
   answer: null as ((query?: string) => Promise<AnswerResponse>) | null,
   context: null as ContextBundle | null,
+  getContext: null as
+    | ((
+        query: string,
+        project?: string,
+        source?: string,
+        signal?: AbortSignal
+      ) => Promise<ContextBundle>)
+    | null,
+  getDocument: null as ((id: string, signal?: AbortSignal) => Promise<BrainDocument>) | null,
 }
 
 mock.module('./api', () => ({
@@ -38,11 +47,16 @@ mock.module('./api', () => ({
   getDocuments: () => Promise.resolve({ documents: [], next_cursor: null }),
   getAnswer: (query?: string) =>
     state.answer ? state.answer(query) : Promise.reject(new Error('Answer request failed (503)')),
-  getDocument: () => Promise.reject(new Error('Document unavailable')),
-  getContext: () =>
-    state.context
-      ? Promise.resolve(state.context)
-      : Promise.reject(new Error('Context retrieval failed (503)')),
+  getDocument: (id: string, signal?: AbortSignal) =>
+    state.getDocument
+      ? state.getDocument(id, signal)
+      : Promise.reject(new Error('Document unavailable')),
+  getContext: (query: string, project?: string, source?: string, signal?: AbortSignal) =>
+    state.getContext
+      ? state.getContext(query, project, source, signal)
+      : state.context
+        ? Promise.resolve(state.context)
+        : Promise.reject(new Error('Context retrieval failed (503)')),
   getDesktopSettings: () => Promise.reject(new Error('Settings are available in Cortana Desktop')),
   getDesktopInfo: () =>
     Promise.reject(new Error('Desktop information is available in Cortana Desktop')),
@@ -152,6 +166,66 @@ test('graph and timeline evidence actions open the selected source', async () =>
     )
     expect(screen.getByRole('heading', { level: 1, name: 'Deployment playbook' })).toBeTruthy()
   }
+})
+
+test('timeline order controls navigate to the selected evidence entry', async () => {
+  state.answer = () =>
+    Promise.resolve({
+      ...answerResponse,
+      evidence: [
+        {
+          chunk_id: 'old-notes',
+          source: 'personal-notes',
+          source_id: 'notes-old',
+          title: 'Old notes',
+          uri: null,
+          content: 'Old evidence excerpt',
+          score: 0.55,
+          semantic_rank: 4,
+          lexical_rank: null,
+          updated_at: '2025-01-01T00:00:00Z',
+        },
+        {
+          chunk_id: 'new-notes',
+          source: 'personal-notes',
+          source_id: 'notes-new',
+          title: 'Newest notes',
+          uri: null,
+          content: 'New evidence excerpt',
+          score: 0.92,
+          semantic_rank: 1,
+          lexical_rank: null,
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ],
+      query: 'timeline sort',
+      answer: 'Sorted evidence appears in a date timeline.',
+      plan: {
+        ...answerResponse.plan,
+        queries: ['timeline sort'],
+      },
+    })
+
+  await renderApp()
+
+  const input = screen.getByLabelText('Search your knowledge')
+  fireEvent.change(input, { target: { value: 'timeline sort' } })
+  fireEvent.submit(input.closest('form')!)
+
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'timeline sort' })).toBeTruthy()
+  )
+
+  fireEvent.click(railButton('Timeline'))
+  await waitFor(() =>
+    expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true')
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Timeline evidence: Old notes' }))
+  await waitFor(() =>
+    expect(screen.getByRole('tab', { name: /Evidence/ }).getAttribute('aria-selected')).toBe('true')
+  )
+  expect(screen.getByRole('heading', { level: 1, name: 'Old notes' })).toBeTruthy()
 })
 
 test('Inbox renders current sync attention and a truthful idle empty state', async () => {
