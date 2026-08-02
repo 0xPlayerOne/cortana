@@ -518,7 +518,9 @@ async function invokeDesktop<T>(
     return result
   } catch (caught) {
     if (caught instanceof Error) throw caught
-    throw new Error(typeof caught === 'string' ? caught : 'Desktop request failed')
+    throw new Error(typeof caught === 'string' ? caught : 'Desktop request failed', {
+      cause: caught,
+    })
   }
 }
 
