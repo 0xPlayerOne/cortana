@@ -46,6 +46,7 @@ export function SourcePanel({
   open,
   status,
   statusError,
+  sourceJobError = '',
   workspace,
   workspaces,
   documentQuery,
@@ -68,6 +69,7 @@ export function SourcePanel({
   open: boolean
   status: BrainStatus | null
   statusError: string
+  sourceJobError?: string
   workspace: string
   workspaces: WorkspaceSettings[]
   documentQuery: string
@@ -160,6 +162,11 @@ export function SourcePanel({
             </div>
           ))}
         </div>
+      )}
+      {sourceJobError && (
+        <p className="document-list-error source-job-error" role="alert">
+          {sourceJobError}
+        </p>
       )}
       {statusLoading ? (
         <p className="document-list-state" role="status">

@@ -20,7 +20,7 @@ const workspace: WorkspaceSettings = {
   color: '#5A9BD5',
 }
 
-function renderPanel(statusValue: BrainStatus | null, statusError: string) {
+function renderPanel(statusValue: BrainStatus | null, statusError: string, sourceJobError = '') {
   const docs: BrainDocumentSummary[] = []
   const noJobs: DesktopSourceJob[] = []
   render(
@@ -28,6 +28,7 @@ function renderPanel(statusValue: BrainStatus | null, statusError: string) {
       open={false}
       status={statusValue}
       statusError={statusError}
+      sourceJobError={sourceJobError}
       workspace=""
       workspaces={[workspace]}
       documentQuery=""
@@ -58,6 +59,12 @@ test('SourcePanel surfaces status errors instead of empty-source phantom state',
   renderPanel(null, 'Status unavailable')
   expect(screen.getByText('Status unavailable')).toBeTruthy()
   expect(screen.queryByText('No indexed sources yet.')).toBeNull()
+})
+
+test('SourcePanel keeps cancellation failures separate from runtime health', () => {
+  renderPanel(demoStatus, '', 'Source job cancellation failed')
+  expect(screen.getByRole('alert').textContent).toBe('Source job cancellation failed')
+  expect(screen.queryByText('Status unavailable')).toBeNull()
 })
 
 test('SourcePanel source and settings shortcuts open the Sources settings section', () => {

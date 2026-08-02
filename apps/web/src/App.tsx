@@ -86,6 +86,7 @@ export function App() {
   const [desktopReadiness, setDesktopReadiness] = useState<DesktopReadiness | null>(null)
   const [readinessActivity, setReadinessActivity] = useState<DesktopReadinessActivity | null>(null)
   const [serviceActivity, setServiceActivity] = useState<DesktopServiceActivity | null>(null)
+  const [sourceJobError, setSourceJobError] = useState('')
   const [hindsightStatus, setHindsightStatus] = useState<DesktopHindsightStatus | null>(null)
   const [honchoStatus, setHonchoStatus] = useState<DesktopHonchoStatus | null>(null)
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
@@ -742,10 +743,14 @@ export function App() {
   }
 
   function cancelSourceJob(id: string) {
+    setSourceJobError('')
     void cancelDesktopSourceValidation(id)
       .then(sourceJobs.remember)
+      .then(() => setSourceJobError(''))
       .catch((caught: unknown) => {
-        setStatusError(caught instanceof Error ? caught.message : 'Source job cancellation failed')
+        setSourceJobError(
+          caught instanceof Error ? caught.message : 'Source job cancellation failed'
+        )
       })
   }
 
@@ -921,6 +926,7 @@ export function App() {
             documentsError={documentsError}
             hasMoreDocuments={Boolean(documentCursor)}
             statusError={statusError}
+            sourceJobError={sourceJobError}
             onSelect={chooseSource}
             onSelectWorkspace={chooseWorkspace}
             onDocumentQueryChange={setDocumentQuery}
