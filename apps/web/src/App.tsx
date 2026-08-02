@@ -737,6 +737,14 @@ export function App() {
     window.setTimeout(() => document.getElementById('document-filter')?.focus(), 0)
   }
 
+  function cancelSourceJob(id: string) {
+    void cancelDesktopSourceValidation(id)
+      .then(sourceJobs.remember)
+      .catch((caught: unknown) => {
+        setStatusError(caught instanceof Error ? caught.message : 'Source job cancellation failed')
+      })
+  }
+
   function openGraph() {
     if (!canLeaveSettings()) return
     setView('knowledge')
@@ -913,6 +921,7 @@ export function App() {
               setView('settings')
             }}
             onClose={() => setLeftOpen(false)}
+            onCancelSourceJob={cancelSourceJob}
             jobs={sourceJobs.jobs}
           />
           <div
@@ -1006,15 +1015,7 @@ export function App() {
           onRetrieveContext={() => void retrieveAgentContext()}
           onOpenSettings={() => setView('settings')}
           onOpenProject={() => void openDesktopProject()}
-          onCancelSourceJob={(id) => {
-            void cancelDesktopSourceValidation(id)
-              .then(sourceJobs.remember)
-              .catch((caught: unknown) => {
-                setStatusError(
-                  caught instanceof Error ? caught.message : 'Source job cancellation failed'
-                )
-              })
-          }}
+          onCancelSourceJob={cancelSourceJob}
         />
       )}
       {commandPaletteOpen && (

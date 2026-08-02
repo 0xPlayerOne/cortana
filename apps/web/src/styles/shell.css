@@ -277,6 +277,32 @@
   white-space: nowrap;
 }
 
+.source-job-cancel {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0;
+  color: #d79a47;
+  border: 1px solid #604827;
+  border-radius: 4px;
+  background: transparent;
+}
+
+.source-job-cancel:hover:not(:disabled) {
+  color: #f1c078;
+  border-color: #8a6234;
+  background: #2b241b;
+}
+
+.source-job-cancel:disabled {
+  cursor: progress;
+  opacity: 0.55;
+}
+
 .source-job-item .spin {
   flex: 0 0 auto;
   color: #589bd8;

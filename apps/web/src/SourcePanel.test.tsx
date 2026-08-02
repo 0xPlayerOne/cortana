@@ -145,3 +145,53 @@ test('source selection is scoped to the active workspace when names repeat', () 
   expect(rows).toHaveLength(2)
   expect(rows.filter((row) => row.getAttribute('aria-pressed') === 'true')).toHaveLength(1)
 })
+
+test('active source jobs expose a cancellation control in the source panel', () => {
+  let cancelled = ''
+  const job: DesktopSourceJob = {
+    id: 'source-1-1',
+    operation: 'validation',
+    source: 'work-code',
+    kind: 'filesystem',
+    project: 'work',
+    acl: ['work'],
+    status: 'running',
+    summary: 'validating',
+    log: '',
+    started_at_unix_seconds: 1785000000,
+    completed_at_unix_seconds: null,
+    exit_code: null,
+    retryable: false,
+    writes_indexed_data: false,
+    budget: null,
+  }
+  render(
+    <SourcePanel
+      open={false}
+      status={demoStatus}
+      statusError=""
+      workspace="work"
+      workspaces={[workspace]}
+      documentQuery=""
+      selected=""
+      documents={[]}
+      selectedDocument=""
+      documentsLoading={false}
+      documentsError=""
+      hasMoreDocuments={false}
+      onSelect={() => {}}
+      onSelectWorkspace={() => {}}
+      onDocumentQueryChange={() => {}}
+      onSelectDocument={() => {}}
+      onLoadMoreDocuments={() => {}}
+      onOpenSourcesSettings={() => {}}
+      onClose={() => {}}
+      onCancelSourceJob={(id) => {
+        cancelled = id
+      }}
+      jobs={[job]}
+    />
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel work-code validation' }))
+  expect(cancelled).toBe('source-1-1')
+})

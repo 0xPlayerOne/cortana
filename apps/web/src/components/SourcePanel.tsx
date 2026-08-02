@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronRight,
+  CircleStop,
   Code2,
   Database,
   Folder,
@@ -61,6 +62,7 @@ export function SourcePanel({
   onLoadMoreDocuments,
   onOpenSourcesSettings,
   onClose,
+  onCancelSourceJob,
   jobs = [],
 }: {
   open: boolean
@@ -82,6 +84,7 @@ export function SourcePanel({
   onLoadMoreDocuments: () => void
   onOpenSourcesSettings: () => void
   onClose: () => void
+  onCancelSourceJob?: (id: string) => void
   jobs?: DesktopSourceJob[]
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
@@ -143,6 +146,17 @@ export function SourcePanel({
               <span>
                 {job.source} · {job.operation} · {job.status} · {describeSourceJobProgress(job)}
               </span>
+              {onCancelSourceJob && (
+                <button
+                  type="button"
+                  className="source-job-cancel"
+                  aria-label={`Cancel ${job.source} ${job.operation}`}
+                  disabled={job.status === 'cancelling'}
+                  onClick={() => onCancelSourceJob(job.id)}
+                >
+                  <CircleStop size={12} />
+                </button>
+              )}
             </div>
           ))}
         </div>
