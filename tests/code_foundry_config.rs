@@ -410,9 +410,17 @@ fn desktop_audit_caches_cargo_audit_binary() {
         ..desktop[cache_start + 1..]
             .find("\n      - name: ")
             .map_or(desktop.len(), |next| cache_start + 1 + next)];
+    let cache_major = cache_block.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("uses: actions/cache@v")?
+            .split_whitespace()
+            .next()?
+            .parse::<u32>()
+            .ok()
+    });
     assert!(
-        cache_block.contains("uses: actions/cache@v4"),
-        "cargo-audit cache must use actions/cache@v4:\n{cache_block}"
+        cache_major.is_some_and(|major| major >= 4),
+        "cargo-audit cache must use a supported actions/cache major (v4+):\n{cache_block}"
     );
     assert!(
         cache_block.contains("id: cache-cargo-audit"),
