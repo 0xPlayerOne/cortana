@@ -1456,7 +1456,7 @@ function ReadinessActivityIndicator({
   )
 }
 
-function ServiceHealthIndicator({
+export function ServiceHealthIndicator({
   report,
   error,
   onOpen,
@@ -1465,8 +1465,7 @@ function ServiceHealthIndicator({
   error: string
   onOpen: () => void
 }) {
-  if (!report && !error) return null
-  if (!report) {
+  if (error) {
     return (
       <button
         type="button"
@@ -1479,6 +1478,7 @@ function ServiceHealthIndicator({
       </button>
     )
   }
+  if (!report) return null
   const core = report.services.filter((service) =>
     ['embedding', 'server'].includes(service.name)
   )

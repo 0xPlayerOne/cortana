@@ -281,7 +281,7 @@ mock.module('./api', () => ({
   },
 }))
 
-const { App } = await import('./App')
+const { App, ServiceHealthIndicator } = await import('./App')
 
 test('desktop settings navigation opens the audit trail and renders both event sources', async () => {
   render(<App />)
@@ -325,6 +325,21 @@ test('desktop shell surfaces optional sidecar health without opening settings', 
   expect(screen.getByText('Services: core attention')).toBeTruthy()
   expect(screen.getByText('Hindsight: disabled')).toBeTruthy()
   expect(screen.getByText('Honcho: disabled')).toBeTruthy()
+})
+
+test('desktop shell does not present a stale service report after refresh failure', () => {
+  render(
+    <ServiceHealthIndicator
+      report={installedServiceReport}
+      error="service status transport failed"
+      onOpen={() => {}}
+    />
+  )
+
+  expect(screen.getByText('Services: unavailable')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Open service health' }).getAttribute('title')).toContain(
+    'service status transport failed'
+  )
 })
 
 test('query number fields keep drafts inside native bounds', async () => {
