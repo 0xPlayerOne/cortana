@@ -85,6 +85,7 @@ export const answerResponse: AnswerResponse = {
 export const desktopSettings: DesktopSettings = {
   config_path: '/Users/you/.config/cortana/config.toml',
   secret_file_path: '/Users/you/.config/cortana/secrets.env',
+  embedding_service_program: null,
   needs_setup: false,
   restart_required: false,
   workspaces: [

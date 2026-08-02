@@ -3147,6 +3147,13 @@ function EmbeddingSection({
       onClearSecret={onClearSecret}
       update={setEmbedding}
     >
+      <div className="settings-note">
+        <strong>Local service command:</strong>{' '}
+        {settings.embedding_service_program
+          ? `${settings.embedding_service_program} (managed in config.toml)`
+          : 'automatic command derived from the model and loopback endpoint'}
+        . Desktop preserves explicit executable commands but does not edit shell command arrays.
+      </div>
       <div className="form-grid compact">
         <NumberField
           label="Vector dimension"

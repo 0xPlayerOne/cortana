@@ -310,6 +310,24 @@ test('query number fields keep drafts inside native bounds', async () => {
   expect(cacheLifetime.value).toBe('0')
 })
 
+test('embedding settings explain local service command ownership', async () => {
+  const originalSettings = state.settings
+  state.settings = { ...desktopSettings, embedding_service_program: '/opt/text-embeddings-router' }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Embedding' }))
+    expect(
+      screen.getByText(/\/opt\/text-embeddings-router \(managed in config\.toml\)/)
+    ).toBeTruthy()
+    expect(screen.getByText(/does not edit shell command arrays/i)).toBeTruthy()
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
 test('settings add controls avoid reusing removed identifiers', async () => {
   const originalSettings = state.settings
   const originalConfirm = window.confirm

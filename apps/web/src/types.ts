@@ -255,6 +255,7 @@ export type AuthPrincipalSettings = {
 export type DesktopSettings = {
   config_path: string
   secret_file_path: string
+  embedding_service_program: string | null
   needs_setup: boolean
   restart_required: boolean
   workspaces: WorkspaceSettings[]

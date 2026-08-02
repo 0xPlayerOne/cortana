@@ -135,6 +135,9 @@ read-only in Desktop. When a saved source, provider, or agent reference is remov
 retires that now-unreferenced value from its managed file while leaving external files untouched.
 Advanced settings shows the effective owner-only secret-file path so operators can verify which
 file supplies provider and connector variables without exposing any secret values.
+Embedding settings also reports whether a local service executable is explicitly configured or
+will be derived from the model and loopback endpoint; Desktop preserves explicit command arrays
+but never accepts arbitrary shell commands from the renderer.
 
 The source editor supports the native filesystem, Apple Notes, Buzz, Google Drive, Gmail, Google
 Calendar, Slack, and Discord connector schemas. It can retain, disable, or remove an existing
