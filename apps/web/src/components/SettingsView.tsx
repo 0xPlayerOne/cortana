@@ -3108,29 +3108,27 @@ function SourcesSection({
                     </div>
                   </Field>
                 )}
+                <Field label="Source label" hint="identifier stored on indexed documents">
+                  <input
+                    value={source.source || ''}
+                    disabled={sourceLocked || !source.editable}
+                    maxLength={128}
+                    placeholder={source.name}
+                    onChange={(event) =>
+                      changeSource(index, { source: event.target.value || null })
+                    }
+                  />
+                </Field>
                 {source.kind === 'filesystem' && (
-                  <>
-                    <Field label="Source label" hint="identifier stored on indexed documents">
-                      <input
-                        value={source.source || ''}
-                        disabled={sourceLocked || !source.editable}
-                        maxLength={128}
-                        placeholder={source.name}
-                        onChange={(event) =>
-                          changeSource(index, { source: event.target.value || null })
-                        }
-                      />
-                    </Field>
-                    <Field label="Excluded paths" hint="comma or line separated, relative paths">
-                      <input
-                        value={source.exclude.join(', ')}
-                        disabled={sourceLocked || !source.editable}
-                        onChange={(event) =>
-                          changeSource(index, { exclude: splitList(event.target.value) })
-                        }
-                      />
-                    </Field>
-                  </>
+                  <Field label="Excluded paths" hint="comma or line separated, relative paths">
+                    <input
+                      value={source.exclude.join(', ')}
+                      disabled={sourceLocked || !source.editable}
+                      onChange={(event) =>
+                        changeSource(index, { exclude: splitList(event.target.value) })
+                      }
+                    />
+                  </Field>
                 )}
                 {isGoogleSource(source.kind) && (
                   <>

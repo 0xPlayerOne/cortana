@@ -1647,6 +1647,7 @@ test('Google source settings expose env-backed token credentials', async () => {
     await waitFor(() =>
       expect(screen.getByText('Google token path environment variable')).toBeTruthy()
     )
+    expect(screen.getByText('Source label')).toBeTruthy()
     expect(screen.getByText('Google token path value')).toBeTruthy()
   } finally {
     state.settings = desktopSettings
