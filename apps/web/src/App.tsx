@@ -16,6 +16,7 @@ import {
   getDesktopInfo,
   getDesktopInstaller,
   getDesktopHonchoStatus,
+  getDesktopServices,
   getDesktopSettings,
   getDesktopUpdate,
   getDocument,
@@ -58,6 +59,7 @@ import type {
   DesktopReadiness,
   DesktopReadinessActivity,
   DesktopServiceActivity,
+  DesktopServiceReport,
   DesktopSourceJob,
   DesktopUpdate,
   Evidence,
@@ -84,6 +86,8 @@ export function App() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('document')
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null)
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null)
+  const [desktopServices, setDesktopServices] = useState<DesktopServiceReport | null>(null)
+  const [desktopServicesError, setDesktopServicesError] = useState('')
   const [settingsSection, setSettingsSection] = useState<
     'readiness' | 'services' | 'updates' | 'sources' | 'hindsight' | 'honcho'
   >('readiness')
@@ -122,6 +126,7 @@ export function App() {
   const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
   const updatePollingRef = useRef(false)
   const sidecarPollingRef = useRef(false)
+  const servicesPollingRef = useRef(false)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
   const documentScopeRef = useRef(documentScope)
@@ -351,6 +356,36 @@ export function App() {
       .catch(() => {
         // The Updates section will surface a more specific updater error.
     })
+  }, [])
+
+  useEffect(() => {
+    if (!isDesktopApp) return
+    let disposed = false
+    const refresh = () => {
+      if (disposed || servicesPollingRef.current) return
+      servicesPollingRef.current = true
+      void getDesktopServices()
+        .then((next) => {
+          if (disposed) return
+          setDesktopServices(next)
+          setDesktopServicesError('')
+        })
+        .catch((caught: unknown) => {
+          if (disposed) return
+          setDesktopServicesError(
+            caught instanceof Error ? caught.message : 'Service status is unavailable'
+          )
+        })
+        .finally(() => {
+          servicesPollingRef.current = false
+        })
+    }
+    refresh()
+    const timer = window.setInterval(refresh, STATUS_REFRESH_MS)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+    }
   }, [])
 
   useEffect(() => {
@@ -1212,6 +1247,15 @@ export function App() {
             setView('settings')
           }}
         />
+        <ServiceHealthIndicator
+          report={desktopServices}
+          error={desktopServicesError}
+          onOpen={() => {
+            if (!canLeaveSettings()) return
+            setSettingsSection('services')
+            setView('settings')
+          }}
+        />
         <SidecarStatusIndicator
           label="Hindsight"
           status={hindsightStatus}
@@ -1408,6 +1452,61 @@ function ReadinessActivityIndicator({
       {active && <LoaderCircle className="spin" size={13} />}
       {!active && <i />}
       Readiness: {active ? 'scanning…' : activity.status === 'succeeded' ? 'ready' : 'failed'}
+    </button>
+  )
+}
+
+function ServiceHealthIndicator({
+  report,
+  error,
+  onOpen,
+}: {
+  report: DesktopServiceReport | null
+  error: string
+  onOpen: () => void
+}) {
+  if (!report && !error) return null
+  if (!report) {
+    return (
+      <button
+        type="button"
+        className="service-activity-health warning"
+        aria-label="Open service health"
+        title={`${error}. Open Services for details.`}
+        onClick={onOpen}
+      >
+        <i /> Services: unavailable
+      </button>
+    )
+  }
+  const core = report.services.filter((service) =>
+    ['embedding', 'server'].includes(service.name)
+  )
+  const coreLoaded = core.filter((service) => service.loaded).length
+  const attention = core.some(
+    (service) => service.last_exit_status !== null && service.last_exit_status !== 0
+  )
+  const state = !report.supported || attention || coreLoaded < core.length ? 'warning' : 'healthy'
+  const detail = report.services
+    .map(
+      (service) =>
+        `${service.name}: ${service.state || (service.installed ? 'installed' : 'not installed')}`
+    )
+    .join(' · ')
+  const label = !report.supported
+    ? `Services: unsupported on ${report.platform}`
+    : attention
+      ? 'Services: core attention'
+      : `Services: core ${coreLoaded}/${core.length} online`
+  return (
+    <button
+      type="button"
+      className={`service-activity-health ${state}`}
+      aria-label="Open service health"
+      title={`${detail}. Open Services for controls.`}
+      onClick={onOpen}
+    >
+      <i /> {label}
     </button>
   )
 }

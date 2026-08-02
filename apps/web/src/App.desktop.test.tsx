@@ -316,6 +316,8 @@ test('desktop shell surfaces optional sidecar health without opening settings', 
     expect(screen.getByRole('button', { name: 'Open Hindsight status' })).toBeTruthy()
   )
   expect(screen.getByRole('button', { name: 'Open Honcho status' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Open service health' })).toBeTruthy()
+  expect(screen.getByText('Services: core attention')).toBeTruthy()
   expect(screen.getByText('Hindsight: disabled')).toBeTruthy()
   expect(screen.getByText('Honcho: disabled')).toBeTruthy()
 })
