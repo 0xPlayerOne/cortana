@@ -49,6 +49,7 @@ def validate_token_path(path: Path) -> Path:
     path = path.expanduser()
     if not path.is_absolute():
         raise RuntimeError("Google token path must be absolute")
+    _reject_token_symlink_components(path)
     try:
         metadata = path.lstat()
     except FileNotFoundError as error:
@@ -62,6 +63,27 @@ def validate_token_path(path: Path) -> Path:
     if metadata.st_size > MAX_TOKEN_FILE_BYTES:
         raise RuntimeError(f"Google token file exceeds {MAX_TOKEN_FILE_BYTES} bytes: {path}")
     return path
+
+
+def _reject_token_symlink_components(path: Path) -> None:
+    current = path
+    while True:
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            metadata = None
+        except OSError as error:
+            raise RuntimeError(f"Google token path could not be inspected: {current}") from error
+        if metadata is not None and stat.S_ISLNK(metadata.st_mode) and not _is_token_system_alias(current):
+            raise RuntimeError(f"Google token path component must not be a symlink: {current}")
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+
+def _is_token_system_alias(path: Path) -> bool:
+    return sys.platform == "darwin" and path in {Path("/tmp"), Path("/var"), Path("/etc")}
 
 
 class GoogleSession:

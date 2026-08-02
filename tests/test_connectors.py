@@ -505,6 +505,21 @@ def test_google_token_path_is_absolute_bounded_and_not_symlinked(tmp_path: Path)
             validate_token_path(linked)
 
 
+def test_google_token_path_rejects_symlinked_parent(tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    token = real / "token.json"
+    write_token(token, '{"token":"access"}')
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(real, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        return
+
+    with pytest.raises(RuntimeError, match="component must not be a symlink"):
+        validate_token_path(linked / "token.json")
+
+
 def test_google_private_cache_rejects_symlink(tmp_path: Path) -> None:
     target = tmp_path / "cache-target.sqlite3"
     target.touch()
