@@ -15,7 +15,7 @@ const tabs = [
 
 async function openSourceLink(href: string) {
   if (!isDesktopApp) return
-  if (!safeSourceLink(href)) return
+  if (!safeSourceLink(href, { allowLocalFile: true })) return
   try {
     await openDesktopUrl(href)
   } catch {
@@ -156,7 +156,9 @@ function BrainDocumentView({
   const [favorite, setFavorite] = useState(false)
   useEffect(() => setFavorite(false), [document.id])
   const metadata = Object.entries(document.metadata).slice(0, 24)
-  const sourceHref = document.uri ? safeSourceLink(document.uri) : null
+  const sourceHref = document.uri
+    ? safeSourceLink(document.uri, { allowLocalFile: isDesktopApp })
+    : null
   return (
     <article className="document canonical-document">
       <div className="breadcrumbs">
@@ -299,7 +301,9 @@ function DocumentView({
 }) {
   const [favorite, setFavorite] = useState(false)
   useEffect(() => setFavorite(false), [active.chunk_id])
-  const sourceHref = active.uri ? safeSourceLink(active.uri) : null
+  const sourceHref = active.uri
+    ? safeSourceLink(active.uri, { allowLocalFile: isDesktopApp })
+    : null
 
   return (
     <article className="document">

@@ -20,7 +20,10 @@ function validSlackLink(parsed: URL): boolean {
   )
 }
 
-export function safeSourceLink(href: string): string | null {
+export function safeSourceLink(
+  href: string,
+  options: { allowLocalFile?: boolean } = {}
+): string | null {
   let parsed: URL
   try {
     parsed = new URL(href)
@@ -29,6 +32,7 @@ export function safeSourceLink(href: string): string | null {
   }
   if (!externalUrlSchemes.has(parsed.protocol)) return null
   if (parsed.username || parsed.password) return null
+  if (parsed.protocol === 'file:' && !options.allowLocalFile) return null
   if (parsed.protocol === 'slack:' && !validSlackLink(parsed)) return null
   if (
     parsed.protocol === 'file:' &&
