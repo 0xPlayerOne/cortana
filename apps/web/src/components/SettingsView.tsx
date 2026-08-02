@@ -1681,6 +1681,7 @@ function ReadinessSection({
 }) {
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState('')
+  const autoScanAttemptedRef = useRef(false)
 
   useEffect(() => {
     if (!pollInstaller || !job || !['running', 'cancelling'].includes(job.status)) return
@@ -1736,7 +1737,17 @@ function ReadinessSection({
   }
 
   useEffect(() => {
-    if (!autoScan || readinessActivity?.status === 'running' || readiness) return
+    if (
+      !autoScan ||
+      readinessActivity?.status === 'running' ||
+      readiness ||
+      autoScanAttemptedRef.current
+    )
+      return
+    // First-launch readiness is intentionally one-shot. A failed scan is
+    // surfaced for the operator to retry explicitly; it must not loop every
+    // time the shell-owned activity status changes to failed.
+    autoScanAttemptedRef.current = true
     let active = true
     setScanning(true)
     setError('')

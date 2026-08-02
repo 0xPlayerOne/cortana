@@ -618,6 +618,26 @@ test('readiness activity survives leaving Settings while a scan is running', asy
   }
 })
 
+test('failed first-launch readiness scan waits for an explicit retry', async () => {
+  const originalSettings = state.settings
+  const originalScan = state.readinessScan
+  let calls = 0
+  state.settings = { ...desktopSettings, needs_setup: true }
+  state.readinessScan = () => {
+    calls += 1
+    return Promise.reject(new Error('readiness unavailable'))
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('readiness unavailable')).toBeTruthy())
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(calls).toBe(1)
+  } finally {
+    state.settings = originalSettings
+    state.readinessScan = originalScan
+  }
+})
+
 test('completed installers trigger one shell-owned post-install readiness scan', async () => {
   const originalConfirm = window.confirm
   state.installerJob = null
