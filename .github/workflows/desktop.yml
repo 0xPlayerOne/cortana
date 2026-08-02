@@ -85,7 +85,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Cache Rust build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -133,7 +133,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Cache Rust build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -168,7 +168,7 @@ jobs:
       # Compiling cargo-audit from source on a cold binary-cache miss needs
       # the same Rust registry cache as the other jobs, so reuse it here.
       - name: Cache Rust build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -184,7 +184,7 @@ jobs:
       # repeated final audits restore cargo-audit without recompiling it.
       - name: Cache cargo-audit binary
         id: cache-cargo-audit
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cargo/bin/cargo-audit
           key: ${{ runner.os }}-${{ runner.arch }}-cargo-audit-0.22.2
@@ -227,7 +227,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Cache Rust build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -276,7 +276,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Cache Rust build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -325,7 +325,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
       - name: Cache Rust build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
