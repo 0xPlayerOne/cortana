@@ -119,10 +119,11 @@ impl BackendClient {
     }
 }
 
-/// Desktop is the owner-local control plane. If named auth principals are
-/// configured, prefer an admin credential for its loopback requests so the
+/// Desktop is the owner-local control plane. If a named auth principal carries
+/// both `admin` and the requested scope, prefer it for loopback requests so the
 /// UI does not accidentally render a narrow agent's ACL as the whole corpus.
-/// Fall back to the requested scope when no admin credential is configured.
+/// Fall back to the requested scope when no shared-scope owner credential is
+/// configured.
 fn desktop_bearer_for_scope(scope: &str) -> Result<Option<String>, String> {
     if scope != "admin" {
         if let Ok(snapshot) = settings::load() {
