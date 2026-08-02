@@ -38,6 +38,12 @@ def response(
     )
 
 
+def write_token(path: Path, body: str) -> None:
+    path.write_text(body, encoding="utf-8")
+    if os.name == "posix":
+        path.chmod(0o600)
+
+
 def test_document_jsonl_emit_uses_utc_and_skips_empty() -> None:
     output = io.StringIO()
     count = emit(
@@ -448,7 +454,7 @@ def test_chat_connector_rejects_missing_token(monkeypatch: pytest.MonkeyPatch) -
 
 def test_google_token_path_is_absolute_bounded_and_not_symlinked(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     if os.name == "posix":
         token.chmod(0o600)
     assert validate_token_path(token) == token
@@ -508,7 +514,7 @@ def test_google_private_cache_rejects_symlinked_directory(tmp_path: Path) -> Non
 
 def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/drive/v3/files":
@@ -547,7 +553,7 @@ def test_google_drive_skips_malformed_listing_records(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/drive/v3/files":
@@ -590,7 +596,7 @@ def test_google_drive_skips_malformed_listing_records(
 
 def test_google_drive_bounds_oversized_exports_with_explicit_metadata(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     body = "header\n" + ("middle-row\n" * 100) + "final-row"
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -623,7 +629,7 @@ def test_google_drive_bounds_oversized_exports_with_explicit_metadata(tmp_path: 
 
 def test_google_drive_reuses_content_until_modified(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     cache = tmp_path / "cache"
     content_requests = 0
 
@@ -659,7 +665,7 @@ def test_google_drive_isolates_content_failure_and_uses_stale_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     cache = tmp_path / "cache"
     modified_time = "2026-07-29T12:00:00Z"
     fail = False
@@ -701,7 +707,7 @@ def test_google_drive_isolates_content_failure_and_uses_stale_cache(
 
 def test_google_gmail_decodes_message_body(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     encoded = base64.urlsafe_b64encode(b"Deployment is green").decode()
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -738,7 +744,7 @@ def test_google_gmail_skips_malformed_listing_records(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/messages"):
@@ -774,7 +780,7 @@ def test_google_gmail_skips_malformed_listing_records(
 
 def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     cache = tmp_path / "cache"
     detail_requests = 0
 
@@ -811,7 +817,7 @@ def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
 
 def test_google_gmail_skips_isolated_inaccessible_message(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/messages"):
@@ -847,7 +853,7 @@ def test_google_gmail_refuses_broad_detail_denial(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
     client = httpx.Client(
         transport=httpx.MockTransport(
             lambda request: response(
@@ -868,7 +874,7 @@ def test_google_gmail_refuses_broad_detail_denial(
 
 def test_google_calendar_normalizes_events(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/calendarList"):
@@ -910,7 +916,7 @@ def test_google_calendar_normalizes_events(tmp_path: Path) -> None:
 
 def test_google_calendar_collapses_recurring_occurrences(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/calendarList"):
@@ -966,7 +972,7 @@ def test_google_calendar_skips_malformed_events(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     token = tmp_path / "token.json"
-    token.write_text('{"token":"access"}', encoding="utf-8")
+    write_token(token, '{"token":"access"}')
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/calendarList"):
@@ -1001,20 +1007,20 @@ def test_google_calendar_skips_malformed_events(
 
 def test_google_session_refreshes_and_secures_token_file(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text(
+    write_token(
+        token,
         json.dumps(
             {
                 "refresh_token": "refresh",
                 "client_id": "client",
                 "client_secret": "secret",
-                "token_uri": "https://oauth2.test/token",
+                "token_uri": "https://oauth2.googleapis.com/token",
             }
         ),
-        encoding="utf-8",
     )
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.host == "oauth2.test":
+        if request.url.host == "oauth2.googleapis.com":
             return response({"access_token": "new-access", "expires_in": 100}, request=request)
         return response({"ok": True}, request=request)
 
@@ -1029,7 +1035,8 @@ def test_google_session_refreshes_and_secures_token_file(tmp_path: Path) -> None
 
 def test_google_session_retries_unauthorized_response(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text(
+    write_token(
+        token,
         json.dumps(
             {
                 "token": "expired",
@@ -1038,7 +1045,6 @@ def test_google_session_retries_unauthorized_response(tmp_path: Path) -> None:
                 "client_secret": "secret",
             }
         ),
-        encoding="utf-8",
     )
     calls = 0
 
@@ -1057,9 +1063,9 @@ def test_google_session_retries_unauthorized_response(tmp_path: Path) -> None:
 
 def test_google_session_refresh_allows_desktop_client_without_secret(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text(
+    write_token(
+        token,
         json.dumps({"refresh_token": "refresh", "client_id": "desktop-client"}),
-        encoding="utf-8",
     )
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -1095,10 +1101,33 @@ def test_google_helpers_normalize_html_dates_and_snippets() -> None:
 
 def test_google_session_reports_unrefreshable_credentials(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
-    token.write_text("{}", encoding="utf-8")
+    write_token(token, "{}")
     with (
         GoogleSession(token, httpx.Client()) as session,
         pytest.raises(RuntimeError, match="missing refresh_token"),
+    ):
+        session.request("GET", "https://api.test/data")
+
+
+def test_google_session_rejects_invalid_json_and_non_google_refresh_uri(tmp_path: Path) -> None:
+    invalid = tmp_path / "invalid.json"
+    write_token(invalid, "not-json")
+    with pytest.raises(RuntimeError, match="not valid JSON"):
+        GoogleSession(invalid, httpx.Client())
+
+    token = tmp_path / "external.json"
+    write_token(
+        token,
+        json.dumps(
+            {
+                "refresh_token": "refresh",
+                "client_id": "client",
+                "token_uri": "https://attacker.example/token",
+            }
+        ),
+    )
+    with GoogleSession(token, httpx.Client()) as session, pytest.raises(
+        RuntimeError, match="HTTPS Google OAuth"
     ):
         session.request("GET", "https://api.test/data")
 

@@ -69,7 +69,13 @@ class GoogleSession:
 
     def __init__(self, token_path: Path, client: httpx.Client | None = None) -> None:
         self.token_path = validate_token_path(token_path)
-        self.credentials: dict[str, Any] = json.loads(self.token_path.read_text(encoding="utf-8"))
+        try:
+            credentials = json.loads(self.token_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"Google token file is not valid JSON: {self.token_path}") from error
+        if not isinstance(credentials, dict):
+            raise RuntimeError(f"Google token file must contain a JSON object: {self.token_path}")
+        self.credentials = credentials
         self.client = client or httpx.Client(timeout=60, follow_redirects=True)
         self._owns_client = client is None
 
@@ -106,6 +112,8 @@ class GoogleSession:
         missing = [key for key in required if not self.credentials.get(key)]
         if missing:
             raise RuntimeError(f"Google credentials cannot refresh; missing {', '.join(missing)}")
+        token_uri = str(self.credentials.get("token_uri") or "https://oauth2.googleapis.com/token")
+        _validate_token_uri(token_uri)
         data = {
             "grant_type": "refresh_token",
             "refresh_token": self.credentials["refresh_token"],
@@ -114,7 +122,7 @@ class GoogleSession:
         if self.credentials.get("client_secret"):
             data["client_secret"] = self.credentials["client_secret"]
         response = self.client.post(
-            str(self.credentials.get("token_uri") or "https://oauth2.googleapis.com/token"),
+            token_uri,
             data=data,
         )
         response.raise_for_status()
@@ -137,6 +145,23 @@ class GoogleSession:
             os.replace(temporary, self.token_path)
         finally:
             Path(temporary).unlink(missing_ok=True)
+
+
+def _validate_token_uri(value: str) -> None:
+    try:
+        parsed = httpx.URL(value)
+    except (TypeError, ValueError) as error:
+        raise RuntimeError("Google token URI is invalid") from error
+    host = (parsed.host or "").lower()
+    if (
+        parsed.scheme != "https"
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or host not in {"oauth2.googleapis.com", "www.googleapis.com", "accounts.google.com"}
+    ):
+        raise RuntimeError("Google token URI must use an HTTPS Google OAuth endpoint")
 
 
 def fetch_drive(
