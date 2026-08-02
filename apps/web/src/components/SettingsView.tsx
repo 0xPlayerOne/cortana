@@ -36,6 +36,7 @@ import {
   getRuntimeAudit,
   installDesktopUpdate,
   installDesktopServices,
+  installDesktopSyncService,
   importDesktopSettings,
   isDesktopApp,
   openDesktopSourceSetup,
@@ -830,6 +831,51 @@ function ServicesSection({
     }
   }
 
+  const installSync = async () => {
+    if (
+      !window.confirm(
+        'Enable recurring source sync for this user?\n\nCortana will re-check that every enabled source has a current successful validation covering its configured safety budgets before installing the schedule. The first run is delayed by the platform scheduler; existing indexed data is not deleted.'
+      )
+    ) {
+      return
+    }
+    setBusy('sync-install')
+    actionInFlightRef.current = true
+    servicesRequestRef.current += 1
+    setLocalError('')
+    onServiceActivity?.({
+      target: 'recurring sync',
+      action: 'install',
+      status: 'running',
+      detail: null,
+    })
+    try {
+      const next = await installDesktopSyncService()
+      if (!mountedRef.current) return
+      setReport(next)
+      onServicesError?.('')
+      onServiceActivity?.({
+        target: 'recurring sync',
+        action: 'install',
+        status: 'succeeded',
+        detail: null,
+      })
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : 'Recurring sync could not be installed'
+      setLocalError(message)
+      onServiceActivity?.({
+        target: 'recurring sync',
+        action: 'install',
+        status: 'failed',
+        detail: message,
+      })
+    } finally {
+      actionInFlightRef.current = false
+      setBusy('')
+    }
+  }
+
   const needsCoreInstall =
     report?.supported === true &&
     report.services.some(
@@ -838,6 +884,9 @@ function ServicesSection({
         (service.name !== 'embedding' || settings.embedding.provider === 'local') &&
         !service.installed
     )
+  const needsSyncInstall =
+    report?.supported === true &&
+    report.services.some((service) => service.name === 'sync' && !service.installed)
   const actionInFlight = Boolean(busy) || serviceActivity?.status === 'running'
   const actionMessage = serviceActivity
     ? `${serviceActivity.action === 'install' ? 'Install' : serviceActivity.action[0].toUpperCase() + serviceActivity.action.slice(1)} ${serviceActivity.target}${serviceActivity.status === 'running' ? ' in progress…' : serviceActivity.status === 'succeeded' ? ' completed.' : ` failed: ${serviceActivity.detail || 'unknown error'}`}`
@@ -846,7 +895,7 @@ function ServicesSection({
   return (
     <SettingsSection
       title="Services"
-      description="Inspect and control installed Cortana runtime services. Service actions never install or enable recurring ingestion."
+      description="Inspect and control Cortana runtime services. Recurring ingestion stays absent until its dedicated, validation-gated action is confirmed."
     >
       <div className="service-autostart">
         <label className="source-enable">
@@ -917,6 +966,21 @@ function ServicesSection({
               Install core services
             </button>
           )}
+          {needsSyncInstall && (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={actionInFlight}
+              onClick={() => void installSync()}
+            >
+              {busy === 'sync-install' ? (
+                <LoaderCircle className="spin" size={14} />
+              ) : (
+                <Download size={14} />
+              )}{' '}
+              Enable recurring sync
+            </button>
+          )}
         </div>
       </div>
       {(error || actionMessage) && (
@@ -974,7 +1038,7 @@ function ServicesSection({
         })}
       </div>
       <p className="settings-note">
-        The sync service remains absent unless it was installed explicitly outside this screen.
+        Recurring sync is opt-in and requires current source validation before installation.
         Starting the server, embedding, or backup service does not run ingestion.
       </p>
     </SettingsSection>

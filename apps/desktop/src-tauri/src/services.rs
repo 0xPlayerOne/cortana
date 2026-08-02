@@ -68,6 +68,32 @@ pub async fn install(app: &AppHandle, approved: bool) -> Result<ServiceReport, S
     status(app).await
 }
 
+/// Install the explicitly approved recurring sync job after the bundled CLI
+/// re-checks validation coverage for every enabled source.
+pub async fn install_sync(app: &AppHandle, approved: bool) -> Result<ServiceReport, String> {
+    if !approved {
+        return Err("recurring sync installation requires explicit approval".into());
+    }
+    let use_local_embedding = settings::load()?.embedding.provider == "local";
+    let mut args = vec!["service", "install", "--no-web", "--enable-sync-service"];
+    if !use_local_embedding {
+        args.push("--no-embedding-service");
+    }
+    let output = match sidecar_output(app, &args).await {
+        Ok(output) => output,
+        Err(error) => {
+            audit_action("service.sync_install", "install", &["sync"], "failed", None);
+            return Err(error);
+        }
+    };
+    if !output.success {
+        audit_action("service.sync_install", "install", &["sync"], "failed", None);
+        return Err(bounded_error(&output.stderr));
+    }
+    audit_action("service.sync_install", "install", &["sync"], "completed", None);
+    status(app).await
+}
+
 pub async fn action(
     app: &AppHandle,
     service: &str,

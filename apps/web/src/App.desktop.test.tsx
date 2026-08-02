@@ -27,6 +27,7 @@ afterEach(() => {
   state.getDesktopSettingsCalls = 0
   state.getDesktopUpdateCalls = 0
   state.serviceStatusError = null
+  state.serviceSyncInstallCalls = 0
   state.openSecretFileCalls = 0
 })
 
@@ -89,6 +90,7 @@ const state = {
   serviceStatusError: null as Error | null,
   saveSettingsCalls: 0,
   serviceInstallCalls: 0,
+  serviceSyncInstallCalls: 0,
   serviceRestartCalls: 0,
   openSecretFileCalls: 0,
   serviceAction: null as (() => Promise<DesktopServiceReport>) | null,
@@ -149,6 +151,16 @@ const installedServiceReport: DesktopServiceReport = {
   ),
 }
 
+const syncInstalledServiceReport: DesktopServiceReport = {
+  ...serviceReport,
+  services: serviceReport.services.map((service) => ({
+    ...service,
+    installed: true,
+    loaded: true,
+    state: 'running',
+  })),
+}
+
 mock.module('./api', () => ({
   ...realApi,
   isDesktopApp: true,
@@ -190,6 +202,10 @@ mock.module('./api', () => ({
   installDesktopServices: () => {
     state.serviceInstallCalls += 1
     return Promise.resolve(installedServiceReport)
+  },
+  installDesktopSyncService: () => {
+    state.serviceSyncInstallCalls += 1
+    return Promise.resolve(syncInstalledServiceReport)
   },
   runDesktopServicesActionAll: (action: 'start' | 'stop' | 'restart') => {
     if (action === 'restart') state.serviceRestartCalls += 1
@@ -710,7 +726,30 @@ test('services settings offers an explicit safe core-service install', async () 
     fireEvent.click(screen.getByRole('button', { name: /Install core services/ }))
     await waitFor(() => expect(state.serviceInstallCalls).toBe(1))
     expect(screen.getByText('3 loaded')).toBeTruthy()
-    expect(screen.getByText(/sync service remains absent/)).toBeTruthy()
+    expect(screen.getByText(/Recurring sync is opt-in/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Enable recurring sync/ })).toBeTruthy()
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
+test('services settings enables recurring sync only through its explicit action', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.serviceSyncInstallCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    const enable = await screen.findByRole('button', { name: /Enable recurring sync/ })
+    fireEvent.click(enable)
+    await waitFor(() => expect(state.serviceSyncInstallCalls).toBe(1))
+    expect(screen.getByText('4 loaded')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Enable recurring sync/ })).toBeNull()
   } finally {
     window.confirm = originalConfirm
   }

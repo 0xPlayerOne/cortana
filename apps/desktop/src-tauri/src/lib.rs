@@ -464,6 +464,14 @@ async fn desktop_services_install(
 }
 
 #[tauri::command]
+async fn desktop_services_install_sync(
+    app: AppHandle,
+    approved: bool,
+) -> Result<services::ServiceReport, String> {
+    services::install_sync(&app, approved).await
+}
+
+#[tauri::command]
 async fn desktop_hindsight_status() -> Result<hindsight::HindsightStatus, String> {
     hindsight::status().await
 }
@@ -917,6 +925,7 @@ pub fn run() {
             desktop_autostart_set,
             desktop_services_status,
             desktop_services_install,
+            desktop_services_install_sync,
             desktop_hindsight_status,
             desktop_honcho_status,
             desktop_service_action,
