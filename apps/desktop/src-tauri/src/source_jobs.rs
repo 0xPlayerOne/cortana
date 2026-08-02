@@ -730,8 +730,7 @@ fn validation_covers_budget_at(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(format!("inspect source validation state: {error}")),
     }
-    let file =
-        fs::File::open(&path).map_err(|error| format!("open source validation state: {error}"))?;
+    let file = open_validation_state(&path)?;
     let mut bytes = Vec::new();
     file.take(MAX_VALIDATION_STATE_BYTES + 1)
         .read_to_end(&mut bytes)
@@ -765,6 +764,36 @@ fn validation_covers_budget_at(
             && max_bytes >= bytes
             && max_seconds >= seconds,
     ))
+}
+
+fn open_validation_state(path: &Path) -> Result<fs::File, String> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+    }
+    let file = options
+        .open(path)
+        .map_err(|error| format!("open source validation state: {error}"))?;
+    let metadata = file
+        .metadata()
+        .map_err(|error| format!("inspect source validation state: {error}"))?;
+    if !metadata.is_file() {
+        return Err("source validation state is not a regular file".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if metadata.uid() != unsafe { libc::geteuid() } {
+            return Err("source validation state is not owned by the current user".into());
+        }
+        if metadata.nlink() != 1 {
+            return Err("source validation state has multiple hard links".into());
+        }
+    }
+    Ok(file)
 }
 
 fn terminal_summary(operation: &str, status: &str, disconnected: bool) -> String {
