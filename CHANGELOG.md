@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/0xPlayerOne/cortana/compare/v0.16.1...v0.17.0) (2026-08-02)
+
+
+### Features
+
+* **status:** expose source authorization readiness ([#213](https://github.com/0xPlayerOne/cortana/issues/213)) ([106645f](https://github.com/0xPlayerOne/cortana/commit/106645f05ebd119a1b66778cc2f4a3df31660058))
+
 ## [0.16.1](https://github.com/0xPlayerOne/cortana/compare/v0.16.0...v0.16.1) (2026-08-02)
 
 
