@@ -49,6 +49,7 @@ struct CommandSpec {
 struct CommandPlan {
     commands: Vec<CommandSpec>,
     summary: String,
+    connector_command: Option<PathBuf>,
 }
 
 impl InstallerState {
@@ -107,8 +108,17 @@ impl InstallerState {
         drop(jobs);
 
         let state = self.clone();
+        let connector_command = plan.connector_command.clone();
         tauri::async_runtime::spawn(async move {
-            let result = run_plan(plan, cancelled.clone()).await;
+            let result = match (run_plan(plan, cancelled.clone()).await, connector_command) {
+                (Ok((Some(0), log)), Some(command)) if !cancelled.load(Ordering::SeqCst) => {
+                    match crate::settings::configure_connector_command(&command) {
+                        Ok(()) => Ok((Some(0), log)),
+                        Err(error) => Err(format!("{error}; connector installation output: {log}")),
+                    }
+                }
+                (result, _) => result,
+            };
             state.complete(&id, result, cancelled.load(Ordering::SeqCst));
         });
         audit(&snapshot, "started");
@@ -280,6 +290,7 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
                 args: vec!["install".into(), "uv".into()],
             }],
             summary: "Install uv from Homebrew core".into(),
+            connector_command: None,
         }),
         ("uv", "windows") => Ok(CommandPlan {
             commands: vec![CommandSpec {
@@ -287,6 +298,7 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
                 args: vec!["install".into(), "--id=astral-sh.uv".into(), "-e".into()],
             }],
             summary: "Install uv with WinGet".into(),
+            connector_command: None,
         }),
         ("uv", "linux") => Ok(CommandPlan {
             commands: vec![CommandSpec {
@@ -297,6 +309,7 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
                 ],
             }],
             summary: "Install uv with Astral's HTTPS installer".into(),
+            connector_command: None,
         }),
         ("python", _) => Ok(CommandPlan {
             commands: vec![CommandSpec {
@@ -304,6 +317,7 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
                 args: vec!["python".into(), "install".into(), "3.11".into()],
             }],
             summary: "Install an isolated Python 3.11 runtime with uv".into(),
+            connector_command: None,
         }),
         ("connectors", _) => connector_plan(app),
         ("cortana", _) => Err(
@@ -326,6 +340,7 @@ fn connector_plan(app: Option<&AppHandle>) -> Result<CommandPlan, String> {
 
 fn connector_plan_for(uv: PathBuf, resource_dir: PathBuf, venv_dir: PathBuf) -> CommandPlan {
     let python = connector_python_path(&venv_dir);
+    let connector = connector_executable_path(&venv_dir);
     let package = format!("{}[ingestion]", resource_dir.display());
     CommandPlan {
         commands: vec![
@@ -351,6 +366,7 @@ fn connector_plan_for(uv: PathBuf, resource_dir: PathBuf, venv_dir: PathBuf) -> 
             },
         ],
         summary: "Install bundled ingestion connectors with uv".into(),
+        connector_command: Some(connector),
     }
 }
 
@@ -382,6 +398,17 @@ fn connector_python_path(venv_dir: &Path) -> PathBuf {
     #[cfg(not(windows))]
     {
         venv_dir.join("bin/python")
+    }
+}
+
+fn connector_executable_path(venv_dir: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        return venv_dir.join("Scripts/cortana-connectors.exe");
+    }
+    #[cfg(not(windows))]
+    {
+        venv_dir.join("bin/cortana-connectors")
     }
 }
 
@@ -477,6 +504,10 @@ mod tests {
         let venv = PathBuf::from("/home/example/.local/share/cortana/venv");
         let plan = connector_plan_for(uv.clone(), resource.clone(), venv.clone());
         assert_eq!(plan.commands.len(), 2);
+        assert_eq!(
+            plan.connector_command,
+            Some(connector_executable_path(&venv))
+        );
         assert_eq!(plan.commands[0].program, uv);
         assert_eq!(plan.commands[1].program, plan.commands[0].program);
         assert_eq!(
@@ -514,6 +545,7 @@ mod tests {
                     args: vec!["-c".into(), "printf ready".into()],
                 }],
                 summary: "test".into(),
+                connector_command: None,
             },
             Arc::new(AtomicBool::new(false)),
         )
@@ -532,6 +564,7 @@ mod tests {
                         args: vec!["-c".into(), "sleep 5".into()],
                     }],
                     summary: "test".into(),
+                    connector_command: None,
                 },
                 cancellation,
             )

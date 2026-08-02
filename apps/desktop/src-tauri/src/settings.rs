@@ -263,6 +263,88 @@ pub fn save(update: SettingsUpdate) -> Result<SettingsSnapshot, String> {
     SettingsStore::default().save(update)
 }
 
+pub(crate) fn configure_connector_command(path: &Path) -> Result<(), String> {
+    configure_connector_command_at(&default_config_path(), path)
+}
+
+fn configure_connector_command_at(config_path: &Path, path: &Path) -> Result<(), String> {
+    if !path.is_absolute()
+        || path.parent().is_none()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
+    {
+        return Err("connector command must be an absolute, normalized path".into());
+    }
+    let expected_name = if cfg!(windows) {
+        "cortana-connectors.exe"
+    } else {
+        "cortana-connectors"
+    };
+    if path.file_name().and_then(|name| name.to_str()) != Some(expected_name) {
+        return Err("connector command must use the bundled cortana-connectors executable".into());
+    }
+    reject_symlink(config_path)?;
+    let mut root = read_config(config_path)?;
+    let connectors = root
+        .entry("connectors")
+        .or_insert_with(|| Value::Table(Table::new()))
+        .as_table_mut()
+        .ok_or_else(|| "connectors settings must be a TOML table".to_string())?;
+    if let Some(existing) = connectors.get("command") {
+        match existing {
+            Value::Array(values) if !values.is_empty() => {
+                if values.iter().any(|value| !value.is_str()) {
+                    return Err("existing connector command must contain only strings".into());
+                }
+                return append_audit_event(
+                    config_path,
+                    &serde_json::json!({
+                        "at_unix_seconds": SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .map_err(|error| error.to_string())?
+                            .as_secs(),
+                        "event": "connectors.command_preserved",
+                        "command_configured": false,
+                        "secret_values_recorded": false,
+                    }),
+                );
+            }
+            Value::Array(_) => {}
+            _ => return Err("existing connector command must be a TOML array".into()),
+        }
+    }
+    connectors.insert(
+        "command".into(),
+        Value::Array(vec![Value::String(path.display().to_string())]),
+    );
+    let rendered = toml::to_string_pretty(&root)
+        .map_err(|error| format!("serialize connector settings: {error}"))?;
+    if config_path.exists() {
+        let backup = config_path.with_extension("toml.backup");
+        reject_symlink(&backup)?;
+        fs::copy(config_path, &backup)
+            .map_err(|error| format!("back up Cortana settings: {error}"))?;
+        set_owner_only(&backup)?;
+    }
+    atomic_write(config_path, rendered.as_bytes())?;
+    append_audit_event(
+        config_path,
+        &serde_json::json!({
+            "at_unix_seconds": SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|error| error.to_string())?
+                .as_secs(),
+            "event": "connectors.command_configured",
+            "command_configured": true,
+            "secret_values_recorded": false,
+        }),
+    )
+}
+
 pub fn export_portable(path: &Path) -> Result<PortableExport, String> {
     export_portable_at(&default_config_path(), path)
 }
@@ -403,12 +485,13 @@ impl SettingsStore {
         let root = read_config(&self.config_path)?;
         let secret_path = secret_path(&root, &self.config_path)?;
         let secrets = read_secret_map(&secret_path)?;
+        let needs_setup = !existed || configured_sources(&root).is_empty();
         Ok(snapshot(
             &root,
             &self.config_path,
             &secret_path,
             &secrets,
-            !existed,
+            needs_setup,
         ))
     }
 
@@ -2517,6 +2600,59 @@ mod tests {
                 },
             ],
         }
+    }
+
+    #[test]
+    fn connector_command_configuration_is_atomic_audited_and_keeps_setup_visible() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let config_path = temp.path().join("config/config.toml");
+        let first = if cfg!(windows) {
+            PathBuf::from(
+                r"C:\Users\example\.local\share\cortana\venv\Scripts\cortana-connectors.exe",
+            )
+        } else {
+            PathBuf::from("/Users/example/.local/share/cortana/venv/bin/cortana-connectors")
+        };
+        let second = if cfg!(windows) {
+            PathBuf::from(r"C:\opt\cortana\share\cortana\venv\Scripts\cortana-connectors.exe")
+        } else {
+            PathBuf::from("/opt/cortana/share/cortana/venv/bin/cortana-connectors")
+        };
+
+        assert!(
+            configure_connector_command_at(&config_path, &PathBuf::from("relative")).is_err()
+        );
+        assert!(
+            configure_connector_command_at(&config_path, Path::new("/tmp/not-a-connector")).is_err()
+        );
+        fs::create_dir_all(config_path.parent().expect("config parent"))
+            .expect("config directory");
+        fs::write(&config_path, "[runtime]\ndata_dir = \"/tmp/cortana-data\"\n")
+            .expect("initial config");
+        configure_connector_command_at(&config_path, &first).expect("first connector command");
+        let state = SettingsStore {
+            config_path: config_path.clone(),
+        }
+        .load()
+        .expect("settings state");
+        assert!(state.needs_setup);
+        let first_body = fs::read_to_string(&config_path).expect("config body");
+        assert!(first_body.contains(&first.display().to_string()));
+        configure_connector_command_at(&config_path, &second).expect("second connector command");
+        let backup = config_path.with_extension("toml.backup");
+        assert!(fs::read_to_string(backup)
+            .expect("config backup")
+            .contains("data_dir"));
+        assert!(fs::read_to_string(&config_path)
+            .expect("preserved config")
+            .contains(&first.display().to_string()));
+        let audit = desktop_audit_events_at(&config_path, 10).expect("desktop audit");
+        assert_eq!(audit.len(), 2);
+        assert!(
+            audit
+                .iter()
+                .all(|event| event["secret_values_recorded"] == false)
+        );
     }
 
     #[test]

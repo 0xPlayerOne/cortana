@@ -52,7 +52,10 @@ must set an explicit approval flag after showing a confirmation. Native code map
 platform-specific command, permits one job at a time, bounds and sanitizes returned logs, supports
 cancellation, and writes metadata-only audit events beside the active Cortana config. The `connectors`
 plan is a fixed two-step uv invocation against the signed bundle resource and the per-user venv;
-arbitrary programs, package sources, and arguments are never accepted from the renderer.
+on success, the native boundary records the fixed installed connector path in the managed config
+when no connector command is configured (and preserves an existing command), with a rollback copy
+and metadata-only audit event. Arbitrary programs, package sources, and arguments are never
+accepted from the renderer.
 
 Source validation is a third native boundary. The renderer sends only an exact configured source
 name. Native Rust reloads the owner-local configuration, rejects an unknown name, then constructs

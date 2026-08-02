@@ -48,6 +48,10 @@ runs the read-only scan automatically; every installation still requires separat
 release bundles carry the connector source and metadata needed for the approved **Install** action:
 it creates the per-user `~/.local/share/cortana/venv` environment with uv and installs the bounded
 `ingestion` dependency set. The bundle never includes credentials or an existing user's venv.
+After success, Desktop records the fixed connector executable in the managed config when no
+connector command is already configured; existing commands are preserved. The change uses a
+rollback copy and metadata-only audit event, so newly configured sources use the installed
+environment without a shell or path supplied by the renderer.
 Unbundled local release binaries use the generated checkout resource while packaged applications
 prefer their embedded resource directory.
 
