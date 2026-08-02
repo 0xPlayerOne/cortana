@@ -130,6 +130,9 @@ export function App() {
   const [graph, setGraph] = useState<BrainGraphPage | null>(null)
   const [graphLoading, setGraphLoading] = useState(false)
   const [graphError, setGraphError] = useState('')
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
+  )
   const searchRequestRef = useRef(0)
   const [contextError, setContextError] = useState('')
   const [queryHistory, setQueryHistory] = useState<string[]>([])
@@ -166,6 +169,14 @@ export function App() {
   sourceWidthRef.current = sourceWidth
   contextWidthRef.current = contextWidth
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setPageVisible(document.visibilityState !== 'hidden')
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
+
   const runReadinessScan = useCallback(async (): Promise<DesktopReadiness> => {
     setReadinessActivity({ status: 'running', detail: null })
     try {
@@ -188,6 +199,7 @@ export function App() {
   }, [documentQuery])
 
   useEffect(() => {
+    if (!pageVisible) return
     let disposed = false
     let initialRequest = true
     let controller: AbortController | null = null
@@ -235,7 +247,7 @@ export function App() {
       controller?.abort()
       statusRequestRef.current += 1
     }
-  }, [])
+  }, [pageVisible])
 
   useEffect(() => {
     // Desktop settings are the control-plane gate for the document index. On
@@ -412,7 +424,7 @@ export function App() {
   }, [])
 
   useEffect(() => {
-    if (!isDesktopApp) return
+    if (!isDesktopApp || !pageVisible) return
     let disposed = false
     const refresh = () => {
       if (disposed || servicesPollingRef.current) return
@@ -441,10 +453,10 @@ export function App() {
       window.clearInterval(timer)
       desktopServicesRequestRef.current += 1
     }
-  }, [])
+  }, [pageVisible])
 
   useEffect(() => {
-    if (!isDesktopApp || !desktopSettings) return
+    if (!isDesktopApp || !desktopSettings || !pageVisible) return
     let disposed = false
     const refresh = () => {
       if (disposed || sidecarPollingRef.current) return
@@ -498,7 +510,7 @@ export function App() {
       disposed = true
       window.clearInterval(timer)
     }
-  }, [desktopSettings])
+  }, [desktopSettings, pageVisible])
 
   useEffect(() => {
     if (!isDesktopApp) return

@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, test } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { demoStatus } from './demo'
 import {
@@ -445,6 +445,36 @@ test('desktop setup does not query documents before the control plane is ready',
     expect(state.getDocumentsCalls).toHaveLength(0)
   } finally {
     state.settings = originalSettings
+  }
+})
+
+test('desktop shell pauses passive health polling while hidden and refreshes on restore', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+  const setVisibility = (value: 'hidden' | 'visible') => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value,
+    })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+  try {
+    act(() => setVisibility('visible'))
+    render(<App />)
+    await waitFor(() => expect(state.getDesktopServicesCalls).toBeGreaterThan(0))
+    const servicesBeforeHidden = state.getDesktopServicesCalls
+    const statusBeforeHidden = state.statusCalls
+
+    act(() => setVisibility('hidden'))
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    expect(state.getDesktopServicesCalls).toBe(servicesBeforeHidden)
+    expect(state.statusCalls).toBe(statusBeforeHidden)
+
+    act(() => setVisibility('visible'))
+    await waitFor(() => expect(state.getDesktopServicesCalls).toBeGreaterThan(servicesBeforeHidden))
+    expect(state.statusCalls).toBeGreaterThan(statusBeforeHidden)
+  } finally {
+    if (descriptor) Object.defineProperty(document, 'visibilityState', descriptor)
+    else setVisibility('visible')
   }
 })
 
