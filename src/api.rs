@@ -1116,7 +1116,11 @@ fn validate_retrieval_scope(
 }
 
 fn internal_error(error: anyhow::Error) -> (StatusCode, String) {
-    (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
+    tracing::error!(%error, "Cortana API request failed");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Cortana could not complete the request".into(),
+    )
 }
 
 fn default_limit() -> usize {
@@ -1194,6 +1198,7 @@ async fn shutdown_signal() {
 
 #[cfg(test)]
 mod tests {
+    use anyhow::anyhow;
     use axum::body::{Body, to_bytes};
     use axum::http::Request;
     use tempfile::tempdir;
@@ -1204,6 +1209,16 @@ mod tests {
     use crate::model::Document;
 
     use super::*;
+
+    #[test]
+    fn internal_errors_do_not_expose_server_details() {
+        let (status, message) = internal_error(anyhow!(
+            "open /Users/private/.config/cortana/store.sqlite3: permission denied"
+        ));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(message, "Cortana could not complete the request");
+        assert!(!message.contains("/Users/private"));
+    }
 
     fn test_state(token: Option<String>) -> (tempfile::TempDir, AppState) {
         let directory = tempdir().expect("temporary directory");
