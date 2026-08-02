@@ -22,8 +22,19 @@ bun install --frozen-lockfile
 bun run build
 
 install -d -m 0755 "$bin_dir" "$share_dir" "$config_root" "$data_root"
-install -m 0755 target/release/cortana "$bin_dir/cortana.new"
-mv -f "$bin_dir/cortana.new" "$bin_dir/cortana"
+binary_source="$repo_dir/target/release/cortana"
+binary_name="cortana"
+if [[ ! -f "$binary_source" && -f "$repo_dir/target/release/cortana.exe" ]]; then
+  binary_source="$repo_dir/target/release/cortana.exe"
+  binary_name="cortana.exe"
+fi
+[[ -f "$binary_source" ]] || {
+  echo "release binary is missing: $repo_dir/target/release/cortana[.exe]" >&2
+  exit 1
+}
+binary_path="$bin_dir/$binary_name"
+install -m 0755 "$binary_source" "$binary_path.new"
+mv -f "$binary_path.new" "$binary_path"
 
 web_stage="$share_dir/web.stage.$$"
 install -d -m 0755 "$web_stage"
@@ -54,31 +65,31 @@ fi
 uv pip install --python "$venv_python" ".[ingestion]"
 
 if [[ ! -f "$config_path" ]]; then
-  "$bin_dir/cortana" --config "$config_path" init \
+  "$binary_path" --config "$config_path" init \
     --data-dir "$data_root" \
     --connector-command "$connector_command"
 fi
 
 if [[ "$(uname -s)" == "Darwin" && "${CORTANA_INSTALL_SERVICE:-1}" == "1" ]]; then
   if [[ "${CORTANA_ENABLE_SYNC_SERVICE:-0}" == "1" ]]; then
-    "$bin_dir/cortana" --config "$config_path" service install \
+    "$binary_path" --config "$config_path" service install \
       --web-dir "$web_dir" \
       --working-directory "$share_dir" \
       --enable-sync-service
   else
-    "$bin_dir/cortana" --config "$config_path" service install \
+    "$binary_path" --config "$config_path" service install \
       --web-dir "$web_dir" \
       --working-directory "$share_dir"
   fi
 fi
 
 if [[ "${CORTANA_INSTALL_AGENT_INTEGRATIONS:-0}" == "1" ]]; then
-  CORTANA_BINARY="$bin_dir/cortana" \
+  CORTANA_BINARY="$binary_path" \
     CORTANA_CONFIG="$config_path" \
     "$repo_dir/scripts/install-agent-integrations.sh"
 fi
 
 echo "Cortana installed"
-echo "  binary: $bin_dir/cortana"
+echo "  binary: $binary_path"
 echo "  config: $config_path"
 echo "  web:    $web_dir"
