@@ -224,6 +224,11 @@ impl AnswerEngine {
         principal_acl: &[String],
     ) -> Result<AnswerResponse> {
         anyhow::ensure!(!request.query.trim().is_empty(), "query must not be empty");
+        anyhow::ensure!(
+            request.query.len() <= retrieval::MAX_QUERY_BYTES,
+            "query exceeds {} bytes",
+            retrieval::MAX_QUERY_BYTES
+        );
         let started = Instant::now();
         let revision = self.store.corpus_revision()?;
         let cache_key = self.cache_key(&request, revision, principal_acl)?;
@@ -925,6 +930,27 @@ mod tests {
             .cache_key(&request, 1, &["personal".into()])
             .expect("personal key");
         assert_ne!(work, personal);
+    }
+
+    #[tokio::test]
+    async fn answer_rejects_oversized_queries_before_planning() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let engine = AnswerEngine::new(
+            store,
+            Arc::new(DeterministicEmbedder::new(16)),
+            None,
+            QueryConfig::default(),
+        );
+        let error = engine
+            .answer(AnswerRequest {
+                query: "x".repeat(retrieval::MAX_QUERY_BYTES + 1),
+                project: None,
+                source: None,
+            })
+            .await
+            .expect_err("oversized answer query");
+        assert!(error.to_string().contains("query exceeds"));
     }
 
     #[tokio::test]
