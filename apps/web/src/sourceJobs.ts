@@ -258,10 +258,7 @@ export function useSourceJobs() {
     const timer = window.setInterval(() => {
       if (pollingRef.current) return
       const ids = activeJobIds(jobsRef.current)
-      if (ids.length === 0) {
-        setError('')
-        return
-      }
+      if (ids.length === 0) return
       pollingRef.current = true
       void Promise.allSettled(ids.map((id) => getDesktopSourceValidation(id)))
         .then((results) => {

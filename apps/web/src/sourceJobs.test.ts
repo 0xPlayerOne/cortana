@@ -440,6 +440,10 @@ test('source job history recovery failures stay visible and retryable', async ()
     await new Promise((resolve) => setTimeout(resolve, 40))
   })
   expect(result.current.error).toBe('source job history transport failed')
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+  })
+  expect(result.current.error).toBe('source job history transport failed')
 
   state.recoveryError = null
   state.recovered = [jobOf('recovered-after-retry', 'succeeded')]
