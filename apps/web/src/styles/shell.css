@@ -288,6 +288,7 @@
 }
 
 .source-health.failed,
+.source-health.warning,
 .ingestion-health.warning i {
   background: #d79a47;
 }
