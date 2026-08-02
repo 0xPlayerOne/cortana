@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.4](https://github.com/0xPlayerOne/cortana/compare/v0.19.3...v0.19.4) (2026-08-02)
+
+
+### Performance
+
+* **release:** cache desktop build artifacts ([#255](https://github.com/0xPlayerOne/cortana/issues/255)) ([8a7edfd](https://github.com/0xPlayerOne/cortana/commit/8a7edfd53b3e806c376ed32b467878e67b1c6e4e))
+
 ## [0.19.3](https://github.com/0xPlayerOne/cortana/compare/v0.19.2...v0.19.3) (2026-08-02)
 
 
