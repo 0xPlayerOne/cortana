@@ -63,12 +63,16 @@ class Outbox:
         self._path = path
         _prepare_private_sqlite_path(path)
         self._connection = sqlite3.connect(path)
-        self._connection.row_factory = sqlite3.Row
-        self._connection.execute("PRAGMA journal_mode=WAL")
-        self._connection.execute("PRAGMA foreign_keys=ON")
-        self._connection.execute("PRAGMA synchronous=NORMAL")
-        self._ensure_schema()
-        _secure_sqlite_artifacts(path)
+        try:
+            self._connection.row_factory = sqlite3.Row
+            self._connection.execute("PRAGMA journal_mode=WAL")
+            self._connection.execute("PRAGMA foreign_keys=ON")
+            self._connection.execute("PRAGMA synchronous=NORMAL")
+            self._ensure_schema()
+            _secure_sqlite_artifacts(path)
+        except Exception:
+            self._connection.close()
+            raise
 
     def close(self) -> None:
         self._connection.close()
