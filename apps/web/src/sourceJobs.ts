@@ -162,6 +162,7 @@ export function useSourceJobs() {
   const [foreground, setForeground] = useState(
     () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
   )
+  const [retryNonce, setRetryNonce] = useState(0)
   const jobsRef = useRef(jobs)
   const pollingRef = useRef(false)
   jobsRef.current = jobs
@@ -244,6 +245,7 @@ export function useSourceJobs() {
       .then((next) => {
         if (disposed) return
         setJobs((current) => mergeJobSnapshots(current, next))
+        setError('')
       })
       .catch(() => {
         // A fresh native process may have no source-job state yet. The
@@ -292,7 +294,12 @@ export function useSourceJobs() {
       disposed = true
       window.clearInterval(timer)
     }
-  }, [foreground])
+  }, [foreground, retryNonce])
 
-  return { jobs, remember, track: remember, error }
+  const retry = useCallback(() => {
+    setError('')
+    setRetryNonce((current) => current + 1)
+  }, [])
+
+  return { jobs, remember, track: remember, error, retry }
 }

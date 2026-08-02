@@ -79,6 +79,7 @@ export function UtilityView({
   contextTokens,
   desktopAvailable,
   sourceJobError,
+  onRetrySourceJobs,
   onSearchFocus,
   onRetrieveContext,
   onOpenSettings,
@@ -101,6 +102,7 @@ export function UtilityView({
   contextTokens: number
   desktopAvailable: boolean
   sourceJobError?: string
+  onRetrySourceJobs?: () => void
   onSearchFocus: () => void
   onRetrieveContext: () => void
   onOpenSettings: () => void
@@ -124,6 +126,7 @@ export function UtilityView({
             statusError={statusError}
             sourceJobs={sourceJobs}
             sourceJobError={sourceJobError}
+            onRetrySourceJobs={onRetrySourceJobs}
             onOpenSettings={onOpenSettings}
             onRetryStatus={onRetryStatus}
             onCancelSourceJob={onCancelSourceJob}
@@ -171,6 +174,7 @@ function InboxView({
   statusError,
   sourceJobs,
   sourceJobError,
+  onRetrySourceJobs,
   onOpenSettings,
   onRetryStatus,
   onCancelSourceJob,
@@ -179,6 +183,7 @@ function InboxView({
   statusError: string
   sourceJobs: DesktopSourceJob[]
   sourceJobError?: string
+  onRetrySourceJobs?: () => void
   onOpenSettings: () => void
   onRetryStatus?: () => void
   onCancelSourceJob?: (id: string) => void
@@ -236,6 +241,14 @@ function InboxView({
       {sourceJobError && (
         <p className="utility-error" role="alert">
           {sourceJobError}
+          {onRetrySourceJobs && (
+            <>
+              {' '}
+              <button type="button" className="link-button" onClick={onRetrySourceJobs}>
+                Retry source jobs
+              </button>
+            </>
+          )}
         </p>
       )}
       {statusError && status && (

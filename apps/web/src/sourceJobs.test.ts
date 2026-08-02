@@ -403,6 +403,32 @@ test('polling failure for an active source job surfaces a transient snapshot err
   expect(result.current.jobs[0]?.status).toBe('succeeded')
 })
 
+test('source job status errors expose a recovery action', async () => {
+  const running = jobOf('job-1', 'running')
+  state.polled.set('job-1', new Error('source job status transport failed'))
+  state.recovered = [
+    jobOf('job-1', 'succeeded', {
+      summary: 'Recovered completion.',
+      completed_at_unix_seconds: 1785000100,
+    }),
+  ]
+  const { result, unmount } = renderHook(() => useSourceJobs())
+  act(() => result.current.remember(running))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_200))
+  })
+  expect(result.current.error).toBe('source job status transport failed')
+
+  act(() => result.current.retry())
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+  expect(result.current.error).toBe('')
+  expect(result.current.jobs[0]?.status).toBe('succeeded')
+  unmount()
+})
+
 test('the hook does not overlap source status polls while one batch is pending', async () => {
   const running = jobOf('job-1', 'running')
   let resolvePending: ((job: DesktopSourceJob) => void) | undefined

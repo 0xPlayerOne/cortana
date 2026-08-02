@@ -1472,6 +1472,7 @@ export function App() {
             statusError={statusError}
             onRetryStatus={retryStatus}
             sourceJobError={sourceJobsError}
+            onRetrySourceJobs={sourceJobs.retry}
             onSelect={chooseSource}
             onSelectWorkspace={chooseWorkspace}
             onDocumentQueryChange={setDocumentQuery}
@@ -1598,6 +1599,7 @@ export function App() {
           contextTokens={estimateTokens(agentContext)}
           desktopAvailable={isDesktopApp}
           sourceJobError={sourceJobsError}
+          onRetrySourceJobs={sourceJobs.retry}
           onSearchFocus={focusSearch}
           onRetrieveContext={() => void retrieveAgentContext()}
           onOpenSettings={() => setView('settings')}

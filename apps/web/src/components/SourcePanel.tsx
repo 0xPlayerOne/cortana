@@ -30,6 +30,7 @@ export function SourcePanel({
   statusError,
   onRetryStatus,
   sourceJobError = '',
+  onRetrySourceJobs,
   workspace,
   workspaces,
   documentQuery,
@@ -62,6 +63,7 @@ export function SourcePanel({
   statusError: string
   onRetryStatus?: () => void
   sourceJobError?: string
+  onRetrySourceJobs?: () => void
   workspace: string
   workspaces: WorkspaceSettings[]
   documentQuery: string
@@ -196,6 +198,14 @@ export function SourcePanel({
       {sourceJobError && (
         <p className="document-list-error source-job-error" role="alert">
           {sourceJobError}
+          {onRetrySourceJobs && (
+            <>
+              {' '}
+              <button type="button" className="link-button" onClick={onRetrySourceJobs}>
+                Retry source jobs
+              </button>
+            </>
+          )}
         </p>
       )}
       {sourceToggleError && (
