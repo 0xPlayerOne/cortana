@@ -31,11 +31,11 @@ completed. Hindsight remains the suitable optional provider for canonical-docume
 ## Enablement boundary
 
 Construct the provider only from an explicit operator-selected memory configuration and drain the
-outbox deliberately. The adapter is not wired into the default Rust sync service or Desktop
-settings yet. Before enabling it for personal data, run a versioned comparison against Cortana's
-native `context` retrieval and verify retention, deletion, ACL, and export behavior. Until those
-gates pass, use Cortana's MCP `context` tool as the agent memory interface and keep Honcho
-disabled.
+outbox deliberately. The adapter is not wired into the default Rust sync service; Desktop exposes
+the optional configuration and keeps it disabled by default. Before enabling it for personal data,
+run a versioned comparison against Cortana's native `context` retrieval and verify retention,
+deletion, ACL, and export behavior. Until those gates pass, use Cortana's MCP `context` tool as the
+agent memory interface and keep Honcho disabled.
 
 The implementation uses Cortana's existing `httpx` dependency; no hosted SDK is required.
 
