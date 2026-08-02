@@ -112,6 +112,7 @@ impl RuntimeMetrics {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SearchRequest {
     query: String,
     project: Option<String>,
@@ -121,6 +122,7 @@ struct SearchRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ContextRequest {
     query: String,
     project: Option<String>,
