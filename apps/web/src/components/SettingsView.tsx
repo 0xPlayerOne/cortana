@@ -94,6 +94,7 @@ type Section =
   | 'advanced'
 
 export function SettingsView({
+  desktopSettings: externalSettings,
   onSaved,
   onDirtyChange,
   initialSection = 'readiness',
@@ -120,6 +121,8 @@ export function SettingsView({
   honchoStatus: externalHonchoStatus,
   onHonchoStatus,
 }: {
+  /** Shell-owned settings snapshot. Standalone renders fetch their own copy. */
+  desktopSettings?: DesktopSettings
   onSaved: (settings: DesktopSettings) => void
   onDirtyChange?: (dirty: boolean) => void
   initialSection?: Section
@@ -162,7 +165,7 @@ export function SettingsView({
   honchoStatus?: DesktopHonchoStatus | null
   onHonchoStatus?: (status: DesktopHonchoStatus | null) => void
 }) {
-  const [settings, setSettings] = useState<DesktopSettings | null>(null)
+  const [settings, setSettings] = useState<DesktopSettings | null>(externalSettings ?? null)
   const [section, setSection] = useState<Section>(initialSection)
   const [secretValues, setSecretValues] = useState<Record<string, string>>({})
   const [clearedSecrets, setClearedSecrets] = useState<Set<string>>(new Set())
@@ -179,12 +182,18 @@ export function SettingsView({
 
   useEffect(() => {
     if (!isDesktopApp) return
+    if (externalSettings) {
+      // The shell owns the saved snapshot. Do not replace an in-progress local
+      // draft when a parent status update re-renders this view.
+      if (!dirty) setSettings(externalSettings)
+      return
+    }
     void getDesktopSettings()
       .then(setSettings)
       .catch((caught: unknown) =>
         setError(caught instanceof Error ? caught.message : 'Unable to load settings')
       )
-  }, [])
+  }, [externalSettings, dirty])
 
   useEffect(() => setSection(initialSection), [initialSection])
 

@@ -1017,6 +1017,7 @@ export function App() {
       />
       {view === 'settings' ? (
         <SettingsView
+          desktopSettings={desktopSettings ?? undefined}
           initialSection={settingsSection}
           onDirtyChange={setSettingsDirty}
           onJob={sourceJobs.remember}
