@@ -281,6 +281,9 @@ async fn uv_managed_python() -> Option<PathBuf> {
     .await
     .ok()?
     .ok()?;
+    if output.stdout.len() > MAX_DETAIL_BYTES {
+        return None;
+    }
     let path = parse_uv_python_path(&output.stdout)?;
     is_executable(&path).then_some(path)
 }
