@@ -201,6 +201,7 @@ pub struct SecretState {
 pub struct SettingsSnapshot {
     pub config_path: String,
     pub secret_file_path: String,
+    pub secret_file_managed: bool,
     pub embedding_service_program: Option<String>,
     pub needs_setup: bool,
     pub restart_required: bool,
@@ -734,6 +735,10 @@ fn snapshot(
     let embedding_service_program = nested_table(root, "embedding", "service")
         .map(|service| table_string_array(service, "command"))
         .and_then(|command| command.into_iter().next());
+    let secret_file_managed = config_path
+        .parent()
+        .map(|parent| parent.join("secrets.env") == secret_path)
+        .unwrap_or(false);
     let mut secret_names = BTreeSet::new();
     secret_names.extend(embedding_api_key_env.iter().cloned());
     secret_names.extend(query_api_key_env.iter().cloned());
@@ -753,6 +758,7 @@ fn snapshot(
     SettingsSnapshot {
         config_path: config_path.display().to_string(),
         secret_file_path: secret_path.display().to_string(),
+        secret_file_managed,
         embedding_service_program,
         needs_setup,
         restart_required: false,

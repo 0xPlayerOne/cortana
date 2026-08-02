@@ -3582,7 +3582,11 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
       <div className="form-grid">
         <Field
           label="Effective secret file"
-          hint="Owner-only path used for provider, connector, and agent tokens"
+          hint={
+            settings.secret_file_managed
+              ? 'Owner-only Desktop-managed path for provider, connector, and agent tokens'
+              : 'Externally managed runtime.env_file; Desktop will not write this path'
+          }
           wide
         >
           <input
