@@ -7,6 +7,9 @@ binary_path="${CORTANA_BINARY:-${CORTANA_INSTALL_PREFIX:-$HOME/.local}/bin/corta
 config_path="${CORTANA_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/cortana/config.toml}"
 skill_roots="${CORTANA_SKILL_ROOTS:-$HOME/.codex/skills:$HOME/.hermes/skills:$HOME/.config/opencode/skills:$HOME/.agents/skills}"
 
+if [[ ! -x "$binary_path" && -x "${binary_path}.exe" ]]; then
+  binary_path="${binary_path}.exe"
+fi
 if [[ ! -x "$binary_path" ]]; then
   echo "Cortana binary is not executable: $binary_path" >&2
   exit 1
