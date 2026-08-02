@@ -41,6 +41,17 @@ test('source links reject executable and credential-bearing URLs', () => {
   expect(
     safeSourceLink('slack://channel?id=C123ABC&message=1&redirect=https://evil.test')
   ).toBeNull()
+  expect(safeSourceLink('notes://showNote?identifier=x-coredata%3A%2F%2Fnote-1')).toBe(
+    'notes://showNote?identifier=x-coredata%3A%2F%2Fnote-1'
+  )
+  expect(safeSourceLink('notes://showNote?identifier=')).toBeNull()
+  expect(safeSourceLink('notes://showNote?identifier=note-1&extra=1')).toBeNull()
+  expect(safeSourceLink('buzz://persona/npub123/session%3A1')).toBe(
+    'buzz://persona/npub123/session%3A1'
+  )
+  expect(safeSourceLink('buzz://persona/npub123/session/extra')).toBeNull()
+  expect(safeSourceLink('buzz://persona/npub123/')).toBeNull()
+  expect(safeSourceLink('buzz://persona/npub%2F123/session')).toBeNull()
   expect(safeSourceLink('https://example.test/releases')).toBe('https://example.test/releases')
 })
 

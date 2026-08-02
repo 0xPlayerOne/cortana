@@ -7,6 +7,7 @@ import stat
 import sys
 from collections.abc import Iterable
 from pathlib import Path
+from urllib.parse import quote
 
 from .model import Document
 
@@ -40,7 +41,7 @@ def fetch(root: Path, project: str = "buzz") -> Iterable[Document]:
                     source_id=f"persona:{source_id}",
                     title=f"Buzz persona {tag}",
                     content=text,
-                    uri=f"buzz://persona/{pubkey}/{tag}",
+                    uri=f"buzz://persona/{quote(str(pubkey), safe='')}/{quote(str(tag), safe='')}",
                     updated_at=updated_at,
                     project=project,
                     metadata={"kind": kind, "pubkey": pubkey, "raw_event": event},

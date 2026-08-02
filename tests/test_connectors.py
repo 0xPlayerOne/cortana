@@ -121,6 +121,7 @@ def test_apple_notes_normalizes_jxa_rows(monkeypatch: pytest.MonkeyPatch) -> Non
 
     assert len(documents) == 1
     assert documents[0].source_id == "x-coredata://note/1"
+    assert documents[0].uri == "notes://showNote?identifier=x-coredata%3A%2F%2Fnote%2F1"
     assert documents[0].metadata == {"account": "iCloud", "folder": "Notes"}
 
 
@@ -190,6 +191,7 @@ def test_buzz_reads_personas_and_logs_read_only(tmp_path: Path) -> None:
         "persona:30078:pub:bad-json",
         "log:agent.log",
     ]
+    assert documents[0].uri == "buzz://persona/pub/profile"
     assert documents[0].metadata["raw_event"]["id"] == "event"
     assert documents[1].metadata["raw_event"] is None
 

@@ -40,8 +40,9 @@ project/source filters, an opaque pagination cursor, or a hex document ID. Nativ
 the fixed loopback URLs and performs the request; the renderer cannot select a host, port, path, or
 database file. Original `file:` links take a second native path: the target is canonicalized and
 must remain inside a configured filesystem source root, so symlinks cannot escape the indexed
-scope. Other external links use a fixed scheme allowlist; Slack deep links are accepted only when
-they contain a channel id and message timestamp, with no credentials or arbitrary query fields.
+scope. Other external links use a fixed scheme allowlist; Slack, Apple Notes, and Buzz deep links
+are accepted only when they match their exact host/path/query shape, with no credentials or
+arbitrary query fields.
 The core API applies the same bearer scope and document ACL policy as retrieval, bounds
 pages to 100 summaries and content to 2 MiB, and records metadata-only list/read audits.
 

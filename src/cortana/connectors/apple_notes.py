@@ -6,6 +6,7 @@ import subprocess
 import sys
 from collections.abc import Iterable
 from typing import Any
+from urllib.parse import quote
 
 from .model import Document
 
@@ -75,7 +76,7 @@ def fetch(project: str = "personal", timeout: int = 120) -> Iterable[Document]:
             source_id=source_id,
             title=str(row.get("name") or "Untitled note"),
             content=content,
-            uri=f"notes://showNote?identifier={row['id']}",
+            uri=f"notes://showNote?identifier={quote(source_id, safe='')}",
             updated_at=modified,
             project=project,
             metadata={"account": row.get("account"), "folder": row.get("folder")},

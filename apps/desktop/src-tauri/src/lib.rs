@@ -332,6 +332,8 @@ fn validate_external_url(url: &str) -> Result<(), String> {
         "http" | "https" => Ok(()),
         "mailto" => Ok(()),
         "slack" => validate_slack_url(&parsed),
+        "notes" => validate_notes_url(&parsed),
+        "buzz" => validate_buzz_url(&parsed),
         "file" => {
             if parsed
                 .host_str()
@@ -385,6 +387,87 @@ fn validate_slack_url(url: &Url) -> Result<(), String> {
         return Err("Slack links contain an invalid team id".into());
     }
     Ok(())
+}
+
+fn validate_notes_url(url: &Url) -> Result<(), String> {
+    if url
+        .host_str()
+        .is_none_or(|host| !host.eq_ignore_ascii_case("shownote"))
+        || !url.path().is_empty()
+        || url.fragment().is_some()
+    {
+        return Err("Apple Notes links must target a note deep link".into());
+    }
+    let mut identifier = None;
+    for (key, value) in url.query_pairs() {
+        if key != "identifier" || identifier.replace(value.into_owned()).is_some() {
+            return Err("Apple Notes links contain unsupported query data".into());
+        }
+    }
+    let identifier = identifier
+        .ok_or_else(|| "Apple Notes links must include a note identifier".to_string())?;
+    validate_custom_link_value(&identifier, 1024, true)
+        .then_some(())
+        .ok_or_else(|| "Apple Notes links contain an invalid note identifier".into())
+}
+
+fn validate_buzz_url(url: &Url) -> Result<(), String> {
+    if url
+        .host_str()
+        .is_none_or(|host| !host.eq_ignore_ascii_case("persona"))
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err("Buzz links must target a persona deep link".into());
+    }
+    if contains_forbidden_encoded_path_byte(url.path()) {
+        return Err("Buzz links contain an invalid encoded path segment".into());
+    }
+    let segments = url
+        .path_segments()
+        .ok_or_else(|| "Buzz links must contain persona path segments".to_string())?
+        .collect::<Vec<_>>();
+    if segments.len() != 2
+        || segments
+            .iter()
+            .any(|segment| !validate_custom_link_value(segment, 256, false))
+    {
+        return Err("Buzz links contain invalid persona data".into());
+    }
+    Ok(())
+}
+
+fn contains_forbidden_encoded_path_byte(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'%' {
+            index += 1;
+            continue;
+        }
+        if index + 2 >= bytes.len() {
+            return true;
+        }
+        let Some(high) = (bytes[index + 1] as char).to_digit(16) else {
+            return true;
+        };
+        let Some(low) = (bytes[index + 2] as char).to_digit(16) else {
+            return true;
+        };
+        let decoded = (high * 16 + low) as u8;
+        if decoded == b'/' || decoded == b'\\' || decoded < 0x20 || decoded == 0x7f {
+            return true;
+        }
+        index += 3;
+    }
+    false
+}
+
+fn validate_custom_link_value(value: &str, maximum_length: usize, allow_slash: bool) -> bool {
+    !value.is_empty()
+        && value.len() <= maximum_length
+        && (allow_slash || !value.contains('/'))
+        && !value.chars().any(|character| character.is_control())
 }
 
 fn valid_slack_identifier(value: &str) -> bool {
@@ -1167,6 +1250,17 @@ mod tests {
         )
         .is_err());
         assert!(validate_external_url("slack://channel?id=C123ABC&message=.").is_err());
+        assert!(validate_external_url(
+            "notes://showNote?identifier=x-coredata%3A%2F%2Fnote-1"
+        )
+        .is_ok());
+        assert!(validate_external_url("notes://showNote?identifier=").is_err());
+        assert!(validate_external_url("notes://showNote?identifier=x&extra=1").is_err());
+        assert!(validate_external_url("buzz://persona/npub123/session%3A1").is_ok());
+        assert!(validate_external_url("buzz://persona/npub123/session/extra").is_err());
+        assert!(validate_external_url("buzz://persona/npub123/").is_err());
+        assert!(validate_external_url("buzz://persona/npub%2F123/session").is_err());
+        assert!(validate_external_url("buzz://persona/npub%00/session").is_err());
         assert!(validate_external_url("file:///tmp/cv.pdf").is_ok());
         assert!(validate_external_url("file://user@localhost/tmp/cv.pdf").is_err());
         assert!(validate_external_url("file://remote.example/cv.pdf").is_err());
