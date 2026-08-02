@@ -3,7 +3,14 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 
 import { demoEvidence, demoStatus } from './demo'
 import { answerResponse } from './test/fixtures'
-import type { AnswerResponse, BrainDocument, BrainStatus, ContextBundle } from './types'
+import type {
+  AnswerResponse,
+  BrainDocument,
+  BrainGraphPage,
+  BrainStatus,
+  ContextBundle,
+  DesktopSourceJob,
+} from './types'
 
 afterEach(cleanup)
 
@@ -37,6 +44,7 @@ const state = {
       ) => Promise<ContextBundle>)
     | null,
   getDocument: null as ((id: string, signal?: AbortSignal) => Promise<BrainDocument>) | null,
+  graph: null as BrainGraphPage | null,
 }
 
 mock.module('./api', () => ({
@@ -51,6 +59,10 @@ mock.module('./api', () => ({
     state.getDocument
       ? state.getDocument(id, signal)
       : Promise.reject(new Error('Document unavailable')),
+  getGraph: () =>
+    state.graph
+      ? Promise.resolve(state.graph)
+      : Promise.reject(new Error('Graph data unavailable')),
   getContext: (query: string, project?: string, source?: string, signal?: AbortSignal) =>
     state.getContext
       ? state.getContext(query, project, source, signal)
@@ -63,6 +75,7 @@ mock.module('./api', () => ({
 }))
 
 const { App } = await import('./App')
+const { UtilityView } = await import('./components/UtilityView')
 
 const RAIL_LABELS = [
   'Search',
@@ -122,6 +135,7 @@ test('Graph and Timeline rail buttons route to the existing workspace tabs', asy
   await waitFor(() =>
     expect(screen.getByRole('tab', { name: 'Graph' }).getAttribute('aria-selected')).toBe('true')
   )
+  expect(railButton('Graph').className).toContain('active')
   expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
 
   // Timeline routes to the workspace Timeline tab and unselects Graph.
@@ -129,6 +143,8 @@ test('Graph and Timeline rail buttons route to the existing workspace tabs', asy
   await waitFor(() =>
     expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true')
   )
+  expect(railButton('Timeline').className).toContain('active')
+  expect(railButton('Graph').className).not.toContain('active')
   expect(screen.getByRole('tab', { name: 'Graph' }).getAttribute('aria-selected')).toBe('false')
 
   // Knowledge returns the workspace to its default tab.
@@ -165,6 +181,41 @@ test('graph and timeline evidence actions open the selected source', async () =>
       )
     )
     expect(screen.getByRole('heading', { level: 1, name: 'Deployment playbook' })).toBeTruthy()
+  }
+
+  expect(screen.getByRole('link', { name: 'Retrieved passage' }).getAttribute('href')).toBe(
+    '#passage'
+  )
+  expect(screen.getByRole('link', { name: 'Related evidence' }).getAttribute('href')).toBe(
+    '#related'
+  )
+  expect(document.getElementById('passage')).toBeTruthy()
+  expect(document.getElementById('related')).toBeTruthy()
+})
+
+test('graph view renders indexed document nodes when the graph endpoint responds', async () => {
+  state.graph = {
+    nodes: [
+      {
+        id: 'document:release-process',
+        kind: 'document',
+        label: 'Release process',
+        project: 'work',
+        source: 'work-code',
+        document_id: 'release-process-id',
+      },
+    ],
+    edges: [],
+    next_cursor: null,
+  }
+
+  try {
+    await renderApp()
+    fireEvent.click(railButton('Graph'))
+    await waitFor(() => expect(screen.getByText('1 nodes · 0 links')).toBeTruthy())
+    expect(screen.getByRole('button', { name: 'Graph evidence: Release process' })).toBeTruthy()
+  } finally {
+    state.graph = null
   }
 })
 
@@ -247,7 +298,140 @@ test('Inbox renders current sync attention and a truthful idle empty state', asy
   expect(screen.getByRole('button', { name: 'Open settings' })).toBeTruthy()
 })
 
-test('Index renders live BrainStatus metrics and an offline empty state', async () => {
+test('Inbox does not claim clean sync history while runtime status is unavailable', () => {
+  let retries = 0
+  render(
+    <UtilityView
+      kind="inbox"
+      status={null}
+      statusError="Runtime status unavailable"
+      sourceJobs={[]}
+      query=""
+      answer={null}
+      evidence={[]}
+      loading={false}
+      error=""
+      contextBundle={null}
+      contextLoading={false}
+      contextError=""
+      contextTokens={0}
+      desktopAvailable={false}
+      onSearchFocus={() => {}}
+      onRetrieveContext={() => {}}
+      onOpenSettings={() => {}}
+      onOpenProject={() => {}}
+      onRetryStatus={() => {
+        retries += 1
+      }}
+    />
+  )
+  expect(screen.getByText('Sync health unavailable')).toBeTruthy()
+  expect(screen.getByText('Runtime status unavailable')).toBeTruthy()
+  expect(screen.queryByText('No sync attention')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Retry status' }))
+  expect(retries).toBe(1)
+})
+
+test('Inbox retains terminal source-job history after the job stops running', () => {
+  const job: DesktopSourceJob = {
+    id: 'source-1',
+    operation: 'validation',
+    source: 'work-code',
+    kind: 'filesystem',
+    project: 'work',
+    acl: ['work'],
+    status: 'failed',
+    summary: 'Connector validation failed.',
+    log: 'permission denied',
+    started_at_unix_seconds: 1_785_000_000,
+    completed_at_unix_seconds: 1_785_000_012,
+    exit_code: 1,
+    retryable: true,
+    writes_indexed_data: false,
+    budget: null,
+  }
+  render(
+    <UtilityView
+      kind="inbox"
+      status={{ ...demoStatus, sync_runs: [] }}
+      sourceJobs={[job]}
+      query=""
+      answer={null}
+      evidence={[]}
+      loading={false}
+      error=""
+      contextBundle={null}
+      contextLoading={false}
+      contextError=""
+      contextTokens={0}
+      desktopAvailable={false}
+      sourceJobError="Source job cancellation failed"
+      onSearchFocus={() => {}}
+      onRetrieveContext={() => {}}
+      onOpenSettings={() => {}}
+      onOpenProject={() => {}}
+    />
+  )
+  expect(screen.getByText('Recent source jobs')).toBeTruthy()
+  expect(screen.getByText('work-code · validation')).toBeTruthy()
+  expect(screen.getByText('Failed')).toBeTruthy()
+  expect(screen.getByText(/Connector validation failed/)).toBeTruthy()
+  fireEvent.click(screen.getByText('View job log'))
+  expect(screen.getByText('permission denied')).toBeTruthy()
+  expect(screen.getByRole('alert').textContent).toBe('Source job cancellation failed')
+})
+
+test('Inbox keeps a cancelling source job visibly in progress until it exits', () => {
+  const job: DesktopSourceJob = {
+    id: 'source-cancelling',
+    operation: 'trial-sync',
+    source: 'work-code',
+    kind: 'filesystem',
+    project: 'work',
+    acl: ['work'],
+    status: 'cancelling',
+    summary: 'Cancelling source trial-sync…',
+    log: '',
+    started_at_unix_seconds: 1_785_000_000,
+    completed_at_unix_seconds: null,
+    exit_code: null,
+    retryable: false,
+    writes_indexed_data: true,
+    budget: null,
+  }
+
+  render(
+    <UtilityView
+      kind="inbox"
+      status={{ ...demoStatus, sync_runs: [] }}
+      sourceJobs={[job]}
+      query=""
+      answer={null}
+      evidence={[]}
+      loading={false}
+      error=""
+      contextBundle={null}
+      contextLoading={false}
+      contextError=""
+      contextTokens={0}
+      desktopAvailable={false}
+      onSearchFocus={() => {}}
+      onRetrieveContext={() => {}}
+      onOpenSettings={() => {}}
+      onOpenProject={() => {}}
+      onCancelSourceJob={() => {}}
+    />
+  )
+
+  expect(screen.getByText('Cancelling…')).toBeTruthy()
+  expect(
+    screen
+      .getByRole('button', { name: 'Cancel work work-code trial-sync' })
+      .hasAttribute('disabled')
+  ).toBe(true)
+})
+
+test('Index renders live BrainStatus metrics and a truthful loading empty state', async () => {
   await renderApp()
   fireEvent.click(railButton('Index'))
   await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Index' })).toBeTruthy())
@@ -258,12 +442,13 @@ test('Index renders live BrainStatus metrics and an offline empty state', async 
   expect(screen.getByText('42,891 entries')).toBeTruthy()
   expect(screen.getByText('synthesized')).toBeTruthy()
 
-  // An unreachable brain renders the offline empty state.
+  // Without a status error, the shell is still waiting for the runtime rather
+  // than claiming that the index is offline.
   cleanup()
   state.status = null
   await renderApp()
   fireEvent.click(railButton('Index'))
-  await waitFor(() => expect(screen.getByText('Index offline')).toBeTruthy())
+  await waitFor(() => expect(screen.getByText('Loading index')).toBeTruthy())
   expect(screen.getByText('Open settings')).toBeTruthy()
 })
 
@@ -288,6 +473,50 @@ test('Agent tools prompts retrieval and then shows the generated context metrics
   expect(screen.getByText('8,000')).toBeTruthy()
   expect(screen.getByText('Deployment playbook')).toBeTruthy()
   expect(screen.getByText('How do releases work?')).toBeTruthy()
+})
+
+test('Agent tools copies the exact generated context bundle for local agent handoff', async () => {
+  let copiedText = ''
+  const originalClipboard = navigator.clipboard
+  Object.defineProperty(navigator, 'clipboard', {
+    value: {
+      writeText: (value: string) => {
+        copiedText = value
+        return Promise.resolve()
+      },
+    },
+    configurable: true,
+  })
+
+  try {
+    render(
+      <UtilityView
+        kind="agent-tools"
+        status={demoStatus}
+        sourceJobs={[]}
+        query={contextBundle.query}
+        answer={answerResponse}
+        evidence={contextBundle.evidence}
+        loading={false}
+        error=""
+        contextBundle={contextBundle}
+        contextLoading={false}
+        contextError=""
+        contextTokens={contextBundle.metrics.estimated_tokens}
+        desktopAvailable={false}
+        onSearchFocus={() => {}}
+        onRetrieveContext={() => {}}
+        onOpenSettings={() => {}}
+        onOpenProject={() => {}}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy MCP-equivalent context' }))
+    await waitFor(() => expect(screen.getByText('Context copied')).toBeTruthy())
+    expect(copiedText).toBe(contextBundle.context)
+  } finally {
+    Object.defineProperty(navigator, 'clipboard', { value: originalClipboard, configurable: true })
+  }
 })
 
 test('Conversations shows the session state and offers search focus', async () => {

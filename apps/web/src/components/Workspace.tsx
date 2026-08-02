@@ -2,7 +2,9 @@ import { BookOpen, FileText, History, Link2, Network, Sparkles, Star } from 'luc
 import { type CSSProperties, useEffect, useState } from 'react'
 
 import { isDesktopApp, openDesktopUrl } from '../api'
-import type { AnswerResponse, BrainDocument, Evidence } from '../types'
+import { isFavoriteDocument, toggleFavoriteDocument } from '../favoriteDocuments'
+import { safeSourceLink } from '../sourceLinks'
+import type { AnswerResponse, BrainDocument, BrainGraphPage, Evidence } from '../types'
 
 const tabs = [
   { id: 'answer', label: 'Answer', icon: Sparkles },
@@ -12,20 +14,16 @@ const tabs = [
   { id: 'timeline', label: 'Timeline', icon: History },
 ] as const
 
-const externalUrlSchemes = new Set(['http:', 'https:', 'mailto:', 'file:'])
-
-async function openSourceLink(href: string) {
-  if (!isDesktopApp) return
-  try {
-    const parsed = new URL(href)
-    if (!externalUrlSchemes.has(parsed.protocol)) return
-  } catch {
-    return
-  }
+async function openSourceLink(href: string): Promise<boolean> {
+  if (!isDesktopApp) return false
+  if (!safeSourceLink(href, { allowLocalFile: true })) return false
   try {
     await openDesktopUrl(href)
+    return true
   } catch {
-    window.open(href, '_blank', 'noopener,noreferrer')
+    // Desktop URL policy is enforced natively. Never fall back to a renderer
+    // window, which could bypass the configured-root check for file links.
+    return false
   }
 }
 
@@ -40,6 +38,10 @@ export function Workspace({
   error,
   document,
   documentLoading,
+  graph,
+  graphLoading,
+  graphError,
+  onRetryGraph,
   tab,
   onTabChange,
   onSelect,
@@ -54,6 +56,10 @@ export function Workspace({
   error: string
   document: BrainDocument | null
   documentLoading: boolean
+  graph: BrainGraphPage | null
+  graphLoading: boolean
+  graphError: string
+  onRetryGraph?: () => void
   tab: WorkspaceTab
   onTabChange: (tab: WorkspaceTab) => void
   onSelect: (index: number) => void
@@ -81,6 +87,7 @@ export function Workspace({
       <div className="workspace-tabs" role="tablist" aria-label="Result views">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
+            type="button"
             key={id}
             role="tab"
             aria-selected={tab === id}
@@ -98,6 +105,16 @@ export function Workspace({
         <EmptyState title="Opening document" detail="Loading the canonical indexed content…" />
       ) : tab === 'document' && document ? (
         <BrainDocumentView document={document} onSelectDocument={onSelectDocument} />
+      ) : tab === 'graph' ? (
+        <GraphView
+          graph={graph}
+          graphLoading={graphLoading}
+          graphError={graphError}
+          onRetry={onRetryGraph}
+          evidence={evidence}
+          onSelect={selectEvidenceByChunkId}
+          onSelectDocument={onSelectDocument}
+        />
       ) : error ? (
         <EmptyState
           title="Cortana could not reach the brain"
@@ -116,8 +133,6 @@ export function Workspace({
         />
       ) : evidence.length === 0 ? (
         <EmptyState title="No evidence found" detail="Try a broader phrase or another source." />
-      ) : tab === 'graph' ? (
-        <GraphView evidence={evidence} onSelect={selectEvidenceByChunkId} />
       ) : tab === 'timeline' ? (
         <TimelineView evidence={evidence} onSelect={selectEvidenceByChunkId} />
       ) : tab === 'answer' ? (
@@ -144,8 +159,14 @@ function BrainDocumentView({
   document: BrainDocument
   onSelectDocument: (id: string) => void
 }) {
-  const [favorite, setFavorite] = useState(false)
+  const [favorite, setFavorite] = useState(() => isFavoriteDocument(document.id))
+  const [sourceOpenError, setSourceOpenError] = useState(false)
+  useEffect(() => setFavorite(isFavoriteDocument(document.id)), [document.id])
+  useEffect(() => setSourceOpenError(false), [document.id])
   const metadata = Object.entries(document.metadata).slice(0, 24)
+  const sourceHref = document.uri
+    ? safeSourceLink(document.uri, { allowLocalFile: isDesktopApp })
+    : null
   return (
     <article className="document canonical-document">
       <div className="breadcrumbs">
@@ -157,22 +178,25 @@ function BrainDocumentView({
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
             title={favorite ? 'Remove favorite' : 'Add favorite'}
-            onClick={() => setFavorite((current) => !current)}
+            onClick={() => setFavorite(toggleFavoriteDocument(document.id))}
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
           </button>
-          {document.uri && (
+          {sourceHref && (
             <a
-              href={document.uri}
+              href={sourceHref}
               target={isDesktopApp ? undefined : '_blank'}
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
+              title="Open original source"
               onClick={(event) => {
                 if (!isDesktopApp) return
-                const uri = document.uri
-                if (!uri) return
+                const uri = sourceHref
                 event.preventDefault()
-                void openSourceLink(uri)
+                setSourceOpenError(false)
+                void openSourceLink(uri).then((opened) => {
+                  if (!opened) setSourceOpenError(true)
+                })
               }}
             >
               <Link2 size={17} />
@@ -180,6 +204,12 @@ function BrainDocumentView({
           )}
         </div>
       </div>
+      {sourceOpenError && (
+        <p className="answer-warning source-link-error" role="alert">
+          Cortana could not open the original source. Check that the source app is installed and try
+          again.
+        </p>
+      )}
       <div className="document-grid">
         <div className="document-body">
           <h1>{document.title}</h1>
@@ -212,7 +242,11 @@ function BrainDocumentView({
                 <section>
                   <h2>Backlinks</h2>
                   {document.backlinks.map((related) => (
-                    <button key={related.id} onClick={() => onSelectDocument(related.id)}>
+                    <button
+                      type="button"
+                      key={related.id}
+                      onClick={() => onSelectDocument(related.id)}
+                    >
                       <Link2 size={14} />
                       <span>{related.title}</span>
                       <small>{related.source}</small>
@@ -224,7 +258,11 @@ function BrainDocumentView({
                 <section>
                   <h2>Surrounding documents</h2>
                   {document.surrounding.map((related) => (
-                    <button key={related.id} onClick={() => onSelectDocument(related.id)}>
+                    <button
+                      type="button"
+                      key={related.id}
+                      onClick={() => onSelectDocument(related.id)}
+                    >
                       <FileText size={14} />
                       <span>{related.title}</span>
                       <small>{new Date(related.updated_at).toLocaleDateString()}</small>
@@ -279,7 +317,13 @@ function DocumentView({
   evidence: Evidence[]
   onSelect: (index: number) => void
 }) {
-  const [favorite, setFavorite] = useState(false)
+  const [favorite, setFavorite] = useState(() => isFavoriteDocument(active.chunk_id))
+  const [sourceOpenError, setSourceOpenError] = useState(false)
+  useEffect(() => setFavorite(isFavoriteDocument(active.chunk_id)), [active.chunk_id])
+  useEffect(() => setSourceOpenError(false), [active.chunk_id])
+  const sourceHref = active.uri
+    ? safeSourceLink(active.uri, { allowLocalFile: isDesktopApp })
+    : null
 
   return (
     <article className="document">
@@ -291,22 +335,24 @@ function DocumentView({
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
             title={favorite ? 'Remove favorite' : 'Add favorite'}
-            onClick={() => setFavorite((current) => !current)}
+            onClick={() => setFavorite(toggleFavoriteDocument(active.chunk_id))}
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
           </button>
-          {active.uri && (
+          {sourceHref && (
             <a
-              href={active.uri}
+              href={sourceHref}
               target={isDesktopApp ? undefined : '_blank'}
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
+              title="Open original source"
               onClick={(event) => {
                 if (!isDesktopApp) return
-                const uri = active.uri
-                if (!uri) return
                 event.preventDefault()
-                void openSourceLink(uri)
+                setSourceOpenError(false)
+                void openSourceLink(sourceHref).then((opened) => {
+                  if (!opened) setSourceOpenError(true)
+                })
               }}
             >
               <Link2 size={17} />
@@ -321,13 +367,15 @@ function DocumentView({
             Retrieved from {active.source} · {new Date(active.updated_at).toLocaleString()}
           </p>
           <div className="rule" />
-          {active.content.split(/\n{2,}/).map((paragraph, index) => (
-            <p key={`${active.chunk_id}:${index}`}>{paragraph}</p>
-          ))}
-          <div className="evidence-footer">
+          <div id="passage">
+            {active.content.split(/\n{2,}/).map((paragraph, index) => (
+              <p key={`${active.chunk_id}:${index}`}>{paragraph}</p>
+            ))}
+          </div>
+          <div id="related" className="evidence-footer">
             <h2>Related evidence</h2>
             {evidence.slice(0, 6).map((item, index) => (
-              <button key={item.chunk_id} onClick={() => onSelect(index)}>
+              <button type="button" key={item.chunk_id} onClick={() => onSelect(index)}>
                 <span>{index + 1}</span> {item.title}
               </button>
             ))}
@@ -341,6 +389,12 @@ function DocumentView({
           <small>{evidence.length} linked results</small>
         </aside>
       </div>
+      {sourceOpenError && (
+        <p className="answer-warning source-link-error" role="alert">
+          Cortana could not open the original source. Check that the source app is installed and try
+          again.
+        </p>
+      )}
     </article>
   )
 }
@@ -383,20 +437,25 @@ function AnswerView({
         <details className="answer-plan">
           <summary>Retrieval plan</summary>
           <ol>
-            {response.plan.queries.map((plannedQuery) => (
-              <li key={plannedQuery}>{plannedQuery}</li>
+            {response.plan.queries.map((plannedQuery, index) => (
+              <li key={`${plannedQuery}:${index}`}>{plannedQuery}</li>
             ))}
           </ol>
         </details>
       )}
-      {response?.warnings.map((warning) => (
-        <p className="answer-warning" key={warning}>
+      {response?.warnings.map((warning, index) => (
+        <p className="answer-warning" key={`${warning}:${index}`}>
           {warning}
         </p>
       ))}
       <p className="lead">{evidence.length} cited passages</p>
       {evidence.slice(0, 4).map((item, index) => (
-        <button className="answer-source" key={item.chunk_id} onClick={() => onSelect(index)}>
+        <button
+          type="button"
+          className="answer-source"
+          key={item.chunk_id}
+          onClick={() => onSelect(index)}
+        >
           <span>[{index + 1}]</span>
           <div>
             <h2>{item.title}</h2>
@@ -414,30 +473,84 @@ function AnswerView({
 }
 
 function GraphView({
+  graph,
+  graphLoading,
+  graphError,
+  onRetry,
   evidence,
   onSelect,
+  onSelectDocument,
 }: {
+  graph: BrainGraphPage | null
+  graphLoading: boolean
+  graphError: string
+  onRetry?: () => void
   evidence: Evidence[]
   onSelect: (chunkId: string) => void
+  onSelectDocument: (id: string) => void
 }) {
+  const graphDocuments = graph?.nodes.filter((node) => node.kind === 'document') ?? []
+  const nodes = graphDocuments.length
+    ? graphDocuments.slice(0, 12)
+    : evidence.slice(0, 8).map((item) => ({
+        id: item.chunk_id,
+        kind: 'document' as const,
+        label: item.title,
+        project: '',
+        source: item.source,
+        document_id: null,
+      }))
+  if (graphLoading && nodes.length === 0) {
+    return (
+      <EmptyState
+        title="Loading knowledge graph"
+        detail="Mapping indexed workspaces and documents…"
+      />
+    )
+  }
+  if (graphError && nodes.length === 0) {
+    return <EmptyState title="Graph unavailable" detail={graphError} action={onRetry} />
+  }
+  if (!graphLoading && nodes.length === 0) {
+    return (
+      <EmptyState title="No graph data" detail="Index a source to build linked workspace nodes." />
+    )
+  }
   return (
     <div className="graph-view">
       <div className="graph-center">
         <Sparkles size={24} />
       </div>
-      {evidence.slice(0, 8).map((item, index) => (
+      <div className="graph-summary" role="status">
+        {graph
+          ? `${graph.nodes.length} nodes · ${graph.edges.length} links`
+          : graphLoading
+            ? 'Loading indexed graph…'
+            : 'Retrieved evidence'}
+        {graphError ? ` · ${graphError}` : ''}
+        {graphError && onRetry && (
+          <button type="button" className="link-button" onClick={onRetry}>
+            Retry graph
+          </button>
+        )}
+      </div>
+      {nodes.map((node, index) => (
         <button
-          key={item.chunk_id}
-          aria-label={`Graph evidence: ${item.title}`}
+          type="button"
+          key={node.id}
+          aria-label={`Graph evidence: ${node.label}`}
           style={
             {
-              '--angle': `${(index / Math.min(evidence.length, 8)) * Math.PI * 2}rad`,
+              '--angle': `${(index / Math.max(nodes.length, 1)) * Math.PI * 2}rad`,
             } as CSSProperties
           }
-          onClick={() => onSelect(item.chunk_id)}
+          onClick={() => {
+            if (node.document_id) onSelectDocument(node.document_id)
+            else onSelect(node.id)
+          }}
         >
           <FileText size={17} />
-          <span>{item.title}</span>
+          <span>{node.label}</span>
         </button>
       ))}
     </div>
@@ -459,6 +572,7 @@ function TimelineView({
         .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
         .map((item) => (
           <button
+            type="button"
             key={item.chunk_id}
             aria-label={`Timeline evidence: ${item.title}`}
             onClick={() => onSelect(item.chunk_id)}
@@ -489,7 +603,11 @@ function EmptyState({
       <Sparkles size={28} />
       <h1>{title}</h1>
       <p>{detail}</p>
-      {action && <button onClick={action}>Try again</button>}
+      {action && (
+        <button type="button" onClick={action}>
+          Try again
+        </button>
+      )}
     </div>
   )
 }

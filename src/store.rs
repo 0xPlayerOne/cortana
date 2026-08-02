@@ -1,5 +1,5 @@
 use std::cmp::{Ordering, Reverse};
-use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -156,6 +156,7 @@ impl SyncRunStatus {
 
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
+        reject_database_symlinks(path)?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -234,13 +235,68 @@ impl Store {
                 |row| row.get(0),
             )
             .optional()?;
-        if current.as_deref().is_some_and(|value| value != fingerprint) {
-            bail!("embedding model differs from this index; rebuild into a new generation");
+        if let Some(index_fingerprint) = current.as_deref().filter(|value| *value != fingerprint) {
+            bail!(
+                "embedding model differs from this index (index: {index_fingerprint}; configured: {fingerprint}); rebuild into a new generation"
+            );
         }
         connection.execute(
             "INSERT OR IGNORE INTO meta(key,value) VALUES('embedding_fingerprint',?1)",
             [fingerprint],
         )?;
+        Ok(())
+    }
+
+    /// Adopt a reviewed embedding generation without touching indexed documents.
+    ///
+    /// This is intentionally stricter than `ensure_fingerprint`: callers must
+    /// name the exact generation currently stored in the index. The operation
+    /// invalidates derived caches because their vectors were produced under the
+    /// old generation, while leaving documents and their stored vectors in
+    /// place for an explicit operator-approved migration.
+    pub fn migrate_embedding_fingerprint(&self, from: &str, to: &str) -> Result<()> {
+        anyhow::ensure!(
+            !from.trim().is_empty(),
+            "source embedding fingerprint is empty"
+        );
+        anyhow::ensure!(
+            !to.trim().is_empty(),
+            "target embedding fingerprint is empty"
+        );
+        anyhow::ensure!(
+            from != to,
+            "source and target embedding generations are identical"
+        );
+
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let current: Option<String> = transaction
+            .query_row(
+                "SELECT value FROM meta WHERE key='embedding_fingerprint'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(current) = current else {
+            bail!(
+                "the index has no embedding generation; initialize it with the configured provider first"
+            );
+        };
+        anyhow::ensure!(
+            current == from,
+            "embedding generation changed while preparing migration (expected: {from}; actual: {current})"
+        );
+        let changed = transaction.execute(
+            "UPDATE meta SET value=?1 WHERE key='embedding_fingerprint' AND value=?2",
+            params![to, from],
+        )?;
+        anyhow::ensure!(
+            changed == 1,
+            "embedding generation migration did not update the index"
+        );
+        transaction.execute("DELETE FROM embedding_cache", [])?;
+        transaction.execute("DELETE FROM query_cache", [])?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -484,7 +540,15 @@ impl Store {
         let Some((response, created_at)) = value else {
             return Ok(None);
         };
-        let created_at = DateTime::parse_from_rfc3339(&created_at)?.with_timezone(&Utc);
+        let created_at = match DateTime::parse_from_rfc3339(&created_at) {
+            Ok(created_at) => created_at.with_timezone(&Utc),
+            Err(_) => {
+                let _ = optional_write(&connection, || {
+                    connection.execute("DELETE FROM query_cache WHERE cache_key=?1", [cache_key])
+                });
+                return Ok(None);
+            }
+        };
         if (Utc::now() - created_at).num_seconds() > ttl_seconds as i64 {
             optional_write(&connection, || {
                 connection.execute("DELETE FROM query_cache WHERE cache_key=?1", [cache_key])
@@ -498,6 +562,18 @@ impl Store {
             )
         })?;
         Ok(Some(response))
+    }
+
+    /// Remove one answer-cache row after the caller detects that its payload
+    /// no longer matches the current response contract. Cache cleanup is
+    /// best-effort, just like hit counters, so a busy writer must not turn a
+    /// valid retrieval into an error.
+    pub fn invalidate_cached_query(&self, cache_key: &str) -> Result<()> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        optional_write(&connection, || {
+            connection.execute("DELETE FROM query_cache WHERE cache_key=?1", [cache_key])
+        })?;
+        Ok(())
     }
 
     pub fn cache_query(&self, cache_key: &str, response: &str, max_entries: usize) -> Result<()> {
@@ -1130,6 +1206,121 @@ impl Store {
         })
     }
 
+    pub fn stats_scoped(&self, principal_acl: &[String]) -> Result<StoreStats> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let embedding_fingerprint = connection
+            .query_row(
+                "SELECT value FROM meta WHERE key='embedding_fingerprint'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let (embedding_cache_entries, embedding_cache_hits) = connection.query_row(
+            "SELECT COUNT(*),COALESCE(SUM(hits),0) FROM embedding_cache",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let (query_cache_entries, query_cache_hits) = connection.query_row(
+            "SELECT COUNT(*),COALESCE(SUM(hits),0) FROM query_cache",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        let mut documents = 0_i64;
+        let mut chunks = 0_i64;
+        let mut sources = BTreeMap::<(String, String), SourceStats>::new();
+        let mut document_statement = connection.prepare(
+            "SELECT d.source,d.project,d.acl_json,COUNT(c.id),MAX(d.updated_at)
+             FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
+             GROUP BY d.id,d.source,d.project,d.acl_json",
+        )?;
+        for row in document_statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })? {
+            let (source, project, acl_json, document_chunks, latest_updated_at) = row?;
+            let Ok(acl) = serde_json::from_str::<Vec<String>>(&acl_json) else {
+                continue;
+            };
+            if !acl_allows(&acl, principal_acl) {
+                continue;
+            }
+            documents += 1;
+            chunks += document_chunks;
+            let entry = sources
+                .entry((source.clone(), project.clone()))
+                .or_insert_with(|| SourceStats {
+                    source,
+                    project,
+                    documents: 0,
+                    chunks: 0,
+                    latest_updated_at: None,
+                });
+            entry.documents += 1;
+            entry.chunks += document_chunks;
+            if latest_updated_at.as_deref() > entry.latest_updated_at.as_deref() {
+                entry.latest_updated_at = latest_updated_at;
+            }
+        }
+        let allowed_sources = sources.keys().cloned().collect::<HashSet<_>>();
+        let mut sync_statement = connection.prepare(
+            "SELECT source,project,status,started_at,completed_at,documents,bytes,deleted,
+                    budget_documents,budget_bytes,budget_seconds
+             FROM (
+               SELECT sync_runs.*,
+                      ROW_NUMBER() OVER (
+                        PARTITION BY source,project
+                        ORDER BY started_at DESC,rowid DESC
+                      ) AS rank
+               FROM sync_runs
+             )
+             WHERE rank=1
+             ORDER BY project,source",
+        )?;
+        let sync_runs = sync_statement
+            .query_map([], |row| {
+                Ok(SourceSyncStats {
+                    source: row.get(0)?,
+                    project: row.get(1)?,
+                    status: row.get(2)?,
+                    started_at: row.get(3)?,
+                    completed_at: row.get(4)?,
+                    documents: row.get(5)?,
+                    bytes: row.get(6)?,
+                    deleted: row.get(7)?,
+                    budget_documents: row.get(8)?,
+                    budget_bytes: row.get(9)?,
+                    budget_seconds: row.get(10)?,
+                })
+            })?
+            .filter_map(|row| match row {
+                Ok(sync)
+                    if allowed_sources.contains(&(sync.source.clone(), sync.project.clone())) =>
+                {
+                    Some(Ok(sync))
+                }
+                Ok(_) => None,
+                Err(error) => Some(Err(error)),
+            })
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(StoreStats {
+            documents,
+            chunks,
+            embedding_fingerprint,
+            embedding_cache_entries,
+            embedding_cache_hits,
+            query_cache_entries,
+            query_cache_hits,
+            sources: sources.into_values().collect(),
+            sync_runs,
+        })
+    }
+
     pub fn public_acl_summary(&self) -> Result<Vec<PublicAclSummary>> {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
@@ -1275,6 +1466,7 @@ impl Store {
     }
 
     pub fn backup(&self, destination: &Path) -> Result<()> {
+        reject_database_symlinks(destination)?;
         anyhow::ensure!(
             !destination.exists(),
             "backup already exists: {}",
@@ -1304,6 +1496,11 @@ impl Store {
     }
 
     pub fn restore(database: &Path, source: &Path, recovery_backup: Option<&Path>) -> Result<()> {
+        reject_database_symlinks(database)?;
+        reject_database_symlinks(source)?;
+        if let Some(recovery) = recovery_backup {
+            reject_database_symlinks(recovery)?;
+        }
         verify_database(source)?;
         if database.exists()
             && let Some(recovery) = recovery_backup
@@ -1555,6 +1752,7 @@ fn optional_write<T>(
 }
 
 fn verify_database(path: &Path) -> Result<()> {
+    reject_database_symlinks(path)?;
     anyhow::ensure!(
         path.is_file(),
         "database does not exist: {}",
@@ -1570,6 +1768,7 @@ fn verify_database(path: &Path) -> Result<()> {
 fn secure_file(path: &Path) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
+    reject_symlink(path)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
         .with_context(|| format!("failed to secure {}", path.display()))
 }
@@ -1579,13 +1778,41 @@ fn secure_file(_path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn reject_symlink(path: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            bail!("refusing to use symlinked database path {}", path.display());
+        }
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error)
+            .with_context(|| format!("failed to inspect database path {}", path.display())),
+    }
+}
+
+fn reject_database_symlinks(database: &Path) -> Result<()> {
+    for suffix in ["", "-wal", "-shm"] {
+        let mut path = database.as_os_str().to_os_string();
+        path.push(suffix);
+        reject_symlink(&PathBuf::from(path))?;
+    }
+    Ok(())
+}
+
 fn secure_database_files(database: &Path) -> Result<()> {
+    reject_database_symlinks(database)?;
     for suffix in ["", "-wal", "-shm"] {
         let mut path = database.as_os_str().to_os_string();
         path.push(suffix);
         let path = PathBuf::from(path);
-        if path.exists() {
-            secure_file(&path)?;
+        match std::fs::symlink_metadata(&path) {
+            Ok(_) => secure_file(&path)?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("failed to inspect database sidecar {}", path.display())
+                });
+            }
         }
     }
     Ok(())
@@ -2126,6 +2353,29 @@ mod tests {
     }
 
     #[test]
+    fn scoped_stats_count_only_acl_visible_documents() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let mut work = document("work", "work content");
+        work.acl = vec!["work".into()];
+        let mut personal = document("personal", "personal content");
+        personal.acl = vec!["personal".into()];
+        let public = document("public", "public content");
+        for item in [&work, &personal, &public] {
+            store
+                .upsert(item, &[(item.content.clone(), vec![1.0])])
+                .expect("insert document");
+        }
+
+        let stats = store.stats_scoped(&["work".into()]).expect("scoped stats");
+        assert_eq!(stats.documents, 2);
+        assert_eq!(stats.chunks, 2);
+        assert_eq!(stats.sources.len(), 1);
+        assert_eq!(stats.sources[0].documents, 2);
+        assert_eq!(stats.sources[0].project, "demo");
+    }
+
+    #[test]
     fn query_cache_tracks_hits_ttl_bounds_and_opt_out() {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
@@ -2153,6 +2403,37 @@ mod tests {
         let stats = store.stats().expect("cache stats");
         assert_eq!(stats.query_cache_entries, 1);
         assert_eq!(stats.query_cache_hits, 1);
+    }
+
+    #[test]
+    fn malformed_query_cache_timestamps_are_evicted_as_misses() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let connection = store.connection.lock().expect("store lock");
+        connection
+            .execute(
+                "INSERT INTO query_cache(cache_key,response_json,created_at,last_used_at,hits)
+                 VALUES(?1,?2,?3,?3,0)",
+                params!["malformed-time", "{}", "not-a-timestamp"],
+            )
+            .expect("malformed cache row");
+        drop(connection);
+
+        assert_eq!(
+            store
+                .cached_query("malformed-time", 3600)
+                .expect("cache miss"),
+            None
+        );
+        let connection = store.connection.lock().expect("store lock");
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM query_cache WHERE cache_key=?1",
+                ["malformed-time"],
+                |row| row.get(0),
+            )
+            .expect("cache count");
+        assert_eq!(count, 0);
     }
 
     #[test]
@@ -2410,6 +2691,78 @@ mod tests {
     }
 
     #[test]
+    fn fingerprint_mismatch_explains_the_required_generation_change() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .ensure_fingerprint("model-a:16")
+            .expect("initial fingerprint");
+
+        let error = store
+            .ensure_fingerprint("model-b:32")
+            .expect_err("mismatched generation must fail closed");
+        let message = error.to_string();
+        assert!(message.contains("model-a:16"));
+        assert!(message.contains("model-b:32"));
+        assert!(message.contains("rebuild into a new generation"));
+    }
+
+    #[test]
+    fn embedding_generation_migration_updates_meta_and_invalidates_derived_caches() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .ensure_fingerprint("legacy-endpoint:model-a:16")
+            .expect("initial fingerprint");
+        store
+            .cache_embedding("legacy-endpoint:model-a:16", "same text", &[0.25, 0.75])
+            .expect("cache embedding");
+        store
+            .cache_query("cached-query", "{\"ok\":true}", 10)
+            .expect("cache query");
+
+        store
+            .migrate_embedding_fingerprint(
+                "legacy-endpoint:model-a:16",
+                "openai:http://127.0.0.1:6999/v1:model-a:16",
+            )
+            .expect("migrate generation");
+
+        let stats = store.stats().expect("stats");
+        assert_eq!(
+            stats.embedding_fingerprint.as_deref(),
+            Some("openai:http://127.0.0.1:6999/v1:model-a:16")
+        );
+        assert_eq!(stats.embedding_cache_entries, 0);
+        assert_eq!(stats.query_cache_entries, 0);
+        store
+            .ensure_fingerprint("openai:http://127.0.0.1:6999/v1:model-a:16")
+            .expect("new generation matches");
+    }
+
+    #[test]
+    fn embedding_generation_migration_requires_an_exact_current_generation() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .ensure_fingerprint("current:model-a:16")
+            .expect("initial fingerprint");
+
+        let error = store
+            .migrate_embedding_fingerprint("stale:model-a:16", "new:model-a:16")
+            .expect_err("stale source generation must fail closed");
+        assert!(error.to_string().contains("expected: stale:model-a:16"));
+        assert_eq!(
+            store
+                .stats()
+                .expect("stats")
+                .embedding_fingerprint
+                .as_deref(),
+            Some("current:model-a:16")
+        );
+    }
+
+    #[test]
     fn optional_cache_writes_do_not_block_readers_during_external_writes() {
         let directory = tempdir().expect("temporary directory");
         let path = directory.path().join("store.sqlite3");
@@ -2515,6 +2868,42 @@ mod tests {
         assert_eq!(store.stats().expect("stats").embedding_cache_entries, 1);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn opening_a_symlinked_database_is_rejected() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let target = directory.path().join("target.sqlite3");
+        Store::open(&target).expect("target database");
+        let linked = directory.path().join("linked.sqlite3");
+        symlink(&target, &linked).expect("database symlink");
+
+        let error = Store::open(&linked)
+            .err()
+            .expect("symlinked database must fail");
+        assert!(error.to_string().contains("symlinked database path"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opening_a_database_with_a_symlinked_sidecar_is_rejected() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let database = directory.path().join("store.sqlite3");
+        Store::open(&database).expect("database");
+        let external = directory.path().join("external-wal");
+        std::fs::write(&external, b"not a sqlite wal").expect("external sidecar");
+        let wal = PathBuf::from(format!("{}-wal", database.display()));
+        symlink(&external, &wal).expect("sidecar symlink");
+
+        let error = Store::open(&database)
+            .err()
+            .expect("symlinked sidecar must fail");
+        assert!(error.to_string().contains("symlinked database path"));
+    }
+
     #[test]
     fn backup_is_consistent_and_refuses_overwrite() {
         let directory = tempdir().expect("temporary directory");
@@ -2581,6 +2970,35 @@ mod tests {
                 .expect("recovery chunks")[0]
                 .content,
             "replace me"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backup_and_restore_reject_symlinked_paths() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let database = directory.path().join("store.sqlite3");
+        let store = Store::open(&database).expect("open store");
+
+        let backup_target = directory.path().join("outside.sqlite3");
+        let backup_link = directory.path().join("backup.sqlite3");
+        symlink(&backup_target, &backup_link).expect("backup symlink");
+        let backup_error = store
+            .backup(&backup_link)
+            .expect_err("backup symlink must fail");
+        assert!(backup_error.to_string().contains("symlinked database path"));
+
+        let restore_target = directory.path().join("restore.sqlite3");
+        let restore_link = directory.path().join("restore-link.sqlite3");
+        symlink(&restore_target, &restore_link).expect("restore symlink");
+        let restore_error =
+            Store::restore(&restore_link, &database, None).expect_err("restore symlink must fail");
+        assert!(
+            restore_error
+                .to_string()
+                .contains("symlinked database path")
         );
     }
 }

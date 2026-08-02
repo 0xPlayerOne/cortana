@@ -22,6 +22,9 @@ that is intentionally disabled by default:
   - retry/reconciliation exports and stats.
 - `MemorySyncWorker` drains only due rows, calls provider operations, and marks entries
   succeeded or failed according to transient vs non-transient outcomes.
+- `cortana-memory-sync` is the explicit operator entrypoint for draining an outbox. It requires a
+  provider choice and bearer token environment variable, reports bounded telemetry as JSON, and
+  never enqueues canonical source data or starts automatically.
 - `Outbox.telemetry()` exposes only queue counts and bounded last-success/error metadata; it never
   returns document content, metadata, ACL tags, or provider credentials.
 - `HindsightHttpProvider` uses documented retain/delete endpoints with bank scope and
@@ -69,5 +72,7 @@ Hindsight remains disabled when the gate fails or when no explicit operator appr
 
 ## Honcho status
 
-Honcho remains deferred to a later milestone; only this optional derived sidecar is introduced
-as a non-default integration until evaluation gates are met.
+Honcho is available as a second, non-default adapter behind the same `MemoryProvider` and outbox
+contract. It uses one deterministic Honcho session per Cortana document so session deletion can
+propagate a single document safely. See the [Honcho adapter contract](memory-honcho.md). It remains
+disabled until the same evaluation, ACL, deletion, and export gates are met.

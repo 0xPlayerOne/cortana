@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { desktopSettings } from './test/fixtures'
 import type {
   DesktopInitialSyncPlan,
+  DesktopServiceReport,
   DesktopSettings,
   DesktopSourceJob,
   InitialSyncBudget,
@@ -12,6 +13,19 @@ import type {
 import { INITIAL_SYNC_BUDGETS } from './types'
 
 afterEach(cleanup)
+
+type Deferred<T> = {
+  promise: Promise<T>
+  resolve: (value: T) => void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((next) => {
+    resolve = next
+  })
+  return { promise, resolve }
+}
 
 const workSource: SourceSettings = {
   name: 'work-code',
@@ -98,8 +112,14 @@ const state = {
   validationCalls: [] as Array<{ source: string; budget?: InitialSyncBudget }>,
   planOverrides: {} as Partial<DesktopInitialSyncPlan>,
   planError: null as Error | null,
+  settingsLoadError: null as Error | null,
   runningJob: null as DesktopSourceJob | null,
+  cancelCalls: [] as string[],
   pollCount: 0,
+  servicesCalls: 0,
+  serviceRefreshAfterAction: null as Deferred<DesktopServiceReport> | null,
+  serviceActionResponse: null as Deferred<DesktopServiceReport> | null,
+  serviceRefreshReports: [] as DesktopServiceReport[],
 }
 
 beforeEach(() => {
@@ -109,14 +129,23 @@ beforeEach(() => {
   state.validationCalls = []
   state.planOverrides = {}
   state.planError = null
+  state.settingsLoadError = null
   state.runningJob = null
+  state.cancelCalls = []
   state.pollCount = 0
+  state.servicesCalls = 0
+  state.serviceRefreshAfterAction = null
+  state.serviceActionResponse = null
+  state.serviceRefreshReports = []
 })
 
 mock.module('./api', () => ({
   ...realApi,
   isDesktopApp: true,
-  getDesktopSettings: () => Promise.resolve(state.settings),
+  getDesktopSettings: () =>
+    state.settingsLoadError
+      ? Promise.reject(state.settingsLoadError)
+      : Promise.resolve(state.settings),
   getDesktopInfo: () =>
     Promise.resolve({
       desktop_version: '0.11.4',
@@ -124,8 +153,27 @@ mock.module('./api', () => ({
       autostart_enabled: false,
       platform: 'macos',
     }),
+  getDesktopSchedule: () =>
+    Promise.resolve({ sync_interval_seconds: 900, backup_interval_seconds: 86400 }),
+  saveDesktopSchedule: (schedule: {
+    sync_interval_seconds: number
+    backup_interval_seconds: number
+  }) => Promise.resolve(schedule),
   getDesktopUpdate: () => Promise.reject(new Error('Updates unavailable')),
-  getDesktopServices: () => Promise.reject(new Error('Services unavailable')),
+  getDesktopServices: () => {
+    state.servicesCalls += 1
+    if (state.servicesCalls === 1) {
+      const stale = state.serviceRefreshReports[0]
+      return Promise.resolve(stale)
+    }
+    return state.serviceRefreshAfterAction
+      ? state.serviceRefreshAfterAction.promise
+      : Promise.resolve(state.serviceRefreshReports.at(-1) ?? state.serviceRefreshReports[0])
+  },
+  runDesktopServicesActionAll: () => {
+    if (!state.serviceActionResponse) return Promise.reject(new Error('Service action unavailable'))
+    return state.serviceActionResponse.promise
+  },
   getRuntimeAudit: () => Promise.resolve([]),
   getDesktopAudit: () => Promise.resolve([]),
   planDesktopInitialSync: (source: string, budget: InitialSyncBudget) => {
@@ -160,14 +208,235 @@ mock.module('./api', () => ({
     }
     return Promise.resolve(state.runningJob)
   },
-  cancelDesktopSourceValidation: () => Promise.resolve(jobFor('small', 'cancelled')),
+  cancelDesktopSourceValidation: (id: string) => {
+    state.cancelCalls.push(id)
+    return Promise.resolve(jobFor('small', 'cancelled'))
+  },
 }))
 
 const { SettingsView } = await import('./components/SettingsView')
 
+function oldServicesReport(): DesktopServiceReport {
+  return {
+    platform: 'macos',
+    supported: true,
+    services: [
+      {
+        name: 'server',
+        label: 'ai.cortana.server',
+        installed: true,
+        loaded: false,
+        state: null,
+        pid: null,
+        last_exit_status: null,
+      },
+      {
+        name: 'embedding',
+        label: 'ai.cortana.embedding',
+        installed: true,
+        loaded: false,
+        state: null,
+        pid: null,
+        last_exit_status: null,
+      },
+    ],
+  }
+}
+
+function runningServicesReport(): DesktopServiceReport {
+  return {
+    platform: 'macos',
+    supported: true,
+    services: [
+      {
+        name: 'server',
+        label: 'ai.cortana.server',
+        installed: true,
+        loaded: true,
+        state: 'running',
+        pid: 12345,
+        last_exit_status: null,
+      },
+      {
+        name: 'embedding',
+        label: 'ai.cortana.embedding',
+        installed: true,
+        loaded: true,
+        state: 'running',
+        pid: 12346,
+        last_exit_status: null,
+      },
+    ],
+  }
+}
+
 function openSources() {
   render(<SettingsView onSaved={() => {}} initialSection="sources" />)
 }
+
+test('service action result is not overwritten by stale local refresh', async () => {
+  const originalSetInterval = window.setInterval
+  const originalClearInterval = window.clearInterval
+  const originalConfirm = window.confirm
+  let poll: (() => void) | undefined
+  state.servicesCalls = 0
+  state.serviceRefreshReports = [oldServicesReport()]
+  state.serviceRefreshAfterAction = deferred<DesktopServiceReport>()
+  state.serviceActionResponse = deferred<DesktopServiceReport>()
+  const staleRefresh = state.serviceRefreshAfterAction!
+  const stale = oldServicesReport()
+  const fresh = runningServicesReport()
+
+  window.setInterval = ((callback: () => void) => {
+    poll = callback
+    return 1 as unknown as number
+  }) as typeof window.setInterval
+  window.clearInterval = (() => undefined) as typeof window.clearInterval
+  window.confirm = () => true
+
+  try {
+    render(
+      <SettingsView onSaved={() => {}} initialSection="services" desktopSettings={state.settings} />
+    )
+
+    await waitFor(() => expect(screen.getByText('0 loaded')).toBeTruthy())
+    if (!poll) throw new Error('Expected local services poll callback to be registered')
+    act(() => {
+      poll?.()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
+    state.serviceActionResponse.resolve(fresh)
+
+    await waitFor(() => expect(screen.getByText(/PID 12345/)).toBeTruthy())
+
+    act(() => {
+      staleRefresh.resolve(stale)
+    })
+
+    await waitFor(() => expect(screen.getByText(/PID 12345/)).toBeTruthy())
+  } finally {
+    window.setInterval = originalSetInterval
+    window.clearInterval = originalClearInterval
+    window.confirm = originalConfirm
+  }
+})
+
+test('standalone updater failures stay visible instead of being swallowed', async () => {
+  render(
+    <SettingsView onSaved={() => {}} initialSection="updates" desktopSettings={state.settings} />
+  )
+
+  await waitFor(() =>
+    expect(screen.getByRole('alert').textContent).toContain('Updates unavailable')
+  )
+})
+
+test('settings bridge failures expose a retry action', async () => {
+  state.settingsLoadError = new Error('settings bridge unavailable')
+  const loaded = { value: null as DesktopSettings | null }
+  render(
+    <SettingsView
+      onSaved={() => {}}
+      onLoaded={(next) => {
+        loaded.value = next
+      }}
+      initialSection="readiness"
+    />
+  )
+
+  await waitFor(() =>
+    expect(screen.getByRole('alert').textContent).toContain('settings bridge unavailable')
+  )
+  state.settingsLoadError = null
+  fireEvent.click(screen.getByRole('button', { name: 'Retry settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+  expect(loaded.value).toEqual(state.settings)
+})
+
+test('a shared active source job locks source actions until it finishes', async () => {
+  const activeJob = {
+    ...jobFor('small', 'running'),
+    operation: 'trial-sync' as const,
+    summary: 'Guarded trial sync is running.',
+  }
+  render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
+
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+  expect(screen.getByText('work-code · trial-sync · running')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: /Cancel/ }))
+  await waitFor(() => expect(state.cancelCalls).toEqual(['source-1-1']))
+  for (const label of ['Validate', 'Trial sync', 'Initial sync', 'Remove work-code']) {
+    expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(true)
+  }
+  expect((screen.getByRole('button', { name: 'Add source' }) as HTMLButtonElement).disabled).toBe(
+    false
+  )
+  expect((screen.getByLabelText(/^Source name/) as HTMLInputElement).disabled).toBe(true)
+  expect((screen.getByLabelText('Workspace') as HTMLSelectElement).disabled).toBe(true)
+})
+
+test('standalone source polling pauses while Settings is backgrounded', async () => {
+  const originalConfirm = window.confirm
+  const visibilityDescriptor = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+  const setVisibility = (value: 'hidden' | 'visible') => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      value,
+    })
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+  window.confirm = () => true
+  state.runningJob = jobFor('small', 'running')
+  try {
+    render(
+      <SettingsView onSaved={() => {}} initialSection="sources" desktopSettings={state.settings} />
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Validate' })).toBeTruthy())
+
+    act(() => setVisibility('hidden'))
+    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
+    await waitFor(() => expect(state.validationCalls).toHaveLength(1))
+    await new Promise((resolve) => setTimeout(resolve, 800))
+    expect(state.pollCount).toBe(0)
+
+    act(() => setVisibility('visible'))
+    await waitFor(() => expect(state.pollCount).toBeGreaterThan(0), { timeout: 1_500 })
+  } finally {
+    window.confirm = originalConfirm
+    if (visibilityDescriptor)
+      Object.defineProperty(document, 'visibilityState', visibilityDescriptor)
+  }
+})
+
+test('an active source job locks only that source configuration', async () => {
+  const otherSource = {
+    ...workSource,
+    name: 'personal-notes',
+    project: 'personal',
+    root: '/Users/you/Notes',
+  }
+  state.settings = {
+    ...settingsWith(workSource),
+    sources: [workSource, otherSource],
+  }
+  const activeJob = {
+    ...jobFor('small', 'running'),
+    operation: 'trial-sync' as const,
+    summary: 'Guarded trial sync is running.',
+  }
+  render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
+
+  await waitFor(() => expect(screen.getByText(/Settings for work-code are locked/)).toBeTruthy())
+  const names = screen.getAllByLabelText(/^Source name/) as HTMLInputElement[]
+  expect(names[0].disabled).toBe(true)
+  expect(names[1].disabled).toBe(false)
+  expect(
+    (screen.getByRole('button', { name: 'Remove personal-notes' }) as HTMLButtonElement).disabled
+  ).toBe(false)
+  expect((screen.getByRole('button', { name: 'Add source' }) as HTMLButtonElement).disabled).toBe(
+    false
+  )
+})
 
 test('initial sync plans a fixed budget and displays the native limits', async () => {
   const originalConfirm = window.confirm
@@ -226,6 +495,20 @@ test('execution requires an explicit confirmation and the plan id', async () => 
   }
 })
 
+test('editing the selected source invalidates its initial-sync plan', async () => {
+  openSources()
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Initial sync' }))
+  await waitFor(() => expect(screen.getByText('Guided initial sync')).toBeTruthy())
+  await waitFor(() => expect(screen.getByText('100 documents · 25 MiB · 15 minutes')).toBeTruthy())
+
+  await act(async () => {
+    fireEvent.change(screen.getByLabelText(/^Source name/), { target: { value: 'work-code-v2' } })
+  })
+  expect(screen.queryByText('Guided initial sync')).toBeNull()
+  expect(state.planCalls).toHaveLength(1)
+})
+
 test('a failed plan surfaces the native error and offers no start action', async () => {
   state.planError = new Error('configured source `work-code` was not found')
   openSources()
@@ -236,6 +519,24 @@ test('a failed plan surfaces the native error and offers no start action', async
     expect(screen.getByText('configured source `work-code` was not found')).toBeTruthy()
   )
   expect(screen.queryByRole('button', { name: 'Start initial sync' })).toBeNull()
+})
+
+test('initial sync flow disappears safely when its source is reloaded away', async () => {
+  const view = render(
+    <SettingsView onSaved={() => {}} initialSection="sources" desktopSettings={state.settings} />
+  )
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Initial sync' }))
+  await waitFor(() => expect(screen.getByText('Guided initial sync')).toBeTruthy())
+
+  view.rerender(
+    <SettingsView
+      onSaved={() => {}}
+      initialSection="sources"
+      desktopSettings={{ ...state.settings, sources: [] }}
+    />
+  )
+  await waitFor(() => expect(screen.queryByText('Guided initial sync')).toBeNull())
 })
 
 test('a plan without validation coverage gates the start behind budget validation', async () => {
@@ -260,6 +561,67 @@ test('a plan without validation coverage gates the start behind budget validatio
   } finally {
     window.confirm = originalConfirm
   }
+})
+
+test('shared source-job snapshots unlock the initial-sync plan without local polling', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  try {
+    state.planOverrides = { validation_covers_budget: false }
+    const view = render(
+      <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[]} />
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Initial sync' }))
+    await waitFor(() =>
+      expect(screen.getByText(/latest validation used smaller limits/)).toBeTruthy()
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Validate for this budget' }))
+    await waitFor(() => expect(state.validationCalls).toHaveLength(1))
+    const running = {
+      ...jobFor('small', 'running'),
+      id: 'source-1-2',
+      operation: 'validation' as const,
+      writes_indexed_data: false,
+    }
+    const succeeded = {
+      ...running,
+      status: 'succeeded' as const,
+      completed_at_unix_seconds: 1785000100,
+      exit_code: 0,
+      summary: 'Source validation succeeded within the selected budget.',
+    }
+
+    // App owns the poller in production. Simulate its snapshots arriving at
+    // the same SettingsView instance and ensure validation completion requests
+    // a new native plan rather than relying on the old local timer.
+    view.rerender(
+      <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[running]} />
+    )
+    await waitFor(() => expect(screen.getByText('work-code · validation · running')).toBeTruthy())
+    view.rerender(
+      <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[succeeded]} />
+    )
+    await waitFor(() => expect(state.planCalls.length).toBeGreaterThan(1))
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
+test('evicting a shared source job clears its stale local snapshot', async () => {
+  const activeJob = {
+    ...jobFor('small', 'running'),
+    operation: 'trial-sync' as const,
+    summary: 'Guarded trial sync is running.',
+  }
+  const view = render(
+    <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />
+  )
+
+  await waitFor(() => expect(screen.getByText('work-code · trial-sync · running')).toBeTruthy())
+  view.rerender(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[]} />)
+  await waitFor(() => expect(screen.queryByText('work-code · trial-sync · running')).toBeNull())
 })
 
 test('execution shows running progress, cancellation, and a succeeded result', async () => {

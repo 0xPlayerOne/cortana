@@ -37,18 +37,27 @@ const realApi = await import('./api')
 const state = {
   statusCalls: [] as string[],
   polled: new Map<string, DesktopSourceJob | Error>(),
+  pending: null as Promise<DesktopSourceJob> | null,
+  recovered: [] as DesktopSourceJob[],
+  recoveryError: null as Error | null,
 }
 
 beforeEach(() => {
   state.statusCalls = []
   state.polled.clear()
+  state.pending = null
+  state.recovered = []
+  state.recoveryError = null
 })
 
 mock.module('./api', () => ({
   ...realApi,
   isDesktopApp: true,
+  getDesktopSourceJobs: () =>
+    state.recoveryError ? Promise.reject(state.recoveryError) : Promise.resolve(state.recovered),
   getDesktopSourceValidation: (id: string) => {
     state.statusCalls.push(id)
+    if (state.pending) return state.pending
     const result = state.polled.get(id)
     if (result instanceof Error) return Promise.reject(result)
     if (!result) return Promise.reject(new Error('source job was not found'))
@@ -59,11 +68,17 @@ mock.module('./api', () => ({
 const {
   activeJobIds,
   activeJobs,
+  describeSourceJobProgress,
   describeSourceJob,
   dropJob,
   isActiveJob,
   isMissingJobError,
   MAX_SOURCE_JOB_SNAPSHOTS,
+  mergeJobSnapshots,
+  recentCompletedJobs,
+  sourceJobAttention,
+  sourceJobBudgetSeconds,
+  sourceJobElapsedSeconds,
   upsertJob,
   useSourceJobs,
 } = await import('./sourceJobs')
@@ -82,6 +97,46 @@ test('upsertJob prepends new ids and replaces existing snapshots in place', () =
   const replaced = upsertJob(withSecond, updated)
   expect(replaced.map((job) => job.id)).toEqual(['a', 'b'])
   expect(replaced[0]).toEqual(updated)
+})
+
+test('upsertJob does not regress a terminal snapshot to an older active poll', () => {
+  const terminal = jobOf('a', 'succeeded')
+  const staleActive = jobOf('a', 'running', { completed_at_unix_seconds: null })
+
+  expect(upsertJob([terminal], staleActive)).toEqual([terminal])
+})
+
+test('upsertJob does not replace a newer terminal snapshot with an older completion', () => {
+  const newer = jobOf('a', 'succeeded', { completed_at_unix_seconds: 1785000200 })
+  const older = jobOf('a', 'failed', { completed_at_unix_seconds: 1785000100 })
+
+  expect(upsertJob([newer], older)).toEqual([newer])
+})
+
+test('mergeJobSnapshots refreshes remembered ids without accepting stale recovery data', () => {
+  const remembered = jobOf('job-1', 'running')
+  const recovered = jobOf('job-1', 'succeeded', {
+    summary: 'recovered completion',
+    completed_at_unix_seconds: 1785000200,
+  })
+  expect(mergeJobSnapshots([remembered], [recovered])[0]).toEqual(recovered)
+
+  const newer = jobOf('job-1', 'succeeded', {
+    summary: 'newer renderer completion',
+    completed_at_unix_seconds: 1785000300,
+  })
+  expect(mergeJobSnapshots([newer], [recovered])[0]).toEqual(newer)
+})
+
+test('mergeJobSnapshots keeps newer remembered jobs ahead of older recovery history', () => {
+  const newer = jobOf('job-2', 'succeeded', {
+    started_at_unix_seconds: 1785000200,
+  })
+  const older = jobOf('job-1', 'failed', {
+    started_at_unix_seconds: 1785000100,
+  })
+
+  expect(mergeJobSnapshots([newer], [older]).map((job) => job.id)).toEqual(['job-2', 'job-1'])
 })
 
 test('upsertJob keeps the snapshot list bounded to the newest entries', () => {
@@ -115,6 +170,86 @@ test('activeJobs and activeJobIds filter to running and cancelling only', () => 
   expect(isActiveJob(jobOf('x', 'running'))).toBe(true)
   expect(isActiveJob(jobOf('x', 'cancelling'))).toBe(true)
   expect(isActiveJob(jobOf('x', 'succeeded'))).toBe(false)
+})
+
+test('recentCompletedJobs keeps terminal snapshots for operational history', () => {
+  const jobs = [
+    jobOf('running', 'running'),
+    jobOf('cancelled', 'cancelled'),
+    jobOf('failed', 'failed'),
+    jobOf('succeeded', 'succeeded'),
+  ]
+  expect(recentCompletedJobs(jobs).map((job) => job.id)).toEqual([
+    'cancelled',
+    'failed',
+    'succeeded',
+  ])
+})
+
+test('sourceJobAttention reports only the latest terminal failure per source', () => {
+  const jobs = [
+    jobOf('work-success', 'succeeded', { source: 'work-code' }),
+    jobOf('personal-failure', 'failed', { source: 'personal-mail' }),
+    jobOf('personal-old-success', 'succeeded', { source: 'personal-mail' }),
+    jobOf('active', 'running', { source: 'special-code' }),
+  ]
+  expect(sourceJobAttention(jobs).map((job) => job.id)).toEqual(['personal-failure'])
+
+  expect(
+    sourceJobAttention([
+      jobs[0]!,
+      jobOf('personal-new-success', 'succeeded', { source: 'personal-mail' }),
+      jobs[1]!,
+    ])
+  ).toEqual([])
+})
+
+test('sourceJobAttention keeps duplicate source names isolated by workspace', () => {
+  const jobs = [
+    jobOf('work-failure', 'failed', { source: 'notes', project: 'work' }),
+    jobOf('personal-failure', 'failed', { source: 'notes', project: 'personal' }),
+    jobOf('work-old-success', 'succeeded', { source: 'notes', project: 'work' }),
+  ]
+
+  expect(sourceJobAttention(jobs).map((job) => job.id)).toEqual([
+    'work-failure',
+    'personal-failure',
+  ])
+})
+
+test('sourceJobAttention suppresses an older failure while a newer retry is active', () => {
+  const activeRetry = jobOf('new-retry', 'running', { source: 'notes' })
+  const oldFailure = jobOf('old-failure', 'failed', { source: 'notes' })
+
+  expect(sourceJobAttention([activeRetry, oldFailure])).toEqual([])
+})
+
+test('source job progress reports native fixed budgets without claiming a percentage', () => {
+  const validation = jobOf('validation', 'running', {
+    started_at_unix_seconds: 1_000,
+    budget: null,
+  })
+  const trial = jobOf('trial', 'running', {
+    operation: 'trial-sync',
+    started_at_unix_seconds: 1_000,
+  })
+  const initial = jobOf('initial', 'running', {
+    operation: 'initial-sync',
+    budget: 'medium',
+    started_at_unix_seconds: 1_000,
+  })
+  const authorization = jobOf('authorization', 'running', {
+    operation: 'authorization',
+    started_at_unix_seconds: 1_000,
+  })
+  expect(sourceJobBudgetSeconds(validation)).toBe(60)
+  expect(sourceJobBudgetSeconds(trial)).toBe(300)
+  expect(sourceJobBudgetSeconds(initial)).toBe(1_800)
+  expect(sourceJobBudgetSeconds(authorization)).toBe(300)
+  expect(sourceJobElapsedSeconds(validation, 1_065)).toBe(65)
+  expect(describeSourceJobProgress(validation, 1_065)).toBe('1m 5s / 1m')
+  expect(describeSourceJobProgress(initial, 1_065)).toBe('1m 5s / 30m')
+  expect(describeSourceJobProgress(authorization, 1_065)).toBe('1m 5s / 5m')
 })
 
 test('isMissingJobError matches only the native missing-job message', () => {
@@ -156,6 +291,67 @@ test('the hook polls only active ids and keeps the latest snapshot', async () =>
   expect(result.current.jobs).toHaveLength(2)
 })
 
+test('the hook pauses renderer polling in the background and recovers on focus', async () => {
+  const running = jobOf('background-job', 'running')
+  state.polled.set(running.id, running)
+  const { result, unmount } = renderHook(() => useSourceJobs())
+  act(() => result.current.remember(running))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+  })
+  expect(state.statusCalls).toContain(running.id)
+
+  state.statusCalls = []
+  act(() => {
+    window.dispatchEvent(new Event('blur'))
+    // A webview can become visible again before it receives native focus. A
+    // visibility event must not resume background polling on its own.
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+  })
+  expect(state.statusCalls).toEqual([])
+
+  act(() => window.dispatchEvent(new Event('focus')))
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+  })
+  expect(state.statusCalls).toContain(running.id)
+  expect(result.current.jobs[0]?.id).toBe(running.id)
+  unmount()
+})
+
+test('the hook recovers native source-job snapshots on mount', async () => {
+  state.recovered = [jobOf('recovered-running', 'running'), jobOf('recovered-done', 'succeeded')]
+  const { result, unmount } = renderHook(() => useSourceJobs())
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+  expect(result.current.jobs.map((job) => job.id)).toEqual(['recovered-running', 'recovered-done'])
+  unmount()
+})
+
+test('the hook lets recovery refresh a job remembered during mount', async () => {
+  state.recovered = [
+    jobOf('remembered-done', 'succeeded', {
+      summary: 'recovered completion',
+      completed_at_unix_seconds: 1785000200,
+    }),
+  ]
+  const { result, unmount } = renderHook(() => useSourceJobs())
+  act(() => result.current.remember(jobOf('remembered-done', 'running')))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+  expect(result.current.jobs[0]?.status).toBe('succeeded')
+  expect(result.current.jobs[0]?.summary).toBe('recovered completion')
+  unmount()
+})
+
 test('the hook drops an id on a missing-job error and retains snapshots on transient errors', async () => {
   state.polled.set('job-1', jobOf('job-1', 'running'))
   const { result } = renderHook(() => useSourceJobs())
@@ -178,4 +374,105 @@ test('the hook drops an id on a missing-job error and retains snapshots on trans
   expect(result.current.jobs).toEqual([])
   // After the drop there are no active ids left, so polling stops.
   expect(state.statusCalls).toEqual(['job-1', 'job-1'])
+})
+
+test('polling failure for an active source job surfaces a transient snapshot error', async () => {
+  const running = jobOf('job-1', 'running')
+  const { result } = renderHook(() => useSourceJobs())
+
+  act(() => {
+    result.current.remember(running)
+  })
+  state.polled.set('job-1', new Error('source job status transport failed'))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+  })
+  expect(result.current.error).toBe('source job status transport failed')
+  expect(result.current.jobs.map((job) => job.id)).toEqual(['job-1'])
+
+  state.polled.set(
+    'job-1',
+    jobOf('job-1', 'succeeded', {
+      summary: 'Validation succeeded.',
+      completed_at_unix_seconds: 1785000100,
+      exit_code: 0,
+    })
+  )
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+  })
+  expect(result.current.error).toBe('')
+  expect(result.current.jobs[0]?.status).toBe('succeeded')
+})
+
+test('source job status errors expose a recovery action', async () => {
+  const running = jobOf('job-1', 'running')
+  state.polled.set('job-1', new Error('source job status transport failed'))
+  state.recovered = [
+    jobOf('job-1', 'succeeded', {
+      summary: 'Recovered completion.',
+      completed_at_unix_seconds: 1785000100,
+    }),
+  ]
+  const { result, unmount } = renderHook(() => useSourceJobs())
+  act(() => result.current.remember(running))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_200))
+  })
+  expect(result.current.error).toBe('source job status transport failed')
+
+  act(() => result.current.retry())
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+  expect(result.current.error).toBe('')
+  expect(result.current.jobs[0]?.status).toBe('succeeded')
+  unmount()
+})
+
+test('source job history recovery failures stay visible and retryable', async () => {
+  state.recoveryError = new Error('source job history transport failed')
+  const { result, unmount } = renderHook(() => useSourceJobs())
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+  expect(result.current.error).toBe('source job history transport failed')
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+  })
+  expect(result.current.error).toBe('source job history transport failed')
+
+  state.recoveryError = null
+  state.recovered = [jobOf('recovered-after-retry', 'succeeded')]
+  act(() => result.current.retry())
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 40))
+  })
+  expect(result.current.error).toBe('')
+  expect(result.current.jobs[0]?.id).toBe('recovered-after-retry')
+  unmount()
+})
+
+test('the hook does not overlap source status polls while one batch is pending', async () => {
+  const running = jobOf('job-1', 'running')
+  let resolvePending: ((job: DesktopSourceJob) => void) | undefined
+  state.pending = new Promise((resolve) => {
+    resolvePending = resolve
+  })
+  const { result, unmount } = renderHook(() => useSourceJobs())
+  act(() => result.current.remember(running))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 2200))
+  })
+  expect(state.statusCalls).toEqual(['job-1'])
+
+  resolvePending?.(running)
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+  unmount()
 })

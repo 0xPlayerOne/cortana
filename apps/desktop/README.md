@@ -41,10 +41,30 @@ do not require release secrets. macOS Developer ID signing and notarization requ
 credentials and are reported independently from the updater signature.
 
 The Settings **Readiness** panel runs an explicit, read-only scan. It checks the bundled runtime,
-uv, Python 3.11+, the connector environment, and the core production gates without starting an
-ingestion run. Fixed tool installers require a confirmation and native approval, expose bounded
-logs, and can be cancelled or retried. On a first launch, the guided setup opens this panel and
-runs the read-only scan automatically; every installation still requires separate approval.
+uv, Python 3.11+, the connector environment, the configured local embedding runtime, and the core
+production gates without starting an ingestion run. A local embedding provider requires
+`text-embeddings-router`; on macOS with Homebrew available, the panel offers the fixed
+`text-embeddings-inference` install after confirmation. Cloud embedding providers do not require
+that local runtime. Installing the runtime does not download model weights or start a service;
+weights are fetched by the embedding service on its first approved start. Fixed tool installers
+require a confirmation and native approval, expose bounded logs, and can be cancelled or retried.
+On a first launch, the guided setup opens this panel and
+runs the read-only scan automatically; every installation still requires separate approval. Tauri
+release bundles carry the connector source and metadata needed for the approved **Install** action:
+it creates the per-user `~/.local/share/cortana/venv` environment with uv and installs the bounded
+`ingestion` dependency set. The bundle never includes credentials or an existing user's venv.
+After success, Desktop records the fixed connector executable in the managed config when no
+connector command is already configured; existing commands are preserved. The change uses a
+rollback copy and metadata-only audit event, so newly configured sources use the installed
+environment without a shell or path supplied by the renderer.
+Unbundled local release binaries use the generated checkout resource while packaged applications
+prefer their embedded resource directory.
+
+If the core readiness report finds a stored embedding generation that differs from the configured
+fingerprint, the panel keeps the exact generation details visible and offers a confirmation-gated
+**Adopt stored generation** action. It creates a verified backup, clears derived caches, and never
+re-embeds or reconciles the corpus; model or dimension changes still require a new generation
+rebuild.
 
 The Settings **Sources** panel edits typed connector configuration, workspace assignments,
 credential references, and per-source safety budgets. Secret values are write-only. External
@@ -57,12 +77,23 @@ read-only validation at equal or larger limits (with a **Validate for this budge
 the latest record is smaller), and then runs a separately confirmed, validation-gated,
 no-reconcile sync through the same cancellable source-job boundary with visible progress and
 metadata-only audit events.
+The Knowledge sidebar mirrors each saved connector with a confirmation-gated enable/disable
+switch for future ingestion; it never deletes indexed data and is locked while Settings has an
+unsaved draft. Sources that need provider setup or Google authorization also expose the matching
+browser action directly in the tree.
 
 Closing the main window hides it to the tray. Use **Quit Cortana Desktop** from the tray menu to
 exit the control plane. This does not stop the independently managed Cortana services.
+When the window is hidden or unfocused, passive renderer health polling pauses and resumes with an
+immediate refresh when the window returns. Installer, source-job, and updater progress remains
+owned by the shell and continues while the app is in the background.
 
-The **Services** panel shows structured launchd state and controls installed embedding, server,
-backup, and (only when explicitly installed elsewhere) sync jobs through fixed native actions.
+The **Services** panel shows structured launchd (macOS), systemd user (Linux), or per-user Task
+Scheduler (Windows) state. It can explicitly install the safe query-only embedding/server/backup
+set from the bundled runtime and controls installed embedding, server, backup, and sync jobs through
+fixed native actions. A separate, confirmation-gated **Enable recurring sync** action re-checks
+every enabled source's current validation coverage before installing the schedule. Windows tasks
+are created for the logged-in user and do not require administrator access.
 Desktop-at-login controls only the tray application and never installs or starts ingestion.
 
 Aggregate service actions control only embedding and server; recurring sync and backup are always
@@ -75,3 +106,10 @@ The **Advanced** panel can export a versioned JSON settings backup or import one
 preview. Portable files never include secret values or executable external-connector commands.
 Import preserves existing external connectors, validates the complete bounded settings contract,
 and writes nothing until **Save changes** creates the normal rollback copy.
+
+The Services schedule editor stores validated sync and backup intervals in the owner-only
+`service-schedule.toml` beside the active configuration. Saving the schedule never starts a job;
+the explicit **Enable recurring sync** action passes those intervals to the bundled runtime. If a
+job is already installed, saving changed intervals exposes **Apply recurring sync schedule** until
+the updated job is explicitly confirmed.
+Portable settings remain redacted and machine-local, so this scheduler file is not included.

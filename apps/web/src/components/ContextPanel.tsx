@@ -1,7 +1,7 @@
 import { Check, Copy, LoaderCircle, RefreshCw, X } from 'lucide-react'
-import { useState } from 'react'
 
 import type { AnswerResponse, BrainStatus, ContextBundle, Evidence } from '../types'
+import { useClipboardCopy } from '../useClipboardCopy'
 
 export function ContextPanel({
   open,
@@ -34,27 +34,19 @@ export function ContextPanel({
   onSelect: (index: number) => void
   onClose: () => void
 }) {
-  const [copied, setCopied] = useState(false)
-  const [copyError, setCopyError] = useState('')
   const copyValue = serverContext?.context ?? context
-
-  async function copyContext() {
-    setCopyError('')
-    try {
-      await navigator.clipboard.writeText(copyValue)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
-    } catch (caught) {
-      setCopied(false)
-      setCopyError(caught instanceof Error ? caught.message : 'Unable to copy context')
-    }
-  }
+  const { copied, copyError, copy } = useClipboardCopy(copyValue)
 
   return (
     <aside className={`context-panel ${open ? 'mobile-open' : ''}`}>
       <div className="context-heading">
         <strong>Agent context</strong>
-        <button aria-label="Close agent context" onClick={onClose}>
+        <button
+          type="button"
+          aria-label="Close agent context"
+          title="Close agent context"
+          onClick={onClose}
+        >
           <X size={17} />
         </button>
       </div>
@@ -85,8 +77,8 @@ export function ContextPanel({
               </div>
             </dl>
             <ol>
-              {answer.plan.queries.map((planned) => (
-                <li key={planned}>{planned}</li>
+              {answer.plan.queries.map((planned, index) => (
+                <li key={`${planned}:${index}`}>{planned}</li>
               ))}
             </ol>
           </section>
@@ -98,6 +90,7 @@ export function ContextPanel({
         <div className="evidence-list">
           {evidence.map((item, index) => (
             <button
+              type="button"
               key={item.chunk_id}
               className={selected === index ? 'selected' : ''}
               onClick={() => onSelect(index)}
@@ -122,11 +115,15 @@ export function ContextPanel({
             Build the exact bounded context returned by the HTTP and MCP query layer for this
             workspace scope.
           </p>
-          <button disabled={contextLoading} onClick={onRetrieveContext}>
+          <button type="button" disabled={contextLoading} onClick={onRetrieveContext}>
             {contextLoading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
             {serverContext ? 'Refresh MCP-equivalent context' : 'Build MCP-equivalent context'}
           </button>
-          {contextError && <p className="context-error">{contextError}</p>}
+          {contextError && (
+            <p className="context-error" role="alert">
+              {contextError}
+            </p>
+          )}
           {serverContext && (
             <dl>
               <div>
@@ -149,7 +146,12 @@ export function ContextPanel({
         </section>
       </div>
       <div className="copy-area">
-        <button aria-label="Copy agent context" onClick={() => void copyContext()}>
+        <button
+          type="button"
+          aria-label="Copy agent context"
+          title="Copy agent context"
+          onClick={() => void copy()}
+        >
           {copied ? <Check size={17} /> : <Copy size={17} />}
           {copied
             ? 'Context copied'
@@ -157,7 +159,11 @@ export function ContextPanel({
               ? 'Copy MCP-equivalent context'
               : 'Copy preview context'}
         </button>
-        {copyError && <p className="context-error">{copyError}</p>}
+        {copyError && (
+          <p className="context-error" role="alert">
+            {copyError}
+          </p>
+        )}
       </div>
     </aside>
   )

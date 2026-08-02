@@ -85,6 +85,8 @@ export const answerResponse: AnswerResponse = {
 export const desktopSettings: DesktopSettings = {
   config_path: '/Users/you/.config/cortana/config.toml',
   secret_file_path: '/Users/you/.config/cortana/secrets.env',
+  secret_file_managed: true,
+  embedding_service_program: null,
   needs_setup: false,
   restart_required: false,
   workspaces: [
@@ -127,6 +129,17 @@ export const desktopSettings: DesktopSettings = {
     provider: 'hindsight',
     base_url: 'http://127.0.0.1:8888',
     bank: 'default',
+    token_env: null,
+    optional: true,
+    wired_to_ingestion: false,
+  },
+  honcho: {
+    enabled: false,
+    provider: 'honcho',
+    base_url: 'https://api.honcho.dev',
+    workspace_id: 'default',
+    peer_id: 'cortana',
+    session_prefix: 'cortana',
     token_env: null,
     optional: true,
     wired_to_ingestion: false,

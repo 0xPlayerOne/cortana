@@ -25,7 +25,8 @@ concurrency.
 
 Configured source names are index namespaces. This prevents two Gmail accounts, Drive accounts, or
 Slack workspaces from deleting or colliding with one another. The original adapter kind is retained
-in metadata for provenance.
+in metadata for provenance. Names are unique, lower-case, and limited to 64 letters, numbers,
+dashes, or underscores; this also keeps per-source cache paths inside Cortana's data directory.
 
 ## Configure and run
 
@@ -84,7 +85,11 @@ reconciliation.
 - Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Desktop authorization uses a
   Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
   and the minimum read-only scopes required by the Google sources that share that token. Refresh
-  data is updated atomically and the token file is forced to mode `0600`.
+  data is updated atomically and the token file is forced to mode `0600`. Existing token and OAuth
+  client files must be regular, non-symlink files with owner-only permissions on Unix.
+- A Google source may use `token_env` instead of `token` when the named environment value contains
+  an absolute OAuth token JSON path. The Desktop editor stores that path value write-only in its
+  managed secret file; it does not accept inline token JSON.
 - Apple Notes uses the local macOS Notes automation permission and stores no credential.
 - Buzz opens the retention database read-only.
 
@@ -116,8 +121,11 @@ Cortana opens Google's consent page in the system browser and waits up to five m
 loopback callback. The command never prints tokens. Sources sharing the same token file are
 authorized together so the stored grant contains the union of their minimum read-only scopes.
 Use separate token paths for different Google accounts or trust domains. The OAuth client file is
-configuration, not a user token, but Cortana still rejects symlinks and oversized client files.
+configuration, not a user token, but Cortana still rejects symlinks, broad permissions, and
+oversized client files.
 The token destination must be outside a filesystem source root.
+When `token_env` is used instead of `token`, its configured value is the private token destination;
+Desktop authorization can create or update that file after the OAuth client path is supplied.
 
 Authorization does not validate, sync, embed, index, or reconcile the source. After consent,
 run the bounded validation described below. Google may not return a new refresh token on a later

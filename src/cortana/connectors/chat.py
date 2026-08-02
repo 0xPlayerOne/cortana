@@ -4,6 +4,8 @@ import datetime as dt
 import json
 import os
 import sqlite3
+import stat
+import sys
 import time
 from collections.abc import Iterable
 from pathlib import Path
@@ -11,6 +13,7 @@ from typing import Any
 
 import httpx
 
+from .http import json_payload
 from .model import Document
 
 
@@ -21,7 +24,12 @@ def fetch_slack(
 ) -> Iterable[Document]:
     token = _required_env(token_env)
     headers = {"Authorization": f"Bearer {token}"}
-    with httpx.Client(base_url="https://slack.com/api", headers=headers, timeout=30) as client:
+    with httpx.Client(
+        base_url="https://slack.com/api",
+        headers=headers,
+        timeout=30,
+        follow_redirects=False,
+    ) as client:
         for channel_id in channel_ids:
             cursor = ""
             while True:
@@ -31,22 +39,39 @@ def fetch_slack(
                     params={"channel": channel_id, "limit": 200, "cursor": cursor},
                 )
                 payload = _slack_payload(response)
-                for parent in payload.get("messages", []):
+                for parent in _slack_messages(payload):
+                    parent_timestamp = _slack_timestamp(parent.get("ts"))
+                    if parent_timestamp is None:
+                        continue
                     thread = [parent]
-                    if int(parent.get("reply_count", 0)):
+                    try:
+                        has_replies = int(parent.get("reply_count", 0)) > 0
+                    except (TypeError, ValueError):
+                        has_replies = False
+                    if has_replies:
                         replies = _get_with_backoff(
                             client,
                             "/conversations.replies",
                             params={"channel": channel_id, "ts": parent["ts"], "limit": 200},
                         )
-                        thread = _slack_payload(replies).get("messages", thread)
+                        thread = _slack_messages(_slack_payload(replies))
+                    valid_thread = [
+                        message
+                        for message in thread
+                        if isinstance(message, dict)
+                        and _slack_timestamp(message.get("ts")) is not None
+                    ]
                     text = "\n".join(
                         f"{message.get('user', 'unknown')}: {message.get('text', '')}"
-                        for message in thread
+                        for message in valid_thread
                         if message.get("text")
                     )
                     if text:
-                        updated = max(float(message["ts"]) for message in thread)
+                        updated = max(
+                            _slack_timestamp(message.get("ts"))
+                            for message in valid_thread
+                            if _slack_timestamp(message.get("ts")) is not None
+                        )
                         yield Document(
                             source="slack",
                             source_id=f"{channel_id}:{parent['ts']}",
@@ -58,12 +83,17 @@ def fetch_slack(
                             metadata={
                                 "channel_id": channel_id,
                                 "participants": sorted(
-                                    {m.get("user") for m in thread if m.get("user")}
+                                    {m.get("user") for m in valid_thread if m.get("user")}
                                 ),
-                                "message_count": len(thread),
+                                "message_count": len(valid_thread),
                             },
                         )
-                cursor = str(payload.get("response_metadata", {}).get("next_cursor") or "")
+                response_metadata = payload.get("response_metadata")
+                cursor = str(
+                    response_metadata.get("next_cursor")
+                    if isinstance(response_metadata, dict)
+                    else ""
+                )
                 if not cursor:
                     break
 
@@ -77,7 +107,10 @@ def fetch_discord(
     token = _required_env(token_env)
     headers = {"Authorization": f"Bot {token}"}
     with httpx.Client(
-        base_url="https://discord.com/api/v10", headers=headers, timeout=30
+        base_url="https://discord.com/api/v10",
+        headers=headers,
+        timeout=30,
+        follow_redirects=False,
     ) as client:
         if cache_dir is not None:
             yield from _fetch_discord_cached(client, channel_ids, project, cache_dir)
@@ -92,7 +125,7 @@ def fetch_discord(
                     client, f"/channels/{channel_id}/messages", params=params
                 )
                 response.raise_for_status()
-                messages = response.json()
+                messages = _discord_page(json_payload(response))
                 if not messages:
                     break
                 for message in messages:
@@ -131,7 +164,7 @@ def _fetch_discord_cached(
                     client, f"/channels/{channel_id}/messages", params=params
                 )
                 response.raise_for_status()
-                messages: list[dict[str, Any]] = response.json()
+                messages = _discord_page(json_payload(response))
                 if not messages:
                     break
                 for message in messages:
@@ -178,22 +211,44 @@ def _fetch_discord_cached(
             cache.commit()
 
         rows = cache.execute(
-            "SELECT channel_id,body FROM discord_messages ORDER BY CAST(id AS INTEGER)"
+            "SELECT rowid,channel_id,body FROM discord_messages ORDER BY CAST(id AS INTEGER)"
         )
-        for channel_id, body in rows:
-            cached_message: dict[str, Any] = json.loads(str(body))
+        for rowid, channel_id, body in rows:
+            try:
+                cached_message = json.loads(str(body))
+            except json.JSONDecodeError:
+                print(
+                    f"connector warning: removing malformed Discord cache row {rowid}",
+                    file=sys.stderr,
+                )
+                cache.execute("DELETE FROM discord_messages WHERE rowid=?", (rowid,))
+                continue
+            if (
+                not isinstance(cached_message, dict)
+                or not str(cached_message.get("id") or "").isdigit()
+            ):
+                print(
+                    f"connector warning: removing malformed Discord cache row {rowid}",
+                    file=sys.stderr,
+                )
+                cache.execute("DELETE FROM discord_messages WHERE rowid=?", (rowid,))
+                continue
             document = _discord_document(cached_message, str(channel_id), project)
             if document is not None:
                 yield document
+        cache.commit()
     finally:
         cache.close()
 
 
 def _discord_cache(cache_dir: Path) -> sqlite3.Connection:
-    cache_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    cache_dir.chmod(0o700)
+    _prepare_private_cache_directory(cache_dir)
     path = cache_dir / "discord.sqlite3"
-    descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+    if path.is_symlink():
+        raise RuntimeError(f"Discord cache path must not be a symlink: {path}")
+    flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, 0o600)
     os.close(descriptor)
     path.chmod(0o600)
     connection = sqlite3.connect(path)
@@ -214,6 +269,42 @@ def _discord_cache(cache_dir: Path) -> sqlite3.Connection:
     return connection
 
 
+def _prepare_private_cache_directory(path: Path) -> None:
+    _reject_symlink_components(path)
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    current = path
+    while True:
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError as error:
+            raise RuntimeError(f"Discord cache directory does not exist: {current}") from error
+        if stat.S_ISLNK(metadata.st_mode):
+            raise RuntimeError(f"Discord cache directory must not contain a symlink: {current}")
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise RuntimeError(f"Discord cache path is not a directory: {current}")
+        if current == current.parent:
+            break
+        current = current.parent
+    path.chmod(0o700)
+
+
+def _reject_symlink_components(path: Path) -> None:
+    current = path
+    while True:
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            if current == current.parent:
+                return
+            current = current.parent
+            continue
+        if stat.S_ISLNK(metadata.st_mode):
+            raise RuntimeError(f"Discord cache directory must not contain a symlink: {current}")
+        if current == current.parent:
+            return
+        current = current.parent
+
+
 def _full_refresh_due(last_full: str) -> bool:
     try:
         previous = dt.datetime.fromisoformat(last_full)
@@ -223,24 +314,74 @@ def _full_refresh_due(last_full: str) -> bool:
 
 
 def _discord_document(message: dict[str, Any], channel_id: str, project: str) -> Document | None:
+    message_id = str(message.get("id") or "").strip()
+    if not message_id:
+        return None
     content = str(message.get("content") or "").strip()
-    attachments = "\n".join(item.get("url", "") for item in message.get("attachments", []))
+    attachments = "\n".join(
+        str(item.get("url") or "")
+        for item in message.get("attachments", [])
+        if isinstance(item, dict) and item.get("url")
+    )
     body = "\n".join(part for part in [content, attachments] if part)
     if not body:
         return None
+    updated_at = _parse_discord_timestamp(message.get("timestamp"))
+    if updated_at is None:
+        return None
+    author = message.get("author")
+    username = author.get("username", "unknown") if isinstance(author, dict) else "unknown"
+    author_id = author.get("id") if isinstance(author, dict) else None
     return Document(
         source="discord",
-        source_id=str(message["id"]),
+        source_id=message_id,
         title=_title(content, f"Discord {channel_id}"),
-        content=f"{message.get('author', {}).get('username', 'unknown')}: {body}",
-        uri=f"https://discord.com/channels/@me/{channel_id}/{message['id']}",
-        updated_at=dt.datetime.fromisoformat(str(message["timestamp"]).replace("Z", "+00:00")),
+        content=f"{username}: {body}",
+        uri=f"https://discord.com/channels/@me/{channel_id}/{message_id}",
+        updated_at=updated_at,
         project=project,
         metadata={
             "channel_id": channel_id,
-            "author_id": message.get("author", {}).get("id"),
+            "author_id": author_id,
         },
     )
+
+
+def _discord_page(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise RuntimeError("Discord message page must be a list")
+    messages: list[dict[str, Any]] = []
+    for index, message in enumerate(value):
+        if not isinstance(message, dict):
+            print(
+                f"connector warning: skipping malformed Discord message {index}",
+                file=sys.stderr,
+            )
+            continue
+        message_id = str(message.get("id") or "").strip()
+        if not message_id.isdigit():
+            print(
+                f"connector warning: skipping Discord message {index} with invalid id",
+                file=sys.stderr,
+            )
+            continue
+        message["id"] = message_id
+        messages.append(message)
+    if value and not messages:
+        raise RuntimeError("Discord message page contained no usable records")
+    return messages
+
+
+def _parse_discord_timestamp(value: object) -> dt.datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.UTC)
+    return parsed
 
 
 def _required_env(name: str) -> str:
@@ -248,6 +389,14 @@ def _required_env(name: str) -> str:
     if not value:
         raise RuntimeError(f"{name} is required")
     return value
+
+
+def _slack_timestamp(value: object) -> float | None:
+    try:
+        timestamp = float(value)
+    except (TypeError, ValueError):
+        return None
+    return timestamp if timestamp >= 0 else None
 
 
 def _get_with_backoff(
@@ -276,10 +425,10 @@ def _retry_after(response: httpx.Response, attempt: int) -> float:
         except ValueError:
             pass
     try:
-        payload = response.json()
+        payload = json_payload(response)
         if isinstance(payload, dict) and payload.get("retry_after") is not None:
             return min(max(float(payload["retry_after"]), 0.0), 60.0)
-    except (TypeError, ValueError):
+    except (RuntimeError, TypeError, ValueError):
         pass
     return min(float(2**attempt), 30.0)
 
@@ -300,10 +449,27 @@ def _respect_rate_limit_headers(response: httpx.Response) -> None:
 
 def _slack_payload(response: httpx.Response) -> dict[str, Any]:
     response.raise_for_status()
-    payload: dict[str, Any] = response.json()
+    raw_payload = json_payload(response)
+    if not isinstance(raw_payload, dict):
+        raise RuntimeError("Slack API returned an invalid response")
+    payload: dict[str, Any] = raw_payload
     if not payload.get("ok"):
         raise RuntimeError(f"Slack API error: {payload.get('error', 'unknown')}")
     return payload
+
+
+def _slack_messages(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    value = payload.get("messages")
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise RuntimeError("Slack API returned an invalid message page")
+    messages = [message for message in value if isinstance(message, dict)]
+    if value and not messages:
+        raise RuntimeError("Slack API message page contained no usable records")
+    if len(messages) != len(value):
+        print("connector warning: skipping malformed Slack message records", file=sys.stderr)
+    return messages
 
 
 def _title(text: str, fallback: str) -> str:

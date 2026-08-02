@@ -1,4 +1,4 @@
-//! Config assertions for the Code Foundry v0.34.4 adoption.
+//! Config assertions for the Code Foundry v0.34.3 adoption.
 //!
 //! These tests pin the repository-level Code Foundry configuration so CI can
 //! detect drift between `.github/code-foundry.yml`, the generated workflows,
@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Runtime tag every generated workflow and config line must pin.
-const RUNTIME_REF: &str = "v0.34.4";
+const RUNTIME_REF: &str = "v0.34.3";
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -98,14 +98,14 @@ fn single_canonical_validation_caller() {
             !Path::new(&repo_root())
                 .join(format!(".github/workflows/{legacy}.yml"))
                 .exists(),
-            "legacy generated caller {legacy}.yml must be removed by the v0.34.4 sync"
+            "legacy generated caller {legacy}.yml must be removed by the v0.34.3 sync"
         );
     }
     let caller = read(".github/workflows/validation.yml");
     assert!(
         caller.contains("uses: 0xPlayerOne/code-foundry/.github/workflows/validation.yml@")
-            && caller.contains("@v0.34.4"),
-        "validation caller must reference the v0.34.4 orchestrator:\n{caller}"
+            && caller.contains("@v0.34.3"),
+        "validation caller must reference the v0.34.3 orchestrator:\n{caller}"
     );
 }
 
@@ -410,9 +410,17 @@ fn desktop_audit_caches_cargo_audit_binary() {
         ..desktop[cache_start + 1..]
             .find("\n      - name: ")
             .map_or(desktop.len(), |next| cache_start + 1 + next)];
+    let cache_major = cache_block.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("uses: actions/cache@v")?
+            .split_whitespace()
+            .next()?
+            .parse::<u32>()
+            .ok()
+    });
     assert!(
-        cache_block.contains("uses: actions/cache@v4"),
-        "cargo-audit cache must use actions/cache@v4:\n{cache_block}"
+        cache_major.is_some_and(|major| major >= 4),
+        "cargo-audit cache must use a supported actions/cache major (v4+):\n{cache_block}"
     );
     assert!(
         cache_block.contains("id: cache-cargo-audit"),

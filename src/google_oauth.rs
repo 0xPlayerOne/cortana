@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration as ChronoDuration, Utc};
 use reqwest::{Client, Url, redirect::Policy};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use sha2::{Digest, Sha256};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -24,6 +24,7 @@ const AUTHORIZATION_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/au
 const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 const CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_CLIENT_FILE_BYTES: u64 = 64 * 1024;
+const MAX_TOKEN_RESPONSE_BYTES: usize = 64 * 1024;
 const MAX_CALLBACK_BYTES: usize = 8 * 1024;
 const MAX_CALLBACK_CONNECTIONS: usize = 20;
 const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
@@ -89,17 +90,17 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationO
         "source {} is not a Google connector",
         source.name
     );
-    let token_path = required_secure_path(source, source.token.as_ref(), "token")?;
+    let token_path = configured_token_path(config, source)?;
     let client_path = required_secure_path(source, source.oauth_client.as_ref(), "OAuth client")?;
-    ensure_outside_filesystem_roots(config, token_path, "token")?;
+    ensure_outside_filesystem_roots(config, &token_path, "token")?;
     ensure_outside_filesystem_roots(config, client_path, "OAuth client")?;
     anyhow::ensure!(
-        token_path != client_path,
+        token_path.as_path() != client_path,
         "Google token and OAuth client paths must be different"
     );
     let client = read_client_file(client_path)?;
-    let scopes = scopes_for_token(config, token_path)?;
-    let existing_refresh_token = read_existing_refresh_token(token_path)?;
+    let scopes = scopes_for_token(config, &token_path)?;
+    let existing_refresh_token = read_existing_refresh_token(&token_path)?;
 
     let listener = TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -152,7 +153,7 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationO
             + ChronoDuration::seconds(i64::try_from(token.expires_in).unwrap_or(3600)))
         .to_rfc3339(),
     };
-    write_token(token_path, &stored)?;
+    write_token(&token_path, &stored)?;
 
     Ok(AuthorizationOutcome {
         source: source.name.clone(),
@@ -165,9 +166,11 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationO
 
 fn read_client_file(path: &Path) -> Result<InstalledClient> {
     reject_symlink(path)?;
+    reject_symlink_components(path)?;
     let metadata =
         fs::metadata(path).with_context(|| format!("inspect OAuth client {}", path.display()))?;
     anyhow::ensure!(metadata.is_file(), "OAuth client must be a regular file");
+    ensure_owner_only(&metadata, "OAuth client")?;
     anyhow::ensure!(
         metadata.len() <= MAX_CLIENT_FILE_BYTES,
         "OAuth client file exceeds 64 KiB"
@@ -185,12 +188,14 @@ fn read_client_file(path: &Path) -> Result<InstalledClient> {
 
 fn read_existing_refresh_token(path: &Path) -> Result<Option<String>> {
     reject_symlink(path)?;
+    reject_symlink_components(path)?;
     if !path.exists() {
         return Ok(None);
     }
     let metadata =
         fs::metadata(path).with_context(|| format!("inspect Google token {}", path.display()))?;
     anyhow::ensure!(metadata.is_file(), "Google token must be a regular file");
+    ensure_owner_only(&metadata, "Google token")?;
     anyhow::ensure!(
         metadata.len() <= MAX_CLIENT_FILE_BYTES,
         "Google token file exceeds 64 KiB"
@@ -231,6 +236,27 @@ fn required_secure_path<'a>(
     Ok(path)
 }
 
+fn configured_token_path(config: &Config, source: &SourceConfig) -> Result<PathBuf> {
+    if let Some(path) = source.token.as_ref() {
+        return Ok(required_secure_path(source, Some(path), "token")?.to_path_buf());
+    }
+    let token_env = source
+        .token_env
+        .as_deref()
+        .filter(|name| !name.is_empty())
+        .with_context(|| {
+            format!(
+                "Google source {} requires a token file or token path environment variable",
+                source.name
+            )
+        })?;
+    let value = config.environment_value(token_env).with_context(|| {
+        format!("Google token path environment variable {token_env} is not set")
+    })?;
+    let path = PathBuf::from(value.trim());
+    Ok(required_secure_path(source, Some(&path), "token")?.to_path_buf())
+}
+
 fn ensure_outside_filesystem_roots(config: &Config, path: &Path, label: &str) -> Result<()> {
     for source in config.sources.iter().filter(|source| {
         source.kind == "filesystem" && source.root.as_deref().is_some_and(Path::is_absolute)
@@ -247,11 +273,14 @@ fn ensure_outside_filesystem_roots(config: &Config, path: &Path, label: &str) ->
 
 fn scopes_for_token(config: &Config, token_path: &Path) -> Result<Vec<String>> {
     let mut scopes = Vec::new();
-    for source in config
-        .sources
-        .iter()
-        .filter(|source| source.token.as_deref() == Some(token_path))
-    {
+    for source in config.sources.iter().filter(|source| {
+        source.token.as_deref() == Some(token_path)
+            || source
+                .token_env
+                .as_deref()
+                .and_then(|name| config.environment_value(name))
+                .is_some_and(|value| Path::new(value.trim()) == token_path)
+    }) {
         let scope = match source.kind.as_str() {
             "google-drive" => DRIVE_SCOPE,
             "gmail" => GMAIL_SCOPE,
@@ -466,10 +495,31 @@ async fn exchange_code(
         "Google token exchange failed with status {}",
         response.status().as_u16()
     );
-    response
-        .json()
+    bounded_json(response, MAX_TOKEN_RESPONSE_BYTES)
         .await
         .context("Google token response was invalid")
+}
+
+async fn bounded_json<T: DeserializeOwned>(
+    mut response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<T> {
+    anyhow::ensure!(max_bytes > 0, "JSON response safety limit must be positive");
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes as u64)
+    {
+        anyhow::bail!("Google token response exceeded {max_bytes} bytes");
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        anyhow::ensure!(
+            body.len().saturating_add(chunk.len()) <= max_bytes,
+            "Google token response exceeded {max_bytes} bytes"
+        );
+        body.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&body).context("JSON response body was invalid")
 }
 
 fn verify_granted_scopes(requested: &[String], granted: Option<&str>) -> Result<()> {
@@ -488,6 +538,7 @@ fn verify_granted_scopes(requested: &[String], granted: Option<&str>) -> Result<
 
 fn write_token(path: &Path, token: &StoredToken<'_>) -> Result<()> {
     reject_symlink(path)?;
+    reject_symlink_components(path)?;
     let parent = path.parent().context("Google token path has no parent")?;
     let created_parent = !parent.exists();
     fs::create_dir_all(parent)
@@ -565,14 +616,55 @@ fn validate_credential(label: &str, value: &str, maximum_bytes: usize) -> Result
 }
 
 fn reject_symlink(path: &Path) -> Result<()> {
-    if path.exists() {
-        anyhow::ensure!(
-            !fs::symlink_metadata(path)?.file_type().is_symlink(),
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => anyhow::ensure!(
+            !metadata.file_type().is_symlink(),
             "refusing to use symlinked file {}",
             path.display()
-        );
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
     }
     Ok(())
+}
+
+fn reject_symlink_components(path: &Path) -> Result<()> {
+    let mut current = path.to_path_buf();
+    loop {
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                anyhow::ensure!(
+                    is_allowed_system_alias(&current),
+                    "refusing to use symlinked path component {}",
+                    current.display()
+                );
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        let Some(parent) = current.parent() else {
+            break;
+        };
+        if parent == current {
+            break;
+        }
+        current = parent.to_path_buf();
+    }
+    Ok(())
+}
+
+fn is_allowed_system_alias(path: &Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        // macOS exposes these standard locations as symlinks into /private.
+        path == Path::new("/tmp") || path == Path::new("/var") || path == Path::new("/etc")
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+        false
+    }
 }
 
 fn random_secret() -> String {
@@ -604,6 +696,20 @@ fn set_directory_owner_only(path: &Path) -> Result<()> {
 
 #[cfg(not(unix))]
 fn set_directory_owner_only(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+fn ensure_owner_only(metadata: &fs::Metadata, label: &str) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        anyhow::ensure!(
+            metadata.permissions().mode() & 0o077 == 0,
+            "{label} file must not be accessible by group or others"
+        );
+    }
+    let _ = (metadata, label);
     Ok(())
 }
 
@@ -669,10 +775,72 @@ mod tests {
             r#"{"access_token":"not-returned","refresh_token":"retained-refresh-token"}"#,
         )
         .unwrap();
+        #[cfg(unix)]
+        set_owner_only(&token).unwrap();
         assert_eq!(
             read_existing_refresh_token(&token).unwrap().as_deref(),
             Some("retained-refresh-token")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn oauth_inputs_reject_group_or_world_readable_files() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let token = directory.path().join("token.json");
+        fs::write(&token, r#"{"refresh_token":"retained-refresh-token"}"#).unwrap();
+        fs::set_permissions(&token, fs::Permissions::from_mode(0o644)).unwrap();
+        let error = read_existing_refresh_token(&token)
+            .expect_err("group-readable Google token must be rejected");
+        assert!(error.to_string().contains("must not be accessible"));
+
+        let client = directory.path().join("client.json");
+        fs::write(
+            &client,
+            r#"{"installed":{"client_id":"client.apps.googleusercontent.com"}}"#,
+        )
+        .unwrap();
+        fs::set_permissions(&client, fs::Permissions::from_mode(0o644)).unwrap();
+        let error =
+            read_client_file(&client).expect_err("group-readable OAuth client must be rejected");
+        assert!(error.to_string().contains("must not be accessible"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_refresh_token_rejects_dangling_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let token = directory.path().join("token.json");
+        symlink(directory.path().join("missing-token.json"), &token).unwrap();
+
+        let error = read_existing_refresh_token(&token)
+            .expect_err("dangling token symlink must be rejected");
+        assert!(error.to_string().contains("symlinked file"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn token_paths_reject_symlinked_parent_components() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().unwrap();
+        let real = directory.path().join("real");
+        fs::create_dir(&real).unwrap();
+        fs::write(
+            real.join("token.json"),
+            r#"{"refresh_token":"retained-refresh-token"}"#,
+        )
+        .unwrap();
+        let linked = directory.path().join("linked");
+        symlink(&real, &linked).unwrap();
+
+        let error = read_existing_refresh_token(&linked.join("token.json"))
+            .expect_err("symlinked token parent must be rejected");
+        assert!(error.to_string().contains("symlinked path component"));
     }
 
     #[test]
@@ -711,6 +879,76 @@ mod tests {
             scopes_for_token(&config, &token).unwrap(),
             [CALENDAR_SCOPE, DRIVE_SCOPE, GMAIL_SCOPE]
         );
+    }
+
+    #[test]
+    fn token_path_environment_value_can_authorize_and_share_scopes() {
+        let token = PathBuf::from("/tmp/cortana/env-token.json");
+        let source = |name: &str, kind: &str| SourceConfig {
+            name: name.into(),
+            kind: kind.into(),
+            enabled: false,
+            project: "personal".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: Some("GOOGLE_TOKEN_PATH".into()),
+            token: None,
+            oauth_client: Some(PathBuf::from("/tmp/cortana/client.json")),
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        let mut config = Config {
+            sources: vec![source("drive", "google-drive"), source("mail", "gmail")],
+            ..Config::default()
+        };
+        config
+            .environment
+            .insert("GOOGLE_TOKEN_PATH".into(), token.display().to_string());
+
+        assert_eq!(
+            configured_token_path(&config, &config.sources[0]).unwrap(),
+            token
+        );
+        assert_eq!(
+            scopes_for_token(&config, &token).unwrap(),
+            [DRIVE_SCOPE, GMAIL_SCOPE]
+        );
+    }
+
+    #[test]
+    fn token_path_environment_value_is_required_when_no_explicit_file_exists() {
+        let source = SourceConfig {
+            name: "drive".into(),
+            kind: "google-drive".into(),
+            enabled: false,
+            project: "personal".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: Some("MISSING_GOOGLE_TOKEN_PATH".into()),
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        let error = configured_token_path(&Config::default(), &source)
+            .expect_err("missing token path environment value must fail closed");
+        assert!(error.to_string().contains("MISSING_GOOGLE_TOKEN_PATH"));
     }
 
     #[test]

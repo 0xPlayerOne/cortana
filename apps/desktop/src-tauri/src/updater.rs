@@ -9,6 +9,7 @@ use crate::settings;
 
 const GITHUB_URL: &str = "https://github.com/0xPlayerOne/cortana";
 const MAX_RELEASE_NOTES_CHARS: usize = 32_000;
+const UPDATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 const CHANGELOG: &str = include_str!("../../../../CHANGELOG.md");
 
 #[derive(Clone, Debug, Serialize)]
@@ -46,6 +47,7 @@ impl Default for UpdateSnapshot {
 
 #[derive(Clone, Default)]
 pub struct UpdaterState {
+    operation: Arc<AsyncMutex<()>>,
     pending: Arc<AsyncMutex<Option<Update>>>,
     snapshot: Arc<Mutex<UpdateSnapshot>>,
 }
@@ -59,11 +61,16 @@ impl UpdaterState {
     }
 
     pub async fn check(&self, app: &AppHandle) -> Result<UpdateSnapshot, String> {
+        let _operation = self.operation.lock().await;
         self.update_snapshot(|snapshot| {
             snapshot.phase = "checking";
             snapshot.error = None;
+            snapshot.available_version = None;
+            snapshot.release_date = None;
+            snapshot.release_notes = None;
             snapshot.downloaded_bytes = 0;
             snapshot.total_bytes = None;
+            snapshot.restart_required = false;
         });
         let result = app
             .updater()
@@ -122,6 +129,7 @@ impl UpdaterState {
         approved: bool,
         restart: bool,
     ) -> Result<UpdateSnapshot, String> {
+        let _operation = self.operation.lock().await;
         if !approved {
             return Err("update installation requires explicit approval".into());
         }
@@ -150,8 +158,9 @@ impl UpdaterState {
         let progress = self.snapshot.clone();
         let progress_finished = self.snapshot.clone();
         let retry = update.clone();
-        let result = update
-            .download_and_install(
+        let result = match tokio::time::timeout(
+            UPDATE_TIMEOUT,
+            update.download_and_install(
                 move |chunk, total| {
                     let mut snapshot = progress
                         .lock()
@@ -167,9 +176,17 @@ impl UpdaterState {
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
                     snapshot.phase = "installing";
                 },
-            )
-            .await
-            .map_err(|error| format!("verify and install signed Cortana update: {error}"));
+            ),
+        )
+        .await
+        {
+            Ok(result) => result
+                .map_err(|error| format!("verify and install signed Cortana update: {error}")),
+            Err(_) => Err(format!(
+                "signed Cortana update timed out after {} seconds",
+                UPDATE_TIMEOUT.as_secs()
+            )),
+        };
 
         if let Err(error) = result {
             *self.pending.lock().await = Some(retry);
