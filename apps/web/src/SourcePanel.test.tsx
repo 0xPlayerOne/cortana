@@ -74,6 +74,44 @@ test('SourcePanel keeps cancellation failures separate from runtime health', () 
   expect(screen.queryByText('Status unavailable')).toBeNull()
 })
 
+test('document filter exposes a clear action only when text is present', () => {
+  let nextQuery = 'unchanged'
+  render(
+    <SourcePanel
+      open={false}
+      status={demoStatus}
+      statusError=""
+      workspace=""
+      workspaces={[workspace]}
+      documentQuery="legacy"
+      selected=""
+      documents={[]}
+      selectedDocument=""
+      documentsLoading={false}
+      documentsError=""
+      hasMoreDocuments={false}
+      onSelect={() => {}}
+      onSelectWorkspace={() => {}}
+      onDocumentQueryChange={(query) => {
+        nextQuery = query
+      }}
+      onSelectDocument={() => {}}
+      onLoadMoreDocuments={() => {}}
+      onOpenSourcesSettings={() => {}}
+      onClose={() => {}}
+      jobs={[]}
+    />
+  )
+
+  expect(screen.getByRole('button', { name: 'Clear document filter' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Clear document filter' }))
+  expect(nextQuery).toBe('')
+
+  cleanup()
+  renderPanel(demoStatus, '')
+  expect(screen.queryByRole('button', { name: 'Clear document filter' })).toBeNull()
+})
+
 test('SourcePanel source and settings shortcuts open the Sources settings section', () => {
   let sourcesOpenCalls = 0
   const openSourcesSettings = () => {

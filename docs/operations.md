@@ -118,6 +118,11 @@ cortana --config ~/.config/cortana/config.toml service install \
   --web-dir /path/to/web --enable-sync-service
 ```
 
+The installer re-checks every enabled source before scheduling recurring sync and refuses to
+install the job unless each source has a current successful validation covering its configured
+document, byte, and duration budgets. Re-run `validate-source` (or the Desktop validation flow)
+after changing a source or its budgets.
+
 Re-running `service install` without `--enable-sync-service` removes any prior recurring sync job
 and leaves Cortana in query-only mode.
 

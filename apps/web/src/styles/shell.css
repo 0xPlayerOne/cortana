@@ -481,6 +481,21 @@
   font-size: 12px;
 }
 
+.document-filter-clear {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  color: #81827d;
+  border: 0;
+  background: transparent;
+}
+
+.document-filter-clear:hover {
+  color: #e5e4de;
+}
+
 .virtual-document-list {
   min-height: 100px;
   flex: 1;

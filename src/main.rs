@@ -1393,6 +1393,9 @@ fn manage_service(
             no_embedding_service,
             enable_sync_service,
         } => {
+            if *enable_sync_service {
+                ensure_recurring_sync_validated(config)?;
+            }
             let web_dir = if *no_web {
                 None
             } else {
@@ -1443,6 +1446,33 @@ fn manage_service(
         ServiceAction::Restart { service: name } => service::restart(name.as_str()),
         ServiceAction::Uninstall => service::uninstall(),
     }
+}
+
+fn ensure_recurring_sync_validated(config: &Config) -> Result<()> {
+    let mut checked = 0usize;
+    for source in config.sources.iter().filter(|source| source.enabled) {
+        checked += 1;
+        let limits = SourceLimits::resolve(config, source, SyncOverrides::default())
+            .with_context(|| format!("invalid recurring sync budget for {}", source.name))?;
+        source_validation::require_success(
+            &config.data_dir,
+            source,
+            limits.max_documents,
+            limits.max_bytes,
+            limits.max_seconds,
+        )
+        .with_context(|| {
+            format!(
+                "recurring sync requires a current successful validation for source {}",
+                source.name
+            )
+        })?;
+    }
+    anyhow::ensure!(
+        checked > 0,
+        "recurring sync requires at least one enabled source"
+    );
+    Ok(())
 }
 
 fn init_tracing() {
@@ -2550,13 +2580,48 @@ mod tests {
 
     use super::{
         Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
-        chunk, cleanup_connector_spools, context_bundle, ingest_documents, private_file,
-        run_connector_to_spool,
+        chunk, cleanup_connector_spools, context_bundle, ensure_recurring_sync_validated,
+        ingest_documents, private_file, run_connector_to_spool,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
     use cortana::model::Document;
     use cortana::store::Store;
+
+    #[test]
+    fn recurring_sync_requires_current_validation_for_each_enabled_source() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        config.sources.push(SourceConfig {
+            name: "work-code".into(),
+            kind: "filesystem".into(),
+            enabled: true,
+            project: "work".into(),
+            root: Some(directory.path().join("code")),
+            source: Some("work-code".into()),
+            channels: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        });
+
+        let error = ensure_recurring_sync_validated(&config)
+            .expect_err("missing source validation must block recurring sync");
+        assert!(error.to_string().contains("work-code"));
+        assert!(error.to_string().contains("current successful validation"));
+    }
 
     struct BatchRecordingEmbedder {
         maximum: AtomicUsize,

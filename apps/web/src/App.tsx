@@ -130,6 +130,7 @@ export function App() {
   const [queryHistoryIndex, setQueryHistoryIndex] = useState(-1)
   const searchRef = useRef<HTMLInputElement>(null)
   const sourceJobs = useSourceJobs()
+  const sourceJobsError = sourceJobError || sourceJobs.error
   const installerPollingRef = useRef(false)
   const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
   const updatePollingRef = useRef(false)
@@ -1186,7 +1187,7 @@ export function App() {
             documentsError={documentsError}
             hasMoreDocuments={Boolean(documentCursor)}
             statusError={statusError}
-            sourceJobError={sourceJobError || sourceJobs.error}
+            sourceJobError={sourceJobsError}
             onSelect={chooseSource}
             onSelectWorkspace={chooseWorkspace}
             onDocumentQueryChange={setDocumentQuery}
@@ -1288,7 +1289,7 @@ export function App() {
           contextError={contextError}
           contextTokens={estimateTokens(agentContext)}
           desktopAvailable={isDesktopApp}
-          sourceJobError={sourceJobError || sourceJobs.error}
+          sourceJobError={sourceJobsError}
           onSearchFocus={focusSearch}
           onRetrieveContext={() => void retrieveAgentContext()}
           onOpenSettings={() => setView('settings')}
@@ -1377,6 +1378,13 @@ export function App() {
         <IngestionIndicator status={status} />
         <ActiveSourceJobs
           jobs={sourceJobs.jobs}
+          onOpen={() => {
+            if (!canLeaveSettings()) return
+            setView('inbox')
+          }}
+        />
+        <SourceJobsErrorIndicator
+          error={sourceJobsError}
           onOpen={() => {
             if (!canLeaveSettings()) return
             setView('inbox')
@@ -1514,6 +1522,23 @@ function ActiveSourceJobs({ jobs, onOpen }: { jobs: DesktopSourceJob[]; onOpen: 
     >
       <LoaderCircle className="spin" size={13} /> {active.length} active source job
       {active.length === 1 ? '' : 's'}
+    </button>
+  )
+}
+
+function SourceJobsErrorIndicator({ error, onOpen }: { error: string; onOpen: () => void }) {
+  const detail = error.replace(/\s+/g, ' ').trim()
+  if (!detail) return null
+  const label = detail.length > 160 ? `${detail.slice(0, 157)}…` : detail
+  return (
+    <button
+      type="button"
+      className="source-jobs status-link attention"
+      aria-label="Open source job status"
+      title={`${detail}. Open the activity inbox.`}
+      onClick={onOpen}
+    >
+      <i /> Source jobs: {label}
     </button>
   )
 }

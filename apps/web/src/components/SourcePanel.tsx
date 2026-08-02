@@ -295,6 +295,16 @@ export function SourcePanel({
             placeholder="Filter documents"
             aria-label="Filter documents"
           />
+          {documentQuery !== '' && (
+            <button
+              type="button"
+              className="document-filter-clear"
+              aria-label="Clear document filter"
+              onClick={() => onDocumentQueryChange('')}
+            >
+              <X size={14} />
+            </button>
+          )}
         </label>
         {documentsError ? (
           <p className="document-list-error" role="alert">
