@@ -148,11 +148,7 @@ export function App() {
     : sourceJobs.error
       ? sourceJobs.retry
       : undefined
-  const installerPollingRef = useRef(false)
   const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
-  const updatePollingRef = useRef(false)
-  const sidecarPollingRef = useRef(false)
-  const servicesPollingRef = useRef(false)
   const desktopServicesRequestRef = useRef(0)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
@@ -518,9 +514,10 @@ export function App() {
   useEffect(() => {
     if (!isDesktopApp || !pageVisible) return
     let disposed = false
+    let requestInFlight = false
     const refresh = () => {
-      if (disposed || servicesPollingRef.current) return
-      servicesPollingRef.current = true
+      if (disposed || requestInFlight) return
+      requestInFlight = true
       const requestId = ++desktopServicesRequestRef.current
       void getDesktopServices()
         .then((next) => {
@@ -535,7 +532,7 @@ export function App() {
           )
         })
         .finally(() => {
-          servicesPollingRef.current = false
+          requestInFlight = false
         })
     }
     refresh()
@@ -550,9 +547,10 @@ export function App() {
   useEffect(() => {
     if (!isDesktopApp || !desktopSettings || !pageVisible) return
     let disposed = false
+    let requestInFlight = false
     const refresh = () => {
-      if (disposed || sidecarPollingRef.current) return
-      sidecarPollingRef.current = true
+      if (disposed || requestInFlight) return
+      requestInFlight = true
       void Promise.allSettled([getDesktopHindsightStatus(), getDesktopHonchoStatus()])
         .then(([hindsight, honcho]) => {
           if (disposed) return
@@ -593,7 +591,7 @@ export function App() {
           }
         })
         .finally(() => {
-          sidecarPollingRef.current = false
+          requestInFlight = false
         })
     }
     refresh()
@@ -639,9 +637,10 @@ export function App() {
   useEffect(() => {
     if (!isDesktopApp || !installerJob || !isActiveInstaller(installerJob) || !pageVisible) return
     let disposed = false
+    let requestInFlight = false
     const poll = () => {
-      if (disposed || installerPollingRef.current) return
-      installerPollingRef.current = true
+      if (disposed || requestInFlight) return
+      requestInFlight = true
       void getDesktopInstaller(installerJob.id)
         .then((next) => {
           if (!disposed) setInstallerJob(next)
@@ -653,7 +652,7 @@ export function App() {
           if (!disposed && isMissingInstallerJobError(caught)) setInstallerJob(null)
         })
         .finally(() => {
-          installerPollingRef.current = false
+          requestInFlight = false
         })
     }
     poll()
@@ -693,9 +692,10 @@ export function App() {
       return
     }
     let disposed = false
+    let requestInFlight = false
     const poll = () => {
-      if (disposed || updatePollingRef.current) return
-      updatePollingRef.current = true
+      if (disposed || requestInFlight) return
+      requestInFlight = true
       void getDesktopUpdate()
         .then((next) => {
           if (!disposed) setDesktopUpdate(next)
@@ -704,7 +704,7 @@ export function App() {
           // Keep the last progress snapshot while the native updater is busy.
         })
         .finally(() => {
-          updatePollingRef.current = false
+          requestInFlight = false
         })
     }
     poll()
