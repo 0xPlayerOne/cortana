@@ -11,7 +11,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auth::{ADMIN_SCOPE, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
+    auth::{Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
     context,
     embed::Embedder,
     retrieval,
@@ -299,7 +299,7 @@ impl BrainServer {
             return "authorization error: status scope required".into();
         }
         let acl = self.principal.acl_labels();
-        let owner = acl.iter().any(|label| label == "*") || self.principal.has_scope(ADMIN_SCOPE);
+        let owner = self.principal.is_owner();
         match if owner {
             self.store.stats()
         } else {
@@ -312,7 +312,7 @@ impl BrainServer {
                     configured_sources: self
                         .configured_sources
                         .iter()
-                        .filter(|source| acl_allows(&source.acl, &acl))
+                        .filter(|source| self.principal.is_owner() || acl_allows(&source.acl, &acl))
                         .cloned()
                         .collect(),
                 });
@@ -488,7 +488,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::auth::AuthPolicy;
+    use crate::auth::{ADMIN_SCOPE, AuthPolicy};
     use crate::config::{AuthTokenConfig, Config};
     use crate::embed::DeterministicEmbedder;
     use crate::model::{Document, Evidence};
@@ -712,6 +712,57 @@ mod tests {
             .filter_map(|source| source["name"].as_str())
             .collect::<Vec<_>>();
         assert_eq!(names, vec!["work-drive", "public-reference"]);
+    }
+
+    #[tokio::test]
+    async fn admin_brain_status_includes_configured_sources_outside_named_acl() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("ADMIN_TOKEN".into(), "admin-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "admin-agent".into(),
+            token_env: "ADMIN_TOKEN".into(),
+            scopes: vec![ADMIN_SCOPE.into(), STATUS_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let principal = AuthPolicy::from_config(&config, None)
+            .expect("policy")
+            .authenticate("admin-secret")
+            .expect("principal");
+        let server = BrainServer::new(store, embedder)
+            .with_principal(principal)
+            .with_configured_sources(vec![
+                ConfiguredSourceStatus {
+                    name: "work-drive".into(),
+                    source: "work-drive".into(),
+                    kind: "google-drive".into(),
+                    project: "work".into(),
+                    enabled: true,
+                    acl: vec!["work".into()],
+                },
+                ConfiguredSourceStatus {
+                    name: "personal-notes".into(),
+                    source: "personal-notes".into(),
+                    kind: "apple-notes".into(),
+                    project: "personal".into(),
+                    enabled: true,
+                    acl: vec!["personal".into()],
+                },
+            ]);
+
+        let status: serde_json::Value =
+            serde_json::from_str(&server.brain_status().await).expect("status JSON");
+        let names = status["configured_sources"]
+            .as_array()
+            .expect("configured sources")
+            .iter()
+            .filter_map(|source| source["name"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["work-drive", "personal-notes"]);
     }
 
     #[test]

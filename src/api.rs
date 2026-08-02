@@ -423,6 +423,9 @@ impl IngestionStatus {
     fn visible_to(&self, principal: &Principal) -> Self {
         let acl = principal.acl_labels();
         let mut status = self.clone();
+        if principal.is_owner() {
+            return status;
+        }
         status
             .configured_sources
             .retain(|source| acl_allows(&source.acl, &acl));
@@ -1005,7 +1008,7 @@ async fn status(
     Extension(principal): Extension<Principal>,
 ) -> Result<Json<Status>, (StatusCode, String)> {
     let acl = principal.acl_labels();
-    let owner = acl.iter().any(|label| label == "*") || principal.has_scope(ADMIN_SCOPE);
+    let owner = principal.is_owner();
     let stats = if owner {
         state.store.stats()
     } else {
@@ -1941,6 +1944,23 @@ mod tests {
             .map(|source| source.name.as_str())
             .collect::<Vec<_>>();
         assert_eq!(names, vec!["work-drive", "public-reference"]);
+
+        let mut admin_config = auth_config;
+        admin_config.auth.tokens[0].scopes = vec![ADMIN_SCOPE.into()];
+        let admin = AuthPolicy::from_config(&admin_config, None)
+            .expect("admin policy")
+            .authenticate("work-secret")
+            .expect("admin principal");
+        let admin_status = IngestionStatus::from_config(&config, false).visible_to(&admin);
+        let admin_names = admin_status
+            .configured_sources
+            .iter()
+            .map(|source| source.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            admin_names,
+            vec!["work-drive", "personal-notes", "public-reference"]
+        );
     }
 
     #[test]
