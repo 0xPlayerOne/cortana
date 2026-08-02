@@ -3723,7 +3723,19 @@ function referencedSecretNames(settings: DesktopSettings): Set<string> {
 function validateSourceIdentityScopes(sources: readonly SourceSettings[]): string | null {
   const seen = new Map<string, string>()
   for (const source of sources) {
-    const canonical = source.source?.trim() || source.name.trim()
+    const configured = source.source
+    if (
+      configured !== null &&
+      (configured.trim().length === 0 ||
+        configured !== configured.trim() ||
+        Array.from(configured).some((character) => {
+          const codePoint = character.codePointAt(0) ?? 0
+          return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f)
+        }))
+    ) {
+      return `Source label for \`${source.name}\` must not be empty, padded with whitespace, or contain control characters.`
+    }
+    const canonical = configured ?? source.name.trim()
     const scope = `${source.project}\u0000${canonical}`
     const previous = seen.get(scope)
     if (previous) {

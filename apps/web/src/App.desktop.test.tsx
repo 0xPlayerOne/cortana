@@ -972,6 +972,32 @@ test('settings refuses duplicate canonical source labels in one workspace', asyn
   }
 })
 
+test('settings refuses padded or control-character source labels before save', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    sources: [{ ...workSource, source: ' work-code ' }],
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    fireEvent.change(screen.getAllByLabelText('Display name')[0], {
+      target: { value: 'Draft workspace' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(screen.getByText(/Source label for `work-code` must not be empty/)).toBeTruthy()
+    )
+    expect(state.saveSettingsCalls).toBe(0)
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
 test('source tree actions resolve a configured source by its canonical label', async () => {
   const originalConfirm = window.confirm
   const originalSettings = state.settings

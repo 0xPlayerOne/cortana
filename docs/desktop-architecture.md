@@ -160,7 +160,8 @@ Calendar, Slack, and Discord connector schemas. It can retain, disable, or remov
 external command connector, but cannot create or modify command arrays. Google token files and
 OAuth client files and local roots must be absolute non-root paths; Slack and Discord require
 explicit channels and a validated environment-variable name. Canonical source labels are unique
-within each workspace so connectors cannot merge their indexed scope or health history. Saving or authorizing source
+within each workspace, must not be padded with whitespace or contain control characters, and cannot
+merge connectors' indexed scope or health history. Saving or authorizing source
 settings never starts ingestion. The knowledge sidebar also exposes a confirmation-gated
 enable/disable switch for each saved connector; it writes only that source's enabled flag, leaves
 existing indexed data untouched, and is disabled while a Settings draft is unsaved or first-launch

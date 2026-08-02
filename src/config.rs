@@ -422,6 +422,8 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
         let canonical_source = source.source.as_deref().unwrap_or(&source.name);
         anyhow::ensure!(
             !canonical_source.is_empty()
+                && canonical_source == canonical_source.trim()
+                && !canonical_source.trim().is_empty()
                 && canonical_source.len() <= 128
                 && !canonical_source.chars().any(char::is_control),
             "source `{}` has an invalid canonical identifier",
@@ -734,6 +736,27 @@ mod tests {
             name = "notes"
             kind = "future-connector"
             project = "work"
+            "#,
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            project = "work"
+            source = " notes "
+            "#,
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            project = "work"
+            source = "   "
+            "#,
+            r#"
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            project = "work"
+            source = "line\nbreak"
             "#,
         ] {
             let config: Config = toml::from_str(source_block).expect("fixture config");
