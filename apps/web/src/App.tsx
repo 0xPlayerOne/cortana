@@ -148,6 +148,7 @@ export function App() {
   const documentListRequestRef = useRef(0)
   const documentSelectRequestRef = useRef(0)
   const graphRequestRef = useRef(0)
+  const statusRequestRef = useRef(0)
   const documentPageLoadingRef = useRef(false)
   const sourceWidthRef = useRef(sourceWidth)
   const contextWidthRef = useRef(contextWidth)
@@ -183,16 +184,19 @@ export function App() {
       controller?.abort()
       const nextController = new AbortController()
       controller = nextController
+      const requestId = ++statusRequestRef.current
       const isInitialRequest = initialRequest
       initialRequest = false
       void getStatus(nextController.signal)
         .then((next) => {
-          if (disposed || nextController.signal.aborted) return
+          if (disposed || nextController.signal.aborted || statusRequestRef.current !== requestId)
+            return
           setStatus(next)
           setStatusError('')
         })
         .catch((caught: unknown) => {
-          if (disposed || nextController.signal.aborted) return
+          if (disposed || nextController.signal.aborted || statusRequestRef.current !== requestId)
+            return
           setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
         })
         .finally(() => {
@@ -203,6 +207,7 @@ export function App() {
             isInitialRequest &&
             !disposed &&
             !nextController.signal.aborted &&
+            statusRequestRef.current === requestId &&
             searchRequestRef.current === 0
           ) {
             setLoading(false)
@@ -216,6 +221,7 @@ export function App() {
       disposed = true
       window.clearInterval(timer)
       controller?.abort()
+      statusRequestRef.current += 1
     }
   }, [])
 
@@ -495,18 +501,20 @@ export function App() {
     unseen.forEach((job) => refreshedSourceJobsRef.current.add(job.id))
 
     let active = true
+    const requestId = ++statusRequestRef.current
     void getStatus()
       .then((next) => {
-        if (!active) return
+        if (!active || statusRequestRef.current !== requestId) return
         setStatus(next)
         setStatusError('')
       })
       .catch((caught: unknown) => {
-        if (!active) return
+        if (!active || statusRequestRef.current !== requestId) return
         setStatusError(caught instanceof Error ? caught.message : 'Status unavailable')
       })
     return () => {
       active = false
+      if (statusRequestRef.current === requestId) statusRequestRef.current += 1
     }
   }, [sourceJobs.jobs])
 
