@@ -150,8 +150,10 @@ fn job_block<'a>(workflow: &'a str, job_id: &str) -> &'a str {
     let mut end = workflow.len();
     for other in [
         "gtk_provenance",
+        "gtk_iterator",
         "security_audit",
-        "quality",
+        "desktop_test",
+        "desktop_clippy",
         "release",
         "aggregate",
     ] {
@@ -169,14 +171,14 @@ fn job_header(block: &str) -> &str {
     &block[..block.find("    steps:").unwrap_or(block.len())]
 }
 
-/// The desktop workflow splits the former single sequential audit path into
-/// four independent parallel jobs (provenance, Rust dependency audit,
-/// web+desktop quality, release compilation) plus a fast aggregate job that keeps the stable
-/// "Tauri 2 / Linux" required-check name. The workflow stays scoped to
-/// main-targeted promotion PRs and manual dispatch, skipping release-please
-/// version PRs at job level; final-audit steps keep the same gate, and the
-/// aggregate always runs after needs, treating skipped jobs as acceptable
-/// and failing only on failure or cancellation.
+/// The desktop workflow keeps independent parallel jobs for GTK provenance,
+/// GTK iterator (release mode), Rust dependency auditing, desktop tests,
+/// desktop clippy, and Linux release compilation plus a fast aggregate job that
+/// keeps the stable "Tauri 2 / Linux" required-check name. The workflow stays
+/// scoped to main-targeted promotion PRs and manual dispatch, skipping
+/// release-please version PRs at job level; final-audit steps keep the same
+/// gate, and the aggregate always runs after needs, treating skipped jobs as
+/// acceptable and failing only on failure or cancellation.
 #[test]
 fn desktop_linux_release_compile_is_gated() {
     let desktop = read(".github/workflows/desktop.yml");
@@ -194,12 +196,14 @@ fn desktop_linux_release_compile_is_gated() {
         "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
     ];
 
-    // The four parallel jobs: independent names, runners, timeouts, and a
-    // job-level release-please guard so version-only PRs never start them.
+    // The six parallel jobs: independent names, runners, timeouts, and
+    // a job-level release-please guard so version-only PRs never start them.
     let parallel_jobs = [
-        ("gtk_provenance", "GTK Provenance + Release Test"),
+        ("gtk_provenance", "GTK Provenance"),
+        ("gtk_iterator", "GTK iterator (release)"),
         ("security_audit", "Security Audit (cargo-audit)"),
-        ("quality", "Web + Desktop Quality"),
+        ("desktop_test", "Desktop Tests"),
+        ("desktop_clippy", "Desktop Clippy"),
         ("release", "Release Compilation"),
     ];
     for (job_id, job_name) in parallel_jobs {
@@ -235,8 +239,10 @@ fn desktop_linux_release_compile_is_gated() {
         "aggregate job must keep the stable `Tauri 2 / Linux` required-check name:\n{aggregate}"
     );
     assert!(
-        aggregate.contains("needs: [gtk_provenance, security_audit, quality, release]"),
-        "aggregate job must depend on all four parallel jobs:\n{aggregate}"
+        aggregate.contains(
+            "needs: [gtk_provenance, gtk_iterator, security_audit, desktop_test, desktop_clippy, release]"
+        ),
+        "aggregate job must depend on all six parallel jobs:\n{aggregate}"
     );
     assert!(
         aggregate.contains("if: ${{ !cancelled() }}"),
@@ -249,10 +255,14 @@ fn desktop_linux_release_compile_is_gated() {
     for token in [
         "needs.gtk_provenance.result == 'failure'",
         "needs.gtk_provenance.result == 'cancelled'",
+        "needs.gtk_iterator.result == 'failure'",
+        "needs.gtk_iterator.result == 'cancelled'",
         "needs.security_audit.result == 'failure'",
         "needs.security_audit.result == 'cancelled'",
-        "needs.quality.result == 'failure'",
-        "needs.quality.result == 'cancelled'",
+        "needs.desktop_test.result == 'failure'",
+        "needs.desktop_test.result == 'cancelled'",
+        "needs.desktop_clippy.result == 'failure'",
+        "needs.desktop_clippy.result == 'cancelled'",
         "needs.release.result == 'failure'",
         "needs.release.result == 'cancelled'",
     ] {
@@ -268,7 +278,14 @@ fn desktop_linux_release_compile_is_gated() {
 
     // Final-audit jobs keep the release-please exclusion and main-only gate;
     // individual steps no longer repeat the same condition after the split.
-    for job_id in ["gtk_provenance", "security_audit", "quality", "release"] {
+    for job_id in [
+        "gtk_provenance",
+        "gtk_iterator",
+        "security_audit",
+        "desktop_test",
+        "desktop_clippy",
+        "release",
+    ] {
         let header = job_header(job_block(&desktop, job_id));
         for required in &final_audit_gate {
             assert!(
@@ -308,6 +325,7 @@ fn desktop_linux_release_compile_is_gated() {
         "- name: Test desktop",
         "- name: Lint desktop",
         "- name: Verify patched GTK dependency provenance",
+        "- name: Test patched GTK iterator in release mode",
     ] {
         assert!(
             desktop.contains(fast_check),
@@ -317,34 +335,48 @@ fn desktop_linux_release_compile_is_gated() {
 
     // Web typecheck/build is owned by Code Foundry Validation / CI, which
     // already runs `bun run typecheck` and `bun run build` on the same
-    // main-targeting PR SHA. The desktop quality job must not duplicate it:
-    // after the shared setup steps it runs exactly the two desktop-specific
-    // fast checks (tests + clippy) and no other steps.
-    let quality = job_block(&desktop, "quality");
+    // main-targeting PR SHA. The desktop tests and clippy jobs must each keep
+    // only their own desktop-specific check after setup.
+    let desktop_test = job_block(&desktop, "desktop_test");
     assert!(
-        !quality.contains("- name: Check web"),
-        "quality job must not duplicate the Code Foundry web typecheck/build step:\n{quality}"
+        !desktop_test.contains("- name: Check web"),
+        "desktop_test job must not duplicate the Code Foundry web typecheck/build step:\n{desktop_test}"
     );
-    let cache_start = quality
+    let test_cache_start = desktop_test
         .find("- name: Cache Rust build artifacts")
-        .expect("quality job must keep the rust cache step");
-    let tail_start = quality[cache_start + 1..]
+        .expect("desktop_test job must keep the rust cache step");
+    let test_tail_start = desktop_test[test_cache_start + 1..]
         .find("\n      - name: ")
-        .map_or(quality.len(), |next| cache_start + 1 + next);
-    let tail = &quality[tail_start..];
+        .map_or(desktop_test.len(), |next| test_cache_start + 1 + next);
+    let test_tail = &desktop_test[test_tail_start..];
     assert_eq!(
-        tail.matches("- name: ").count(),
-        2,
-        "quality job must run exactly the two desktop fast checks after setup:\n{quality}"
+        test_tail.matches("- name: ").count(),
+        1,
+        "desktop_test job must run only the desktop test check after setup:\n{desktop_test}"
     );
     assert!(
-        tail.contains("- name: Test desktop") && tail.contains("run: bun run desktop:test"),
-        "quality job must keep the desktop test step:\n{quality}"
+        test_tail.contains("- name: Test desktop")
+            && test_tail.contains("run: bun run desktop:test"),
+        "desktop_test job must keep the desktop test step:\n{desktop_test}"
+    );
+
+    let desktop_clippy = job_block(&desktop, "desktop_clippy");
+    let clippy_cache_start = desktop_clippy
+        .find("- name: Cache Rust build artifacts")
+        .expect("desktop_clippy job must keep the rust cache step");
+    let clippy_tail_start = desktop_clippy[clippy_cache_start + 1..]
+        .find("\n      - name: ")
+        .map_or(desktop_clippy.len(), |next| clippy_cache_start + 1 + next);
+    let clippy_tail = &desktop_clippy[clippy_tail_start..];
+    assert_eq!(
+        clippy_tail.matches("- name: ").count(),
+        1,
+        "desktop_clippy job must run only the desktop clippy check after setup:\n{desktop_clippy}"
     );
     assert!(
-        tail.contains("- name: Lint desktop")
-            && tail.contains("run: bun run --cwd apps/desktop clippy"),
-        "quality job must keep the desktop clippy step:\n{quality}"
+        clippy_tail.contains("- name: Lint desktop")
+            && clippy_tail.contains("run: bun run --cwd apps/desktop clippy"),
+        "desktop_clippy job must keep the desktop clippy step:\n{desktop_clippy}"
     );
 }
 

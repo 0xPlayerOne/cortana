@@ -22,24 +22,24 @@ The desktop pipeline follows a staged audit policy:
   targeting `main` and on manual dispatch, so staging integration never waits
   on the desktop build.
 - **Main code PRs require the desktop aggregate.** Ordinary main-targeted pull
-  requests run independent `gtk_provenance` (GTK provenance + iterator test),
-  `security_audit` (pinned Rust dependency audit), `quality` (desktop tests +
-  clippy), and `release` (Linux release compilation) jobs; the stable
-  `Tauri 2 / Linux` aggregate check must pass before merge. Provenance and
-  dependency auditing run concurrently so cargo-audit installation cannot delay
-  the GTK checks.
-- **Web quality is owned by Code Foundry Validation / CI.** The `quality` job
-  does not rerun `bun run typecheck` or `bun run build`: Code Foundry
-  Validation / CI already runs both on the same main-targeting PR SHA, so the
-  desktop pipeline only repeats desktop-specific fast checks.
+  requests run six independent jobs: `gtk_provenance`, `gtk_iterator`,
+  `security_audit` (pinned Rust dependency audit), `desktop_test`,
+  `desktop_clippy`, and `release` (Linux release compilation). The stable
+  `Tauri 2 / Linux` aggregate depends on all six and must pass before merge.
+  Provenance, the iterator test, dependency auditing, desktop tests, and
+  clippy run concurrently so no independent check waits behind another.
+- **Web quality is owned by Code Foundry Validation / CI.** The `desktop_test`
+  and `desktop_clippy` jobs do not rerun `bun run typecheck` or `bun run build`:
+  Code Foundry Validation / CI already runs both on the same main-targeting PR
+  SHA, so the desktop pipeline only runs desktop-specific fast checks.
 - **Version-only release PRs are intentionally lightweight.** Release Please
-  pull requests (`release-please--branches--main` head refs) skip all four
-  long desktop jobs entirely at job level. The `Tauri 2 / Linux` aggregate
-  still runs and treats skipped dependencies as acceptable, so the required
-  check stays green without burning runner minutes on version bumps.
+  pull requests (`release-please--branches--main` head refs) skip all six long
+  desktop jobs entirely at job level. The `Tauri 2 / Linux` aggregate still
+  runs and treats skipped dependencies as acceptable, so the required check
+  stays green without burning runner minutes on version bumps.
 - **Manual workflow dispatch is the final audit path.** Dispatching
-  `desktop.yml` on any branch reruns all four jobs unconditionally,
-  independent of pull request state.
+  `desktop.yml` on any branch reruns all six jobs unconditionally, independent
+  of pull request state.
 - **Audit tooling is warm-cached.** The `security_audit` job caches the exact
   `cargo-audit` 0.22.2 binary in
   `~/.cargo/bin` under a stable per-OS/arch key, so repeated final audits
