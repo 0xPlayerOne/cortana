@@ -17,6 +17,7 @@ use tauri_plugin_autostart::ManagerExt;
 
 mod installer;
 mod hindsight;
+mod honcho;
 mod paths;
 mod readiness;
 mod services;
@@ -448,6 +449,11 @@ async fn desktop_hindsight_status() -> Result<hindsight::HindsightStatus, String
 }
 
 #[tauri::command]
+async fn desktop_honcho_status() -> Result<honcho::HonchoStatus, String> {
+    honcho::status().await
+}
+
+#[tauri::command]
 async fn desktop_service_action(
     app: AppHandle,
     service: String,
@@ -876,6 +882,7 @@ pub fn run() {
             desktop_services_status,
             desktop_services_install,
             desktop_hindsight_status,
+            desktop_honcho_status,
             desktop_service_action,
             desktop_services_action_all,
             desktop_update_status,

@@ -28,6 +28,7 @@ import {
   getDesktopInstaller,
   getDesktopInfo,
   getDesktopHindsightStatus,
+  getDesktopHonchoStatus,
   getDesktopServices,
   getDesktopSourceValidation,
   getDesktopSettings,
@@ -60,6 +61,7 @@ import type {
   DesktopInstallJob,
   DesktopInfo,
   DesktopHindsightStatus,
+  DesktopHonchoStatus,
   DesktopReadiness,
   DesktopReadinessActivity,
   DesktopServiceActivity,
@@ -109,6 +111,8 @@ export function SettingsView({
   onServiceActivity,
   hindsightStatus: externalHindsightStatus,
   onHindsightStatus,
+  honchoStatus: externalHonchoStatus,
+  onHonchoStatus,
 }: {
   onSaved: (settings: DesktopSettings) => void
   onDirtyChange?: (dirty: boolean) => void
@@ -141,6 +145,9 @@ export function SettingsView({
   /** Shell-owned Hindsight health snapshot shared across Settings mounts. */
   hindsightStatus?: DesktopHindsightStatus | null
   onHindsightStatus?: (status: DesktopHindsightStatus | null) => void
+  /** Shell-owned Honcho health snapshot shared across Settings mounts. */
+  honchoStatus?: DesktopHonchoStatus | null
+  onHonchoStatus?: (status: DesktopHonchoStatus | null) => void
 }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
   const [section, setSection] = useState<Section>(initialSection)
@@ -474,6 +481,8 @@ export function SettingsView({
                 setSaved(false)
               }}
               update={update}
+              honchoStatus={externalHonchoStatus}
+              onHonchoStatus={onHonchoStatus}
             />
           )}
           {section === 'ingestion' && <IngestionSection settings={settings} update={update} />}
@@ -1217,18 +1226,47 @@ function HonchoSection({
   onSecret,
   clearedSecrets,
   onClearSecret,
+  honchoStatus: externalStatus,
+  onHonchoStatus,
 }: SettingsSectionProps & {
   settings: DesktopSettings
   secretValues: Record<string, string>
   onSecret: (values: Record<string, string>) => void
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
+  honchoStatus?: DesktopHonchoStatus | null
+  onHonchoStatus?: (status: DesktopHonchoStatus | null) => void
 }) {
+  const [localStatus, setLocalStatus] = useState<DesktopHonchoStatus | null>(null)
+  const status = externalStatus === undefined ? localStatus : externalStatus
+  const setStatus = onHonchoStatus ?? setLocalStatus
+  const [checking, setChecking] = useState(false)
   const setHoncho = (honcho: DesktopSettings['honcho']) =>
     update((current) => ({ ...current, honcho }))
   const statusSource = settings.honcho.token_env
     ? settings.secrets.find((item) => item.name === settings.honcho.token_env)
     : undefined
+
+  const checkStatus = async () => {
+    setChecking(true)
+    try {
+      setStatus(await getDesktopHonchoStatus())
+    } catch (caught) {
+      setStatus({
+        enabled: settings.honcho.enabled,
+        configured: false,
+        reachable: false,
+        state: 'unreachable',
+        endpoint: settings.honcho.base_url,
+        workspace_id: settings.honcho.workspace_id,
+        peer_id: settings.honcho.peer_id,
+        token_configured: false,
+        detail: caught instanceof Error ? caught.message : 'Honcho status check failed',
+      })
+    } finally {
+      setChecking(false)
+    }
+  }
 
   return (
     <SettingsSection
@@ -1266,6 +1304,26 @@ function HonchoSection({
         only that document. Keep it disabled until the evaluation, ACL, deletion, and export gates
         pass.
       </div>
+      <div className="safety-note" role="status">
+        <span>
+          Health: {status?.state.replace('_', ' ') || 'not checked'}
+          {status?.detail ? ` — ${status.detail}` : ''}
+        </span>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={() => void checkStatus()}
+          disabled={checking}
+        >
+          <RefreshCw size={14} /> {checking ? 'Checking…' : 'Check connection'}
+        </button>
+      </div>
+      {externalStatus !== undefined && (
+        <p className="settings-note">
+          This health snapshot is retained while you move between Desktop settings sections. It
+          reads the last saved Honcho configuration; save changes before checking again.
+        </p>
+      )}
       <Field label="Provider" hint="Honcho currently supports only its v3 HTTP API.">
         <select value={settings.honcho.provider} disabled>
           <option value="honcho">honcho</option>

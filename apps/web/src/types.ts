@@ -444,6 +444,19 @@ export type DesktopHindsightStatus = {
   detail: string | null
 }
 
+export type DesktopHonchoStatus = {
+  enabled: boolean
+  configured: boolean
+  reachable: boolean
+  state:
+    'disabled' | 'configuration_required' | 'healthy' | 'reachable' | 'unreachable' | 'unhealthy'
+  endpoint: string
+  workspace_id: string
+  peer_id: string
+  token_configured: boolean
+  detail: string | null
+}
+
 export type DesktopInstallJob = {
   id: string
   tool: string

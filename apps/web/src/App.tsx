@@ -47,6 +47,7 @@ import type {
   DesktopInfo,
   DesktopInstallJob,
   DesktopHindsightStatus,
+  DesktopHonchoStatus,
   DesktopReadiness,
   DesktopReadinessActivity,
   DesktopServiceActivity,
@@ -86,6 +87,7 @@ export function App() {
   const [readinessActivity, setReadinessActivity] = useState<DesktopReadinessActivity | null>(null)
   const [serviceActivity, setServiceActivity] = useState<DesktopServiceActivity | null>(null)
   const [hindsightStatus, setHindsightStatus] = useState<DesktopHindsightStatus | null>(null)
+  const [honchoStatus, setHonchoStatus] = useState<DesktopHonchoStatus | null>(null)
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
   const [documentsLoading, setDocumentsLoading] = useState(true)
@@ -873,10 +875,13 @@ export function App() {
           onServiceActivity={setServiceActivity}
           hindsightStatus={hindsightStatus}
           onHindsightStatus={setHindsightStatus}
+          honchoStatus={honchoStatus}
+          onHonchoStatus={setHonchoStatus}
           onSaved={(next) => {
             setDesktopSettings(next)
             setSettingsDirty(false)
             setHindsightStatus(null)
+            setHonchoStatus(null)
             void getStatus()
               .then((nextStatus) => {
                 setStatus(nextStatus)

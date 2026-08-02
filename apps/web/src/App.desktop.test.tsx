@@ -154,6 +154,18 @@ mock.module('./api', () => ({
       token_configured: false,
       detail: 'Optional sidecar is disabled; normal ingestion is unchanged.',
     }),
+  getDesktopHonchoStatus: () =>
+    Promise.resolve({
+      enabled: false,
+      configured: false,
+      reachable: false,
+      state: 'disabled' as const,
+      endpoint: 'https://api.honcho.dev/',
+      workspace_id: 'default',
+      peer_id: 'cortana',
+      token_configured: false,
+      detail: 'Optional sidecar is disabled; normal ingestion is unchanged.',
+    }),
   getRuntimeAudit: (limit: number) => Promise.resolve(runtimeAuditEvents.slice(0, limit)),
   getDesktopAudit: (limit: number) => Promise.resolve(desktopAuditEvents.slice(0, limit)),
   getDesktopUpdate: () => Promise.resolve(desktopUpdate),
@@ -881,4 +893,6 @@ test('honcho settings section exposes a disabled-by-default session sidecar', as
   expect(screen.getByDisplayValue('default')).toBeTruthy()
   expect(screen.getAllByDisplayValue('cortana')).toHaveLength(2)
   expect(screen.getByLabelText('Enabled')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Check connection' }))
+  await waitFor(() => expect(screen.getByText(/Health: disabled/)).toBeTruthy())
 })

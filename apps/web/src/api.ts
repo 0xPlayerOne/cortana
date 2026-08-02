@@ -15,6 +15,7 @@ import type {
   DesktopInstallJob,
   DesktopInfo,
   DesktopHindsightStatus,
+  DesktopHonchoStatus,
   DesktopReadiness,
   DesktopServiceReport,
   DesktopSettings,
@@ -81,6 +82,11 @@ export async function installDesktopServices(): Promise<DesktopServiceReport> {
 export async function getDesktopHindsightStatus(): Promise<DesktopHindsightStatus> {
   if (!isDesktopApp) throw new Error('Hindsight status is available in Cortana Desktop')
   return invokeDesktop<DesktopHindsightStatus>('desktop_hindsight_status')
+}
+
+export async function getDesktopHonchoStatus(): Promise<DesktopHonchoStatus> {
+  if (!isDesktopApp) throw new Error('Honcho status is available in Cortana Desktop')
+  return invokeDesktop<DesktopHonchoStatus>('desktop_honcho_status')
 }
 
 export async function runDesktopServiceAction(
