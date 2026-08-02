@@ -31,9 +31,9 @@ class HindsightHttpProvider(MemoryProvider):
         client: httpx.Client | None = None,
     ) -> None:
         self._config = config
+        self._base = self._safe_base_url(self._config.base_url)
         self._client = client or self._build_client(timeout_seconds)
         self._owns_client = client is None
-        self._base = self._safe_base_url(self._config.base_url)
 
         if not self._config.bank or not self._config.bank.strip():
             raise MemoryArgumentError("bank must be configured")
@@ -61,9 +61,7 @@ class HindsightHttpProvider(MemoryProvider):
     def _build_client(self, timeout_seconds: float) -> httpx.Client:
         if timeout_seconds <= 0:
             raise MemoryArgumentError("timeout_seconds must be positive")
-        return httpx.Client(
-            base_url=str(self._safe_base_url(self._config.base_url)), timeout=timeout_seconds
-        )
+        return httpx.Client(base_url=str(self._base), timeout=timeout_seconds)
 
     @property
     def configured(self) -> bool:
