@@ -544,7 +544,7 @@ async function authorizedFetch(input: string, init: RequestInit): Promise<Respon
   if (init.signal?.aborted) return response
   window.sessionStorage.removeItem('cortana_api_token')
   const token = await requestAccessToken()
-  if (!token) return response
+  if (!token || init.signal?.aborted) return response
 
   window.sessionStorage.setItem('cortana_api_token', token)
   response = await request(token)
