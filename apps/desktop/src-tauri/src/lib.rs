@@ -686,8 +686,7 @@ fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), S
         }
     }
     if request.query.as_ref().is_some_and(|query| {
-        let query = query.trim();
-        query.is_empty() || query.len() > MAX_SCOPE_LENGTH
+        query.trim().is_empty() || query.len() > MAX_SCOPE_LENGTH
     }) {
         return Err(format!("query must contain 1 to {MAX_SCOPE_LENGTH} bytes"));
     }
@@ -1002,6 +1001,14 @@ mod tests {
             limit: 50,
         };
         assert!(validate_document_list_request(&invalid_query).is_err());
+        let padded_query = DocumentListRequest {
+            project: None,
+            source: None,
+            query: Some(format!(" {} ", "x".repeat(MAX_SCOPE_LENGTH))),
+            cursor: None,
+            limit: 50,
+        };
+        assert!(validate_document_list_request(&padded_query).is_err());
         let whitespace_query = DocumentListRequest {
             project: None,
             source: None,
