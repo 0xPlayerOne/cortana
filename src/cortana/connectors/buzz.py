@@ -4,6 +4,7 @@ import datetime as dt
 import json
 import sqlite3
 import stat
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -18,6 +19,14 @@ def fetch(root: Path, project: str = "buzz") -> Iterable[Document]:
             for kind, pubkey, tag, content, created_at, raw_event in connection.execute(
                 "SELECT kind,pubkey,d_tag,content,created_at,raw_event FROM persona_events"
             ):
+                source_id = ":".join(str(value or "").strip() for value in (kind, pubkey, tag))
+                text = str(content or "").strip()
+                if not text or not all(str(value or "").strip() for value in (kind, pubkey, tag)):
+                    print(
+                        f"connector warning: skipping malformed Buzz persona {source_id or 'unknown'}",
+                        file=sys.stderr,
+                    )
+                    continue
                 try:
                     updated_at = dt.datetime.fromtimestamp(float(created_at), dt.UTC)
                 except (OverflowError, TypeError, ValueError, OSError):
@@ -28,9 +37,9 @@ def fetch(root: Path, project: str = "buzz") -> Iterable[Document]:
                     event = None
                 yield Document(
                     source="buzz",
-                    source_id=f"persona:{kind}:{pubkey}:{tag}",
+                    source_id=f"persona:{source_id}",
                     title=f"Buzz persona {tag}",
-                    content=content,
+                    content=text,
                     uri=f"buzz://persona/{pubkey}/{tag}",
                     updated_at=updated_at,
                     project=project,

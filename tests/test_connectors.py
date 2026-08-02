@@ -148,6 +148,14 @@ def test_buzz_reads_personas_and_logs_read_only(tmp_path: Path) -> None:
             "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
             (30078, "pub", "bad-json", "Keep this event", 1_700_000_001, "not-json", 0),
         )
+        connection.execute(
+            "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
+            (30078, "", "bad-identity", "Skip this event", 1_700_000_002, "{}", 0),
+        )
+        connection.execute(
+            "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
+            (30078, "pub", "empty-content", "", 1_700_000_003, "{}", 0),
+        )
     (logs / "agent.log").write_text("started agent", encoding="utf-8")
 
     documents = list(buzz.fetch(tmp_path))
