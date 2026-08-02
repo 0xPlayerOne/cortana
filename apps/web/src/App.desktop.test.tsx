@@ -181,6 +181,10 @@ test('running source jobs stay visible in the shell after leaving the settings v
     )
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
     await waitFor(() => expect(screen.getByText(/1 enabled · 1 configured/)).toBeTruthy())
+    expect(screen.getByText('Content limit (characters)')).toBeTruthy()
+    expect(screen.getByText('Duration limit (seconds)')).toBeTruthy()
+    expect(screen.getByText('Document labels')).toBeTruthy()
+    expect(screen.getByText('Document ACL labels')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
     await waitFor(() => expect(screen.getByText('work-code · validation · running')).toBeTruthy())
 

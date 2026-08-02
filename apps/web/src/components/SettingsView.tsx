@@ -2086,6 +2086,52 @@ function SourcesSection({
                         }
                       />
                     </Field>
+                    <Field label="Content limit (characters)" hint="blank uses connector defaults">
+                      <input
+                        type="number"
+                        min={1}
+                        max={10000000}
+                        value={source.max_content_chars ?? ''}
+                        onChange={(event) =>
+                          changeSource(index, {
+                            max_content_chars: optionalNumber(event.target.value),
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Duration limit (seconds)" hint="blank uses the global budget">
+                      <input
+                        type="number"
+                        min={1}
+                        max={86400}
+                        value={source.max_duration_seconds ?? ''}
+                        onChange={(event) =>
+                          changeSource(index, {
+                            max_duration_seconds: optionalNumber(event.target.value),
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field label="Document labels" hint="comma or line separated" wide>
+                      <input
+                        value={source.labels.join(', ')}
+                        onChange={(event) =>
+                          changeSource(index, { labels: splitList(event.target.value) })
+                        }
+                      />
+                    </Field>
+                    <Field
+                      label="Document ACL labels"
+                      hint="comma or line separated; leave blank only for public data"
+                      wide
+                    >
+                      <input
+                        value={source.acl.join(', ')}
+                        onChange={(event) =>
+                          changeSource(index, { acl: splitList(event.target.value) })
+                        }
+                      />
+                    </Field>
                   </>
                 )}
               </div>
@@ -2363,7 +2409,9 @@ function splitList(value: string) {
 }
 
 function optionalNumber(value: string): number | null {
-  return value === '' ? null : Number(value)
+  if (value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
 }
 
 type ProviderValue = DesktopSettings['embedding'] | DesktopSettings['query']
