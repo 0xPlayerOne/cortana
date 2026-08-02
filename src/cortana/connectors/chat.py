@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 import stat
+import sys
 import time
 from collections.abc import Iterable
 from pathlib import Path
@@ -114,7 +115,7 @@ def fetch_discord(
                     client, f"/channels/{channel_id}/messages", params=params
                 )
                 response.raise_for_status()
-                messages = response.json()
+                messages = _discord_page(response.json())
                 if not messages:
                     break
                 for message in messages:
@@ -153,7 +154,7 @@ def _fetch_discord_cached(
                     client, f"/channels/{channel_id}/messages", params=params
                 )
                 response.raise_for_status()
-                messages: list[dict[str, Any]] = response.json()
+                messages = _discord_page(response.json())
                 if not messages:
                     break
                 for message in messages:
@@ -200,13 +201,32 @@ def _fetch_discord_cached(
             cache.commit()
 
         rows = cache.execute(
-            "SELECT channel_id,body FROM discord_messages ORDER BY CAST(id AS INTEGER)"
+            "SELECT rowid,channel_id,body FROM discord_messages ORDER BY CAST(id AS INTEGER)"
         )
-        for channel_id, body in rows:
-            cached_message: dict[str, Any] = json.loads(str(body))
+        for rowid, channel_id, body in rows:
+            try:
+                cached_message = json.loads(str(body))
+            except json.JSONDecodeError:
+                print(
+                    f"connector warning: removing malformed Discord cache row {rowid}",
+                    file=sys.stderr,
+                )
+                cache.execute("DELETE FROM discord_messages WHERE rowid=?", (rowid,))
+                continue
+            if (
+                not isinstance(cached_message, dict)
+                or not str(cached_message.get("id") or "").isdigit()
+            ):
+                print(
+                    f"connector warning: removing malformed Discord cache row {rowid}",
+                    file=sys.stderr,
+                )
+                cache.execute("DELETE FROM discord_messages WHERE rowid=?", (rowid,))
+                continue
             document = _discord_document(cached_message, str(channel_id), project)
             if document is not None:
                 yield document
+        cache.commit()
     finally:
         cache.close()
 
@@ -315,6 +335,31 @@ def _discord_document(message: dict[str, Any], channel_id: str, project: str) ->
             "author_id": author_id,
         },
     )
+
+
+def _discord_page(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise RuntimeError("Discord message page must be a list")
+    messages: list[dict[str, Any]] = []
+    for index, message in enumerate(value):
+        if not isinstance(message, dict):
+            print(
+                f"connector warning: skipping malformed Discord message {index}",
+                file=sys.stderr,
+            )
+            continue
+        message_id = str(message.get("id") or "").strip()
+        if not message_id.isdigit():
+            print(
+                f"connector warning: skipping Discord message {index} with invalid id",
+                file=sys.stderr,
+            )
+            continue
+        message["id"] = message_id
+        messages.append(message)
+    if value and not messages:
+        raise RuntimeError("Discord message page contained no usable records")
+    return messages
 
 
 def _parse_discord_timestamp(value: object) -> dt.datetime | None:

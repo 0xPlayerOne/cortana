@@ -388,6 +388,9 @@ def test_discord_skips_malformed_messages_without_aborting_the_batch() -> None:
     assert document is not None
     assert document.source_id == "100"
     assert document.metadata["author_id"] is None
+    assert chat._discord_page([None, {"id": "bad"}, {"id": "100"}]) == [{"id": "100"}]
+    with pytest.raises(RuntimeError, match="no usable records"):
+        chat._discord_page([None, {"id": "bad"}])
 
 
 def test_discord_cache_uses_incremental_after_cursor(
@@ -1134,8 +1137,9 @@ def test_google_session_rejects_invalid_json_and_non_google_refresh_uri(tmp_path
             }
         ),
     )
-    with GoogleSession(token, httpx.Client()) as session, pytest.raises(
-        RuntimeError, match="HTTPS Google OAuth"
+    with (
+        GoogleSession(token, httpx.Client()) as session,
+        pytest.raises(RuntimeError, match="HTTPS Google OAuth"),
     ):
         session.request("GET", "https://api.test/data")
 
