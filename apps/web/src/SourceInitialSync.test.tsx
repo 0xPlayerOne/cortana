@@ -48,6 +48,7 @@ function planFor(
     source: 'work-code',
     kind: 'filesystem',
     project: 'work',
+    acl: ['work'],
     enabled: true,
     budget,
     budget_documents: tier.documents,
@@ -68,6 +69,7 @@ function jobFor(budget: InitialSyncBudget, status: DesktopSourceJob['status']): 
     source: 'work-code',
     kind: 'filesystem',
     project: 'work',
+    acl: ['work'],
     status,
     summary:
       status === 'running'

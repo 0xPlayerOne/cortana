@@ -16,6 +16,7 @@ function jobOf(
     source: 'work-code',
     kind: 'filesystem',
     project: 'work',
+    acl: ['work'],
     status,
     summary: `${id} summary`,
     log: '',

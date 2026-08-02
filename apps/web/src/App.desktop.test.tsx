@@ -64,6 +64,7 @@ mock.module('./api', () => ({
       source,
       kind: 'filesystem',
       project: 'work',
+      acl: ['work'],
       status: 'running',
       summary: 'Validating source work-code…',
       log: '',
