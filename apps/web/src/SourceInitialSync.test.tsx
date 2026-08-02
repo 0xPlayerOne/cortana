@@ -379,6 +379,21 @@ test('shared source-job snapshots unlock the initial-sync plan without local pol
   }
 })
 
+test('evicting a shared source job clears its stale local snapshot', async () => {
+  const activeJob = {
+    ...jobFor('small', 'running'),
+    operation: 'trial-sync' as const,
+    summary: 'Guarded trial sync is running.',
+  }
+  const view = render(
+    <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />
+  )
+
+  await waitFor(() => expect(screen.getByText('work-code · trial-sync · running')).toBeTruthy())
+  view.rerender(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[]} />)
+  await waitFor(() => expect(screen.queryByText('work-code · trial-sync · running')).toBeNull())
+})
+
 test('execution shows running progress, cancellation, and a succeeded result', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true

@@ -2146,12 +2146,14 @@ function SourcesSection({
     flowError: string
   } | null>(null)
   const validationPlanKey = useRef('')
+  const sharedJobIds = useRef(new Set<string>())
 
   // In the full Desktop shell, App owns one poller for the source-job list so
   // SourcePanel, the tray/status bar, and Settings all observe the same
   // snapshots. A standalone SettingsView still uses its local observer.
   useEffect(() => {
     if (!sourceJobs) return
+    sourceJobs.forEach((candidate) => sharedJobIds.current.add(candidate.id))
     // A job may have started while Settings was unmounted. Adopt the newest
     // recovered snapshot so this section can show and cancel it immediately,
     // instead of only locking the editor in the background.
@@ -2161,6 +2163,7 @@ function SourcesSection({
     }
     const next = sourceJobs.find((candidate) => candidate.id === job.id)
     if (next && next !== job) setJob(next)
+    else if (!next && sharedJobIds.current.has(job.id)) setJob(null)
   }, [job, sourceJobs])
 
   useEffect(() => {
