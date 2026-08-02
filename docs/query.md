@@ -157,6 +157,9 @@ cache_ttl_seconds = 3600
 ```
 
 Set `cache_ttl_seconds = 0` to skip cache reads or `cache_max_entries = 0` to skip new writes.
+When synthesis is enabled, only citation-validated synthesized answers are written to the
+persistent answer cache; temporary planner/provider failures therefore recover on the next request
+instead of being hidden until the TTL expires.
 
 ## Failure contract
 

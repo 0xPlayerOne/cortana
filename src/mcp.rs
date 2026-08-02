@@ -8,7 +8,7 @@ use rmcp::{
     schemars, tool, tool_handler, tool_router,
     transport::stdio,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     auth::{Principal, QUERY_SCOPE, STATUS_SCOPE},
@@ -42,6 +42,25 @@ pub struct DomainSearchParams {
     limit: Option<usize>,
 }
 
+/// Safe, non-secret source configuration exposed to agents through
+/// `brain_status`. This deliberately omits credential paths, environment names,
+/// and connector arguments.
+#[derive(Clone, Debug, Serialize)]
+pub struct ConfiguredSourceStatus {
+    pub name: String,
+    pub source: String,
+    pub kind: String,
+    pub project: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct BrainStatus {
+    #[serde(flatten)]
+    stats: crate::store::StoreStats,
+    configured_sources: Vec<ConfiguredSourceStatus>,
+}
+
 #[derive(Clone)]
 pub struct BrainServer {
     store: Store,
@@ -51,6 +70,7 @@ pub struct BrainServer {
     principal: Principal,
     code_sources: Vec<String>,
     message_sources: Vec<String>,
+    configured_sources: Vec<ConfiguredSourceStatus>,
 }
 
 #[tool_router]
@@ -64,6 +84,7 @@ impl BrainServer {
             principal: Principal::local("local-mcp"),
             code_sources: Vec::new(),
             message_sources: Vec::new(),
+            configured_sources: Vec::new(),
         }
     }
 
@@ -84,6 +105,11 @@ impl BrainServer {
     ) -> Self {
         self.code_sources = normalized_sources(code_sources);
         self.message_sources = normalized_sources(message_sources);
+        self
+    }
+
+    pub fn with_configured_sources(mut self, sources: Vec<ConfiguredSourceStatus>) -> Self {
+        self.configured_sources = sources;
         self
     }
 
@@ -221,14 +247,18 @@ impl BrainServer {
     }
 
     #[tool(
-        description = "Report index health, source coverage, embedding identity, and persistent embedding-cache telemetry"
+        description = "Report index health, configured source coverage, embedding identity, and persistent cache telemetry without exposing credentials"
     )]
     async fn brain_status(&self) -> String {
         if !self.principal.has_scope(STATUS_SCOPE) {
             return "authorization error: status scope required".into();
         }
         match self.store.stats() {
-            Ok(stats) => serde_json::to_string(&stats).unwrap_or_else(|error| error.to_string()),
+            Ok(stats) => serde_json::to_string(&BrainStatus {
+                stats,
+                configured_sources: self.configured_sources.clone(),
+            })
+            .unwrap_or_else(|error| error.to_string()),
             Err(error) => format!("status error: {error}"),
         }
     }
@@ -486,5 +516,28 @@ mod tests {
         let audit = store.audit_events(10).expect("audit");
         assert_eq!(audit[0].action, "mcp.who_knows");
         assert_eq!(audit[1].action, "mcp.search_code");
+    }
+
+    #[tokio::test]
+    async fn brain_status_reports_configured_sources_without_credentials() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        let server = BrainServer::new(store, embedder).with_configured_sources(vec![
+            ConfiguredSourceStatus {
+                name: "personal-gmail".into(),
+                source: "personal-gmail".into(),
+                kind: "gmail".into(),
+                project: "personal".into(),
+                enabled: false,
+            },
+        ]);
+
+        let status: serde_json::Value =
+            serde_json::from_str(&server.brain_status().await).expect("status JSON");
+        assert_eq!(status["configured_sources"][0]["name"], "personal-gmail");
+        assert_eq!(status["configured_sources"][0]["enabled"], false);
+        assert!(status["configured_sources"][0].get("token").is_none());
+        assert!(status.get("sources").is_some());
     }
 }

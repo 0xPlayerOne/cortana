@@ -337,7 +337,11 @@ fn source_authorization_summary(
             .is_some_and(|path| regular_file_ready(path));
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::GoogleOauth,
-            setup_required: !oauth_client_ready && !token_env_ready,
+            // A migrated/private token file is a complete authorization path on
+            // its own. Requiring an OAuth client in that case makes an already
+            // authorized Google source appear unhealthy in the desktop status
+            // panel and incorrectly invites the user to repeat setup.
+            setup_required: !oauth_client_ready && !token_env_ready && !token_file_ready,
             authorized: token_env_ready || token_file_ready,
         }
     } else if source.token_env.is_some() || source.token.is_some() {
@@ -840,6 +844,7 @@ async fn answer(
     Extension(principal): Extension<Principal>,
     Json(request): Json<AnswerRequest>,
 ) -> Result<Json<AnswerResponse>, (StatusCode, String)> {
+    validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
     let project = request.project.clone();
@@ -874,6 +879,7 @@ async fn search(
     Extension(principal): Extension<Principal>,
     Json(request): Json<SearchRequest>,
 ) -> Result<Json<Vec<Evidence>>, (StatusCode, String)> {
+    validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
     state.metrics.searches.fetch_add(1, Ordering::Relaxed);
@@ -923,6 +929,7 @@ async fn context(
     Extension(principal): Extension<Principal>,
     Json(request): Json<ContextRequest>,
 ) -> Result<Json<ContextBundle>, (StatusCode, String)> {
+    validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
     state.metrics.contexts.fetch_add(1, Ordering::Relaxed);
@@ -1080,6 +1087,14 @@ fn validate_query(query: &str) -> Result<(), (StatusCode, String)> {
     }
 }
 
+fn validate_retrieval_scope(
+    project: Option<&str>,
+    source: Option<&str>,
+) -> Result<(), (StatusCode, String)> {
+    validate_document_scope("project", project)?;
+    validate_document_scope("source", source)
+}
+
 fn internal_error(error: anyhow::Error) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, error.to_string())
 }
@@ -1164,7 +1179,7 @@ mod tests {
     use tempfile::tempdir;
     use tower::ServiceExt;
 
-    use crate::config::AuthTokenConfig;
+    use crate::config::{AuthTokenConfig, SourceConfig};
     use crate::embed::DeterministicEmbedder;
     use crate::model::Document;
 
@@ -1178,6 +1193,58 @@ mod tests {
             .expect("fingerprint");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
         (directory, AppState::new(store, embedder, token))
+    }
+
+    fn google_source(token: Option<std::path::PathBuf>) -> SourceConfig {
+        SourceConfig {
+            name: "personal-gmail".into(),
+            kind: "gmail".into(),
+            enabled: true,
+            project: "personal".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: None,
+            token,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn google_token_file_is_complete_authorization_without_oauth_client() {
+        let directory = tempdir().expect("temporary directory");
+        let token = directory.path().join("google-token.json");
+        std::fs::write(&token, "{}\n").expect("token fixture");
+        let summary = source_authorization_summary(&Config::default(), &google_source(Some(token)));
+
+        assert!(summary.authorized);
+        assert!(!summary.setup_required);
+        assert!(matches!(
+            summary.method,
+            SourceAuthorizationMethod::GoogleOauth
+        ));
+    }
+
+    #[test]
+    fn google_oauth_client_can_authorize_without_existing_token() {
+        let directory = tempdir().expect("temporary directory");
+        let client = directory.path().join("oauth-client.json");
+        std::fs::write(&client, "{}\n").expect("OAuth client fixture");
+        let mut source = google_source(None);
+        source.oauth_client = Some(client);
+        let summary = source_authorization_summary(&Config::default(), &source);
+
+        assert!(!summary.authorized);
+        assert!(!summary.setup_required);
     }
 
     #[test]
@@ -1298,6 +1365,28 @@ mod tests {
             .await
             .expect("response");
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn retrieval_rejects_oversized_scope_filters() {
+        let (_directory, state) = test_state(None);
+        let body = serde_json::to_vec(&serde_json::json!({
+            "query": "release",
+            "project": "x".repeat(MAX_DOCUMENT_SCOPE_LENGTH + 1)
+        }))
+        .expect("request JSON");
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

@@ -768,6 +768,17 @@ async fn main() -> Result<()> {
         }
         Some(Command::Mcp { token_env }) => {
             let (code_sources, message_sources) = mcp_source_groups(&config);
+            let configured_sources = config
+                .sources
+                .iter()
+                .map(|source| mcp::ConfiguredSourceStatus {
+                    name: source.name.clone(),
+                    source: source.source.clone().unwrap_or_else(|| source.name.clone()),
+                    kind: source.kind.clone(),
+                    project: source.project.clone(),
+                    enabled: source.enabled,
+                })
+                .collect();
             let principal = if let Some(name) = token_env {
                 let token = config
                     .environment_value(&name)
@@ -782,7 +793,8 @@ async fn main() -> Result<()> {
                 mcp::BrainServer::new(store, embedder)
                     .with_principal(principal)
                     .with_audit_limit(config.auth.audit_max_events)
-                    .with_source_groups(code_sources, message_sources),
+                    .with_source_groups(code_sources, message_sources)
+                    .with_configured_sources(configured_sources),
             )
             .await
         }

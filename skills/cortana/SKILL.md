@@ -18,8 +18,9 @@ raw-evidence fallback.
 2. Use `search_code` for repository and filesystem evidence, `search_messages` for Gmail, Slack,
    Discord, and Buzz evidence, and `who_knows` when identifying source-backed expertise. Use generic
    `search` only for another focused pass, an explicit source, or exact debugging details.
-3. Use source filters for exact configured source names. Inspect `brain_status` when source names
-   or index freshness are uncertain.
+3. Use source filters for exact configured source names. Inspect `brain_status` when source names,
+   configured-but-not-yet-indexed sources, or index freshness are uncertain; it reports the
+   configured source inventory without exposing credentials.
 4. Reuse a context bundle within the same task. Cortana persistently caches query and ingestion
    embeddings, but avoiding redundant retrieval also saves ranking and context-window work.
 5. Treat returned rows as evidence, preserving their source URI and timestamp. Prefer exact lexical
