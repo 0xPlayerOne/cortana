@@ -196,7 +196,12 @@ export function SettingsView({
           <h1>Settings</h1>
           <p>Changes are written locally and audited. Secret values never return to this window.</p>
         </div>
-        <button className="primary-button" form="settings-form" disabled={saving}>
+        <button
+          className="primary-button"
+          form="settings-form"
+          disabled={saving || !dirty}
+          title={dirty ? undefined : 'Make a change before saving'}
+        >
           <Save size={16} /> {saving ? 'Saving…' : 'Save changes'}
         </button>
       </header>
@@ -383,6 +388,15 @@ export function SettingsView({
             (saved
               ? 'Settings saved. Restart affected services to apply them.'
               : 'A service restart is required.')}
+          {!error && settings.restart_required && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => setSection('services')}
+            >
+              Open services
+            </button>
+          )}
         </div>
       )}
     </main>

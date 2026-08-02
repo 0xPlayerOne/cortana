@@ -187,7 +187,9 @@ test('desktop settings navigation opens the audit trail and renders both event s
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
   )
   expect(screen.getByText('Control plane')).toBeTruthy()
-  expect(screen.getByRole('button', { name: 'Save changes' })).toBeTruthy()
+  const save = screen.getByRole('button', { name: 'Save changes' })
+  expect(save).toBeTruthy()
+  expect(save.hasAttribute('disabled')).toBe(true)
 
   // Section navigation into the audit trail.
   fireEvent.click(screen.getByRole('button', { name: 'Audit' }))
