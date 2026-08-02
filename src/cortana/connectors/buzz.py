@@ -18,15 +18,23 @@ def fetch(root: Path, project: str = "buzz") -> Iterable[Document]:
             for kind, pubkey, tag, content, created_at, raw_event in connection.execute(
                 "SELECT kind,pubkey,d_tag,content,created_at,raw_event FROM persona_events"
             ):
+                try:
+                    updated_at = dt.datetime.fromtimestamp(float(created_at), dt.UTC)
+                except (OverflowError, TypeError, ValueError, OSError):
+                    continue
+                try:
+                    event = json.loads(raw_event) if raw_event else None
+                except (TypeError, json.JSONDecodeError):
+                    event = None
                 yield Document(
                     source="buzz",
                     source_id=f"persona:{kind}:{pubkey}:{tag}",
                     title=f"Buzz persona {tag}",
                     content=content,
                     uri=f"buzz://persona/{pubkey}/{tag}",
-                    updated_at=dt.datetime.fromtimestamp(created_at, dt.UTC),
+                    updated_at=updated_at,
                     project=project,
-                    metadata={"kind": kind, "pubkey": pubkey, "raw_event": json.loads(raw_event)},
+                    metadata={"kind": kind, "pubkey": pubkey, "raw_event": event},
                 )
     elif database.exists():
         raise RuntimeError(

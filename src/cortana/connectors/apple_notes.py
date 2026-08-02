@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import subprocess
+import sys
 from collections.abc import Iterable
 from typing import Any
 
@@ -61,10 +62,17 @@ def fetch(project: str = "personal", timeout: int = 120) -> Iterable[Document]:
         content = str(row.get("body") or "").strip()
         if not content:
             continue
-        modified = dt.datetime.fromisoformat(str(row["modified"]).replace("Z", "+00:00"))
+        source_id = str(row.get("id") or "").strip()
+        modified = _parse_modified(row.get("modified"))
+        if not source_id or modified is None:
+            print(
+                "connector warning: skipping Apple Note with missing identity or timestamp",
+                file=sys.stderr,
+            )
+            continue
         yield Document(
             source="apple-notes",
-            source_id=str(row["id"]),
+            source_id=source_id,
             title=str(row.get("name") or "Untitled note"),
             content=content,
             uri=f"notes://showNote?identifier={row['id']}",
@@ -72,3 +80,15 @@ def fetch(project: str = "personal", timeout: int = 120) -> Iterable[Document]:
             project=project,
             metadata={"account": row.get("account"), "folder": row.get("folder")},
         )
+
+
+def _parse_modified(value: object) -> dt.datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.UTC)
+    return parsed

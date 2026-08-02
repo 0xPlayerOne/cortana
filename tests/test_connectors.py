@@ -80,6 +80,12 @@ def test_apple_notes_normalizes_jxa_rows(monkeypatch: pytest.MonkeyPatch) -> Non
                     "body": " ",
                     "modified": "2026-07-29T10:00:00.000Z",
                 },
+                {
+                    "id": "x-coredata://note/bad",
+                    "name": "Malformed",
+                    "body": "Keep the rest of the export usable",
+                    "modified": "not-a-timestamp",
+                },
             ]
         ),
         stderr="",
@@ -134,15 +140,25 @@ def test_buzz_reads_personas_and_logs_read_only(tmp_path: Path) -> None:
             "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
             (30078, "pub", "profile", "Agent profile", 1_700_000_000, '{"id":"event"}', 0),
         )
+        connection.execute(
+            "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
+            (30078, "pub", "bad-time", "Skip this event", "not-a-time", "{}", 0),
+        )
+        connection.execute(
+            "INSERT INTO persona_events VALUES(?,?,?,?,?,?,?)",
+            (30078, "pub", "bad-json", "Keep this event", 1_700_000_001, "not-json", 0),
+        )
     (logs / "agent.log").write_text("started agent", encoding="utf-8")
 
     documents = list(buzz.fetch(tmp_path))
 
     assert [document.source_id for document in documents] == [
         "persona:30078:pub:profile",
+        "persona:30078:pub:bad-json",
         "log:agent.log",
     ]
     assert documents[0].metadata["raw_event"]["id"] == "event"
+    assert documents[1].metadata["raw_event"] is None
 
 
 def test_buzz_rejects_symlinked_retention_files_and_logs(tmp_path: Path) -> None:
