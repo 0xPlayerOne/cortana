@@ -410,14 +410,14 @@ function AnswerView({
         <details className="answer-plan">
           <summary>Retrieval plan</summary>
           <ol>
-            {response.plan.queries.map((plannedQuery) => (
-              <li key={plannedQuery}>{plannedQuery}</li>
+            {response.plan.queries.map((plannedQuery, index) => (
+              <li key={`${plannedQuery}:${index}`}>{plannedQuery}</li>
             ))}
           </ol>
         </details>
       )}
-      {response?.warnings.map((warning) => (
-        <p className="answer-warning" key={warning}>
+      {response?.warnings.map((warning, index) => (
+        <p className="answer-warning" key={`${warning}:${index}`}>
           {warning}
         </p>
       ))}

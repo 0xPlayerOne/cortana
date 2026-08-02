@@ -311,8 +311,8 @@ function ConversationsView({
             <span>{evidence.length} cited passages</span>
           </div>
           <p className="utility-answer">{answer.answer}</p>
-          {answer.warnings.map((warning) => (
-            <p className="answer-warning" key={warning}>
+          {answer.warnings.map((warning, index) => (
+            <p className="answer-warning" key={`${warning}:${index}`}>
               {warning}
             </p>
           ))}

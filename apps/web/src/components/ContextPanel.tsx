@@ -85,8 +85,8 @@ export function ContextPanel({
               </div>
             </dl>
             <ol>
-              {answer.plan.queries.map((planned) => (
-                <li key={planned}>{planned}</li>
+              {answer.plan.queries.map((planned, index) => (
+                <li key={`${planned}:${index}`}>{planned}</li>
               ))}
             </ol>
           </section>
