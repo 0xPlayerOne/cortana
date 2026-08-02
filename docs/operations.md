@@ -187,6 +187,13 @@ generation mismatch is reported with both fingerprints and readiness never chang
 index. If the provider endpoint changed but the model, dimension, and vector space are known to be
 identical, an operator can adopt the exact stored generation without re-embedding the corpus:
 
+Desktop readiness also reports the local `text-embeddings-router` executable when the configured
+embedding provider is local. On macOS, if Homebrew is already installed, the Settings installer
+offers the `text-embeddings-inference` formula after explicit approval. The model weights
+are fetched by the embedding runtime on its first start; installing the binary does not start a
+service or run ingestion. Cloud embedding configurations intentionally do not require this local
+runtime.
+
 ```bash
 cortana migrate-embedding \
   --from 'Qwen/Qwen3-Embedding-0.6B:1024' \

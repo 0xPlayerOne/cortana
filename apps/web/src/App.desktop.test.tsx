@@ -1309,6 +1309,50 @@ test('completed installers trigger one shell-owned post-install readiness scan',
   }
 })
 
+test('local embedding readiness explains the approval-gated runtime installer', async () => {
+  const originalConfirm = window.confirm
+  const originalScan = state.readinessScan
+  let confirmation = ''
+  state.readinessScan = () =>
+    Promise.resolve({
+      scanned_at_unix_seconds: 1785000000,
+      platform: 'macos',
+      tools_ready: false,
+      core: null,
+      core_error: null,
+      tools: [
+        {
+          id: 'embedding-runtime',
+          label: 'Local embedding runtime',
+          required: true,
+          available: false,
+          path: null,
+          version: null,
+          install_supported: true,
+          detail: 'Install the text-embeddings-inference runtime with Homebrew.',
+        },
+      ],
+    })
+  window.confirm = (message) => {
+    confirmation = message ?? ''
+    return false
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Run readiness scan' }))
+    await waitFor(() => expect(screen.getByText(/text-embeddings-inference runtime/)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+    expect(confirmation).toContain('text-embeddings-inference runtime with Homebrew')
+    expect(state.installerJob).toBeNull()
+  } finally {
+    state.readinessScan = originalScan
+    window.confirm = originalConfirm
+  }
+})
+
 test('installer progress survives settings section changes', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true

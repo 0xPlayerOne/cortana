@@ -2119,7 +2119,9 @@ function ReadinessSection({
     const action =
       tool === 'connectors'
         ? 'Cortana will create the per-user connector environment from the signed Desktop bundle and install its bounded ingestion dependencies with uv.'
-        : 'Cortana will run its fixed, platform-specific installer.'
+        : tool === 'embedding-runtime'
+          ? 'Cortana will install the text-embeddings-inference runtime with Homebrew. The model itself is downloaded by the runtime on first start and no ingestion will begin.'
+          : 'Cortana will run its fixed, platform-specific installer.'
     if (
       !window.confirm(
         `Install ${label} on this computer?\n\n${action} No ingestion or sync will start.`

@@ -46,8 +46,12 @@ The core API applies the same bearer scope and document ACL policy as retrieval,
 pages to 100 summaries and content to 2 MiB, and records metadata-only list/read audits.
 
 Readiness is user-triggered and read-only. It performs bounded version checks for uv and Python
-3.11+, locates the managed connector environment, and runs `cortana readiness` through the bundled
-sidecar. It rejects oversized or malformed reports and never starts a connector or sync. The
+3.11+, locates the managed connector environment and the configured local embedding runtime, and
+runs `cortana readiness` through the bundled sidecar. A local embedding provider makes the
+`text-embeddings-router` runtime a required readiness component; on macOS with Homebrew available,
+Desktop offers a fixed, approval-gated `text-embeddings-inference` install. The model weights are
+still downloaded only when the embedding service first starts. Cloud embedding providers do not
+require the local runtime. It rejects oversized or malformed reports and never starts a connector or sync. The
 desktop shell retains the latest snapshot and scan activity across Settings navigation; successful
 installer completion schedules one shell-owned follow-up scan so readiness reflects the installed
 state even when the Settings view is not mounted.

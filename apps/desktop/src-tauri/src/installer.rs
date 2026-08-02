@@ -343,6 +343,14 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
             summary: "Install uv with Astral's HTTPS installer".into(),
             connector_command: None,
         }),
+        ("embedding-runtime", "macos") => Ok(CommandPlan {
+            commands: vec![CommandSpec {
+                program: executable_or_name("brew"),
+                args: vec!["install".into(), "text-embeddings-inference".into()],
+            }],
+            summary: "Install the local embedding runtime with Homebrew".into(),
+            connector_command: None,
+        }),
         ("python", _) => Ok(CommandPlan {
             commands: vec![CommandSpec {
                 program: executable_or_name("uv"),
@@ -569,6 +577,15 @@ mod tests {
             plan.commands[1].args[4],
             format!("{}[ingestion]", resource.display())
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn embedding_runtime_plan_uses_only_the_fixed_homebrew_formula() {
+        let plan = install_plan("embedding-runtime", None).expect("plan");
+        assert_eq!(plan.commands.len(), 1);
+        assert_eq!(plan.commands[0].args, ["install", "text-embeddings-inference"]);
+        assert!(plan.connector_command.is_none());
     }
 
     #[cfg(unix)]

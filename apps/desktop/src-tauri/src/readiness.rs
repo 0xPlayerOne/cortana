@@ -47,11 +47,12 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
     // These probes are independent and each has its own bounded timeout. Run
     // them together so first-launch readiness is limited by the slowest local
     // tool instead of the sum of every probe.
-    let (bundled_version, uv, connector, rust) = tokio::join!(
+    let (bundled_version, uv, connector, rust, embedding_runtime) = tokio::join!(
         sidecar_output(app, &["--version"], VERSION_TIMEOUT),
         tool_status("uv", "uv", &["uv"], true, uv_install_supported()),
         connector_status(app),
         tool_status("rust", "Rust toolchain", &["rustc"], false, false),
+        embedding_runtime_status(),
     );
     let cortana = if let Ok(version) = &bundled_version {
         ToolStatus {
@@ -68,7 +69,7 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
         tool_status("cortana", "Cortana runtime", &["cortana"], true, false).await
     };
     let python = python_status(uv.available).await;
-    let tools = vec![cortana.clone(), uv, python, connector, rust];
+    let tools = vec![cortana.clone(), uv, python, connector, embedding_runtime, rust];
     let (core, core_error) = if bundled_version.is_ok() {
         match sidecar_readiness(app).await {
             Ok(report) => (Some(report), None),
@@ -291,6 +292,66 @@ async fn connector_status(app: &AppHandle) -> ToolStatus {
             },
             |path| format!("Found {}", path.display()),
         ),
+    }
+}
+
+async fn embedding_runtime_status() -> ToolStatus {
+    let settings = crate::settings::load().ok();
+    let required = settings
+        .as_ref()
+        .is_none_or(|snapshot| snapshot.embedding.provider == "local");
+    let configured_program = settings
+        .as_ref()
+        .and_then(|snapshot| snapshot.embedding_service_program.as_deref());
+    let path = configured_program
+        .and_then(|program| {
+            let candidate = Path::new(program);
+            if candidate.is_absolute() {
+                Some(candidate.to_path_buf())
+            } else {
+                find_executable(program)
+            }
+        })
+        .filter(|candidate| is_executable(candidate))
+        .or_else(|| {
+            configured_program
+                .is_none()
+                .then(|| find_executable("text-embeddings-router"))
+                .flatten()
+        });
+    let install_supported = required
+        && cfg!(target_os = "macos")
+        && find_executable("brew").is_some();
+    let detail = match (required, path.as_ref(), configured_program) {
+        (false, Some(path), _) => format!("Found optional local runtime at {}", path.display()),
+        (false, None, _) => "Not required for the configured cloud embedding provider.".into(),
+        (true, Some(path), _) => format!("Found {}", path.display()),
+        (true, None, Some(program)) if install_supported => format!(
+            "Configured embedding service `{program}` was not found; approve installation of the Homebrew runtime."
+        ),
+        (true, None, Some(program)) => format!(
+            "Configured embedding service `{program}` was not found. Install text-embeddings-inference with your platform package manager."
+        ),
+        (true, None, None) if install_supported => {
+            "Install the text-embeddings-inference runtime with Homebrew.".into()
+        }
+        (true, None, None) => {
+            "The local text-embeddings-router runtime is required for local embeddings.".into()
+        }
+    };
+    let version = match path.as_deref() {
+        Some(path) => command_version(path).await,
+        None => None,
+    };
+    ToolStatus {
+        id: "embedding-runtime",
+        label: "Local embedding runtime",
+        required,
+        available: path.is_some(),
+        path: path.map(|path| path.display().to_string()),
+        version,
+        install_supported,
+        detail,
     }
 }
 
