@@ -76,7 +76,9 @@ bundled wrapper and any connector helpers together instead of leaving an orphane
 While a source job is active, Desktop locks that source's identity, credentials, scope, and
 per-source limits so the operation cannot race a settings edit. The status bar and Inbox expose
 the bounded progress snapshot and a cancellation control without requiring the Settings view to
-remain open. The native job state exposes a bounded history snapshot on renderer startup, so a
+remain open. Terminal jobs retain a collapsed, bounded sanitized log in Inbox so an operator can
+diagnose a failed connector without leaving the activity surface. The native job state exposes a
+bounded history snapshot on renderer startup, so a
 webview remount recovers active and recent jobs instead of losing operational visibility; the
 Sources settings section adopts the newest recovered snapshot so an operator can cancel or retry
 it after navigating back. A failed recovery request is non-fatal and newly started jobs remain
@@ -149,8 +151,9 @@ explicit channels and a validated environment-variable name. Saving or authorizi
 settings never starts ingestion.
 
 First launch enters a guided checklist and automatically runs only the read-only readiness scan.
-Missing tool installers remain fixed native jobs that require explicit approval and expose bounded
-progress, cancellation, and retry state.
+The automatic attempt is one-shot: a failure is retained as an actionable status and waits for an
+explicit operator retry instead of polling in a loop. Missing tool installers remain fixed native
+jobs that require explicit approval and expose bounded progress, cancellation, and retry state.
 
 Settings portability uses a versioned, size-bounded JSON envelope selected through the native file
 dialog. Exports exclude secret values and executable connector commands. Imports reject unknown

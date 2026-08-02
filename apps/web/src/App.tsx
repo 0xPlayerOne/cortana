@@ -1177,6 +1177,7 @@ export function App() {
             type="button"
             className="status-link"
             onClick={() => {
+              if (!canLeaveSettings()) return
               setSettingsSection('updates')
               setView('settings')
             }}

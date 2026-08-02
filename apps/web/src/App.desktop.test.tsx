@@ -508,6 +508,26 @@ test('the footer updates shortcut opens the updates section directly', async () 
   await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
 })
 
+test('the footer updates shortcut respects unsaved settings changes', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => false
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    fireEvent.change(screen.getAllByLabelText('Display name')[0], {
+      target: { value: 'Unsaved workspace' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ }))
+    expect(screen.getByRole('heading', { name: 'Workspaces' })).toBeTruthy()
+    expect(screen.queryByText('Installed version')).toBeNull()
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
 test('source settings opens the Sources section directly', async () => {
   render(<App />)
   await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
