@@ -280,6 +280,7 @@ fn validate_external_url(url: &str) -> Result<(), String> {
     match parsed.scheme() {
         "http" | "https" => Ok(()),
         "mailto" => Ok(()),
+        "slack" => validate_slack_url(&parsed),
         "file" => {
             if parsed
                 .host_str()
@@ -296,6 +297,64 @@ fn validate_external_url(url: &str) -> Result<(), String> {
             Ok(())
         }
         _ => Err(format!("unsupported URL scheme: {}", parsed.scheme())),
+    }
+}
+
+fn validate_slack_url(url: &Url) -> Result<(), String> {
+    if url.host_str() != Some("channel") || !url.path().is_empty() || url.fragment().is_some() {
+        return Err("Slack links must target a channel deep link".into());
+    }
+    let mut team = None;
+    let mut channel = None;
+    let mut message = None;
+    for (key, value) in url.query_pairs() {
+        let slot = match key.as_ref() {
+            "team" => &mut team,
+            "id" => &mut channel,
+            "message" => &mut message,
+            _ => return Err("Slack links contain unsupported query data".into()),
+        };
+        if slot.replace(value.into_owned()).is_some() {
+            return Err("Slack links must not repeat query fields".into());
+        }
+    }
+    let channel = channel.ok_or_else(|| "Slack links must include a channel id".to_string())?;
+    if !valid_slack_identifier(&channel) {
+        return Err("Slack links contain an invalid channel id".into());
+    }
+    let message = message
+        .ok_or_else(|| "Slack links must include a message timestamp".to_string())?;
+    if !valid_slack_timestamp(&message) {
+        return Err("Slack links contain an invalid message timestamp".into());
+    }
+    if team
+        .as_deref()
+        .is_some_and(|value| !value.is_empty() && !valid_slack_identifier(value))
+    {
+        return Err("Slack links contain an invalid team id".into());
+    }
+    Ok(())
+}
+
+fn valid_slack_identifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+}
+
+fn valid_slack_timestamp(value: &str) -> bool {
+    if value.is_empty() || value.len() > 64 {
+        return false;
+    }
+    if let Some((whole, fraction)) = value.split_once('.') {
+        !whole.is_empty()
+            && !fraction.is_empty()
+            && whole.bytes().all(|byte| byte.is_ascii_digit())
+            && fraction.bytes().all(|byte| byte.is_ascii_digit())
+    } else {
+        value.bytes().all(|byte| byte.is_ascii_digit())
     }
 }
 
@@ -894,6 +953,17 @@ mod tests {
         assert!(validate_external_url("https://user:password@example.com").is_err());
         assert!(validate_external_url("mailto:help@example.com").is_ok());
         assert!(validate_external_url("mailto://user:password@example.com").is_err());
+        assert!(validate_external_url(
+            "slack://channel?team=&id=C123ABC&message=1712345678.000100"
+        )
+        .is_ok());
+        assert!(validate_external_url("slack://channel?id=C123ABC").is_err());
+        assert!(validate_external_url("slack://channel?id=C123ABC&message=1&message=2").is_err());
+        assert!(validate_external_url(
+            "slack://channel?id=C123ABC&message=1&redirect=https://evil.example"
+        )
+        .is_err());
+        assert!(validate_external_url("slack://channel?id=C123ABC&message=.").is_err());
         assert!(validate_external_url("file:///tmp/cv.pdf").is_ok());
         assert!(validate_external_url("file://user@localhost/tmp/cv.pdf").is_err());
         assert!(validate_external_url("file://remote.example/cv.pdf").is_err());

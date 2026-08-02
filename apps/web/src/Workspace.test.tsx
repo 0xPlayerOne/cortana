@@ -29,6 +29,14 @@ test('source links reject executable and credential-bearing URLs', () => {
   expect(safeSourceLink('javascript:alert(1)')).toBeNull()
   expect(safeSourceLink('https://user:secret@example.test/private')).toBeNull()
   expect(safeSourceLink('file://remote.example/private.txt')).toBeNull()
+  expect(safeSourceLink('slack://channel?team=&id=C123ABC&message=1712345678.000100')).toBe(
+    'slack://channel?team=&id=C123ABC&message=1712345678.000100'
+  )
+  expect(safeSourceLink('slack://channel?id=C123ABC')).toBeNull()
+  expect(safeSourceLink('slack://channel?id=C123ABC&message=1&message=2')).toBeNull()
+  expect(
+    safeSourceLink('slack://channel?id=C123ABC&message=1&redirect=https://evil.test')
+  ).toBeNull()
   expect(safeSourceLink('https://example.test/releases')).toBe('https://example.test/releases')
 })
 
