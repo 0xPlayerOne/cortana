@@ -695,6 +695,14 @@ export function App() {
           sourceJobs={sourceJobs.jobs}
           onSaved={(next) => {
             setDesktopSettings(next)
+            void getStatus()
+              .then((nextStatus) => {
+                setStatus(nextStatus)
+                setStatusError('')
+              })
+              .catch(() => {
+                setStatusError('Status unavailable after saving settings')
+              })
             if (workspace && !next.workspaces.some((item) => item.id === workspace)) {
               chooseWorkspace('')
             } else if (
