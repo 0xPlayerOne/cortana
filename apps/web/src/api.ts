@@ -327,8 +327,16 @@ export async function getDocuments(
   signal?: AbortSignal
 ): Promise<BrainDocumentPage> {
   if (isDemoMode) {
+    const normalizedQuery = query?.trim().toLowerCase()
     const documents = demoEvidence
-      .filter((item) => !source || item.source === source)
+      .filter(
+        (item) =>
+          (!source || item.source === source) &&
+          (!normalizedQuery ||
+            [item.title, item.source, item.source_id].some((value) =>
+              value.toLowerCase().includes(normalizedQuery)
+            ))
+      )
       .map((item) => ({
         id: item.chunk_id.replace(/[^a-f0-9]/gi, '').padEnd(16, '0'),
         source: item.source,
