@@ -190,10 +190,40 @@ test('a shared active source job locks source actions until it finishes', async 
     expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(true)
   }
   expect((screen.getByRole('button', { name: 'Add source' }) as HTMLButtonElement).disabled).toBe(
-    true
+    false
   )
   expect((screen.getByLabelText(/^Source name/) as HTMLInputElement).disabled).toBe(true)
   expect((screen.getByLabelText('Workspace') as HTMLSelectElement).disabled).toBe(true)
+})
+
+test('an active source job locks only that source configuration', async () => {
+  const otherSource = {
+    ...workSource,
+    name: 'personal-notes',
+    project: 'personal',
+    root: '/Users/you/Notes',
+  }
+  state.settings = {
+    ...settingsWith(workSource),
+    sources: [workSource, otherSource],
+  }
+  const activeJob = {
+    ...jobFor('small', 'running'),
+    operation: 'trial-sync' as const,
+    summary: 'Guarded trial sync is running.',
+  }
+  render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
+
+  await waitFor(() => expect(screen.getByText(/Settings for work-code are locked/)).toBeTruthy())
+  const names = screen.getAllByLabelText(/^Source name/) as HTMLInputElement[]
+  expect(names[0].disabled).toBe(true)
+  expect(names[1].disabled).toBe(false)
+  expect(
+    (screen.getByRole('button', { name: 'Remove personal-notes' }) as HTMLButtonElement).disabled
+  ).toBe(false)
+  expect((screen.getByRole('button', { name: 'Add source' }) as HTMLButtonElement).disabled).toBe(
+    false
+  )
 })
 
 test('initial sync plans a fixed budget and displays the native limits', async () => {

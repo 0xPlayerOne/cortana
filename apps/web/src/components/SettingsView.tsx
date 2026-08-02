@@ -2123,7 +2123,6 @@ function SourcesSection({
     (job && ['running', 'cancelling'].includes(job.status) ? job : undefined) ??
     sourceJobs?.find((candidate) => ['running', 'cancelling'].includes(candidate.status))
   const observedJob = activeJob ?? job ?? sourceJobs?.[0]
-  const sourceLocked = Boolean(activeJob)
   const requestPlan = async (source: string, budget: InitialSyncBudget) => {
     setInitialSync((current) =>
       current && current.source === source
@@ -2230,7 +2229,7 @@ function SourcesSection({
   }
 
   const changeSource = (index: number, patch: Partial<SourceSettings>) => {
-    if (sourceLocked) return
+    if (activeJob && settings.sources[index]?.name === activeJob.source) return
     update((current) => ({
       ...current,
       sources: current.sources.map((source, position) =>
@@ -2360,7 +2359,7 @@ function SourcesSection({
         <button
           type="button"
           className="secondary-button"
-          disabled={settings.sources.length >= 128 || Boolean(activeJob)}
+          disabled={settings.sources.length >= 128}
           onClick={addSource}
         >
           <Plus size={15} /> Add source
@@ -2369,8 +2368,8 @@ function SourcesSection({
 
       {activeJob && (
         <div className="safety-note" role="status">
-          Source settings are locked while {activeJob.source} is running. Cancel or wait for the
-          operation to finish before changing its identity, credentials, or scope.
+          Settings for {activeJob.source} are locked while its operation is running. Other sources
+          remain configurable, but source actions still wait until this operation finishes.
         </div>
       )}
 
@@ -2386,6 +2385,7 @@ function SourcesSection({
             ? settings.secrets.find((item) => item.name === source.token_env)
             : undefined
           const runningThis = activeJob?.source === source.name
+          const sourceLocked = runningThis
           return (
             <article className="source-settings-card" key={`${source.name}:${index}`}>
               <header>
@@ -2898,7 +2898,7 @@ function SourcesSection({
             {observedJob.retryable && (
               <button
                 type="button"
-                disabled={!canValidate || sourceLocked}
+                disabled={!canValidate || Boolean(activeJob)}
                 onClick={() => {
                   const source = settings.sources.find(
                     (item) => item.name === observedJob.source
