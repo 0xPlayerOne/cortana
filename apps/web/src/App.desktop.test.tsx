@@ -18,6 +18,7 @@ import type {
 } from './types'
 
 afterEach(cleanup)
+afterEach(() => window.localStorage.removeItem('cortana.workspace-selection.v1'))
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
 // info, and audit sources so the settings/audit navigation is exercised.
@@ -282,6 +283,23 @@ mock.module('./api', () => ({
 }))
 
 const { App, ServiceHealthIndicator } = await import('./App')
+
+test('desktop shell restores a workspace scope and clears stale selections', async () => {
+  window.localStorage.setItem('cortana.workspace-selection.v1', 'work')
+  render(<App />)
+  await waitFor(() => {
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('work')
+  })
+  expect(screen.queryByRole('button', { name: /^personal-drive/ })).toBeNull()
+
+  cleanup()
+  window.localStorage.setItem('cortana.workspace-selection.v1', 'missing')
+  render(<App />)
+  await waitFor(() => {
+    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('')
+    expect(window.localStorage.getItem('cortana.workspace-selection.v1')).toBeNull()
+  })
+})
 
 test('desktop settings navigation opens the audit trail and renders both event sources', async () => {
   render(<App />)

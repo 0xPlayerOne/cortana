@@ -38,6 +38,7 @@ import { UtilityView } from './components/UtilityView'
 import { Workspace, type WorkspaceTab } from './components/Workspace'
 import { buildAgentContext, estimateTokens } from './context'
 import { embeddingLabel } from './operations'
+import { readWorkspacePreference, writeWorkspacePreference } from './workspacePreference'
 import {
   activeJobs,
   describeSourceJobProgress,
@@ -82,7 +83,7 @@ export function App() {
   const [leftOpen, setLeftOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(false)
   const [view, setView] = useState<AppView>('knowledge')
-  const [workspace, setWorkspace] = useState('')
+  const [workspace, setWorkspace] = useState(() => (isDesktopApp ? readWorkspacePreference() : ''))
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('document')
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null)
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null)
@@ -686,7 +687,10 @@ export function App() {
     abortContextRequest()
     clearScopedResults()
     scopeSources(nextWorkspace, nextSource)
-    if (project) setWorkspace(project)
+    if (project) {
+      setWorkspace(project)
+      if (isDesktopApp) writeWorkspacePreference(project)
+    }
     setSource(nextSource)
     setLeftOpen(false)
   }
@@ -702,6 +706,7 @@ export function App() {
     scopeSources(nextWorkspace, nextSource)
     setWorkspace(nextWorkspace)
     setSource(nextSource)
+    if (isDesktopApp) writeWorkspacePreference(nextWorkspace)
   }
 
   async function loadMoreDocuments() {
@@ -904,6 +909,13 @@ export function App() {
           account_label: null,
           color: null,
         }))
+
+  const workspaceScope = workspaces.map((item) => item.id).join('\u0000')
+  useEffect(() => {
+    if (!workspace || !workspaceScope) return
+    if (workspaces.some((item) => item.id === workspace)) return
+    chooseWorkspace('')
+  }, [workspace, workspaceScope])
 
   return (
     <div
