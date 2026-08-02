@@ -33,3 +33,17 @@ gates pass, use Cortana's MCP `context` tool as the agent memory interface and k
 disabled.
 
 The implementation uses Cortana's existing `httpx` dependency; no hosted SDK is required.
+
+To drain a deliberately populated outbox, use the explicit operator command:
+
+```bash
+export CORTANA_HONCHO_TOKEN='…'
+cortana-memory-sync \
+  --provider honcho \
+  --outbox /absolute/path/to/memory-outbox.sqlite3 \
+  --workspace-id personal \
+  --peer-id cortana-agent
+```
+
+The command prints only provider name, processed count, and bounded queue telemetry. It does not
+print the token or document content.

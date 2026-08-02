@@ -4,6 +4,7 @@ This package intentionally remains opt-in and disconnected from the core ingesti
 pipeline until the derived-memory evaluation gates are passed.
 """
 
+from .cli import entrypoint as memory_sync_entrypoint
 from .evaluation import (
     BENCHMARK_VERSION,
     BenchmarkCase,
@@ -55,6 +56,7 @@ __all__ = [
     "evaluate_comparative",
     "run_default_benchmark",
     "MemorySyncWorker",
+    "memory_sync_entrypoint",
     "stable_document_id",
     "workspace_acl_tags",
 ]

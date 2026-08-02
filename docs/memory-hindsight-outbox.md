@@ -22,6 +22,9 @@ that is intentionally disabled by default:
   - retry/reconciliation exports and stats.
 - `MemorySyncWorker` drains only due rows, calls provider operations, and marks entries
   succeeded or failed according to transient vs non-transient outcomes.
+- `cortana-memory-sync` is the explicit operator entrypoint for draining an outbox. It requires a
+  provider choice and bearer token environment variable, reports bounded telemetry as JSON, and
+  never enqueues canonical source data or starts automatically.
 - `Outbox.telemetry()` exposes only queue counts and bounded last-success/error metadata; it never
   returns document content, metadata, ACL tags, or provider credentials.
 - `HindsightHttpProvider` uses documented retain/delete endpoints with bank scope and
