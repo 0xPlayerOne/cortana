@@ -57,7 +57,8 @@ plan is a fixed two-step uv invocation against the signed bundle resource and th
 on success, the native boundary records the fixed installed connector path in the managed config
 when no connector command is configured (and preserves an existing command), with a rollback copy
 and metadata-only audit event. Arbitrary programs, package sources, and arguments are never
-accepted from the renderer.
+accepted from the renderer. Installer commands run in an isolated process group on Unix so
+cancellation also terminates shell and package-manager helpers.
 
 Source validation is a third native boundary. The renderer sends only an exact configured source
 name. Native Rust reloads the owner-local configuration, rejects an unknown name, then constructs
