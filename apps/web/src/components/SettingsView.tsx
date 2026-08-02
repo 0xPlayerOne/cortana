@@ -61,6 +61,7 @@ import type {
   DesktopInfo,
   DesktopHindsightStatus,
   DesktopReadiness,
+  DesktopReadinessActivity,
   DesktopServiceActivity,
   DesktopServiceReport,
   DesktopSettings,
@@ -98,6 +99,10 @@ export function SettingsView({
   sourceJobs,
   installerJob: externalInstallerJob,
   onInstallerJob,
+  readiness: externalReadiness,
+  onReadiness,
+  readinessActivity,
+  onReadinessScan,
   desktopUpdate: externalDesktopUpdate,
   onDesktopUpdate,
   serviceActivity,
@@ -120,6 +125,11 @@ export function SettingsView({
    */
   installerJob?: DesktopInstallJob | null
   onInstallerJob?: (job: DesktopInstallJob | null) => void
+  /** Optional shell-owned readiness snapshot shared across Settings mounts. */
+  readiness?: DesktopReadiness | null
+  onReadiness?: (readiness: DesktopReadiness | null) => void
+  readinessActivity?: DesktopReadinessActivity | null
+  onReadinessScan?: () => Promise<DesktopReadiness>
   /** Optional shell-owned updater snapshot shared across Settings mounts. */
   desktopUpdate?: DesktopUpdate | null
   onDesktopUpdate?: (update: DesktopUpdate) => void
@@ -135,7 +145,9 @@ export function SettingsView({
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
-  const [setupReadiness, setSetupReadiness] = useState<DesktopReadiness | null>(null)
+  const [localReadiness, setLocalReadiness] = useState<DesktopReadiness | null>(null)
+  const setupReadiness = externalReadiness === undefined ? localReadiness : externalReadiness
+  const setSetupReadiness = onReadiness ?? setLocalReadiness
   const [localInstallerJob, setLocalInstallerJob] = useState<DesktopInstallJob | null>(null)
   const installerJob = externalInstallerJob === undefined ? localInstallerJob : externalInstallerJob
   const setInstallerJob = onInstallerJob ?? setLocalInstallerJob
@@ -283,6 +295,8 @@ export function SettingsView({
               onOpenServices={() => setSection('services')}
               job={installerJob}
               onJob={setInstallerJob}
+              readinessActivity={readinessActivity}
+              onReadinessScan={onReadinessScan}
               pollInstaller={externalInstallerJob === undefined}
             />
           )}
@@ -1514,6 +1528,8 @@ function ReadinessSection({
   onOpenServices,
   job,
   onJob,
+  readinessActivity,
+  onReadinessScan,
   pollInstaller = true,
 }: {
   autoScan?: boolean
@@ -1522,6 +1538,8 @@ function ReadinessSection({
   onOpenServices?: () => void
   job: DesktopInstallJob | null
   onJob: (job: DesktopInstallJob | null) => void
+  readinessActivity?: DesktopReadinessActivity | null
+  onReadinessScan?: () => Promise<DesktopReadiness>
   pollInstaller?: boolean
 }) {
   const [scanning, setScanning] = useState(false)
@@ -1538,7 +1556,7 @@ function ReadinessSection({
           if (next.status === 'succeeded') {
             onResult(null)
             setScanning(true)
-            void scanDesktopReadiness()
+            void (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
               .then((scan) => {
                 if (!active) return
                 onResult(scan)
@@ -1565,13 +1583,13 @@ function ReadinessSection({
       active = false
       window.clearTimeout(timer)
     }
-  }, [job, onJob, onResult, pollInstaller])
+  }, [job, onJob, onReadinessScan, onResult, pollInstaller])
 
   const scan = async () => {
     setScanning(true)
     setError('')
     try {
-      const next = await scanDesktopReadiness()
+      const next = await (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
       onResult(next)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Readiness scan failed')
@@ -1581,11 +1599,11 @@ function ReadinessSection({
   }
 
   useEffect(() => {
-    if (!autoScan) return
+    if (!autoScan || readinessActivity?.status === 'running' || readiness) return
     let active = true
     setScanning(true)
     setError('')
-    void scanDesktopReadiness()
+    void (onReadinessScan ? onReadinessScan() : scanDesktopReadiness())
       .then((next) => {
         if (!active) return
         onResult(next)
@@ -1601,7 +1619,11 @@ function ReadinessSection({
     return () => {
       active = false
     }
-  }, [autoScan, onResult])
+  }, [autoScan, onReadinessScan, onResult, readiness, readinessActivity?.status])
+
+  const readinessInFlight = scanning || readinessActivity?.status === 'running'
+  const readinessActivityError =
+    readinessActivity?.status === 'failed' ? readinessActivity.detail : null
 
   const install = async (tool: string, label: string) => {
     const action =
@@ -1638,9 +1660,18 @@ function ReadinessSection({
       description="A read-only scan checks local tools and Cortana's production gates. It never starts a connector, installs a schedule, or writes indexed data."
     >
       <div className="readiness-actions">
-        <button type="button" className="secondary-button" disabled={scanning} onClick={scan}>
-          {scanning ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
-          {scanning ? 'Checking system…' : readiness ? 'Run again' : 'Run readiness scan'}
+        <button
+          type="button"
+          className="secondary-button"
+          disabled={readinessInFlight}
+          onClick={scan}
+        >
+          {readinessInFlight ? (
+            <LoaderCircle className="spin" size={15} />
+          ) : (
+            <RefreshCw size={15} />
+          )}
+          {readinessInFlight ? 'Checking system…' : readiness ? 'Run again' : 'Run readiness scan'}
         </button>
         {readiness && (
           <span>
@@ -1648,9 +1679,9 @@ function ReadinessSection({
           </span>
         )}
       </div>
-      {error && (
+      {(error || readinessActivityError) && (
         <div className="safety-note">
-          <AlertTriangle size={16} /> <span>{error}</span>
+          <AlertTriangle size={16} /> <span>{error || readinessActivityError}</span>
         </div>
       )}
       {readiness && (

@@ -762,6 +762,40 @@
   background: #d55b51;
 }
 
+.readiness-activity-health {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: #b8c7a8;
+}
+
+.readiness-activity-health.running {
+  color: #9fc3e0;
+}
+
+.readiness-activity-health.healthy {
+  color: #b8c7a8;
+}
+
+.readiness-activity-health.warning {
+  color: #e2b676;
+}
+
+.readiness-activity-health i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #55b966;
+}
+
+.readiness-activity-health.warning i {
+  background: #d55b51;
+}
+
 .status-spacer {
   flex: 1;
 }

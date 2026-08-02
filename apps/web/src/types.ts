@@ -394,6 +394,11 @@ export type DesktopReadiness = {
   }>
 }
 
+export type DesktopReadinessActivity = {
+  status: 'running' | 'succeeded' | 'failed'
+  detail: string | null
+}
+
 export type DesktopInfo = {
   desktop_version: string
   backend_origin: string

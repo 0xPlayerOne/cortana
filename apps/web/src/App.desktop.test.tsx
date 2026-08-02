@@ -63,6 +63,8 @@ const state = {
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
   serviceAction: null as (() => Promise<DesktopServiceReport>) | null,
+  readinessScan: null as
+    (() => Promise<Awaited<ReturnType<typeof realApi.scanDesktopReadiness>>>) | null,
   installerJob: null as DesktopInstallJob | null,
 }
 
@@ -156,25 +158,27 @@ mock.module('./api', () => ({
   getDesktopAudit: (limit: number) => Promise.resolve(desktopAuditEvents.slice(0, limit)),
   getDesktopUpdate: () => Promise.resolve(desktopUpdate),
   scanDesktopReadiness: () =>
-    Promise.resolve({
-      scanned_at_unix_seconds: 1785000000,
-      platform: 'macos',
-      tools_ready: false,
-      core: null,
-      core_error: null,
-      tools: [
-        {
-          id: 'uv',
-          label: 'uv',
-          required: true,
-          available: false,
-          path: null,
-          version: null,
-          install_supported: true,
-          detail: 'uv is not installed',
-        },
-      ],
-    }),
+    state.readinessScan
+      ? state.readinessScan()
+      : Promise.resolve({
+          scanned_at_unix_seconds: 1785000000,
+          platform: 'macos',
+          tools_ready: false,
+          core: null,
+          core_error: null,
+          tools: [
+            {
+              id: 'uv',
+              label: 'uv',
+              required: true,
+              available: false,
+              path: null,
+              version: null,
+              install_supported: true,
+              detail: 'uv is not installed',
+            },
+          ],
+        }),
   startDesktopInstaller: (tool: string) => {
     state.installerJob = {
       id: 'install-1',
@@ -496,6 +500,44 @@ test('service activity survives leaving Settings while a native action is runnin
   } finally {
     state.serviceAction = originalAction
     window.confirm = originalConfirm
+  }
+})
+
+test('readiness activity survives leaving Settings while a scan is running', async () => {
+  const originalScan = state.readinessScan
+  let resolveScan:
+    ((value: Awaited<ReturnType<typeof realApi.scanDesktopReadiness>>) => void) | undefined
+  state.readinessScan = () =>
+    new Promise((resolve) => {
+      resolveScan = resolve
+    })
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Run readiness scan' }))
+    await waitFor(() => expect(screen.getByText('Readiness: scanning…')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
+    await waitFor(() => expect(screen.getByText('Readiness: scanning…')).toBeTruthy())
+
+    resolveScan?.({
+      scanned_at_unix_seconds: 1785000000,
+      platform: 'macos',
+      tools_ready: true,
+      core: null,
+      core_error: null,
+      tools: [],
+    })
+    await waitFor(() => expect(screen.getByText('Readiness: ready')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Open readiness activity' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: 'System readiness' })).toBeTruthy()
+    )
+    expect(screen.getByText(/Last checked/)).toBeTruthy()
+  } finally {
+    state.readinessScan = originalScan
   }
 })
 

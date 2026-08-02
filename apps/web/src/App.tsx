@@ -3,6 +3,7 @@ import {
   type CSSProperties,
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -21,6 +22,7 @@ import {
   getGraph,
   getStatus,
   cancelDesktopSourceValidation,
+  scanDesktopReadiness,
   isDemoMode,
   isDesktopApp,
   openDesktopProject,
@@ -44,6 +46,8 @@ import type {
   DesktopSettings,
   DesktopInfo,
   DesktopInstallJob,
+  DesktopReadiness,
+  DesktopReadinessActivity,
   DesktopServiceActivity,
   DesktopSourceJob,
   DesktopUpdate,
@@ -77,6 +81,8 @@ export function App() {
   const [settingsDirty, setSettingsDirty] = useState(false)
   const [installerJob, setInstallerJob] = useState<DesktopInstallJob | null>(null)
   const [desktopUpdate, setDesktopUpdate] = useState<DesktopUpdate | null>(null)
+  const [desktopReadiness, setDesktopReadiness] = useState<DesktopReadiness | null>(null)
+  const [readinessActivity, setReadinessActivity] = useState<DesktopReadinessActivity | null>(null)
   const [serviceActivity, setServiceActivity] = useState<DesktopServiceActivity | null>(null)
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
@@ -122,6 +128,20 @@ export function App() {
   documentScopeRef.current = documentScope
   sourceWidthRef.current = sourceWidth
   contextWidthRef.current = contextWidth
+
+  const runReadinessScan = useCallback(async (): Promise<DesktopReadiness> => {
+    setReadinessActivity({ status: 'running', detail: null })
+    try {
+      const next = await scanDesktopReadiness()
+      setDesktopReadiness(next)
+      setReadinessActivity({ status: 'succeeded', detail: null })
+      return next
+    } catch (caught) {
+      const detail = caught instanceof Error ? caught.message : 'Readiness scan failed'
+      setReadinessActivity({ status: 'failed', detail })
+      throw caught
+    }
+  }, [])
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedDocumentQuery(documentQuery.trim()), 250)
@@ -813,6 +833,10 @@ export function App() {
           sourceJobs={sourceJobs.jobs}
           installerJob={installerJob}
           onInstallerJob={setInstallerJob}
+          readiness={desktopReadiness}
+          onReadiness={setDesktopReadiness}
+          readinessActivity={readinessActivity}
+          onReadinessScan={runReadinessScan}
           desktopUpdate={desktopUpdate}
           onDesktopUpdate={setDesktopUpdate}
           serviceActivity={serviceActivity}
@@ -1070,6 +1094,14 @@ export function App() {
             setView('settings')
           }}
         />
+        <ReadinessActivityIndicator
+          activity={readinessActivity}
+          onOpen={() => {
+            if (!canLeaveSettings()) return
+            setSettingsSection('readiness')
+            setView('settings')
+          }}
+        />
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
         {isDesktopApp && (
@@ -1192,6 +1224,31 @@ function ServiceActivityIndicator({
       {!active && <i />}
       Service: {action} {activity.target}
       {active ? '…' : activity.status === 'succeeded' ? ' · done' : ' · failed'}
+    </button>
+  )
+}
+
+function ReadinessActivityIndicator({
+  activity,
+  onOpen,
+}: {
+  activity: DesktopReadinessActivity | null
+  onOpen: () => void
+}) {
+  if (!activity) return null
+  const active = activity.status === 'running'
+  const state = active ? 'running' : activity.status === 'succeeded' ? 'healthy' : 'warning'
+  return (
+    <button
+      type="button"
+      className={`readiness-activity-health ${state}`}
+      aria-label="Open readiness activity"
+      title={`${activity.detail || (active ? 'System readiness scan is running.' : 'System readiness scan completed.')}`}
+      onClick={onOpen}
+    >
+      {active && <LoaderCircle className="spin" size={13} />}
+      {!active && <i />}
+      Readiness: {active ? 'scanning…' : activity.status === 'succeeded' ? 'ready' : 'failed'}
     </button>
   )
 }
