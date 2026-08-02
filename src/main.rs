@@ -1276,6 +1276,7 @@ fn require_sync_validation(
         source,
         limits.max_documents,
         limits.max_bytes,
+        limits.max_seconds,
     )
 }
 
