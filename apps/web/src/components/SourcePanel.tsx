@@ -294,13 +294,16 @@ export function SourcePanel({
                             role="switch"
                             className={`source-enable-toggle ${item.enabled ? 'enabled' : ''}`}
                             aria-checked={item.enabled}
+                            aria-busy={sourceToggleBusy === key}
                             aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.name}`}
                             title={
-                              sourceToggleDisabled
-                                ? 'Save or discard settings changes before toggling a source'
-                                : `${item.enabled ? 'Disable' : 'Enable'} ${item.name}`
+                              sourceToggleBusy !== null
+                                ? 'Saving source setting…'
+                                : sourceToggleDisabled
+                                  ? 'Save or discard settings changes before toggling a source'
+                                  : `${item.enabled ? 'Disable' : 'Enable'} ${item.name}`
                             }
-                            disabled={sourceToggleDisabled || sourceToggleBusy === key}
+                            disabled={sourceToggleDisabled || sourceToggleBusy !== null}
                             onClick={(event) => {
                               event.stopPropagation()
                               onToggleSource(item.source, item.project, !item.enabled)
