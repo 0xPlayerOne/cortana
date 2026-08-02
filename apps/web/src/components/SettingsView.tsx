@@ -574,15 +574,23 @@ function ServicesSection() {
               : 'Checking services…'}
         </span>
         <div className="service-actions">
-          <button type="button" disabled={Boolean(busy)} onClick={() => void groupAction('start')}>
+          <button
+            type="button"
+            disabled={Boolean(busy) || report?.supported !== true}
+            onClick={() => void groupAction('start')}
+          >
             <Play size={14} /> Start all
           </button>
-          <button type="button" disabled={Boolean(busy)} onClick={() => void groupAction('stop')}>
+          <button
+            type="button"
+            disabled={Boolean(busy) || report?.supported !== true}
+            onClick={() => void groupAction('stop')}
+          >
             <CircleStop size={14} /> Stop all
           </button>
           <button
             type="button"
-            disabled={Boolean(busy)}
+            disabled={Boolean(busy) || report?.supported !== true}
             onClick={() => void groupAction('restart')}
           >
             <RefreshCw size={14} /> Restart all

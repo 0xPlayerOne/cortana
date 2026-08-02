@@ -283,6 +283,26 @@ test('services settings surfaces a non-zero last exit as a failed service', asyn
   }
 })
 
+test('services settings disables aggregate actions when the platform backend is unavailable', async () => {
+  const originalSupported = serviceReport.supported
+  serviceReport.supported = false
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByText(/not supported on macos/)).toBeTruthy())
+    for (const label of ['Start all', 'Stop all', 'Restart all']) {
+      expect(screen.getByRole('button', { name: label }).hasAttribute('disabled')).toBe(true)
+    }
+  } finally {
+    serviceReport.supported = originalSupported
+  }
+})
+
 test('Google source settings expose env-backed token credentials', async () => {
   state.settings = { ...desktopSettings, sources: [googleSource] }
   try {
