@@ -56,6 +56,10 @@ export function sourceJobAttention(jobs: DesktopSourceJob[]): DesktopSourceJob[]
 
 /** Return the fixed wall-clock budget enforced by the native job boundary. */
 export function sourceJobBudgetSeconds(job: DesktopSourceJob): number | null {
+  // Google OAuth uses a five-minute native loopback callback timeout. Keep
+  // authorization activity bounded in the shell just like validation and
+  // sync, while the token exchange remains covered by the sidecar timeout.
+  if (job.operation === 'authorization') return 5 * 60
   if (job.operation === 'validation') {
     return job.budget === 'small'
       ? 15 * 60

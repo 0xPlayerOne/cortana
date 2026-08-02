@@ -174,12 +174,18 @@ test('source job progress reports native fixed budgets without claiming a percen
     budget: 'medium',
     started_at_unix_seconds: 1_000,
   })
+  const authorization = jobOf('authorization', 'running', {
+    operation: 'authorization',
+    started_at_unix_seconds: 1_000,
+  })
   expect(sourceJobBudgetSeconds(validation)).toBe(60)
   expect(sourceJobBudgetSeconds(trial)).toBe(300)
   expect(sourceJobBudgetSeconds(initial)).toBe(1_800)
+  expect(sourceJobBudgetSeconds(authorization)).toBe(300)
   expect(sourceJobElapsedSeconds(validation, 1_065)).toBe(65)
   expect(describeSourceJobProgress(validation, 1_065)).toBe('1m 5s / 1m')
   expect(describeSourceJobProgress(initial, 1_065)).toBe('1m 5s / 30m')
+  expect(describeSourceJobProgress(authorization, 1_065)).toBe('1m 5s / 5m')
 })
 
 test('isMissingJobError matches only the native missing-job message', () => {
