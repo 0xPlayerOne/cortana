@@ -338,6 +338,31 @@ def test_chat_connectors_reassemble_slack_and_normalize_discord(
     assert discord_documents[0].metadata["author_id"] == "u1"
 
 
+def test_discord_skips_malformed_messages_without_aborting_the_batch() -> None:
+    assert (
+        chat._discord_document(
+            {"id": "bad", "content": "content", "timestamp": "not-a-timestamp"},
+            "D1",
+            "work",
+        )
+        is None
+    )
+    document = chat._discord_document(
+        {
+            "id": "100",
+            "content": "Status",
+            "attachments": [None, {"url": "https://files.test/report.pdf"}],
+            "timestamp": "2026-07-29T12:00:00Z",
+            "author": None,
+        },
+        "D1",
+        "work",
+    )
+    assert document is not None
+    assert document.source_id == "100"
+    assert document.metadata["author_id"] is None
+
+
 def test_discord_cache_uses_incremental_after_cursor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -263,24 +263,49 @@ def _full_refresh_due(last_full: str) -> bool:
 
 
 def _discord_document(message: dict[str, Any], channel_id: str, project: str) -> Document | None:
+    message_id = str(message.get("id") or "").strip()
+    if not message_id:
+        return None
     content = str(message.get("content") or "").strip()
-    attachments = "\n".join(item.get("url", "") for item in message.get("attachments", []))
+    attachments = "\n".join(
+        str(item.get("url") or "")
+        for item in message.get("attachments", [])
+        if isinstance(item, dict) and item.get("url")
+    )
     body = "\n".join(part for part in [content, attachments] if part)
     if not body:
         return None
+    updated_at = _parse_discord_timestamp(message.get("timestamp"))
+    if updated_at is None:
+        return None
+    author = message.get("author")
+    username = author.get("username", "unknown") if isinstance(author, dict) else "unknown"
+    author_id = author.get("id") if isinstance(author, dict) else None
     return Document(
         source="discord",
-        source_id=str(message["id"]),
+        source_id=message_id,
         title=_title(content, f"Discord {channel_id}"),
-        content=f"{message.get('author', {}).get('username', 'unknown')}: {body}",
-        uri=f"https://discord.com/channels/@me/{channel_id}/{message['id']}",
-        updated_at=dt.datetime.fromisoformat(str(message["timestamp"]).replace("Z", "+00:00")),
+        content=f"{username}: {body}",
+        uri=f"https://discord.com/channels/@me/{channel_id}/{message_id}",
+        updated_at=updated_at,
         project=project,
         metadata={
             "channel_id": channel_id,
-            "author_id": message.get("author", {}).get("id"),
+            "author_id": author_id,
         },
     )
+
+
+def _parse_discord_timestamp(value: object) -> dt.datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=dt.UTC)
+    return parsed
 
 
 def _required_env(name: str) -> str:
