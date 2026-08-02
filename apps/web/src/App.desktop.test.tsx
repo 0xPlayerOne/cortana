@@ -512,7 +512,17 @@ test('desktop shell pauses passive health polling while hidden and refreshes on 
     expect(state.getDesktopServicesCalls).toBe(servicesBeforeHidden)
     expect(state.statusCalls).toBe(statusBeforeHidden)
 
-    act(() => setVisibility('visible'))
+    // The webview may become visible before native focus is restored. That
+    // event alone must not restart passive polling in the background.
+    act(() => {
+      window.dispatchEvent(new Event('blur'))
+      setVisibility('visible')
+    })
+    await new Promise((resolve) => setTimeout(resolve, 25))
+    expect(state.getDesktopServicesCalls).toBe(servicesBeforeHidden)
+    expect(state.statusCalls).toBe(statusBeforeHidden)
+
+    act(() => window.dispatchEvent(new Event('focus')))
     await waitFor(() => expect(state.getDesktopServicesCalls).toBeGreaterThan(servicesBeforeHidden))
     expect(state.statusCalls).toBeGreaterThan(statusBeforeHidden)
   } finally {
