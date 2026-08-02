@@ -35,12 +35,19 @@ export function ContextPanel({
   onClose: () => void
 }) {
   const [copied, setCopied] = useState(false)
+  const [copyError, setCopyError] = useState('')
   const copyValue = serverContext?.context ?? context
 
   async function copyContext() {
-    await navigator.clipboard.writeText(copyValue)
-    setCopied(true)
-    window.setTimeout(() => setCopied(false), 1800)
+    setCopyError('')
+    try {
+      await navigator.clipboard.writeText(copyValue)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch (caught) {
+      setCopied(false)
+      setCopyError(caught instanceof Error ? caught.message : 'Unable to copy context')
+    }
   }
 
   return (
@@ -150,6 +157,7 @@ export function ContextPanel({
               ? 'Copy MCP-equivalent context'
               : 'Copy preview context'}
         </button>
+        {copyError && <p className="context-error">{copyError}</p>}
       </div>
     </aside>
   )

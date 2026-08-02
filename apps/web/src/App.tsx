@@ -59,7 +59,9 @@ export function App() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('document')
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null)
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null)
-  const [settingsSection, setSettingsSection] = useState<'readiness' | 'updates'>('readiness')
+  const [settingsSection, setSettingsSection] = useState<'readiness' | 'updates' | 'sources'>(
+    'readiness'
+  )
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
   const [documentsLoading, setDocumentsLoading] = useState(true)
@@ -73,6 +75,7 @@ export function App() {
   const [contextWidth, setContextWidth] = useState(350)
   const [contextBundle, setContextBundle] = useState<ContextBundle | null>(null)
   const [contextLoading, setContextLoading] = useState(false)
+  const searchRequestRef = useRef(0)
   const [contextError, setContextError] = useState('')
   const [queryHistory, setQueryHistory] = useState<string[]>([])
   const [queryHistoryIndex, setQueryHistoryIndex] = useState(-1)
@@ -80,6 +83,15 @@ export function App() {
   const sourceJobs = useSourceJobs()
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
   const documentScopeRef = useRef(documentScope)
+  const searchAbortRef = useRef<AbortController | null>(null)
+  const searchScopeRef = useRef('')
+  const contextAbortRef = useRef<AbortController | null>(null)
+  const contextScopeRef = useRef('')
+  const documentListAbortRef = useRef<AbortController | null>(null)
+  const documentSelectAbortRef = useRef<AbortController | null>(null)
+  const contextRequestRef = useRef(0)
+  const documentListRequestRef = useRef(0)
+  const documentSelectRequestRef = useRef(0)
   const documentPageLoadingRef = useRef(false)
   const sourceWidthRef = useRef(sourceWidth)
   const contextWidthRef = useRef(contextWidth)
@@ -107,7 +119,10 @@ export function App() {
   }, [])
 
   useEffect(() => {
+    const requestId = ++documentListRequestRef.current
+    documentListAbortRef.current?.abort()
     const controller = new AbortController()
+    documentListAbortRef.current = controller
     const requestedScope = documentScopeRef.current
     documentPageLoadingRef.current = true
     setDocumentsLoading(true)
@@ -121,25 +136,38 @@ export function App() {
       controller.signal
     )
       .then((page) => {
+        if (documentListRequestRef.current !== requestId) return
         if (documentScopeRef.current !== requestedScope) return
         setDocuments(page.documents)
         setDocumentCursor(page.next_cursor)
       })
       .catch((caught: unknown) => {
-        if (controller.signal.aborted) return
+        if (isAbort(caught) || controller.signal.aborted) return
+        if (documentListRequestRef.current !== requestId) return
+        if (documentScopeRef.current !== requestedScope) return
         setDocuments([])
         setDocumentCursor(null)
         setDocumentsError(caught instanceof Error ? caught.message : 'Documents unavailable')
       })
       .finally(() => {
-        if (!controller.signal.aborted && documentScopeRef.current === requestedScope) {
+        if (
+          documentListRequestRef.current === requestId &&
+          !controller.signal.aborted &&
+          documentScopeRef.current === requestedScope
+        ) {
           documentPageLoadingRef.current = false
           setDocumentsLoading(false)
         }
       })
     return () => {
       controller.abort()
-      if (documentScopeRef.current === requestedScope) documentPageLoadingRef.current = false
+      if (
+        documentListRequestRef.current === requestId &&
+        documentScopeRef.current === requestedScope
+      ) {
+        documentPageLoadingRef.current = false
+        setDocumentsLoading(false)
+      }
     }
   }, [debouncedDocumentQuery, source, workspace])
 
@@ -218,6 +246,39 @@ export function App() {
     return () => window.clearInterval(interval)
   }, [])
 
+  function isAbort(caught: unknown) {
+    return caught instanceof DOMException
+      ? caught.name === 'AbortError'
+      : (caught as { name?: string } | null)?.name === 'AbortError'
+  }
+
+  function searchScope(nextSource: string, nextWorkspace: string, query: string) {
+    return `${nextWorkspace}\u0000${nextSource}\u0000${query}`
+  }
+
+  function contextScope(nextQuery: string, nextWorkspace: string, nextSource: string) {
+    return `${nextWorkspace}\u0000${nextSource}\u0000${nextQuery}`
+  }
+
+  function abortSearchRequest(): void {
+    searchAbortRef.current?.abort()
+    setLoading(false)
+    setError('')
+  }
+
+  function abortContextRequest(): void {
+    contextAbortRef.current?.abort()
+    setContextBundle(null)
+    setContextLoading(false)
+    setContextError('')
+  }
+
+  function scopeSources(nextWorkspace: string, nextSource = source) {
+    const nextScope = searchScope(nextSource, nextWorkspace, query)
+    searchScopeRef.current = nextScope
+    contextScopeRef.current = contextScope(activeQuery, nextWorkspace, nextSource)
+  }
+
   async function runSearch(
     value: string,
     nextSource = source,
@@ -231,21 +292,45 @@ export function App() {
       setQueryHistoryIndex(nextHistory.length - 1)
     }
 
+    const requestId = ++searchRequestRef.current
+    const requestedScope = searchScope(nextSource, nextWorkspace, value)
     setLoading(true)
     setError('')
+    searchScopeRef.current = requestedScope
+    const controller = new AbortController()
+    searchAbortRef.current?.abort()
+    searchAbortRef.current = controller
     try {
-      const next = await getAnswer(value, nextWorkspace || undefined, nextSource || undefined)
+      const next = await getAnswer(
+        value,
+        nextWorkspace || undefined,
+        nextSource || undefined,
+        controller.signal
+      )
+      if (searchRequestRef.current !== requestId || searchScopeRef.current !== requestedScope) {
+        return
+      }
       setAnswer(next)
       setContextBundle(null)
       setEvidence(next.evidence)
       setActiveQuery(value)
       setSelected(0)
     } catch (caught) {
+      if (controller.signal.aborted || isAbort(caught)) return
+      if (searchRequestRef.current !== requestId || searchScopeRef.current !== requestedScope) {
+        return
+      }
       setError(caught instanceof Error ? caught.message : 'Search failed')
       setAnswer(null)
       setEvidence([])
     } finally {
-      setLoading(false)
+      if (
+        searchRequestRef.current === requestId &&
+        searchScopeRef.current === requestedScope &&
+        !controller.signal.aborted
+      ) {
+        setLoading(false)
+      }
     }
   }
 
@@ -255,21 +340,34 @@ export function App() {
   }
 
   function chooseSource(next: string, project?: string) {
-    const sameScope = source === next && (!project || workspace === project)
-    const value = sameScope ? '' : next
+    const nextWorkspace = project ?? workspace
+    const sameScope = source === next && workspace === nextWorkspace
+    const nextSource = sameScope ? '' : next
+    abortSearchRequest()
+    abortContextRequest()
+    scopeSources(nextWorkspace, nextSource)
     if (project) setWorkspace(project)
-    setSource(value)
+    setSource(nextSource)
     setLeftOpen(false)
   }
 
   function chooseWorkspace(next: string) {
-    setWorkspace(next)
-    setSource('')
+    const nextWorkspace = next
+    const nextSource = ''
+    abortSearchRequest()
+    abortContextRequest()
+    scopeSources(nextWorkspace, nextSource)
+    setWorkspace(nextWorkspace)
+    setSource(nextSource)
   }
 
   async function loadMoreDocuments() {
     if (!documentCursor || documentsLoading || documentPageLoadingRef.current) return
     const requestedScope = documentScopeRef.current
+    const requestId = ++documentListRequestRef.current
+    const controller = new AbortController()
+    documentListAbortRef.current?.abort()
+    documentListAbortRef.current = controller
     documentPageLoadingRef.current = true
     setDocumentsLoading(true)
     setDocumentsError('')
@@ -278,8 +376,10 @@ export function App() {
         workspace || undefined,
         source || undefined,
         debouncedDocumentQuery || undefined,
-        documentCursor
+        documentCursor,
+        controller.signal
       )
+      if (documentListRequestRef.current !== requestId) return
       if (documentScopeRef.current !== requestedScope) return
       setDocuments((current) => [
         ...current,
@@ -287,11 +387,17 @@ export function App() {
       ])
       setDocumentCursor(page.next_cursor)
     } catch (caught) {
+      if (isAbort(caught) || controller.signal.aborted) return
+      if (documentListRequestRef.current !== requestId) return
       if (documentScopeRef.current === requestedScope) {
         setDocumentsError(caught instanceof Error ? caught.message : 'Documents unavailable')
       }
     } finally {
-      if (documentScopeRef.current === requestedScope) {
+      if (
+        documentListRequestRef.current === requestId &&
+        !controller.signal.aborted &&
+        documentScopeRef.current === requestedScope
+      ) {
         documentPageLoadingRef.current = false
         setDocumentsLoading(false)
       }
@@ -299,27 +405,70 @@ export function App() {
   }
 
   async function chooseDocument(id: string) {
+    const requestId = ++documentSelectRequestRef.current
+    const controller = new AbortController()
+    documentSelectAbortRef.current?.abort()
+    documentSelectAbortRef.current = controller
     setDocumentLoading(true)
     setDocumentsError('')
     try {
-      setActiveDocument(await getDocument(id))
+      const next = await getDocument(id, controller.signal)
+      if (documentSelectRequestRef.current !== requestId) return
+      setActiveDocument(next)
       setLeftOpen(false)
     } catch (caught) {
+      if (
+        documentSelectRequestRef.current !== requestId ||
+        controller.signal.aborted ||
+        isAbort(caught)
+      )
+        return
       setDocumentsError(caught instanceof Error ? caught.message : 'Document unavailable')
     } finally {
-      setDocumentLoading(false)
+      if (documentSelectRequestRef.current === requestId && !controller.signal.aborted) {
+        setDocumentLoading(false)
+      }
     }
   }
 
   async function retrieveAgentContext() {
+    const requestId = ++contextRequestRef.current
+    const requestedScope = contextScope(activeQuery, workspace, source)
     setContextLoading(true)
     setContextError('')
+    contextScopeRef.current = requestedScope
+    const controller = new AbortController()
+    contextAbortRef.current?.abort()
+    contextAbortRef.current = controller
     try {
-      setContextBundle(await getContext(activeQuery, workspace || undefined, source || undefined))
+      const next = await getContext(
+        activeQuery,
+        workspace || undefined,
+        source || undefined,
+        controller.signal
+      )
+      if (contextRequestRef.current !== requestId || contextScopeRef.current !== requestedScope) {
+        return
+      }
+      setContextBundle(next)
     } catch (caught) {
+      if (
+        contextAbortRef.current?.signal.aborted ||
+        contextRequestRef.current !== requestId ||
+        contextScopeRef.current !== requestedScope ||
+        isAbort(caught)
+      ) {
+        return
+      }
       setContextError(caught instanceof Error ? caught.message : 'Context retrieval failed')
     } finally {
-      setContextLoading(false)
+      if (
+        contextRequestRef.current === requestId &&
+        contextScopeRef.current === requestedScope &&
+        !controller.signal.aborted
+      ) {
+        setContextLoading(false)
+      }
     }
   }
 
@@ -470,12 +619,16 @@ export function App() {
             documentsLoading={documentsLoading}
             documentsError={documentsError}
             hasMoreDocuments={Boolean(documentCursor)}
+            statusError={statusError}
             onSelect={chooseSource}
             onSelectWorkspace={chooseWorkspace}
             onDocumentQueryChange={setDocumentQuery}
             onSelectDocument={(id) => void chooseDocument(id)}
             onLoadMoreDocuments={() => void loadMoreDocuments()}
-            onOpenSettings={() => setView('settings')}
+            onOpenSourcesSettings={() => {
+              setSettingsSection('sources')
+              setView('settings')
+            }}
             onClose={() => setLeftOpen(false)}
             jobs={sourceJobs.jobs}
           />
