@@ -267,6 +267,9 @@ export function SourcePanel({
                   const needsProviderSetup = Boolean(auth?.setup_required)
                   const needsGoogleAuthorization =
                     auth?.method === 'google_oauth' && !auth.authorized && !needsProviderSetup
+                  const sourceJobActive = active.some(
+                    (job) => job.source === item.source && job.project === item.project
+                  )
                   return (
                     <div className="source-node" key={key}>
                       <div className="source-row">
@@ -303,8 +306,14 @@ export function SourcePanel({
                             type="button"
                             className="source-action"
                             aria-label={`Open ${item.name} setup`}
-                            title="Open the provider setup page"
-                            disabled={sourceToggleBusy !== null || sourceToggleDisabled}
+                            title={
+                              sourceJobActive
+                                ? 'Wait for the active source job to finish'
+                                : 'Open the provider setup page'
+                            }
+                            disabled={
+                              sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
+                            }
                             onClick={(event) => {
                               event.stopPropagation()
                               onOpenSourceSetup(item.source)
@@ -318,8 +327,14 @@ export function SourcePanel({
                             type="button"
                             className="source-action"
                             aria-label={`Authorize ${item.name}`}
-                            title="Authorize this Google source in your browser"
-                            disabled={sourceToggleBusy !== null || sourceToggleDisabled}
+                            title={
+                              sourceJobActive
+                                ? 'Wait for the active source job to finish'
+                                : 'Authorize this Google source in your browser'
+                            }
+                            disabled={
+                              sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
+                            }
                             onClick={(event) => {
                               event.stopPropagation()
                               onAuthorizeSource(item.source)
@@ -337,13 +352,17 @@ export function SourcePanel({
                             aria-busy={sourceToggleBusy === key}
                             aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.name}`}
                             title={
-                              sourceToggleBusy !== null
-                                ? 'Saving source setting…'
-                                : sourceToggleDisabled
-                                  ? 'Save or discard settings changes before toggling a source'
-                                  : `${item.enabled ? 'Disable' : 'Enable'} ${item.name}`
+                              sourceJobActive
+                                ? 'Wait for the active source job to finish'
+                                : sourceToggleBusy !== null
+                                  ? 'Saving source setting…'
+                                  : sourceToggleDisabled
+                                    ? 'Save or discard settings changes before toggling a source'
+                                    : `${item.enabled ? 'Disable' : 'Enable'} ${item.name}`
                             }
-                            disabled={sourceToggleDisabled || sourceToggleBusy !== null}
+                            disabled={
+                              sourceToggleDisabled || sourceToggleBusy !== null || sourceJobActive
+                            }
                             onClick={(event) => {
                               event.stopPropagation()
                               onToggleSource(item.source, item.project, !item.enabled)
