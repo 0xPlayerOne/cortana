@@ -9,6 +9,7 @@ import type {
   BrainGraphPage,
   BrainStatus,
   ContextBundle,
+  DesktopSourceJob,
 } from './types'
 
 afterEach(cleanup)
@@ -74,6 +75,7 @@ mock.module('./api', () => ({
 }))
 
 const { App } = await import('./App')
+const { UtilityView } = await import('./components/UtilityView')
 
 const RAIL_LABELS = [
   'Search',
@@ -282,6 +284,51 @@ test('Inbox renders current sync attention and a truthful idle empty state', asy
   fireEvent.click(railButton('Inbox'))
   await waitFor(() => expect(screen.getByText('No sync attention')).toBeTruthy())
   expect(screen.getByRole('button', { name: 'Open settings' })).toBeTruthy()
+})
+
+test('Inbox retains terminal source-job history after the job stops running', () => {
+  const job: DesktopSourceJob = {
+    id: 'source-1',
+    operation: 'validation',
+    source: 'work-code',
+    kind: 'filesystem',
+    project: 'work',
+    acl: ['work'],
+    status: 'failed',
+    summary: 'Connector validation failed.',
+    log: 'permission denied',
+    started_at_unix_seconds: 1_785_000_000,
+    completed_at_unix_seconds: 1_785_000_012,
+    exit_code: 1,
+    retryable: true,
+    writes_indexed_data: false,
+    budget: null,
+  }
+  render(
+    <UtilityView
+      kind="inbox"
+      status={{ ...demoStatus, sync_runs: [] }}
+      sourceJobs={[job]}
+      query=""
+      answer={null}
+      evidence={[]}
+      loading={false}
+      error=""
+      contextBundle={null}
+      contextLoading={false}
+      contextError=""
+      contextTokens={0}
+      desktopAvailable={false}
+      onSearchFocus={() => {}}
+      onRetrieveContext={() => {}}
+      onOpenSettings={() => {}}
+      onOpenProject={() => {}}
+    />
+  )
+  expect(screen.getByText('Recent source jobs')).toBeTruthy()
+  expect(screen.getByText('work-code · validation')).toBeTruthy()
+  expect(screen.getByText('Failed')).toBeTruthy()
+  expect(screen.getByText(/Connector validation failed/)).toBeTruthy()
 })
 
 test('Index renders live BrainStatus metrics and an offline empty state', async () => {

@@ -67,6 +67,7 @@ const {
   isActiveJob,
   isMissingJobError,
   MAX_SOURCE_JOB_SNAPSHOTS,
+  recentCompletedJobs,
   upsertJob,
   useSourceJobs,
 } = await import('./sourceJobs')
@@ -118,6 +119,20 @@ test('activeJobs and activeJobIds filter to running and cancelling only', () => 
   expect(isActiveJob(jobOf('x', 'running'))).toBe(true)
   expect(isActiveJob(jobOf('x', 'cancelling'))).toBe(true)
   expect(isActiveJob(jobOf('x', 'succeeded'))).toBe(false)
+})
+
+test('recentCompletedJobs keeps terminal snapshots for operational history', () => {
+  const jobs = [
+    jobOf('running', 'running'),
+    jobOf('cancelled', 'cancelled'),
+    jobOf('failed', 'failed'),
+    jobOf('succeeded', 'succeeded'),
+  ]
+  expect(recentCompletedJobs(jobs).map((job) => job.id)).toEqual([
+    'cancelled',
+    'failed',
+    'succeeded',
+  ])
 })
 
 test('isMissingJobError matches only the native missing-job message', () => {

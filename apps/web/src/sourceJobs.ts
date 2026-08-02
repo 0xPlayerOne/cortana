@@ -39,6 +39,11 @@ export function activeJobIds(jobs: DesktopSourceJob[]): string[] {
   return activeJobs(jobs).map((job) => job.id)
 }
 
+/** Terminal snapshots retained for the Inbox's bounded operational history. */
+export function recentCompletedJobs(jobs: DesktopSourceJob[]): DesktopSourceJob[] {
+  return jobs.filter((job) => !isActiveJob(job))
+}
+
 /**
  * Owns the cross-view source-job snapshot list. SettingsView reports started
  * jobs through remember(); while the view is unmounted the list survives here

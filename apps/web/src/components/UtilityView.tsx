@@ -20,6 +20,7 @@ import type {
   DesktopSourceJob,
   Evidence,
 } from '../types'
+import { recentCompletedJobs } from '../sourceJobs'
 
 export type UtilityKind = 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
 
@@ -147,7 +148,8 @@ function InboxView({
   const activeJobs = sourceJobs.filter(
     (job) => job.status === 'running' || job.status === 'cancelling'
   )
-  if (attention.length === 0 && activeJobs.length === 0) {
+  const completedJobs = recentCompletedJobs(sourceJobs)
+  if (attention.length === 0 && activeJobs.length === 0 && completedJobs.length === 0) {
     return (
       <UtilityEmpty
         icon={<Inbox size={26} />}
@@ -198,6 +200,38 @@ function InboxView({
                 <StatusPill status={job.status === 'cancelling' ? 'cancelled' : 'running'} />
               </div>
             ))}
+          </div>
+        </section>
+      )}
+      {completedJobs.length > 0 && (
+        <section className="utility-section">
+          <h2>Recent source jobs</h2>
+          <div className="utility-list">
+            {completedJobs.map((job) => {
+              const terminalStatus = job.status === 'cancelling' ? 'running' : job.status
+              const started = new Date(job.started_at_unix_seconds * 1000)
+              const completed = job.completed_at_unix_seconds
+                ? new Date(job.completed_at_unix_seconds * 1000)
+                : null
+              const duration = completed
+                ? `${Math.max(0, Math.round((completed.getTime() - started.getTime()) / 1000))}s`
+                : 'duration unavailable'
+              return (
+                <div className="utility-item" key={job.id}>
+                  <SyncIcon status={terminalStatus} />
+                  <div className="utility-item-main">
+                    <strong>
+                      {job.source} · {job.operation}
+                    </strong>
+                    <span>
+                      {job.project} · {job.summary} · started {started.toLocaleString()} ·{' '}
+                      {duration}
+                    </span>
+                  </div>
+                  <StatusPill status={terminalStatus} />
+                </div>
+              )
+            })}
           </div>
         </section>
       )}
