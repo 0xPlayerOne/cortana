@@ -523,6 +523,51 @@ def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
     assert documents[0].metadata["owners"] == ["Ada"]
 
 
+def test_google_drive_skips_malformed_listing_records(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        None,
+                        {"name": "missing id"},
+                        {
+                            "id": "bad-time",
+                            "name": "Bad timestamp",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "not-a-timestamp",
+                        },
+                        {
+                            "id": "valid",
+                            "name": "Keep this file",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="Useful content", request=request)
+
+    documents = list(
+        fetch_drive(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["valid"]
+    diagnostic = capsys.readouterr().err
+    assert "Drive file skipped: record=0 is not an object" in diagnostic
+    assert "Drive file skipped: id=bad-time" in diagnostic
+
+
 def test_google_drive_bounds_oversized_exports_with_explicit_metadata(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     token.write_text('{"token":"access"}', encoding="utf-8")
@@ -667,6 +712,44 @@ def test_google_gmail_decodes_message_body(tmp_path: Path) -> None:
     assert documents[0].title == "Release"
     assert "Deployment is green" in documents[0].content
     assert documents[0].metadata["thread_id"] == "t1"
+
+
+def test_google_gmail_skips_malformed_listing_records(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response(
+                {"messages": [None, {"labelIds": ["INBOX"]}, {"id": "m1"}]},
+                request=request,
+            )
+        return response(
+            {
+                "id": "m1",
+                "payload": {
+                    "headers": [{"name": "Subject", "value": "Keep this message"}],
+                    "mimeType": "text/plain",
+                    "body": {
+                        "data": base64.urlsafe_b64encode(b"Useful mail").decode(),
+                    },
+                },
+            },
+            request=request,
+        )
+
+    documents = list(
+        fetch_gmail(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["m1"]
+    assert "Gmail message skipped: record=0 is not an object" in capsys.readouterr().err
 
 
 def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
@@ -857,6 +940,43 @@ def test_google_calendar_collapses_recurring_occurrences(tmp_path: Path) -> None
         "ada@example.test",
         "grace@example.test",
     ]
+
+
+def test_google_calendar_skips_malformed_events(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/calendarList"):
+            return response({"items": [{"id": "primary", "summary": "Work"}]}, request=request)
+        return response(
+            {
+                "items": [
+                    {"id": "broken", "start": "not-an-object"},
+                    {
+                        "id": "valid",
+                        "summary": "Keep this event",
+                        "start": {"dateTime": "2026-07-29T12:00:00Z"},
+                        "end": {"dateTime": "2026-07-29T12:30:00Z"},
+                        "updated": "2026-07-29T11:00:00Z",
+                    },
+                ]
+            },
+            request=request,
+        )
+
+    documents = list(
+        fetch_calendar(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["primary:valid"]
+    assert "Calendar event skipped: id=broken" in capsys.readouterr().err
 
 
 def test_google_session_refreshes_and_secures_token_file(tmp_path: Path) -> None:

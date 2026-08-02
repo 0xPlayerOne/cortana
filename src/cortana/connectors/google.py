@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import datetime as dt
 import email
 import email.policy
@@ -164,7 +165,13 @@ def fetch_drive(
                 payload = session.request(
                     "GET", "https://www.googleapis.com/drive/v3/files", params=params
                 ).json()
-                items: list[dict[str, Any]] = payload.get("files", [])
+                if not isinstance(payload, dict):
+                    print(
+                        "Drive listing skipped: provider returned a non-object value",
+                        file=sys.stderr,
+                    )
+                    break
+                items = _google_records(payload.get("files"), "Drive file")
                 bodies: dict[str, str] = {}
                 missing_items: list[dict[str, Any]] = []
                 downloaded_ids: set[str] = set()
@@ -219,6 +226,11 @@ def fetch_drive(
                             pending_writes = 0
                     if not body.strip():
                         continue
+                    try:
+                        updated_at = _timestamp(item.get("modifiedTime"))
+                    except (TypeError, ValueError, OverflowError, OSError) as error:
+                        _warn_skipped_record("Drive file", file_id, error)
+                        continue
                     content, content_truncated = _bounded_content(body, max_content_chars)
                     yield Document(
                         source="google-drive",
@@ -226,14 +238,14 @@ def fetch_drive(
                         title=str(item.get("name") or "Untitled Drive file"),
                         content=content,
                         uri=item.get("webViewLink"),
-                        updated_at=_timestamp(item.get("modifiedTime")),
+                        updated_at=updated_at,
                         project=project,
                         metadata={
                             "mime_type": item.get("mimeType"),
                             "owners": [
                                 owner.get("displayName")
                                 for owner in item.get("owners", [])
-                                if owner.get("displayName")
+                                if isinstance(owner, dict) and owner.get("displayName")
                             ],
                             "content_stale": file_id in stale_ids,
                             "content_truncated": content_truncated,
@@ -275,9 +287,16 @@ def fetch_gmail(
                     "https://gmail.googleapis.com/gmail/v1/users/me/messages",
                     params=params,
                 ).json()
+                if not isinstance(listing, dict):
+                    print(
+                        "Gmail listing skipped: provider returned a non-object value",
+                        file=sys.stderr,
+                    )
+                    break
                 messages: dict[str, dict[str, Any]] = {}
                 missing_ids: list[str] = []
-                for reference in listing.get("messages", []):
+                references = _google_records(listing.get("messages"), "Gmail message")
+                for reference in references:
                     message_id = str(reference["id"])
                     message = _cached_gmail_message(cache, message_id)
                     if message is None:
@@ -306,7 +325,7 @@ def fetch_gmail(
                                 f"({unavailable}/{len(missing_ids)}); refusing partial snapshot"
                             )
                 missing_set = set(missing_ids)
-                for reference in listing.get("messages", []):
+                for reference in references:
                     message_id = str(reference["id"])
                     message = messages.get(message_id)
                     if message is None:
@@ -322,7 +341,10 @@ def fetch_gmail(
                         if pending_writes >= 100:
                             cache.commit()
                             pending_writes = 0
-                    yield _gmail_document(message, project)
+                    try:
+                        yield _gmail_document(message, project)
+                    except (AttributeError, TypeError, ValueError, KeyError) as error:
+                        _warn_skipped_record("Gmail message", message.get("id"), error)
                 page_token = listing.get("nextPageToken")
                 if not page_token:
                     break
@@ -349,7 +371,15 @@ def _fetch_gmail_message(session: GoogleSession, message_id: str) -> dict[str, A
             file=sys.stderr,
         )
         return None
-    message: dict[str, Any] = response.json()
+    message = response.json()
+    if not isinstance(message, dict) or not str(message.get("id") or "").strip():
+        _warn_skipped_record(
+            "Gmail message",
+            message.get("id") if isinstance(message, dict) else None,
+            "missing id",
+        )
+        return None
+    message["id"] = str(message["id"]).strip()
     return message
 
 
@@ -456,7 +486,15 @@ def _cached_gmail_message(
     row = cache.execute("SELECT body FROM messages WHERE id=?", (message_id,)).fetchone()
     if row is None:
         return None
-    message: dict[str, Any] = json.loads(str(row[0]))
+    try:
+        message = json.loads(str(row[0]))
+    except json.JSONDecodeError:
+        _warn_skipped_record("Cached Gmail message", message_id, "invalid cached JSON")
+        return None
+    if not isinstance(message, dict) or not str(message.get("id") or "").strip():
+        _warn_skipped_record("Cached Gmail message", message_id, "missing id")
+        return None
+    message["id"] = str(message["id"]).strip()
     return message
 
 
@@ -470,7 +508,13 @@ def fetch_calendar(
         calendars = session.request(
             "GET", "https://www.googleapis.com/calendar/v3/users/me/calendarList"
         ).json()
-        for calendar in calendars.get("items", []):
+        if not isinstance(calendars, dict):
+            print(
+                "Calendar listing skipped: provider returned a non-object value",
+                file=sys.stderr,
+            )
+            return
+        for calendar in _google_records(calendars.get("items"), "Calendar"):
             calendar_id = str(calendar.get("id") or "")
             if not calendar_id or calendar.get("deleted") or calendar.get("hidden"):
                 continue
@@ -493,14 +537,27 @@ def fetch_calendar(
                     f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events",
                     params=params,
                 ).json()
-                for event in payload.get("items", []):
+                if not isinstance(payload, dict):
+                    print(
+                        "Calendar events skipped: provider returned a non-object value",
+                        file=sys.stderr,
+                    )
+                    break
+                events = _google_records(payload.get("items"), "Calendar event")
+                for event in events:
                     if event.get("status") == "cancelled":
                         continue
                     recurring_id = str(event.get("recurringEventId") or "")
                     if recurring_id:
-                        _add_calendar_occurrence(recurring_series, recurring_id, event)
+                        try:
+                            _add_calendar_occurrence(recurring_series, recurring_id, event)
+                        except (AttributeError, TypeError, ValueError, KeyError) as error:
+                            _warn_skipped_record("Calendar event", event["id"], error)
                     else:
-                        yield _calendar_document(event, calendar, project)
+                        try:
+                            yield _calendar_document(event, calendar, project)
+                        except (AttributeError, TypeError, ValueError, KeyError) as error:
+                            _warn_skipped_record("Calendar event", event["id"], error)
                 page_token = payload.get("nextPageToken")
                 if not page_token:
                     break
@@ -684,14 +741,22 @@ def _bounded_content(value: str, max_chars: int) -> tuple[str, bool]:
 
 def _gmail_document(message: dict[str, Any], project: str) -> Document:
     payload = message.get("payload", {})
+    if not isinstance(payload, dict):
+        payload = {}
     headers = {
         str(item.get("name", "")).lower(): str(item.get("value", ""))
         for item in payload.get("headers", [])
+        if isinstance(item, dict) and item.get("name")
     }
     body = _gmail_parts(payload)
     sent_at = _timestamp(headers.get("date"))
     if "internalDate" in message:
-        sent_at = dt.datetime.fromtimestamp(int(message["internalDate"]) / 1000, dt.UTC)
+        try:
+            sent_at = dt.datetime.fromtimestamp(int(message["internalDate"]) / 1000, dt.UTC)
+        except (TypeError, ValueError, OverflowError, OSError):
+            _warn_skipped_record(
+                "Gmail message timestamp", message.get("id"), "invalid internalDate"
+            )
     participants = [headers.get(name, "") for name in ("from", "to", "cc") if headers.get(name)]
     content = "\n".join(
         part
@@ -722,7 +787,7 @@ def _gmail_document(message: dict[str, Any], project: str) -> Document:
 
 
 def _gmail_parts(payload: dict[str, Any]) -> str:
-    parts = payload.get("parts") or []
+    parts = [part for part in payload.get("parts") or [] if isinstance(part, dict)]
     if parts:
         preferred = [
             _gmail_parts(part)
@@ -733,10 +798,15 @@ def _gmail_parts(payload: dict[str, Any]) -> str:
         if body:
             return body
         return "\n".join(filter(None, (_gmail_parts(part) for part in parts)))
-    encoded = payload.get("body", {}).get("data")
+    body = payload.get("body")
+    encoded = body.get("data") if isinstance(body, dict) else None
     if not encoded:
         return ""
-    decoded = base64.urlsafe_b64decode(str(encoded) + "===")
+    try:
+        decoded = base64.urlsafe_b64decode(str(encoded) + "===")
+    except (binascii.Error, TypeError, ValueError):
+        _warn_skipped_record("Gmail body", "unknown", "invalid base64 payload")
+        return ""
     text = decoded.decode("utf-8", errors="replace")
     return _plain_text(text, str(payload.get("mimeType") or "text/plain"))
 
@@ -764,3 +834,29 @@ def _timestamp(value: object) -> dt.datetime:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=dt.UTC)
     return parsed.astimezone(dt.UTC)
+
+
+def _google_records(value: object, kind: str) -> list[dict[str, Any]]:
+    """Return usable provider records without aborting the surrounding sync."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        print(f"{kind} list skipped: provider returned a non-list value", file=sys.stderr)
+        return []
+    records: list[dict[str, Any]] = []
+    for index, record in enumerate(value):
+        if not isinstance(record, dict):
+            print(f"{kind} skipped: record={index} is not an object", file=sys.stderr)
+            continue
+        record_id = str(record.get("id") or "").strip()
+        if not record_id:
+            print(f"{kind} skipped: record={index} has no id", file=sys.stderr)
+            continue
+        record["id"] = record_id
+        records.append(record)
+    return records
+
+
+def _warn_skipped_record(kind: str, record_id: object, reason: object) -> None:
+    safe_id = str(record_id or "unknown")
+    print(f"{kind} skipped: id={safe_id} reason={reason}", file=sys.stderr)
