@@ -143,6 +143,11 @@ export function App() {
   const searchRef = useRef<HTMLInputElement>(null)
   const sourceJobs = useSourceJobs()
   const sourceJobsError = sourceJobError || sourceJobs.error
+  const sourceJobsRetry = sourceJobError
+    ? undefined
+    : sourceJobs.error
+      ? sourceJobs.retry
+      : undefined
   const installerPollingRef = useRef(false)
   const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
   const updatePollingRef = useRef(false)
@@ -1472,7 +1477,7 @@ export function App() {
             statusError={statusError}
             onRetryStatus={retryStatus}
             sourceJobError={sourceJobsError}
-            onRetrySourceJobs={sourceJobs.retry}
+            onRetrySourceJobs={sourceJobsRetry}
             onSelect={chooseSource}
             onSelectWorkspace={chooseWorkspace}
             onDocumentQueryChange={setDocumentQuery}
@@ -1599,7 +1604,7 @@ export function App() {
           contextTokens={estimateTokens(agentContext)}
           desktopAvailable={isDesktopApp}
           sourceJobError={sourceJobsError}
-          onRetrySourceJobs={sourceJobs.retry}
+          onRetrySourceJobs={sourceJobsRetry}
           onSearchFocus={focusSearch}
           onRetrieveContext={() => void retrieveAgentContext()}
           onOpenSettings={() => setView('settings')}
