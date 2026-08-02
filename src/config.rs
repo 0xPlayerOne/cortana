@@ -398,6 +398,7 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
         );
     }
     let mut source_names = HashSet::new();
+    let mut source_scopes = HashSet::new();
     for source in &config.sources {
         anyhow::ensure!(
             !source.name.is_empty()
@@ -417,6 +418,19 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
             source_names.insert(source.name.as_str()),
             "source name `{}` is duplicated",
             source.name
+        );
+        let canonical_source = source.source.as_deref().unwrap_or(&source.name);
+        anyhow::ensure!(
+            !canonical_source.is_empty()
+                && canonical_source.len() <= 128
+                && !canonical_source.chars().any(char::is_control),
+            "source `{}` has an invalid canonical identifier",
+            source.name
+        );
+        anyhow::ensure!(
+            source_scopes.insert((source.project.as_str(), canonical_source)),
+            "source identifier `{canonical_source}` is duplicated in project `{}`",
+            source.project
         );
         anyhow::ensure!(
             SUPPORTED_SOURCE_KINDS.contains(&source.kind.as_str()),
@@ -701,6 +715,19 @@ mod tests {
             name = "notes"
             kind = "filesystem"
             project = "personal"
+            "#,
+            r#"
+            [[sources]]
+            name = "drive"
+            kind = "filesystem"
+            project = "work"
+            source = "shared"
+
+            [[sources]]
+            name = "code"
+            kind = "filesystem"
+            project = "work"
+            source = "shared"
             "#,
             r#"
             [[sources]]
