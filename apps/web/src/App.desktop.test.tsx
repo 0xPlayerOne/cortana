@@ -59,6 +59,7 @@ const state = {
   settings: desktopSettings as DesktopSettings,
   sourceJob: null as DesktopSourceJob | null,
   serviceInstallCalls: 0,
+  serviceRestartCalls: 0,
 }
 
 const serviceReport: DesktopServiceReport = {
@@ -126,6 +127,10 @@ mock.module('./api', () => ({
   getDesktopServices: () => Promise.resolve(serviceReport),
   installDesktopServices: () => {
     state.serviceInstallCalls += 1
+    return Promise.resolve(installedServiceReport)
+  },
+  runDesktopServicesActionAll: (action: 'start' | 'stop' | 'restart') => {
+    if (action === 'restart') state.serviceRestartCalls += 1
     return Promise.resolve(installedServiceReport)
   },
   getDesktopHindsightStatus: () =>
@@ -257,6 +262,31 @@ test('services settings offers an explicit safe core-service install', async () 
     expect(screen.getByText('3 loaded')).toBeTruthy()
     expect(screen.getByText(/sync service remains absent/)).toBeTruthy()
   } finally {
+    window.confirm = originalConfirm
+  }
+})
+
+test('successful aggregate restart clears the saved-settings notice', async () => {
+  const originalConfirm = window.confirm
+  const originalSettings = state.settings
+  window.confirm = () => true
+  state.settings = { ...originalSettings, restart_required: true }
+  state.serviceRestartCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    expect(screen.getByText('A service restart is required.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Open services' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
+    await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
+    expect(screen.queryByText('A service restart is required.')).toBeNull()
+  } finally {
+    state.settings = originalSettings
     window.confirm = originalConfirm
   }
 })
