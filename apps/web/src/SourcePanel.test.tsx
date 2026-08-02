@@ -309,6 +309,60 @@ test('source panel exposes setup and Google authorization actions only when requ
   expect(screen.queryByRole('button', { name: 'Authorize team-slack' })).toBeNull()
 })
 
+test('Google setup action identifies the source editor instead of a provider URL', () => {
+  let setupSource = ''
+  const actionStatus: BrainStatus = {
+    ...demoStatus,
+    ingestion: {
+      ...demoStatus.ingestion,
+      configured_sources: demoStatus.ingestion.configured_sources.map((source) =>
+        source.source === 'personal-drive'
+          ? {
+              ...source,
+              authorization: {
+                method: 'google_oauth' as const,
+                setup_required: true,
+                authorized: false,
+              },
+            }
+          : source
+      ),
+    },
+  }
+  render(
+    <SourcePanel
+      open={false}
+      status={actionStatus}
+      statusError=""
+      workspace=""
+      workspaces={[workspace]}
+      documentQuery=""
+      selected=""
+      documents={[]}
+      selectedDocument=""
+      documentsLoading={false}
+      documentsError=""
+      hasMoreDocuments={false}
+      onSelect={() => {}}
+      onSelectWorkspace={() => {}}
+      onDocumentQueryChange={() => {}}
+      onSelectDocument={() => {}}
+      onLoadMoreDocuments={() => {}}
+      onOpenSourcesSettings={() => {}}
+      onOpenSourceSetup={(source) => {
+        setupSource = source
+      }}
+      onClose={() => {}}
+      jobs={[]}
+    />
+  )
+
+  const setup = screen.getByRole('button', { name: 'Open personal-drive setup' })
+  expect(setup.getAttribute('title')).toBe('Open Google source settings')
+  fireEvent.click(setup)
+  expect(setupSource).toBe('personal-drive')
+})
+
 test('active source jobs expose a cancellation control in the source panel', () => {
   let cancelled = ''
   const job: DesktopSourceJob = {

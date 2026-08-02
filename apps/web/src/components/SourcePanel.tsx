@@ -301,7 +301,9 @@ export function SourcePanel({
                             title={
                               sourceJobActive
                                 ? 'Wait for the active source job to finish'
-                                : 'Open the provider setup page'
+                                : auth?.method === 'google_oauth'
+                                  ? 'Open Google source settings'
+                                  : 'Open the provider setup page'
                             }
                             disabled={
                               sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
