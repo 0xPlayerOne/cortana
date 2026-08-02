@@ -214,6 +214,22 @@ test('desktop settings navigation opens the audit trail and renders both event s
   await waitFor(() => expect(screen.getByText('2 runtime · 1 Desktop events')).toBeTruthy())
 })
 
+test('query number fields keep drafts inside native bounds', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Query' }))
+
+  const retrieval = screen.getByLabelText('Retrieval candidates') as HTMLInputElement
+  fireEvent.change(retrieval, { target: { value: '999' } })
+  expect(retrieval.value).toBe('100')
+  fireEvent.change(retrieval, { target: { value: '1.5' } })
+  expect(retrieval.value).toBe('100')
+})
+
 test('settings warns before discarding dirty changes', async () => {
   const originalConfirm = window.confirm
   const responses = [false, true]

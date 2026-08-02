@@ -3353,7 +3353,13 @@ function NumberField({
         value={value}
         min={min}
         max={max}
-        onChange={(event) => onChange(Number(event.target.value))}
+        onChange={(event) => {
+          const raw = event.target.value
+          if (!raw) return
+          const next = Number(raw)
+          if (!Number.isFinite(next) || !Number.isInteger(next)) return
+          onChange(Math.min(max, Math.max(min, next)))
+        }}
         required
       />
     </Field>
