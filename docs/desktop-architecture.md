@@ -36,8 +36,10 @@ native commands.
 Corpus browsing also stays behind typed native commands. The renderer may send only bounded
 project/source filters, an opaque pagination cursor, or a hex document ID. Native Rust constructs
 the fixed loopback URLs and performs the request; the renderer cannot select a host, port, path, or
-database file. The core API applies the same bearer scope and document ACL policy as retrieval,
-bounds pages to 100 summaries and content to 2 MiB, and records metadata-only list/read audits.
+database file. Original `file:` links take a second native path: the target is canonicalized and
+must remain inside a configured filesystem source root, so symlinks cannot escape the indexed
+scope. The core API applies the same bearer scope and document ACL policy as retrieval, bounds
+pages to 100 summaries and content to 2 MiB, and records metadata-only list/read audits.
 
 Readiness is user-triggered and read-only. It performs bounded version checks for uv and Python
 3.11+, locates the managed connector environment, and runs `cortana readiness` through the bundled

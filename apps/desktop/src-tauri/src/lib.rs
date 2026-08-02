@@ -1,4 +1,6 @@
 use std::{
+    fs,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
@@ -273,7 +275,22 @@ fn desktop_project_open() -> Result<(), String> {
 fn validate_external_url(url: &str) -> Result<(), String> {
     let parsed = Url::parse(url).map_err(|error| format!("invalid URL: {error}"))?;
     match parsed.scheme() {
-        "http" | "https" | "mailto" | "file" => Ok(()),
+        "http" | "https" | "mailto" => Ok(()),
+        "file" => {
+            if parsed
+                .host_str()
+                .is_some_and(|host| !host.is_empty() && host != "localhost")
+            {
+                return Err("file links must be local paths".into());
+            }
+            if parsed.query().is_some() || parsed.fragment().is_some() {
+                return Err("file links must not contain query or fragment data".into());
+            }
+            parsed
+                .to_file_path()
+                .map_err(|_| "file links must contain an absolute local path".to_string())?;
+            Ok(())
+        }
         _ => Err(format!("unsupported URL scheme: {}", parsed.scheme())),
     }
 }
@@ -281,7 +298,37 @@ fn validate_external_url(url: &str) -> Result<(), String> {
 #[tauri::command]
 fn desktop_url_open(url: String) -> Result<(), String> {
     validate_external_url(&url)?;
+    let parsed = Url::parse(&url).map_err(|error| format!("invalid URL: {error}"))?;
+    if parsed.scheme() == "file" {
+        let target = configured_file_target(&parsed)?;
+        return open::that_detached(target).map_err(|error| format!("open local source: {error}"));
+    }
     open::that_detached(url).map_err(|error| format!("open external URL: {error}"))
+}
+
+fn configured_file_target(url: &Url) -> Result<PathBuf, String> {
+    let target = url
+        .to_file_path()
+        .map_err(|_| "file links must contain an absolute local path".to_string())?;
+    let target = fs::canonicalize(&target)
+        .map_err(|error| format!("resolve local source path: {error}"))?;
+    let settings = settings::load()?;
+    let roots = settings
+        .sources
+        .iter()
+        .filter(|source| source.kind == "filesystem")
+        .filter_map(|source| source.root.as_deref())
+        .map(Path::new)
+        .filter_map(|root| fs::canonicalize(root).ok())
+        .collect::<Vec<_>>();
+    if is_within_filesystem_root(&target, &roots) {
+        return Ok(target);
+    }
+    Err("local source links must stay inside a configured filesystem source root".into())
+}
+
+fn is_within_filesystem_root(target: &Path, roots: &[PathBuf]) -> bool {
+    roots.iter().any(|root| target.starts_with(root))
 }
 
 #[tauri::command]
@@ -841,8 +888,30 @@ mod tests {
         assert!(validate_external_url("http://127.0.0.1").is_ok());
         assert!(validate_external_url("mailto:help@example.com").is_ok());
         assert!(validate_external_url("file:///tmp/cv.pdf").is_ok());
+        assert!(validate_external_url("file://remote.example/cv.pdf").is_err());
+        assert!(validate_external_url("file:///tmp/cv.pdf?download=1").is_err());
         assert!(validate_external_url("ftp://example.com").is_err());
         assert!(validate_external_url("javascript:alert(1)").is_err());
+    }
+
+    #[test]
+    fn local_file_targets_are_contained_by_configured_roots() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let root = temp.path().join("source");
+        let outside = temp.path().join("outside.txt");
+        std::fs::create_dir_all(&root).expect("source root");
+        let inside = root.join("note.md");
+        std::fs::write(&inside, "note").expect("inside file");
+        std::fs::write(&outside, "private").expect("outside file");
+        let roots = vec![fs::canonicalize(&root).expect("canonical root")];
+        assert!(is_within_filesystem_root(
+            &fs::canonicalize(&inside).expect("canonical inside"),
+            &roots
+        ));
+        assert!(!is_within_filesystem_root(
+            &fs::canonicalize(&outside).expect("canonical outside"),
+            &roots
+        ));
     }
 
     #[test]
