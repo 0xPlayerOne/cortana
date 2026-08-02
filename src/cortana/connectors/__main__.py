@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import itertools
 import os
 import sys
 from collections.abc import Iterable
@@ -23,6 +24,11 @@ def parser() -> argparse.ArgumentParser:
         "--no-cache",
         action="store_true",
         help="disable connector caches for bounded, read-only validation",
+    )
+    root.add_argument(
+        "--max-documents",
+        type=int,
+        help="stop after emitting this many documents (used by bounded validation)",
     )
     commands = root.add_subparsers(dest="connector", required=True)
 
@@ -47,7 +53,6 @@ def parser() -> argparse.ArgumentParser:
     _google_arguments(drive)
     drive.add_argument("--query", default="trashed = false")
     drive.add_argument("--max-content-chars", type=int, default=50_000)
-    drive.add_argument("--max-documents", type=int)
 
     gmail = commands.add_parser("gmail")
     _google_arguments(gmail)
@@ -62,7 +67,11 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
+    if arguments.max_documents is not None and arguments.max_documents <= 0:
+        raise RuntimeError("--max-documents must be greater than zero")
     documents = _documents(arguments)
+    if arguments.max_documents is not None:
+        documents = itertools.islice(documents, arguments.max_documents)
     count = emit(documents, sys.stdout)
     print(f"connector={arguments.connector} emitted={count}", file=sys.stderr)
     return 0
