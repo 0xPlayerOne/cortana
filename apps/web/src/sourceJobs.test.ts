@@ -71,6 +71,7 @@ const {
   isActiveJob,
   isMissingJobError,
   MAX_SOURCE_JOB_SNAPSHOTS,
+  mergeJobSnapshots,
   recentCompletedJobs,
   sourceJobAttention,
   sourceJobBudgetSeconds,
@@ -107,6 +108,21 @@ test('upsertJob does not replace a newer terminal snapshot with an older complet
   const older = jobOf('a', 'failed', { completed_at_unix_seconds: 1785000100 })
 
   expect(upsertJob([newer], older)).toEqual([newer])
+})
+
+test('mergeJobSnapshots refreshes remembered ids without accepting stale recovery data', () => {
+  const remembered = jobOf('job-1', 'running')
+  const recovered = jobOf('job-1', 'succeeded', {
+    summary: 'recovered completion',
+    completed_at_unix_seconds: 1785000200,
+  })
+  expect(mergeJobSnapshots([remembered], [recovered])[0]).toEqual(recovered)
+
+  const newer = jobOf('job-1', 'succeeded', {
+    summary: 'newer renderer completion',
+    completed_at_unix_seconds: 1785000300,
+  })
+  expect(mergeJobSnapshots([newer], [recovered])[0]).toEqual(newer)
 })
 
 test('upsertJob keeps the snapshot list bounded to the newest entries', () => {
@@ -262,6 +278,24 @@ test('the hook recovers native source-job snapshots on mount', async () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
   })
   expect(result.current.jobs.map((job) => job.id)).toEqual(['recovered-running', 'recovered-done'])
+  unmount()
+})
+
+test('the hook lets recovery refresh a job remembered during mount', async () => {
+  state.recovered = [
+    jobOf('remembered-done', 'succeeded', {
+      summary: 'recovered completion',
+      completed_at_unix_seconds: 1785000200,
+    }),
+  ]
+  const { result, unmount } = renderHook(() => useSourceJobs())
+  act(() => result.current.remember(jobOf('remembered-done', 'running')))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+  expect(result.current.jobs[0]?.status).toBe('succeeded')
+  expect(result.current.jobs[0]?.summary).toBe('recovered completion')
   unmount()
 })
 

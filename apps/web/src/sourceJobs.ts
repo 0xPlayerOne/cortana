@@ -32,6 +32,17 @@ export function upsertJob(jobs: DesktopSourceJob[], next: DesktopSourceJob): Des
   return [next, ...jobs.filter((job) => job.id !== next.id)].slice(0, MAX_SOURCE_JOB_SNAPSHOTS)
 }
 
+/** Merge a native recovery snapshot without regressing a newer renderer state. */
+export function mergeJobSnapshots(
+  jobs: DesktopSourceJob[],
+  recovered: DesktopSourceJob[]
+): DesktopSourceJob[] {
+  // Native snapshots are newest-first. Apply them oldest-first so the final
+  // list keeps the same newest-first ordering as upsertJob while still using
+  // its stale-poll protection for ids already remembered by the shell.
+  return [...recovered].reverse().reduce(upsertJob, jobs)
+}
+
 function snapshotRegresses(existing: DesktopSourceJob, next: DesktopSourceJob): boolean {
   if (existing.completed_at_unix_seconds !== null) {
     if (next.completed_at_unix_seconds === null) return true
@@ -145,13 +156,7 @@ export function useSourceJobs() {
     void getDesktopSourceJobs()
       .then((next) => {
         if (disposed) return
-        setJobs((current) => {
-          const known = new Set(current.map((job) => job.id))
-          return [...current, ...next.filter((job) => !known.has(job.id))].slice(
-            0,
-            MAX_SOURCE_JOB_SNAPSHOTS
-          )
-        })
+        setJobs((current) => mergeJobSnapshots(current, next))
       })
       .catch(() => {
         // A fresh native process may have no source-job state yet. The
