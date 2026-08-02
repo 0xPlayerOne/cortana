@@ -236,6 +236,8 @@ Rust. The renderer can display version metadata, release notes, the compiled cha
 download progress, but cannot override the feed URL, signature key, download URL, or expected
 version. Installation requires explicit confirmation and verifies the announced signature before
 replacing the app.
+The signed download and install operation is capped at 30 minutes; a timeout preserves the
+verified pending update for an explicit retry and records a metadata-only failure audit.
 
 On macOS, an unsigned local application bundle can be produced separately:
 
