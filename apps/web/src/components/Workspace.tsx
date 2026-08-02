@@ -25,7 +25,8 @@ async function openSourceLink(href: string) {
   try {
     await openDesktopUrl(href)
   } catch {
-    window.open(href, '_blank', 'noopener,noreferrer')
+    // Desktop URL policy is enforced natively. Never fall back to a renderer
+    // window, which could bypass the configured-root check for file links.
   }
 }
 
