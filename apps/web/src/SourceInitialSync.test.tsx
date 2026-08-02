@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { desktopSettings } from './test/fixtures'
 import type {
   DesktopInitialSyncPlan,
+  DesktopServiceReport,
   DesktopSettings,
   DesktopSourceJob,
   InitialSyncBudget,
@@ -12,6 +13,19 @@ import type {
 import { INITIAL_SYNC_BUDGETS } from './types'
 
 afterEach(cleanup)
+
+type Deferred<T> = {
+  promise: Promise<T>
+  resolve: (value: T) => void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((next) => {
+    resolve = next
+  })
+  return { promise, resolve }
+}
 
 const workSource: SourceSettings = {
   name: 'work-code',
@@ -101,6 +115,10 @@ const state = {
   runningJob: null as DesktopSourceJob | null,
   cancelCalls: [] as string[],
   pollCount: 0,
+  servicesCalls: 0,
+  serviceRefreshAfterAction: null as Deferred<DesktopServiceReport> | null,
+  serviceActionResponse: null as Deferred<DesktopServiceReport> | null,
+  serviceRefreshReports: [] as DesktopServiceReport[],
 }
 
 beforeEach(() => {
@@ -113,6 +131,10 @@ beforeEach(() => {
   state.runningJob = null
   state.cancelCalls = []
   state.pollCount = 0
+  state.servicesCalls = 0
+  state.serviceRefreshAfterAction = null
+  state.serviceActionResponse = null
+  state.serviceRefreshReports = []
 })
 
 mock.module('./api', () => ({
@@ -127,7 +149,20 @@ mock.module('./api', () => ({
       platform: 'macos',
     }),
   getDesktopUpdate: () => Promise.reject(new Error('Updates unavailable')),
-  getDesktopServices: () => Promise.reject(new Error('Services unavailable')),
+  getDesktopServices: () => {
+    state.servicesCalls += 1
+    if (state.servicesCalls === 1) {
+      const stale = state.serviceRefreshReports[0]
+      return Promise.resolve(stale)
+    }
+    return state.serviceRefreshAfterAction
+      ? state.serviceRefreshAfterAction.promise
+      : Promise.resolve(state.serviceRefreshReports.at(-1) ?? state.serviceRefreshReports[0])
+  },
+  runDesktopServicesActionAll: (_action: 'start' | 'stop' | 'restart') => {
+    if (!state.serviceActionResponse) return Promise.reject(new Error('Service action unavailable'))
+    return state.serviceActionResponse.promise
+  },
   getRuntimeAudit: () => Promise.resolve([]),
   getDesktopAudit: () => Promise.resolve([]),
   planDesktopInitialSync: (source: string, budget: InitialSyncBudget) => {
@@ -170,9 +205,110 @@ mock.module('./api', () => ({
 
 const { SettingsView } = await import('./components/SettingsView')
 
+function oldServicesReport(): DesktopServiceReport {
+  return {
+    platform: 'macos',
+    supported: true,
+    services: [
+      {
+        name: 'server',
+        label: 'ai.cortana.server',
+        installed: true,
+        loaded: false,
+        state: null,
+        pid: null,
+        last_exit_status: null,
+      },
+      {
+        name: 'embedding',
+        label: 'ai.cortana.embedding',
+        installed: true,
+        loaded: false,
+        state: null,
+        pid: null,
+        last_exit_status: null,
+      },
+    ],
+  }
+}
+
+function runningServicesReport(): DesktopServiceReport {
+  return {
+    platform: 'macos',
+    supported: true,
+    services: [
+      {
+        name: 'server',
+        label: 'ai.cortana.server',
+        installed: true,
+        loaded: true,
+        state: 'running',
+        pid: 12345,
+        last_exit_status: null,
+      },
+      {
+        name: 'embedding',
+        label: 'ai.cortana.embedding',
+        installed: true,
+        loaded: true,
+        state: 'running',
+        pid: 12346,
+        last_exit_status: null,
+      },
+    ],
+  }
+}
+
 function openSources() {
   render(<SettingsView onSaved={() => {}} initialSection="sources" />)
 }
+
+test('service action result is not overwritten by stale local refresh', async () => {
+  const originalSetInterval = window.setInterval
+  const originalClearInterval = window.clearInterval
+  const originalConfirm = window.confirm
+  let poll: (() => void) | undefined
+  state.servicesCalls = 0
+  state.serviceRefreshReports = [oldServicesReport()]
+  state.serviceRefreshAfterAction = deferred<DesktopServiceReport>()
+  state.serviceActionResponse = deferred<DesktopServiceReport>()
+  const staleRefresh = state.serviceRefreshAfterAction!
+  const stale = oldServicesReport()
+  const fresh = runningServicesReport()
+
+  window.setInterval = ((callback: () => void) => {
+    poll = callback
+    return 1 as unknown as number
+  }) as typeof window.setInterval
+  window.clearInterval = (() => undefined) as typeof window.clearInterval
+  window.confirm = () => true
+
+  try {
+    render(
+      <SettingsView onSaved={() => {}} initialSection="services" desktopSettings={state.settings} />
+    )
+
+    await waitFor(() => expect(screen.getByText('0 loaded')).toBeTruthy())
+    if (!poll) throw new Error('Expected local services poll callback to be registered')
+    act(() => {
+      poll?.()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
+    state.serviceActionResponse.resolve(fresh)
+
+    await waitFor(() => expect(screen.getByText(/PID 12345/)).toBeTruthy())
+
+    act(() => {
+      staleRefresh.resolve(stale)
+    })
+
+    await waitFor(() => expect(screen.getByText(/PID 12345/)).toBeTruthy())
+  } finally {
+    window.setInterval = originalSetInterval
+    window.clearInterval = originalClearInterval
+    window.confirm = originalConfirm
+  }
+})
 
 test('a shared active source job locks source actions until it finishes', async () => {
   const activeJob = {

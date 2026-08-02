@@ -637,7 +637,13 @@ function ServicesSection({
   const [localError, setLocalError] = useState('')
   const error = localError || externalServicesError || ''
   const refreshInFlightRef = useRef(false)
+  const actionInFlightRef = useRef(false)
   const mountedRef = useRef(true)
+  const servicesRequestRef = useRef(0)
+
+  const isFreshServicesRequest = (requestId: number) => {
+    return mountedRef.current && requestId === servicesRequestRef.current
+  }
 
   // Desktop shells own service status errors. When a parent shell refresh
   // succeeds after a previous section-local failure, clear stale local messages
@@ -649,17 +655,18 @@ function ServicesSection({
   }, [externalServicesError])
 
   const refresh = async () => {
-    if (refreshInFlightRef.current) return
+    if (refreshInFlightRef.current || actionInFlightRef.current) return
     refreshInFlightRef.current = true
+    const requestId = ++servicesRequestRef.current
     setLocalError('')
     try {
       const [nextReport, nextInfo] = await Promise.all([getDesktopServices(), getDesktopInfo()])
-      if (!mountedRef.current) return
+      if (!isFreshServicesRequest(requestId)) return
       setReport(nextReport)
       setInfo(nextInfo)
       onServicesError?.('')
     } catch (caught) {
-      if (!mountedRef.current) return
+      if (!isFreshServicesRequest(requestId)) return
       const message =
         caught instanceof Error ? caught.message : 'Service status could not be loaded'
       setLocalError(message)
@@ -689,6 +696,8 @@ function ServicesSection({
         : ''
     if (!window.confirm(`${action} ${service.label}?${warning}`)) return
     setBusy(`${service.name}:${action}`)
+    actionInFlightRef.current = true
+    servicesRequestRef.current += 1
     setLocalError('')
     onServiceActivity?.({
       target: service.name,
@@ -698,6 +707,7 @@ function ServicesSection({
     })
     try {
       const next = await runDesktopServiceAction(service.name, action)
+      if (!mountedRef.current) return
       setReport(next)
       onServicesError?.('')
       onServiceActivity?.({
@@ -716,20 +726,25 @@ function ServicesSection({
         detail: message,
       })
     } finally {
+      actionInFlightRef.current = false
       setBusy('')
     }
   }
 
   const toggleAutostart = async (enabled: boolean) => {
     setBusy('autostart')
+    actionInFlightRef.current = true
+    servicesRequestRef.current += 1
     setLocalError('')
     try {
-      setInfo(await setDesktopAutostart(enabled))
+      const next = await setDesktopAutostart(enabled)
+      if (mountedRef.current) setInfo(next)
     } catch (caught) {
       setLocalError(
         caught instanceof Error ? caught.message : 'Desktop autostart could not be changed'
       )
     } finally {
+      actionInFlightRef.current = false
       setBusy('')
     }
   }
@@ -743,10 +758,13 @@ function ServicesSection({
       return
     }
     setBusy(`all:${action}`)
+    actionInFlightRef.current = true
+    servicesRequestRef.current += 1
     setLocalError('')
     onServiceActivity?.({ target: 'core services', action, status: 'running', detail: null })
     try {
       const next = await runDesktopServicesActionAll(action)
+      if (!mountedRef.current) return
       setReport(next)
       onServicesError?.('')
       onServiceActivity?.({ target: 'core services', action, status: 'succeeded', detail: null })
@@ -761,6 +779,7 @@ function ServicesSection({
         detail: message,
       })
     } finally {
+      actionInFlightRef.current = false
       setBusy('')
     }
   }
@@ -774,6 +793,8 @@ function ServicesSection({
       return
     }
     setBusy('install')
+    actionInFlightRef.current = true
+    servicesRequestRef.current += 1
     setLocalError('')
     onServiceActivity?.({
       target: 'core services',
@@ -783,6 +804,7 @@ function ServicesSection({
     })
     try {
       const next = await installDesktopServices()
+      if (!mountedRef.current) return
       setReport(next)
       onServicesError?.('')
       onServiceActivity?.({
@@ -802,6 +824,7 @@ function ServicesSection({
         detail: message,
       })
     } finally {
+      actionInFlightRef.current = false
       setBusy('')
     }
   }
