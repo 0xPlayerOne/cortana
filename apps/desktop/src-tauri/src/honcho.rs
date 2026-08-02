@@ -74,6 +74,7 @@ pub async fn status() -> Result<HonchoStatus, String> {
     let client = Client::builder()
         .connect_timeout(HEALTH_TIMEOUT)
         .timeout(HEALTH_TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|error| format!("build Honcho health client: {error}"))?;
     let mut request = client.get(url);
