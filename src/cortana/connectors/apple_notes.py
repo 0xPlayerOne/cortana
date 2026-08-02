@@ -4,6 +4,7 @@ import datetime as dt
 import json
 import subprocess
 from collections.abc import Iterable
+from typing import Any
 
 from .model import Document
 
@@ -26,6 +27,7 @@ for (const account of Notes.accounts()) {
 }
 JSON.stringify(rows);
 """
+MAX_EXPORT_BYTES = 64 * 1024 * 1024
 
 
 def fetch(project: str = "personal", timeout: int = 120) -> Iterable[Document]:
@@ -42,7 +44,20 @@ def fetch(project: str = "personal", timeout: int = 120) -> Iterable[Document]:
             "Apple Notes automation timed out; open Notes and grant Automation access to "
             "the invoking terminal or Cortana service"
         ) from error
-    for row in json.loads(result.stdout):
+    if len(result.stdout.encode("utf-8")) > MAX_EXPORT_BYTES:
+        raise RuntimeError(
+            f"Apple Notes export exceeds the {MAX_EXPORT_BYTES} byte safety limit; "
+            "narrow the source before retrying"
+        )
+    try:
+        rows: Any = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError("Apple Notes returned malformed JSON") from error
+    if not isinstance(rows, list):
+        raise RuntimeError("Apple Notes returned an invalid export shape")
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
         content = str(row.get("body") or "").strip()
         if not content:
             continue

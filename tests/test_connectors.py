@@ -103,6 +103,22 @@ def test_apple_notes_reports_actionable_timeout(monkeypatch: pytest.MonkeyPatch)
         list(apple_notes.fetch())
 
 
+def test_apple_notes_rejects_malformed_or_oversized_exports(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    malformed = subprocess.CompletedProcess(args=[], returncode=0, stdout="{}", stderr="")
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: malformed)
+    with pytest.raises(RuntimeError, match="invalid export shape"):
+        list(apple_notes.fetch())
+
+    oversized = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout="x" * (apple_notes.MAX_EXPORT_BYTES + 1), stderr=""
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: oversized)
+    with pytest.raises(RuntimeError, match="safety limit"):
+        list(apple_notes.fetch())
+
+
 def test_buzz_reads_personas_and_logs_read_only(tmp_path: Path) -> None:
     agents = tmp_path / "agents"
     logs = agents / "logs"
