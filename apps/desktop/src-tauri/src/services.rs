@@ -39,6 +39,35 @@ pub async fn status(app: &AppHandle) -> Result<ServiceReport, String> {
     parse_report(&output.stdout, &output.stderr, output.status.success())
 }
 
+/// Install the safe, query-only service set from the bundled runtime.
+///
+/// This deliberately does not install recurring ingestion. The operator can
+/// still opt into that separately with the CLI after validating source
+/// budgets, preserving the same safe default as `cortana service install`.
+pub async fn install(app: &AppHandle, approved: bool) -> Result<ServiceReport, String> {
+    if !approved {
+        return Err("service installation requires explicit approval".into());
+    }
+    let use_local_embedding = settings::load()?.embedding.provider == "local";
+    let mut args = vec!["service", "install", "--no-web"];
+    if !use_local_embedding {
+        args.push("--no-embedding-service");
+    }
+    let output = match sidecar_output(app, &args).await {
+        Ok(output) => output,
+        Err(error) => {
+            audit_action("service.install", "install", &[], "failed", None);
+            return Err(error);
+        }
+    };
+    if !output.status.success() {
+        audit_action("service.install", "install", &[], "failed", None);
+        return Err(bounded_error(&output.stderr));
+    }
+    audit_action("service.install", "install", &[], "completed", None);
+    status(app).await
+}
+
 pub async fn action(
     app: &AppHandle,
     service: &str,

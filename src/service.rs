@@ -35,7 +35,8 @@ pub struct ServiceStatus {
 
 pub struct InstallOptions<'a> {
     pub config: &'a Path,
-    pub web_dir: &'a Path,
+    pub web_dir: Option<&'a Path>,
+    pub no_web: bool,
     pub working_directory: &'a Path,
     pub sync_seconds: u64,
     pub backup_seconds: u64,
@@ -49,11 +50,16 @@ pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
         options.config.is_file(),
         "configuration file does not exist"
     );
-    anyhow::ensure!(
-        options.web_dir.join("index.html").is_file(),
-        "workspace build is missing: {}",
-        options.web_dir.display()
-    );
+    if !options.no_web {
+        let web_dir = options
+            .web_dir
+            .context("workspace directory is required unless --no-web is used")?;
+        anyhow::ensure!(
+            web_dir.join("index.html").is_file(),
+            "workspace build is missing: {}",
+            web_dir.display()
+        );
+    }
     let executable = std::env::current_exe()?.canonicalize()?;
     let launch_agents = launch_agents_directory()?;
     let logs = config.data_dir.join("logs");
@@ -72,6 +78,7 @@ pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
         options.backup_seconds,
         options.install_embedding,
         options.install_sync,
+        options.no_web,
     );
 
     for label in LABELS {
@@ -94,11 +101,12 @@ pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
 
 fn configured_jobs(
     common: &[String],
-    web_dir: &Path,
+    web_dir: Option<&Path>,
     sync_seconds: u64,
     backup_seconds: u64,
     install_embedding: bool,
     install_sync: bool,
+    no_web: bool,
 ) -> Vec<Job> {
     let mut jobs = Vec::new();
     if install_embedding {
@@ -108,9 +116,11 @@ fn configured_jobs(
             schedule: Schedule::KeepAlive,
         });
     }
-    jobs.push(Job {
-        label: "ai.cortana.server",
-        arguments: [
+    let server_arguments = if no_web {
+        [common.to_vec(), vec!["serve".into(), "--no-web".into()]].concat()
+    } else {
+        let web_dir = web_dir.expect("web directory required for workspace service");
+        [
             common.to_vec(),
             vec![
                 "serve".into(),
@@ -118,7 +128,11 @@ fn configured_jobs(
                 web_dir.display().to_string(),
             ],
         ]
-        .concat(),
+        .concat()
+    };
+    jobs.push(Job {
+        label: "ai.cortana.server",
+        arguments: server_arguments,
         schedule: Schedule::KeepAlive,
     });
     if install_sync {
@@ -481,15 +495,45 @@ mod tests {
     #[test]
     fn recurring_sync_job_requires_explicit_opt_in() {
         let common = vec!["cortana".into(), "--config".into(), "config.toml".into()];
-        let safe = configured_jobs(&common, Path::new("/tmp/web"), 900, 86_400, true, false);
+        let safe = configured_jobs(
+            &common,
+            Some(Path::new("/tmp/web")),
+            900,
+            86_400,
+            true,
+            false,
+            false,
+        );
         assert!(
             safe.iter().all(|job| job.label != "ai.cortana.sync"),
             "safe installation must be query-only by default"
         );
-        let scheduled = configured_jobs(&common, Path::new("/tmp/web"), 900, 86_400, true, true);
+        let scheduled = configured_jobs(
+            &common,
+            Some(Path::new("/tmp/web")),
+            900,
+            86_400,
+            true,
+            true,
+            false,
+        );
         assert!(
             scheduled.iter().any(|job| job.label == "ai.cortana.sync"),
             "explicit opt-in must install the recurring sync job"
+        );
+    }
+
+    #[test]
+    fn no_web_install_uses_api_only_server_arguments() {
+        let common = vec!["cortana".into(), "--config".into(), "config.toml".into()];
+        let jobs = configured_jobs(&common, None, 900, 86_400, true, false, true);
+        let server = jobs
+            .iter()
+            .find(|job| job.label == "ai.cortana.server")
+            .expect("server job");
+        assert_eq!(
+            server.arguments,
+            ["cortana", "--config", "config.toml", "serve", "--no-web"]
         );
     }
 

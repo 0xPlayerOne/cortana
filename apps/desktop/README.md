@@ -61,8 +61,10 @@ metadata-only audit events.
 Closing the main window hides it to the tray. Use **Quit Cortana Desktop** from the tray menu to
 exit the control plane. This does not stop the independently managed Cortana services.
 
-The **Services** panel shows structured launchd state and controls installed embedding, server,
+The **Services** panel shows structured launchd state, can explicitly install the safe query-only
+embedding/server/backup set from the bundled runtime, and controls installed embedding, server,
 backup, and (only when explicitly installed elsewhere) sync jobs through fixed native actions.
+Installation requires confirmation and never installs or enables recurring ingestion.
 Desktop-at-login controls only the tray application and never installs or starts ingestion.
 
 Aggregate service actions control only embedding and server; recurring sync and backup are always

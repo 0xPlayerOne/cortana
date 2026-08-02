@@ -70,6 +70,11 @@ export async function getDesktopServices(): Promise<DesktopServiceReport> {
   return invokeDesktop<DesktopServiceReport>('desktop_services_status')
 }
 
+export async function installDesktopServices(): Promise<DesktopServiceReport> {
+  if (!isDesktopApp) throw new Error('Service installation is available in Cortana Desktop')
+  return invokeDesktop<DesktopServiceReport>('desktop_services_install', { approved: true })
+}
+
 export async function getDesktopHindsightStatus(): Promise<DesktopHindsightStatus> {
   if (!isDesktopApp) throw new Error('Hindsight status is available in Cortana Desktop')
   return invokeDesktop<DesktopHindsightStatus>('desktop_hindsight_status')

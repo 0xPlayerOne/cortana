@@ -34,6 +34,7 @@ import {
   getDesktopUpdate,
   getRuntimeAudit,
   installDesktopUpdate,
+  installDesktopServices,
   importDesktopSettings,
   isDesktopApp,
   openDesktopSourceSetup,
@@ -520,6 +521,25 @@ function ServicesSection() {
     }
   }
 
+  const install = async () => {
+    if (
+      !window.confirm(
+        'Install Cortana background services for this user?\n\nThis installs the API, local embedding (when configured), and verified backup jobs. It does not install or enable recurring ingestion.'
+      )
+    ) {
+      return
+    }
+    setBusy('install')
+    setError('')
+    try {
+      setReport(await installDesktopServices())
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Cortana services could not be installed')
+    } finally {
+      setBusy('')
+    }
+  }
+
   return (
     <SettingsSection
       title="Services"
@@ -566,6 +586,21 @@ function ServicesSection() {
           <button type="button" className="secondary-button" onClick={() => void refresh()}>
             <RefreshCw size={14} /> Refresh
           </button>
+          {report?.supported && !report.services.some((service) => service.installed) && (
+            <button
+              type="button"
+              className="primary-button"
+              disabled={Boolean(busy)}
+              onClick={() => void install()}
+            >
+              {busy === 'install' ? (
+                <LoaderCircle className="spin" size={14} />
+              ) : (
+                <Download size={14} />
+              )}{' '}
+              Install core services
+            </button>
+          )}
         </div>
       </div>
       {error && <div className="safety-note">{error}</div>}

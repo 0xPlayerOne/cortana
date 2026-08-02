@@ -140,8 +140,10 @@ Closing the main window hides it. The tray continues to report runtime, corpus, 
 ingestion status. Quitting from the tray exits only the desktop process; it does not silently stop
 the runtime or start a sync. A second desktop launch focuses the existing window.
 
-The Services panel reads a bounded structured report from the bundled sidecar and accepts only
-the fixed `embedding`, `server`, `sync`, and `backup` IDs with `start`, `stop`, or `restart`.
+The Services panel reads a bounded structured report from the bundled sidecar and can explicitly
+install the safe query-only service set (embedding when the configured provider is local, server,
+and backup) through the fixed `service install --no-web` command. It accepts only the fixed
+`embedding`, `server`, `sync`, and `backup` IDs with `start`, `stop`, or `restart`.
 Every action requires an explicit confirmation and is audited without command output or secrets.
 An uninstalled sync job remains uninstalled and cannot be enabled from this panel. Desktop
 autostart is managed separately and does not change runtime-service or ingestion state.

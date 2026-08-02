@@ -254,6 +254,11 @@ enum ServiceAction {
     Install {
         #[arg(long, default_value = "apps/web/dist")]
         web_dir: PathBuf,
+        #[arg(
+            long,
+            help = "Install the API service without serving the workspace assets"
+        )]
+        no_web: bool,
         #[arg(long)]
         working_directory: Option<PathBuf>,
         #[arg(long, default_value_t = 900)]
@@ -1364,15 +1369,20 @@ fn manage_service(
     match action {
         ServiceAction::Install {
             web_dir,
+            no_web,
             working_directory,
             sync_seconds,
             backup_seconds,
             no_embedding_service,
             enable_sync_service,
         } => {
-            let web_dir = web_dir.canonicalize().with_context(|| {
-                format!("workspace directory does not exist: {}", web_dir.display())
-            })?;
+            let web_dir = if *no_web {
+                None
+            } else {
+                Some(web_dir.canonicalize().with_context(|| {
+                    format!("workspace directory does not exist: {}", web_dir.display())
+                })?)
+            };
             let working_directory = working_directory
                 .clone()
                 .unwrap_or(std::env::current_dir()?)
@@ -1381,7 +1391,8 @@ fn manage_service(
                 config,
                 service::InstallOptions {
                     config: &config_path.canonicalize()?,
-                    web_dir: &web_dir,
+                    web_dir: web_dir.as_deref(),
+                    no_web: *no_web,
                     working_directory: &working_directory,
                     sync_seconds: *sync_seconds,
                     backup_seconds: *backup_seconds,
