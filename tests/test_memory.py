@@ -470,3 +470,13 @@ def test_outbox_rejects_symlinked_paths_and_keeps_sqlite_private(tmp_path) -> No
     for sidecar in (tmp_path / "private.sqlite3-wal", tmp_path / "private.sqlite3-shm"):
         if sidecar.exists():
             assert sidecar.stat().st_mode & 0o777 == 0o600
+
+    external_directory = tmp_path / "external"
+    external_directory.mkdir()
+    linked_directory = tmp_path / "linked-directory"
+    try:
+        linked_directory.symlink_to(external_directory, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks are unavailable in this test environment")
+    with pytest.raises(OutboxError, match="directory must not contain a symlink"):
+        Outbox(linked_directory / "redirected.sqlite3")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import stat
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -517,6 +518,7 @@ class Outbox:
 def _prepare_private_sqlite_path(path: Path) -> None:
     """Create or validate an owner-only outbox and reject symlink/hard-link targets."""
 
+    _reject_symlink_components(path.parent)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
     except OSError as error:
@@ -547,6 +549,23 @@ def _prepare_private_sqlite_path(path: Path) -> None:
                 artifact.chmod(0o600)
             except OSError as error:
                 raise OutboxError(f"secure outbox artifact permissions: {error}") from error
+
+
+def _reject_symlink_components(path: Path) -> None:
+    current = path
+    while True:
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            if current == current.parent:
+                return
+            current = current.parent
+            continue
+        if stat.S_ISLNK(metadata.st_mode):
+            raise OutboxError(f"outbox directory must not contain a symlink: {current}")
+        if current == current.parent:
+            return
+        current = current.parent
 
 
 def _secure_sqlite_artifacts(path: Path) -> None:
