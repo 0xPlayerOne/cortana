@@ -1033,7 +1033,13 @@ export function App() {
           <FileText size={13} /> Docs: {(status?.documents ?? 0).toLocaleString()}
         </span>
         <IngestionIndicator status={status} />
-        <ActiveSourceJobs jobs={sourceJobs.jobs} />
+        <ActiveSourceJobs
+          jobs={sourceJobs.jobs}
+          onOpen={() => {
+            if (!canLeaveSettings()) return
+            setView('inbox')
+          }}
+        />
         <InstallerIndicator
           job={installerJob}
           onOpen={() => {
@@ -1089,17 +1095,23 @@ function IngestionIndicator({ status }: { status: BrainStatus | null }) {
   )
 }
 
-function ActiveSourceJobs({ jobs }: { jobs: DesktopSourceJob[] }) {
+function ActiveSourceJobs({ jobs, onOpen }: { jobs: DesktopSourceJob[]; onOpen: () => void }) {
   const active = activeJobs(jobs)
   if (active.length === 0) return null
   const detail = active
     .map((job) => `${job.source} · ${job.operation} · ${describeSourceJobProgress(job)}`)
     .join(', ')
   return (
-    <span className="source-jobs" role="status" title={detail}>
+    <button
+      type="button"
+      className="source-jobs status-link"
+      aria-label="Open active source jobs"
+      title={`${detail}. Open the activity inbox.`}
+      onClick={onOpen}
+    >
       <LoaderCircle className="spin" size={13} /> {active.length} active source job
       {active.length === 1 ? '' : 's'}
-    </span>
+    </button>
   )
 }
 

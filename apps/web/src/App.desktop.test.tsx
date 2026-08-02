@@ -638,9 +638,13 @@ test('running source jobs stay visible in the shell after leaving the settings v
     fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
     await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
     expect(screen.getByText('1 active source job')).toBeTruthy()
-    const activeJobs = screen.getByLabelText('Active source jobs')
+    const activeJobs = screen.getByRole('button', { name: 'Open active source jobs' })
     expect(activeJobs).toBeTruthy()
-    expect(activeJobs.textContent).toContain('work-code · validation · running')
+    expect(activeJobs.getAttribute('title')).toContain('work-code · validation')
+
+    fireEvent.click(activeJobs)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Inbox' })).toBeTruthy())
+    expect(screen.getByRole('heading', { name: 'Active source jobs' })).toBeTruthy()
   } finally {
     window.confirm = originalConfirm
     state.settings = desktopSettings
