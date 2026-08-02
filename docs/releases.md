@@ -59,6 +59,25 @@ The aggregate fails on any dependency failure or cancellation rather than
 silently skipping, so a real regression can never hide behind the release-please
 fast path.
 
+### macOS publisher trust
+
+The release workflow keeps platform signing opt-in. Without Apple credentials,
+macOS artifacts use the existing ad-hoc identity (`-`); the Tauri updater
+signature still protects update payloads, but Gatekeeper will not treat the app
+as a notarized Developer ID application. To enable trusted distribution, add
+these repository secrets together:
+
+- `APPLE_CERTIFICATE`: base64-encoded Developer ID `.p12` certificate;
+- `APPLE_CERTIFICATE_PASSWORD`: the `.p12` export password;
+- `APPLE_SIGNING_IDENTITY`: the exact Developer ID Application identity;
+- `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID`: the Apple account and
+  notarization credentials.
+
+The workflow passes them only to the macOS Tauri release job. Never commit
+certificate material or credentials to the repository. If the secrets are
+absent, the release remains usable for local testing and updater verification,
+but should not be advertised as notarized macOS distribution.
+
 Desktop artifacts also carry the connector package source as a Tauri resource. The
 application never embeds credentials or a machine-specific virtual environment; after an
 explicit Readiness approval, native Rust uses the local `uv` executable to create the per-user
