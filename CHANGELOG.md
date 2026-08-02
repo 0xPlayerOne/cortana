@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.2](https://github.com/0xPlayerOne/cortana/compare/v0.19.1...v0.19.2) (2026-08-02)
+
+
+### Bug Fixes
+
+* **desktop:** guard global search and source cancellation ([#249](https://github.com/0xPlayerOne/cortana/issues/249)) ([f156f2b](https://github.com/0xPlayerOne/cortana/commit/f156f2ba238190f8cfe3bab90b604a92f862f6b1))
+
 ## [0.19.1](https://github.com/0xPlayerOne/cortana/compare/v0.19.0...v0.19.1) (2026-08-02)
 
 
