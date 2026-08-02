@@ -26,19 +26,46 @@ IFS=: read -r -a roots <<< "$skill_roots"
 for root in "${roots[@]}"; do
   [[ -n "$root" ]] || continue
   destination="$root/cortana"
-  stage="$root/.cortana.stage.$$"
-  previous="$root/.cortana.previous.$$"
+  install -d -m 0755 "$root"
+  stage="$(mktemp -d "$root/.cortana.stage.XXXXXX")"
+  previous_dir="$(mktemp -d "$root/.cortana.previous.XXXXXX")"
+  previous="$previous_dir/cortana"
+  moved_previous=0
 
-  install -d -m 0755 "$root" "$stage"
-  cp -R "$skill_source/." "$stage/"
-  find "$stage" -type d -exec chmod 0755 {} +
-  find "$stage" -type f -exec chmod 0644 {} +
+  rollback() {
+    if ((moved_previous)) && [[ ! -e "$destination" && ! -L "$destination" ]] && [[ -e "$previous" ]]; then
+      mv "$previous" "$destination" || true
+    fi
+    rm -rf -- "$stage" "$previous_dir"
+  }
 
-  if [[ -e "$destination" ]]; then
-    mv "$destination" "$previous"
+  if ! cp -R "$skill_source/." "$stage/" ||
+    ! find "$stage" -type d -exec chmod 0755 {} + ||
+    ! find "$stage" -type f -exec chmod 0644 {} +; then
+    rollback
+    echo "Unable to stage Cortana skill for $root" >&2
+    exit 1
   fi
-  mv "$stage" "$destination"
-  rm -rf "$previous"
+
+  if [[ -L "$destination" ]]; then
+    rollback
+    echo "Refusing to replace symlinked Cortana skill: $destination" >&2
+    exit 1
+  fi
+  if [[ -e "$destination" ]]; then
+    if ! mv "$destination" "$previous"; then
+      rollback
+      echo "Unable to preserve existing Cortana skill: $destination" >&2
+      exit 1
+    fi
+    moved_previous=1
+  fi
+  if ! mv "$stage" "$destination"; then
+    rollback
+    echo "Unable to install Cortana skill: $destination" >&2
+    exit 1
+  fi
+  rm -rf -- "$previous_dir"
   echo "Installed Cortana skill: $destination"
 done
 
