@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { Workspace } from './components/Workspace'
 import { safeSourceLink } from './sourceLinks'
@@ -102,4 +102,23 @@ test('supported app source links keep an explicit open-source affordance', () =>
     expect(link.getAttribute('href')).toBe(uri)
     expect(link.getAttribute('title')).toBe('Open original source')
   }
+})
+
+test('graph failures expose a retry action', () => {
+  let retries = 0
+  render(
+    <Workspace
+      {...props}
+      document={null}
+      tab="graph"
+      graphError="Graph data unavailable"
+      onRetryGraph={() => {
+        retries += 1
+      }}
+    />
+  )
+
+  expect(screen.getByRole('heading', { name: 'Graph unavailable' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+  expect(retries).toBe(1)
 })

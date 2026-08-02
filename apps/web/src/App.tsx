@@ -131,6 +131,7 @@ export function App() {
   const [graph, setGraph] = useState<BrainGraphPage | null>(null)
   const [graphLoading, setGraphLoading] = useState(false)
   const [graphError, setGraphError] = useState('')
+  const [graphRetryNonce, setGraphRetryNonce] = useState(0)
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
   )
@@ -413,7 +414,15 @@ export function App() {
         }
       })
     return () => controller.abort()
-  }, [debouncedDocumentQuery, documentFetchReady, source, view, workspace, workspaceTab])
+  }, [
+    debouncedDocumentQuery,
+    documentFetchReady,
+    graphRetryNonce,
+    source,
+    view,
+    workspace,
+    workspaceTab,
+  ])
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -1183,6 +1192,10 @@ export function App() {
     setWorkspaceTab('graph')
   }
 
+  function retryGraph() {
+    setGraphRetryNonce((current) => current + 1)
+  }
+
   function openTimeline() {
     if (!canLeaveSettings()) return
     setView('knowledge')
@@ -1504,6 +1517,7 @@ export function App() {
             graph={graph}
             graphLoading={graphLoading}
             graphError={graphError}
+            onRetryGraph={retryGraph}
             tab={workspaceTab}
             onTabChange={setWorkspaceTab}
             onSelect={setSelected}

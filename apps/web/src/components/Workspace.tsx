@@ -41,6 +41,7 @@ export function Workspace({
   graph,
   graphLoading,
   graphError,
+  onRetryGraph,
   tab,
   onTabChange,
   onSelect,
@@ -58,6 +59,7 @@ export function Workspace({
   graph: BrainGraphPage | null
   graphLoading: boolean
   graphError: string
+  onRetryGraph?: () => void
   tab: WorkspaceTab
   onTabChange: (tab: WorkspaceTab) => void
   onSelect: (index: number) => void
@@ -108,6 +110,7 @@ export function Workspace({
           graph={graph}
           graphLoading={graphLoading}
           graphError={graphError}
+          onRetry={onRetryGraph}
           evidence={evidence}
           onSelect={selectEvidenceByChunkId}
           onSelectDocument={onSelectDocument}
@@ -473,6 +476,7 @@ function GraphView({
   graph,
   graphLoading,
   graphError,
+  onRetry,
   evidence,
   onSelect,
   onSelectDocument,
@@ -480,6 +484,7 @@ function GraphView({
   graph: BrainGraphPage | null
   graphLoading: boolean
   graphError: string
+  onRetry?: () => void
   evidence: Evidence[]
   onSelect: (chunkId: string) => void
   onSelectDocument: (id: string) => void
@@ -504,7 +509,7 @@ function GraphView({
     )
   }
   if (graphError && nodes.length === 0) {
-    return <EmptyState title="Graph unavailable" detail={graphError} />
+    return <EmptyState title="Graph unavailable" detail={graphError} action={onRetry} />
   }
   if (!graphLoading && nodes.length === 0) {
     return (
@@ -523,6 +528,11 @@ function GraphView({
             ? 'Loading indexed graph…'
             : 'Retrieved evidence'}
         {graphError ? ` · ${graphError}` : ''}
+        {graphError && onRetry && (
+          <button type="button" className="link-button" onClick={onRetry}>
+            Retry graph
+          </button>
+        )}
       </div>
       {nodes.map((node, index) => (
         <button
