@@ -70,6 +70,10 @@ validate at one of the fixed initial-sync budget tiers so a later validation-gat
 has a record at equal or larger limits; validation stays read-only and bounded in every tier.
 Desktop-launched source jobs run in an isolated process group, so cancellation terminates the
 bundled wrapper and any connector helpers together instead of leaving an orphaned fetch process.
+While a source job is active, Desktop locks that source's identity, credentials, scope, and
+per-source limits so the operation cannot race a settings edit. The status bar and Inbox expose
+the bounded progress snapshot and a cancellation control without requiring the Settings view to
+remain open.
 
 Guarded trial sync reuses the source-job boundary but is intentionally distinct from validation.
 It requires explicit confirmation and a matching successful validation fingerprint, then invokes
