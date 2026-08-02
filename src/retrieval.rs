@@ -256,7 +256,13 @@ fn rank(
             Some((chunk, reranked * (0.9 + 0.1 * recency)))
         })
         .collect::<Vec<_>>();
-    ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
+    ranked.sort_by(|a, b| {
+        b.1.total_cmp(&a.1)
+            // HashMap-backed candidate collection has no stable iteration
+            // order. Keep equal-score results deterministic for UI state,
+            // answer caching, and agent replayability.
+            .then_with(|| a.0.id.cmp(&b.0.id))
+    });
     let mut seen_documents = HashSet::new();
     let selected = ranked
         .into_iter()
