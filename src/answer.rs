@@ -246,7 +246,13 @@ impl AnswerEngine {
                 principal_acl,
             )
         });
-        let results = join_all(searches).await;
+        let results = match tokio::time::timeout(remaining(deadline), join_all(searches)).await {
+            Ok(results) => results,
+            Err(_) => {
+                warnings.push("retrieval fallback: answer deadline reached".into());
+                Vec::new()
+            }
+        };
         let mut successful = Vec::new();
         for result in results {
             match result {
@@ -629,6 +635,20 @@ mod tests {
         invalid_citation: bool,
     }
 
+    struct SlowEmbedder;
+
+    #[async_trait]
+    impl Embedder for SlowEmbedder {
+        async fn embed(&self, _input: &[String]) -> Result<Vec<Vec<f32>>> {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            Ok(vec![vec![1.0; 16]])
+        }
+
+        fn fingerprint(&self) -> String {
+            "slow:16".into()
+        }
+    }
+
     #[async_trait]
     impl LanguageModel for MockModel {
         async fn complete(
@@ -895,6 +915,41 @@ mod tests {
             response
                 .warnings
                 .contains(&"synthesis fallback: invalid or missing citations".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn retrieval_respects_the_answer_deadline() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let engine = AnswerEngine::new(
+            store,
+            Arc::new(SlowEmbedder),
+            None,
+            QueryConfig {
+                answer_timeout_seconds: 1,
+                ..QueryConfig::default()
+            },
+        );
+
+        let response = tokio::time::timeout(
+            Duration::from_secs(3),
+            engine.answer(AnswerRequest {
+                query: "release status".into(),
+                project: None,
+                source: None,
+            }),
+        )
+        .await
+        .expect("answer deadline should bound retrieval")
+        .expect("deadline fallback should still return an answer");
+
+        assert_eq!(response.mode, "extractive");
+        assert!(response.evidence.is_empty());
+        assert!(
+            response
+                .warnings
+                .contains(&"retrieval fallback: answer deadline reached".into())
         );
     }
 }

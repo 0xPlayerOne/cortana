@@ -337,7 +337,11 @@ fn source_authorization_summary(
             .is_some_and(|path| regular_file_ready(path));
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::GoogleOauth,
-            setup_required: !oauth_client_ready && !token_env_ready,
+            // A migrated/private token file is a complete authorization path on
+            // its own. Requiring an OAuth client in that case makes an already
+            // authorized Google source appear unhealthy in the desktop status
+            // panel and incorrectly invites the user to repeat setup.
+            setup_required: !oauth_client_ready && !token_env_ready && !token_file_ready,
             authorized: token_env_ready || token_file_ready,
         }
     } else if source.token_env.is_some() || source.token.is_some() {
@@ -1164,7 +1168,7 @@ mod tests {
     use tempfile::tempdir;
     use tower::ServiceExt;
 
-    use crate::config::AuthTokenConfig;
+    use crate::config::{AuthTokenConfig, SourceConfig};
     use crate::embed::DeterministicEmbedder;
     use crate::model::Document;
 
@@ -1178,6 +1182,58 @@ mod tests {
             .expect("fingerprint");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
         (directory, AppState::new(store, embedder, token))
+    }
+
+    fn google_source(token: Option<std::path::PathBuf>) -> SourceConfig {
+        SourceConfig {
+            name: "personal-gmail".into(),
+            kind: "gmail".into(),
+            enabled: true,
+            project: "personal".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: None,
+            token,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn google_token_file_is_complete_authorization_without_oauth_client() {
+        let directory = tempdir().expect("temporary directory");
+        let token = directory.path().join("google-token.json");
+        std::fs::write(&token, "{}\n").expect("token fixture");
+        let summary = source_authorization_summary(&Config::default(), &google_source(Some(token)));
+
+        assert!(summary.authorized);
+        assert!(!summary.setup_required);
+        assert!(matches!(
+            summary.method,
+            SourceAuthorizationMethod::GoogleOauth
+        ));
+    }
+
+    #[test]
+    fn google_oauth_client_can_authorize_without_existing_token() {
+        let directory = tempdir().expect("temporary directory");
+        let client = directory.path().join("oauth-client.json");
+        std::fs::write(&client, "{}\n").expect("OAuth client fixture");
+        let mut source = google_source(None);
+        source.oauth_client = Some(client);
+        let summary = source_authorization_summary(&Config::default(), &source);
+
+        assert!(!summary.authorized);
+        assert!(!summary.setup_required);
     }
 
     #[test]
