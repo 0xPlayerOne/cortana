@@ -19,6 +19,35 @@ def test_memory_sync_parser_requires_an_explicit_provider_and_outbox() -> None:
         cli.parser().parse_args(["--provider", "honcho"])
 
 
+def test_memory_sync_parser_bounds_batch_and_lease_inputs() -> None:
+    parser = cli.parser()
+    assert (
+        parser.parse_args(
+            [
+                "--provider",
+                "hindsight",
+                "--outbox",
+                "/tmp/cortana-memory.sqlite3",
+                "--limit",
+                "1024",
+                "--lease-seconds",
+                "3600",
+            ]
+        ).limit
+        == 1024
+    )
+    for argument in (
+        ["--limit", "0"],
+        ["--limit", "1025"],
+        ["--lease-seconds", "nan"],
+        ["--lease-seconds", "3601"],
+    ):
+        with pytest.raises(SystemExit):
+            parser.parse_args(
+                ["--provider", "hindsight", "--outbox", "/tmp/outbox.sqlite3", *argument]
+            )
+
+
 def test_memory_sync_drains_honcho_outbox_without_printing_credentials(
     tmp_path, monkeypatch, capsys
 ) -> None:

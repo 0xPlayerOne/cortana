@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -16,6 +17,8 @@ from .provider import MemoryProvider
 from .worker import MemorySyncWorker
 
 _ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,63}$")
+_MAX_BATCH_SIZE = 1024
+_MAX_LEASE_SECONDS = 3600.0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -40,8 +43,18 @@ def parser() -> argparse.ArgumentParser:
     root.add_argument("--workspace-id", default="default", help="Honcho workspace ID")
     root.add_argument("--peer-id", default="cortana", help="Honcho peer ID")
     root.add_argument("--session-prefix", default="cortana", help="Honcho document-session prefix")
-    root.add_argument("--limit", type=int, default=64, help="number of rows claimed per batch")
-    root.add_argument("--lease-seconds", type=float, default=60.0)
+    root.add_argument(
+        "--limit",
+        type=_bounded_limit,
+        default=64,
+        help=f"number of rows claimed per batch (1-{_MAX_BATCH_SIZE})",
+    )
+    root.add_argument(
+        "--lease-seconds",
+        type=_bounded_lease_seconds,
+        default=60.0,
+        help=f"lease duration in seconds (0-{_MAX_LEASE_SECONDS:g}]",
+    )
     root.add_argument("--worker-id", default="memory-sync")
     return root
 
@@ -121,6 +134,28 @@ def _bounded_worker_id(value: Any) -> str:
     if not worker_id or len(worker_id) > 128 or any(character in worker_id for character in "\r\n"):
         raise MemoryArgumentError("worker id must be 1-128 characters without newlines")
     return worker_id
+
+
+def _bounded_limit(value: str) -> int:
+    try:
+        limit = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("limit must be an integer") from error
+    if not 1 <= limit <= _MAX_BATCH_SIZE:
+        raise argparse.ArgumentTypeError(f"limit must be between 1 and {_MAX_BATCH_SIZE}")
+    return limit
+
+
+def _bounded_lease_seconds(value: str) -> float:
+    try:
+        lease_seconds = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("lease-seconds must be a number") from error
+    if not math.isfinite(lease_seconds) or not 0 < lease_seconds <= _MAX_LEASE_SECONDS:
+        raise argparse.ArgumentTypeError(
+            f"lease-seconds must be greater than 0 and at most {_MAX_LEASE_SECONDS:g}"
+        )
+    return lease_seconds
 
 
 def _close_provider(provider: MemoryProvider) -> None:
