@@ -541,6 +541,36 @@ test('readiness activity survives leaving Settings while a scan is running', asy
   }
 })
 
+test('completed installers trigger one shell-owned post-install readiness scan', async () => {
+  const originalConfirm = window.confirm
+  state.installerJob = null
+  window.confirm = () => true
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Run readiness scan' }))
+    await waitFor(() => expect(screen.getByText('uv is not installed')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+    await waitFor(() => expect(screen.getByText('Installing uv')).toBeTruthy())
+
+    state.installerJob = {
+      ...state.installerJob!,
+      status: 'succeeded',
+      summary: 'uv installed',
+      completed_at_unix_seconds: 1785000010,
+      exit_code: 0,
+    }
+    await waitFor(() => expect(screen.getByText('Readiness: ready')).toBeTruthy(), {
+      timeout: 2_500,
+    })
+  } finally {
+    state.installerJob = null
+    window.confirm = originalConfirm
+  }
+})
+
 test('installer progress survives settings section changes', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true

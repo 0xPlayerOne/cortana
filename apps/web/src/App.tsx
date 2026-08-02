@@ -107,6 +107,7 @@ export function App() {
   const searchRef = useRef<HTMLInputElement>(null)
   const sourceJobs = useSourceJobs()
   const installerPollingRef = useRef(false)
+  const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
   const updatePollingRef = useRef(false)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
@@ -392,6 +393,25 @@ export function App() {
       window.clearInterval(timer)
     }
   }, [installerJob?.id, installerJob?.status])
+
+  useEffect(() => {
+    const previous = installerStatusRef.current
+    const next = installerJob?.status ?? null
+    installerStatusRef.current = next
+    if (
+      !isDesktopApp ||
+      !installerJob ||
+      next !== 'succeeded' ||
+      previous === 'succeeded' ||
+      !previous ||
+      !['running', 'cancelling'].includes(previous)
+    ) {
+      return
+    }
+    // The shell owns installer polling, so it also owns the post-install
+    // readiness scan. This keeps the result when Settings is unmounted.
+    void runReadinessScan().catch(() => {})
+  }, [installerJob?.status, runReadinessScan])
 
   useEffect(() => {
     if (
