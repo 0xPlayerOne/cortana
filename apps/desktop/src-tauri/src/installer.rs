@@ -315,7 +315,15 @@ async fn read_bounded<R: tokio::io::AsyncRead + Unpin>(reader: R) -> Result<Vec<
 }
 
 fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, String> {
-    match (tool, std::env::consts::OS) {
+    install_plan_for_os(tool, std::env::consts::OS, app)
+}
+
+fn install_plan_for_os(
+    tool: &str,
+    operating_system: &str,
+    app: Option<&AppHandle>,
+) -> Result<CommandPlan, String> {
+    match (tool, operating_system) {
         ("uv", "macos") => Ok(CommandPlan {
             commands: vec![CommandSpec {
                 program: executable_or_name("brew"),
@@ -327,9 +335,16 @@ fn install_plan(tool: &str, app: Option<&AppHandle>) -> Result<CommandPlan, Stri
         ("uv", "windows") => Ok(CommandPlan {
             commands: vec![CommandSpec {
                 program: executable_or_name("winget"),
-                args: vec!["install".into(), "--id=astral-sh.uv".into(), "-e".into()],
+                args: vec![
+                    "install".into(),
+                    "--id=astral-sh.uv".into(),
+                    "-e".into(),
+                    "--accept-source-agreements".into(),
+                    "--accept-package-agreements".into(),
+                    "--silent".into(),
+                ],
             }],
-            summary: "Install uv with WinGet".into(),
+            summary: "Install uv with non-interactive WinGet".into(),
             connector_command: None,
         }),
         ("uv", "linux") => Ok(CommandPlan {
@@ -576,6 +591,22 @@ mod tests {
         assert_eq!(
             plan.commands[1].args[4],
             format!("{}[ingestion]", resource.display())
+        );
+    }
+
+    #[test]
+    fn windows_uv_plan_accepts_agreements_without_interactive_prompts() {
+        let plan = install_plan_for_os("uv", "windows", None).expect("Windows uv plan");
+        assert_eq!(
+            plan.commands[0].args,
+            vec![
+                "install",
+                "--id=astral-sh.uv",
+                "-e",
+                "--accept-source-agreements",
+                "--accept-package-agreements",
+                "--silent",
+            ]
         );
     }
 

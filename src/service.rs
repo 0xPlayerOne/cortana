@@ -363,10 +363,14 @@ fn windows_run_task(label: &str) -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn ensure_windows_task_scheduler() -> Result<()> {
-    let output = Command::new("schtasks.exe").arg("/Query").output();
+    let output = Command::new("schtasks.exe")
+        .arg("/Query")
+        .output()
+        .context("run schtasks.exe")?;
     anyhow::ensure!(
-        output.is_ok(),
-        "Windows Task Scheduler is unavailable; install Cortana services from a logged-in user session"
+        output.status.success(),
+        "Windows Task Scheduler is unavailable; install Cortana services from a logged-in user session: {}",
+        bounded_command_error(&output.stderr)
     );
     Ok(())
 }

@@ -1621,6 +1621,7 @@ export function App() {
         <ServiceHealthIndicator
           report={desktopServices}
           error={desktopServicesError}
+          embeddingRequired={desktopSettings?.embedding.provider !== 'cloud'}
           onOpen={() => {
             if (!canLeaveSettings()) return
             setSettingsSection('services')
@@ -1850,10 +1851,12 @@ function ReadinessActivityIndicator({
 export function ServiceHealthIndicator({
   report,
   error,
+  embeddingRequired = true,
   onOpen,
 }: {
   report: DesktopServiceReport | null
   error: string
+  embeddingRequired?: boolean
   onOpen: () => void
 }) {
   if (error) {
@@ -1870,7 +1873,9 @@ export function ServiceHealthIndicator({
     )
   }
   if (!report) return null
-  const core = report.services.filter((service) => ['embedding', 'server'].includes(service.name))
+  const core = report.services.filter(
+    (service) => service.name === 'server' || (service.name === 'embedding' && embeddingRequired)
+  )
   const coreLoaded = core.filter((service) => service.loaded).length
   const coreExitFailure = core.some(
     (service) => service.last_exit_status !== null && service.last_exit_status !== 0

@@ -147,10 +147,14 @@ pub async fn action_all(
     if !ACTIONS.contains(&action) {
         return Err("unsupported whole-app service action".into());
     }
+    // A cloud embedding provider deliberately omits the local embedding
+    // service. Do not send a whole-app action to that absent task: doing so
+    // would make an otherwise healthy server report a failed aggregate action.
+    let core_services = core_service_names(settings::load()?.embedding.provider == "local");
     let services = if action == "stop" {
-        CORE_SERVICE_NAMES.into_iter().rev().collect::<Vec<_>>()
+        core_services.iter().rev().copied().collect::<Vec<_>>()
     } else {
-        CORE_SERVICE_NAMES.to_vec()
+        core_services.clone()
     };
     for service in services {
         let output = match sidecar_output(app, &["service", action, service]).await {
@@ -159,7 +163,7 @@ pub async fn action_all(
                 audit_action(
                     "service.action_all",
                     action,
-                    &CORE_SERVICE_NAMES,
+                    &core_services,
                     "failed",
                     Some(service),
                 );
@@ -170,7 +174,7 @@ pub async fn action_all(
             audit_action(
                 "service.action_all",
                 action,
-                &CORE_SERVICE_NAMES,
+                &core_services,
                 "failed",
                 Some(service),
             );
@@ -180,11 +184,19 @@ pub async fn action_all(
     audit_action(
         "service.action_all",
         action,
-        &CORE_SERVICE_NAMES,
+        &core_services,
         "completed",
         None,
     );
     status(app).await
+}
+
+fn core_service_names(use_local_embedding: bool) -> Vec<&'static str> {
+    if use_local_embedding {
+        CORE_SERVICE_NAMES.to_vec()
+    } else {
+        vec!["server"]
+    }
 }
 
 fn audit_action(
@@ -352,5 +364,11 @@ mod tests {
         assert_eq!(output.len(), MAX_OUTPUT_BYTES);
         append_bounded(&mut output, b"more");
         assert_eq!(output.len(), MAX_OUTPUT_BYTES);
+    }
+
+    #[test]
+    fn cloud_embedding_aggregate_actions_skip_the_absent_local_service() {
+        assert_eq!(core_service_names(false), vec!["server"]);
+        assert_eq!(core_service_names(true), CORE_SERVICE_NAMES.to_vec());
     }
 }

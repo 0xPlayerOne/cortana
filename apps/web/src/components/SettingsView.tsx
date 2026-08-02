@@ -802,9 +802,11 @@ function ServicesSection({
   }
 
   const groupAction = async (action: 'start' | 'stop' | 'restart') => {
+    const coreServices =
+      settings.embedding.provider === 'local' ? 'the server and embedding services' : 'the server'
     if (
       !window.confirm(
-        `${action} the Cortana server and embedding services?\n\nRecurring sync and backup are explicitly excluded.`
+        `${action} ${coreServices}?\n\nRecurring sync and backup are explicitly excluded.`
       )
     ) {
       return

@@ -557,6 +557,26 @@ test('desktop shell does not present a stale service report after refresh failur
   ).toContain('service status transport failed')
 })
 
+test('desktop shell does not require the local embedding service for cloud embeddings', () => {
+  render(
+    <ServiceHealthIndicator
+      report={{
+        ...installedServiceReport,
+        services: installedServiceReport.services.map((service) =>
+          service.name === 'embedding'
+            ? { ...service, installed: false, loaded: false, state: null }
+            : service
+        ),
+      }}
+      error=""
+      embeddingRequired={false}
+      onOpen={() => {}}
+    />
+  )
+
+  expect(screen.getByText('Services: core 1/1 online')).toBeTruthy()
+})
+
 test('query number fields keep drafts inside native bounds', async () => {
   render(<App />)
   await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
