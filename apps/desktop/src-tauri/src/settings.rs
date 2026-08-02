@@ -1982,6 +1982,10 @@ fn validate_hindsight_url(name: &str, value: &str) -> Result<(), String> {
     if !matches!(url.scheme(), "http" | "https") {
         return Err(format!("{name} URL must use HTTP or HTTPS"));
     }
+    let is_loopback = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
+    if url.scheme() == "http" && !is_loopback {
+        return Err(format!("{name} cloud URL must use HTTPS"));
+    }
     if !url.username().is_empty() || !url.password().is_none() {
         return Err(format!("{name} URL must not include credentials"));
     }
@@ -2460,6 +2464,10 @@ mod tests {
 
         let mut update = valid_update(temp.path());
         update.hindsight.base_url = "http://127.0.0.1:9000/v1?x=1".into();
+        assert!(validate_update(&mut update).is_err());
+
+        let mut update = valid_update(temp.path());
+        update.hindsight.base_url = "http://hindsight.example/v1".into();
         assert!(validate_update(&mut update).is_err());
 
         let mut update = valid_update(temp.path());
