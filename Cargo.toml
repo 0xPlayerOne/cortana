@@ -11,7 +11,7 @@ repository = "https://github.com/0xPlayerOne/cortana"
 anyhow = "1.0"
 async-trait = "0.1"
 axum = "0.8"
-base64 = "0.22"
+base64 = "0.23"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 dirs = "6.0"
@@ -20,15 +20,15 @@ futures-util = "0.3"
 ignore = "0.4"
 open = "5.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-rmcp = { version = "1.4", features = ["client", "macros", "server", "transport-io"] }
-rusqlite = { version = "0.38", features = ["backup", "bundled"] }
+rmcp = { version = "3.0", features = ["client", "macros", "server", "transport-io"] }
+rusqlite = { version = "0.40", features = ["backup", "bundled"] }
 schemars = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sha2 = "0.10"
+sha2 = "0.11"
 tokio = { version = "1.47", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
-toml = "0.9"
-tower-http = { version = "0.6", features = ["fs", "timeout", "trace"] }
+toml = "1.1"
+tower-http = { version = "0.7", features = ["fs", "timeout", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 uuid = { version = "1.18", features = ["serde", "v4", "v5"] }
