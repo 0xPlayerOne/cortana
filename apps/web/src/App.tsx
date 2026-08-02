@@ -1172,6 +1172,13 @@ export function App() {
 }
 
 function IngestionIndicator({ status }: { status: BrainStatus | null }) {
+  if (!status) {
+    return (
+      <span className="ingestion-health">
+        <i /> Ingestion: checking
+      </span>
+    )
+  }
   const runs = status?.sync_runs ?? []
   const running = runs.filter((run) => run.status === 'running').length
   const failed = runs.filter((run) =>
