@@ -316,6 +316,13 @@ fn regular_file_ready(path: &std::path::Path) -> bool {
     std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
+fn google_token_env_ready(config: &Config, name: &str) -> bool {
+    config.environment_value(name).is_some_and(|value| {
+        let path = std::path::Path::new(value.trim());
+        path.is_absolute() && regular_file_ready(path)
+    })
+}
+
 fn source_authorization_summary(
     config: &Config,
     source: &SourceConfig,
@@ -325,12 +332,10 @@ fn source_authorization_summary(
             .oauth_client
             .as_ref()
             .is_some_and(|path| regular_file_ready(path));
-        let token_env_ready = source.token_env.as_deref().is_some_and(|name| {
-            !name.trim().is_empty()
-                && config
-                    .environment_value(name)
-                    .is_some_and(|value| !value.is_empty())
-        });
+        let token_env_ready = source
+            .token_env
+            .as_deref()
+            .is_some_and(|name| !name.trim().is_empty() && google_token_env_ready(config, name));
         let token_file_ready = source
             .token
             .as_ref()
@@ -1232,6 +1237,36 @@ mod tests {
             summary.method,
             SourceAuthorizationMethod::GoogleOauth
         ));
+    }
+
+    #[test]
+    fn google_token_environment_value_must_be_an_existing_absolute_file() {
+        let directory = tempdir().expect("temporary directory");
+        let token = directory.path().join("google-token.json");
+        let mut source = google_source(None);
+        source.token_env = Some("GOOGLE_TOKEN_PATH".into());
+        let mut config = Config::default();
+
+        config
+            .environment
+            .insert("GOOGLE_TOKEN_PATH".into(), token.display().to_string());
+        let missing = source_authorization_summary(&config, &source);
+        assert!(!missing.authorized);
+        assert!(missing.setup_required);
+
+        config.environment.insert(
+            "GOOGLE_TOKEN_PATH".into(),
+            "relative/google-token.json".into(),
+        );
+        assert!(!source_authorization_summary(&config, &source).authorized);
+
+        std::fs::write(&token, "{}\n").expect("token fixture");
+        config
+            .environment
+            .insert("GOOGLE_TOKEN_PATH".into(), token.display().to_string());
+        let ready = source_authorization_summary(&config, &source);
+        assert!(ready.authorized);
+        assert!(!ready.setup_required);
     }
 
     #[test]
