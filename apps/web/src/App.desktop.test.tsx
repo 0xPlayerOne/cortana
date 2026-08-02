@@ -755,6 +755,34 @@ test('services settings enables recurring sync only through its explicit action'
   }
 })
 
+test('services settings refuses recurring sync while settings changes are unsaved', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.serviceSyncInstallCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    fireEvent.change(screen.getAllByLabelText('Display name')[0], {
+      target: { value: 'Unsaved workspace' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    const enable = await screen.findByRole('button', { name: /Enable recurring sync/ })
+    fireEvent.click(enable)
+
+    await waitFor(() =>
+      expect(screen.getByText(/Save changes before enabling recurring sync/)).toBeTruthy()
+    )
+    expect(state.serviceSyncInstallCalls).toBe(0)
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
 test('services settings reuses the shell service snapshot without a duplicate poll', async () => {
   render(<App />)
   await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())

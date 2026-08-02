@@ -381,6 +381,7 @@ export function SettingsView({
           {section === 'services' && (
             <ServicesSection
               settings={settings}
+              dirty={dirty}
               services={externalServices}
               onServices={onServices}
               servicesError={externalServicesError}
@@ -609,6 +610,7 @@ function SetupGuide({
 
 function ServicesSection({
   settings,
+  dirty,
   services: externalServices,
   onServices,
   servicesError: externalServicesError,
@@ -620,6 +622,7 @@ function ServicesSection({
   onRestarted,
 }: {
   settings: DesktopSettings
+  dirty: boolean
   services?: DesktopServiceReport | null
   onServices?: (report: DesktopServiceReport) => void
   servicesError?: string
@@ -833,6 +836,12 @@ function ServicesSection({
   }
 
   const installSync = async () => {
+    if (dirty) {
+      setLocalError(
+        'Save changes before enabling recurring sync so the validated configuration is current.'
+      )
+      return
+    }
     if (
       !window.confirm(
         'Enable recurring source sync for this user?\n\nCortana will re-check that every enabled source has a current successful validation covering its configured safety budgets before installing the schedule. The first run is delayed by the platform scheduler; existing indexed data is not deleted.'
