@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
@@ -301,6 +301,7 @@ impl Config {
             return Ok(());
         };
         validate_secret_file(path)?;
+        let mut names = HashSet::new();
         for (line_number, raw) in std::fs::read_to_string(path)?.lines().enumerate() {
             let line = raw.trim();
             if line.is_empty() || line.starts_with('#') {
@@ -323,9 +324,20 @@ impl Config {
                 path.display(),
                 line_number + 1
             );
-            self.environment
-                .entry(name.to_string())
-                .or_insert_with(|| value.trim().trim_matches(['"', '\'']).to_string());
+            anyhow::ensure!(
+                names.insert(name),
+                "duplicate environment variable at {}:{}",
+                path.display(),
+                line_number + 1
+            );
+            let value = value.trim().trim_matches(['"', '\'']).to_string();
+            anyhow::ensure!(
+                !value.contains('\0'),
+                "environment variable value contains NUL at {}:{}",
+                path.display(),
+                line_number + 1
+            );
+            self.environment.entry(name.to_string()).or_insert(value);
         }
         Ok(())
     }
@@ -667,6 +679,42 @@ mod tests {
             Some(&"loaded".into())
         );
         assert!(std::env::var_os("CORTANA_TEST_PRIVATE").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_ambiguous_or_untransportable_environment_entries() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let path = directory.path().join("secrets.env");
+        std::fs::write(
+            &path,
+            b"CORTANA_DUPLICATE=first\nCORTANA_DUPLICATE=second\n",
+        )
+        .expect("write duplicate secrets");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .expect("secure duplicate fixture");
+        let mut config = Config {
+            runtime: RuntimeConfig {
+                env_file: Some(path.clone()),
+            },
+            ..Config::default()
+        };
+        let duplicate = config
+            .load_environment()
+            .expect_err("duplicate environment names must fail closed");
+        assert!(
+            duplicate
+                .to_string()
+                .contains("duplicate environment variable")
+        );
+
+        std::fs::write(&path, b"CORTANA_NUL=bad\0value\n").expect("write NUL secret");
+        let nul = config
+            .load_environment()
+            .expect_err("NUL environment values cannot cross a process boundary");
+        assert!(nul.to_string().contains("contains NUL"));
     }
 
     #[cfg(unix)]
