@@ -26,6 +26,7 @@ afterEach(() => {
   state.getDesktopServicesCalls = 0
   state.getDesktopSettingsCalls = 0
   state.getDesktopUpdateCalls = 0
+  state.serviceStatusError = null
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -84,6 +85,7 @@ const state = {
   getDesktopSettingsCalls: 0,
   getDesktopServicesCalls: 0,
   getDesktopUpdateCalls: 0,
+  serviceStatusError: null as Error | null,
   saveSettingsCalls: 0,
   serviceInstallCalls: 0,
   serviceRestartCalls: 0,
@@ -175,6 +177,7 @@ mock.module('./api', () => ({
   getDesktopInfo: () => Promise.resolve(desktopInfo),
   getDesktopServices: () => {
     state.getDesktopServicesCalls += 1
+    if (state.serviceStatusError) return Promise.reject(state.serviceStatusError)
     return Promise.resolve(serviceReport)
   },
   getDesktopSourceJobs: () => Promise.resolve([]),
@@ -728,6 +731,35 @@ test('settings save refreshes shell service metadata immediately', async () => {
 
   await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
   await waitFor(() => expect(state.getDesktopServicesCalls).toBe(2))
+})
+
+test('successful service actions clear a stale shell service error', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.serviceRestartCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    await waitFor(() => expect(state.getDesktopServicesCalls).toBe(1))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+
+    state.serviceStatusError = new Error('service status transport failed')
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    await waitFor(() => expect(screen.getByText('service status transport failed')).toBeTruthy())
+
+    state.serviceStatusError = null
+    fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
+    await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
+    fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    expect(screen.queryByText('Services: unavailable')).toBeNull()
+  } finally {
+    window.confirm = originalConfirm
+  }
 })
 
 test('service activity survives leaving Settings while a native action is running', async () => {
