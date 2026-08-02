@@ -88,12 +88,12 @@ When the window is hidden or unfocused, passive renderer health polling pauses a
 immediate refresh when the window returns. Installer, source-job, and updater progress remains
 owned by the shell and continues while the app is in the background.
 
-The **Services** panel shows structured launchd (macOS) or systemd user (Linux) state, can explicitly
-install the safe query-only embedding/server/backup set from the bundled runtime, and controls
-installed embedding, server, backup, and sync jobs through fixed native actions. A separate,
-confirmation-gated **Enable recurring sync** action re-checks every enabled source's current
-validation coverage before installing the schedule. Windows service management remains unsupported
-until a signed per-user scheduler backend is added.
+The **Services** panel shows structured launchd (macOS), systemd user (Linux), or per-user Task
+Scheduler (Windows) state. It can explicitly install the safe query-only embedding/server/backup
+set from the bundled runtime and controls installed embedding, server, backup, and sync jobs through
+fixed native actions. A separate, confirmation-gated **Enable recurring sync** action re-checks
+every enabled source's current validation coverage before installing the schedule. Windows tasks
+are created for the logged-in user and do not require administrator access.
 Desktop-at-login controls only the tray application and never installs or starts ingestion.
 
 Aggregate service actions control only embedding and server; recurring sync and backup are always

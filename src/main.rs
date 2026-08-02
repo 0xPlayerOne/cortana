@@ -257,7 +257,7 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum ServiceAction {
-    /// Install and immediately bootstrap per-user macOS launchd or Linux systemd jobs.
+    /// Install and immediately bootstrap per-user macOS launchd, Linux systemd, or Windows Task Scheduler jobs.
     Install {
         #[arg(long, default_value = "apps/web/dist")]
         web_dir: PathBuf,

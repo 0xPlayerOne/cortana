@@ -199,7 +199,8 @@ keeps a compact core-health indicator while the panel provides the full per-serv
 panel can explicitly
 install the safe query-only service set (embedding when the configured provider is local, server,
 and backup) through the fixed `service install --no-web` command. macOS uses per-user launchd jobs;
-Linux uses per-user systemd units and timers without requiring root. It accepts only the fixed
+Linux uses per-user systemd units and timers without requiring root; Windows uses per-user Task
+Scheduler tasks without administrator access. It accepts only the fixed
 `embedding`, `server`, `sync`, and `backup` IDs with `start`, `stop`, or `restart`.
 Every action requires an explicit confirmation and is audited without command output or secrets.
 An uninstalled sync job remains absent until the dedicated validation-gated **Enable recurring sync**

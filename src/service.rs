@@ -45,6 +45,10 @@ pub struct InstallOptions<'a> {
 }
 
 pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        return install_windows(config, options);
+    }
     if cfg!(target_os = "macos") {
         return install_launchd(config, options);
     }
@@ -164,7 +168,312 @@ fn configured_jobs(
     jobs
 }
 
+#[cfg(target_os = "windows")]
+const WINDOWS_TASK_MAX_COMMAND_BYTES: usize = 8_191;
+
+#[cfg(target_os = "windows")]
+fn install_windows(config: &Config, options: InstallOptions<'_>) -> Result<()> {
+    ensure_windows_task_scheduler()?;
+    anyhow::ensure!(
+        options.config.is_file(),
+        "configuration file does not exist"
+    );
+    if !options.no_web {
+        let web_dir = options
+            .web_dir
+            .context("workspace directory is required unless --no-web is used")?;
+        anyhow::ensure!(
+            web_dir.join("index.html").is_file(),
+            "workspace build is missing: {}",
+            web_dir.display()
+        );
+    }
+    let executable = std::env::current_exe()?.canonicalize()?;
+    std::fs::create_dir_all(config.data_dir.join("logs"))?;
+    let common = vec![
+        executable.display().to_string(),
+        "--config".into(),
+        options.config.display().to_string(),
+    ];
+    let jobs = configured_jobs(
+        &common,
+        options.web_dir,
+        options.sync_seconds,
+        options.backup_seconds,
+        options.install_embedding,
+        options.install_sync,
+        options.no_web,
+    );
+
+    for label in LABELS {
+        windows_delete_task(label)?;
+    }
+    for job in jobs {
+        windows_create_task(&job)?;
+        println!("installed {}", job.label);
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_create_task(job: &Job) -> Result<()> {
+    let task = windows_task_name(job.label)?;
+    let command = windows_command_line(&job.arguments);
+    anyhow::ensure!(
+        command.len() <= WINDOWS_TASK_MAX_COMMAND_BYTES,
+        "Cortana service command is too long for Windows Task Scheduler"
+    );
+    let mut args = vec![
+        "/Create".to_string(),
+        "/TN".to_string(),
+        task.to_string(),
+        "/TR".to_string(),
+        command,
+        "/F".to_string(),
+        "/RL".to_string(),
+        "LIMITED".to_string(),
+    ];
+    match job.schedule {
+        Schedule::KeepAlive => {
+            args.extend([
+                "/SC".to_string(),
+                "ONLOGON".to_string(),
+                "/DELAY".to_string(),
+                "0000:30".to_string(),
+            ]);
+        }
+        Schedule::Interval(seconds) => {
+            args.extend([
+                "/SC".to_string(),
+                "MINUTE".to_string(),
+                "/MO".to_string(),
+                seconds.div_ceil(60).max(1).to_string(),
+            ]);
+        }
+    }
+    let output = windows_schtasks(&args)
+        .with_context(|| format!("install Windows Task Scheduler task {task}"))?;
+    anyhow::ensure!(
+        output.status.success(),
+        "install Windows Task Scheduler task {task} failed: {}",
+        bounded_command_error(&output.stderr)
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn uninstall_windows() -> Result<()> {
+    ensure_windows_task_scheduler()?;
+    for label in LABELS {
+        windows_delete_task(label)?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_delete_task(label: &str) -> Result<()> {
+    let task = windows_task_name(label)?;
+    if !windows_task_exists(label) {
+        return Ok(());
+    }
+    let args = vec![
+        "/Delete".to_string(),
+        "/TN".to_string(),
+        task.to_string(),
+        "/F".to_string(),
+    ];
+    let output = windows_schtasks(&args)?;
+    anyhow::ensure!(
+        output.status.success(),
+        "delete Windows Task Scheduler task {task} failed: {}",
+        bounded_command_error(&output.stderr)
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn status_windows() -> Result<ServiceReport> {
+    ensure_windows_task_scheduler()?;
+    let services = managed_services()
+        .map(|(name, label)| windows_service_status(name, label))
+        .collect();
+    Ok(ServiceReport {
+        platform: std::env::consts::OS,
+        supported: true,
+        services,
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn windows_service_status(name: &'static str, label: &'static str) -> ServiceStatus {
+    let (installed, body) = windows_task_query(label)
+        .map(|body| (true, body))
+        .unwrap_or((false, String::new()));
+    let (state, last_exit_status) = parse_windows_task_status(&body);
+    ServiceStatus {
+        name,
+        label,
+        installed,
+        loaded: installed,
+        state: state.or_else(|| installed.then(|| "ready".into())),
+        pid: None,
+        last_exit_status,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_action(name: &str, action: &str) -> Result<()> {
+    let label = service_label(name)?;
+    let task = windows_task_name(label)?;
+    anyhow::ensure!(
+        matches!(action, "start" | "stop" | "restart"),
+        "unsupported Cortana service action: {action}"
+    );
+    anyhow::ensure!(
+        windows_task_exists(label),
+        "Cortana service is not installed: {name}"
+    );
+    if matches!(action, "stop" | "restart") {
+        let args = vec!["/End".to_string(), "/TN".to_string(), task.to_string()];
+        // Ending an already-idle task is harmless for the user-facing stop and
+        // restart actions; the subsequent run remains authoritative.
+        let _ = windows_schtasks(&args);
+    }
+    if matches!(action, "start" | "restart") {
+        let args = vec!["/Run".to_string(), "/TN".to_string(), task.to_string()];
+        let output = windows_schtasks(&args)?;
+        anyhow::ensure!(
+            output.status.success(),
+            "start Windows Task Scheduler task {task} failed: {}",
+            bounded_command_error(&output.stderr)
+        );
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn ensure_windows_task_scheduler() -> Result<()> {
+    let output = Command::new("schtasks.exe").arg("/Query").output();
+    anyhow::ensure!(
+        output.is_ok(),
+        "Windows Task Scheduler is unavailable; install Cortana services from a logged-in user session"
+    );
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_schtasks(args: &[String]) -> Result<std::process::Output> {
+    Command::new("schtasks.exe")
+        .args(args)
+        .output()
+        .context("run schtasks.exe")
+}
+
+#[cfg(target_os = "windows")]
+fn windows_task_query(label: &str) -> Option<String> {
+    let task = windows_task_name(label).ok()?;
+    let args = [
+        "/Query".to_string(),
+        "/TN".to_string(),
+        task.to_string(),
+        "/FO".to_string(),
+        "LIST".to_string(),
+        "/V".to_string(),
+    ];
+    let output = windows_schtasks(&args).ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+#[cfg(target_os = "windows")]
+fn windows_task_exists(label: &str) -> bool {
+    windows_task_query(label).is_some()
+}
+
+#[cfg(target_os = "windows")]
+fn windows_task_name(label: &str) -> Result<&'static str> {
+    match label {
+        "ai.cortana.embedding" => Ok(r"\Cortana-embedding"),
+        "ai.cortana.server" => Ok(r"\Cortana-server"),
+        "ai.cortana.sync" => Ok(r"\Cortana-sync"),
+        "ai.cortana.backup" => Ok(r"\Cortana-backup"),
+        _ => Err(anyhow::anyhow!(
+            "unsupported Cortana service label: {label}"
+        )),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_command_line(arguments: &[String]) -> String {
+    arguments
+        .iter()
+        .map(|argument| windows_quote(argument))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(target_os = "windows")]
+fn windows_quote(value: &str) -> String {
+    let mut output = String::from("\"");
+    let mut backslashes = 0usize;
+    for character in value.chars() {
+        if character == '\\' {
+            backslashes += 1;
+            continue;
+        }
+        if character == '"' {
+            output.extend(std::iter::repeat('\\').take(backslashes * 2 + 1));
+            output.push('"');
+        } else {
+            output.extend(std::iter::repeat('\\').take(backslashes));
+            output.push(character);
+        }
+        backslashes = 0;
+    }
+    output.extend(std::iter::repeat('\\').take(backslashes * 2));
+    output.push('"');
+    output
+}
+
+#[cfg(target_os = "windows")]
+fn parse_windows_task_status(body: &str) -> (Option<String>, Option<i32>) {
+    let mut state = None;
+    let mut last_exit_status = None;
+    for line in body.lines() {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        match key.trim().to_ascii_lowercase().as_str() {
+            "status" => state = Some(value.trim().to_ascii_lowercase()),
+            "last run result" => last_exit_status = parse_windows_exit(value.trim()),
+            _ => {}
+        }
+    }
+    (state, last_exit_status)
+}
+
+#[cfg(target_os = "windows")]
+fn parse_windows_exit(value: &str) -> Option<i32> {
+    let value = value.trim();
+    if let Some(hex) = value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
+        u32::from_str_radix(hex, 16)
+            .ok()
+            .and_then(|value| i32::try_from(value).ok())
+    } else {
+        value.parse().ok()
+    }
+}
+
 pub fn uninstall() -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        return uninstall_windows();
+    }
     if cfg!(target_os = "linux") {
         return uninstall_systemd();
     }
@@ -182,6 +491,10 @@ pub fn uninstall() -> Result<()> {
 }
 
 pub fn status() -> Result<ServiceReport> {
+    #[cfg(target_os = "windows")]
+    {
+        return status_windows();
+    }
     if cfg!(target_os = "linux") {
         return status_systemd();
     }
@@ -234,6 +547,10 @@ pub fn status() -> Result<ServiceReport> {
 }
 
 pub fn start(name: &str) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        return windows_action(name, "start");
+    }
     if cfg!(target_os = "linux") {
         return systemd_action(name, "start");
     }
@@ -248,6 +565,10 @@ pub fn start(name: &str) -> Result<()> {
 }
 
 pub fn stop(name: &str) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        return windows_action(name, "stop");
+    }
     if cfg!(target_os = "linux") {
         return systemd_action(name, "stop");
     }
@@ -258,6 +579,10 @@ pub fn stop(name: &str) -> Result<()> {
 }
 
 pub fn restart(name: &str) -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        return windows_action(name, "restart");
+    }
     if cfg!(target_os = "linux") {
         return systemd_action(name, "restart");
     }
@@ -288,7 +613,11 @@ pub fn sync_job_installed() -> bool {
             })
             .unwrap_or(false)
     }
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(target_os = "windows")]
+    {
+        return windows_task_exists("ai.cortana.sync");
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         false
     }
@@ -874,13 +1203,13 @@ fn unsupported_services() -> Vec<ServiceStatus> {
 }
 
 fn unsupported_service_manager() -> &'static str {
-    "service management supports macOS launchd and Linux systemd user services"
+    "service management supports macOS launchd, Linux systemd user services, and Windows Task Scheduler"
 }
 
 fn require_macos() -> Result<()> {
     anyhow::ensure!(
         cfg!(target_os = "macos"),
-        "service management supports macOS launchd and Linux systemd user services"
+        "service management supports macOS launchd, Linux systemd user services, and Windows Task Scheduler"
     );
     Ok(())
 }
@@ -1018,5 +1347,31 @@ mod tests {
         assert!(systemd_timer_unit_body("sync", 1).contains("OnUnitActiveSec=60s"));
         assert!(systemd_timer_unit_body("backup", 86_400).contains("OnUnitActiveSec=86400s"));
         assert_eq!(systemd_quote("/tmp/a b%$\"c"), "\"/tmp/a b%%$$\\\"c\"");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_task_status_parses_state_and_hex_exit_codes() {
+        assert_eq!(
+            parse_windows_task_status("Status: Running\nLast Run Result: 0x0\n"),
+            (Some("running".into()), Some(0))
+        );
+        assert_eq!(
+            parse_windows_task_status("Status: Ready\nLast Run Result: 0x41301\n"),
+            (Some("ready".into()), Some(267_009))
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_command_line_quotes_paths_and_embedded_quotes() {
+        assert_eq!(
+            windows_command_line(&[
+                r"C:\Program Files\Cortana\cortana.exe".into(),
+                "--config".into(),
+                r#"C:\Users\A "B"\config.toml"#.into(),
+            ]),
+            r#""C:\Program Files\Cortana\cortana.exe" "--config" "C:\Users\A \"B\"\config.toml""#
+        );
     }
 }
