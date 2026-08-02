@@ -1157,6 +1157,7 @@ function desktopUpdateStatusSuffix(update: DesktopUpdate | null): string {
     return ` · ${update.phase}${percent}`
   }
   if (update.restart_required || update.phase === 'installed') return ' · Restart required'
+  if (update.phase === 'failed') return ' · update failed'
   if (update.phase === 'available' && update.available_version) {
     return ` · ${update.available_version} available`
   }
