@@ -52,6 +52,7 @@ test('source links reject executable and credential-bearing URLs', () => {
   expect(safeSourceLink('buzz://persona/npub123/session/extra')).toBeNull()
   expect(safeSourceLink('buzz://persona/npub123/')).toBeNull()
   expect(safeSourceLink('buzz://persona/npub%2F123/session')).toBeNull()
+  expect(safeSourceLink('buzz://persona/npub123/session?')).toBeNull()
   expect(safeSourceLink('https://example.test/releases')).toBe('https://example.test/releases')
 })
 

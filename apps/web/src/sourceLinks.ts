@@ -39,8 +39,22 @@ function validNotesLink(parsed: URL): boolean {
   return identifier !== undefined && validCustomLinkValue(identifier, 1024, true)
 }
 
-function validBuzzLink(parsed: URL): boolean {
-  if (parsed.hostname.toLowerCase() !== 'persona' || parsed.search || parsed.hash) return false
+function hasExplicitEmptyQuery(href: string): boolean {
+  const queryIndex = href.indexOf('?')
+  if (queryIndex < 0) return false
+  const hashIndex = href.indexOf('#', queryIndex + 1)
+  return queryIndex + 1 === (hashIndex < 0 ? href.length : hashIndex)
+}
+
+function validBuzzLink(parsed: URL, href: string): boolean {
+  if (
+    parsed.hostname.toLowerCase() !== 'persona' ||
+    parsed.search !== '' ||
+    hasExplicitEmptyQuery(href) ||
+    parsed.hash
+  ) {
+    return false
+  }
   const segments = parsed.pathname.split('/')
   return (
     segments.length === 3 &&
@@ -79,7 +93,7 @@ export function safeSourceLink(
   if (parsed.protocol === 'file:' && !options.allowLocalFile) return null
   if (parsed.protocol === 'slack:' && !validSlackLink(parsed)) return null
   if (parsed.protocol === 'notes:' && !validNotesLink(parsed)) return null
-  if (parsed.protocol === 'buzz:' && !validBuzzLink(parsed)) return null
+  if (parsed.protocol === 'buzz:' && !validBuzzLink(parsed, href)) return null
   if (
     parsed.protocol === 'file:' &&
     ((parsed.hostname && parsed.hostname !== 'localhost') || parsed.search || parsed.hash)
