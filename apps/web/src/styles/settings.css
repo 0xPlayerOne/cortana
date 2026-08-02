@@ -267,6 +267,7 @@
   justify-content: space-between;
   margin: 22px 0 14px;
   gap: 12px;
+  flex-wrap: wrap;
   color: var(--muted);
   font-size: 11px;
 }
@@ -406,6 +407,7 @@
 
 .source-settings-card > header {
   justify-content: space-between;
+  align-items: flex-start;
   gap: 14px;
 }
 
@@ -434,7 +436,15 @@
 }
 
 .source-card-actions {
+  min-width: 0;
   gap: 7px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.source-validation-job > div {
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .source-card-actions button,
