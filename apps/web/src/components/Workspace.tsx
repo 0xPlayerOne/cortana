@@ -181,6 +181,7 @@ function BrainDocumentView({
               target={isDesktopApp ? undefined : '_blank'}
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
+              title="Open original source"
               onClick={(event) => {
                 if (!isDesktopApp) return
                 const uri = sourceHref
@@ -326,6 +327,7 @@ function DocumentView({
               target={isDesktopApp ? undefined : '_blank'}
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
+              title="Open original source"
               onClick={(event) => {
                 if (!isDesktopApp) return
                 event.preventDefault()

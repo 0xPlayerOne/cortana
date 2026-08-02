@@ -89,3 +89,16 @@ test('unsafe retrieved-evidence links are not rendered into the web shell', () =
   expect(screen.getByRole('heading', { name: 'Unsafe evidence' })).toBeTruthy()
   expect(screen.queryByRole('link', { name: 'Open original source' })).toBeNull()
 })
+
+test('supported app source links keep an explicit open-source affordance', () => {
+  for (const uri of [
+    'notes://showNote?identifier=x-coredata%3A%2F%2Fnote-1',
+    'buzz://persona/npub123/session%3A1',
+  ]) {
+    cleanup()
+    render(<Workspace {...props} document={{ ...canonicalDocument, uri }} />)
+    const link = screen.getByRole('link', { name: 'Open original source' })
+    expect(link.getAttribute('href')).toBe(uri)
+    expect(link.getAttribute('title')).toBe('Open original source')
+  }
+})
