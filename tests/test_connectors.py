@@ -23,6 +23,7 @@ from cortana.connectors.google import (
     fetch_calendar,
     fetch_drive,
     fetch_gmail,
+    validate_token_path,
 )
 from cortana.connectors.model import Document, emit
 
@@ -329,6 +330,29 @@ def test_chat_connector_rejects_missing_token(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.delenv("MISSING_TOKEN", raising=False)
     with pytest.raises(RuntimeError, match="MISSING_TOKEN is required"):
         list(chat.fetch_slack(["C1"], "work", "MISSING_TOKEN"))
+
+
+def test_google_token_path_is_absolute_bounded_and_not_symlinked(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    token.write_text('{"token":"access"}', encoding="utf-8")
+    assert validate_token_path(token) == token
+
+    with pytest.raises(RuntimeError, match="must be absolute"):
+        validate_token_path(Path("relative-token.json"))
+
+    oversized = tmp_path / "oversized.json"
+    oversized.write_bytes(b"x" * (64 * 1024 + 1))
+    with pytest.raises(RuntimeError, match="exceeds"):
+        validate_token_path(oversized)
+
+    try:
+        linked = tmp_path / "linked-token.json"
+        linked.symlink_to(token)
+    except (NotImplementedError, OSError):
+        pass
+    else:
+        with pytest.raises(RuntimeError, match="must not be a symlink"):
+            validate_token_path(linked)
 
 
 def test_google_drive_exports_supported_content(tmp_path: Path) -> None:

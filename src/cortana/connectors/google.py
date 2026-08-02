@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import sys
 import tempfile
 from collections.abc import Iterable
@@ -39,14 +40,35 @@ TEXT_MIME_TYPES = {
     "text/plain",
 }
 DEFAULT_MAX_DRIVE_CONTENT_CHARS = 50_000
+MAX_TOKEN_FILE_BYTES = 64 * 1024
+
+
+def validate_token_path(path: Path) -> Path:
+    """Validate a Google token path before reading or replacing credentials."""
+    path = path.expanduser()
+    if not path.is_absolute():
+        raise RuntimeError("Google token path must be absolute")
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError as error:
+        raise RuntimeError(f"Google token file does not exist: {path}") from error
+    if stat.S_ISLNK(metadata.st_mode):
+        raise RuntimeError(f"Google token path must not be a symlink: {path}")
+    if not stat.S_ISREG(metadata.st_mode):
+        raise RuntimeError(f"Google token path is not a regular file: {path}")
+    if metadata.st_size > MAX_TOKEN_FILE_BYTES:
+        raise RuntimeError(f"Google token file exceeds {MAX_TOKEN_FILE_BYTES} bytes: {path}")
+    return path
 
 
 class GoogleSession:
     """Small OAuth REST client compatible with Google token JSON files."""
 
     def __init__(self, token_path: Path, client: httpx.Client | None = None) -> None:
-        self.token_path = token_path
-        self.credentials: dict[str, Any] = json.loads(token_path.read_text(encoding="utf-8"))
+        self.token_path = validate_token_path(token_path)
+        self.credentials: dict[str, Any] = json.loads(
+            self.token_path.read_text(encoding="utf-8")
+        )
         self.client = client or httpx.Client(timeout=60, follow_redirects=True)
         self._owns_client = client is None
 
