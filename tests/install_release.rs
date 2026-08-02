@@ -138,5 +138,9 @@ fn release_install_requires_explicit_sync_opt_in() {
 #[test]
 fn release_install_supports_windows_uv_venv_layout() {
     let log = run_installer_for_platform(false, "MINGW64_NT", true);
-    assert!(log.lines().any(|line| line.contains(" init ")));
+    let init = log
+        .lines()
+        .find(|line| line.contains(" init "))
+        .expect("init invocation");
+    assert!(init.contains("/venv/Scripts/cortana-connectors.exe"));
 }

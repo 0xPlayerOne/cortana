@@ -46,12 +46,17 @@ else
   echo "uv did not create a usable Python executable in $venv_dir" >&2
   exit 1
 fi
+if [[ "$venv_python" == */Scripts/python.exe ]]; then
+  connector_command="$venv_dir/Scripts/cortana-connectors.exe"
+else
+  connector_command="$venv_dir/bin/cortana-connectors"
+fi
 uv pip install --python "$venv_python" ".[ingestion]"
 
 if [[ ! -f "$config_path" ]]; then
   "$bin_dir/cortana" --config "$config_path" init \
     --data-dir "$data_root" \
-    --connector-command "$venv_dir/bin/cortana-connectors"
+    --connector-command "$connector_command"
 fi
 
 if [[ "$(uname -s)" == "Darwin" && "${CORTANA_INSTALL_SERVICE:-1}" == "1" ]]; then
