@@ -97,6 +97,8 @@ export function SettingsView({
   sourceJobs,
   installerJob: externalInstallerJob,
   onInstallerJob,
+  desktopUpdate: externalDesktopUpdate,
+  onDesktopUpdate,
 }: {
   onSaved: (settings: DesktopSettings) => void
   onDirtyChange?: (dirty: boolean) => void
@@ -115,6 +117,9 @@ export function SettingsView({
    */
   installerJob?: DesktopInstallJob | null
   onInstallerJob?: (job: DesktopInstallJob | null) => void
+  /** Optional shell-owned updater snapshot shared across Settings mounts. */
+  desktopUpdate?: DesktopUpdate | null
+  onDesktopUpdate?: (update: DesktopUpdate) => void
 }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(null)
   const [section, setSection] = useState<Section>(initialSection)
@@ -285,7 +290,12 @@ export function SettingsView({
               }
             />
           )}
-          {section === 'updates' && <UpdatesSection />}
+          {section === 'updates' && (
+            <UpdatesSection
+              desktopUpdate={externalDesktopUpdate}
+              onDesktopUpdate={onDesktopUpdate}
+            />
+          )}
           {section === 'access' && (
             <AccessSection
               settings={settings}
@@ -735,22 +745,31 @@ function ServicesSection({
   )
 }
 
-function UpdatesSection() {
-  const [update, setUpdate] = useState<DesktopUpdate | null>(null)
+function UpdatesSection({
+  desktopUpdate: externalDesktopUpdate,
+  onDesktopUpdate,
+}: {
+  desktopUpdate?: DesktopUpdate | null
+  onDesktopUpdate?: (update: DesktopUpdate) => void
+}) {
+  const [localUpdate, setLocalUpdate] = useState<DesktopUpdate | null>(null)
+  const update = externalDesktopUpdate === undefined ? localUpdate : externalDesktopUpdate
+  const setUpdate = onDesktopUpdate ?? setLocalUpdate
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const pollInFlightRef = useRef(false)
 
   useEffect(() => {
+    if (externalDesktopUpdate !== undefined && externalDesktopUpdate !== null) return
     void getDesktopUpdate()
       .then(setUpdate)
       .catch((caught: unknown) => {
         setError(caught instanceof Error ? caught.message : 'Updater status unavailable')
       })
-  }, [])
+  }, [externalDesktopUpdate, setUpdate])
 
   useEffect(() => {
-    if (busy !== 'install') return
+    if (externalDesktopUpdate !== undefined || busy !== 'install') return
     const poll = () => {
       if (pollInFlightRef.current) return
       pollInFlightRef.current = true
@@ -763,7 +782,7 @@ function UpdatesSection() {
     }
     const timer = window.setInterval(poll, 400)
     return () => window.clearInterval(timer)
-  }, [busy])
+  }, [busy, externalDesktopUpdate])
 
   const check = async () => {
     setBusy('check')
@@ -794,6 +813,13 @@ function UpdatesSection() {
     }
     setBusy('install')
     setError('')
+    setUpdate({
+      ...update,
+      phase: 'downloading',
+      downloaded_bytes: 0,
+      total_bytes: null,
+      error: null,
+    })
     try {
       setUpdate(await installDesktopUpdate(update.available_version, true))
     } catch (caught) {
@@ -812,6 +838,10 @@ function UpdatesSection() {
     update?.total_bytes && update.total_bytes > 0
       ? Math.min(100, Math.round((update.downloaded_bytes / update.total_bytes) * 100))
       : null
+  const updateInFlight =
+    busy === 'install' || update?.phase === 'downloading' || update?.phase === 'installing'
+  const canInstall =
+    Boolean(update?.available_version) && !update?.restart_required && update?.phase !== 'installed'
 
   return (
     <SettingsSection
@@ -831,7 +861,11 @@ function UpdatesSection() {
           </small>
         </div>
         <div className="service-actions">
-          <button type="button" disabled={Boolean(busy)} onClick={() => void check()}>
+          <button
+            type="button"
+            disabled={Boolean(busy) || updateInFlight}
+            onClick={() => void check()}
+          >
             {busy === 'check' ? (
               <LoaderCircle className="spin" size={14} />
             ) : (
@@ -842,11 +876,13 @@ function UpdatesSection() {
           <button
             type="button"
             className="primary-button"
-            disabled={!update?.available_version || Boolean(busy)}
+            disabled={!canInstall || Boolean(busy) || updateInFlight}
             onClick={() => void install()}
           >
-            {busy === 'install' ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />}
-            Install and restart
+            {updateInFlight ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />}
+            {update?.restart_required || update?.phase === 'installed'
+              ? 'Restart required'
+              : 'Install and restart'}
           </button>
         </div>
       </div>

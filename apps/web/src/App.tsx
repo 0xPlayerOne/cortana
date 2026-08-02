@@ -14,6 +14,7 @@ import {
   getDesktopInfo,
   getDesktopInstaller,
   getDesktopSettings,
+  getDesktopUpdate,
   getDocument,
   getDocuments,
   getContext,
@@ -43,6 +44,7 @@ import type {
   DesktopInfo,
   DesktopInstallJob,
   DesktopSourceJob,
+  DesktopUpdate,
   Evidence,
 } from './types'
 
@@ -72,6 +74,7 @@ export function App() {
   >('readiness')
   const [settingsDirty, setSettingsDirty] = useState(false)
   const [installerJob, setInstallerJob] = useState<DesktopInstallJob | null>(null)
+  const [desktopUpdate, setDesktopUpdate] = useState<DesktopUpdate | null>(null)
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
   const [documentsLoading, setDocumentsLoading] = useState(true)
@@ -95,6 +98,7 @@ export function App() {
   const searchRef = useRef<HTMLInputElement>(null)
   const sourceJobs = useSourceJobs()
   const installerPollingRef = useRef(false)
+  const updatePollingRef = useRef(false)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
   const documentScopeRef = useRef(documentScope)
@@ -305,6 +309,11 @@ export function App() {
       .catch(() => {
         // The settings view will surface the local configuration error.
       })
+    void getDesktopUpdate()
+      .then(setDesktopUpdate)
+      .catch(() => {
+        // The Updates section will surface a more specific updater error.
+      })
   }, [])
 
   useEffect(() => {
@@ -359,7 +368,38 @@ export function App() {
       disposed = true
       window.clearInterval(timer)
     }
-  }, [installerJob])
+  }, [installerJob?.id, installerJob?.status])
+
+  useEffect(() => {
+    if (
+      !isDesktopApp ||
+      !desktopUpdate ||
+      !['downloading', 'installing'].includes(desktopUpdate.phase)
+    ) {
+      return
+    }
+    let disposed = false
+    const poll = () => {
+      if (disposed || updatePollingRef.current) return
+      updatePollingRef.current = true
+      void getDesktopUpdate()
+        .then((next) => {
+          if (!disposed) setDesktopUpdate(next)
+        })
+        .catch(() => {
+          // Keep the last progress snapshot while the native updater is busy.
+        })
+        .finally(() => {
+          updatePollingRef.current = false
+        })
+    }
+    poll()
+    const timer = window.setInterval(poll, 400)
+    return () => {
+      disposed = true
+      window.clearInterval(timer)
+    }
+  }, [desktopUpdate?.phase])
 
   const agentContext = useMemo(
     () => buildAgentContext(activeQuery, evidence),
@@ -770,6 +810,8 @@ export function App() {
           sourceJobs={sourceJobs.jobs}
           installerJob={installerJob}
           onInstallerJob={setInstallerJob}
+          desktopUpdate={desktopUpdate}
+          onDesktopUpdate={setDesktopUpdate}
           onSaved={(next) => {
             setDesktopSettings(next)
             setSettingsDirty(false)
@@ -1012,6 +1054,7 @@ export function App() {
             }}
           >
             Cortana {desktopInfo?.desktop_version || '—'} · Updates
+            {desktopUpdateStatusSuffix(desktopUpdate)}
           </button>
         )}
       </footer>
@@ -1090,4 +1133,20 @@ function InstallerIndicator({
       <i /> {label}
     </button>
   )
+}
+
+function desktopUpdateStatusSuffix(update: DesktopUpdate | null): string {
+  if (!update) return ''
+  if (update.phase === 'downloading' || update.phase === 'installing') {
+    const percent =
+      update.total_bytes && update.total_bytes > 0
+        ? ` ${Math.min(100, Math.round((update.downloaded_bytes / update.total_bytes) * 100))}%`
+        : ''
+    return ` · ${update.phase}${percent}`
+  }
+  if (update.restart_required || update.phase === 'installed') return ' · Restart required'
+  if (update.phase === 'available' && update.available_version) {
+    return ` · ${update.available_version} available`
+  }
+  return ''
 }
