@@ -2,6 +2,7 @@ import { BookOpen, FileText, History, Link2, Network, Sparkles, Star } from 'luc
 import { type CSSProperties, useEffect, useState } from 'react'
 
 import { isDesktopApp, openDesktopUrl } from '../api'
+import { isFavoriteDocument, toggleFavoriteDocument } from '../favoriteDocuments'
 import { safeSourceLink } from '../sourceLinks'
 import type { AnswerResponse, BrainDocument, BrainGraphPage, Evidence } from '../types'
 
@@ -153,8 +154,8 @@ function BrainDocumentView({
   document: BrainDocument
   onSelectDocument: (id: string) => void
 }) {
-  const [favorite, setFavorite] = useState(false)
-  useEffect(() => setFavorite(false), [document.id])
+  const [favorite, setFavorite] = useState(() => isFavoriteDocument(document.id))
+  useEffect(() => setFavorite(isFavoriteDocument(document.id)), [document.id])
   const metadata = Object.entries(document.metadata).slice(0, 24)
   const sourceHref = document.uri
     ? safeSourceLink(document.uri, { allowLocalFile: isDesktopApp })
@@ -170,7 +171,7 @@ function BrainDocumentView({
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
             title={favorite ? 'Remove favorite' : 'Add favorite'}
-            onClick={() => setFavorite((current) => !current)}
+            onClick={() => setFavorite(toggleFavoriteDocument(document.id))}
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
           </button>
@@ -299,8 +300,8 @@ function DocumentView({
   evidence: Evidence[]
   onSelect: (index: number) => void
 }) {
-  const [favorite, setFavorite] = useState(false)
-  useEffect(() => setFavorite(false), [active.chunk_id])
+  const [favorite, setFavorite] = useState(() => isFavoriteDocument(active.chunk_id))
+  useEffect(() => setFavorite(isFavoriteDocument(active.chunk_id)), [active.chunk_id])
   const sourceHref = active.uri
     ? safeSourceLink(active.uri, { allowLocalFile: isDesktopApp })
     : null
@@ -315,7 +316,7 @@ function DocumentView({
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
             title={favorite ? 'Remove favorite' : 'Add favorite'}
-            onClick={() => setFavorite((current) => !current)}
+            onClick={() => setFavorite(toggleFavoriteDocument(active.chunk_id))}
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
           </button>
