@@ -1186,7 +1186,7 @@ export function App() {
             documentsError={documentsError}
             hasMoreDocuments={Boolean(documentCursor)}
             statusError={statusError}
-            sourceJobError={sourceJobError}
+            sourceJobError={sourceJobError || sourceJobs.error}
             onSelect={chooseSource}
             onSelectWorkspace={chooseWorkspace}
             onDocumentQueryChange={setDocumentQuery}
@@ -1288,7 +1288,7 @@ export function App() {
           contextError={contextError}
           contextTokens={estimateTokens(agentContext)}
           desktopAvailable={isDesktopApp}
-          sourceJobError={sourceJobError}
+          sourceJobError={sourceJobError || sourceJobs.error}
           onSearchFocus={focusSearch}
           onRetrieveContext={() => void retrieveAgentContext()}
           onOpenSettings={() => setView('settings')}

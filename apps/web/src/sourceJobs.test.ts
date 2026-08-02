@@ -282,6 +282,36 @@ test('the hook drops an id on a missing-job error and retains snapshots on trans
   expect(state.statusCalls).toEqual(['job-1', 'job-1'])
 })
 
+test('polling failure for an active source job surfaces a transient snapshot error', async () => {
+  const running = jobOf('job-1', 'running')
+  const { result } = renderHook(() => useSourceJobs())
+
+  act(() => {
+    result.current.remember(running)
+  })
+  state.polled.set('job-1', new Error('source job status transport failed'))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+  })
+  expect(result.current.error).toBe('source job status transport failed')
+  expect(result.current.jobs.map((job) => job.id)).toEqual(['job-1'])
+
+  state.polled.set(
+    'job-1',
+    jobOf('job-1', 'succeeded', {
+      summary: 'Validation succeeded.',
+      completed_at_unix_seconds: 1785000100,
+      exit_code: 0,
+    })
+  )
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+  })
+  expect(result.current.error).toBe('')
+  expect(result.current.jobs[0]?.status).toBe('succeeded')
+})
+
 test('the hook does not overlap source status polls while one batch is pending', async () => {
   const running = jobOf('job-1', 'running')
   let resolvePending: ((job: DesktopSourceJob) => void) | undefined

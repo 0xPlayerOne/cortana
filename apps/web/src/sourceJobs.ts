@@ -121,11 +121,13 @@ export function describeSourceJobProgress(
  */
 export function useSourceJobs() {
   const [jobs, setJobs] = useState<DesktopSourceJob[]>([])
+  const [error, setError] = useState('')
   const jobsRef = useRef(jobs)
   const pollingRef = useRef(false)
   jobsRef.current = jobs
 
   const remember = useCallback((job: DesktopSourceJob) => {
+    setError('')
     setJobs((current) => upsertJob(current, job))
   }, [])
 
@@ -151,19 +153,36 @@ export function useSourceJobs() {
     const timer = window.setInterval(() => {
       if (pollingRef.current) return
       const ids = activeJobIds(jobsRef.current)
-      if (ids.length === 0) return
+      if (ids.length === 0) {
+        setError('')
+        return
+      }
       pollingRef.current = true
       void Promise.allSettled(ids.map((id) => getDesktopSourceValidation(id)))
         .then((results) => {
           if (disposed) return
+          let nextError: string | null = null
           results.forEach((result, index) => {
             if (result.status === 'fulfilled') {
               setJobs((current) => upsertJob(current, result.value))
             } else if (isMissingJobError(result.reason)) {
               setJobs((current) => dropJob(current, ids[index]))
+            } else if (result.reason instanceof Error) {
+              nextError = result.reason.message || 'Source job status unavailable'
+            } else {
+              nextError = 'Source job status unavailable'
             }
-            // Any other error retains the last snapshot: the job may still be running.
           })
+          if (nextError) setError(nextError)
+          else if (
+            results.every(
+              (result) =>
+                result.status === 'fulfilled' ||
+                isMissingJobError(result.status === 'rejected' ? result.reason : undefined)
+            )
+          ) {
+            setError('')
+          }
         })
         .finally(() => {
           pollingRef.current = false
@@ -175,5 +194,5 @@ export function useSourceJobs() {
     }
   }, [])
 
-  return { jobs, remember, track: remember }
+  return { jobs, remember, track: remember, error }
 }
