@@ -24,6 +24,11 @@ export function isMissingJobError(error: unknown): boolean {
 
 /** Pure upsert: the latest snapshot is placed first and the list stays bounded. */
 export function upsertJob(jobs: DesktopSourceJob[], next: DesktopSourceJob): DesktopSourceJob[] {
+  const existing = jobs.find((job) => job.id === next.id)
+  // A poll can resolve after the action boundary has already remembered a
+  // terminal result. Never let that older in-flight snapshot make a completed
+  // job look active again in the shell.
+  if (existing && !isActiveJob(existing) && isActiveJob(next)) return jobs
   return [next, ...jobs.filter((job) => job.id !== next.id)].slice(0, MAX_SOURCE_JOB_SNAPSHOTS)
 }
 

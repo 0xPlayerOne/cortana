@@ -95,6 +95,13 @@ test('upsertJob prepends new ids and replaces existing snapshots in place', () =
   expect(replaced[0]).toEqual(updated)
 })
 
+test('upsertJob does not regress a terminal snapshot to an older active poll', () => {
+  const terminal = jobOf('a', 'succeeded')
+  const staleActive = jobOf('a', 'running', { completed_at_unix_seconds: null })
+
+  expect(upsertJob([terminal], staleActive)).toEqual([terminal])
+})
+
 test('upsertJob keeps the snapshot list bounded to the newest entries', () => {
   let jobs: DesktopSourceJob[] = []
   for (let index = 0; index < MAX_SOURCE_JOB_SNAPSHOTS + 3; index += 1) {
