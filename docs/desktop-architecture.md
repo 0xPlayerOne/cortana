@@ -231,8 +231,10 @@ a whole-app action cannot schedule ingestion or trigger a backup.
 Desktop manages named bearer principals without exposing credentials to the renderer. The webview
 edits only principal names, environment-variable references, scopes, and ACL labels. Write-only
 values go to the owner-only managed secret file. Native loopback requests resolve a matching
-private credential for `query`, `status`, or `admin` immediately before sending the request;
-bearer values never enter IPC responses or renderer state.
+private credential for `query`, `status`, or `admin` immediately before sending the request. When
+an admin-scoped credential is configured, the owner-local Desktop prefers it for query and status
+requests so a narrow agent principal cannot hide other workspaces from the control plane. Bearer
+values never enter IPC responses or renderer state.
 
 The Audit panel combines the API's bounded metadata-only retrieval events with a bounded tail of
 the owner-only Desktop action log. Runtime unavailability does not prevent local action events
