@@ -949,7 +949,7 @@ async fn status(
     Extension(principal): Extension<Principal>,
 ) -> Result<Json<Status>, (StatusCode, String)> {
     let acl = principal.acl_labels();
-    let owner = acl.iter().any(|label| label == "*");
+    let owner = acl.iter().any(|label| label == "*") || principal.has_scope(ADMIN_SCOPE);
     let stats = if owner {
         state.store.stats()
     } else {

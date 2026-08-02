@@ -11,7 +11,7 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auth::{Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
+    auth::{ADMIN_SCOPE, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
     context,
     embed::Embedder,
     retrieval,
@@ -299,7 +299,7 @@ impl BrainServer {
             return "authorization error: status scope required".into();
         }
         let acl = self.principal.acl_labels();
-        let owner = acl.iter().any(|label| label == "*");
+        let owner = acl.iter().any(|label| label == "*") || self.principal.has_scope(ADMIN_SCOPE);
         match if owner {
             self.store.stats()
         } else {

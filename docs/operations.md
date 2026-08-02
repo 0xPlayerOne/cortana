@@ -33,7 +33,8 @@ entries, and cache hits without logging queries or evidence.
 safety budgets, every ACL-visible configured source including disabled or not-yet-indexed sources,
 its configured ACL labels, a non-secret authorization summary, and the latest persisted validation
 and sync outcomes for each source. The local owner sees the complete inventory; scoped principals
-see only matching source/project counters, workspaces, validation state, and sync outcomes. The
+see only matching source/project counters, workspaces, validation state, and sync outcomes; an
+admin-scoped principal may inspect the complete operational view. The
 authorization summary reports only the connector method (`none`, `token`, or
 `google_oauth`) plus setup and authorization booleans; it never exposes token values, paths, OAuth
 client paths, or environment contents. Validation proves bounded connector
