@@ -47,7 +47,10 @@ pages to 100 summaries and content to 2 MiB, and records metadata-only list/read
 
 Readiness is user-triggered and read-only. It performs bounded version checks for uv and Python
 3.11+, locates the managed connector environment, and runs `cortana readiness` through the bundled
-sidecar. It rejects oversized or malformed reports and never starts a connector or sync.
+sidecar. It rejects oversized or malformed reports and never starts a connector or sync. The
+desktop shell retains the latest snapshot and scan activity across Settings navigation; successful
+installer completion schedules one shell-owned follow-up scan so readiness reflects the installed
+state even when the Settings view is not mounted.
 
 Tool installation is a second native boundary. The renderer can request only a fixed tool ID and
 must set an explicit approval flag after showing a confirmation. Native code maps that ID to a
