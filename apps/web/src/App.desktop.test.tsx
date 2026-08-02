@@ -353,6 +353,14 @@ test('desktop shell restores workspace and source scope and clears stale selecti
   })
 
   cleanup()
+  window.localStorage.setItem('cortana.source-selection.v1', 'work-code')
+  render(<App />)
+  await waitFor(() => {
+    expect(state.getDocumentsCalls.at(-1)?.source).toBeUndefined()
+    expect(window.localStorage.getItem('cortana.source-selection.v1')).toBeNull()
+  })
+
+  cleanup()
   window.localStorage.setItem('cortana.source-selection.v1', 'missing')
   render(<App />)
   await waitFor(() => {
