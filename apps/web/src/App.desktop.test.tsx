@@ -749,6 +749,7 @@ test('source tree toggles a saved connector without touching indexed data', asyn
     fireEvent.click(toggle)
 
     await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
+    expect(screen.getByText('Source setting saved for future ingestion.')).toBeTruthy()
     expect(state.lastSettingsUpdate?.sources).toEqual([
       expect.objectContaining({ name: 'work-code', project: 'work', enabled: true }),
     ])

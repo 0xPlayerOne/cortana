@@ -109,6 +109,7 @@ export function App() {
   const [sourceJobError, setSourceJobError] = useState('')
   const [sourceToggleBusy, setSourceToggleBusy] = useState<string | null>(null)
   const [sourceToggleError, setSourceToggleError] = useState('')
+  const [sourceToggleNotice, setSourceToggleNotice] = useState('')
   const [hindsightStatus, setHindsightStatus] = useState<DesktopHindsightStatus | null>(null)
   const [honchoStatus, setHonchoStatus] = useState<DesktopHonchoStatus | null>(null)
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
@@ -785,6 +786,7 @@ export function App() {
     }
     setSourceToggleBusy(key)
     setSourceToggleError('')
+    setSourceToggleNotice('')
     try {
       const next = await saveDesktopSettings({
         workspaces: desktopSettings.workspaces,
@@ -801,6 +803,11 @@ export function App() {
         secrets: [],
       })
       setDesktopSettings(next)
+      setSourceToggleNotice(
+        next.restart_required
+          ? 'Source setting saved. Restart the affected services from Settings to apply it.'
+          : 'Source setting saved for future ingestion.'
+      )
       try {
         const nextStatus = await getStatus()
         setStatus(nextStatus)
@@ -1280,6 +1287,7 @@ export function App() {
               settingsDirty || desktopSettings === null || Boolean(desktopSettings?.needs_setup)
             }
             sourceToggleError={sourceToggleError}
+            sourceToggleNotice={sourceToggleNotice}
             onClose={() => setLeftOpen(false)}
             onCancelSourceJob={cancelSourceJob}
             jobs={sourceJobs.jobs}

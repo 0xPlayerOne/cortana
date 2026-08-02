@@ -66,6 +66,7 @@ export function SourcePanel({
   sourceToggleBusy = null,
   sourceToggleDisabled = false,
   sourceToggleError = '',
+  sourceToggleNotice = '',
   onClose,
   onCancelSourceJob,
   jobs = [],
@@ -93,6 +94,7 @@ export function SourcePanel({
   sourceToggleBusy?: string | null
   sourceToggleDisabled?: boolean
   sourceToggleError?: string
+  sourceToggleNotice?: string
   onClose: () => void
   onCancelSourceJob?: (id: string) => void
   jobs?: DesktopSourceJob[]
@@ -192,6 +194,11 @@ export function SourcePanel({
       {sourceToggleError && (
         <p className="document-list-error source-job-error" role="alert">
           {sourceToggleError}
+        </p>
+      )}
+      {sourceToggleNotice && (
+        <p className="document-list-state source-toggle-notice" role="status">
+          {sourceToggleNotice}
         </p>
       )}
       {statusError && status && (
