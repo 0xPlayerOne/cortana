@@ -22,6 +22,7 @@ def fetch_slack(
     project: str,
     token_env: str = "SLACK_BOT_TOKEN",
     max_documents: int | None = None,
+    cache_dir: Path | None = None,
 ) -> Iterable[Document]:
     token = _required_env(token_env)
     headers = {"Authorization": f"Bearer {token}"}
@@ -31,81 +32,268 @@ def fetch_slack(
         timeout=30,
         follow_redirects=False,
     ) as client:
-        emitted = 0
+        if cache_dir is not None:
+            yield from _fetch_slack_cached(
+                client,
+                channel_ids,
+                project,
+                cache_dir,
+                max_documents=max_documents,
+            )
+        else:
+            yield from _fetch_slack_uncached(
+                client,
+                channel_ids,
+                project,
+                max_documents=max_documents,
+            )
+
+
+def _fetch_slack_uncached(
+    client: httpx.Client,
+    channel_ids: list[str],
+    project: str,
+    max_documents: int | None = None,
+) -> Iterable[Document]:
+    emitted = 0
+    for channel_id in channel_ids:
+        cursor = ""
+        while True:
+            response = _get_with_backoff(
+                client,
+                "/conversations.history",
+                params={
+                    "channel": channel_id,
+                    "limit": min(200, max_documents or 200),
+                    "cursor": cursor,
+                },
+            )
+            payload = _slack_payload(response)
+            for parent in _slack_messages(payload):
+                thread = _slack_thread_messages(client, channel_id, parent)
+                document = _slack_document_from_thread(channel_id, project, parent, thread)
+                if document is None:
+                    continue
+                yield document
+                emitted += 1
+                if max_documents is not None and emitted >= max_documents:
+                    return
+            response_metadata = payload.get("response_metadata")
+            cursor = str(
+                response_metadata.get("next_cursor") if isinstance(response_metadata, dict) else ""
+            )
+            if not cursor:
+                break
+
+
+def _slack_thread_messages(
+    client: httpx.Client, channel_id: str, parent: dict[str, Any]
+) -> list[dict[str, Any]]:
+    if _slack_timestamp(parent.get("ts")) is None:
+        return []
+    thread = [parent]
+    try:
+        has_replies = int(parent.get("reply_count", 0)) > 0
+    except (TypeError, ValueError):
+        has_replies = False
+    if has_replies:
+        replies = _get_with_backoff(
+            client,
+            "/conversations.replies",
+            params={"channel": channel_id, "ts": parent["ts"], "limit": 200},
+        )
+        thread = _slack_messages(_slack_payload(replies))
+    return [
+        message
+        for message in thread
+        if isinstance(message, dict) and _slack_timestamp(message.get("ts")) is not None
+    ]
+
+
+def _slack_document_from_thread(
+    channel_id: str,
+    project: str,
+    parent: dict[str, Any],
+    thread: list[dict[str, Any]],
+) -> Document | None:
+    parent_timestamp = _slack_timestamp(parent.get("ts"))
+    if parent_timestamp is None:
+        return None
+    text = "\n".join(
+        f"{message.get('user', 'unknown')}: {message.get('text', '')}"
+        for message in thread
+        if message.get("text")
+    )
+    if not text:
+        return None
+    timestamps = [
+        timestamp
+        for message in thread
+        if (timestamp := _slack_timestamp(message.get("ts"))) is not None
+    ]
+    updated = max(timestamps, default=parent_timestamp)
+    return Document(
+        source="slack",
+        source_id=f"{channel_id}:{parent['ts']}",
+        title=_title(parent.get("text", ""), f"Slack {channel_id}"),
+        content=text,
+        uri=f"slack://channel?team=&id={channel_id}&message={parent['ts']}",
+        updated_at=dt.datetime.fromtimestamp(updated, dt.UTC),
+        project=project,
+        metadata={
+            "channel_id": channel_id,
+            "participants": sorted({m.get("user") for m in thread if m.get("user")}),
+            "message_count": len(thread),
+        },
+    )
+
+
+def _fetch_slack_cached(
+    client: httpx.Client,
+    channel_ids: list[str],
+    project: str,
+    cache_dir: Path,
+    max_documents: int | None = None,
+) -> Iterable[Document]:
+    cache = _slack_cache(cache_dir)
+    try:
         for channel_id in channel_ids:
+            row = cache.execute(
+                "SELECT latest_ts,last_full FROM slack_channels WHERE channel_id=?",
+                (channel_id,),
+            ).fetchone()
+            full = row is None or _full_refresh_due(str(row[1]))
+            latest_ts = None if row is None else str(row[0] or "")
             cursor = ""
             while True:
-                response = _get_with_backoff(
-                    client,
-                    "/conversations.history",
-                    params={
-                        "channel": channel_id,
-                        "limit": min(200, max_documents or 200),
-                        "cursor": cursor,
-                    },
-                )
+                params: dict[str, Any] = {"channel": channel_id, "limit": 200}
+                if full:
+                    if cursor:
+                        params["cursor"] = cursor
+                elif latest_ts:
+                    params["oldest"] = latest_ts
+                response = _get_with_backoff(client, "/conversations.history", params=params)
                 payload = _slack_payload(response)
-                for parent in _slack_messages(payload):
+                messages = _slack_messages(payload)
+                if not messages:
+                    break
+                for parent in messages:
                     parent_timestamp = _slack_timestamp(parent.get("ts"))
                     if parent_timestamp is None:
                         continue
-                    thread = [parent]
-                    try:
-                        has_replies = int(parent.get("reply_count", 0)) > 0
-                    except (TypeError, ValueError):
-                        has_replies = False
-                    if has_replies:
-                        replies = _get_with_backoff(
-                            client,
-                            "/conversations.replies",
-                            params={"channel": channel_id, "ts": parent["ts"], "limit": 200},
+                    if not full and latest_ts and parent_timestamp <= float(latest_ts):
+                        continue
+                    if full:
+                        cache.execute(
+                            "INSERT OR IGNORE INTO slack_seen(channel_id,parent_ts) VALUES(?,?)",
+                            (channel_id, str(parent["ts"])),
                         )
-                        thread = _slack_messages(_slack_payload(replies))
-                    valid_thread = [
-                        message
-                        for message in thread
-                        if isinstance(message, dict)
-                        and _slack_timestamp(message.get("ts")) is not None
-                    ]
-                    text = "\n".join(
-                        f"{message.get('user', 'unknown')}: {message.get('text', '')}"
-                        for message in valid_thread
-                        if message.get("text")
-                    )
-                    if text:
-                        timestamps = [
-                            timestamp
-                            for message in valid_thread
-                            if (timestamp := _slack_timestamp(message.get("ts"))) is not None
-                        ]
-                        updated = max(timestamps)
-                        yield Document(
-                            source="slack",
-                            source_id=f"{channel_id}:{parent['ts']}",
-                            title=_title(parent.get("text", ""), f"Slack {channel_id}"),
-                            content=text,
-                            uri=f"slack://channel?team=&id={channel_id}&message={parent['ts']}",
-                            updated_at=dt.datetime.fromtimestamp(updated, dt.UTC),
-                            project=project,
-                            metadata={
-                                "channel_id": channel_id,
-                                "participants": sorted(
-                                    {m.get("user") for m in valid_thread if m.get("user")}
+                    thread = _slack_thread_messages(client, channel_id, parent)
+                    document = _slack_document_from_thread(channel_id, project, parent, thread)
+                    parent_key = str(parent["ts"])
+                    if document is None:
+                        cache.execute(
+                            "DELETE FROM slack_threads WHERE channel_id=? AND parent_ts=?",
+                            (channel_id, parent_key),
+                        )
+                    else:
+                        cache.execute(
+                            "INSERT OR REPLACE INTO slack_threads(channel_id,parent_ts,body) VALUES(?,?,?)",
+                            (
+                                channel_id,
+                                parent_key,
+                                json.dumps(
+                                    {"parent": parent, "thread": thread},
+                                    separators=(",", ":"),
                                 ),
-                                "message_count": len(valid_thread),
-                            },
+                            ),
                         )
-                        emitted += 1
-                        if max_documents is not None and emitted >= max_documents:
-                            return
+                    if not latest_ts or parent_timestamp > float(latest_ts):
+                        latest_ts = str(parent["ts"])
+                cache.commit()
                 response_metadata = payload.get("response_metadata")
                 cursor = str(
                     response_metadata.get("next_cursor")
                     if isinstance(response_metadata, dict)
                     else ""
                 )
-                if not cursor:
+                if not full or not cursor:
                     break
+            if full:
+                cache.execute(
+                    "DELETE FROM slack_threads WHERE channel_id=? "
+                    "AND parent_ts NOT IN (SELECT parent_ts FROM slack_seen WHERE channel_id=?)",
+                    (channel_id, channel_id),
+                )
+            cache.execute(
+                "INSERT OR REPLACE INTO slack_channels(channel_id,latest_ts,last_full) VALUES(?,?,?)",
+                (
+                    channel_id,
+                    latest_ts,
+                    dt.datetime.now(dt.UTC).isoformat() if full else str(row[1]),
+                ),
+            )
+            cache.commit()
+
+        rows = cache.execute(
+            "SELECT rowid,channel_id,parent_ts,body FROM slack_threads "
+            "ORDER BY CAST(parent_ts AS REAL)"
+        )
+        emitted = 0
+        for rowid, channel_id, _parent_ts, body in rows:
+            try:
+                payload = json.loads(str(body))
+                parent = payload["parent"]
+                thread = payload["thread"]
+                if not isinstance(parent, dict) or not isinstance(thread, list):
+                    raise ValueError("invalid cached Slack thread")
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                print(
+                    f"connector warning: removing malformed Slack cache row {rowid}",
+                    file=sys.stderr,
+                )
+                cache.execute("DELETE FROM slack_threads WHERE rowid=?", (rowid,))
+                continue
+            document = _slack_document_from_thread(str(channel_id), project, parent, thread)
+            if document is not None:
+                yield document
+                emitted += 1
+                if max_documents is not None and emitted >= max_documents:
+                    break
+        cache.commit()
+    finally:
+        cache.close()
+
+
+def _slack_cache(cache_dir: Path) -> sqlite3.Connection:
+    _prepare_private_cache_directory(cache_dir)
+    path = cache_dir / "slack.sqlite3"
+    if path.is_symlink():
+        raise RuntimeError(f"Slack cache path must not be a symlink: {path}")
+    flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, 0o600)
+    os.close(descriptor)
+    path.chmod(0o600)
+    connection = sqlite3.connect(path)
+    connection.execute("PRAGMA journal_mode=MEMORY")
+    connection.execute("PRAGMA synchronous=NORMAL")
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS slack_threads("
+        "channel_id TEXT NOT NULL,parent_ts TEXT NOT NULL,body TEXT NOT NULL,"
+        "PRIMARY KEY(channel_id,parent_ts))"
+    )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS slack_channels("
+        "channel_id TEXT PRIMARY KEY,latest_ts TEXT,last_full TEXT NOT NULL)"
+    )
+    connection.execute(
+        "CREATE TEMP TABLE IF NOT EXISTS slack_seen("
+        "channel_id TEXT NOT NULL,parent_ts TEXT NOT NULL,"
+        "PRIMARY KEY(channel_id,parent_ts))"
+    )
+    connection.execute("DELETE FROM slack_seen")
+    return connection
 
 
 def fetch_discord(

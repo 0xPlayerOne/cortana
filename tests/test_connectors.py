@@ -542,6 +542,69 @@ def test_discord_cache_uses_incremental_after_cursor(
     assert cache.stat().st_mode & 0o777 == 0o700
 
 
+def test_slack_cache_uses_incremental_oldest_and_emits_complete_snapshots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SLACK_TEST_TOKEN", "secret")
+    real_client = httpx.Client
+    history_calls = 0
+    oldest_values: list[str | None] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal history_calls
+        if request.url.path.endswith("/conversations.history"):
+            history_calls += 1
+            oldest = request.url.params.get("oldest")
+            oldest_values.append(oldest)
+            if history_calls == 1:
+                messages = [{"ts": "10.0", "user": "U1", "text": "Launch?", "reply_count": 1}]
+            elif history_calls == 2:
+                messages = [{"ts": "12.0", "user": "U3", "text": "Shipped", "reply_count": 0}]
+            else:
+                messages = []
+            return response(
+                {"ok": True, "messages": messages, "response_metadata": {"next_cursor": ""}},
+                request=request,
+            )
+        if request.url.path.endswith("/conversations.replies"):
+            return response(
+                {
+                    "ok": True,
+                    "messages": [
+                        {"ts": "10.0", "user": "U1", "text": "Launch?"},
+                        {"ts": "11.0", "user": "U2", "text": "Yes"},
+                    ],
+                },
+                request=request,
+            )
+        raise AssertionError(f"unexpected Slack request: {request.url}")
+
+    monkeypatch.setattr(
+        chat.httpx,
+        "Client",
+        lambda **_kwargs: real_client(
+            base_url="https://slack.test",
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    cache = tmp_path / "cache"
+    first = list(chat.fetch_slack(["C1"], "work", "SLACK_TEST_TOKEN", cache_dir=cache))
+    second = list(chat.fetch_slack(["C1"], "work", "SLACK_TEST_TOKEN", cache_dir=cache))
+
+    assert [document.source_id for document in first] == ["C1:10.0"]
+    assert [document.source_id for document in second] == ["C1:10.0", "C1:12.0"]
+    assert oldest_values == [None, "10.0"]
+    assert (cache / "slack.sqlite3").stat().st_mode & 0o777 == 0o600
+    assert cache.stat().st_mode & 0o777 == 0o700
+
+    # A complete refresh removes a deleted parent without relying on a bounded
+    # emission cap to decide what remains searchable.
+    with sqlite3.connect(cache / "slack.sqlite3") as connection:
+        connection.execute("UPDATE slack_channels SET last_full=?", ("2000-01-01T00:00:00+00:00",))
+        connection.commit()
+    assert list(chat.fetch_slack(["C1"], "work", "SLACK_TEST_TOKEN", cache_dir=cache)) == []
+
+
 def test_discord_cache_rejects_symlinked_directory_and_database(tmp_path: Path) -> None:
     external = tmp_path / "external-cache"
     external.mkdir()
@@ -1517,7 +1580,7 @@ def test_connector_cli_rejects_non_positive_document_cap() -> None:
 
 def test_connector_cli_dispatches_chat_sources(monkeypatch: pytest.MonkeyPatch) -> None:
     expected = [Document(source="test", source_id="1", title="One", content="Body")]
-    monkeypatch.setattr(connector_cli, "fetch_slack", lambda *_args: expected)
+    monkeypatch.setattr(connector_cli, "fetch_slack", lambda *_args, **_kwargs: expected)
     monkeypatch.setattr(connector_cli, "fetch_discord", lambda *_args, **_kwargs: expected)
 
     slack_args = connector_cli.parser().parse_args(
