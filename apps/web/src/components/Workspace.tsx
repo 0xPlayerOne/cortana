@@ -419,6 +419,11 @@ function AnswerView({
       {response && (
         <div className="answer-meta">
           <span>{response.mode}</span>
+          <span>
+            {response.retrieval_degraded
+              ? 'lexical fallback'
+              : response.retrieval_mode || 'hybrid retrieval'}
+          </span>
           <span>{response.cached ? 'cache hit' : `${response.latency_ms} ms`}</span>
           <span>
             {response.plan.queries.length}{' '}
@@ -448,6 +453,12 @@ function AnswerView({
           {warning}
         </p>
       ))}
+      {response?.retrieval_degraded && (
+        <p className="answer-warning" role="status">
+          Embedding retrieval is temporarily unavailable; these citations came from exact-term
+          search.
+        </p>
+      )}
       <p className="lead">{evidence.length} cited passages</p>
       {evidence.slice(0, 4).map((item, index) => (
         <button

@@ -183,6 +183,7 @@ export type BrainStatus = {
   query_cache_entries: number
   query_cache_hits: number
   answers_total: number
+  retrieval_fallbacks_total?: number
   query: {
     mode: 'extractive' | 'synthesized'
     model: string | null
@@ -524,6 +525,8 @@ export type AnswerResponse = {
   cached: boolean
   latency_ms: number
   warnings: string[]
+  retrieval_mode?: 'hybrid' | 'lexical-fallback'
+  retrieval_degraded?: boolean
 }
 
 export type ContextBundle = {
@@ -537,4 +540,6 @@ export type ContextBundle = {
     estimated_tokens: number
     max_tokens: number
   }
+  retrieval_mode?: 'hybrid' | 'lexical-fallback'
+  retrieval_warning?: string | null
 }
