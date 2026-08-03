@@ -2248,6 +2248,48 @@ mod tests {
     }
 
     #[test]
+    fn source_validation_exposes_google_connector_reason() {
+        let directory = tempdir().expect("temporary directory");
+        let config = Config {
+            data_dir: directory.path().to_path_buf(),
+            sources: vec![google_source(None)],
+            ..Config::default()
+        };
+        let source = config.sources.first().expect("configured source");
+        let fingerprint =
+            source_validation::configuration_fingerprint(source).expect("validation fingerprint");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "failed".into(),
+                validated_at: chrono::Utc::now(),
+                documents: None,
+                bytes: None,
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(fingerprint),
+                error: Some("Drive listing is incomplete; refusing partial snapshot".into()),
+            },
+        )
+        .expect("validation state");
+
+        let status = IngestionStatus::from_config(&config, false);
+        let validation = status.configured_sources[0]
+            .validation
+            .as_ref()
+            .expect("failed validation");
+        assert_eq!(
+            validation.error.as_deref(),
+            Some("google source snapshot was incomplete")
+        );
+        assert_eq!(validation.error_category.as_deref(), Some("connector"));
+    }
+
+    #[test]
     fn validation_state_errors_are_generic_to_callers() {
         let directory = tempdir().expect("temporary directory");
         write_private_fixture(
