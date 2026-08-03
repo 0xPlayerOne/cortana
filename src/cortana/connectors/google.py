@@ -251,7 +251,7 @@ def fetch_drive(
                 downloaded_ids: set[str] = set()
                 stale_ids: set[str] = set()
                 for item in items:
-                    file_id = str(item["id"])
+                    file_id = item["id"]
                     modified_time = str(item.get("modifiedTime") or "")
                     body = _cached_drive_content(cache, file_id, modified_time)
                     if body is None:
@@ -268,7 +268,7 @@ def fetch_drive(
                             missing_items,
                         )
                         for item, (body, error_name) in zip(missing_items, downloaded, strict=True):
-                            file_id = str(item["id"])
+                            file_id = item["id"]
                             if error_name is None:
                                 downloaded_ids.add(file_id)
                             else:
@@ -290,7 +290,14 @@ def fetch_drive(
                             bodies[file_id] = body
                 for item in items:
                     file_id = str(item["id"])
-                    modified_time = str(item.get("modifiedTime") or "")
+                    raw_modified_time = item.get("modifiedTime")
+                    if strict and (
+                        not isinstance(raw_modified_time, str) or not raw_modified_time.strip()
+                    ):
+                        raise RuntimeError(
+                            f"Drive file has no modifiedTime: id={file_id}; refusing partial snapshot"
+                        )
+                    modified_time = str(raw_modified_time or "")
                     body = bodies[file_id]
                     if file_id in downloaded_ids and cache is not None:
                         cache.execute(
@@ -345,14 +352,28 @@ def fetch_drive(
                         break
                 if max_documents is not None and emitted >= max_documents:
                     break
-                page_token = payload.get("nextPageToken")
-                if not page_token:
+                raw_next_page_token = payload.get("nextPageToken")
+                if raw_next_page_token is None:
                     break
-        if cache is not None and max_documents is None:
-            # A capped run is a partial snapshot: it must never prune cached
-            # bodies it did not list, or every bounded sync would invalidate
-            # the whole derived cache. Additive writes above are safe.
-            cache.execute("DELETE FROM files WHERE id NOT IN (SELECT id FROM seen)")
+                if isinstance(raw_next_page_token, str) and raw_next_page_token:
+                    page_token = raw_next_page_token
+                    continue
+                if strict:
+                    raise RuntimeError(
+                        "Drive listing has invalid nextPageToken; refusing partial snapshot"
+                    )
+                print(
+                    "Drive listing skipped: nextPageToken is not a non-empty string",
+                    file=sys.stderr,
+                )
+                break
+        if cache is not None:
+            if max_documents is None:
+                # A capped run is a partial snapshot: it must never prune cached
+                # bodies it did not list, or every bounded sync would invalidate
+                # the whole derived cache. Additive writes above are safe.
+                cache.execute("DELETE FROM files WHERE id NOT IN (SELECT id FROM seen)")
+            # Small bounded probes must persist additive cache writes too.
             cache.commit()
     finally:
         if cache is not None:
@@ -409,9 +430,13 @@ def fetch_gmail(
                 if max_documents is not None:
                     references = references[: max_documents - emitted]
                 for reference in references:
-                    message_id = str(reference["id"])
+                    message_id = reference["id"]
                     message = _cached_gmail_message(cache, message_id)
                     if message is None:
+                        missing_ids.append(message_id)
+                    elif message.get("id") != message_id:
+                        _warn_skipped_record("Gmail message", message_id, "cached id mismatch")
+                        cache.execute("DELETE FROM messages WHERE id=?", (message_id,))
                         missing_ids.append(message_id)
                     else:
                         messages[message_id] = message
@@ -434,12 +459,19 @@ def fetch_gmail(
                                     )
                                 unavailable += 1
                             else:
-                                if strict and str(message.get("id") or "") != message_id:
-                                    raise RuntimeError(
-                                        "Gmail message detail id mismatch: "
-                                        f"requested={message_id} received={message.get('id')}"
+                                if message.get("id") != message_id:
+                                    if strict:
+                                        raise RuntimeError(
+                                            "Gmail message detail id mismatch: "
+                                            f"requested={message_id} received={message.get('id')}"
+                                        )
+                                    _warn_skipped_record(
+                                        "Gmail message",
+                                        message_id,
+                                        "detail id mismatch",
                                     )
-                                messages[message_id] = message
+                                else:
+                                    messages[message_id] = message
                         maximum_unavailable = max(10, len(missing_ids) // 10)
                         if unavailable > maximum_unavailable:
                             raise RuntimeError(
@@ -448,7 +480,7 @@ def fetch_gmail(
                             )
                 missing_set = set(missing_ids)
                 for reference in references:
-                    message_id = str(reference["id"])
+                    message_id = reference["id"]
                     message = messages.get(message_id)
                     if message is None:
                         continue
@@ -477,14 +509,27 @@ def fetch_gmail(
                         _warn_skipped_record("Gmail message", message.get("id"), error)
                 if limit_reached:
                     break
-                page_token = listing.get("nextPageToken")
-                if not page_token:
+                raw_next_page_token = listing.get("nextPageToken")
+                if raw_next_page_token is None:
                     break
-        if cache is not None and max_documents is None:
-            # A capped run is a partial snapshot and must not prune cached
-            # messages it never listed; only a complete run reconciles the
-            # persistent message cache.
-            cache.execute("DELETE FROM messages WHERE id NOT IN (SELECT id FROM seen)")
+                if isinstance(raw_next_page_token, str) and raw_next_page_token:
+                    page_token = raw_next_page_token
+                    continue
+                if strict:
+                    raise RuntimeError(
+                        "Gmail listing has invalid nextPageToken; refusing partial snapshot"
+                    )
+                print(
+                    "Gmail listing skipped: nextPageToken is not a non-empty string",
+                    file=sys.stderr,
+                )
+                break
+        if cache is not None:
+            if max_documents is None:
+                # A capped run is a partial snapshot and must not prune cached
+                # messages it never listed; only a complete run reconciles the
+                # persistent message cache.
+                cache.execute("DELETE FROM messages WHERE id NOT IN (SELECT id FROM seen)")
             cache.commit()
     finally:
         if cache is not None:
@@ -640,19 +685,50 @@ def fetch_calendar(
     client: httpx.Client | None = None,
     max_documents: int | None = None,
 ) -> Iterable[Document]:
+    strict = max_documents is None
     with GoogleSession(token_path, client) as session:
-        response = session.request(
-            "GET", "https://www.googleapis.com/calendar/v3/users/me/calendarList"
-        )
-        calendars = json_payload(response)
-        if not isinstance(calendars, dict):
+        calendar_records: list[dict[str, Any]] = []
+        calendar_page_token: str | None = None
+        while True:
+            calendar_params: dict[str, Any] = {}
+            if calendar_page_token:
+                calendar_params["pageToken"] = calendar_page_token
+            response = session.request(
+                "GET",
+                "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+                params=calendar_params,
+            )
+            calendars = json_payload(response)
+            if not isinstance(calendars, dict):
+                if strict:
+                    raise RuntimeError(
+                        "Calendar listing is not an object; refusing partial snapshot"
+                    )
+                print(
+                    "Calendar listing skipped: provider returned a non-object value",
+                    file=sys.stderr,
+                )
+                break
+            calendar_records.extend(
+                _google_records(calendars.get("items"), "Calendar", strict=strict)
+            )
+            raw_next_page_token = calendars.get("nextPageToken")
+            if raw_next_page_token is None:
+                break
+            if isinstance(raw_next_page_token, str) and raw_next_page_token:
+                calendar_page_token = raw_next_page_token
+                continue
+            if strict:
+                raise RuntimeError(
+                    "Calendar listing has invalid nextPageToken; refusing partial snapshot"
+                )
             print(
-                "Calendar listing skipped: provider returned a non-object value",
+                "Calendar listing skipped: nextPageToken is not a non-empty string",
                 file=sys.stderr,
             )
-            return
+            break
         emitted = 0
-        for calendar in _google_records(calendars.get("items"), "Calendar"):
+        for calendar in calendar_records:
             calendar_id = str(calendar.get("id") or "")
             if not calendar_id or calendar.get("deleted") or calendar.get("hidden"):
                 continue
@@ -677,12 +753,16 @@ def fetch_calendar(
                 )
                 payload = json_payload(response)
                 if not isinstance(payload, dict):
+                    if strict:
+                        raise RuntimeError(
+                            "Calendar events are not an object; refusing partial snapshot"
+                        )
                     print(
                         "Calendar events skipped: provider returned a non-object value",
                         file=sys.stderr,
                     )
                     break
-                events = _google_records(payload.get("items"), "Calendar event")
+                events = _google_records(payload.get("items"), "Calendar event", strict=strict)
                 for event in events:
                     if event.get("status") == "cancelled":
                         continue
@@ -691,7 +771,11 @@ def fetch_calendar(
                         try:
                             _add_calendar_occurrence(recurring_series, recurring_id, event)
                         except (AttributeError, TypeError, ValueError, KeyError) as error:
-                            _warn_skipped_record("Calendar event", event["id"], error)
+                            if strict:
+                                raise RuntimeError(
+                                    f"Calendar event conversion failed: id={event.get('id')}"
+                                ) from error
+                            _warn_skipped_record("Calendar event", event.get("id"), error)
                     else:
                         try:
                             yield _calendar_document(event, calendar, project)
@@ -699,10 +783,26 @@ def fetch_calendar(
                             if max_documents is not None and emitted >= max_documents:
                                 return
                         except (AttributeError, TypeError, ValueError, KeyError) as error:
-                            _warn_skipped_record("Calendar event", event["id"], error)
-                page_token = payload.get("nextPageToken")
-                if not page_token:
+                            if strict:
+                                raise RuntimeError(
+                                    f"Calendar event conversion failed: id={event.get('id')}"
+                                ) from error
+                            _warn_skipped_record("Calendar event", event.get("id"), error)
+                raw_next_page_token = payload.get("nextPageToken")
+                if raw_next_page_token is None:
                     break
+                if isinstance(raw_next_page_token, str) and raw_next_page_token:
+                    page_token = raw_next_page_token
+                    continue
+                if strict:
+                    raise RuntimeError(
+                        "Calendar events have invalid nextPageToken; refusing partial snapshot"
+                    )
+                print(
+                    "Calendar events skipped: nextPageToken is not a non-empty string",
+                    file=sys.stderr,
+                )
+                break
             for recurring_id, series in recurring_series.items():
                 yield _calendar_series_document(recurring_id, series, calendar, project)
                 emitted += 1
@@ -1007,7 +1107,15 @@ def _google_records(value: object, kind: str, strict: bool = False) -> list[dict
                 )
             print(f"{kind} skipped: record={index} is not an object", file=sys.stderr)
             continue
-        record_id = str(record.get("id") or "").strip()
+        record_id = record.get("id")
+        if not isinstance(record_id, str):
+            if strict:
+                raise RuntimeError(
+                    f"{kind} record={index} has a non-string id; refusing partial snapshot"
+                )
+            print(f"{kind} skipped: record={index} has a non-string id", file=sys.stderr)
+            continue
+        record_id = record_id.strip()
         if not record_id:
             if strict:
                 raise RuntimeError(f"{kind} record={index} has no id; refusing partial snapshot")
