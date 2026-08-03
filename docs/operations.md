@@ -142,8 +142,14 @@ document, byte, and duration budgets. A validation stays current for
 `[ingestion].validation_max_age_hours` (168 hours by default; `0` accepts any age): re-run
 `validate-source` (or the Desktop validation flow) after changing a source or its budgets, and
 re-validate periodically so a revoked credential or changed scope cannot keep a stale record
-blessing the schedule. The same freshness bound gates `sync --require-validation` and the
-readiness `source-validation` check.
+blessing the schedule. The installed job runs `sync --require-validation` without `--source`, so
+every scheduled run re-applies the same gate before any connector is contacted: a source whose
+validation lapsed or failed, whose configuration changed since validation, or whose resolved
+budgets grew past the validated ones fails the run fast (nonzero exit, visible in the job log)
+instead of ingesting against a stale validation. The same freshness bound gates
+`sync --require-validation` and the readiness `source-validation` check. Re-run `validate-source`
+(or the Desktop validation flow) after changing a source or its budgets; the next scheduled run
+picks up the new validation record automatically.
 
 Re-running `service install` without `--enable-sync-service` removes any prior recurring sync job
 and leaves Cortana in query-only mode.
@@ -176,7 +182,10 @@ cortana service stop embedding
 The checked-in templates in [`packaging/systemd`](../packaging/systemd) remain useful for manual
 package-manager installs and hardened deployments. The generated units use the current executable,
 config path, working directory, and data directory, and recurring sync remains disabled unless
-`--enable-sync-service` is explicitly supplied. For a cloud embedding provider, pass
+`--enable-sync-service` is explicitly supplied. The recurring sync unit is generated with the
+same `sync --require-validation` guard as the macOS and Windows jobs, so each scheduled run
+re-checks every enabled source's validation before contacting a connector. For a cloud embedding
+provider, pass
 `--no-embedding-service`.
 
 The generated user units can also be managed directly:
@@ -235,9 +244,10 @@ configuration changed since validation (the validation record stores a configura
 its resolved budgets grew past the validated ones — for example after raising `[ingestion]`
 defaults behind an override-less source — or its validation lapsed past
 `[ingestion].validation_max_age_hours` (168 hours by default; `0` disables the bound). This mirrors
-the install-time recurring-sync gate, so an operator who changed a source after installing the sync
-schedule sees the mismatch in `cortana readiness` instead of discovering it from a failing scheduled
-run. Without the flag, source validation is not required for query-only readiness; per-source
+the install-time recurring-sync gate, and because the installed recurring job re-checks the same
+gate on every scheduled run, an operator who changed a source after installing the sync schedule
+sees the mismatch in `cortana readiness` before the next scheduled run fails fast with the same
+reason. Without the flag, source validation is not required for query-only readiness; per-source
 validation state remains visible in `/v1/status` at any time.
 
 ## Secrets

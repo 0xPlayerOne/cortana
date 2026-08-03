@@ -4,7 +4,7 @@ After=cortana-embedding.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/cortana --config %h/.config/cortana/config.toml sync
+ExecStart=/usr/local/bin/cortana --config %h/.config/cortana/config.toml sync --require-validation
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true

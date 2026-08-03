@@ -152,7 +152,11 @@ fn configured_jobs(
     if install_sync {
         jobs.push(Job {
             label: "ai.cortana.sync",
-            arguments: [common.to_vec(), vec!["sync".into()]].concat(),
+            arguments: [
+                common.to_vec(),
+                vec!["sync".into(), "--require-validation".into()],
+            ]
+            .concat(),
             schedule: Schedule::Interval(sync_seconds),
         });
     }
@@ -1302,9 +1306,20 @@ mod tests {
             true,
             false,
         );
-        assert!(
-            scheduled.iter().any(|job| job.label == "ai.cortana.sync"),
-            "explicit opt-in must install the recurring sync job"
+        let sync_job = scheduled
+            .iter()
+            .find(|job| job.label == "ai.cortana.sync")
+            .expect("explicit opt-in must install the recurring sync job");
+        assert_eq!(
+            sync_job.arguments,
+            [
+                "cortana",
+                "--config",
+                "config.toml",
+                "sync",
+                "--require-validation"
+            ],
+            "every scheduled sync run must re-check source validation"
         );
     }
 

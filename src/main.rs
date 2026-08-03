@@ -176,8 +176,7 @@ enum Command {
         max_seconds: Option<u64>,
         #[arg(
             long,
-            requires = "source",
-            help = "Require a matching successful validation at equal or larger limits"
+            help = "Require a current successful validation at equal or larger limits for the selected source, or for every enabled source when --source is omitted"
         )]
         require_validation: bool,
     },
@@ -1318,7 +1317,9 @@ fn require_sync_validation(
     selected: Option<&str>,
     overrides: SyncOverrides,
 ) -> Result<()> {
-    let selected = selected.context("--require-validation requires --source")?;
+    let Some(selected) = selected else {
+        return require_enabled_sources_validated(config, overrides);
+    };
     let source = config
         .sources
         .iter()
@@ -1486,10 +1487,23 @@ fn manage_service(
 }
 
 fn ensure_recurring_sync_validated(config: &Config) -> Result<()> {
+    require_enabled_sources_validated(config, SyncOverrides::default())
+}
+
+/// Re-check that every enabled source has a current successful validation at
+/// equal or larger budgets than its resolved run limits.
+///
+/// The installed recurring sync job invokes this gate on every scheduled run
+/// (`sync --require-validation` without `--source`) so a validation that
+/// lapsed, failed, lost its configuration fingerprint, or covers smaller
+/// budgets than the configured limits fails the run fast instead of ingesting
+/// against it; `service install --enable-sync-service` applies the same gate
+/// once before scheduling the job.
+fn require_enabled_sources_validated(config: &Config, overrides: SyncOverrides) -> Result<()> {
     let mut checked = 0usize;
     for source in config.sources.iter().filter(|source| source.enabled) {
         checked += 1;
-        let limits = SourceLimits::resolve(config, source, SyncOverrides::default())
+        let limits = SourceLimits::resolve(config, source, overrides)
             .with_context(|| format!("invalid recurring sync budget for {}", source.name))?;
         source_validation::require_success(
             &config.data_dir,
@@ -2699,11 +2713,12 @@ mod tests {
         Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
         SyncOverrides, chunk, cleanup_connector_spools, configured_connector_command,
         context_bundle, ensure_recurring_sync_validated, ingest_documents, private_file,
-        run_connector_to_spool, validation_overrides,
+        require_sync_validation, run_connector_to_spool, validation_overrides,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
     use cortana::model::Document;
+    use cortana::source_validation::{SourceValidationStatus, configuration_fingerprint, record};
     use cortana::store::Store;
 
     #[test]
@@ -2859,6 +2874,119 @@ mod tests {
         cortana::source_validation::record(directory.path(), status).expect("fresh validation");
         ensure_recurring_sync_validated(&config)
             .expect("a fresh validation must bless recurring sync");
+    }
+
+    fn filesystem_source(name: &str) -> SourceConfig {
+        SourceConfig {
+            name: name.into(),
+            kind: "filesystem".into(),
+            enabled: true,
+            project: "work".into(),
+            root: Some(std::env::temp_dir()),
+            source: Some(name.into()),
+            channels: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: Some(25),
+            max_bytes: Some(1024),
+            max_duration_seconds: Some(60),
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        }
+    }
+
+    fn record_success(
+        data_dir: &std::path::Path,
+        source: &SourceConfig,
+        max_documents: usize,
+        max_bytes: u64,
+        max_seconds: u64,
+    ) {
+        record(
+            data_dir,
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "succeeded".into(),
+                validated_at: Utc::now(),
+                documents: Some(1),
+                bytes: Some(64),
+                max_documents,
+                max_bytes,
+                max_seconds,
+                configuration_fingerprint: Some(configuration_fingerprint(source).unwrap()),
+                error: None,
+            },
+        )
+        .expect("record validation");
+    }
+
+    #[test]
+    fn guarded_sync_without_source_rejects_missing_or_stale_validations() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        let current = filesystem_source("work-code");
+        let stale = filesystem_source("notes");
+        config.sources.push(current.clone());
+        config.sources.push(stale.clone());
+
+        // The scheduled guard must fail as soon as any enabled source lacks a
+        // current successful validation.
+        let error = require_sync_validation(&config, None, SyncOverrides::default())
+            .expect_err("guarded run must reject a missing validation");
+        assert!(format!("{error:#}").contains("work-code"));
+        assert!(format!("{error:#}").contains("has not been validated"));
+
+        record_success(directory.path(), &current, 25, 1024, 60);
+        // The second source was validated at budgets below its configured limits.
+        record_success(directory.path(), &stale, 10, 512, 30);
+        let error = require_sync_validation(&config, None, SyncOverrides::default())
+            .expect_err("guarded run must reject a stale validation budget");
+        assert!(format!("{error:#}").contains("notes"));
+        assert!(format!("{error:#}").contains("smaller"));
+    }
+
+    #[test]
+    fn guarded_sync_without_source_passes_when_validations_cover_resolved_limits() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        let first = filesystem_source("work-code");
+        let second = filesystem_source("notes");
+        config.sources.push(first.clone());
+        config.sources.push(second.clone());
+        record_success(directory.path(), &first, 25, 1024, 60);
+        record_success(directory.path(), &second, 25, 1024, 60);
+        require_sync_validation(&config, None, SyncOverrides::default())
+            .expect("every enabled source is current at its configured budgets");
+
+        // Run-level budget overrides raise the required validation coverage for
+        // every source, exactly like the sync run they guard.
+        let overrides = SyncOverrides {
+            max_documents: Some(100),
+            max_bytes: Some(2048),
+            max_seconds: Some(300),
+        };
+        let error = require_sync_validation(&config, None, overrides)
+            .expect_err("run-level overrides must be covered by validation");
+        assert!(format!("{error:#}").contains("work-code"));
+        assert!(format!("{error:#}").contains("smaller"));
+
+        record_success(directory.path(), &first, 100, 2048, 300);
+        record_success(directory.path(), &second, 100, 2048, 300);
+        require_sync_validation(&config, None, overrides)
+            .expect("re-validated sources cover the run-level limits");
     }
 
     struct BatchRecordingEmbedder {
