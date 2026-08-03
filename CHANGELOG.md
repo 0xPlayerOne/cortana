@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.4](https://github.com/0xPlayerOne/cortana/compare/v0.24.3...v0.24.4) (2026-08-03)
+
+
+### Bug Fixes
+
+* **connectors:** expose stable version probe ([f72b400](https://github.com/0xPlayerOne/cortana/commit/f72b4001f902e6c4ab9e34b9f0914352be3c1c63))
+
 ## [0.24.3](https://github.com/0xPlayerOne/cortana/compare/v0.24.2...v0.24.3) (2026-08-03)
 
 
