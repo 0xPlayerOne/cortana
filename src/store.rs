@@ -300,6 +300,162 @@ impl Store {
         Ok(())
     }
 
+    /// Prepare an atomic, full-corpus embedding rebuild.
+    ///
+    /// New vectors are staged separately from the live chunk vectors. The
+    /// active generation is not changed until `commit_embedding_rebuild`
+    /// verifies that every chunk has a replacement vector, so an interrupted
+    /// provider call leaves the old index usable.
+    pub fn begin_embedding_rebuild(&self, from: &str, to: &str) -> Result<usize> {
+        anyhow::ensure!(
+            !from.trim().is_empty(),
+            "source embedding fingerprint is empty"
+        );
+        anyhow::ensure!(
+            !to.trim().is_empty(),
+            "target embedding fingerprint is empty"
+        );
+        anyhow::ensure!(
+            from != to,
+            "source and target embedding generations are identical"
+        );
+
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let current: Option<String> = transaction
+            .query_row(
+                "SELECT value FROM meta WHERE key='embedding_fingerprint'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(current) = current else {
+            bail!(
+                "the index has no embedding generation; initialize it with the configured provider first"
+            );
+        };
+        anyhow::ensure!(
+            current == from,
+            "embedding generation changed while preparing rebuild (expected: {from}; actual: {current})"
+        );
+        let chunks: i64 =
+            transaction.query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
+        transaction.execute(
+            "CREATE TABLE IF NOT EXISTS embedding_rebuild(
+               chunk_id TEXT PRIMARY KEY,
+               embedding_blob BLOB NOT NULL
+             )",
+            [],
+        )?;
+        transaction.execute("DELETE FROM embedding_rebuild", [])?;
+        transaction.commit()?;
+        Ok(usize::try_from(chunks).unwrap_or(usize::MAX))
+    }
+
+    /// Return a stable, bounded page of chunk text for an embedding rebuild.
+    pub fn embedding_rebuild_chunks(
+        &self,
+        after_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<(String, String)>> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT id,content FROM chunks
+             WHERE (?1 IS NULL OR id>?1)
+             ORDER BY id LIMIT ?2",
+        )?;
+        let rows = statement.query_map(
+            params![after_id, i64::try_from(limit.max(1)).unwrap_or(i64::MAX)],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// Stage replacement vectors without changing the live index.
+    pub fn stage_embedding_rebuild(&self, vectors: &[(String, Vec<f32>)]) -> Result<()> {
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        for (chunk_id, embedding) in vectors {
+            anyhow::ensure!(
+                !embedding.is_empty(),
+                "embedding rebuild produced an empty vector"
+            );
+            let exists: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM chunks WHERE id=?1)",
+                [chunk_id],
+                |row| row.get(0),
+            )?;
+            anyhow::ensure!(exists, "embedding rebuild referenced an unknown chunk");
+            transaction.execute(
+                "INSERT INTO embedding_rebuild(chunk_id,embedding_blob) VALUES(?1,?2)
+                 ON CONFLICT(chunk_id) DO UPDATE SET embedding_blob=excluded.embedding_blob",
+                params![chunk_id, encode_embedding(embedding)],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
+    /// Atomically install staged vectors and adopt the target generation.
+    pub fn commit_embedding_rebuild(&self, from: &str, to: &str) -> Result<usize> {
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let current: Option<String> = transaction
+            .query_row(
+                "SELECT value FROM meta WHERE key='embedding_fingerprint'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        anyhow::ensure!(
+            current.as_deref() == Some(from),
+            "embedding generation changed while committing rebuild"
+        );
+        let total: i64 =
+            transaction.query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
+        let staged: i64 =
+            transaction.query_row("SELECT COUNT(*) FROM embedding_rebuild", [], |row| {
+                row.get(0)
+            })?;
+        anyhow::ensure!(
+            staged == total,
+            "embedding rebuild is incomplete: staged {staged} of {total} chunks"
+        );
+        let changed = transaction.execute(
+            "UPDATE chunks SET embedding_json='[]',embedding_blob=(
+                 SELECT embedding_blob FROM embedding_rebuild
+                 WHERE embedding_rebuild.chunk_id=chunks.id
+             )",
+            [],
+        )?;
+        anyhow::ensure!(
+            i64::try_from(changed).unwrap_or(i64::MAX) == total,
+            "embedding rebuild updated an unexpected number of chunks"
+        );
+        let generation_changed = transaction.execute(
+            "UPDATE meta SET value=?1 WHERE key='embedding_fingerprint' AND value=?2",
+            params![to, from],
+        )?;
+        anyhow::ensure!(
+            generation_changed == 1,
+            "embedding generation rebuild did not update the index"
+        );
+        transaction.execute("DELETE FROM embedding_cache", [])?;
+        transaction.execute("DELETE FROM query_cache", [])?;
+        bump_corpus_revision(&transaction)?;
+        transaction.execute("DROP TABLE embedding_rebuild", [])?;
+        transaction.commit()?;
+        Ok(usize::try_from(total).unwrap_or(usize::MAX))
+    }
+
+    /// Remove a staged rebuild after a provider or validation failure.
+    pub fn discard_embedding_rebuild(&self) -> Result<()> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        connection.execute("DROP TABLE IF EXISTS embedding_rebuild", [])?;
+        Ok(())
+    }
+
     pub fn begin_sync(
         &self,
         source: &str,
@@ -3055,6 +3211,81 @@ mod tests {
                 .as_deref(),
             Some("current:model-a:16")
         );
+    }
+
+    #[test]
+    fn embedding_rebuild_stages_vectors_and_commits_atomically() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .ensure_fingerprint("old:model:2")
+            .expect("initial fingerprint");
+        store
+            .upsert(
+                &document("one", "first chunk"),
+                &[("first chunk".into(), vec![1.0, 0.0])],
+            )
+            .expect("insert first");
+        store
+            .upsert(
+                &document("two", "second chunk"),
+                &[("second chunk".into(), vec![0.0, 1.0])],
+            )
+            .expect("insert second");
+        store
+            .cache_query("cached", "{\"ok\":true}", 10)
+            .expect("cache query");
+
+        assert_eq!(
+            store
+                .begin_embedding_rebuild("old:model:2", "new:model:2")
+                .expect("begin rebuild"),
+            2
+        );
+        let page = store
+            .embedding_rebuild_chunks(None, 10)
+            .expect("read rebuild page");
+        assert_eq!(page.len(), 2);
+        store
+            .stage_embedding_rebuild(&[(page[0].0.clone(), vec![0.5, 0.5])])
+            .expect("stage first");
+        let incomplete = store
+            .commit_embedding_rebuild("old:model:2", "new:model:2")
+            .expect_err("incomplete rebuild must not commit");
+        assert!(incomplete.to_string().contains("staged 1 of 2"));
+        assert_eq!(
+            store
+                .stats()
+                .expect("stats after incomplete rebuild")
+                .embedding_fingerprint
+                .as_deref(),
+            Some("old:model:2")
+        );
+        assert_eq!(
+            store.all_chunks(None, None).expect("live chunks")[0].embedding,
+            vec![1.0, 0.0]
+        );
+
+        store
+            .stage_embedding_rebuild(&[(page[1].0.clone(), vec![0.25, 0.75])])
+            .expect("stage second");
+        assert_eq!(
+            store
+                .commit_embedding_rebuild("old:model:2", "new:model:2")
+                .expect("commit rebuild"),
+            2
+        );
+        let stats = store.stats().expect("final stats");
+        assert_eq!(stats.embedding_fingerprint.as_deref(), Some("new:model:2"));
+        assert_eq!(stats.query_cache_entries, 0);
+        let vectors = store
+            .all_chunks(None, None)
+            .expect("rebuilt chunks")
+            .into_iter()
+            .map(|chunk| chunk.embedding)
+            .collect::<Vec<_>>();
+        assert!(vectors.contains(&vec![0.5, 0.5]));
+        assert!(vectors.contains(&vec![0.25, 0.75]));
     }
 
     #[test]

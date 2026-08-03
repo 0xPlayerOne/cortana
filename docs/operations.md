@@ -313,6 +313,21 @@ changed; rebuild or re-import vectors into a new generation instead. Recurring s
 default unless the operator explicitly supplies `--allow-sync-service`; see the
 [evaluation guide](evaluation.md).
 
+For a real model, dimension, or preprocessing change, rebuild the stored vectors instead of
+adopting the old generation metadata:
+
+```bash
+cortana rebuild-embeddings \
+  --from 'Qwen/Qwen3-Embedding-0.6B:1024' \
+  --force
+```
+
+The rebuild requires explicit confirmation, probes the target provider, takes the sync lock,
+verifies the database, and creates a recovery snapshot. Replacement vectors are staged separately
+and committed in one SQLite transaction only after every chunk has a valid vector. A provider
+failure leaves the old generation and live vectors usable; retrying starts a fresh staged rebuild.
+The command never contacts connectors or reconciles documents.
+
 With `--allow-sync-service`, readiness also runs a `source-validation` check that verifies every
 enabled source has a current successful validation at equal or larger document, byte, and duration
 budgets than its configured limits. The check reads only the owner-local validation state and never
