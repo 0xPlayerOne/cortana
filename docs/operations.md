@@ -102,8 +102,13 @@ scripts/source-smoke.sh --sync --max-documents 25 --max-bytes 5242880 --max-seco
 
 Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
 queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
-evidence; returned rows have no `semantic_rank`, and a warning records the degraded mode. Cached
-query embeddings still provide normal hybrid retrieval without touching the provider.
+evidence; returned rows have no `semantic_rank`. The HTTP search response keeps its evidence-array
+shape and adds `x-cortana-retrieval-mode` plus `x-cortana-retrieval-degraded` headers. Context and
+answer responses include the retrieval mode and warning, while MCP context includes the same
+metadata and `brain_status` exposes a fallback counter. The fallback is also recorded as a
+degraded audit outcome and in `cortana_retrieval_fallbacks_total`; provider error details remain
+local logs only. Cached query embeddings still provide normal hybrid retrieval without touching the
+provider.
 
 Google Drive content is bounded to 50,000 characters per file by default. Oversized exports keep
 equal head and tail samples plus `content_truncated` and `content_original_chars` metadata, avoiding

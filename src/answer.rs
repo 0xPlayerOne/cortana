@@ -347,8 +347,7 @@ impl AnswerEngine {
         // configured, but never persist a degraded response from a configured
         // model or a lexical retrieval fallback. A transient provider outage
         // must not mask recovery until the answer-cache TTL expires.
-        if self.model.is_none()
-            || (response.mode == "synthesized" && !response.retrieval_degraded)
+        if self.model.is_none() || (response.mode == "synthesized" && !response.retrieval_degraded)
         {
             self.store.cache_query(
                 &cache_key,

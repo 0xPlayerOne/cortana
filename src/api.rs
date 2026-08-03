@@ -2500,11 +2500,7 @@ mod tests {
                 )],
             )
             .expect("document");
-        let state = AppState::new(
-            store,
-            Arc::new(UnavailableEmbedder),
-            None,
-        );
+        let state = AppState::new(store, Arc::new(UnavailableEmbedder), None);
         let response = router(state)
             .oneshot(
                 Request::builder()
