@@ -42,6 +42,11 @@ pub struct SourceValidationSummary {
     pub validated_at: String,
     pub fresh: bool,
     pub age_seconds: u64,
+    /// Whether the validation covered the entire source within its limits.
+    /// `false` marks a bounded sample that may authorize only equally bounded
+    /// non-reconciling runs; `None` (records persisted before sampling
+    /// existed) keeps its legacy full-corpus authority.
+    pub complete: Option<bool>,
     pub documents: Option<usize>,
     pub bytes: Option<u64>,
     pub max_documents: usize,
@@ -173,6 +178,7 @@ pub fn validation_summary(
         validated_at: status.validated_at.to_rfc3339(),
         fresh: validation_is_fresh(status.validated_at, max_age_hours),
         age_seconds,
+        complete: status.complete,
         documents: status.documents,
         bytes: status.bytes,
         max_documents: status.max_documents,
@@ -472,4 +478,56 @@ fn google_token_destination_ready(path: &Path) -> bool {
         current = parent.to_path_buf();
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::validation_summary;
+    use crate::source_validation::SourceValidationStatus;
+
+    fn validated_status(complete: Option<bool>) -> SourceValidationStatus {
+        SourceValidationStatus {
+            source: "docs".into(),
+            project: "agents".into(),
+            kind: "filesystem".into(),
+            status: "succeeded".into(),
+            validated_at: Utc::now(),
+            documents: Some(12),
+            bytes: Some(512),
+            max_documents: 25,
+            max_bytes: 1024,
+            max_seconds: 60,
+            configuration_fingerprint: None,
+            complete,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn summary_exposes_a_bounded_sample_as_incomplete() {
+        let summary = validation_summary(&validated_status(Some(false)), 168);
+        assert_eq!(summary.complete, Some(false));
+        let json = serde_json::to_value(&summary).expect("summary serializes");
+        assert_eq!(json.get("complete"), Some(&serde_json::Value::Bool(false)));
+    }
+
+    #[test]
+    fn summary_keeps_legacy_records_without_completeness() {
+        let summary = validation_summary(&validated_status(None), 168);
+        assert_eq!(summary.complete, None);
+        let json = serde_json::to_value(&summary).expect("summary serializes");
+        // A legacy record keeps a null completeness marker; consumers treat it
+        // exactly like the pre-sampling era.
+        assert_eq!(json.get("complete"), Some(&serde_json::Value::Null));
+
+        // The persisted record round-trips without a completeness key, so
+        // records written before sampling existed stay compatible.
+        let encoded = serde_json::to_string(&validated_status(None)).expect("record serializes");
+        assert!(!encoded.contains("\"complete\""));
+        let decoded: SourceValidationStatus =
+            serde_json::from_str(&encoded).expect("legacy record deserializes");
+        assert_eq!(decoded.complete, None);
+    }
 }
