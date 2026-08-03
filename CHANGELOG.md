@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.5](https://github.com/0xPlayerOne/cortana/compare/v0.24.4...v0.24.5) (2026-08-03)
+
+
+### Bug Fixes
+
+* **ingestion:** bound Apple Notes validation export ([d3875fa](https://github.com/0xPlayerOne/cortana/commit/d3875fa642bf02d8d5a1288ac219d51dfbb2a75f))
+
 ## [0.24.4](https://github.com/0xPlayerOne/cortana/compare/v0.24.3...v0.24.4) (2026-08-03)
 
 
