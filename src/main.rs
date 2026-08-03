@@ -1618,6 +1618,11 @@ fn manage_audit(config: &Config, store: &Store, action: &AuditAction) -> Result<
                 let file = options
                     .open(path)
                     .with_context(|| format!("failed to create audit export {}", path.display()))?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+                }
                 let mut writer = std::io::BufWriter::new(file);
                 write_audit_export(&mut writer, &events, *format)?;
                 writer.flush()?;
