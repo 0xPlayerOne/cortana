@@ -72,14 +72,17 @@ def run_once(binary: str, timeout_seconds: float) -> dict[str, Any]:
     return result
 
 
-def summarize(results: Sequence[dict[str, Any]], iterations: int, concurrency: int) -> dict[str, Any]:
+def summarize(
+    results: Sequence[dict[str, Any]], iterations: int, concurrency: int
+) -> dict[str, Any]:
     latencies = [float(result["latency_ms"]) for result in results if "latency_ms" in result]
     summary: dict[str, Any] = {
         "benchmark": "cortana-deterministic-eval",
         "isolated": True,
         "iterations": iterations,
         "concurrency": concurrency,
-        "passed": len(results) == iterations and all(result.get("passed") is True for result in results),
+        "passed": len(results) == iterations
+        and all(result.get("passed") is True for result in results),
         "results": list(results),
     }
     if latencies:
