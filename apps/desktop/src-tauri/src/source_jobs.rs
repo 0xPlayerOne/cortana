@@ -1343,6 +1343,7 @@ mod tests {
             root: Some("/Users/example/docs".into()),
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
