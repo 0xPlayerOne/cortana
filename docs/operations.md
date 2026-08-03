@@ -89,26 +89,19 @@ recovery path.
 
 ### Disposable recovery drill
 
-The following drill restores into a new data directory and never replaces the live index. Keep the
-temporary directory on the same volume as the test is running and remove that exact directory when
-the drill is complete:
+The checked-in drill snapshots the configured index, restores it into a new temporary data
+directory, and verifies SQLite integrity. It never replaces the live database and never starts a
+connector or sync:
 
 ```bash
-drill_dir="$(mktemp -d /tmp/cortana-recovery-drill.XXXXXX)"
-cortana --config "$HOME/.config/cortana/config.toml" \
-  backup "$drill_dir/source.sqlite3"
-cortana --config "$drill_dir/config.toml" \
-  init --data-dir "$drill_dir/data"
-cortana --config "$drill_dir/config.toml" \
-  restore "$drill_dir/source.sqlite3" --force
-cortana --config "$drill_dir/config.toml" \
-  verify "$drill_dir/data/cortana.sqlite3"
+CORTANA_CONFIG="$HOME/.config/cortana/config.toml" \
+  scripts/backup-restore-drill.sh
 ```
 
-The final `verify` must report a successful SQLite integrity check. Preserve the output as the
-recovery record, then remove only the exact `drill_dir` after confirming that no process is using it.
-Do not point the drill configuration at the production data directory and do not use `restore` on a
-live installation as part of a routine health check.
+Set `CORTANA_BINARY` when testing a checkout, and set `CORTANA_KEEP_DRILL=1` to retain the exact
+temporary directory and `recovery.log` for an incident record. The default cleanup removes only the
+freshly-created drill directory. Do not point the drill configuration at the production data
+directory and do not use `restore` on a live installation as part of a routine health check.
 
 ## macOS launchd
 

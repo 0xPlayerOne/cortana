@@ -106,6 +106,13 @@ Use `cortana service start NAME` or `cortana service install --web-dir PATH` to 
 services. Never remove the data directory as part of an ordinary uninstall; take and verify a
 backup first if the index is no longer needed.
 
+To verify recovery without replacing the live index, run the disposable drill from the checkout or
+release archive:
+
+```bash
+CORTANA_CONFIG="$HOME/.config/cortana/config.toml" scripts/backup-restore-drill.sh
+```
+
 ```bash
 # From an extracted GitHub release archive (binary, UI, and connector wheel).
 ./install.sh
