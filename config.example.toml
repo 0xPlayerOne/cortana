@@ -116,6 +116,9 @@ source = "work-code"
 acl = ["work"]
 # Relative paths to omit from this source. Generated directories are always skipped.
 exclude = ["second-brain"]
+# Keep filesystem roots narrow (one repository or subtree per source). A broad Developer root
+# intentionally fails closed when it exceeds the safety budget; add another [[sources]] entry for
+# each repository you want indexed instead of raising the global cap.
 # Optional tighter or larger source-specific budgets.
 # max_documents = 1000
 # max_bytes = 67108864

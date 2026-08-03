@@ -70,6 +70,12 @@ jq '{version, material_gain, recall_gain, mrr_gain}' memory-evaluation-v1.json
 change. The benchmark output is deterministic and includes per-case metrics for auditability.
 Hindsight remains disabled when the gate fails or when no explicit operator approval is recorded.
 
+The current v1 fixture reports canonical recall@5/MRR of `0.625/0.625` and combined
+Cortana-plus-sidecar recall@5/MRR of `1.0/1.0` (a `0.375` gain in each metric). That is a
+useful signal, but it is not a production enablement decision: no live provider, ACL, deletion,
+or export drill has been approved for this installation. Therefore Cortana remains the canonical
+store and both Hindsight and Honcho stay disabled by default until those live gates are completed.
+
 ## Honcho status
 
 Honcho is available as a second, non-default adapter behind the same `MemoryProvider` and outbox
