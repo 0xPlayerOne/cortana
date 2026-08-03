@@ -1191,6 +1191,7 @@ mod tests {
             .manage(source_jobs::SourceJobState::default())
             .invoke_handler(tauri::generate_handler![
                 desktop_schedule_get,
+                desktop_settings_get,
                 desktop_update_status,
                 desktop_source_jobs_status
             ])
@@ -1246,6 +1247,107 @@ mod tests {
         let response = invoke_json(&window, "desktop_update_status").expect("IPC response");
         assert_eq!(response["phase"], "idle");
         assert_eq!(response["restart_required"], false);
+    }
+
+    #[test]
+    fn native_ipc_dispatches_redacted_settings_snapshot() {
+        let temp = tempfile::tempdir().expect("temporary config directory");
+        let config_path = temp.path().join("cortana/config.toml");
+        let secret_file_path = temp.path().join("cortana/secrets.env");
+        fs::create_dir_all(config_path.parent().expect("config parent"))
+            .expect("config directory");
+        fs::write(
+            &config_path,
+            r##"
+            [query]
+            api_key_env = "CORTANA_TEST_QUERY_API_KEY"
+
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+            enabled = true
+            project = "work"
+            root = "/tmp/cortana-test-notes"
+            token_env = "CORTANA_TEST_SOURCE_TOKEN"
+            "##,
+        )
+        .expect("test config");
+        let raw_query_secret = "raw-query-api-key-7f3a9c1e";
+        let raw_source_secret = "raw-source-token-4b8d2f6a";
+        fs::write(
+            &secret_file_path,
+            format!(
+                "CORTANA_TEST_QUERY_API_KEY={raw_query_secret}\n\
+                 CORTANA_TEST_SOURCE_TOKEN={raw_source_secret}\n"
+            ),
+        )
+        .expect("test secrets");
+
+        with_cortana_config_override(&config_path, || {
+            let app = ipc_test_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
+
+            let response = invoke_json(&window, "desktop_settings_get").expect("IPC response");
+            let object = response.as_object().expect("settings snapshot object");
+            for key in [
+                "config_path",
+                "secret_file_path",
+                "secret_file_managed",
+                "needs_setup",
+                "restart_required",
+                "workspaces",
+                "sources",
+                "auth_principals",
+                "embedding",
+                "query",
+                "hindsight",
+                "honcho",
+                "ingestion",
+                "runtime",
+                "secrets",
+            ] {
+                assert!(object.contains_key(key), "snapshot must contain `{key}`");
+            }
+
+            assert_eq!(
+                response["config_path"].as_str(),
+                Some(config_path.display().to_string().as_str())
+            );
+            assert_eq!(
+                response["secret_file_path"].as_str(),
+                Some(secret_file_path.display().to_string().as_str())
+            );
+            assert_eq!(response["secret_file_managed"], Value::Bool(true));
+            assert_eq!(response["needs_setup"], Value::Bool(false));
+
+            let secrets = response["secrets"].as_array().expect("secrets array");
+            let names = secrets
+                .iter()
+                .map(|secret| secret["name"].as_str().expect("secret name"))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                names,
+                vec!["CORTANA_TEST_QUERY_API_KEY", "CORTANA_TEST_SOURCE_TOKEN"]
+            );
+            for secret in secrets {
+                let metadata = secret.as_object().expect("secret metadata object");
+                let mut keys = metadata.keys().cloned().collect::<Vec<_>>();
+                keys.sort();
+                assert_eq!(keys, vec!["configured", "name", "source"]);
+                assert_eq!(secret["configured"], Value::Bool(true));
+                assert_eq!(secret["source"], Value::String("secret-file".into()));
+            }
+
+            let serialized = serde_json::to_string(&response).expect("serialize snapshot");
+            for raw in [raw_query_secret, raw_source_secret] {
+                assert!(
+                    !serialized.contains(raw),
+                    "raw secret values must never cross the IPC boundary"
+                );
+            }
+        });
     }
 
     fn principal(scopes: &[&str]) -> settings::AuthPrincipalSettings {
