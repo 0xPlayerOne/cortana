@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
@@ -323,7 +324,13 @@ impl BrainServer {
         match if owner {
             self.store.stats()
         } else {
-            self.store.stats_scoped(&acl)
+            let allowed_sync_sources = self
+                .configured_sources
+                .iter()
+                .filter(|source| acl_allows(&source.acl, &acl))
+                .map(|source| (source.source.clone(), source.project.clone()))
+                .collect::<HashSet<_>>();
+            self.store.stats_scoped(&acl, &allowed_sync_sources)
         } {
             Ok(stats) => {
                 let count = usize::try_from(stats.documents).ok();
