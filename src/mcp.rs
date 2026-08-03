@@ -185,8 +185,7 @@ impl BrainServer {
                     Some(retrieval.evidence.len()),
                     started,
                 );
-                serde_json::to_string(&retrieval.evidence)
-                    .unwrap_or_else(|error| error.to_string())
+                serde_json::to_string(&retrieval.evidence).unwrap_or_else(|error| error.to_string())
             }
             Err(error) => {
                 self.audit(
@@ -414,8 +413,7 @@ impl BrainServer {
                     Some(retrieval.evidence.len()),
                     started,
                 );
-                serde_json::to_string(&retrieval.evidence)
-                    .unwrap_or_else(|error| error.to_string())
+                serde_json::to_string(&retrieval.evidence).unwrap_or_else(|error| error.to_string())
             }
             Err(error) => {
                 self.audit(

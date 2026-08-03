@@ -75,7 +75,8 @@ The subcommand accepts the same optional filters and strict bounds as the API co
 Out-of-contract values are rejected at parse time. Output is stable JSON with the same shape as
 `/v1/context`: the assembled `context` Markdown with numbered `[n]` citations, the included
 `evidence` rows, and `metrics` (`retrieved`, `included`, `omitted`, `estimated_tokens`, and the
-applied token budget). Like every other command, it runs against the local index only; use
+applied token budget). The bundle also reports `retrieval_mode` (`hybrid` or
+`lexical-fallback`) and, when degraded, a non-secret `retrieval_warning`. Like every other command, it runs against the local index only; use
 `--offline` for the deterministic embedding path when the index generation matches.
 
 The CLI fallback is owner-local: it runs as the local machine user with no bearer credentials, so
@@ -181,7 +182,10 @@ instead of being hidden until the TTL expires.
 ## Failure contract
 
 Planner failure uses the original query. Individual retrieval failures are reported as warnings
-while successful evidence continues. Model unavailability, timeout, invalid JSON, missing
+while successful evidence continues. If the embedding provider is unavailable or exceeds the
+five-second interactive budget, retrieval falls back to lexical search and marks the response
+`retrieval_degraded` (answers) or `retrieval_mode = lexical-fallback` (contexts); the fallback is
+not cached for configured model-backed answers. Model unavailability, timeout, invalid JSON, missing
 citations, or unknown citations produces an extractive answer. An empty index returns an explicit
 insufficient-evidence response. The response always reports `mode`, `cached`, `latency_ms`, the
 executed plan, evidence, and warnings so the workspace can make degradation visible.
