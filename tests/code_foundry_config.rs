@@ -64,6 +64,12 @@ fn config_pins_runtime_ref() {
     );
 }
 
+#[test]
+fn release_merge_policy_matches_runtime_contract() {
+    assert_eq!(config_value("merge_strategy"), "rebase");
+    assert_eq!(config_value("release_merge_strategy"), "rebase");
+}
+
 /// Rust CodeQL shards across the three standalone Cargo manifests: the root
 /// package, the desktop Tauri app, and the vendored glib. Two CodeQL threads
 /// per shard and three shards in parallel cut wall-clock time while capping
