@@ -23,6 +23,16 @@ Set global defaults in `[ingestion]`, tighter source-specific `max_documents`, `
 Ingestion uses one embedding request at a time by default even when interactive queries allow more
 concurrency.
 
+Bounded syncs (for example Desktop trial or initial syncs, which never reconcile) pass the run's
+document cap upstream to built-in connectors so a Drive listing stops at the permitted scope
+instead of emitting a whole page that trips the live output safety bound. Validation applies the
+same cap with `--no-cache` so a read-only probe never mutates a persistent cache with a partial
+snapshot; bounded sync keeps caches enabled and capped connector runs never prune cached bodies
+or messages they did not list. Reconciliation runs never pass the cap: they always receive the
+full snapshot and fail closed when it exceeds a ceiling, so a truncated snapshot can never trigger
+deletion reconciliation. Arbitrary external commands keep the plain JSONL contract and never
+receive connector flags; their output is enforced by the live spool bound and the spool preflight.
+
 Configured source names are index namespaces. This prevents two Gmail accounts, Drive accounts, or
 Slack workspaces from deleting or colliding with one another. The original adapter kind is retained
 in metadata for provenance. Names are unique, lower-case, and limited to 64 letters, numbers,

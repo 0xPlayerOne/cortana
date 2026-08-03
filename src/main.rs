@@ -632,7 +632,8 @@ async fn main() -> Result<()> {
                 limits.max_seconds,
             )?;
             let result =
-                sync_source_documents(&config, &store, embedder.as_ref(), &source, &control).await;
+                sync_source_documents(&config, &store, embedder.as_ref(), &source, &control, false)
+                    .await;
             let result = match result {
                 Ok(scope) => {
                     store.finish_sync(
@@ -1234,7 +1235,14 @@ async fn validate_configured_source(
             }));
         }
         cleanup_connector_spools(&config.data_dir)?;
-        let (spool, diagnostics) = run_connector_to_spool(config, source, &control, true).await?;
+        let (spool, diagnostics) = run_connector_to_spool(
+            config,
+            source,
+            &control,
+            Some(control.limits.max_documents),
+            true,
+        )
+        .await?;
         let validation = validate_connector_spool(&spool, source, &control);
         let _ = std::fs::remove_file(&spool);
         let _ = std::fs::remove_file(&diagnostics);
@@ -2034,7 +2042,8 @@ async fn sync_configured_sources(
             limits.max_seconds,
         )?;
         let result = async {
-            let scope = sync_source_documents(config, store, embedder, source, &control).await?;
+            let scope =
+                sync_source_documents(config, store, embedder, source, &control, reconcile).await?;
             control.check(&source.name)?;
             let deleted = if reconcile {
                 store.reconcile(&canonical_source, &source.project, &scope.seen)?
@@ -2111,6 +2120,7 @@ async fn sync_source_documents(
     embedder: &dyn Embedder,
     source: &SourceConfig,
     control: &SourceControl<'_>,
+    reconcile: bool,
 ) -> Result<SyncScope> {
     if source.kind == "filesystem" {
         let root = source
@@ -2181,7 +2191,14 @@ async fn sync_source_documents(
         });
     }
 
-    let (spool, diagnostics) = run_connector_to_spool(config, source, control, false).await?;
+    // A capped connector snapshot is partial by definition, so upstream
+    // document limiting is only ever applied to runs that will not reconcile.
+    // Reconciliation runs keep the uncapped full snapshot so the fail-closed
+    // validation below still rejects a source that exceeds its budget instead
+    // of silently truncating and deleting the remainder of the index.
+    let document_cap = (!reconcile).then_some(control.limits.max_documents);
+    let (spool, diagnostics) =
+        run_connector_to_spool(config, source, control, document_cap, false).await?;
     let result = async {
         let scope = validate_connector_spool(&spool, source, control)?;
         let reader = std::io::BufReader::new(
@@ -2287,7 +2304,8 @@ async fn run_connector_to_spool(
     config: &Config,
     source: &SourceConfig,
     control: &SourceControl<'_>,
-    bounded_connector: bool,
+    document_cap: Option<usize>,
+    no_cache: bool,
 ) -> Result<(PathBuf, PathBuf)> {
     let staging = prepare_connector_staging(&config.data_dir, true)?;
     let identifier = uuid::Uuid::new_v4();
@@ -2295,11 +2313,7 @@ async fn run_connector_to_spool(
     let diagnostics = staging.join(format!("connector-{identifier}.stderr"));
     let stdout = private_file(&spool)?;
     let stderr = private_file(&diagnostics)?;
-    let mut command = configured_connector_command(
-        config,
-        source,
-        bounded_connector.then_some(control.limits.max_documents),
-    )?;
+    let mut command = configured_connector_command(config, source, document_cap, no_cache)?;
     let executable = command.remove(0);
     let mut process = ProcessCommand::new(&executable);
     process
@@ -2476,9 +2490,12 @@ fn configure_no_follow(_options: &mut std::fs::OpenOptions) {}
 fn configured_connector_command(
     config: &Config,
     source: &SourceConfig,
-    bounded_max_documents: Option<usize>,
+    max_documents: Option<usize>,
+    no_cache: bool,
 ) -> Result<Vec<String>> {
     let command = if source.kind == "external" {
+        // Arbitrary external commands keep the plain contract: one JSON
+        // object per line on stdout, no connector-specific flags appended.
         anyhow::ensure!(
             !source.command.is_empty(),
             "external source {} requires command",
@@ -2498,20 +2515,25 @@ fn configured_connector_command(
                 .display()
                 .to_string(),
         ]);
-        if let Some(max_documents) = bounded_max_documents {
-            // This is a root-level connector option and must precede the
-            // subcommand for argparse to accept it.
-            command.push("--no-cache".into());
+        if let Some(max_documents) = max_documents {
+            // Root-level connector options and must precede the subcommand for
+            // argparse to accept them. Validation disables persistent caches
+            // because a read-only probe must not mutate a partial snapshot;
+            // bounded sync passes the same cap without --no-cache so real
+            // ingestion still reads and extends the derived caches.
+            if no_cache {
+                command.push("--no-cache".into());
+            }
             command.extend(["--max-documents".into(), max_documents.to_string()]);
         }
         command.push(source.kind.clone());
         connector_arguments(&mut command, source)?;
-        if let Some(max_documents) = bounded_max_documents {
-            // Bounded validation must not mutate a persistent connector cache
-            // with a partial snapshot. Drive also needs an explicit document
-            // cap because it downloads a whole listing page before yielding
-            // JSONL; without this, a 25-document validation can fetch 1,000
-            // files and hit the wall-clock limit before the spool is checked.
+        if let Some(max_documents) = max_documents {
+            // Drive also needs an explicit subcommand cap because it downloads
+            // a whole listing page before yielding JSONL; without this, a
+            // bounded run can fetch 1,000 files and hit the wall-clock or live
+            // output safety bound before the first permitted document is
+            // consumed.
             if source.kind == "google-drive" {
                 command.extend(["--max-documents".into(), max_documents.to_string()]);
             }
@@ -2759,7 +2781,7 @@ mod tests {
             acl: Vec::new(),
         };
 
-        let command = configured_connector_command(&config, &source, Some(25))
+        let command = configured_connector_command(&config, &source, Some(25), true)
             .expect("bounded connector command");
         let no_cache = command
             .iter()
@@ -2776,6 +2798,95 @@ mod tests {
                 .find(|window| window[0] == "--max-documents")
                 .map(|window| window[1].as_str()),
             Some("25")
+        );
+    }
+
+    #[test]
+    fn bounded_sync_caps_builtin_drive_without_no_cache() {
+        let config = Config::default();
+        let source = SourceConfig {
+            name: "work-drive".into(),
+            kind: "google-drive".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: None,
+            token: Some("/tmp/google-token.json".into()),
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+
+        let command = configured_connector_command(&config, &source, Some(1), false)
+            .expect("bounded sync connector command");
+        assert!(
+            command.iter().all(|argument| argument != "--no-cache"),
+            "a bounded sync must not disable persistent caches"
+        );
+        assert_eq!(
+            command
+                .windows(2)
+                .filter(|window| window[0] == "--max-documents")
+                .map(|window| window[1].as_str())
+                .collect::<Vec<_>>(),
+            vec!["1", "1"],
+            "the cap must be passed both at root level and to the Drive subcommand"
+        );
+        let subcommand = command
+            .iter()
+            .position(|argument| argument == "google-drive")
+            .expect("Drive connector subcommand");
+        assert!(
+            command[subcommand + 1..]
+                .windows(2)
+                .any(|window| window[0] == "--max-documents" && window[1] == "1"),
+            "the Drive subcommand cap must follow the subcommand"
+        );
+    }
+
+    #[test]
+    fn external_connector_commands_never_receive_budget_flags() {
+        let config = Config::default();
+        let source = SourceConfig {
+            name: "external-demo".into(),
+            kind: "external".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: vec![
+                "/usr/bin/upstream-sync".into(),
+                "--profile".into(),
+                "prod".into(),
+            ],
+            acl: Vec::new(),
+        };
+
+        let command = configured_connector_command(&config, &source, Some(25), true)
+            .expect("external connector command");
+        assert_eq!(
+            command, source.command,
+            "external commands must keep their exact invocation"
         );
     }
 
@@ -3146,7 +3257,7 @@ mod tests {
             }
         });
 
-        let result = run_connector_to_spool(&config, &source, &control, false).await;
+        let result = run_connector_to_spool(&config, &source, &control, None, false).await;
         heartbeat.abort();
         cancellation.stop();
 
