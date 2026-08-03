@@ -10,6 +10,9 @@ use crate::service;
 use crate::source_validation;
 use crate::store::Store;
 
+const READINESS_EMBEDDING_TIMEOUT_MIN_SECONDS: u64 = 15;
+const READINESS_EMBEDDING_TIMEOUT_MAX_SECONDS: u64 = 300;
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ReadinessReport {
     pub passed: bool,
@@ -46,10 +49,11 @@ pub async fn run(
     let backup = backup_check(&config.data_dir.join("backups"), max_backup_age_hours);
     let sync = sync_check(allow_sync_service);
     let validation = source_validation_check(config, allow_sync_service);
+    let embedding_timeout = embedding_probe_timeout(config);
     // These probes do not share mutable state. Run them together so readiness
     // is bounded by the slowest external dependency rather than their sum.
     let (embedding, api, query) = tokio::join!(
-        embedding_check(embedder),
+        embedding_check(embedder, embedding_timeout),
         api_check(api_url),
         query_check(config),
     );
@@ -209,8 +213,16 @@ fn embedding_generation_status(store: &Store, embedder: &dyn Embedder) -> Embedd
     }
 }
 
-async fn embedding_check(embedder: &dyn Embedder) -> ReadinessCheck {
-    match tokio::time::timeout(Duration::from_secs(15), embedder.probe()).await {
+fn embedding_probe_timeout(config: &Config) -> Duration {
+    let timeout = config.embedding.service.startup_timeout_seconds.clamp(
+        READINESS_EMBEDDING_TIMEOUT_MIN_SECONDS,
+        READINESS_EMBEDDING_TIMEOUT_MAX_SECONDS,
+    );
+    Duration::from_secs(timeout)
+}
+
+async fn embedding_check(embedder: &dyn Embedder, startup_timeout: Duration) -> ReadinessCheck {
+    match tokio::time::timeout(startup_timeout, embedder.probe()).await {
         Ok(Ok(())) => ReadinessCheck {
             name: "embedding-provider".into(),
             passed: true,
@@ -224,7 +236,10 @@ async fn embedding_check(embedder: &dyn Embedder) -> ReadinessCheck {
         Err(_) => ReadinessCheck {
             name: "embedding-provider".into(),
             passed: false,
-            detail: "embedding probe exceeded 15 seconds".into(),
+            detail: format!(
+                "embedding probe exceeded {} seconds",
+                startup_timeout.as_secs()
+            ),
         },
     }
 }
@@ -434,6 +449,64 @@ mod tests {
     use crate::config::{AuthTokenConfig, SourceConfig};
     use crate::model::Document;
     use crate::source_validation::SourceValidationStatus;
+
+    struct DelayedProbeEmbedder {
+        delay: Duration,
+    }
+
+    #[async_trait::async_trait]
+    impl Embedder for DelayedProbeEmbedder {
+        async fn embed(&self, _input: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+            tokio::time::sleep(self.delay).await;
+            Ok(vec![vec![0.25]])
+        }
+
+        fn fingerprint(&self) -> String {
+            "delayed-probe-embedder".into()
+        }
+    }
+
+    #[tokio::test]
+    async fn embedding_check_passes_when_probe_finishes_after_15s_within_budget() {
+        let embedder = DelayedProbeEmbedder {
+            delay: Duration::from_secs(16),
+        };
+
+        let check = embedding_check(&embedder, Duration::from_secs(20)).await;
+
+        assert!(check.passed);
+        assert_eq!(check.name, "embedding-provider");
+    }
+
+    #[tokio::test]
+    async fn embedding_check_fails_when_probe_exceeds_embedded_timeout() {
+        let embedder = DelayedProbeEmbedder {
+            delay: Duration::from_secs(16),
+        };
+
+        let check = embedding_check(&embedder, Duration::from_secs(10)).await;
+        assert!(!check.passed);
+        assert_eq!(check.detail, "embedding probe exceeded 10 seconds");
+    }
+
+    #[test]
+    fn embedding_probe_timeout_is_bounded_by_readiness_defaults() {
+        let mut config = Config::default();
+        config.embedding.service.startup_timeout_seconds = 120;
+        assert_eq!(embedding_probe_timeout(&config), Duration::from_secs(120));
+
+        config.embedding.service.startup_timeout_seconds = 10;
+        assert_eq!(
+            embedding_probe_timeout(&config),
+            Duration::from_secs(READINESS_EMBEDDING_TIMEOUT_MIN_SECONDS)
+        );
+
+        config.embedding.service.startup_timeout_seconds = 3600;
+        assert_eq!(
+            embedding_probe_timeout(&config),
+            Duration::from_secs(READINESS_EMBEDDING_TIMEOUT_MAX_SECONDS)
+        );
+    }
 
     #[test]
     fn backup_freshness_requires_a_sqlite_snapshot() {
