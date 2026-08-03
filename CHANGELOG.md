@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/0xPlayerOne/cortana/compare/v0.19.7...v0.20.0) (2026-08-03)
+
+
+### Features
+
+* **readiness:** verify source validation before recurring sync ([#273](https://github.com/0xPlayerOne/cortana/issues/273)) ([a881367](https://github.com/0xPlayerOne/cortana/commit/a881367df418aa35bf60bd471d67e9af135c04b5))
+
 ## [0.19.7](https://github.com/0xPlayerOne/cortana/compare/v0.19.6...v0.19.7) (2026-08-03)
 
 
