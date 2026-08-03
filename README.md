@@ -86,6 +86,8 @@ See [the ingestion guide](docs/ingestion.md) and
 Discord, Buzz, filesystem/code, and external adapters.
 See [the query guide](docs/query.md) for planned retrieval, cited synthesis, local model-gateway
 configuration, cloud providers, cache invalidation, and degraded operation.
+See the [agent integration guide](docs/integrations.md) for Codex, Hermes, Buzz, MCP, HTTP, and
+CLI setup with scoped principals and cache-aware context retrieval.
 See the [operations guide](docs/operations.md) for service management, authenticated remote access,
 telemetry, backup, restore, and Linux systemd units.
 Run the isolated [evaluation and readiness gates](docs/evaluation.md) before enabling synthesis or
