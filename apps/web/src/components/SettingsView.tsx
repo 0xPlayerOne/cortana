@@ -2608,6 +2608,7 @@ function SourcesSection({
   } | null>(null)
   const validationPlanKey = useRef('')
   const sharedJobIds = useRef(new Set<string>())
+  const cancelInFlight = useRef(new Set<string>())
   const foreground = useDesktopForeground()
 
   // In the full Desktop shell, App owns one poller for the source-job list so
@@ -2881,16 +2882,25 @@ function SourcesSection({
   }
 
   const cancel = async () => {
-    if (!observedJob) return
+    const current = observedJob
+    if (!current || current.status !== 'running' || cancelInFlight.current.has(current.id)) return
+    cancelInFlight.current.add(current.id)
+    const previous = current
+    applyJob({
+      ...current,
+      status: 'cancelling',
+      summary: `Cancelling source ${current.operation}…`,
+    })
+    setError('')
     try {
-      applyJob(await cancelDesktopSourceValidation(observedJob.id))
+      applyJob(await cancelDesktopSourceValidation(current.id))
     } catch (caught) {
       applyJob(previous)
       setError(
-        caught instanceof Error ? caught.message : 'Source validation could not be cancelled'
+        caught instanceof Error ? caught.message : 'Source job cancellation failed'
       )
     } finally {
-      setCancelPending(false)
+      cancelInFlight.current.delete(current.id)
     }
   }
 
