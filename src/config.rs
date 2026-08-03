@@ -769,7 +769,7 @@ mod tests {
         )
         .expect("valid source config");
 
-        assert_eq!(config.sources.len(), 2);
+        assert_eq!(config.sources.len(), 3);
         assert!(config.sources[0].enabled);
         assert_eq!(config.sources[0].max_content_chars, Some(12_345));
         assert_eq!(config.sources[0].max_documents, Some(100));
