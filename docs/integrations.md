@@ -222,5 +222,6 @@ index and never start or schedule ingestion; recurring sync remains opt-in and v
   content invalidates prior keys. Bounds are configurable via `[query].cache_max_entries` and
   `[query].cache_ttl_seconds` (set either to `0` to skip reads or writes). Temporary planner or
   provider failures are never hidden by a stale cache entry.
-- `context` bundles themselves are built fresh per call; caching is an agent-side practice, not a
-  server contract. Use the answer cache settings only when synthesis is enabled and verified.
+- Reusing a bundle within the task is an agent-side practice — the answer cache described above
+  covers synthesized `/v1/answer` results only, not `context` bundles. Tune the answer cache
+  settings only after the model-backed [evaluation and readiness gates](evaluation.md) pass.
