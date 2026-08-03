@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/0xPlayerOne/cortana/compare/v0.21.0...v0.21.1) (2026-08-03)
+
+
+### Tests
+
+* guard recurring sync installation ([#285](https://github.com/0xPlayerOne/cortana/issues/285)) ([#286](https://github.com/0xPlayerOne/cortana/issues/286)) ([738a9e6](https://github.com/0xPlayerOne/cortana/commit/738a9e60ad0e4c8b33164f3b548034e4ce435411))
+
 ## [0.21.0](https://github.com/0xPlayerOne/cortana/compare/v0.20.0...v0.21.0) (2026-08-03)
 
 
