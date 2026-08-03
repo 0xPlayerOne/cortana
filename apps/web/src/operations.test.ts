@@ -28,6 +28,19 @@ describe('operational source visibility', () => {
     expect(sourceHealth(discord!).state).toBe('failed')
   })
 
+  test('flags a stale successful sync instead of claiming it is healthy forever', () => {
+    const status = structuredClone(demoStatus)
+    const gmail = status.ingestion.configured_sources.find(
+      (source) => source.name === 'personal-gmail'
+    )!
+    const source = operationalSources(status).find((item) => item.name === gmail.name)!
+    const health = sourceHealth(source, Date.parse('2026-08-03T00:00:00Z'))
+
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('stale')
+    expect(health.label).toContain('run sync')
+  })
+
   test('reports elapsed sync time against the persisted safety budget', () => {
     const run = {
       ...demoStatus.sync_runs[0],

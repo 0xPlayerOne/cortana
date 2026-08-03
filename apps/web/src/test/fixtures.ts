@@ -150,6 +150,7 @@ export const desktopSettings: DesktopSettings = {
     max_duration_seconds: 900,
     document_batch_size: 16,
     request_concurrency: 1,
+    sync_freshness_hours: 48,
   },
   runtime: {
     data_dir: '/Users/you/Library/Application Support/cortana',

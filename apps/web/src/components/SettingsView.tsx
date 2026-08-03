@@ -4166,6 +4166,14 @@ function IngestionSection({ settings, update }: SettingsSectionProps) {
           max={32}
           onChange={(request_concurrency) => setIngestion({ request_concurrency })}
         />
+        <NumberField
+          label="Sync freshness (hours)"
+          hint="0 disables stale-sync warnings in the source health view"
+          value={settings.ingestion.sync_freshness_hours}
+          min={0}
+          max={8760}
+          onChange={(sync_freshness_hours) => setIngestion({ sync_freshness_hours })}
+        />
       </div>
       <div className="safety-note">
         <AlertTriangle size={16} />
