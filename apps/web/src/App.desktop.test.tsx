@@ -13,6 +13,7 @@ import type {
   AuditEvent,
   DesktopServiceReport,
   DesktopSettings,
+  DesktopPortableSettings,
   DesktopSettingsExport,
   DesktopSettingsImport,
   DesktopSettingsUpdate,
@@ -43,9 +44,7 @@ afterEach(() => {
     format_version: 2,
     secrets_included: false,
     preserved_external_sources: [],
-    settings: {
-      runtime: { data_dir: '/tmp/imported-runtime-dir' },
-    },
+    settings: buildImportedSettings('/tmp/imported-runtime-dir'),
   }
   state.getDesktopServicesCalls = 0
   state.getDesktopSettingsCalls = 0
@@ -107,6 +106,14 @@ const googleEnvOnlySource: SourceSettings = {
   token_path: null,
 }
 
+const buildImportedSettings = (dataDir: string): DesktopPortableSettings => ({
+  ...desktopSettings,
+  runtime: {
+    ...desktopSettings.runtime,
+    data_dir: dataDir,
+  },
+})
+
 const state = {
   settings: desktopSettings as DesktopSettings,
   sourceJob: null as DesktopSourceJob | null,
@@ -144,9 +151,7 @@ const state = {
     format_version: 2,
     secrets_included: false,
     preserved_external_sources: [],
-    settings: {
-      runtime: { data_dir: '/tmp/imported-runtime-dir' },
-    },
+    settings: buildImportedSettings('/tmp/imported-runtime-dir'),
   } as DesktopSettingsImport,
   serviceInstallCalls: 0,
   serviceSyncInstallCalls: 0,
@@ -750,7 +755,7 @@ test('advanced import preview cancellation keeps draft values unchanged', async 
     format_version: 2,
     secrets_included: false,
     preserved_external_sources: ['s3-uploader'],
-    settings: { runtime: { data_dir: '/tmp/imported-runtime-dir' } },
+    settings: buildImportedSettings('/tmp/imported-runtime-dir'),
   }
   try {
     render(<App />)
@@ -787,12 +792,7 @@ test('advanced settings import preview applies as unsaved draft and requires exp
     format_version: 2,
     secrets_included: false,
     preserved_external_sources: ['s3-uploader'],
-    settings: {
-      runtime: {
-        ...desktopSettings.runtime,
-        data_dir: '/tmp/imported-runtime-dir',
-      },
-    },
+    settings: buildImportedSettings('/tmp/imported-runtime-dir'),
   }
   try {
     render(<App />)
