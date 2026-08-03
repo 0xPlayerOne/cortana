@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.24.0](https://github.com/0xPlayerOne/cortana/compare/v0.23.1...v0.24.0) (2026-08-03)
+
+
+### Features
+
+* **embedding:** add atomic corpus rebuild ([517a77d](https://github.com/0xPlayerOne/cortana/commit/517a77d6c1f8e16543b2015e5ae08820ba2a9a6b))
+* **ops:** classify source validation failures ([7253cb5](https://github.com/0xPlayerOne/cortana/commit/7253cb517779305e9434aacade5dd116957260bd))
+* **ops:** export retained audit metadata ([6eeabe3](https://github.com/0xPlayerOne/cortana/commit/6eeabe39505d323ca77eeb77e1b672f3cc1e8cdf))
+* **ops:** surface stale sync health ([8ce8e6f](https://github.com/0xPlayerOne/cortana/commit/8ce8e6f31dd80c698d39d8aaee60e9751a64ab9a))
+* **query:** surface retrieval fallback telemetry ([7a10285](https://github.com/0xPlayerOne/cortana/commit/7a10285eaf5ad3a811103f625f3c20847b038e20))
+* **ui:** surface retrieval degradation ([b5a22de](https://github.com/0xPlayerOne/cortana/commit/b5a22deb7b88a5a2581b28bf88b248395aa49833))
+
+
+### Bug Fixes
+
+* **ci:** align release merge strategy with code-foundry ([d203e8b](https://github.com/0xPlayerOne/cortana/commit/d203e8b2c079aba24271ebb8e387f69217dc549a))
+* **ci:** require squash merges for release PRs ([06c499e](https://github.com/0xPlayerOne/cortana/commit/06c499e69fe8f35c33f5c5ab3e1119c076793d45))
+* **desktop:** enforce audit log retention ([d8fa9c9](https://github.com/0xPlayerOne/cortana/commit/d8fa9c9a5e473dbd2fd53e2333b249841bf0e0b1))
+* **desktop:** fail closed when sidecar is missing ([d544a8d](https://github.com/0xPlayerOne/cortana/commit/d544a8dd9c3762417e02fc676a1dbe54d1c19188))
+* **ops:** classify bounded source smoke failures ([b02433a](https://github.com/0xPlayerOne/cortana/commit/b02433a9fdda11ed58573f25ee7f77985df9b596))
+* **ops:** preserve private audit export permissions ([2a3fb4d](https://github.com/0xPlayerOne/cortana/commit/2a3fb4d56368405191400986a6bbc6424096cf4f))
+* **readiness:** verify backup snapshots ([efbefed](https://github.com/0xPlayerOne/cortana/commit/efbefed0003fd24193ff326a53489de0405df073))
+
+
+### Documentation
+
+* **agent:** describe retrieval degradation ([c423ec1](https://github.com/0xPlayerOne/cortana/commit/c423ec1cb7656d54dcce88c6f615c83f48a97d9c))
+* **query:** document fallback telemetry ([43405f2](https://github.com/0xPlayerOne/cortana/commit/43405f2b98f4368b8a1e80aed05f7eeeb8910c7e))
+
+
+### Tests
+
+* **release:** inspect packaged runtime contents ([1065f7a](https://github.com/0xPlayerOne/cortana/commit/1065f7af63c9a996fd32de37555a2bcc98857efd))
+* **release:** verify core archive checksums ([042d489](https://github.com/0xPlayerOne/cortana/commit/042d4894e5ae9faae5e42b45320d2cb420e894d6))
+* **release:** verify cross-platform desktop assets ([b125da2](https://github.com/0xPlayerOne/cortana/commit/b125da2eecfd0dfa7ad73e5de77e078cea2b46ab))
+
 ## [0.23.1](https://github.com/0xPlayerOne/cortana/compare/v0.23.0...v0.23.1) (2026-08-03)
 
 
