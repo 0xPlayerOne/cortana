@@ -312,6 +312,7 @@ struct SourceValidationSummary {
     max_bytes: u64,
     max_seconds: u64,
     error: Option<String>,
+    error_category: Option<&'static str>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -378,6 +379,31 @@ fn validation_summary(
             .error
             .as_ref()
             .map(|_| "source validation failed".into()),
+        error_category: status.error.as_deref().and_then(validation_error_category),
+    }
+}
+
+fn validation_error_category(error: &str) -> Option<&'static str> {
+    let normalized = error.to_ascii_lowercase();
+    if normalized.contains("timed out") || normalized.contains("timeout") {
+        Some("timeout")
+    } else if normalized.contains("403 forbidden")
+        || normalized.contains("401 unauthorized")
+        || normalized.contains("authorization denied")
+        || normalized.contains("permission denied")
+    {
+        Some("authorization")
+    } else if normalized.contains("no such file or directory")
+        || normalized.contains("does not exist")
+        || normalized.contains("not found")
+    {
+        Some("missing-credential-or-path")
+    } else if normalized.contains("exceeds")
+        && (normalized.contains("budget") || normalized.contains("bound"))
+    {
+        Some("budget")
+    } else {
+        Some("connector")
     }
 }
 
@@ -1524,6 +1550,30 @@ mod tests {
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(message, "Cortana could not complete the request");
         assert!(!message.contains("/Users/private"));
+    }
+
+    #[test]
+    fn validation_error_categories_are_safe_and_bounded() {
+        assert_eq!(
+            validation_error_category("Client error: 403 Forbidden"),
+            Some("authorization")
+        );
+        assert_eq!(
+            validation_error_category("connector timed out after 30 seconds"),
+            Some("timeout")
+        );
+        assert_eq!(
+            validation_error_category("No such file or directory"),
+            Some("missing-credential-or-path")
+        );
+        assert_eq!(
+            validation_error_category("filesystem source exceeds the 25 document budget"),
+            Some("budget")
+        );
+        assert_eq!(
+            validation_error_category("unclassified failure"),
+            Some("connector")
+        );
     }
 
     fn test_state(token: Option<String>) -> (tempfile::TempDir, AppState) {
