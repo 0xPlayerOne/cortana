@@ -529,7 +529,7 @@ fn is_within_filesystem_root(target: &Path, roots: &[PathBuf]) -> bool {
 }
 
 #[tauri::command]
-fn desktop_info(app: AppHandle) -> DesktopInfo {
+fn desktop_info<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> DesktopInfo {
     DesktopInfo {
         desktop_version: env!("CARGO_PKG_VERSION"),
         backend_origin: BACKEND_ORIGIN,
@@ -563,7 +563,9 @@ fn desktop_autostart_set(app: AppHandle, enabled: bool) -> Result<DesktopInfo, S
 }
 
 #[tauri::command]
-async fn desktop_services_status(app: AppHandle) -> Result<services::ServiceReport, String> {
+async fn desktop_services_status<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+) -> Result<services::ServiceReport, String> {
     services::status(&app).await
 }
 
@@ -630,8 +632,8 @@ fn desktop_update_status(updater: State<'_, updater::UpdaterState>) -> updater::
 }
 
 #[tauri::command]
-async fn desktop_update_check(
-    app: AppHandle,
+async fn desktop_update_check<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     updater: State<'_, updater::UpdaterState>,
 ) -> Result<updater::UpdateSnapshot, String> {
     updater.check(&app).await
@@ -709,8 +711,8 @@ fn desktop_installer_cancel(
 }
 
 #[tauri::command]
-fn desktop_source_validation_start(
-    app: AppHandle,
+fn desktop_source_validation_start<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     jobs: State<'_, source_jobs::SourceJobState>,
     source: String,
     budget: Option<source_jobs::InitialSyncBudget>,
@@ -719,8 +721,8 @@ fn desktop_source_validation_start(
 }
 
 #[tauri::command]
-fn desktop_source_authorization_start(
-    app: AppHandle,
+fn desktop_source_authorization_start<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     jobs: State<'_, source_jobs::SourceJobState>,
     source: String,
 ) -> Result<source_jobs::SourceJobSnapshot, String> {
@@ -743,8 +745,8 @@ fn desktop_source_setup_open(source: String) -> Result<source_jobs::SetupOpenOut
 }
 
 #[tauri::command]
-fn desktop_source_initial_sync(
-    app: AppHandle,
+fn desktop_source_initial_sync<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     jobs: State<'_, source_jobs::SourceJobState>,
     source: String,
     budget: source_jobs::InitialSyncBudget,
@@ -875,12 +877,34 @@ fn validate_document_id(id: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn show_main_window(app: &AppHandle) {
+fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
+}
+
+/// Tray menu dispatch. Extracted from the tray builder so the "show"
+/// wiring and the explicit-quit flag handoff are testable over the mock
+/// runtime. The "quit" arm needs a real event loop (`app.exit`), so it is
+/// exercised only by manual acceptance on a real desktop session.
+fn on_tray_menu_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event_id: &str) {
+    match event_id {
+        "show" => show_main_window(app),
+        "quit" => {
+            QUITTING.store(true, Ordering::SeqCst);
+            app.exit(0);
+        }
+        _ => {}
+    }
+}
+
+/// Close policy for the tray-resident app: while the tray is running, closing
+/// the main window hides it instead of quitting; an explicit tray quit clears
+/// the flag so a later close request is allowed through and the app exits.
+fn should_hide_main_window_on_close(window_label: &str, quitting: bool) -> bool {
+    window_label == MAIN_WINDOW && !quitting
 }
 
 fn install_tray(app: &mut tauri::App) -> tauri::Result<TrayStatus> {
@@ -898,14 +922,7 @@ fn install_tray(app: &mut tauri::App) -> tauri::Result<TrayStatus> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .tooltip("Cortana second brain")
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "show" => show_main_window(app),
-            "quit" => {
-                QUITTING.store(true, Ordering::SeqCst);
-                app.exit(0);
-            }
-            _ => {}
-        })
+        .on_menu_event(|app, event| on_tray_menu_event(app, event.id().as_ref()))
         .on_tray_icon_event(|tray, event| {
             if matches!(
                 event,
@@ -1103,8 +1120,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if window.label() == MAIN_WINDOW
-                && !QUITTING.load(Ordering::SeqCst)
+            if should_hide_main_window_on_close(window.label(), QUITTING.load(Ordering::SeqCst))
                 && let tauri::WindowEvent::CloseRequested { api, .. } = event
             {
                 api.prevent_close();
@@ -1119,7 +1135,27 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    // Native acceptance suite.
+    //
+    // These tests drive the production Tauri command handlers through
+    // `tauri::test::MockRuntime` IPC dispatch — the same typed command surface
+    // the webview uses — with all state confined to temporary config, secret,
+    // and data directories (`CORTANA_CONFIG` override). Sidecar-backed tests
+    // spawn the real bundled `cortana` CLI and skip with a note when the
+    // sidecar has not been prepared (`bun run desktop:test:native` prepares
+    // it). No test performs network requests or touches host configuration.
+    //
+    // Platform-only boundaries that the headless harness deliberately does
+    // not fake (they need a real desktop session / OS): native file dialogs
+    // (settings import/export, path picking), window/tray GUI creation and
+    // close-request events, autostart enable/disable writes, OAuth browser
+    // flows, OS service installation, and signed update download/install.
+
     fn ipc_request(command: &str) -> tauri::webview::InvokeRequest {
+        ipc_request_with(command, tauri::ipc::InvokeBody::default())
+    }
+
+    fn ipc_request_with(command: &str, body: tauri::ipc::InvokeBody) -> tauri::webview::InvokeRequest {
         tauri::webview::InvokeRequest {
             cmd: command.into(),
             callback: tauri::ipc::CallbackFn(0),
@@ -1131,13 +1167,14 @@ mod tests {
             }
             .parse()
             .expect("mock Tauri URL"),
-            body: tauri::ipc::InvokeBody::default(),
+            body,
             headers: Default::default(),
             invoke_key: tauri::test::INVOKE_KEY.to_string(),
         }
     }
 
     use std::{env, ffi::OsString, sync::Mutex};
+    use serde_json::json;
 
     /// Process-wide environment mutation is a global side effect in Rust tests.
     ///
@@ -1180,22 +1217,51 @@ mod tests {
     {
         let _lock = CORTANA_CONFIG_LOCK
             .lock()
-            .expect("failed to acquire CORTANA_CONFIG lock");
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let _scope = CortanaConfigScope::with(path);
         operation()
     }
 
+    /// Mock app used by the native acceptance suite.
+    ///
+    /// Registers the same plugins the production `run()` builder uses where
+    /// they are safe headlessly: the shell plugin (so sidecar commands can
+    /// spawn the real bundled CLI) and the updater plugin (configured with
+    /// empty endpoints so checks fail closed deterministically instead of
+    /// hitting the network).
     fn ipc_test_app() -> tauri::App<tauri::test::MockRuntime> {
+        let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+        context.config_mut().plugins.0.insert(
+            "updater".into(),
+            serde_json::json!({ "endpoints": [], "pubkey": "" }),
+        );
         tauri::test::mock_builder()
+            .plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                None,
+            ))
+            .plugin(tauri_plugin_shell::init())
+            .plugin(tauri_plugin_updater::Builder::new().build())
             .manage(updater::UpdaterState::default())
             .manage(source_jobs::SourceJobState::default())
             .invoke_handler(tauri::generate_handler![
                 desktop_schedule_get,
+                desktop_schedule_save,
+                desktop_services_status,
+                desktop_info,
                 desktop_settings_get,
-                desktop_update_status,
-                desktop_source_jobs_status
+                desktop_settings_save,
+                desktop_source_authorization_start,
+                desktop_source_initial_sync,
+                desktop_source_setup_open,
+                desktop_source_jobs_status,
+                desktop_source_validation_cancel,
+                desktop_source_validation_start,
+                desktop_source_validation_status,
+                desktop_update_check,
+                desktop_update_status
             ])
-            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .build(context)
             .expect("build mock desktop app")
     }
 
@@ -1207,6 +1273,131 @@ mod tests {
             body.deserialize::<Value>()
                 .expect("deserialize IPC response")
         })
+    }
+
+    fn invoke_json_with<W>(webview: &W, command: &str, payload: Value) -> Result<Value, Value>
+    where
+        W: AsRef<tauri::Webview<tauri::test::MockRuntime>>,
+    {
+        tauri::test::get_ipc_response(webview, ipc_request_with(command, payload.into())).map(
+            |body| {
+                body.deserialize::<Value>()
+                    .expect("deserialize IPC response")
+            },
+        )
+    }
+
+    /// Mirrors the shell plugin's sidecar resolution: next to the test
+    /// executable (up one level when cargo placed the test binary in `deps`).
+    /// `prepare:sidecar` stores the host binary in the root target directory,
+    /// while this standalone Tauri crate may use its own target directory.
+    /// Copy it into the path the shell plugin resolves so the acceptance test
+    /// exercises the real CLI rather than silently skipping it.
+    fn bundled_sidecar_available() -> bool {
+        let exe = std::env::current_exe().expect("current test executable");
+        let directory = exe.parent().expect("test executable parent");
+        let base = if directory.ends_with("deps") {
+            directory.parent().unwrap_or(directory)
+        } else {
+            directory
+        };
+        let sidecar = if cfg!(windows) {
+            base.join("cortana.exe")
+        } else {
+            base.join("cortana")
+        };
+        if sidecar.is_file() {
+            return true;
+        }
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let binaries = manifest.join("binaries");
+        let candidate = fs::read_dir(&binaries)
+            .ok()
+            .into_iter()
+            .flat_map(|entries| entries.flatten())
+            .map(|entry| entry.path())
+            .find(|path| {
+                path.is_file()
+                    && path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.starts_with("cortana-"))
+            });
+        let Some(candidate) = candidate else {
+            return false;
+        };
+        if let Some(parent) = sidecar.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::copy(candidate, &sidecar).is_ok() && sidecar.is_file()
+    }
+
+    /// Bounded polling helper for source job status over IPC. The production
+    /// watcher drives the real sidecar on the global async runtime, so the
+    /// test thread only observes the typed command surface.
+    fn wait_for_terminal_job<W>(
+        webview: &W,
+        id: &str,
+        timeout: std::time::Duration,
+    ) -> Value
+    where
+        W: AsRef<tauri::Webview<tauri::test::MockRuntime>>,
+    {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            let response = invoke_json_with(webview, "desktop_source_validation_status", json!({ "id": id }))
+                .expect("source job status IPC");
+            let status = response["status"].as_str().expect("job status string");
+            if !matches!(status, "running" | "cancelling") {
+                return response;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "source job `{id}` did not finish within {timeout:?}: {response}"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+    }
+
+    /// Temp config + data dir + filesystem source root for acceptance tests.
+    /// All side effects stay inside the temp directory; the CLI sidecar reads
+    /// the same file through the inherited `CORTANA_CONFIG` override.
+    struct NativeFixture {
+        _temp: tempfile::TempDir,
+        config: PathBuf,
+        data_dir: PathBuf,
+        root: PathBuf,
+    }
+
+    fn toml_string(value: &str) -> String {
+        format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    }
+
+    fn filesystem_fixture(source_name: &str, enabled: bool) -> NativeFixture {
+        let temp = tempfile::tempdir().expect("temporary fixture directory");
+        let config_dir = temp.path().join("cortana");
+        fs::create_dir_all(&config_dir).expect("fixture config directory");
+        let config = config_dir.join("config.toml");
+        let data_dir = config_dir.join("data");
+        let root = config_dir.join("notes");
+        fs::create_dir_all(&root).expect("fixture source root");
+        fs::write(
+            &config,
+            format!(
+                "data_dir = {}\n\n[query]\napi_key_env = \"CORTANA_TEST_QUERY_API_KEY\"\n\n[[sources]]\nname = {}\nkind = \"filesystem\"\nenabled = {}\nproject = \"work\"\nroot = {}\n",
+                toml_string(&data_dir.display().to_string()),
+                toml_string(source_name),
+                enabled,
+                toml_string(&root.display().to_string()),
+            ),
+        )
+        .expect("fixture config");
+        NativeFixture {
+            _temp: temp,
+            config,
+            data_dir,
+            root,
+        }
     }
 
     #[test]
@@ -1247,6 +1438,66 @@ mod tests {
         let response = invoke_json(&window, "desktop_update_status").expect("IPC response");
         assert_eq!(response["phase"], "idle");
         assert_eq!(response["restart_required"], false);
+    }
+
+    #[test]
+    fn native_desktop_info_reports_autostart_without_mutating_host_state() {
+        let app = ipc_test_app();
+        let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+            .build()
+            .expect("build mock desktop window");
+
+        let info = invoke_json(&window, "desktop_info").expect("desktop info IPC");
+        assert_eq!(info["platform"], std::env::consts::OS);
+        assert!(info["desktop_version"].as_str().is_some_and(|value| !value.is_empty()));
+        assert!(info["autostart_enabled"].is_boolean());
+    }
+
+    #[test]
+    fn native_google_authorization_and_setup_fail_closed_before_browser_launch() {
+        let temp = tempfile::tempdir().expect("temporary config directory");
+        let config_path = temp.path().join("cortana/config.toml");
+        fs::create_dir_all(config_path.parent().expect("config parent"))
+            .expect("config directory");
+        fs::create_dir_all(temp.path().join("cortana/notes")).expect("notes directory");
+        fs::write(
+            &config_path,
+            format!(
+                "data_dir = {}\n\n[[sources]]\nname = \"work-drive\"\nkind = \"google-drive\"\nenabled = true\nproject = \"work\"\n\n[[sources]]\nname = \"work-notes\"\nkind = \"filesystem\"\nenabled = true\nproject = \"work\"\nroot = {}\n",
+                toml_string(&temp.path().join("cortana/data").display().to_string()),
+                toml_string(&temp.path().join("cortana/notes").display().to_string()),
+            ),
+        )
+        .expect("test config");
+
+        with_cortana_config_override(&config_path, || {
+            let app = ipc_test_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
+
+            let authorization = invoke_json_with(
+                &window,
+                "desktop_source_authorization_start",
+                json!({ "source": "work-drive" }),
+            )
+            .expect_err("OAuth must reject incomplete setup without opening a browser");
+            assert!(authorization
+                .as_str()
+                .unwrap_or_default()
+                .contains("save a Google token destination"));
+
+            let setup = invoke_json_with(
+                &window,
+                "desktop_source_setup_open",
+                json!({ "source": "work-notes" }),
+            )
+            .expect_err("filesystem setup must fail closed without opening a browser");
+            assert!(setup
+                .as_str()
+                .unwrap_or_default()
+                .contains("does not have a browser-based account setup page"));
+        });
     }
 
     #[test]
@@ -1542,6 +1793,332 @@ mod tests {
             ingestion_label(&serde_json::json!({})),
             "Ingestion: manual"
         );
+    }
+
+    #[test]
+    fn native_settings_save_redacts_secrets_and_persists_workspace_sources() {
+        let fixture = filesystem_fixture("work-notes", true);
+        let raw_query_secret = "raw-query-api-key-acceptance-91d2";
+
+        with_cortana_config_override(&fixture.config, || {
+            let app = ipc_test_app();
+            let window =
+                tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                    .build()
+                    .expect("build mock desktop window");
+
+            let response = invoke_json(&window, "desktop_settings_get").expect("settings get IPC");
+            let mut update = response.as_object().expect("snapshot object").clone();
+            for key in [
+                "config_path",
+                "secret_file_path",
+                "secret_file_managed",
+                "embedding_service_program",
+                "needs_setup",
+                "restart_required",
+                "secrets",
+            ] {
+                update.remove(key);
+            }
+            update.insert(
+                "workspaces".into(),
+                json!([{"id": "work", "name": "Engineering", "account_label": null, "color": null}]),
+            );
+            update.insert(
+                "sources".into(),
+                json!([{
+                    "name": "work-notes",
+                    "kind": "filesystem",
+                    "enabled": true,
+                    "project": "work",
+                    "root": fixture.root.display().to_string(),
+                    "source": null,
+                    "channels": [],
+                    "token_env": "CORTANA_TEST_SOURCE_TOKEN",
+                    "token_path": null,
+                    "oauth_client_path": null,
+                    "query": null,
+                    "labels": [],
+                    "max_content_chars": null,
+                    "max_documents": null,
+                    "max_bytes": null,
+                    "max_duration_seconds": null,
+                    "exclude": [],
+                    "acl": ["work"],
+                    "editable": true
+                }]),
+            );
+            update.insert(
+                "secrets".into(),
+                json!([{"name": "CORTANA_TEST_QUERY_API_KEY", "value": raw_query_secret, "clear": false}]),
+            );
+
+            let saved = invoke_json_with(&window, "desktop_settings_save", json!({ "update": update }))
+                .expect("settings save IPC");
+            assert_eq!(saved["restart_required"], Value::Bool(true));
+            assert_eq!(saved["needs_setup"], Value::Bool(false));
+            assert_eq!(saved["workspaces"][0]["name"], "Engineering");
+            assert!(saved["sources"]
+                .as_array()
+                .expect("sources array")
+                .iter()
+                .any(|source| source["name"] == "work-notes"));
+            let secrets = saved["secrets"].as_array().expect("secrets array");
+            assert!(secrets.iter().any(|secret| {
+                secret["name"] == "CORTANA_TEST_QUERY_API_KEY" && secret["configured"] == Value::Bool(true)
+            }));
+            let serialized = serde_json::to_string(&saved).expect("serialize save response");
+            assert!(
+                !serialized.contains(raw_query_secret),
+                "raw secret values must never cross the IPC boundary"
+            );
+
+            // The same typed command surface returns the persisted values, and the
+            // write-only secret landed in the managed secret file next to the config.
+            let reloaded = invoke_json(&window, "desktop_settings_get").expect("settings get IPC");
+            assert_eq!(reloaded["workspaces"][0]["name"], "Engineering");
+            assert!(reloaded["sources"]
+                .as_array()
+                .expect("sources array")
+                .iter()
+                .any(|source| source["name"] == "work-notes" && source["enabled"] == Value::Bool(true)));
+            let reloaded_serialized = serde_json::to_string(&reloaded).expect("serialize reload");
+            assert!(!reloaded_serialized.contains(raw_query_secret));
+            let secrets_file = fixture
+                .config
+                .parent()
+                .expect("config parent")
+                .join("secrets.env");
+            let persisted = fs::read_to_string(&secrets_file).expect("read managed secrets");
+            assert!(persisted.contains(raw_query_secret));
+            let config_body = fs::read_to_string(&fixture.config).expect("read saved config");
+            assert!(config_body.contains("Engineering"));
+            assert!(config_body.contains("work-notes"));
+        });
+    }
+
+    #[test]
+    fn native_schedule_roundtrip_persists_and_rejects_bad_intervals() {
+        let fixture = filesystem_fixture("work-notes", true);
+        with_cortana_config_override(&fixture.config, || {
+            let app = ipc_test_app();
+            let window =
+                tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                    .build()
+                    .expect("build mock desktop window");
+
+            let saved = invoke_json_with(
+                &window,
+                "desktop_schedule_save",
+                json!({ "schedule": { "sync_interval_seconds": 1800, "backup_interval_seconds": 172800 } }),
+            )
+            .expect("schedule save IPC");
+            assert_eq!(saved["sync_interval_seconds"], 1800);
+            assert_eq!(saved["backup_interval_seconds"], 172800);
+            assert!(fixture
+                .config
+                .parent()
+                .expect("config parent")
+                .join("service-schedule.toml")
+                .is_file());
+
+            let loaded = invoke_json(&window, "desktop_schedule_get").expect("schedule get IPC");
+            assert_eq!(loaded["sync_interval_seconds"], 1800);
+            assert_eq!(loaded["backup_interval_seconds"], 172800);
+
+            let error = invoke_json_with(
+                &window,
+                "desktop_schedule_save",
+                json!({ "schedule": { "sync_interval_seconds": 30, "backup_interval_seconds": 172800 } }),
+            )
+            .expect_err("too-aggressive interval must be rejected");
+            assert!(error.as_str().unwrap_or_default().contains("between 60 and"));
+
+            let unchanged = invoke_json(&window, "desktop_schedule_get").expect("schedule get IPC");
+            assert_eq!(unchanged["sync_interval_seconds"], 1800);
+        });
+    }
+
+    #[test]
+    fn native_updater_check_fails_closed_without_network_endpoints() {
+        let app = ipc_test_app();
+        let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+            .build()
+            .expect("build mock desktop window");
+
+        let error = invoke_json(&window, "desktop_update_check")
+            .expect_err("update check must fail closed");
+        assert!(
+            error.as_str().unwrap_or_default().contains("does not have any endpoints"),
+            "unexpected update check error: {error:?}"
+        );
+        let status = invoke_json(&window, "desktop_update_status").expect("update status IPC");
+        assert_eq!(status["phase"], "failed");
+        assert!(
+            status["error"].as_str().unwrap_or_default().contains("does not have any endpoints"),
+            "unexpected update status error: {status}"
+        );
+    }
+
+    #[test]
+    fn native_services_status_reports_real_platform_state() {
+        let fixture = filesystem_fixture("work-notes", true);
+        with_cortana_config_override(&fixture.config, || {
+            if !bundled_sidecar_available() {
+                eprintln!(
+                    "SKIP: bundled `cortana` sidecar is missing next to the test executable; \
+                     run `bun run desktop:test:native` to prepare it"
+                );
+                return;
+            }
+            let app = ipc_test_app();
+            let window =
+                tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                    .build()
+                    .expect("build mock desktop window");
+
+            let report = invoke_json(&window, "desktop_services_status").expect("service status IPC");
+            assert_eq!(report["platform"], std::env::consts::OS);
+            assert!(report["supported"].is_boolean());
+            let services = report["services"].as_array().expect("services array");
+            let names = services
+                .iter()
+                .map(|service| service["name"].as_str().expect("service name"))
+                .collect::<Vec<_>>();
+            assert_eq!(names, vec!["embedding", "server", "sync", "backup"]);
+            for service in services {
+                for key in ["label", "installed", "loaded", "state", "pid", "last_exit_status"] {
+                    assert!(service.get(key).is_some(), "service report must carry `{key}`");
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn native_source_validation_lifecycle_runs_the_real_sidecar() {
+        let fixture = filesystem_fixture("work-notes", true);
+        fs::write(fixture.root.join("note-1.md"), "bounded acceptance note one")
+            .expect("fixture note");
+        fs::write(fixture.root.join("note-2.md"), "bounded acceptance note two")
+            .expect("fixture note");
+
+        with_cortana_config_override(&fixture.config, || {
+            if !bundled_sidecar_available() {
+                eprintln!(
+                    "SKIP: bundled `cortana` sidecar is missing next to the test executable; \
+                     run `bun run desktop:test:native` to prepare it"
+                );
+                return;
+            }
+            let app = ipc_test_app();
+            let window =
+                tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                    .build()
+                    .expect("build mock desktop window");
+
+            let started = invoke_json_with(
+                &window,
+                "desktop_source_validation_start",
+                json!({ "source": "work-notes", "budget": "small" }),
+            )
+            .expect("start validation IPC");
+            assert_eq!(started["operation"], "validation");
+            assert_eq!(started["status"], "running");
+            assert_eq!(started["writes_indexed_data"], Value::Bool(false));
+            let id = started["id"].as_str().expect("job id").to_string();
+
+            let terminal =
+                wait_for_terminal_job(&window, &id, std::time::Duration::from_secs(120));
+            assert_eq!(terminal["status"], "succeeded", "job log: {}", terminal["log"]);
+            assert_eq!(terminal["exit_code"], 0);
+            assert!(!terminal["completed_at_unix_seconds"].is_null());
+
+            let state_path = fixture.data_dir.join("source-validations.json");
+            let state: Value =
+                serde_json::from_str(&fs::read_to_string(&state_path).expect("read validation state"))
+                    .expect("parse validation state");
+            let record = &state["sources"]["work-notes"];
+            assert_eq!(record["status"], "succeeded");
+            assert_eq!(record["complete"], Value::Bool(true));
+            assert!(record["max_documents"].as_u64().expect("max documents") >= 100);
+
+            let cancelled = invoke_json_with(
+                &window,
+                "desktop_source_validation_cancel",
+                json!({ "id": id }),
+            )
+            .expect("cancel finished job IPC");
+            assert_eq!(cancelled["status"], "succeeded");
+
+            let missing = invoke_json_with(
+                &window,
+                "desktop_source_validation_cancel",
+                json!({ "id": "source-0-0" }),
+            )
+            .expect_err("cancel of an unknown job must fail");
+            assert!(missing.as_str().unwrap_or_default().contains("not found"));
+
+            let jobs = invoke_json(&window, "desktop_source_jobs_status").expect("jobs IPC");
+            assert_eq!(jobs[0]["id"], id.as_str());
+
+            let plan = invoke_json_with(
+                &window,
+                "desktop_source_initial_sync",
+                json!({ "source": "work-notes", "budget": "small", "operation": "plan", "planId": "", "approved": false }),
+            )
+            .expect("initial sync plan IPC");
+            assert_eq!(plan["outcome"], "plan");
+            assert_eq!(plan["budget"], "small");
+            assert_eq!(plan["requires_validation"], Value::Bool(true));
+            assert_eq!(plan["validation_covers_budget"], Value::Bool(true));
+            assert_eq!(plan["validation_complete"], Value::Bool(true));
+            let plan_id = plan["plan_id"].as_str().expect("plan id").to_string();
+
+            let unapproved = invoke_json_with(
+                &window,
+                "desktop_source_initial_sync",
+                json!({ "source": "work-notes", "budget": "small", "operation": "execute", "planId": plan_id, "approved": false }),
+            )
+            .expect_err("unapproved execution must fail");
+            assert!(unapproved.as_str().unwrap_or_default().contains("explicit plan confirmation"));
+
+            let uncovered = invoke_json_with(
+                &window,
+                "desktop_source_initial_sync",
+                json!({ "source": "work-notes", "budget": "medium", "operation": "execute", "planId": plan_id, "approved": true }),
+            )
+            .expect_err("execution beyond validated limits must fail");
+            assert!(uncovered.as_str().unwrap_or_default().contains("equal or larger limits"));
+        });
+    }
+
+    #[test]
+    fn native_close_policy_hides_the_main_window_unless_quitting() {
+        QUITTING.store(false, Ordering::SeqCst);
+        assert!(should_hide_main_window_on_close(MAIN_WINDOW, false));
+        assert!(!should_hide_main_window_on_close(MAIN_WINDOW, true));
+        assert!(!should_hide_main_window_on_close("settings", false));
+        QUITTING.store(true, Ordering::SeqCst);
+        assert!(!should_hide_main_window_on_close(
+            MAIN_WINDOW,
+            QUITTING.load(Ordering::SeqCst)
+        ));
+        QUITTING.store(false, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn native_tray_show_wiring_uses_the_real_window_dispatcher() {
+        let app = ipc_test_app();
+        let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+            .build()
+            .expect("build mock desktop window");
+
+        on_tray_menu_event(app.handle(), "show");
+        assert!(app.get_webview_window(MAIN_WINDOW).is_some());
+        assert!(window.is_visible().unwrap_or(false));
+
+        on_tray_menu_event(app.handle(), "unknown-menu-item");
+        assert!(app.get_webview_window(MAIN_WINDOW).is_some());
     }
 
     #[test]

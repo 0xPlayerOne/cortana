@@ -13,7 +13,8 @@
     "clippy": "bun run prepare:resources && bun run prepare:sidecar && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
     "dev": "tauri dev",
     "info": "tauri info",
-    "test": "bun run prepare:resources && bun run prepare:sidecar && cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features"
+    "test": "bun run prepare:resources && bun run prepare:sidecar && cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features",
+    "test:native": "bun run prepare:resources && bun run prepare:sidecar && cargo test --manifest-path src-tauri/Cargo.toml native_"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"
