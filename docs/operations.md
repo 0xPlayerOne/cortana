@@ -159,8 +159,8 @@ Published releases have a final cross-platform asset gate. It checks that the co
 checksums, signed macOS/Linux/Windows desktop installers, and every updater platform entry are
 present for the same tag before the release workflow succeeds. It also inspects the core archives
 and macOS app archive for safe paths, executable runtime files, the connector resource, the web
-bundle, and the release installer scripts. Re-run the read-only verifier for an existing release
-with:
+bundle, the release installer scripts, and the published SHA-256 files against their downloaded
+archives. Re-run the read-only verifier for an existing release with:
 
 ```bash
 GH_REPO=0xPlayerOne/cortana scripts/verify-desktop-release.sh v0.23.1
