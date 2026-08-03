@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.7](https://github.com/0xPlayerOne/cortana/compare/v0.24.6...v0.24.7) (2026-08-03)
+
+
+### Bug Fixes
+
+* **query:** focus synthesis evidence on the original question ([a5197cc](https://github.com/0xPlayerOne/cortana/commit/a5197ccf38c3f4a1c98d8659cdc741851cc45ac7))
+
 ## [0.24.6](https://github.com/0xPlayerOne/cortana/compare/v0.24.5...v0.24.6) (2026-08-03)
 
 
