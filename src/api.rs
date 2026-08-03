@@ -2286,7 +2286,7 @@ mod tests {
             validation.error.as_deref(),
             Some("google source snapshot was incomplete")
         );
-        assert_eq!(validation.error_category.as_deref(), Some("connector"));
+        assert_eq!(validation.error_category, Some("connector"));
     }
 
     #[test]
