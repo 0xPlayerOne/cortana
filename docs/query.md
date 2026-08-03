@@ -110,7 +110,6 @@ does not run source syncs, and requires `[query]` model configuration to be vali
 cortana --config /path/to/config.toml eval --model
 ```
 
-
 ## Planned and synthesized answers
 
 After an OpenAI-compatible model endpoint is healthy, enable synthesis:
