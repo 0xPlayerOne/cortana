@@ -1,6 +1,6 @@
 :root {
   color: #d9d8d4;
-  background: #111210;
+  background: #0e1524;
   font-family:
     Inter,
     ui-sans-serif,
@@ -10,14 +10,36 @@
     sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --amber: #e8a83b;
-  --amber-soft: #f2bd5c;
-  --ink: #151614;
-  --panel: #1a1b19;
-  --line: #343532;
-  --muted: #999b96;
-  --paper: #f4f2ec;
-  --paper-ink: #1b1c19;
+
+  --theme-background: #0f1624;
+  --theme-surface: #171f2f;
+  --theme-muted: #a8b2c5;
+  --theme-line: #2a3445;
+
+  --radius-xs: 8px;
+  --radius-sm: 10px;
+  --radius-pill: 999px;
+
+  --amber: #59defc;
+  --amber-soft: #8cd7ff;
+  --ink: #151b2b;
+  --panel: #1b2332;
+  --line: var(--theme-line);
+  --muted: var(--theme-muted);
+  --paper: #eef2fb;
+  --paper-ink: #1e2436;
+  --surface-elevated: #1f293c;
+}
+
+button,
+input,
+select,
+textarea {
+  border-radius: var(--radius-sm);
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 * {
@@ -40,13 +62,60 @@ input {
 
 button {
   color: inherit;
+  cursor: pointer;
 }
 
 button:focus-visible,
 a:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: -2px;
+}
+
+.quick-tooltip {
+  position: relative;
+}
+
+.quick-tooltip::after {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 8px);
+  left: 50%;
+  display: block;
+  max-width: 240px;
+  padding: 6px 8px;
+  transform: translateX(-50%);
+  transform-origin: top;
+  border-radius: var(--radius-xs);
+  background: #152238;
+  color: #ebeff7;
+  content: attr(data-tooltip);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.quick-tooltip::before {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, 4px) rotate(45deg);
+  background: #152238;
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+}
+
+.quick-tooltip:hover::after,
+.quick-tooltip:focus-visible::after,
+.quick-tooltip:hover::before,
+.quick-tooltip:focus-visible::before {
+  opacity: 1;
+  transition: opacity 80ms linear;
 }
 
 .spin {

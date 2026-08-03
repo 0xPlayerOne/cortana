@@ -16,7 +16,7 @@
   gap: 9px;
   padding: 0 20px;
   border-bottom: 1px solid var(--line);
-  background: #1c1d1b;
+  background: #1a2334;
 }
 
 .workspace-tabs button {
@@ -26,14 +26,14 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: #a6a7a2;
+  color: #b5bfd5;
   border: 0;
   background: transparent;
   cursor: pointer;
 }
 
 .workspace-tabs button.active {
-  color: #f1f0eb;
+  color: #f0f3fc;
 }
 
 .workspace-tabs button.active::after {
@@ -48,8 +48,8 @@
 
 .count-pill {
   padding: 2px 6px;
-  border-radius: 9px;
-  background: #3d3e3a;
+  border-radius: var(--radius-xs);
+  background: #2f3a4f;
   font-size: 11px;
 }
 
@@ -64,8 +64,8 @@
   align-items: center;
   padding: 0 28px;
   gap: 7px;
-  color: #6c6d69;
-  border-bottom: 1px solid #d8d5cd;
+  color: #8d97ab;
+  border-bottom: 1px solid var(--line);
   font-size: 13px;
 }
 

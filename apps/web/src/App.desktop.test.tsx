@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, test } from 'bun:test'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 import { demoStatus } from './demo'
 import {
@@ -1271,6 +1271,30 @@ test('settings refuses duplicate canonical source labels in one workspace', asyn
   }
 })
 
+test('settings navigation opens workspace and services first and groups plugins', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy())
+
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+
+  const navigation = screen.getByRole('navigation', { name: 'Settings sections' })
+  const buttons = within(navigation).getAllByRole('button')
+  const labels = buttons.map((button) => button.textContent)
+  expect(labels[0]).toBe('Workspaces')
+  expect(labels[1]).toBe('Sources')
+  expect(labels[2]).toBe('Services')
+  expect(labels[3]).toBe('Readiness')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Plugins' }))
+  expect(screen.getByRole('button', { name: 'Plugins' }).className).toContain('active')
+  fireEvent.click(screen.getByRole('button', { name: 'Hindsight' }))
+  expect(screen.getByRole('button', { name: 'Plugins' }).className).toContain('active')
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { name: 'Hindsight memory sidecar' })).toBeTruthy()
+  )
+})
+
 test('settings refuses padded or control-character source labels before save', async () => {
   const originalSettings = state.settings
   state.settings = {
@@ -1296,7 +1320,6 @@ test('settings refuses padded or control-character source labels before save', a
     state.settings = originalSettings
   }
 })
-
 test('source tree actions resolve a configured source by its canonical label', async () => {
   const originalConfirm = window.confirm
   const originalSettings = state.settings
