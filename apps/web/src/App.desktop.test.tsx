@@ -13,6 +13,8 @@ import type {
   AuditEvent,
   DesktopServiceReport,
   DesktopSettings,
+  DesktopSettingsExport,
+  DesktopSettingsImport,
   DesktopSettingsUpdate,
   DesktopSourceJob,
   DesktopInstallJob,
@@ -28,6 +30,23 @@ afterEach(() => {
   state.saveSettingsCalls = 0
   state.applySettingsUpdate = false
   state.lastSettingsUpdate = null
+  state.exportDesktopSettingsCalls = 0
+  state.importDesktopSettingsCalls = 0
+  state.exportDesktopSettingsResult = {
+    path: '/tmp/cortana-settings.toml',
+    format_version: 2,
+    secrets_included: false,
+    omitted_external_sources: [],
+  }
+  state.importDesktopSettingsResult = {
+    path: '/tmp/imported-cortana-settings.toml',
+    format_version: 2,
+    secrets_included: false,
+    preserved_external_sources: [],
+    settings: {
+      runtime: { data_dir: '/tmp/imported-runtime-dir' },
+    },
+  }
   state.getDesktopServicesCalls = 0
   state.getDesktopSettingsCalls = 0
   state.deferDesktopSettings = false
@@ -112,6 +131,23 @@ const state = {
   saveSettingsCalls: 0,
   applySettingsUpdate: false,
   lastSettingsUpdate: null as DesktopSettingsUpdate | null,
+  exportDesktopSettingsCalls: 0,
+  importDesktopSettingsCalls: 0,
+  exportDesktopSettingsResult: {
+    path: '/tmp/cortana-settings.toml',
+    format_version: 2,
+    secrets_included: false,
+    omitted_external_sources: [],
+  } as DesktopSettingsExport,
+  importDesktopSettingsResult: {
+    path: '/tmp/imported-cortana-settings.toml',
+    format_version: 2,
+    secrets_included: false,
+    preserved_external_sources: [],
+    settings: {
+      runtime: { data_dir: '/tmp/imported-runtime-dir' },
+    },
+  } as DesktopSettingsImport,
   serviceInstallCalls: 0,
   serviceSyncInstallCalls: 0,
   schedule: { sync_interval_seconds: 900, backup_interval_seconds: 86400 },
@@ -296,6 +332,14 @@ mock.module('./api', () => ({
   getDesktopUpdate: () => {
     state.getDesktopUpdateCalls += 1
     return Promise.resolve(desktopUpdate)
+  },
+  exportDesktopSettings: () => {
+    state.exportDesktopSettingsCalls += 1
+    return Promise.resolve(state.exportDesktopSettingsResult)
+  },
+  importDesktopSettings: () => {
+    state.importDesktopSettingsCalls += 1
+    return Promise.resolve(state.importDesktopSettingsResult)
   },
   scanDesktopReadiness: () =>
     state.readinessScan
@@ -639,6 +683,150 @@ test('audit trail export downloads exactly the loaded redacted events as JSON', 
     URL.createObjectURL = originalCreateObjectURL
     URL.revokeObjectURL = originalRevokeObjectURL
     document.createElement = originalCreateElement
+  }
+})
+
+test('advanced settings export is blocked while draft is dirty', async () => {
+  render(<App />)
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+
+  const dataDir = screen.getByLabelText('Data directory') as HTMLInputElement
+  fireEvent.change(dataDir, { target: { value: '/tmp/dirty-runtime-directory' } })
+  expect(dataDir.value).toBe('/tmp/dirty-runtime-directory')
+
+  const exportButton = screen.getByRole('button', { name: 'Export' })
+  expect(exportButton.hasAttribute('disabled')).toBe(true)
+  fireEvent.click(exportButton)
+  expect(state.exportDesktopSettingsCalls).toBe(0)
+
+  const saveChanges = screen.getByRole('button', { name: 'Save changes' })
+  expect(saveChanges.hasAttribute('disabled')).toBe(false)
+  expect(state.saveSettingsCalls).toBe(0)
+})
+
+test('advanced settings export shows redacted notice and calls the export bridge when clean', async () => {
+  state.exportDesktopSettingsResult = {
+    path: '/tmp/cortana-settings.toml',
+    format_version: 2,
+    secrets_included: false,
+    omitted_external_sources: ['s3-uploader'],
+  }
+  render(<App />)
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+
+  const exportButton = screen.getByRole('button', { name: 'Export' })
+  expect(exportButton.hasAttribute('disabled')).toBe(false)
+
+  fireEvent.click(exportButton)
+  await waitFor(() => {
+    const status = screen.getByRole('status') as HTMLElement
+    expect(status.textContent).toContain(
+      'Redacted settings exported to /tmp/cortana-settings.toml.'
+    )
+    expect(status.textContent).toContain('Executable connectors omitted: s3-uploader.')
+  })
+  expect(state.exportDesktopSettingsCalls).toBe(1)
+})
+
+test('advanced import preview cancellation keeps draft values unchanged', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => false
+  state.importDesktopSettingsResult = {
+    path: '/tmp/imported-cortana-settings.toml',
+    format_version: 2,
+    secrets_included: false,
+    preserved_external_sources: ['s3-uploader'],
+    settings: { runtime: { data_dir: '/tmp/imported-runtime-dir' } },
+  }
+  try {
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+
+    const dataDir = screen.getByLabelText('Data directory') as HTMLInputElement
+    fireEvent.change(dataDir, { target: { value: '/tmp/dirty-draft' } })
+    expect(dataDir.value).toBe('/tmp/dirty-draft')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import preview' }))
+    await waitFor(() => expect(state.importDesktopSettingsCalls).toBe(1))
+
+    expect(dataDir.value).toBe('/tmp/dirty-draft')
+    expect(screen.getByRole('button', { name: 'Save changes' }).hasAttribute('disabled')).toBe(
+      false
+    )
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
+test('advanced settings import preview applies as unsaved draft and requires explicit save', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.importDesktopSettingsResult = {
+    path: '/tmp/imported-cortana-settings.toml',
+    format_version: 2,
+    secrets_included: false,
+    preserved_external_sources: ['s3-uploader'],
+    settings: {
+      runtime: {
+        ...desktopSettings.runtime,
+        data_dir: '/tmp/imported-runtime-dir',
+      },
+    },
+  }
+  try {
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Import preview' }))
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Imported settings are ready for review. Preserved executable connectors: s3-uploader.'
+        )
+      ).toBeTruthy()
+    )
+
+    expect(state.importDesktopSettingsCalls).toBe(1)
+    expect(state.saveSettingsCalls).toBe(0)
+
+    const dataDir = screen.getByLabelText('Data directory') as HTMLInputElement
+    expect(dataDir.value).toBe('/tmp/imported-runtime-dir')
+
+    const saveChanges = screen.getByRole('button', { name: 'Save changes' })
+    expect(saveChanges.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(saveChanges)
+    await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
+    expect(state.lastSettingsUpdate?.runtime.data_dir).toBe('/tmp/imported-runtime-dir')
+  } finally {
+    window.confirm = originalConfirm
   }
 })
 
