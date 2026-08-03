@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.7](https://github.com/0xPlayerOne/cortana/compare/v0.19.6...v0.19.7) (2026-08-03)
+
+
+### Bug Fixes
+
+* **desktop:** satisfy schedule clippy ([e442847](https://github.com/0xPlayerOne/cortana/commit/e442847ae573e755eeb44459ca8dfa27e673cef1))
+
 ## [0.19.6](https://github.com/0xPlayerOne/cortana/compare/v0.19.5...v0.19.6) (2026-08-02)
 
 
