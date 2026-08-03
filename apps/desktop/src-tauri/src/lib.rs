@@ -1119,6 +1119,69 @@ pub fn run() {
 mod tests {
     use super::*;
 
+    fn ipc_request(command: &str) -> tauri::webview::InvokeRequest {
+        tauri::webview::InvokeRequest {
+            cmd: command.into(),
+            callback: tauri::ipc::CallbackFn(0),
+            error: tauri::ipc::CallbackFn(1),
+            url: if cfg!(any(windows, target_os = "android")) {
+                "http://tauri.localhost"
+            } else {
+                "tauri://localhost"
+            }
+            .parse()
+            .expect("mock Tauri URL"),
+            body: tauri::ipc::InvokeBody::default(),
+            headers: Default::default(),
+            invoke_key: tauri::test::INVOKE_KEY.to_string(),
+        }
+    }
+
+    fn ipc_test_app() -> tauri::App<tauri::test::MockRuntime> {
+        tauri::test::mock_builder()
+            .manage(updater::UpdaterState::default())
+            .manage(source_jobs::SourceJobState::default())
+            .invoke_handler(tauri::generate_handler![
+                desktop_update_status,
+                desktop_source_jobs_status
+            ])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("build mock desktop app")
+    }
+
+    fn invoke_json<W>(webview: &W, command: &str) -> Result<Value, Value>
+    where
+        W: AsRef<tauri::Webview<tauri::test::MockRuntime>>,
+    {
+        tauri::test::get_ipc_response(webview, ipc_request(command)).map(|body| {
+            body.deserialize::<Value>()
+                .expect("deserialize IPC response")
+        })
+    }
+
+    #[test]
+    fn native_ipc_dispatches_update_status() {
+        let app = ipc_test_app();
+        let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+            .build()
+            .expect("build mock desktop window");
+
+        let response = invoke_json(&window, "desktop_update_status").expect("IPC response");
+        assert_eq!(response["phase"], "idle");
+        assert_eq!(response["restart_required"], false);
+    }
+
+    #[test]
+    fn native_ipc_dispatches_source_job_status() {
+        let app = ipc_test_app();
+        let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+            .build()
+            .expect("build mock desktop window");
+
+        let response = invoke_json(&window, "desktop_source_jobs_status").expect("IPC response");
+        assert_eq!(response, Value::Array(Vec::new()));
+    }
+
     fn principal(scopes: &[&str]) -> settings::AuthPrincipalSettings {
         settings::AuthPrincipalSettings {
             principal: "owner".into(),
