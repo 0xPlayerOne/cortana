@@ -1197,6 +1197,55 @@ def test_google_drive_full_mode_rejects_missing_modified_time(tmp_path: Path) ->
         list(fetch_drive(token, "work", client=client))
 
 
+def test_google_drive_bounded_mode_skips_records_missing_modified_time(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    cache = tmp_path / "cache"
+    detail_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "good",
+                            "name": "Good",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                        {"id": "missing", "name": "Missing Time", "mimeType": "text/plain"},
+                    ]
+                },
+                request=request,
+            )
+        nonlocal detail_requests
+        detail_requests += 1
+        return httpx.Response(200, text="bounded body", request=request)
+
+    documents = list(
+        fetch_drive(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+            cache_dir=cache,
+            max_documents=10,
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["good"]
+    assert detail_requests == 1
+    assert "Drive file skipped: id=missing reason=missing modifiedTime" in capsys.readouterr().err
+    connection = sqlite3.connect(cache / "drive.sqlite3")
+    try:
+        rows = connection.execute("SELECT id FROM files").fetchall()
+    finally:
+        connection.close()
+    assert rows == [("good",)]
+
+
 def test_google_drive_bounds_oversized_exports_with_explicit_metadata(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     write_token(token, '{"token":"access"}')
@@ -1454,6 +1503,33 @@ def test_google_drive_full_mode_rejects_unsupported_content(tmp_path: Path) -> N
         list(fetch_drive(token, "work", client=client))
 
 
+def test_google_drive_full_mode_rejects_falsey_next_page_token(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "doc1",
+                            "name": "Doc",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ],
+                    "nextPageToken": "",
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="body", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive listing has invalid nextPageToken"):
+        list(fetch_drive(token, "work", client=client, cache_dir=tmp_path / "cache"))
+
+
 def test_google_drive_full_mode_rejects_invalid_next_page_token(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     write_token(token, '{"token":"access"}')
@@ -1517,6 +1593,44 @@ def test_google_drive_bounded_mode_stops_on_invalid_next_page_token(
     )
 
     assert [document.source_id for document in documents] == ["doc0", "doc1"]
+    assert (
+        "Drive listing skipped: nextPageToken is not a non-empty string" in capsys.readouterr().err
+    )
+
+
+def test_google_drive_bounded_mode_stops_on_falsey_next_page_token(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response(
+            {
+                "files": [
+                    {
+                        "id": "doc",
+                        "name": "Doc",
+                        "mimeType": "text/plain",
+                        "modifiedTime": "2026-07-29T12:00:00Z",
+                    }
+                ],
+                "nextPageToken": "",
+            },
+            request=request,
+        )
+
+    documents = list(
+        fetch_drive(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+            cache_dir=tmp_path / "cache",
+            max_documents=10,
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["doc"]
     assert (
         "Drive listing skipped: nextPageToken is not a non-empty string" in capsys.readouterr().err
     )
@@ -1787,6 +1901,23 @@ def test_google_gmail_bounded_mode_skips_cached_detail_id_mismatch(
     assert "Gmail message skipped: id=m1 reason=cached id mismatch" in capsys.readouterr().err
 
 
+def test_google_gmail_full_mode_rejects_falsey_next_page_token(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response(
+                {"messages": [], "nextPageToken": ""},
+                request=request,
+            )
+        return response({"error": "unexpected"}, status=500, request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Gmail listing has invalid nextPageToken"):
+        list(fetch_gmail(token, "work", client=client))
+
+
 def test_google_gmail_full_mode_rejects_non_string_next_page_token(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     write_token(token, '{"token":"access"}')
@@ -1809,6 +1940,24 @@ def test_google_gmail_bounded_mode_stops_on_non_string_next_page_token(
 
     def handler(request: httpx.Request) -> httpx.Response:
         return response({"messages": [], "nextPageToken": 123}, request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    documents = list(fetch_gmail(token, "work", client=client, max_documents=1))
+
+    assert documents == []
+    assert (
+        "Gmail listing skipped: nextPageToken is not a non-empty string" in capsys.readouterr().err
+    )
+
+
+def test_google_gmail_bounded_mode_stops_on_falsey_next_page_token(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response({"messages": [], "nextPageToken": ""}, request=request)
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
     documents = list(fetch_gmail(token, "work", client=client, max_documents=1))
