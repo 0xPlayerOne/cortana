@@ -370,6 +370,26 @@ impl Store {
         Ok(())
     }
 
+    /// Recover sync runs left `running` by an interrupted process.
+    ///
+    /// Marks every still-`running` run as `cancelled` with a completion
+    /// timestamp. Completed and failed runs are left untouched, including any
+    /// recorded outcome counters and completion timestamps.
+    /// Callers must hold the global sync lock first so no live sync can own the
+    /// affected records. This is metadata-only: it never touches document,
+    /// chunk, or index data, and it does not delete run history or alter the
+    /// per-source retention bound. Returns the number of recovered runs.
+    pub fn recover_interrupted_syncs(&self) -> Result<usize> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let changed = connection.execute(
+            "UPDATE sync_runs
+             SET status=?1,completed_at=?2
+             WHERE status='running'",
+            params![SyncRunStatus::Cancelled.as_str(), Utc::now().to_rfc3339()],
+        )?;
+        Ok(changed)
+    }
+
     pub fn upsert(&self, document: &Document, chunks: &[(String, Vec<f32>)]) -> Result<bool> {
         let id = stable_id(&document.source, &document.source_id);
         let hash = document_hash(document)?;
@@ -2628,6 +2648,239 @@ mod tests {
             )
             .expect("history count");
         assert_eq!(count, i64::try_from(SYNC_RUNS_PER_SOURCE).unwrap());
+    }
+
+    #[test]
+    fn sync_run_recovery_cancels_orphaned_running_runs() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .begin_sync("work-code", "work", 100, 2_048, 30)
+            .expect("begin first run");
+        store
+            .begin_sync("personal", "home", 50, 1_024, 60)
+            .expect("begin second run");
+
+        assert_eq!(
+            store.recover_interrupted_syncs().expect("recover runs"),
+            2,
+            "every orphaned running run is recovered"
+        );
+        assert_eq!(
+            store.recover_interrupted_syncs().expect("recover again"),
+            0,
+            "recovery is idempotent"
+        );
+
+        let connection = store.connection.lock().expect("store lock");
+        let rows = {
+            let mut statement = connection
+                .prepare(
+                    "SELECT source,status,completed_at,documents,bytes,deleted,
+                            budget_documents,budget_bytes,budget_seconds
+                     FROM sync_runs ORDER BY started_at",
+                )
+                .expect("prepare sync runs");
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<i64>>(3)?,
+                        row.get::<_, Option<i64>>(4)?,
+                        row.get::<_, Option<i64>>(5)?,
+                        row.get::<_, i64>(6)?,
+                        row.get::<_, i64>(7)?,
+                        row.get::<_, i64>(8)?,
+                    ))
+                })
+                .expect("query sync runs")
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .expect("collect sync runs")
+        };
+        drop(connection);
+
+        let budgets: Vec<(String, (i64, i64, i64))> = vec![
+            ("work-code".into(), (100, 2_048, 30)),
+            ("personal".into(), (50, 1_024, 60)),
+        ];
+        assert_eq!(rows.len(), budgets.len());
+        for (
+            source,
+            status,
+            completed_at,
+            documents,
+            bytes,
+            deleted,
+            budget_documents,
+            budget_bytes,
+            budget_seconds,
+        ) in rows
+        {
+            assert_eq!(status, "cancelled");
+            assert!(
+                completed_at.is_some(),
+                "recovered run records a completion timestamp"
+            );
+            assert_eq!(documents, None, "outcome counters stay untouched");
+            assert_eq!(bytes, None, "outcome counters stay untouched");
+            assert_eq!(deleted, None, "outcome counters stay untouched");
+            assert_eq!(
+                (budget_documents, budget_bytes, budget_seconds),
+                budgets
+                    .iter()
+                    .find(|(expected, _)| expected == &source)
+                    .expect("matching budget")
+                    .1,
+                "configured budgets survive recovery"
+            );
+        }
+    }
+
+    #[test]
+    fn sync_run_recovery_preserves_completed_outcomes() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let completed = store
+            .begin_sync("work-code", "work", 200, 4_096, 60)
+            .expect("begin completed run");
+        store
+            .finish_sync(
+                &completed,
+                SyncRunStatus::Succeeded,
+                Some(12),
+                Some(1_024),
+                Some(2),
+            )
+            .expect("finish completed run");
+        let interrupted = store
+            .begin_sync("work-code", "work", 100, 2_048, 30)
+            .expect("begin interrupted run");
+
+        let completed_at_before: String = {
+            let connection = store.connection.lock().expect("store lock");
+            connection
+                .query_row(
+                    "SELECT completed_at FROM sync_runs WHERE id=?1",
+                    [&completed],
+                    |row| row.get(0),
+                )
+                .expect("completed run timestamp")
+        };
+
+        assert_eq!(store.recover_interrupted_syncs().expect("recover runs"), 1);
+
+        let (status, completed_at, documents, bytes, deleted): (
+            String,
+            Option<String>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+        ) = {
+            let connection = store.connection.lock().expect("store lock");
+            connection
+                .query_row(
+                    "SELECT status,completed_at,documents,bytes,deleted FROM sync_runs WHERE id=?1",
+                    [&completed],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    },
+                )
+                .expect("completed run row")
+        };
+        assert_eq!(status, "succeeded");
+        assert_eq!(
+            completed_at.as_deref(),
+            Some(completed_at_before.as_str()),
+            "completed runs are not rewritten by recovery"
+        );
+        assert_eq!(
+            (documents, bytes, deleted),
+            (Some(12), Some(1_024), Some(2)),
+            "completed outcomes survive recovery"
+        );
+
+        let (status, completed_at): (String, Option<String>) = {
+            let connection = store.connection.lock().expect("store lock");
+            connection
+                .query_row(
+                    "SELECT status,completed_at FROM sync_runs WHERE id=?1",
+                    [&interrupted],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .expect("interrupted run row")
+        };
+        assert_eq!(status, "cancelled");
+        assert!(completed_at.is_some());
+        assert!(
+            store
+                .finish_sync(&interrupted, SyncRunStatus::Succeeded, None, None, None)
+                .is_err(),
+            "a recovered run cannot be completed again"
+        );
+    }
+
+    #[test]
+    fn sync_run_recovery_is_metadata_only_and_preserves_retention() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .upsert(
+                &document("kept", "kept"),
+                &[("kept".into(), vec![1.0, 0.0])],
+            )
+            .expect("insert document");
+        let documents_before = store.stats().expect("stats before").documents;
+
+        let mut recovered = 0;
+        for _ in 0..5 {
+            store
+                .begin_sync("source", "project", 10, 1_024, 30)
+                .expect("begin sync");
+            recovered += 1;
+        }
+        assert_eq!(
+            store.recover_interrupted_syncs().expect("recover runs"),
+            recovered
+        );
+
+        let after_recovery = store.stats().expect("stats after");
+        assert_eq!(
+            after_recovery.documents, documents_before,
+            "recovery never touches document data"
+        );
+        assert_eq!(after_recovery.sync_runs.len(), 1);
+        assert_eq!(after_recovery.sync_runs[0].status, "cancelled");
+        assert!(after_recovery.sync_runs[0].completed_at.is_some());
+
+        for _ in 0..(SYNC_RUNS_PER_SOURCE + 5) {
+            let run = store
+                .begin_sync("source", "project", 10, 1_024, 30)
+                .expect("begin sync");
+            store
+                .finish_sync(&run, SyncRunStatus::Succeeded, Some(1), Some(10), Some(0))
+                .expect("finish sync");
+        }
+        let connection = store.connection.lock().expect("store lock");
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sync_runs WHERE source='source' AND project='project'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("history count");
+        assert_eq!(
+            count,
+            i64::try_from(SYNC_RUNS_PER_SOURCE).unwrap(),
+            "recovered runs still count toward the per-source retention bound"
+        );
     }
 
     #[test]
