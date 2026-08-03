@@ -607,6 +607,13 @@ async fn main() -> Result<()> {
             exclude,
         }) => {
             let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+            let recovered = store.recover_interrupted_syncs()?;
+            if recovered > 0 {
+                tracing::info!(
+                    recovered,
+                    "cancelled sync runs orphaned by an interrupted process"
+                );
+            }
             let source = ad_hoc_filesystem_source(root, source, project, &exclude);
             let limits = SourceLimits::resolve(
                 &config,
@@ -663,6 +670,13 @@ async fn main() -> Result<()> {
             require_validation: _,
         }) => {
             let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+            let recovered = store.recover_interrupted_syncs()?;
+            if recovered > 0 {
+                tracing::info!(
+                    recovered,
+                    "cancelled sync runs orphaned by an interrupted process"
+                );
+            }
             let cancellation = Cancellation::install();
             let result = sync_configured_sources(
                 &config,
