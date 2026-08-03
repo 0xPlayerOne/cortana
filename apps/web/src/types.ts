@@ -113,6 +113,12 @@ export type ConfiguredSourceSummary = {
     // fields; the workspace treats a missing flag as current.
     fresh?: boolean
     age_seconds?: number
+    // `complete` is false when the succeeded validation was a bounded sample
+    // that may authorize only equally bounded non-reconciling runs. `null` is
+    // exposed for records persisted before sampling existed, and older
+    // servers omit the field entirely — both keep their legacy full-corpus
+    // authority.
+    complete?: boolean | null
     documents: number | null
     bytes: number | null
     max_documents: number

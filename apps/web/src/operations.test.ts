@@ -7,6 +7,7 @@ import {
   isLoopbackUrl,
   operationalSources,
   sourceHealth,
+  validationCoversConfiguredBudget,
 } from './operations'
 
 describe('operational source visibility', () => {
@@ -181,6 +182,92 @@ describe('operational source visibility', () => {
 
     const source = operationalSources(status).find((item) => item.name === 'buzz')
     expect(sourceHealth(source!).state).toBe('healthy')
+  })
+
+  test('fails closed when the succeeded validation was a bounded sample', () => {
+    const status = structuredClone(demoStatus)
+    const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!
+    buzz.validation = {
+      source: 'buzz',
+      project: 'agents',
+      kind: 'buzz',
+      status: 'succeeded',
+      validated_at: '2026-07-30T06:00:00Z',
+      fresh: true,
+      documents: 45,
+      bytes: 4096,
+      // Numeric budgets match the configured limits, but a bounded sample
+      // never authorizes a recurring or full-corpus sync.
+      max_documents: 3_000,
+      max_bytes: 268_435_456,
+      max_seconds: 900,
+      complete: false,
+      error: null,
+    }
+
+    const source = operationalSources(status).find((item) => item.name === 'buzz')
+    expect(validationCoversConfiguredBudget(source!)).toBe(false)
+    const health = sourceHealth(source!)
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('bounded sample')
+    expect(health.label.toLowerCase()).toContain('recurring sync')
+    expect(health.label).toContain('re-validate')
+  })
+
+  test('keeps an explicitly complete validation healthy like a legacy record', () => {
+    const status = structuredClone(demoStatus)
+    const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!
+    buzz.validation = {
+      source: 'buzz',
+      project: 'agents',
+      kind: 'buzz',
+      status: 'succeeded',
+      validated_at: '2026-07-30T06:00:00Z',
+      fresh: true,
+      documents: 45,
+      bytes: 4096,
+      max_documents: 3_000,
+      max_bytes: 268_435_456,
+      max_seconds: 900,
+      complete: true,
+      error: null,
+    }
+
+    const source = operationalSources(status).find((item) => item.name === 'buzz')
+    expect(validationCoversConfiguredBudget(source!)).toBe(true)
+    expect(sourceHealth(source!).state).toBe('healthy')
+  })
+
+  test('warns after a successful sync whose validation was only a bounded sample', () => {
+    const status = structuredClone(demoStatus)
+    const gmail = status.ingestion.configured_sources.find(
+      (source) => source.name === 'personal-gmail'
+    )!
+    gmail.validation = {
+      source: 'personal-gmail',
+      project: 'personal',
+      kind: 'gmail',
+      status: 'succeeded',
+      validated_at: '2026-07-30T06:00:00Z',
+      fresh: true,
+      documents: 1200,
+      bytes: 100_000,
+      // Budgets comfortably cover the configured limits, so only the sample
+      // marker stands between this source and recurrence.
+      max_documents: 3_000,
+      max_bytes: 268_435_456,
+      max_seconds: 900,
+      complete: false,
+      error: null,
+    }
+
+    const source = operationalSources(status).find((item) => item.name === gmail.name)
+    const health = sourceHealth(source!, Date.parse('2026-07-29T15:00:00Z'))
+
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('bounded sample')
+    expect(health.label.toLowerCase()).toContain('recurring sync')
+    expect(health.label).toContain('re-validate')
   })
 
   test('warns when a successful sync used an undersized validation budget', () => {
