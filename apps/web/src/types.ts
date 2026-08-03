@@ -119,6 +119,8 @@ export type ConfiguredSourceSummary = {
     max_bytes: number
     max_seconds: number
     error: string | null
+    error_category?:
+      'timeout' | 'authorization' | 'missing-credential-or-path' | 'budget' | 'connector' | null
   } | null
 }
 

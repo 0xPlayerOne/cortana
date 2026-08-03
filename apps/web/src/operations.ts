@@ -147,7 +147,7 @@ export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.n
     if (source.validation?.status === 'failed') {
       return {
         state: 'failed',
-        label: `Validation failed ${new Date(source.validation.validated_at).toLocaleString()}`,
+        label: `Validation failed${source.validation.error_category ? ` (${source.validation.error_category})` : ''} ${new Date(source.validation.validated_at).toLocaleString()}`,
       }
     }
     return { state: 'never', label: 'Enabled; connector not yet validated' }
