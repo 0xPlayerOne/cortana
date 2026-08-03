@@ -433,7 +433,8 @@ def fetch_gmail(
                         missing_ids.append(message_id)
                     elif message.get("id") != message_id:
                         _warn_skipped_record("Gmail message", message_id, "cached id mismatch")
-                        cache.execute("DELETE FROM messages WHERE id=?", (message_id,))
+                        if cache is not None:
+                            cache.execute("DELETE FROM messages WHERE id=?", (message_id,))
                         missing_ids.append(message_id)
                     else:
                         messages[message_id] = message
