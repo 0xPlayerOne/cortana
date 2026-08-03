@@ -65,6 +65,7 @@ export type OperationalSource = {
   chunks: number
   latest_updated_at: string | null
   sync: SourceSyncSummary | null
+  sync_freshness_hours: number | null
   authorization?: ConfiguredSourceSummary['authorization']
   validation?: ConfiguredSourceSummary['validation']
 }
@@ -85,6 +86,7 @@ export function operationalSources(status: BrainStatus | null): OperationalSourc
       chunks: stats?.chunks ?? 0,
       latest_updated_at: stats?.latest_updated_at ?? null,
       sync: runs.get(key) ?? null,
+      sync_freshness_hours: status.ingestion.sync_freshness_hours ?? null,
     }
   })
   for (const [key, source] of indexed) {
@@ -98,12 +100,13 @@ export function operationalSources(status: BrainStatus | null): OperationalSourc
       chunks: source.chunks,
       latest_updated_at: source.latest_updated_at,
       sync: runs.get(key) ?? null,
+      sync_freshness_hours: status.ingestion.sync_freshness_hours ?? null,
     })
   }
   return configured
 }
 
-export function sourceHealth(source: OperationalSource) {
+export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.now()) {
   if (!source.enabled)
     return { state: 'disabled', label: 'Disabled; existing index remains queryable' }
   if (source.authorization && source.authorization.method !== 'none') {
@@ -153,6 +156,20 @@ export function sourceHealth(source: OperationalSource) {
     ? new Date(source.sync.completed_at).toLocaleString()
     : 'in progress'
   if (source.sync.status === 'succeeded') {
+    const freshnessHours = source.sync_freshness_hours
+    const completedAt = Date.parse(source.sync.completed_at ?? '')
+    if (
+      freshnessHours !== null &&
+      freshnessHours > 0 &&
+      Number.isFinite(completedAt) &&
+      nowMilliseconds - completedAt > freshnessHours * 3_600_000
+    ) {
+      const ageSeconds = Math.max(0, Math.floor((nowMilliseconds - completedAt) / 1000))
+      return {
+        state: 'warning',
+        label: `Last sync succeeded ${completed}; stale after ${formatDuration(freshnessHours * 3_600)} (age ${formatDuration(ageSeconds)}); run sync`,
+      }
+    }
     return { state: 'healthy', label: `Last sync succeeded ${completed}` }
   }
   if (source.sync.status === 'running') {

@@ -8,6 +8,7 @@ const MAX_CONFIGURED_SOURCES: usize = 128;
 // `chrono::Duration::hours` accepts a signed hour count. Reject values that
 // cannot be represented before the freshness bound is converted at runtime.
 const MAX_VALIDATION_MAX_AGE_HOURS: u64 = (i64::MAX as u64) / 3_600;
+const MAX_SYNC_FRESHNESS_HOURS: u64 = 8_760;
 const SUPPORTED_SOURCE_KINDS: &[&str] = &[
     "filesystem",
     "apple-notes",
@@ -104,6 +105,10 @@ pub struct IngestionConfig {
     pub request_concurrency: usize,
     #[serde(default = "default_validation_max_age_hours")]
     pub validation_max_age_hours: u64,
+    /// Maximum age of a successful sync before operational status reports it
+    /// as stale. A value of zero disables this health bound.
+    #[serde(default = "default_sync_freshness_hours")]
+    pub sync_freshness_hours: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -238,6 +243,7 @@ impl Default for IngestionConfig {
             document_batch_size: default_ingestion_document_batch_size(),
             request_concurrency: default_ingestion_request_concurrency(),
             validation_max_age_hours: default_validation_max_age_hours(),
+            sync_freshness_hours: default_sync_freshness_hours(),
         }
     }
 }
@@ -390,6 +396,10 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
     anyhow::ensure!(
         config.ingestion.validation_max_age_hours <= MAX_VALIDATION_MAX_AGE_HOURS,
         "ingestion validation_max_age_hours exceeds the supported maximum"
+    );
+    anyhow::ensure!(
+        config.ingestion.sync_freshness_hours <= MAX_SYNC_FRESHNESS_HOURS,
+        "ingestion sync_freshness_hours exceeds the supported maximum"
     );
     anyhow::ensure!(
         config.sources.len() <= MAX_CONFIGURED_SOURCES,
@@ -648,6 +658,10 @@ fn default_validation_max_age_hours() -> u64 {
     168
 }
 
+fn default_sync_freshness_hours() -> u64 {
+    48
+}
+
 fn default_ingestion_document_batch_size() -> usize {
     16
 }
@@ -715,6 +729,7 @@ mod tests {
         assert_eq!(config.ingestion.max_bytes_per_source, 128 * 1024 * 1024);
         assert_eq!(config.ingestion.request_concurrency, 1);
         assert_eq!(config.ingestion.validation_max_age_hours, 168);
+        assert_eq!(config.ingestion.sync_freshness_hours, 48);
         validate_source_definitions(&config).expect("source definitions are safe");
     }
 
@@ -790,6 +805,14 @@ mod tests {
         config.ingestion.validation_max_age_hours = MAX_VALIDATION_MAX_AGE_HOURS + 1;
         let error = validate_source_definitions(&config).expect_err("bound must fit chrono");
         assert!(error.to_string().contains("validation_max_age_hours"));
+    }
+
+    #[test]
+    fn rejects_unrepresentable_sync_freshness_bounds() {
+        let mut config = Config::default();
+        config.ingestion.sync_freshness_hours = MAX_SYNC_FRESHNESS_HOURS + 1;
+        let error = validate_source_definitions(&config).expect_err("bound must fit chrono");
+        assert!(error.to_string().contains("sync_freshness_hours"));
     }
 
     #[test]

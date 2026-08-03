@@ -269,6 +269,7 @@ struct IngestionStatus {
     max_duration_seconds: u64,
     request_concurrency: usize,
     validation_max_age_hours: u64,
+    sync_freshness_hours: u64,
     validation_state_error: Option<String>,
     configured_sources: Vec<ConfiguredSourceStatus>,
     #[serde(skip)]
@@ -423,6 +424,7 @@ impl IngestionStatus {
             max_duration_seconds: config.ingestion.max_duration_seconds,
             request_concurrency: config.ingestion.request_concurrency,
             validation_max_age_hours: config.ingestion.validation_max_age_hours,
+            sync_freshness_hours: config.ingestion.sync_freshness_hours,
             validation_state_error: None,
             configured_sources,
             validation_fingerprints,
@@ -1932,6 +1934,7 @@ mod tests {
         );
         assert_eq!(value["ingestion"]["max_documents_per_source"], 25);
         assert_eq!(value["ingestion"]["validation_max_age_hours"], 168);
+        assert_eq!(value["ingestion"]["sync_freshness_hours"], 48);
         assert!(
             value["ingestion"]["configured_sources"][0]["validation"]["fresh"]
                 .as_bool()
