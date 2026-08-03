@@ -1413,7 +1413,16 @@ impl Store {
         })
     }
 
-    pub fn stats_scoped(&self, principal_acl: &[String]) -> Result<StoreStats> {
+    /// Scoped variant of [`Self::stats`] counting only ACL-visible documents
+    /// and their sources. `allowed_sync_sources` carries the canonical
+    /// (source, project) keys of ACL-visible configured sources so sync
+    /// outcomes stay visible for authorized sources that have not indexed any
+    /// documents yet; runs for sources outside both sets are omitted.
+    pub fn stats_scoped(
+        &self,
+        principal_acl: &[String],
+        allowed_sync_sources: &HashSet<(String, String)>,
+    ) -> Result<StoreStats> {
         let connection = self.connection.lock().expect("store lock poisoned");
         let embedding_fingerprint = connection
             .query_row(
@@ -1506,12 +1515,14 @@ impl Store {
                 })
             })?
             .filter_map(|row| match row {
-                Ok(sync)
-                    if allowed_sources.contains(&(sync.source.clone(), sync.project.clone())) =>
-                {
-                    Some(Ok(sync))
+                Ok(sync) => {
+                    let key = (sync.source.clone(), sync.project.clone());
+                    if allowed_sources.contains(&key) || allowed_sync_sources.contains(&key) {
+                        Some(Ok(sync))
+                    } else {
+                        None
+                    }
                 }
-                Ok(_) => None,
                 Err(error) => Some(Err(error)),
             })
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -2576,12 +2587,47 @@ mod tests {
                 .expect("insert document");
         }
 
-        let stats = store.stats_scoped(&["work".into()]).expect("scoped stats");
+        let stats = store
+            .stats_scoped(&["work".into()], &HashSet::new())
+            .expect("scoped stats");
         assert_eq!(stats.documents, 2);
         assert_eq!(stats.chunks, 2);
         assert_eq!(stats.sources.len(), 1);
         assert_eq!(stats.sources[0].documents, 2);
         assert_eq!(stats.sources[0].project, "demo");
+    }
+
+    #[test]
+    fn scoped_stats_surface_runs_for_allowed_configured_sources_without_documents() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let failed = store
+            .begin_sync("work-drive", "work", 100, 2_048, 30)
+            .expect("begin failed sync");
+        store
+            .finish_sync(&failed, SyncRunStatus::Failed, None, None, None)
+            .expect("finish failed sync");
+        let running = store
+            .begin_sync("personal-notes", "personal", 50, 1_024, 60)
+            .expect("begin running sync");
+
+        let allowed = HashSet::from([("work-drive".to_string(), "work".to_string())]);
+        let stats = store
+            .stats_scoped(&["work".into()], &allowed)
+            .expect("scoped stats");
+        assert_eq!(stats.documents, 0, "evidence counts stay document-derived");
+        assert!(stats.sources.is_empty());
+        assert_eq!(stats.sync_runs.len(), 1);
+        let run = &stats.sync_runs[0];
+        assert_eq!(run.source, "work-drive");
+        assert_eq!(run.project, "work");
+        assert_eq!(run.status, "failed");
+        assert!(run.completed_at.is_some());
+        assert_eq!(run.budget_documents, 100);
+
+        store
+            .finish_sync(&running, SyncRunStatus::Cancelled, None, None, None)
+            .expect("finish running sync");
     }
 
     #[test]
