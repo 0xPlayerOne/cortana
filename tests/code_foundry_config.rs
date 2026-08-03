@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Runtime tag every generated workflow and config line must pin.
-const RUNTIME_REF: &str = "v0.34.12";
+const RUNTIME_REF: &str = "v0.34.14";
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
