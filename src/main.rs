@@ -2395,15 +2395,33 @@ async fn sync_configured_sources(
 
 fn failure_status(error: &anyhow::Error) -> SyncRunStatus {
     let message = format!("{error:#}").to_lowercase();
-    if message.contains("cancel") {
+    if is_cancelled_status(&message) {
         SyncRunStatus::Cancelled
-    } else if message.contains("budget") || message.contains("safety bound") {
+    } else if is_budget_exceeded(&message) {
         SyncRunStatus::BudgetExceeded
     } else {
         SyncRunStatus::Failed
     }
 }
 
+fn is_cancelled_status(message: &str) -> bool {
+    message.contains("cancel")
+}
+
+fn is_budget_exceeded(message: &str) -> bool {
+    const BUDGET_EXCEEDED_MARKERS: [&str; 6] = [
+        "budget",
+        "safety bound",
+        "timed out after",
+        "timed out before",
+        "exceeded duration budget",
+        "connector timed out",
+    ];
+
+    BUDGET_EXCEEDED_MARKERS
+        .into_iter()
+        .any(|marker| message.contains(marker))
+}
 fn cleanup_connector_spools(data_dir: &std::path::Path) -> Result<usize> {
     let staging = prepare_connector_staging(data_dir, false)?;
     if !staging.is_dir() {
@@ -3047,8 +3065,9 @@ mod tests {
 
     use super::{
         Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
-        SyncOverrides, chunk, cleanup_connector_spools, configured_connector_command,
-        context_bundle, ensure_recurring_sync_validated, ingest_documents, private_file,
+        SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
+        configured_connector_command, context_bundle, ensure_recurring_sync_validated,
+        failure_status, ingest_documents, is_budget_exceeded, private_file,
         require_sync_validation, run_connector_to_spool, validate_connector_spool,
         validation_overrides,
     };
@@ -3069,6 +3088,40 @@ mod tests {
         assert_eq!(explicit.max_documents, Some(100));
         assert_eq!(explicit.max_bytes, Some(64 * 1024 * 1024));
         assert_eq!(explicit.max_seconds, Some(900));
+    }
+
+    #[test]
+    fn failure_status_categorizes_sync_errors_by_retry_profile() {
+        use anyhow::anyhow;
+
+        match failure_status(&anyhow!("operation cancelled by operator")) {
+            SyncRunStatus::Cancelled => {}
+            _ => panic!("expected cancelled classification"),
+        }
+        match failure_status(&anyhow!("connector upstream timed out after 300 seconds")) {
+            SyncRunStatus::BudgetExceeded => {}
+            _ => panic!("expected budget_exceeded classification"),
+        }
+        match failure_status(&anyhow!("source work-doc exceeded the 60 second budget")) {
+            SyncRunStatus::BudgetExceeded => {}
+            _ => panic!("expected budget_exceeded classification"),
+        };
+        match failure_status(&anyhow!("unexpected ingestion pipeline failure")) {
+            SyncRunStatus::Failed => {}
+            _ => panic!("expected failed classification"),
+        };
+    }
+
+    #[test]
+    fn budget_exceeded_markers_are_narrow_and_stable() {
+        assert!(is_budget_exceeded(
+            "connector sync timed out after 120 seconds"
+        ));
+        assert!(is_budget_exceeded(
+            "source-work budget exceeded during reconcile"
+        ));
+        assert!(!is_budget_exceeded("source-work was cancelled by user"));
+        assert!(!is_budget_exceeded("network retryable connection reset"));
     }
 
     #[test]
