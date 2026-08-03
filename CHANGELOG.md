@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.2](https://github.com/0xPlayerOne/cortana/compare/v0.26.1...v0.26.2) (2026-08-03)
+
+
+### Tests
+
+* **desktop:** add native acceptance coverage ([073d738](https://github.com/0xPlayerOne/cortana/commit/073d73861e772904f9ac9124543ca3fd356e8c81))
+
 ## [0.26.1](https://github.com/0xPlayerOne/cortana/compare/v0.26.0...v0.26.1) (2026-08-03)
 
 
