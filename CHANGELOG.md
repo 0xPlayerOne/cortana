@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.23.1](https://github.com/0xPlayerOne/cortana/compare/v0.23.0...v0.23.1) (2026-08-03)
+
+
+### Documentation
+
+* document disposable recovery drill ([f0a1837](https://github.com/0xPlayerOne/cortana/commit/f0a18376822b5457094f5566caf30e69c15e543f))
+
+
+### Tests
+
+* add disposable query benchmark ([94fe6cf](https://github.com/0xPlayerOne/cortana/commit/94fe6cf2372a396cc596f9fb3122a131030c1977))
+
 ## [0.23.0](https://github.com/0xPlayerOne/cortana/compare/v0.22.0...v0.23.0) (2026-08-03)
 
 
