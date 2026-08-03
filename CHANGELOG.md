@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.0](https://github.com/0xPlayerOne/cortana/compare/v0.24.7...v0.25.0) (2026-08-03)
+
+
+### Features
+
+* **cli:** add validate-source --sample bounded filesystem validation ([73f1e2f](https://github.com/0xPlayerOne/cortana/commit/73f1e2f133bd8f1b9fc46afc2f04d8e9625452ca))
+* **smoke:** validate filesystem sources as bounded samples in source-smoke.sh ([01eb119](https://github.com/0xPlayerOne/cortana/commit/01eb1191b67de04fcd2e19e1834e948c08669670))
+
 ## [0.24.7](https://github.com/0xPlayerOne/cortana/compare/v0.24.6...v0.24.7) (2026-08-03)
 
 
