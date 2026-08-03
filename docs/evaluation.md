@@ -21,6 +21,27 @@ The built-in thresholds and data live in `eval/fixtures.json`. Use
 `cortana eval --fixture /path/to/synthetic.json` for a versioned project-specific fixture. Never
 put personal or production content into committed evaluation data.
 
+## Bounded disposable load benchmark
+
+Use the benchmark when you need repeatable latency or concurrency evidence without touching a
+personal index:
+
+```bash
+python scripts/benchmark_query.py \
+  --binary target/release/cortana \
+  --iterations 8 \
+  --concurrency 2 \
+  --timeout-seconds 30 \
+  --max-p95-ms 5000
+```
+
+Every iteration runs `cortana --offline eval` in a separate process. The evaluator creates and
+removes a disposable SQLite index, uses deterministic local embeddings, and never opens the active
+configuration, calls a connector, or contacts a model provider. The command emits machine-readable
+JSON with per-iteration status and min/p50/p95/max latency. It exits nonzero on a failed evaluation,
+timeout, missing iteration, or an optional p95 threshold breach. Keep the iteration and concurrency
+bounds small enough to leave local resources available for the running Cortana service.
+
 The CLI integration test runs the built-in evaluation in CI, so deterministic quality regressions
 block promotion. Model quality is deliberately separate because it depends on local hardware and
 the configured provider; enable synthesis and run a bounded query-only benchmark only after the
