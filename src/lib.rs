@@ -13,6 +13,7 @@ pub mod model;
 pub mod readiness;
 pub mod retrieval;
 pub mod service;
+pub mod source_status;
 pub mod source_validation;
 pub mod store;
 pub mod supervisor;

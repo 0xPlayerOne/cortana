@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -16,7 +15,6 @@ use axum::{
     routing::{get, post},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::timeout::TimeoutLayer;
@@ -26,11 +24,11 @@ use tracing::Level;
 use crate::{
     answer::{AnswerEngine, AnswerRequest, AnswerResponse, QueryRuntimeStatus},
     auth::{ADMIN_SCOPE, AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
-    config::{Config, SourceConfig, WorkspaceConfig},
+    config::{Config, WorkspaceConfig},
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
     retrieval,
-    source_validation::{self, SourceValidationStatus},
+    source_status::{self, ConfiguredSourceStatus},
     store::{AuditEvent, DocumentCursor, DocumentSummary, Store, StoreStats},
 };
 
@@ -41,7 +39,6 @@ const MAX_DOCUMENT_CONTENT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DOCUMENT_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_QUERY_LENGTH: usize = 256;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
-const MAX_GOOGLE_TOKEN_BYTES: usize = 64 * 1024;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -298,175 +295,14 @@ impl Default for IngestionStatus {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum SourceAuthorizationMethod {
-    None,
-    Token,
-    GoogleOauth,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct SourceAuthorizationSummary {
-    method: SourceAuthorizationMethod,
-    setup_required: bool,
-    authorized: bool,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct SourceValidationSummary {
-    source: String,
-    project: String,
-    kind: String,
-    status: String,
-    validated_at: String,
-    fresh: bool,
-    age_seconds: u64,
-    documents: Option<usize>,
-    bytes: Option<u64>,
-    max_documents: usize,
-    max_bytes: u64,
-    max_seconds: u64,
-    error: Option<String>,
-    error_category: Option<&'static str>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct ConfiguredSourceStatus {
-    name: String,
-    source: String,
-    kind: String,
-    project: String,
-    enabled: bool,
-    acl: Vec<String>,
-    max_documents: usize,
-    max_bytes: u64,
-    max_duration_seconds: u64,
-    authorization: SourceAuthorizationSummary,
-    validation: Option<SourceValidationSummary>,
-}
-
-/// Saturating cap for validation-age telemetry in the shared status API. The
-/// persisted record can be arbitrarily old (or its clock skewed), so the
-/// reported age stays bounded and monotonic instead of growing without limit.
-const MAX_STATUS_VALIDATION_AGE_SECONDS: u64 = u32::MAX as u64;
-
-fn validation_age_seconds(validated_at: DateTime<Utc>) -> u64 {
-    let age = Utc::now()
-        .signed_duration_since(validated_at)
-        .num_seconds()
-        .max(0);
-    u64::try_from(age)
-        .unwrap_or_default()
-        .min(MAX_STATUS_VALIDATION_AGE_SECONDS)
-}
-
-/// A validation is current when its age is within the configured freshness
-/// bound. `validation_max_age_hours == 0` disables the bound, mirroring the
-/// `source-validation` readiness check: an age exactly at the bound still
-/// passes, and only an age strictly beyond it is expired. A future
-/// `validated_at` (skewed clock) fails a bounded check, matching
-/// `require_success`, while an unlimited bound keeps accepting it.
-fn validation_is_fresh(validated_at: DateTime<Utc>, max_age_hours: u64) -> bool {
-    if max_age_hours == 0 {
-        return true;
-    }
-    !validation_is_future(validated_at)
-        && validation_age_seconds(validated_at) <= max_age_hours.saturating_mul(3_600)
-}
-
-fn validation_is_future(validated_at: DateTime<Utc>) -> bool {
-    Utc::now() < validated_at
-}
-
-fn validation_summary(
-    status: &SourceValidationStatus,
-    max_age_hours: u64,
-) -> SourceValidationSummary {
-    let age_seconds = validation_age_seconds(status.validated_at);
-    SourceValidationSummary {
-        source: status.source.clone(),
-        project: status.project.clone(),
-        kind: status.kind.clone(),
-        status: status.status.clone(),
-        validated_at: status.validated_at.to_rfc3339(),
-        fresh: validation_is_fresh(status.validated_at, max_age_hours),
-        age_seconds,
-        documents: status.documents,
-        bytes: status.bytes,
-        max_documents: status.max_documents,
-        max_bytes: status.max_bytes,
-        max_seconds: status.max_seconds,
-        // Connector diagnostics are persisted for local troubleshooting, but
-        // arbitrary connector commands may print tokens, paths, or request
-        // headers. Never send that untrusted text through the shared status
-        // API; the failure state itself is sufficient for scoped agents.
-        error: status
-            .error
-            .as_ref()
-            .map(|_| "source validation failed".into()),
-        error_category: status.error.as_deref().and_then(validation_error_category),
-    }
-}
-
-fn validation_error_category(error: &str) -> Option<&'static str> {
-    let normalized = error.to_ascii_lowercase();
-    if normalized.contains("timed out") || normalized.contains("timeout") {
-        Some("timeout")
-    } else if normalized.contains("403 forbidden")
-        || normalized.contains("401 unauthorized")
-        || normalized.contains("authorization denied")
-        || normalized.contains("permission denied")
-    {
-        Some("authorization")
-    } else if normalized.contains("no such file or directory")
-        || normalized.contains("does not exist")
-        || normalized.contains("not found")
-    {
-        Some("missing-credential-or-path")
-    } else if normalized.contains("exceeds")
-        && (normalized.contains("budget") || normalized.contains("bound"))
-    {
-        Some("budget")
-    } else {
-        Some("connector")
-    }
-}
-
 impl IngestionStatus {
     fn from_config(config: &Config, scheduled: bool) -> Self {
         let configured_sources = config
             .sources
             .iter()
-            .map(|source| ConfiguredSourceStatus {
-                name: source.name.clone(),
-                source: source.source.clone().unwrap_or_else(|| source.name.clone()),
-                kind: source.kind.clone(),
-                project: source.project.clone(),
-                enabled: source.enabled,
-                acl: source.acl.clone(),
-                max_documents: source
-                    .max_documents
-                    .unwrap_or(config.ingestion.max_documents_per_source),
-                max_bytes: source
-                    .max_bytes
-                    .unwrap_or(config.ingestion.max_bytes_per_source),
-                max_duration_seconds: source
-                    .max_duration_seconds
-                    .unwrap_or(config.ingestion.max_duration_seconds),
-                authorization: source_authorization_summary(config, source),
-                validation: None,
-            })
+            .map(|source| source_status::configured_source_status(config, source))
             .collect();
-        let validation_fingerprints = config
-            .sources
-            .iter()
-            .filter_map(|source| {
-                source_validation::configuration_fingerprint(source)
-                    .ok()
-                    .map(|fingerprint| (source.name.clone(), fingerprint))
-            })
-            .collect();
+        let validation_fingerprints = source_status::validation_fingerprints(config);
         Self {
             data_dir: config.data_dir.clone(),
             mode: if scheduled { "scheduled" } else { "manual" },
@@ -486,29 +322,16 @@ impl IngestionStatus {
 
     fn refreshed(&self) -> Self {
         let mut status = self.clone();
-        match source_validation::load(&self.data_dir) {
-            Ok(validations) => {
-                status.validation_state_error = None;
-                for source in &mut status.configured_sources {
-                    source.validation = validations
-                        .get(&source.name)
-                        .filter(|validation| {
-                            status
-                                .validation_fingerprints
-                                .get(&source.name)
-                                .is_some_and(|fingerprint| {
-                                    validation.configuration_fingerprint.as_deref()
-                                        == Some(fingerprint.as_str())
-                                })
-                        })
-                        .map(|validation| {
-                            validation_summary(validation, self.validation_max_age_hours)
-                        });
-                }
-            }
-            Err(error) => {
-                tracing::warn!(error = %error, "failed to load source validation state");
-                status.validation_state_error = Some("source validation state unavailable".into());
+        match source_status::refresh_source_validations(
+            &mut status.configured_sources,
+            &self.data_dir,
+            self.validation_max_age_hours,
+            &self.validation_fingerprints,
+        ) {
+            Ok(()) => status.validation_state_error = None,
+            Err(message) => {
+                tracing::warn!(%message, "failed to load source validation state");
+                status.validation_state_error = Some(message);
                 for source in &mut status.configured_sources {
                     source.validation = None;
                 }
@@ -539,232 +362,6 @@ impl IngestionStatus {
             .map(|source| (source.source.clone(), source.project.clone()))
             .collect()
     }
-}
-
-fn is_google_source(kind: &str) -> bool {
-    matches!(kind, "google-drive" | "gmail" | "google-calendar")
-}
-
-fn regular_file_ready(path: &std::path::Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|metadata| {
-        if !metadata.file_type().is_file() {
-            return false;
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            metadata.permissions().mode() & 0o077 == 0
-        }
-        #[cfg(not(unix))]
-        {
-            true
-        }
-    })
-}
-
-fn google_token_env_ready(config: &Config, name: &str) -> bool {
-    config
-        .environment_value(name)
-        .as_deref()
-        .is_some_and(google_token_destination_value_ready)
-}
-
-fn google_token_destination_value_ready(value: &str) -> bool {
-    let path = std::path::Path::new(value.trim());
-    path.is_absolute() && secure_regular_file_ready(path)
-}
-
-fn google_token_file_ready(path: &std::path::Path) -> bool {
-    if !secure_regular_file_ready(path) {
-        return false;
-    }
-    let mut file = match std::fs::File::open(path) {
-        Ok(file) => std::io::BufReader::new(file),
-        Err(_) => return false,
-    };
-    let mut bytes = Vec::new();
-    if file
-        .by_ref()
-        .take((MAX_GOOGLE_TOKEN_BYTES as u64) + 1)
-        .read_to_end(&mut bytes)
-        .is_err()
-    {
-        return false;
-    }
-    if bytes.len() > MAX_GOOGLE_TOKEN_BYTES {
-        return false;
-    }
-    let token = match serde_json::from_slice::<serde_json::Value>(&bytes) {
-        Ok(serde_json::Value::Object(token)) => token,
-        _ => return false,
-    };
-    let has_access_token = token
-        .get("token")
-        .or_else(|| token.get("access_token"))
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|token| !token.trim().is_empty());
-    let has_refresh_token = token
-        .get("refresh_token")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|token| !token.trim().is_empty());
-    let has_client_id = token
-        .get("client_id")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|value| !value.trim().is_empty());
-    has_access_token || (has_refresh_token && has_client_id)
-}
-
-fn secure_regular_file_ready(path: &std::path::Path) -> bool {
-    regular_file_ready(path) && private_path_components_ready(path)
-}
-
-fn private_path_components_ready(path: &std::path::Path) -> bool {
-    let mut current = path.to_path_buf();
-    loop {
-        match std::fs::symlink_metadata(&current) {
-            Ok(metadata)
-                if metadata.file_type().is_symlink() && !is_allowed_system_alias(&current) =>
-            {
-                return false;
-            }
-            Ok(metadata) if current == path => {
-                if !metadata.is_file() {
-                    return false;
-                }
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    if metadata.permissions().mode() & 0o077 != 0 {
-                        return false;
-                    }
-                }
-            }
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return false,
-            Err(_) => return false,
-        }
-        let Some(parent) = current.parent() else {
-            break;
-        };
-        if parent == current {
-            break;
-        }
-        current = parent.to_path_buf();
-    }
-    true
-}
-
-fn is_allowed_system_alias(path: &std::path::Path) -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        path == std::path::Path::new("/tmp")
-            || path == std::path::Path::new("/var")
-            || path == std::path::Path::new("/etc")
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = path;
-        false
-    }
-}
-
-fn source_authorization_summary(
-    config: &Config,
-    source: &SourceConfig,
-) -> SourceAuthorizationSummary {
-    if is_google_source(&source.kind) {
-        let oauth_client_ready = source
-            .oauth_client
-            .as_ref()
-            .is_some_and(|path| secure_regular_file_ready(path.as_path()));
-        let token_env_ready = source
-            .token_env
-            .as_deref()
-            .is_some_and(|name| !name.trim().is_empty() && google_token_env_ready(config, name));
-        let token_file_ready = source
-            .token
-            .as_ref()
-            .is_some_and(|path| google_token_file_ready(path.as_path()));
-        let token_destination_ready = source
-            .token
-            .as_deref()
-            .is_some_and(google_token_destination_ready)
-            || source
-                .token_env
-                .as_deref()
-                .and_then(|name| config.environment_value(name))
-                .as_deref()
-                .is_some_and(google_token_destination_value_ready);
-        SourceAuthorizationSummary {
-            method: SourceAuthorizationMethod::GoogleOauth,
-            // A migrated/private token file is a complete authorization path on
-            // its own. Requiring an OAuth client in that case makes an already
-            // authorized Google source appear unhealthy in the desktop status
-            // panel and incorrectly invites the user to repeat setup.
-            setup_required: !(token_env_ready
-                || token_file_ready
-                || (oauth_client_ready && token_destination_ready)),
-            authorized: token_env_ready || token_file_ready,
-        }
-    } else if source.token_env.is_some() || source.token.is_some() {
-        let token_env_ready = source.token_env.as_deref().is_some_and(|name| {
-            !name.trim().is_empty()
-                && config
-                    .environment_value(name)
-                    .is_some_and(|value| !value.is_empty())
-        });
-        let token_file_ready = source
-            .token
-            .as_ref()
-            .is_some_and(|path| secure_regular_file_ready(path.as_path()));
-        SourceAuthorizationSummary {
-            method: SourceAuthorizationMethod::Token,
-            setup_required: !token_env_ready && !token_file_ready,
-            authorized: token_env_ready || token_file_ready,
-        }
-    } else {
-        SourceAuthorizationSummary {
-            method: SourceAuthorizationMethod::None,
-            setup_required: false,
-            authorized: true,
-        }
-    }
-}
-
-fn google_token_destination_ready(path: &Path) -> bool {
-    if !path.is_absolute()
-        || path.parent().is_none()
-        || path.parent().is_none_or(|parent| parent.parent().is_none())
-        || path.components().any(|component| {
-            matches!(
-                component,
-                std::path::Component::ParentDir | std::path::Component::CurDir
-            )
-        })
-    {
-        return false;
-    }
-    let mut current = path.to_path_buf();
-    loop {
-        match std::fs::symlink_metadata(&current) {
-            Ok(metadata)
-                if metadata.file_type().is_symlink() && !is_allowed_system_alias(&current) =>
-            {
-                return false;
-            }
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(_) => return false,
-        }
-        let Some(parent) = current.parent() else {
-            break;
-        };
-        if parent == current {
-            break;
-        }
-        current = parent.to_path_buf();
-    }
-    true
 }
 
 pub fn router(state: AppState) -> Router {
@@ -1673,6 +1270,11 @@ mod tests {
     use crate::config::{AuthTokenConfig, SourceConfig};
     use crate::embed::{DeterministicEmbedder, Embedder};
     use crate::model::Document;
+    use crate::source_status::{
+        MAX_GOOGLE_TOKEN_BYTES, SourceAuthorizationMethod, source_authorization_summary,
+        validation_error_category,
+    };
+    use crate::source_validation::{self, SourceValidationStatus};
     use crate::store::SyncRunStatus;
 
     use super::*;
