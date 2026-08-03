@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 import pytest
 
+from cortana import __version__
 from cortana.connectors import __main__ as connector_cli
 from cortana.connectors import apple_notes, buzz, chat, google
 from cortana.connectors.__main__ import main
@@ -2051,6 +2052,13 @@ def test_connector_cli_rejects_non_positive_document_cap() -> None:
         connector_cli.main(["--max-documents", "0", "buzz"])
 
 
+def test_connector_cli_reports_version(capsys: pytest.CaptureFixture[str]) -> None:
+    assert connector_cli.main(["--version"]) == 0
+    output = capsys.readouterr()
+    assert output.out.strip() == __version__
+    assert output.err == ""
+
+
 def test_connector_cli_dispatches_chat_sources(monkeypatch: pytest.MonkeyPatch) -> None:
     expected = [Document(source="test", source_id="1", title="One", content="Body")]
     monkeypatch.setattr(connector_cli, "fetch_slack", lambda *_args, **_kwargs: expected)
@@ -2072,6 +2080,11 @@ def test_connector_cli_requires_existing_google_token(tmp_path: Path) -> None:
     )
     with pytest.raises(RuntimeError, match="does not exist"):
         connector_cli._documents(args)
+
+
+def test_connector_cli_requires_connector_when_not_reporting_version() -> None:
+    with pytest.raises(RuntimeError, match="connector command is required"):
+        connector_cli.main([])
 
 
 def test_connector_entrypoint_reports_expected_failures(
