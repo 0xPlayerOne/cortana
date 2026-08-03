@@ -323,6 +323,37 @@ test('the hook pauses renderer polling in the background and recovers on focus',
   unmount()
 })
 
+test('an in-flight poll cannot update the renderer after the window backgrounds', async () => {
+  const running = jobOf('background-race', 'running')
+  const completed = jobOf('background-race', 'succeeded', {
+    summary: 'completed while hidden',
+    completed_at_unix_seconds: 1785000200,
+  })
+  let resolvePending: ((job: DesktopSourceJob) => void) | undefined
+  state.pending = new Promise((resolve) => {
+    resolvePending = resolve
+  })
+  const { result, unmount } = renderHook(() => useSourceJobs())
+  act(() => result.current.remember(running))
+
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1_100))
+  })
+  expect(state.statusCalls).toEqual(['background-race'])
+
+  act(() => {
+    window.dispatchEvent(new Event('blur'))
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  resolvePending?.(completed)
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  })
+
+  expect(result.current.jobs[0]?.status).toBe('running')
+  unmount()
+})
+
 test('the hook recovers native source-job snapshots on mount', async () => {
   state.recovered = [jobOf('recovered-running', 'running'), jobOf('recovered-done', 'succeeded')]
   const { result, unmount } = renderHook(() => useSourceJobs())

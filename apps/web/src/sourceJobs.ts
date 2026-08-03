@@ -164,6 +164,8 @@ export function useSourceJobs() {
   )
   const [retryNonce, setRetryNonce] = useState(0)
   const jobsRef = useRef(jobs)
+  const foregroundRef = useRef(foreground)
+  const pollEpochRef = useRef(0)
   jobsRef.current = jobs
 
   const remember = useCallback((job: DesktopSourceJob) => {
@@ -172,9 +174,15 @@ export function useSourceJobs() {
   }, [])
 
   useEffect(() => {
+    foregroundRef.current = foreground
+    pollEpochRef.current += 1
     const visibility = { current: document.visibilityState !== 'hidden' }
     const focused = { current: true }
-    const syncForeground = () => setForeground(visibility.current && focused.current)
+    const syncForeground = () => {
+      setForeground(visibility.current && focused.current)
+      foregroundRef.current = visibility.current && focused.current
+      pollEpochRef.current += 1
+    }
     const markForeground = () => {
       focused.current = true
       syncForeground()
@@ -239,16 +247,17 @@ export function useSourceJobs() {
     // starts with a native recovery read so the UI does not resume from stale
     // progress.
     if (!isDesktopApp || !foreground) return
+    const pollEpoch = pollEpochRef.current
     let disposed = false
     let polling = false
     void getDesktopSourceJobs()
       .then((next) => {
-        if (disposed) return
+        if (disposed || pollEpochRef.current !== pollEpoch || !foregroundRef.current) return
         setJobs((current) => mergeJobSnapshots(current, next))
         setError('')
       })
       .catch((caught: unknown) => {
-        if (disposed) return
+        if (disposed || pollEpochRef.current !== pollEpoch || !foregroundRef.current) return
         // A failed recovery read is distinct from an empty native history:
         // preserve remembered jobs, but tell the operator that the snapshot
         // may be stale and expose the same explicit retry action used by the
@@ -256,13 +265,13 @@ export function useSourceJobs() {
         setError(caught instanceof Error ? caught.message : 'Source job history unavailable')
       })
     const timer = window.setInterval(() => {
-      if (polling) return
+      if (!foregroundRef.current || polling) return
       const ids = activeJobIds(jobsRef.current)
       if (ids.length === 0) return
       polling = true
       void Promise.allSettled(ids.map((id) => getDesktopSourceValidation(id)))
         .then((results) => {
-          if (disposed) return
+          if (disposed || pollEpochRef.current !== pollEpoch || !foregroundRef.current) return
           let nextError: string | null = null
           results.forEach((result, index) => {
             if (result.status === 'fulfilled') {
@@ -295,7 +304,6 @@ export function useSourceJobs() {
       window.clearInterval(timer)
     }
   }, [foreground, retryNonce])
-
   const retry = useCallback(() => {
     setError('')
     setRetryNonce((current) => current + 1)
