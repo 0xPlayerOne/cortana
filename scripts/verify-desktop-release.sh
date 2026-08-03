@@ -63,6 +63,14 @@ core_archives=(
 for asset in "${core_archives[@]}" "Cortana_aarch64.app.tar.gz"; do
     gh release download "$tag" --repo "$repo" --pattern "$asset" --dir "$staging" --clobber >/dev/null
 done
+for archive in "${core_archives[@]}"; do
+    gh release download "$tag" --repo "$repo" --pattern "${archive}.sha256" --dir "$staging" --clobber >/dev/null
+done
+
+for archive in "${core_archives[@]}"; do
+    (cd "$staging" && shasum -a 256 -c "${archive}.sha256")
+done
+echo "verified core archive checksums"
 
 python3 - "$staging" "${core_archives[@]}" "Cortana_aarch64.app.tar.gz" <<'PY'
 import os
