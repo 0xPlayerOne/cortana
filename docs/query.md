@@ -134,7 +134,12 @@ request_concurrency = 4
 
 The planner returns only bounded JSON search strings. Cortana preserves the original question,
 deduplicates expansions, rejects empty/oversized output, and hard-clamps fan-out to eight.
-Retrievals run concurrently and are fused by cross-query reciprocal rank. The synthesizer sees
+Retrievals run concurrently and are fused by cross-query reciprocal rank. Fused rows are then
+re-scored against the original question with meaningful-term coverage; when that signal is
+strong, only the strongest lexical matches survive into the synthesis bundle, so rows that
+merely match a tangential planner query cannot be cited. Purely semantic questions (no strong
+lexical signal) keep the full fused set, and dropped rows are reported in `warnings` as an
+`evidence focus` entry. The synthesizer sees
 only a token-bounded evidence bundle and must cite every non-empty paragraph with numbered
 passages. Missing, out-of-range, or paragraph-incomplete citations cause an extractive fallback.
 Evidence is treated as historical unless it explicitly proves current state, so old runbooks and
