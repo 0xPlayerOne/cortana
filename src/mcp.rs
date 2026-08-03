@@ -918,6 +918,7 @@ mod tests {
                 configuration_fingerprint: Some(
                     source_validation::configuration_fingerprint(gmail).expect("fingerprint"),
                 ),
+                complete: None,
                 error: None,
             },
         )
@@ -938,6 +939,7 @@ mod tests {
                 configuration_fingerprint: Some(
                     source_validation::configuration_fingerprint(slack).expect("fingerprint"),
                 ),
+                complete: None,
                 error: Some("connector returned 403 Forbidden with Bearer super-secret".into()),
             },
         )
@@ -1043,6 +1045,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(fingerprint.clone()),
+                complete: None,
                 error: None,
             },
         )
@@ -1078,6 +1081,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(fingerprint.clone()),
+                complete: None,
                 error: None,
             },
         )
