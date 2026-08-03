@@ -2896,9 +2896,7 @@ function SourcesSection({
       applyJob(await cancelDesktopSourceValidation(current.id))
     } catch (caught) {
       applyJob(previous)
-      setError(
-        caught instanceof Error ? caught.message : 'Source job cancellation failed'
-      )
+      setError(caught instanceof Error ? caught.message : 'Source job cancellation failed')
     } finally {
       cancelInFlight.current.delete(current.id)
     }
