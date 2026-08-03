@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.2](https://github.com/0xPlayerOne/cortana/compare/v0.24.1...v0.24.2) (2026-08-03)
+
+
+### Maintenance
+
+* **release:** replay staging tree onto main for promotion ([40fda5f](https://github.com/0xPlayerOne/cortana/commit/40fda5f0e76e53d3812023b6a5860e2298c33684))
+
 ## [0.24.1](https://github.com/0xPlayerOne/cortana/compare/v0.24.0...v0.24.1) (2026-08-03)
 
 
