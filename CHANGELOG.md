@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.0](https://github.com/0xPlayerOne/cortana/compare/v0.22.0...v0.23.0) (2026-08-03)
+
+
+### Features
+
+* **release:** recover staging capabilities in 0.23.0 ([654ebd5](https://github.com/0xPlayerOne/cortana/commit/654ebd593099a20e04272d8563be618292862f5b))
+
 ## [0.22.0](https://github.com/0xPlayerOne/cortana/compare/v0.21.1...v0.22.0) (2026-08-03)
 
 
