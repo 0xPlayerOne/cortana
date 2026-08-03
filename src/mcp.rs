@@ -52,16 +52,7 @@ pub struct DomainSearchParams {
 /// Safe, non-secret source configuration exposed to agents through
 /// `brain_status`. This deliberately omits credential paths, environment names,
 /// and connector arguments.
-#[derive(Clone, Debug, Serialize)]
-pub struct ConfiguredSourceStatus {
-    pub name: String,
-    pub source: String,
-    pub kind: String,
-    pub project: String,
-    pub enabled: bool,
-    #[serde(skip)]
-    pub acl: Vec<String>,
-}
+pub use crate::source_status::ConfiguredSourceStatus;
 
 #[derive(Debug, Serialize)]
 struct BrainStatus {
@@ -527,6 +518,36 @@ mod tests {
     use crate::config::{AuthTokenConfig, Config};
     use crate::embed::DeterministicEmbedder;
     use crate::model::{Document, Evidence};
+    use crate::source_validation::{self, SourceValidationStatus};
+
+    /// Mirror of the `mcp` command wiring in `main.rs`: build the safe status
+    /// views for every configured source and attach persisted validation.
+    fn configured_sources(config: &Config) -> Vec<ConfiguredSourceStatus> {
+        let mut sources = config
+            .sources
+            .iter()
+            .map(|source| crate::source_status::configured_source_status(config, source))
+            .collect::<Vec<_>>();
+        let fingerprints = crate::source_status::validation_fingerprints(config);
+        crate::source_status::refresh_source_validations(
+            &mut sources,
+            &config.data_dir,
+            config.ingestion.validation_max_age_hours,
+            &fingerprints,
+        )
+        .expect("validation refresh");
+        sources
+    }
+
+    fn write_private_fixture(path: &std::path::Path, body: &str) {
+        std::fs::write(path, body).expect("write fixture");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+                .expect("secure fixture");
+        }
+    }
 
     #[tokio::test]
     async fn configured_mcp_principal_enforces_scope_acl_and_audit_identity() {
@@ -671,22 +692,39 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
-        let server = BrainServer::new(store, embedder).with_configured_sources(vec![
-            ConfiguredSourceStatus {
-                name: "personal-gmail".into(),
-                source: "personal-gmail".into(),
-                kind: "gmail".into(),
-                project: "personal".into(),
-                enabled: false,
-                acl: vec!["personal".into()],
-            },
-        ]);
+        let mut config: Config = toml::from_str(
+            r#"
+            [[sources]]
+            name = "personal-gmail"
+            kind = "gmail"
+            enabled = false
+            project = "personal"
+            acl = ["personal"]
+            "#,
+        )
+        .expect("configuration");
+        config.data_dir = directory.path().to_path_buf();
+        let server =
+            BrainServer::new(store, embedder).with_configured_sources(configured_sources(&config));
 
         let status: serde_json::Value =
             serde_json::from_str(&server.brain_status().await).expect("status JSON");
         assert_eq!(status["configured_sources"][0]["name"], "personal-gmail");
         assert_eq!(status["configured_sources"][0]["enabled"], false);
+        assert_eq!(
+            status["configured_sources"][0]["authorization"]["method"],
+            "google_oauth"
+        );
+        assert_eq!(
+            status["configured_sources"][0]["authorization"]["authorized"],
+            false
+        );
+        assert_eq!(
+            status["configured_sources"][0]["authorization"]["setup_required"],
+            true
+        );
         assert!(status["configured_sources"][0].get("token").is_none());
+        assert!(status["configured_sources"][0]["validation"].is_null());
         assert!(status.get("sources").is_some());
     }
 
@@ -695,7 +733,31 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
-        let mut config = Config::default();
+        let mut config: Config = toml::from_str(
+            r#"
+            [[sources]]
+            name = "work-drive"
+            kind = "google-drive"
+            project = "work"
+            enabled = true
+            acl = ["work"]
+
+            [[sources]]
+            name = "personal-notes"
+            kind = "apple-notes"
+            project = "personal"
+            enabled = true
+            acl = ["personal"]
+
+            [[sources]]
+            name = "public-reference"
+            kind = "filesystem"
+            project = "reference"
+            enabled = true
+            "#,
+        )
+        .expect("configuration");
+        config.data_dir = directory.path().to_path_buf();
         config
             .environment
             .insert("WORK_TOKEN".into(), "work-secret".into());
@@ -711,32 +773,7 @@ mod tests {
             .expect("principal");
         let server = BrainServer::new(store, embedder)
             .with_principal(principal)
-            .with_configured_sources(vec![
-                ConfiguredSourceStatus {
-                    name: "work-drive".into(),
-                    source: "work-drive".into(),
-                    kind: "google-drive".into(),
-                    project: "work".into(),
-                    enabled: true,
-                    acl: vec!["work".into()],
-                },
-                ConfiguredSourceStatus {
-                    name: "personal-notes".into(),
-                    source: "personal-notes".into(),
-                    kind: "apple-notes".into(),
-                    project: "personal".into(),
-                    enabled: true,
-                    acl: vec!["personal".into()],
-                },
-                ConfiguredSourceStatus {
-                    name: "public-reference".into(),
-                    source: "public-reference".into(),
-                    kind: "filesystem".into(),
-                    project: "reference".into(),
-                    enabled: true,
-                    acl: Vec::new(),
-                },
-            ]);
+            .with_configured_sources(configured_sources(&config));
 
         let status: serde_json::Value =
             serde_json::from_str(&server.brain_status().await).expect("status JSON");
@@ -754,7 +791,25 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
-        let mut config = Config::default();
+        let mut config: Config = toml::from_str(
+            r#"
+            [[sources]]
+            name = "work-drive"
+            kind = "google-drive"
+            project = "work"
+            enabled = true
+            acl = ["work"]
+
+            [[sources]]
+            name = "personal-notes"
+            kind = "apple-notes"
+            project = "personal"
+            enabled = true
+            acl = ["personal"]
+            "#,
+        )
+        .expect("configuration");
+        config.data_dir = directory.path().to_path_buf();
         config
             .environment
             .insert("ADMIN_TOKEN".into(), "admin-secret".into());
@@ -770,24 +825,7 @@ mod tests {
             .expect("principal");
         let server = BrainServer::new(store, embedder)
             .with_principal(principal)
-            .with_configured_sources(vec![
-                ConfiguredSourceStatus {
-                    name: "work-drive".into(),
-                    source: "work-drive".into(),
-                    kind: "google-drive".into(),
-                    project: "work".into(),
-                    enabled: true,
-                    acl: vec!["work".into()],
-                },
-                ConfiguredSourceStatus {
-                    name: "personal-notes".into(),
-                    source: "personal-notes".into(),
-                    kind: "apple-notes".into(),
-                    project: "personal".into(),
-                    enabled: true,
-                    acl: vec!["personal".into()],
-                },
-            ]);
+            .with_configured_sources(configured_sources(&config));
 
         let status: serde_json::Value =
             serde_json::from_str(&server.brain_status().await).expect("status JSON");
@@ -798,6 +836,272 @@ mod tests {
             .filter_map(|source| source["name"].as_str())
             .collect::<Vec<_>>();
         assert_eq!(names, vec!["work-drive", "personal-notes"]);
+    }
+
+    #[tokio::test]
+    async fn brain_status_reports_authorization_and_validation_status_for_configured_sources() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        let token_path = directory.path().join("google-token.json");
+        write_private_fixture(
+            &token_path,
+            "{\"refresh_token\":\"refresh\",\"client_id\":\"client\"}",
+        );
+        let mut config: Config = toml::from_str(&format!(
+            r#"
+            [ingestion]
+            validation_max_age_hours = 24
+
+            [[sources]]
+            name = "gmail"
+            kind = "google-drive"
+            enabled = true
+            project = "work"
+            token = "{token_path_display}"
+            acl = ["work"]
+
+            [[sources]]
+            name = "calendar"
+            kind = "google-calendar"
+            enabled = true
+            project = "work"
+            acl = ["work"]
+
+            [[sources]]
+            name = "slack"
+            kind = "slack"
+            enabled = true
+            project = "work"
+            token_env = "SLACK_TOKEN"
+            acl = ["work"]
+
+            [[sources]]
+            name = "discord"
+            kind = "discord"
+            enabled = true
+            project = "work"
+            token_env = "DISCORD_TOKEN"
+            acl = ["work"]
+            "#,
+            token_path_display = token_path.display(),
+        ))
+        .expect("configuration");
+        config.data_dir = directory.path().to_path_buf();
+        config
+            .environment
+            .insert("SLACK_TOKEN".into(), "present".into());
+
+        let gmail = config
+            .sources
+            .iter()
+            .find(|source| source.name == "gmail")
+            .expect("gmail source");
+        let slack = config
+            .sources
+            .iter()
+            .find(|source| source.name == "slack")
+            .expect("slack source");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: "gmail".into(),
+                project: "work".into(),
+                kind: "google-drive".into(),
+                status: "succeeded".into(),
+                validated_at: chrono::Utc::now() - chrono::Duration::hours(1),
+                documents: Some(12),
+                bytes: Some(2048),
+                max_documents: 25,
+                max_bytes: 4096,
+                max_seconds: 60,
+                configuration_fingerprint: Some(
+                    source_validation::configuration_fingerprint(gmail).expect("fingerprint"),
+                ),
+                error: None,
+            },
+        )
+        .expect("gmail validation");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: "slack".into(),
+                project: "work".into(),
+                kind: "slack".into(),
+                status: "failed".into(),
+                validated_at: chrono::Utc::now(),
+                documents: None,
+                bytes: None,
+                max_documents: 25,
+                max_bytes: 4096,
+                max_seconds: 60,
+                configuration_fingerprint: Some(
+                    source_validation::configuration_fingerprint(slack).expect("fingerprint"),
+                ),
+                error: Some("connector returned 403 Forbidden with Bearer super-secret".into()),
+            },
+        )
+        .expect("slack validation");
+
+        let server =
+            BrainServer::new(store, embedder).with_configured_sources(configured_sources(&config));
+        let text = server.brain_status().await;
+        let status: serde_json::Value = serde_json::from_str(&text).expect("status JSON");
+        let configured = status["configured_sources"].as_array().expect("sources");
+
+        let gmail_status = configured
+            .iter()
+            .find(|source| source["name"] == "gmail")
+            .expect("gmail status");
+        assert_eq!(gmail_status["authorization"]["method"], "google_oauth");
+        assert_eq!(gmail_status["authorization"]["authorized"], true);
+        assert_eq!(gmail_status["authorization"]["setup_required"], false);
+        assert_eq!(gmail_status["validation"]["status"], "succeeded");
+        assert_eq!(gmail_status["validation"]["documents"], 12);
+        assert_eq!(gmail_status["validation"]["fresh"], true);
+        assert!(gmail_status["validation"]["error"].is_null());
+
+        let calendar_status = configured
+            .iter()
+            .find(|source| source["name"] == "calendar")
+            .expect("calendar status");
+        assert_eq!(calendar_status["authorization"]["method"], "google_oauth");
+        assert_eq!(calendar_status["authorization"]["authorized"], false);
+        assert_eq!(calendar_status["authorization"]["setup_required"], true);
+        assert!(calendar_status["validation"].is_null());
+
+        let slack_status = configured
+            .iter()
+            .find(|source| source["name"] == "slack")
+            .expect("slack status");
+        assert_eq!(slack_status["authorization"]["method"], "token");
+        assert_eq!(slack_status["authorization"]["authorized"], true);
+        assert_eq!(slack_status["authorization"]["setup_required"], false);
+        assert_eq!(slack_status["validation"]["status"], "failed");
+        assert_eq!(
+            slack_status["validation"]["error"],
+            "source validation failed"
+        );
+        assert_eq!(
+            slack_status["validation"]["error_category"],
+            "authorization"
+        );
+
+        let discord_status = configured
+            .iter()
+            .find(|source| source["name"] == "discord")
+            .expect("discord status");
+        assert_eq!(discord_status["authorization"]["method"], "token");
+        assert_eq!(discord_status["authorization"]["authorized"], false);
+        assert_eq!(discord_status["authorization"]["setup_required"], true);
+        assert!(discord_status["validation"].is_null());
+
+        // Secret redaction: no environment variable names, token values,
+        // credential paths, or raw connector diagnostics reach the agent.
+        assert!(!text.contains("SLACK_TOKEN"));
+        assert!(!text.contains("DISCORD_TOKEN"));
+        assert!(!text.contains("super-secret"));
+        assert!(!text.contains("403 Forbidden"));
+        assert!(!text.contains("Bearer"));
+        assert!(!text.contains(token_path.to_string_lossy().as_ref()));
+    }
+
+    #[tokio::test]
+    async fn brain_status_validation_status_respects_freshness_and_configuration_fingerprint() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        let mut config: Config = toml::from_str(
+            r#"
+            [ingestion]
+            validation_max_age_hours = 24
+
+            [[sources]]
+            name = "drive"
+            kind = "google-drive"
+            enabled = true
+            project = "work"
+            acl = ["work"]
+            "#,
+        )
+        .expect("configuration");
+        config.data_dir = directory.path().to_path_buf();
+        let source = config.sources.first().expect("configured source");
+        let fingerprint =
+            source_validation::configuration_fingerprint(source).expect("validation fingerprint");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: "drive".into(),
+                project: "work".into(),
+                kind: "google-drive".into(),
+                status: "succeeded".into(),
+                validated_at: chrono::Utc::now() - chrono::Duration::hours(200),
+                documents: Some(1),
+                bytes: Some(1),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(fingerprint.clone()),
+                error: None,
+            },
+        )
+        .expect("stale validation");
+
+        let status: serde_json::Value = serde_json::from_str(
+            &BrainServer::new(store.clone(), embedder.clone())
+                .with_configured_sources(configured_sources(&config))
+                .brain_status()
+                .await,
+        )
+        .expect("status JSON");
+        let validation = &status["configured_sources"][0]["validation"];
+        assert_eq!(validation["status"], "succeeded");
+        assert_eq!(validation["fresh"], false);
+        assert!(
+            validation["age_seconds"]
+                .as_u64()
+                .is_some_and(|age| age >= 200 * 3_600)
+        );
+
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: "drive".into(),
+                project: "work".into(),
+                kind: "google-drive".into(),
+                status: "succeeded".into(),
+                validated_at: chrono::Utc::now() - chrono::Duration::hours(1),
+                documents: Some(1),
+                bytes: Some(1),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(fingerprint.clone()),
+                error: None,
+            },
+        )
+        .expect("fresh validation");
+        let status: serde_json::Value = serde_json::from_str(
+            &BrainServer::new(store.clone(), embedder.clone())
+                .with_configured_sources(configured_sources(&config))
+                .brain_status()
+                .await,
+        )
+        .expect("status JSON");
+        assert_eq!(status["configured_sources"][0]["validation"]["fresh"], true);
+
+        // A configuration change invalidates the persisted fingerprint, so the
+        // validation disappears even though the record is fresh.
+        config.sources[0].query = Some("from:changed".into());
+        let status: serde_json::Value = serde_json::from_str(
+            &BrainServer::new(store, embedder)
+                .with_configured_sources(configured_sources(&config))
+                .brain_status()
+                .await,
+        )
+        .expect("status JSON");
+        assert!(status["configured_sources"][0]["validation"].is_null());
     }
 
     #[test]
