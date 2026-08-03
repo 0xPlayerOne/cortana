@@ -122,9 +122,9 @@ describe('operational source visibility', () => {
       age_seconds: 60,
       documents: 45,
       bytes: 4096,
-      max_documents: 100,
-      max_bytes: 1_048_576,
-      max_seconds: 30,
+      max_documents: 3_000,
+      max_bytes: 268_435_456,
+      max_seconds: 900,
       error: null,
     }
 
@@ -172,15 +172,83 @@ describe('operational source visibility', () => {
       validated_at: '2026-07-30T06:00:00Z',
       documents: 45,
       bytes: 4096,
-      max_documents: 100,
-      max_bytes: 1_048_576,
-      max_seconds: 30,
+      max_documents: 3_000,
+      max_bytes: 268_435_456,
+      max_seconds: 900,
       error: null,
     }
     buzz.validation = legacy
 
     const source = operationalSources(status).find((item) => item.name === 'buzz')
     expect(sourceHealth(source!).state).toBe('healthy')
+  })
+
+  test('warns when a successful sync used an undersized validation budget', () => {
+    const status = structuredClone(demoStatus)
+    const gmail = status.ingestion.configured_sources.find(
+      (source) => source.name === 'personal-gmail'
+    )!
+    gmail.validation = {
+      source: 'personal-gmail',
+      project: 'personal',
+      kind: 'gmail',
+      status: 'succeeded',
+      validated_at: '2026-07-30T06:00:00Z',
+      fresh: true,
+      documents: 1200,
+      bytes: 100_000,
+      max_documents: 100,
+      max_bytes: 1000,
+      max_seconds: 30,
+      error: null,
+    }
+
+    const source = operationalSources(status).find((item) => item.name === gmail.name)
+    const health = sourceHealth(source!, Date.parse('2026-07-29T15:00:00Z'))
+
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('re-validate before recurring sync')
+    expect(health.label).toContain('configured limits')
+  })
+
+  test('warns when a successful sync has no validation for recurrence', () => {
+    const status = structuredClone(demoStatus)
+    const gmail = status.ingestion.configured_sources.find(
+      (source) => source.name === 'personal-gmail'
+    )!
+    gmail.validation = undefined
+
+    const source = operationalSources(status).find((item) => item.name === gmail.name)
+    const health = sourceHealth(source!, Date.parse('2026-07-29T15:00:00Z'))
+
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('re-validate before recurring sync')
+    expect(health.label).toContain('has not been fully validated')
+  })
+
+  test('warns when validation-only results undershoot configured source limits', () => {
+    const status = structuredClone(demoStatus)
+    const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!
+    buzz.validation = {
+      source: 'buzz',
+      project: 'agents',
+      kind: 'buzz',
+      status: 'succeeded',
+      validated_at: '2026-07-30T06:00:00Z',
+      fresh: true,
+      documents: 15,
+      bytes: 4_096,
+      max_documents: 100,
+      max_bytes: 1_000,
+      max_seconds: 30,
+      error: null,
+    }
+
+    const source = operationalSources(status).find((item) => item.name === buzz.name)
+    const health = sourceHealth(source!)
+
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('does not cover the configured sync budget')
   })
 })
 
