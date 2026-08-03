@@ -656,6 +656,125 @@ def test_slack_cache_rebuilds_when_cursor_is_corrupt(
     assert oldest_values == [None]
 
 
+def test_slack_incremental_pagination_continues_while_next_cursor_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SLACK_TEST_TOKEN", "secret")
+    real_client = httpx.Client
+    history_requests: list[tuple[str | None, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/conversations.history"):
+            cursor = request.url.params.get("cursor")
+            history_requests.append((request.url.params.get("oldest"), cursor))
+            messages = (
+                [{"ts": "11.0", "user": "U2", "text": "Older new message"}]
+                if cursor
+                else [{"ts": "12.0", "user": "U1", "text": "Newest"}]
+            )
+            return response(
+                {
+                    "ok": True,
+                    "messages": messages,
+                    "response_metadata": {"next_cursor": "" if cursor else "next-page"},
+                },
+                request=request,
+            )
+        raise AssertionError(f"unexpected Slack request: {request.url}")
+
+    monkeypatch.setattr(
+        chat.httpx,
+        "Client",
+        lambda **_kwargs: real_client(
+            base_url="https://slack.test",
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    with sqlite3.connect(cache / "slack.sqlite3") as connection:
+        connection.execute(
+            "CREATE TABLE slack_channels("
+            "channel_id TEXT PRIMARY KEY,latest_ts TEXT,last_full TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO slack_channels(channel_id,latest_ts,last_full) VALUES(?,?,?)",
+            ("C1", "10.0", "2099-01-01T00:00:00+00:00"),
+        )
+        connection.commit()
+
+    documents = list(chat.fetch_slack(["C1"], "work", "SLACK_TEST_TOKEN", cache_dir=cache))
+
+    assert [document.source_id for document in documents] == ["C1:11.0", "C1:12.0"]
+    assert history_requests == [("10.0", None), (None, "next-page")]
+    connection = sqlite3.connect(cache / "slack.sqlite3")
+    try:
+        row = connection.execute(
+            "SELECT latest_ts,last_full FROM slack_channels WHERE channel_id='C1'"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row == ("12.0", "2099-01-01T00:00:00+00:00")
+
+
+def test_slack_incremental_page_failure_keeps_cached_cursor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SLACK_TEST_TOKEN", "secret")
+    real_client = httpx.Client
+    history_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal history_calls
+        if request.url.path.endswith("/conversations.history"):
+            history_calls += 1
+            if history_calls == 1:
+                return response(
+                    {
+                        "ok": True,
+                        "messages": [{"ts": "12.0", "user": "U1", "text": "Newest"}],
+                        "response_metadata": {"next_cursor": "next-page"},
+                    },
+                    request=request,
+                )
+            raise RuntimeError("simulated Slack history failure")
+        raise AssertionError(f"unexpected Slack request: {request.url}")
+
+    monkeypatch.setattr(
+        chat.httpx,
+        "Client",
+        lambda **_kwargs: real_client(
+            base_url="https://slack.test",
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    with sqlite3.connect(cache / "slack.sqlite3") as connection:
+        connection.execute(
+            "CREATE TABLE slack_channels("
+            "channel_id TEXT PRIMARY KEY,latest_ts TEXT,last_full TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO slack_channels(channel_id,latest_ts,last_full) VALUES(?,?,?)",
+            ("C1", "10.0", "2099-01-01T00:00:00+00:00"),
+        )
+        connection.commit()
+
+    with pytest.raises(RuntimeError, match="simulated Slack history failure"):
+        list(chat.fetch_slack(["C1"], "work", "SLACK_TEST_TOKEN", cache_dir=cache))
+
+    assert history_calls == 2
+    connection = sqlite3.connect(cache / "slack.sqlite3")
+    try:
+        row = connection.execute(
+            "SELECT latest_ts,last_full FROM slack_channels WHERE channel_id='C1'"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row == ("10.0", "2099-01-01T00:00:00+00:00")
+
+
 def test_slack_bounded_run_does_not_mutate_cursor_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
