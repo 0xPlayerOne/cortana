@@ -153,6 +153,17 @@ temporary directory and `recovery.log` for an incident record. The default clean
 freshly-created drill directory. Do not point the drill configuration at the production data
 directory and do not use `restore` on a live installation as part of a routine health check.
 
+## Release verification
+
+Published releases have a final cross-platform asset gate. It checks that the core archives,
+checksums, signed macOS/Linux/Windows desktop installers, and every updater platform entry are
+present for the same tag before the release workflow succeeds. Re-run the read-only verifier for an
+existing release with:
+
+```bash
+GH_REPO=0xPlayerOne/cortana scripts/verify-desktop-release.sh v0.23.1
+```
+
 ## macOS launchd
 
 Build the release binary and workspace first, then install three per-user jobs: local embedding
