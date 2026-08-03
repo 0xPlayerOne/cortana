@@ -509,6 +509,29 @@ fn audit_export_preserves_retained_metadata_without_query_content() {
         serde_json::from_str(&fs::read_to_string(json_export).expect("read JSON export"))
             .expect("audit JSON array");
     assert_eq!(events.as_array().map(Vec::len), Some(1));
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let permissions = fs::Permissions::from_mode(0o644);
+        fs::set_permissions(&export, permissions).expect("loosen export permissions");
+        Command::cargo_bin("cortana")
+            .expect("binary exists")
+            .args(["--config"])
+            .arg(&config)
+            .args(["audit", "export", "--force"])
+            .arg(&export)
+            .assert()
+            .success();
+        assert_eq!(
+            fs::metadata(&export)
+                .expect("export metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
 }
 
 #[test]
