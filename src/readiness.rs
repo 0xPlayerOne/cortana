@@ -177,14 +177,15 @@ fn embedding_index_check(store: &Store, embedder: &dyn Embedder) -> ReadinessChe
                 ReadinessCheck {
                     name: "embedding-index".into(),
                     passed: true,
-                    detail: format!("index generation matches {index_fingerprint}"),
+                    detail: format!("index generation matches {}", index_fingerprint),
                 }
             }
             Some(index_fingerprint) => ReadinessCheck {
                 name: "embedding-index".into(),
                 passed: false,
                 detail: format!(
-                    "index uses {index_fingerprint}, but the configured provider uses {configured_fingerprint}; rebuild into a new generation before semantic retrieval or ingestion, or explicitly adopt this exact generation with `cortana migrate-embedding --from '{index_fingerprint}' --force` only after verifying the vectors are interchangeable",
+                    "index uses {index_fingerprint}, but the configured provider uses {}; rebuild into a new generation before semantic retrieval or ingestion, or explicitly adopt this exact generation with `cortana migrate-embedding --from '{index_fingerprint}' --force` only after verifying the vectors are interchangeable",
+                    configured_fingerprint,
                 ),
             },
         },

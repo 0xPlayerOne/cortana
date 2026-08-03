@@ -61,8 +61,7 @@ export async function scanDesktopReadiness(): Promise<DesktopReadiness> {
 }
 
 export async function migrateDesktopEmbeddingGeneration(from: string): Promise<string> {
-  if (!isDesktopApp)
-    throw new Error('Embedding generation migration is available in Cortana Desktop')
+  if (!isDesktopApp) throw new Error('Embedding generation migration is available in Cortana Desktop')
   return invokeDesktop<string>('desktop_embedding_generation_migrate', { from, approved: true })
 }
 

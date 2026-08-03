@@ -49,9 +49,6 @@ def fetch(
                     project=project,
                     metadata={"kind": kind, "pubkey": pubkey, "raw_event": event},
                 )
-                emitted += 1
-                if max_documents is not None and emitted >= max_documents:
-                    return
     elif database.exists():
         raise RuntimeError(
             f"Buzz retention database must be a regular non-symlink file: {database}"
@@ -73,9 +70,6 @@ def fetch(
             project=project,
             metadata={"kind": "agent-log", "bytes": file_stat.st_size},
         )
-        emitted += 1
-        if max_documents is not None and emitted >= max_documents:
-            return
 
 
 def _is_regular_non_symlink(path: Path) -> bool:

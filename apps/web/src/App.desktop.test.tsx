@@ -43,9 +43,6 @@ afterEach(() => {
   state.openUrlError = null
   state.openProjectCalls = 0
   state.openProjectError = null
-  state.cancelSourceJobCalls = 0
-  state.deferSourceJobCancellation = false
-  state.resolveSourceJobCancellation = null
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -123,9 +120,6 @@ const state = {
   openSecretFileCalls: 0,
   openProjectCalls: 0,
   openProjectError: null as Error | null,
-  cancelSourceJobCalls: 0,
-  deferSourceJobCancellation: false,
-  resolveSourceJobCancellation: null as (() => void) | null,
   serviceAction: null as (() => Promise<DesktopServiceReport>) | null,
   readinessScan: null as
     (() => Promise<Awaited<ReturnType<typeof realApi.scanDesktopReadiness>>>) | null,
@@ -405,7 +399,6 @@ mock.module('./api', () => ({
     return Promise.resolve(state.sourceJob)
   },
   cancelDesktopSourceValidation: (id: string) => {
-    state.cancelSourceJobCalls += 1
     if (!state.sourceJob || state.sourceJob.id !== id) {
       return Promise.reject(new Error('source job was not found'))
     }
@@ -413,11 +406,6 @@ mock.module('./api', () => ({
       ...state.sourceJob,
       status: 'cancelling',
       summary: 'Cancelling source validation…',
-    }
-    if (state.deferSourceJobCancellation) {
-      return new Promise<DesktopSourceJob>((resolve) => {
-        state.resolveSourceJobCancellation = () => resolve(state.sourceJob!)
-      })
     }
     return Promise.resolve(state.sourceJob)
   },
@@ -1089,10 +1077,7 @@ test('source tree actions resolve a configured source by its canonical label', a
     state.settings = originalSettings
     state.applySettingsUpdate = false
     state.lastSettingsUpdate = null
-    demoStatus.ingestion = {
-      ...demoStatus.ingestion,
-      configured_sources: originalConfiguredSources,
-    }
+    demoStatus.ingestion = { ...demoStatus.ingestion, configured_sources: originalConfiguredSources }
     demoStatus.sources = originalIndexedSources
   }
 })
@@ -1879,52 +1864,6 @@ test('running source jobs stay visible in the shell after leaving the settings v
     state.settings = desktopSettings
     state.sourceJob = null
     state.installerJob = null
-  }
-})
-
-test('source-job cancellation disables duplicate requests before native completion', async () => {
-  const originalConfirm = window.confirm
-  window.confirm = () => true
-  state.settings = { ...desktopSettings, sources: [workSource] }
-  state.sourceJob = null
-  state.cancelSourceJobCalls = 0
-  state.deferSourceJobCancellation = true
-  state.resolveSourceJobCancellation = null
-  try {
-    render(<App />)
-    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
-    await waitFor(() => expect(screen.getByText('work-code · validation · running')).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Open active source jobs' })).toBeTruthy()
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'Open active source jobs' }))
-    const cancel = await screen.findByRole('button', { name: 'Cancel work work-code validation' })
-
-    fireEvent.click(cancel)
-    await waitFor(() => expect((cancel as HTMLButtonElement).disabled).toBe(true))
-    expect(state.cancelSourceJobCalls).toBe(1)
-
-    // A second click while the native process is still terminating must not
-    // send another command.
-    fireEvent.click(cancel)
-    expect(state.cancelSourceJobCalls).toBe(1)
-
-    const resolveCancellation = state.resolveSourceJobCancellation as (() => void) | null
-    resolveCancellation?.()
-    await waitFor(() => expect((cancel as HTMLButtonElement).disabled).toBe(true))
-  } finally {
-    window.confirm = originalConfirm
-    state.settings = desktopSettings
-    state.sourceJob = null
-    state.deferSourceJobCancellation = false
-    state.resolveSourceJobCancellation = null
   }
 })
 

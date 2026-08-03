@@ -474,7 +474,11 @@ async fn main() -> Result<()> {
         return validate_configured_source(
             &config,
             source,
-            validation_overrides(*max_documents, *max_bytes, *max_seconds),
+            SyncOverrides {
+                max_documents: *max_documents,
+                max_bytes: *max_bytes,
+                max_seconds: *max_seconds,
+            },
         )
         .await;
     }
@@ -1235,7 +1239,7 @@ async fn validate_configured_source(
             }));
         }
         cleanup_connector_spools(&config.data_dir)?;
-        let (spool, diagnostics) = run_connector_to_spool(config, source, &control, true).await?;
+        let (spool, diagnostics) = run_connector_to_spool(config, source, &control).await?;
         let validation = validate_connector_spool(&spool, source, &control);
         let _ = std::fs::remove_file(&spool);
         let _ = std::fs::remove_file(&diagnostics);
@@ -2165,7 +2169,7 @@ async fn sync_source_documents(
         });
     }
 
-    let (spool, diagnostics) = run_connector_to_spool(config, source, control, false).await?;
+    let (spool, diagnostics) = run_connector_to_spool(config, source, control).await?;
     let result = async {
         let scope = validate_connector_spool(&spool, source, control)?;
         let reader = std::io::BufReader::new(
@@ -2457,11 +2461,7 @@ fn configure_no_follow(options: &mut std::fs::OpenOptions) {
 #[cfg(not(unix))]
 fn configure_no_follow(_options: &mut std::fs::OpenOptions) {}
 
-fn configured_connector_command(
-    config: &Config,
-    source: &SourceConfig,
-    bounded_max_documents: Option<usize>,
-) -> Result<Vec<String>> {
+fn configured_connector_command(config: &Config, source: &SourceConfig) -> Result<Vec<String>> {
     let command = if source.kind == "external" {
         anyhow::ensure!(
             !source.command.is_empty(),
@@ -2685,77 +2685,13 @@ mod tests {
 
     use super::{
         Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
-        chunk, cleanup_connector_spools, configured_connector_command, context_bundle,
-        ensure_recurring_sync_validated, ingest_documents, private_file, run_connector_to_spool,
-        validation_overrides,
+        chunk, cleanup_connector_spools, context_bundle, ensure_recurring_sync_validated,
+        ingest_documents, private_file, run_connector_to_spool,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
     use cortana::model::Document;
     use cortana::store::Store;
-
-    #[test]
-    fn validate_source_defaults_to_safe_read_only_bounds() {
-        let defaults = validation_overrides(None, None, None);
-        assert_eq!(defaults.max_documents, Some(25));
-        assert_eq!(defaults.max_bytes, Some(5 * 1024 * 1024));
-        assert_eq!(defaults.max_seconds, Some(60));
-
-        let explicit = validation_overrides(Some(100), Some(64 * 1024 * 1024), Some(900));
-        assert_eq!(explicit.max_documents, Some(100));
-        assert_eq!(explicit.max_bytes, Some(64 * 1024 * 1024));
-        assert_eq!(explicit.max_seconds, Some(900));
-    }
-
-    #[test]
-    fn bounded_validation_caps_builtin_drive_without_mutating_cache() {
-        let config = Config::default();
-        let source = SourceConfig {
-            name: "work-drive".into(),
-            kind: "google-drive".into(),
-            enabled: true,
-            project: "work".into(),
-            root: None,
-            source: None,
-            channels: Vec::new(),
-            token_env: None,
-            token: Some("/tmp/google-token.json".into()),
-            oauth_client: None,
-            query: None,
-            labels: Vec::new(),
-            max_content_chars: None,
-            max_documents: None,
-            max_bytes: None,
-            max_duration_seconds: None,
-            exclude: Vec::new(),
-            command: Vec::new(),
-            acl: Vec::new(),
-        };
-
-        let command = configured_connector_command(&config, &source, Some(25))
-            .expect("bounded connector command");
-        let no_cache = command
-            .iter()
-            .position(|argument| argument == "--no-cache")
-            .expect("validation must disable persistent caches");
-        let subcommand = command
-            .iter()
-            .position(|argument| argument == "google-drive")
-            .expect("Drive connector subcommand");
-        assert!(no_cache < subcommand);
-        assert_eq!(
-            command
-                .windows(2)
-                .find(|window| window[0] == "--max-documents")
-                .map(|window| window[1].as_str()),
-            Some("25")
-        );
-        let max_documents = command
-            .iter()
-            .position(|argument| argument == "--max-documents")
-            .expect("bounded connector document cap");
-        assert!(max_documents < subcommand);
-    }
 
     #[test]
     fn recurring_sync_requires_current_validation_for_each_enabled_source() {
@@ -2949,7 +2885,7 @@ mod tests {
             }
         });
 
-        let result = run_connector_to_spool(&config, &source, &control, false).await;
+        let result = run_connector_to_spool(&config, &source, &control).await;
         heartbeat.abort();
         cancellation.stop();
 

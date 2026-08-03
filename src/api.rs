@@ -452,7 +452,7 @@ fn regular_file_ready(path: &std::path::Path) -> bool {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            metadata.permissions().mode() & 0o077 == 0
+            return metadata.permissions().mode() & 0o077 == 0;
         }
         #[cfg(not(unix))]
         {
@@ -554,9 +554,9 @@ fn source_authorization_summary(
             // its own. Requiring an OAuth client in that case makes an already
             // authorized Google source appear unhealthy in the desktop status
             // panel and incorrectly invites the user to repeat setup.
-            setup_required: !(token_env_ready
-                || token_file_ready
-                || (oauth_client_ready && token_destination_ready)),
+            setup_required: !(oauth_client_ready && token_destination_ready)
+                && !token_env_ready
+                && !token_file_ready,
             authorized: token_env_ready || token_file_ready,
         }
     } else if source.token_env.is_some() || source.token.is_some() {
@@ -1973,11 +1973,9 @@ mod tests {
     #[test]
     fn stale_source_validation_is_hidden_from_status() {
         let directory = tempdir().expect("temporary directory");
-        let mut config = Config {
-            data_dir: directory.path().to_path_buf(),
-            sources: vec![google_source(None)],
-            ..Config::default()
-        };
+        let mut config = Config::default();
+        config.data_dir = directory.path().to_path_buf();
+        config.sources = vec![google_source(None)];
         let source = config.sources.first().expect("configured source");
         let fingerprint =
             source_validation::configuration_fingerprint(source).expect("validation fingerprint");
@@ -2008,11 +2006,9 @@ mod tests {
     #[test]
     fn source_validation_diagnostics_are_generic_in_public_status() {
         let directory = tempdir().expect("temporary directory");
-        let config = Config {
-            data_dir: directory.path().to_path_buf(),
-            sources: vec![google_source(None)],
-            ..Config::default()
-        };
+        let mut config = Config::default();
+        config.data_dir = directory.path().to_path_buf();
+        config.sources = vec![google_source(None)];
         let source = config.sources.first().expect("configured source");
         let fingerprint =
             source_validation::configuration_fingerprint(source).expect("validation fingerprint");
@@ -2058,10 +2054,8 @@ mod tests {
             &directory.path().join("source-validations.json"),
             "{\"sources\": invalid}",
         );
-        let config = Config {
-            data_dir: directory.path().to_path_buf(),
-            ..Config::default()
-        };
+        let mut config = Config::default();
+        config.data_dir = directory.path().to_path_buf();
 
         let status = IngestionStatus::from_config(&config, false);
         assert_eq!(

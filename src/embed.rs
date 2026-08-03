@@ -525,15 +525,11 @@ mod tests {
     #[test]
     fn openai_fingerprint_isolated_by_provider_endpoint() {
         let local = OpenAiEmbedder::new(EmbeddingConfig::default(), None).expect("local config");
-        let cloud_config = EmbeddingConfig {
-            base_url: "https://api.example.test/v1".into(),
-            ..EmbeddingConfig::default()
-        };
+        let mut cloud_config = EmbeddingConfig::default();
+        cloud_config.base_url = "https://api.example.test/v1".into();
         let cloud = OpenAiEmbedder::new(cloud_config, None).expect("cloud config");
-        let normalized_config = EmbeddingConfig {
-            base_url: "http://127.0.0.1:6999/v1/".into(),
-            ..EmbeddingConfig::default()
-        };
+        let mut normalized_config = EmbeddingConfig::default();
+        normalized_config.base_url = "http://127.0.0.1:6999/v1/".into();
         let normalized =
             OpenAiEmbedder::new(normalized_config, None).expect("normalized local config");
 

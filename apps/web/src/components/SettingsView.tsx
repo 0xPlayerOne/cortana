@@ -2606,7 +2606,6 @@ function SourcesSection({
     planning: boolean
     flowError: string
   } | null>(null)
-  const [cancelPending, setCancelPending] = useState(false)
   const validationPlanKey = useRef('')
   const sharedJobIds = useRef(new Set<string>())
   const foreground = useDesktopForeground()
@@ -2882,14 +2881,7 @@ function SourcesSection({
   }
 
   const cancel = async () => {
-    if (!observedJob || cancelPending || observedJob.status !== 'running') return
-    const previous = observedJob
-    setCancelPending(true)
-    applyJob({
-      ...observedJob,
-      status: 'cancelling',
-      summary: `Cancelling source ${observedJob.operation}…`,
-    })
+    if (!observedJob) return
     try {
       applyJob(await cancelDesktopSourceValidation(observedJob.id))
     } catch (caught) {
@@ -3453,7 +3445,7 @@ function SourcesSection({
             {['running', 'cancelling'].includes(observedJob.status) && (
               <button
                 type="button"
-                disabled={observedJob.status === 'cancelling' || cancelPending}
+                disabled={observedJob.status === 'cancelling'}
                 onClick={() => void cancel()}
               >
                 <CircleStop size={14} /> Cancel

@@ -372,8 +372,6 @@ def fetch_gmail(
                 messages: dict[str, dict[str, Any]] = {}
                 missing_ids: list[str] = []
                 references = _google_records(listing.get("messages"), "Gmail message")
-                if max_documents is not None:
-                    references = references[: max_documents - emitted]
                 for reference in references:
                     message_id = str(reference["id"])
                     message = _cached_gmail_message(cache, message_id)
@@ -421,14 +419,8 @@ def fetch_gmail(
                             pending_writes = 0
                     try:
                         yield _gmail_document(message, project)
-                        emitted += 1
-                        if max_documents is not None and emitted >= max_documents:
-                            limit_reached = True
-                            break
                     except (AttributeError, TypeError, ValueError, KeyError) as error:
                         _warn_skipped_record("Gmail message", message.get("id"), error)
-                if limit_reached:
-                    break
                 page_token = listing.get("nextPageToken")
                 if not page_token:
                     break
@@ -600,7 +592,6 @@ def fetch_calendar(
                 file=sys.stderr,
             )
             return
-        emitted = 0
         for calendar in _google_records(calendars.get("items"), "Calendar"):
             calendar_id = str(calendar.get("id") or "")
             if not calendar_id or calendar.get("deleted") or calendar.get("hidden"):
@@ -644,9 +635,6 @@ def fetch_calendar(
                     else:
                         try:
                             yield _calendar_document(event, calendar, project)
-                            emitted += 1
-                            if max_documents is not None and emitted >= max_documents:
-                                return
                         except (AttributeError, TypeError, ValueError, KeyError) as error:
                             _warn_skipped_record("Calendar event", event["id"], error)
                 page_token = payload.get("nextPageToken")
@@ -892,8 +880,8 @@ def _gmail_parts(payload: dict[str, Any]) -> str:
         if body:
             return body
         return "\n".join(filter(None, (_gmail_parts(part) for part in parts)))
-    body_value = payload.get("body")
-    encoded = body_value.get("data") if isinstance(body_value, dict) else None
+    body = payload.get("body")
+    encoded = body.get("data") if isinstance(body, dict) else None
     if not encoded:
         return ""
     try:

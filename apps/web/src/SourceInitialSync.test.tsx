@@ -115,7 +115,6 @@ const state = {
   settingsLoadError: null as Error | null,
   runningJob: null as DesktopSourceJob | null,
   cancelCalls: [] as string[],
-  cancelDeferred: null as Deferred<DesktopSourceJob> | null,
   pollCount: 0,
   servicesCalls: 0,
   serviceRefreshAfterAction: null as Deferred<DesktopServiceReport> | null,
@@ -133,7 +132,6 @@ beforeEach(() => {
   state.settingsLoadError = null
   state.runningJob = null
   state.cancelCalls = []
-  state.cancelDeferred = null
   state.pollCount = 0
   state.servicesCalls = 0
   state.serviceRefreshAfterAction = null
@@ -212,7 +210,6 @@ mock.module('./api', () => ({
   },
   cancelDesktopSourceValidation: (id: string) => {
     state.cancelCalls.push(id)
-    if (state.cancelDeferred) return state.cancelDeferred.promise
     return Promise.resolve(jobFor('small', 'cancelled'))
   },
 }))

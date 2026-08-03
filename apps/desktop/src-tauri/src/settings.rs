@@ -1168,7 +1168,6 @@ fn update_secret_names(update: &SettingsUpdate) -> BTreeSet<String> {
     names
 }
 
-#[cfg(test)]
 fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
     validate_update_with_legacy_scopes(update, &BTreeSet::new())
 }
@@ -1387,7 +1386,9 @@ fn validate_update_with_legacy_scopes(
     let data_path = Path::new(update.runtime.data_dir.trim());
     if !data_path.is_absolute()
         || data_path.parent().is_none()
-        || data_path.parent().is_none_or(|parent| parent.parent().is_none())
+        || data_path
+            .parent()
+            .is_none_or(|parent| parent.parent().is_none())
     {
         return Err("data directory must be an absolute non-root path".into());
     }
@@ -1523,17 +1524,32 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
     set_string(root, "hindsight", "bank", &update.hindsight.bank);
     set_optional_string(root, "hindsight", "token_env", &update.hindsight.token_env);
     set_bool(root, "hindsight", "optional", update.hindsight.optional);
-    set_bool(root, "hindsight", "wired_to_ingestion", update.hindsight.wired_to_ingestion);
+    set_bool(
+        root,
+        "hindsight",
+        "wired_to_ingestion",
+        update.hindsight.wired_to_ingestion,
+    );
 
     set_string(root, "honcho", "provider", &update.honcho.provider);
     set_bool(root, "honcho", "enabled", update.honcho.enabled);
     set_string(root, "honcho", "base_url", &update.honcho.base_url);
     set_string(root, "honcho", "workspace_id", &update.honcho.workspace_id);
     set_string(root, "honcho", "peer_id", &update.honcho.peer_id);
-    set_string(root, "honcho", "session_prefix", &update.honcho.session_prefix);
+    set_string(
+        root,
+        "honcho",
+        "session_prefix",
+        &update.honcho.session_prefix,
+    );
     set_optional_string(root, "honcho", "token_env", &update.honcho.token_env);
     set_bool(root, "honcho", "optional", update.honcho.optional);
-    set_bool(root, "honcho", "wired_to_ingestion", update.honcho.wired_to_ingestion);
+    set_bool(
+        root,
+        "honcho",
+        "wired_to_ingestion",
+        update.honcho.wired_to_ingestion,
+    );
 
     for (key, value) in [
         (
@@ -2806,16 +2822,17 @@ mod tests {
             PathBuf::from("/opt/cortana/share/cortana/venv/bin/cortana-connectors")
         };
 
+        assert!(configure_connector_command_at(&config_path, &PathBuf::from("relative")).is_err());
         assert!(
-            configure_connector_command_at(&config_path, &PathBuf::from("relative")).is_err()
+            configure_connector_command_at(&config_path, Path::new("/tmp/not-a-connector"))
+                .is_err()
         );
-        assert!(
-            configure_connector_command_at(&config_path, Path::new("/tmp/not-a-connector")).is_err()
-        );
-        fs::create_dir_all(config_path.parent().expect("config parent"))
-            .expect("config directory");
-        fs::write(&config_path, "[runtime]\ndata_dir = \"/tmp/cortana-data\"\n")
-            .expect("initial config");
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
+        fs::write(
+            &config_path,
+            "[runtime]\ndata_dir = \"/tmp/cortana-data\"\n",
+        )
+        .expect("initial config");
         configure_connector_command_at(&config_path, &first).expect("first connector command");
         let state = SettingsStore {
             config_path: config_path.clone(),
@@ -2827,12 +2844,16 @@ mod tests {
         assert!(first_body.contains(&first.display().to_string()));
         configure_connector_command_at(&config_path, &second).expect("second connector command");
         let backup = config_path.with_extension("toml.backup");
-        assert!(fs::read_to_string(backup)
-            .expect("config backup")
-            .contains("data_dir"));
-        assert!(fs::read_to_string(&config_path)
-            .expect("preserved config")
-            .contains(&first.display().to_string()));
+        assert!(
+            fs::read_to_string(backup)
+                .expect("config backup")
+                .contains("data_dir")
+        );
+        assert!(
+            fs::read_to_string(&config_path)
+                .expect("preserved config")
+                .contains(&first.display().to_string())
+        );
         let audit = desktop_audit_events_at(&config_path, 10).expect("desktop audit");
         assert_eq!(audit.len(), 2);
         assert!(
@@ -2922,9 +2943,11 @@ mod tests {
         });
         store.save(initial).expect("save source secret");
         let secret_path = temp.path().join("config/secrets.env");
-        assert!(fs::read_to_string(&secret_path)
-            .expect("secret file")
-            .contains("CORTANA_SLACK_TOKEN=slack-secret"));
+        assert!(
+            fs::read_to_string(&secret_path)
+                .expect("secret file")
+                .contains("CORTANA_SLACK_TOKEN=slack-secret")
+        );
 
         store
             .save(valid_update(temp.path()))
@@ -3150,7 +3173,10 @@ mod tests {
         .expect("config with implicit workspaces");
 
         let workspaces = configured_workspaces(&config);
-        let ids: Vec<_> = workspaces.iter().map(|workspace| workspace.id.as_str()).collect();
+        let ids: Vec<_> = workspaces
+            .iter()
+            .map(|workspace| workspace.id.as_str())
+            .collect();
         assert_eq!(ids, vec!["work", "personal", "special"]);
         assert_eq!(workspaces[2].name, "Special");
     }
@@ -3244,7 +3270,10 @@ mod tests {
         .expect("config with explicit workspaces");
 
         let workspaces = configured_workspaces(&config);
-        let ids: Vec<_> = workspaces.iter().map(|workspace| workspace.id.as_str()).collect();
+        let ids: Vec<_> = workspaces
+            .iter()
+            .map(|workspace| workspace.id.as_str())
+            .collect();
         assert_eq!(ids, vec!["zeta", "alpha"]);
     }
 

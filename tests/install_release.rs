@@ -74,7 +74,7 @@ fi
     );
     executable(
         &fake_bin.join("uname"),
-        &format!("#!/usr/bin/env bash\nprintf '{uname}\\n'\n"),
+        &format!("#!/usr/bin/env bash\nprintf '{}\\n'\n", uname),
     );
     (directory, archive, log)
 }
