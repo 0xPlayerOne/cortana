@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.24.3](https://github.com/0xPlayerOne/cortana/compare/v0.24.2...v0.24.3) (2026-08-03)
+
+
+### Maintenance
+
+* **release:** include latest staging changes ([c01db38](https://github.com/0xPlayerOne/cortana/commit/c01db38c556b710ec7a0becde949062a9cb915da))
+
 ## [0.24.2](https://github.com/0xPlayerOne/cortana/compare/v0.24.1...v0.24.2) (2026-08-03)
 
 
