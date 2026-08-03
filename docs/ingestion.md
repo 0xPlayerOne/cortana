@@ -78,14 +78,23 @@ reconciliation, but Drive content is downloaded only when its modification times
 immutable Gmail message bodies are downloaded only once. The caches are disposable and can always
 be rebuilt from Google. First-time Drive content and Gmail detail retrieval use bounded
 eight-worker pools; cache writes and emitted documents remain ordered on the main connector
-thread. Drive installs pypdf's AES support. A single malformed, inaccessible, or unsupported file
-does not abort the source: Cortana retains a prior cached body when available, marks it
-`content_stale` in metadata, and emits only the exception class in diagnostics.
+thread. Drive installs pypdf's AES support.
 
-Gmail tolerates an isolated message that disappears or becomes inaccessible between list and
-detail requests. If more than 10% of an uncached page (with a minimum allowance of ten messages)
-is denied, the connector fails the snapshot so Cortana cannot reconcile against a broad permission
-failure.
+Complete, reconciling Google runs fail closed on unresolved listing, detail, or conversion data
+so a truncated snapshot can never reconcile as if it were whole. Drive rejects an
+`incompleteSearch` listing, malformed file records, an unparsable `modifiedTime`, content that
+cannot be downloaded without a cached copy, and unsupported or empty file bodies. Gmail rejects
+malformed message listings, any message detail that is denied or unavailable between list and
+detail requests, a detail whose id does not match the listed id, and messages that fail document
+conversion. The one tolerated omission on a complete Drive run is a file whose content download
+failed but which still has a prior cached body: the cached body is emitted, marked `content_stale`
+in metadata, and diagnostics expose only the exception class.
+
+Bounded trial or initial syncs never reconcile, so they keep the diagnostic skip behavior instead:
+malformed records, unsupported content, and isolated denied or unavailable message details are
+skipped with stderr diagnostics rather than aborting the trial. Gmail bounded runs still refuse
+when more than 10% of an uncached page (with a minimum allowance of ten messages) is denied, so
+Cortana cannot reconcile against a broad permission failure even on a bounded run.
 
 Discord also keeps an owner-only derived cache. After the first complete channel snapshot,
 scheduled runs request only messages after the newest cached snowflake. A complete refresh runs
