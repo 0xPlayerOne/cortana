@@ -477,7 +477,8 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
                     source.name
                 );
                 anyhow::ensure!(
-                    source.token_env
+                    source
+                        .token_env
                         .as_deref()
                         .is_some_and(|value| !value.trim().is_empty()),
                     "source `{}` requires a GitHub token environment variable",
@@ -512,12 +513,12 @@ fn valid_github_repository(value: &str) -> bool {
     parts.next().is_none()
         && !owner.is_empty()
         && !repository.is_empty()
-        && owner
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
-        && repository
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+        && owner.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+        && repository.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
 }
 
 /// Validate a provider base URL before a client can send credentials or
