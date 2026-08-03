@@ -331,7 +331,9 @@ export function SettingsView({
           status: 'succeeded',
           detail: null,
         })
-        setSettings((current) => (current ? { ...current, restart_required: false } : current))
+        const cleared = { ...next, restart_required: false }
+        setSettings(cleared)
+        onSaved(cleared)
         setSaved(false)
       })
       .catch((caught: unknown) => {
