@@ -2053,6 +2053,30 @@ function AuditSection() {
     }
   }, [])
 
+  // The events already shown here are the redacted, bounded metadata snapshots
+  // returned by the runtime and Desktop audit endpoints; this export writes
+  // exactly those loaded events to a JSON file and adds nothing else.
+  const exportAudit = () => {
+    const payload = {
+      exported_at: new Date().toISOString(),
+      runtime,
+      desktop,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json',
+    })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `cortana-audit-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    // Defer the revoke one tick so the browser can initiate the download
+    // before the object URL is torn down.
+    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  }
+
   return (
     <SettingsSection
       title="Audit trail"
@@ -2062,10 +2086,20 @@ function AuditSection() {
         <span>
           {runtime.length} runtime · {desktop.length} Desktop events
         </span>
-        <button type="button" disabled={loading} onClick={() => void refresh()}>
-          {loading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}
-          Refresh
-        </button>
+        <div className="service-actions">
+          <button type="button" disabled={loading} onClick={() => void refresh()}>
+            {loading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}
+            Refresh
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={loading}
+            onClick={exportAudit}
+          >
+            <Download size={14} /> Export
+          </button>
+        </div>
       </div>
       {error && (
         <div className="safety-note" role="alert">
