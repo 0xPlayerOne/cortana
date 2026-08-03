@@ -611,6 +611,31 @@
   flex-direction: column;
 }
 
+.source-workspace-picker {
+  display: inline-flex;
+  min-width: 150px;
+  align-items: center;
+  padding: 3px 6px;
+  gap: 6px;
+  color: var(--theme-text-secondary);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--theme-control-bg);
+}
+
+.source-workspace-picker select {
+  min-width: 0;
+  padding: 3px 18px 3px 2px;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+}
+
+.source-workspace-picker select:focus-visible {
+  outline-offset: 1px;
+}
+
 .source-enable strong {
   overflow: hidden;
   color: var(--theme-text-primary);
