@@ -1,4 +1,4 @@
-//! Config assertions for the Code Foundry v0.34.4 adoption.
+//! Config assertions for the Code Foundry runtime pin adoption.
 //!
 //! These tests pin the repository-level Code Foundry configuration so CI can
 //! detect drift between `.github/code-foundry.yml`, the generated workflows,
@@ -10,7 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Runtime tag every generated workflow and config line must pin.
-const RUNTIME_REF: &str = "v0.34.4";
+const RUNTIME_REF: &str = "v0.34.12";
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -98,14 +98,15 @@ fn single_canonical_validation_caller() {
             !Path::new(&repo_root())
                 .join(format!(".github/workflows/{legacy}.yml"))
                 .exists(),
-            "legacy generated caller {legacy}.yml must be removed by the v0.34.4 sync"
+            "legacy generated caller {legacy}.yml must be removed by the configured sync"
         );
     }
     let caller = read(".github/workflows/validation.yml");
     assert!(
-        caller.contains("uses: 0xPlayerOne/code-foundry/.github/workflows/validation.yml@")
-            && caller.contains("@v0.34.4"),
-        "validation caller must reference the v0.34.4 orchestrator:\n{caller}"
+        caller.contains(&format!(
+            "uses: 0xPlayerOne/code-foundry/.github/workflows/validation.yml@{RUNTIME_REF}"
+        )),
+        "validation caller must reference the configured orchestrator:\n{caller}"
     );
 }
 
