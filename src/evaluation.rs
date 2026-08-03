@@ -15,6 +15,8 @@ use crate::model::{Document, Evidence};
 use crate::retrieval;
 use crate::store::Store;
 
+use crate::answer::configured_model;
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct EvaluationFixture {
     pub version: u32,
@@ -95,14 +97,20 @@ pub struct CaseReport {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct AnswerEvaluation {
+    pub attempted: bool,
     pub passed: bool,
-    pub fallback_mode: bool,
+    pub planner_model_used: bool,
+    pub synthesis_model_used: bool,
     pub planner_bounded: bool,
     pub citations_valid: bool,
     pub expected_evidence_present: bool,
     pub forbidden_citations_absent: bool,
+    pub fallback_mode: bool,
+    pub fallback_provider_unavailable: bool,
     pub cache_hit: bool,
     pub cache_invalidated_after_update: bool,
+    pub latency_ms: u64,
+    pub deadline_ms: u64,
 }
 
 pub async fn run(path: &Path) -> Result<EvaluationReport> {
@@ -111,16 +119,41 @@ pub async fn run(path: &Path) -> Result<EvaluationReport> {
             .with_context(|| format!("failed to read evaluation fixture {}", path.display()))?,
     )
     .with_context(|| format!("invalid evaluation fixture {}", path.display()))?;
-    run_fixture(fixture).await
+    run_fixture(fixture, None).await
 }
 
 pub async fn run_default() -> Result<EvaluationReport> {
     let fixture: EvaluationFixture = serde_json::from_str(include_str!("../eval/fixtures.json"))
         .context("invalid built-in evaluation fixture")?;
-    run_fixture(fixture).await
+    run_fixture(fixture, None).await
 }
 
-async fn run_fixture(fixture: EvaluationFixture) -> Result<EvaluationReport> {
+pub async fn run_with_config(
+    path: &Path,
+    query: &QueryConfig,
+    api_key: Option<String>,
+) -> Result<EvaluationReport> {
+    let fixture: EvaluationFixture = serde_json::from_slice(
+        &std::fs::read(path)
+            .with_context(|| format!("failed to read evaluation fixture {}", path.display()))?,
+    )
+    .with_context(|| format!("invalid evaluation fixture {}", path.display()))?;
+    run_fixture(fixture, Some((query.clone(), api_key))).await
+}
+
+pub async fn run_with_model_default(
+    query: &QueryConfig,
+    api_key: Option<String>,
+) -> Result<EvaluationReport> {
+    let fixture: EvaluationFixture = serde_json::from_str(include_str!("../eval/fixtures.json"))
+        .context("invalid built-in evaluation fixture")?;
+    run_fixture(fixture, Some((query.clone(), api_key))).await
+}
+
+async fn run_fixture(
+    fixture: EvaluationFixture,
+    model: Option<(QueryConfig, Option<String>)>,
+) -> Result<EvaluationReport> {
     validate_fixture(&fixture)?;
 
     let temporary = TemporaryIndex::new()?;
@@ -190,7 +223,7 @@ async fn run_fixture(fixture: EvaluationFixture) -> Result<EvaluationReport> {
         });
     }
 
-    let answer = evaluate_answer(&store, &embedder, &fixture).await?;
+    let answer = evaluate_answer(&store, &embedder, &fixture, model).await?;
     let recall_at_k = ratio(relevant_found, relevant_total);
     let mrr = if reciprocal_ranks.is_empty() {
         1.0
@@ -233,15 +266,25 @@ async fn evaluate_answer(
     store: &Store,
     embedder: &Arc<dyn Embedder>,
     fixture: &EvaluationFixture,
+    model: Option<(QueryConfig, Option<String>)>,
 ) -> Result<AnswerEvaluation> {
-    let config = QueryConfig {
-        synthesis_enabled: false,
-        max_planned_queries: 2,
-        cache_max_entries: 32,
-        cache_ttl_seconds: 300,
-        ..QueryConfig::default()
+    let (config, model) = if let Some((config, api_key)) = model {
+        let model = configured_model(&config, api_key)?;
+        (config, model)
+    } else {
+        (
+            QueryConfig {
+                synthesis_enabled: false,
+                max_planned_queries: 2,
+                cache_max_entries: 32,
+                cache_ttl_seconds: 300,
+                ..QueryConfig::default()
+            },
+            None,
+        )
     };
-    let engine = AnswerEngine::new(store.clone(), embedder.clone(), None, config.clone());
+    let model_available = config.synthesis_enabled && model.is_some();
+    let engine = AnswerEngine::new(store.clone(), embedder.clone(), model, config.clone());
     let request = AnswerRequest {
         query: fixture.answer_case.query.clone(),
         project: fixture.answer_case.project.clone(),
@@ -283,28 +326,55 @@ async fn evaluate_answer(
     store.upsert(&updated, &[(updated.content.clone(), embedding)])?;
     let third = engine.answer_scoped(request, &acl).await?;
 
+    let planner_model_used = first.plan.model_generated;
+    let synthesis_model_used = first.mode == "synthesized";
     let fallback_mode = first.mode == "extractive";
-    let planner_bounded = !first.plan.model_generated
-        && !first.plan.queries.is_empty()
-        && first.plan.queries.len() <= config.max_planned_queries;
+    let planner_bounded =
+        !first.plan.queries.is_empty() && first.plan.queries.len() <= config.max_planned_queries;
     let citations_valid = citations_are_valid(&first.answer, first.evidence.len());
     let cache_hit = second.cached;
     let cache_invalidated_after_update = !third.cached;
-    Ok(AnswerEvaluation {
-        passed: fallback_mode
+    let deadline_ms = config
+        .answer_timeout_seconds
+        .clamp(1, 55)
+        .saturating_mul(1000);
+    let fallback_provider_unavailable = first.warnings.iter().any(|warning| {
+        warning.contains("planner unavailable") || warning.contains("synthesis unavailable")
+    });
+    let passed = if model_available {
+        synthesis_model_used
+            && planner_model_used
+            && citations_valid
+            && expected_evidence_present
+            && forbidden_citations_absent
+            && planner_bounded
+            && first.latency_ms <= deadline_ms
+            && cache_invalidated_after_update
+    } else {
+        fallback_mode
             && planner_bounded
             && citations_valid
             && expected_evidence_present
             && forbidden_citations_absent
             && cache_hit
-            && cache_invalidated_after_update,
-        fallback_mode,
+            && cache_invalidated_after_update
+    };
+
+    Ok(AnswerEvaluation {
+        attempted: model_available,
+        passed,
+        planner_model_used,
+        synthesis_model_used,
         planner_bounded,
         citations_valid,
         expected_evidence_present,
         forbidden_citations_absent,
+        fallback_mode,
+        fallback_provider_unavailable,
         cache_hit,
         cache_invalidated_after_update,
+        latency_ms: first.latency_ms,
+        deadline_ms,
     })
 }
 
@@ -423,6 +493,233 @@ impl Drop for TemporaryIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::Duration;
+
+    use axum::{
+        Router,
+        http::StatusCode,
+        response::{IntoResponse, Response},
+        routing::post,
+    };
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    #[derive(Clone)]
+    struct MockModelServer {
+        responses: Arc<Vec<ResponseTemplate>>,
+        calls: Arc<AtomicU32>,
+        latency_ms: Option<u64>,
+    }
+
+    #[derive(Clone)]
+    enum ResponseTemplate {
+        Planner(String),
+        Synthesis(String),
+        Failure(String),
+    }
+
+    impl ResponseTemplate {
+        fn into_response(self) -> Response {
+            match self {
+                Self::Failure(error) => (StatusCode::BAD_GATEWAY, error).into_response(),
+                Self::Planner(plan) | Self::Synthesis(plan) => (
+                    StatusCode::OK,
+                    serde_json::to_string(
+                        &json!({ "choices": [{ "message": { "content": plan } }] }),
+                    )
+                    .expect("planner response JSON"),
+                )
+                    .into_response(),
+            }
+        }
+    }
+
+    async fn start_mock_model_server(
+        responses: Vec<ResponseTemplate>,
+        latency_ms: Option<u64>,
+    ) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+        let state = MockModelServer {
+            responses: Arc::new(responses),
+            calls: Arc::new(AtomicU32::new(0)),
+            latency_ms,
+        };
+        let app = Router::new().route(
+            "/v1/chat/completions",
+            post({
+                let state = state.clone();
+                move || {
+                    let state = state.clone();
+                    async move {
+                        let index = state.calls.fetch_add(1, Ordering::SeqCst) as usize;
+                        if let Some(delay) = state.latency_ms {
+                            tokio::time::sleep(Duration::from_millis(delay)).await;
+                        }
+                        state
+                            .responses
+                            .get(index)
+                            .cloned()
+                            .unwrap_or_else(|| ResponseTemplate::Failure("{}".into()))
+                            .into_response()
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("mock model listener");
+        let address = listener.local_addr().expect("mock model address");
+        let handle =
+            tokio::spawn(
+                async move { axum::serve(listener, app).await.expect("serve mock model") },
+            );
+        (address, handle)
+    }
+
+    fn fixture_path() -> (tempfile::TempDir, std::path::PathBuf) {
+        let directory = tempdir().expect("fixture temp dir");
+        let path = directory.path().join("fixtures.json");
+        std::fs::write(&path, include_str!("../eval/fixtures.json")).expect("write fixture");
+        (directory, path)
+    }
+
+    fn model_query_config(base_url: &str) -> QueryConfig {
+        QueryConfig {
+            synthesis_enabled: true,
+            max_planned_queries: 2,
+            answer_timeout_seconds: 3,
+            base_url: base_url.to_string(),
+            ..QueryConfig::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn model_eval_successful_grounded_synthesis_meets_contract() {
+        let responses = vec![
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Synthesis(
+                "The release process is bounded by safe checks. [1]".into(),
+            ),
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Synthesis(
+                "The release process is bounded by safe checks. [1]".into(),
+            ),
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Synthesis(
+                "The release process is bounded by safe checks. [1]".into(),
+            ),
+        ];
+        let (address, server) = start_mock_model_server(responses, None).await;
+        let (directory, fixture_path) = fixture_path();
+        let report = run_with_config(
+            &fixture_path,
+            &model_query_config(&format!("http://{address}/v1")),
+            None,
+        )
+        .await
+        .expect("model-backed evaluation");
+        drop(directory);
+        server.abort();
+
+        assert!(report.answer.attempted);
+        assert!(report.answer.passed);
+        assert!(report.answer.planner_model_used);
+        assert!(report.answer.synthesis_model_used);
+        assert!(report.answer.citations_valid);
+        assert!(report.answer.expected_evidence_present);
+        assert!(report.answer.forbidden_citations_absent);
+        assert!(!report.answer.fallback_mode);
+        assert!(!report.answer.fallback_provider_unavailable);
+        assert!(report.answer.latency_ms <= report.answer.deadline_ms);
+    }
+
+    #[tokio::test]
+    async fn model_eval_invalid_citations_fall_back_without_cache_pollution() {
+        let responses = vec![
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Synthesis("The release process cannot be verified.".into()),
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Synthesis("The release process cannot be verified.".into()),
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Synthesis("The release process cannot be verified.".into()),
+        ];
+        let (address, server) = start_mock_model_server(responses, None).await;
+        let (directory, fixture_path) = fixture_path();
+        let report = run_with_config(
+            &fixture_path,
+            &model_query_config(&format!("http://{address}/v1")),
+            None,
+        )
+        .await
+        .expect("model-backed evaluation fallback");
+        drop(directory);
+        server.abort();
+
+        assert!(report.answer.attempted);
+        assert!(!report.answer.passed);
+        assert!(!report.answer.synthesis_model_used);
+        assert!(report.answer.fallback_mode);
+        assert!(!report.answer.cache_hit);
+        assert!(!report.answer.fallback_provider_unavailable);
+    }
+
+    #[tokio::test]
+    async fn model_eval_provider_failure_falls_back_and_surfaces_failure_marker() {
+        let responses = vec![
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Failure("provider failed".into()),
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Failure("provider failed".into()),
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Failure("provider failed".into()),
+        ];
+        let (address, server) = start_mock_model_server(responses, None).await;
+        let (directory, fixture_path) = fixture_path();
+        let report = run_with_config(
+            &fixture_path,
+            &model_query_config(&format!("http://{address}/v1")),
+            None,
+        )
+        .await
+        .expect("model-backed evaluation");
+        drop(directory);
+        server.abort();
+
+        assert!(report.answer.attempted);
+        assert!(!report.answer.synthesis_model_used);
+        assert!(report.answer.fallback_mode);
+        assert!(report.answer.fallback_provider_unavailable);
+        assert!(!report.answer.passed);
+    }
+
+    #[tokio::test]
+    async fn model_eval_respects_answer_deadline_bound() {
+        let responses = vec![
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Failure("provider failed".into()),
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Failure("provider failed".into()),
+            ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
+            ResponseTemplate::Failure("provider failed".into()),
+        ];
+        let (address, server) = start_mock_model_server(responses, Some(2_000)).await;
+        let (directory, fixture_path) = fixture_path();
+        let mut config = model_query_config(&format!("http://{address}/v1"));
+        config.answer_timeout_seconds = 1;
+        let report = run_with_config(&fixture_path, &config, None)
+            .await
+            .expect("deadline bounded evaluation");
+        drop(directory);
+        server.abort();
+
+        assert!(report.answer.attempted);
+        assert!(report.answer.latency_ms <= 2_000);
+        assert_eq!(report.answer.deadline_ms, 1_000);
+        assert!(report.answer.latency_ms < 1_500);
+    }
 
     #[test]
     fn citation_validation_requires_real_evidence_indices() {

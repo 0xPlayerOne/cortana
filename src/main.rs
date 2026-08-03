@@ -86,6 +86,11 @@ enum Command {
     Eval {
         #[arg(long, help = "Use a custom synthetic evaluation fixture")]
         fixture: Option<PathBuf>,
+        #[arg(
+            long,
+            help = "Evaluate planner+synthesis against the configured query model"
+        )]
+        model: bool,
     },
     /// Check production dependencies without starting or scheduling ingestion.
     Readiness {
@@ -391,13 +396,44 @@ async fn main() -> Result<()> {
         println!("migrated Hermes configuration");
         return Ok(());
     }
-    if let Some(Command::Eval { fixture }) = cli.command.as_ref() {
+    if let Some(Command::Eval { fixture, model }) = cli.command.as_ref() {
+        if !*model {
+            let report = match fixture {
+                Some(path) => cortana::evaluation::run(path).await?,
+                None => cortana::evaluation::run_default().await?,
+            };
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            anyhow::ensure!(report.passed, "deterministic evaluation thresholds failed");
+            return Ok(());
+        }
+
+        let config_path = cli.config.clone().unwrap_or_else(default_config_path);
+        let mut config = Config::load(Some(&config_path))?;
+        config.load_environment()?;
+        anyhow::ensure!(
+            config.query.synthesis_enabled,
+            "query synthesis is not enabled in the active configuration"
+        );
+        let query_api_key = config
+            .query
+            .api_key_env
+            .as_deref()
+            .map(|name| {
+                config.environment_value(name).with_context(|| {
+                    format!("query API key environment variable {name} is not set")
+                })
+            })
+            .transpose()?;
         let report = match fixture {
-            Some(path) => cortana::evaluation::run(path).await?,
-            None => cortana::evaluation::run_default().await?,
+            Some(path) => {
+                cortana::evaluation::run_with_config(path, &config.query, query_api_key).await?
+            }
+            None => {
+                cortana::evaluation::run_with_model_default(&config.query, query_api_key).await?
+            }
         };
         println!("{}", serde_json::to_string_pretty(&report)?);
-        anyhow::ensure!(report.passed, "deterministic evaluation thresholds failed");
+        anyhow::ensure!(report.passed, "model-backed evaluation thresholds failed");
         return Ok(());
     }
     let config_path = cli.config.clone().unwrap_or_else(default_config_path);
