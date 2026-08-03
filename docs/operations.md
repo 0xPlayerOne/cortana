@@ -157,8 +157,10 @@ directory and do not use `restore` on a live installation as part of a routine h
 
 Published releases have a final cross-platform asset gate. It checks that the core archives,
 checksums, signed macOS/Linux/Windows desktop installers, and every updater platform entry are
-present for the same tag before the release workflow succeeds. Re-run the read-only verifier for an
-existing release with:
+present for the same tag before the release workflow succeeds. It also inspects the core archives
+and macOS app archive for safe paths, executable runtime files, the connector resource, the web
+bundle, and the release installer scripts. Re-run the read-only verifier for an existing release
+with:
 
 ```bash
 GH_REPO=0xPlayerOne/cortana scripts/verify-desktop-release.sh v0.23.1
