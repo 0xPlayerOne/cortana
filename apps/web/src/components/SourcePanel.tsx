@@ -130,25 +130,30 @@ export function SourcePanel({
         <strong>Sources</strong>
         <button
           type="button"
-          className="mobile-close"
+          className="mobile-close quick-tooltip"
           aria-label="Close sources"
           title="Close sources"
+          data-tooltip="Close sources"
           onClick={onClose}
         >
           <X size={17} />
         </button>
         <button
           type="button"
+          className="quick-tooltip"
           aria-label="Add source"
           title="Add source"
+          data-tooltip="Add source"
           onClick={onOpenSourcesSettings}
         >
           +
         </button>
         <button
           type="button"
+          className="quick-tooltip"
           aria-label="Source settings"
           title="Source settings"
+          data-tooltip="Source settings"
           onClick={onOpenSourcesSettings}
         >
           <Settings size={16} />
@@ -182,9 +187,10 @@ export function SourcePanel({
               {onCancelSourceJob && (
                 <button
                   type="button"
-                  className="source-job-cancel"
+                  className="source-job-cancel quick-tooltip"
                   aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
                   title={`Cancel ${job.project} ${job.source} ${job.operation}`}
+                  data-tooltip={`Cancel ${job.project} ${job.source} ${job.operation}`}
                   disabled={job.status === 'cancelling'}
                   onClick={() => onCancelSourceJob(job.id)}
                 >

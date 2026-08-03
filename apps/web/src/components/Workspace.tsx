@@ -1,4 +1,4 @@
-import { BookOpen, FileText, History, Link2, Network, Sparkles, Star } from 'lucide-react'
+import { BookOpen, FileText, History, Link2, Network, Star } from 'lucide-react'
 import { type CSSProperties, useEffect, useState } from 'react'
 
 import { isDesktopApp, openDesktopUrl } from '../api'
@@ -7,7 +7,7 @@ import { safeSourceLink } from '../sourceLinks'
 import type { AnswerResponse, BrainDocument, BrainGraphPage, Evidence } from '../types'
 
 const tabs = [
-  { id: 'answer', label: 'Answer', icon: Sparkles },
+  { id: 'answer', label: 'Answer', icon: CortanaBrandMark },
   { id: 'document', label: 'Document', icon: BookOpen },
   { id: 'sources', label: 'Evidence', icon: FileText },
   { id: 'graph', label: 'Graph', icon: Network },
@@ -413,7 +413,7 @@ function AnswerView({
   return (
     <article className="answer-view">
       <span className="eyebrow">
-        <Sparkles size={15} /> Evidence brief
+        <CortanaBrandMark size={14} /> Evidence brief
       </span>
       <h1>{query}</h1>
       {response && (
@@ -555,7 +555,7 @@ function GraphView({
         </svg>
       )}
       <div className="graph-center">
-        <Sparkles size={24} />
+        <CortanaBrandMark size={24} />
       </div>
       <div className="graph-summary" role="status">
         <span>
@@ -641,7 +641,7 @@ function EmptyState({
 }) {
   return (
     <div className="empty-state">
-      <Sparkles size={28} />
+      <CortanaBrandMark size={28} />
       <h1>{title}</h1>
       <p>{detail}</p>
       {action && (
@@ -650,5 +650,33 @@ function EmptyState({
         </button>
       )}
     </div>
+  )
+}
+
+function CortanaBrandMark({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      viewBox="0 0 1024 1024"
+      width={size}
+      height={size}
+      fill="none"
+      aria-hidden="true"
+      role="presentation"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <rect x="88" y="88" width="848" height="848" rx="188" fill="#111d31" />
+      <path
+        d="M512 164C330 164 183 311 183 493s147 329 329 329 329-147 329-329S694 164 512 164Zm0 72c142 0 257 115 257 257S654 750 512 750 255 635 255 493 370 236 512 236Z"
+        fill="#0d2748"
+      />
+      <path
+        d="M482 266c-98 14-175 96-183 195l6 3c8-96 85-176 182-187zM542 266c98 11 175 93 183 194l-6 2c-8-97-86-176-184-187z"
+        fill="#4ed5ff"
+      />
+      <path
+        d="M510 334c-88 0-159 70-159 158s70 158 159 158 159-70 159-158-70-158-159-158Zm0 54c57 0 104 47 104 104s-47 104-104 104-104-47-104-104 47-104 104-104Z"
+        fill="#5ad9ff"
+      />
+    </svg>
   )
 }

@@ -170,24 +170,45 @@
   border-right: 1px solid var(--line);
 }
 
-.settings-nav > button {
+.settings-nav-item {
   padding: 10px 12px;
   color: #aaa9a4;
   border: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   cursor: pointer;
   font-size: 13px;
   text-align: left;
 }
 
-.settings-nav > button:hover,
-.settings-nav > button.active {
+.settings-nav-item:hover,
+.settings-nav-item.active {
   color: #f2f1ec;
   background: #292a27;
 }
 
-.settings-nav > button.active {
+.settings-nav-item.active {
   box-shadow: inset 2px 0 var(--amber);
+}
+
+.settings-nav-divider {
+  margin: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.settings-nav-group {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-nav-subgroup {
+  display: grid;
+  gap: 4px;
+  padding-left: 8px;
+}
+
+.settings-nav-item--sub {
+  color: #9f9d96;
 }
 
 .settings-paths {
