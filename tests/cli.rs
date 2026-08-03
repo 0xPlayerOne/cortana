@@ -440,6 +440,78 @@ fn offline_context_emits_cited_bundle_and_enforces_bounds() {
 }
 
 #[test]
+fn audit_export_preserves_retained_metadata_without_query_content() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let export = directory.path().join("audit.jsonl");
+    fs::write(
+        &config,
+        format!("data_dir = {data:?}\n[embedding]\ndimension = 256\n"),
+    )
+    .expect("write config");
+    let document = r#"{"source":"test","source_id":"one","title":"Runbook","content":"The deployment uses a blue green release process.","project":"demo"}"#;
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(document)
+        .assert()
+        .success();
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["context", "blue green", "--project", "demo"])
+        .assert()
+        .success();
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["audit", "export"])
+        .arg(&export)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("audit export wrote 1 events"));
+
+    let exported_jsonl = fs::read_to_string(&export).expect("read audit export");
+    let line = exported_jsonl.lines().next().expect("audit event line");
+    let event: serde_json::Value = serde_json::from_str(line).expect("audit JSONL");
+    assert_eq!(event["principal"], "local-cli");
+    assert_eq!(event["action"], "local-cli/context");
+    assert!(event.get("query").is_none());
+    assert!(event.get("content").is_none());
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["audit", "export"])
+        .arg(&export)
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("already exists"));
+
+    let json_export = directory.path().join("audit.json");
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["audit", "export", "--format", "json", "--limit", "1"])
+        .arg(&json_export)
+        .assert()
+        .success();
+    let events: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(json_export).expect("read JSON export"))
+            .expect("audit JSON array");
+    assert_eq!(events.as_array().map(Vec::len), Some(1));
+}
+
+#[test]
 fn preembedded_import_validates_and_searches_without_provider_calls() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

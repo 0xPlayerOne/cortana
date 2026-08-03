@@ -109,6 +109,11 @@ enum Command {
         #[command(subcommand)]
         action: AclAction,
     },
+    /// Export the retained metadata-only audit trail for incident review.
+    Audit {
+        #[command(subcommand)]
+        action: AuditAction,
+    },
     /// Create and verify an online SQLite snapshot.
     Backup {
         output: Option<PathBuf>,
@@ -350,6 +355,29 @@ enum AclAction {
     },
 }
 
+#[derive(Debug, Subcommand)]
+enum AuditAction {
+    /// Write retained audit metadata as JSON or newline-delimited JSON.
+    Export {
+        /// Destination path; omit to write the export to stdout.
+        output: Option<PathBuf>,
+        #[arg(long, value_enum, default_value_t = AuditExportFormat::Jsonl)]
+        format: AuditExportFormat,
+        #[arg(long, value_name = "COUNT")]
+        limit: Option<usize>,
+        #[arg(long, help = "Replace an existing destination file")]
+        force: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum AuditExportFormat {
+    Json,
+    Jsonl,
+}
+
+const MAX_AUDIT_EXPORT_EVENTS: usize = 100_000;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     configure_desktop_process_group();
@@ -563,6 +591,9 @@ async fn main() -> Result<()> {
     if let Some(Command::Acl { action }) = cli.command.as_ref() {
         return manage_acl(&config, &store, action);
     }
+    if let Some(Command::Audit { action }) = cli.command.as_ref() {
+        return manage_audit(&config, &store, action);
+    }
     let cache_max_entries = config.embedding.cache_max_entries;
     let base_embedder: Arc<dyn Embedder> = if cli.offline {
         Arc::new(DeterministicEmbedder::new(256))
@@ -617,7 +648,8 @@ async fn main() -> Result<()> {
             | Command::EmbeddingService
             | Command::Service { .. }
             | Command::Readiness { .. }
-            | Command::Acl { .. },
+            | Command::Acl { .. }
+            | Command::Audit { .. },
         ) => {
             unreachable!()
         }
@@ -1546,6 +1578,78 @@ fn manage_service(
         ServiceAction::Restart { service: name } => service::restart(name.as_str()),
         ServiceAction::Uninstall => service::uninstall(),
     }
+}
+
+fn manage_audit(config: &Config, store: &Store, action: &AuditAction) -> Result<()> {
+    match action {
+        AuditAction::Export {
+            output,
+            format,
+            limit,
+            force,
+        } => {
+            let limit = limit.unwrap_or(config.auth.audit_max_events);
+            anyhow::ensure!(
+                limit <= MAX_AUDIT_EXPORT_EVENTS,
+                "audit export limit cannot exceed {MAX_AUDIT_EXPORT_EVENTS} events"
+            );
+            let events = store.audit_events_for_export(limit)?;
+            let count = events.len();
+            if let Some(path) = output {
+                reject_symlink_path(path)?;
+                anyhow::ensure!(
+                    *force || !path.exists(),
+                    "audit export destination already exists: {}; rerun with --force",
+                    path.display()
+                );
+                let mut options = std::fs::OpenOptions::new();
+                options.write(true);
+                if *force {
+                    options.create(true).truncate(true);
+                } else {
+                    options.create_new(true);
+                }
+                configure_no_follow(&mut options);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt;
+                    options.mode(0o600);
+                }
+                let file = options
+                    .open(path)
+                    .with_context(|| format!("failed to create audit export {}", path.display()))?;
+                let mut writer = std::io::BufWriter::new(file);
+                write_audit_export(&mut writer, &events, *format)?;
+                writer.flush()?;
+                println!("audit export wrote {count} events: {}", path.display());
+            } else {
+                let mut writer = std::io::BufWriter::new(std::io::stdout());
+                write_audit_export(&mut writer, &events, *format)?;
+                writer.flush()?;
+            }
+            Ok(())
+        }
+    }
+}
+
+fn write_audit_export(
+    writer: &mut impl Write,
+    events: &[cortana::store::AuditEvent],
+    format: AuditExportFormat,
+) -> Result<()> {
+    match format {
+        AuditExportFormat::Json => {
+            serde_json::to_writer_pretty(&mut *writer, events)?;
+            writeln!(writer)?;
+        }
+        AuditExportFormat::Jsonl => {
+            for event in events {
+                serde_json::to_writer(&mut *writer, event)?;
+                writeln!(writer)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn ensure_recurring_sync_validated(config: &Config) -> Result<()> {
