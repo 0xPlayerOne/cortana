@@ -87,8 +87,9 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
         return fetch_slack(
             arguments.channels,
             arguments.project,
-            arguments.token_env,
-            arguments.max_documents,
+            token_env=arguments.token_env,
+            max_documents=arguments.max_documents,
+            cache_dir=None if arguments.no_cache else arguments.cache_dir,
         )
     if arguments.connector == "discord":
         return fetch_discord(

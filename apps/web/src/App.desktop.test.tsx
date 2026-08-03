@@ -10,6 +10,7 @@ import {
   runtimeAuditEvents,
 } from './test/fixtures'
 import type {
+  AuditEvent,
   DesktopServiceReport,
   DesktopSettings,
   DesktopSettingsUpdate,
@@ -573,6 +574,72 @@ test('desktop settings navigation opens the audit trail and renders both event s
   // Refreshing keeps the audit list stable.
   fireEvent.click(screen.getByRole('button', { name: /Refresh/ }))
   await waitFor(() => expect(screen.getByText('2 runtime · 1 Desktop events')).toBeTruthy())
+})
+
+test('audit trail export downloads exactly the loaded redacted events as JSON', async () => {
+  // Capture the browser download plumbing instead of letting happy-dom resolve
+  // blob URLs, so the payload, filename, and cleanup are all observable.
+  const originalCreateObjectURL = URL.createObjectURL
+  const originalRevokeObjectURL = URL.revokeObjectURL
+  const originalCreateElement = document.createElement.bind(document)
+  const downloads: Array<{ blob: Blob; url: string }> = []
+  const revoked: string[] = []
+  const anchors: HTMLAnchorElement[] = []
+  URL.createObjectURL = (blob: Blob) => {
+    const url = `blob:test:${downloads.length}`
+    downloads.push({ blob, url })
+    return url
+  }
+  URL.revokeObjectURL = (url: string) => {
+    revoked.push(url)
+  }
+  document.createElement = (tag: string, options?: ElementCreationOptions) => {
+    const element = originalCreateElement(tag, options)
+    if (tag === 'a') anchors.push(element as HTMLAnchorElement)
+    return element
+  }
+  try {
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Audit' }))
+    await waitFor(() => expect(screen.getByText('2 runtime · 1 Desktop events')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }))
+
+    // One JSON blob is offered with the exact events already on screen — no
+    // additional fields, no secret material beyond the redacted snapshots.
+    expect(downloads).toHaveLength(1)
+    const { blob, url } = downloads[0]
+    expect(blob.type).toBe('application/json')
+    const payload = JSON.parse(await blob.text()) as {
+      exported_at: string
+      runtime: AuditEvent[]
+      desktop: AuditEvent[]
+    }
+    expect(payload.runtime).toEqual(runtimeAuditEvents)
+    expect(payload.desktop).toEqual(desktopAuditEvents)
+    expect(Object.keys(payload).sort()).toEqual(['desktop', 'exported_at', 'runtime'])
+    expect(Number.isNaN(Date.parse(payload.exported_at))).toBe(false)
+
+    // Deterministic, date-stamped filename on the triggered anchor.
+    expect(anchors).toHaveLength(1)
+    expect(anchors[0].download).toMatch(/^cortana-audit-\d{4}-\d{2}-\d{2}\.json$/)
+    expect(anchors[0].href).toBe(url)
+
+    // The object URL is released after the download click is processed.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+    expect(revoked).toEqual([url])
+  } finally {
+    URL.createObjectURL = originalCreateObjectURL
+    URL.revokeObjectURL = originalRevokeObjectURL
+    document.createElement = originalCreateElement
+  }
 })
 
 test('updates project link surfaces native browser failures', async () => {

@@ -89,6 +89,13 @@ scheduled runs request only messages after the newest cached snowflake. A comple
 daily to capture edits and deletions, while every emitted snapshot remains complete for safe
 reconciliation.
 
+Slack uses the same complete-snapshot contract. Its owner-only cache stores normalized thread
+payloads and the newest parent timestamp per channel; ordinary runs request only messages newer
+than that cursor, then emit the complete cached channel snapshot so reconciliation remains safe.
+At most once per day Slack performs a full history refresh to capture edits and deletions. Bounded
+validation disables the cache, and a bounded trial or initial sync never prunes cached threads it
+did not enumerate.
+
 ## Credentials
 
 - Slack and Discord tokens are read only from the configured environment-variable name.
