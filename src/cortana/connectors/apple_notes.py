@@ -13,9 +13,20 @@ from .model import Document
 SCRIPT = r"""
 const Notes = Application("Notes");
 const rows = [];
+const maxDocuments = undefined;
+outer:
 for (const account of Notes.accounts()) {
+  if (maxDocuments !== undefined && rows.length >= maxDocuments) {
+    break outer;
+  }
   for (const folder of account.folders()) {
+    if (maxDocuments !== undefined && rows.length >= maxDocuments) {
+      break outer;
+    }
     for (const note of folder.notes()) {
+      if (maxDocuments !== undefined && rows.length >= maxDocuments) {
+        break outer;
+      }
       rows.push({
         id: note.id(),
         name: note.name(),
@@ -32,6 +43,14 @@ JSON.stringify(rows);
 MAX_EXPORT_BYTES = 64 * 1024 * 1024
 
 
+def _build_script(max_documents: int | None) -> str:
+    if max_documents is None:
+        return SCRIPT
+    return SCRIPT.replace(
+        "const maxDocuments = undefined;", f"const maxDocuments = {max_documents};"
+    )
+
+
 def fetch(
     project: str = "personal",
     timeout: int = 120,
@@ -39,7 +58,7 @@ def fetch(
 ) -> Iterable[Document]:
     try:
         result = subprocess.run(
-            ["osascript", "-l", "JavaScript", "-e", SCRIPT],
+            ["osascript", "-l", "JavaScript", "-e", _build_script(max_documents)],
             check=True,
             capture_output=True,
             text=True,
