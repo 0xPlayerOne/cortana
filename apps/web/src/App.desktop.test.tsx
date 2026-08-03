@@ -2123,6 +2123,7 @@ test('saving settings with restart_required triggers a background restart and cl
 
     await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
     await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
+    await waitFor(() => expect(screen.queryByText('A service restart is required.')).toBeNull())
   } finally {
     window.confirm = originalConfirm
     state.settings = originalSettings
