@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
 use rmcp::{
@@ -66,6 +67,7 @@ struct BrainStatus {
     #[serde(flatten)]
     stats: crate::store::StoreStats,
     configured_sources: Vec<ConfiguredSourceStatus>,
+    retrieval_fallbacks_total: u64,
 }
 
 #[derive(Clone)]
@@ -78,6 +80,7 @@ pub struct BrainServer {
     code_sources: Vec<String>,
     message_sources: Vec<String>,
     configured_sources: Vec<ConfiguredSourceStatus>,
+    retrieval_fallbacks: Arc<AtomicU64>,
 }
 
 #[tool_router]
@@ -92,6 +95,7 @@ impl BrainServer {
             code_sources: Vec::new(),
             message_sources: Vec::new(),
             configured_sources: Vec::new(),
+            retrieval_fallbacks: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -151,7 +155,7 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
-        match retrieval::retrieve_scoped(
+        match retrieval::retrieve_scoped_with_status(
             &self.store,
             &self.embedder,
             &params.query,
@@ -165,16 +169,24 @@ impl BrainServer {
         )
         .await
         {
-            Ok(rows) => {
+            Ok(retrieval) => {
+                if retrieval.degraded() {
+                    self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed);
+                }
                 self.audit(
                     "mcp.search",
                     params.project.as_deref(),
                     params.source.as_deref(),
-                    "succeeded",
-                    Some(rows.len()),
+                    if retrieval.degraded() {
+                        "degraded"
+                    } else {
+                        "succeeded"
+                    },
+                    Some(retrieval.evidence.len()),
                     started,
                 );
-                serde_json::to_string(&rows).unwrap_or_else(|error| error.to_string())
+                serde_json::to_string(&retrieval.evidence)
+                    .unwrap_or_else(|error| error.to_string())
             }
             Err(error) => {
                 self.audit(
@@ -221,7 +233,7 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
-        match retrieval::retrieve_scoped(
+        match retrieval::retrieve_scoped_with_status(
             &self.store,
             &self.embedder,
             &params.query,
@@ -235,19 +247,28 @@ impl BrainServer {
         )
         .await
         {
-            Ok(rows) => {
+            Ok(retrieval) => {
+                if retrieval.degraded() {
+                    self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed);
+                }
                 self.audit(
                     "mcp.context",
                     params.project.as_deref(),
                     params.source.as_deref(),
-                    "succeeded",
-                    Some(rows.len()),
+                    if retrieval.degraded() {
+                        "degraded"
+                    } else {
+                        "succeeded"
+                    },
+                    Some(retrieval.evidence.len()),
                     started,
                 );
-                serde_json::to_string(&context::build(
+                serde_json::to_string(&context::build_with_retrieval(
                     &params.query,
-                    &rows,
+                    &retrieval.evidence,
                     params.max_tokens.unwrap_or(8_000),
+                    retrieval.mode.as_str(),
+                    retrieval.warning.as_deref(),
                 ))
                 .unwrap_or_else(|error| error.to_string())
             }
@@ -315,6 +336,7 @@ impl BrainServer {
                         .filter(|source| self.principal.is_owner() || acl_allows(&source.acl, &acl))
                         .cloned()
                         .collect(),
+                    retrieval_fallbacks_total: self.retrieval_fallbacks.load(Ordering::Relaxed),
                 });
                 match result {
                     Ok(payload) => {
@@ -365,7 +387,7 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
-        match retrieval::retrieve_sources_scoped(
+        match retrieval::retrieve_sources_scoped_with_status(
             &self.store,
             &self.embedder,
             &params.query,
@@ -376,16 +398,24 @@ impl BrainServer {
         )
         .await
         {
-            Ok(rows) => {
+            Ok(retrieval) => {
+                if retrieval.degraded() {
+                    self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed);
+                }
                 self.audit(
                     action,
                     params.project.as_deref(),
                     None,
-                    "succeeded",
-                    Some(rows.len()),
+                    if retrieval.degraded() {
+                        "degraded"
+                    } else {
+                        "succeeded"
+                    },
+                    Some(retrieval.evidence.len()),
                     started,
                 );
-                serde_json::to_string(&rows).unwrap_or_else(|error| error.to_string())
+                serde_json::to_string(&retrieval.evidence)
+                    .unwrap_or_else(|error| error.to_string())
             }
             Err(error) => {
                 self.audit(
