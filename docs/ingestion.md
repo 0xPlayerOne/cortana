@@ -82,13 +82,15 @@ thread. Drive installs pypdf's AES support.
 
 Complete, reconciling Google runs fail closed on unresolved listing, detail, or conversion data
 so a truncated snapshot can never reconcile as if it were whole. Drive rejects an
-`incompleteSearch` listing, malformed file records, an unparsable `modifiedTime`, content that
-cannot be downloaded without a cached copy, and unsupported or empty file bodies. Gmail rejects
-malformed message listings, any message detail that is denied or unavailable between list and
-detail requests, a detail whose id does not match the listed id, and messages that fail document
-conversion. The one tolerated omission on a complete Drive run is a file whose content download
-failed but which still has a prior cached body: the cached body is emitted, marked `content_stale`
-in metadata, and diagnostics expose only the exception class.
+`incompleteSearch` listing, malformed file records, missing or unparsable `modifiedTime`, invalid
+pagination cursors, content that cannot be downloaded without a cached copy, and unsupported or
+empty file bodies. Gmail rejects malformed message listings, invalid pagination cursors, cached or
+fresh detail IDs that do not match the listed ID, any message detail that is denied or unavailable
+between list and detail requests, and messages that fail document conversion. Calendar applies the
+same strict listing, event, and cursor checks and paginates the calendar list. The one tolerated
+omission on a complete Drive run is a file whose content download failed but which still has a
+prior cached body: the cached body is emitted, marked `content_stale` in metadata, and diagnostics
+expose only the exception class.
 
 Bounded trial or initial syncs never reconcile, so they keep the diagnostic skip behavior instead:
 malformed records, unsupported content, and isolated denied or unavailable message details are

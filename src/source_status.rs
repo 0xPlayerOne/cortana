@@ -127,12 +127,44 @@ pub fn validation_error_category(error: &str) -> Option<&'static str> {
     }
 }
 
+fn summarize_google_validation_error(error: &str) -> &'static str {
+    let normalized = error.to_ascii_lowercase();
+    if normalized.contains("refusing partial snapshot")
+        || normalized.contains("incomplete search")
+        || normalized.contains("incomplete")
+    {
+        "google source snapshot was incomplete"
+    } else if normalized.contains("not an object")
+        || normalized.contains("no such id")
+        || normalized.contains("has no id")
+        || normalized.contains("missing id")
+    {
+        "google source snapshot had malformed records"
+    } else if normalized.contains("conversion failed")
+        || normalized.contains("detail unavailable")
+        || normalized.contains("detail id mismatch")
+        || normalized.contains("content unavailable")
+        || normalized.contains("no supported content")
+    {
+        "google source snapshot had incomplete document data"
+    } else {
+        "source validation failed"
+    }
+}
+
 /// Build the safe status summary for a persisted validation record.
 pub fn validation_summary(
     status: &SourceValidationStatus,
     max_age_hours: u64,
 ) -> SourceValidationSummary {
     let age_seconds = validation_age_seconds(status.validated_at);
+    let error = status.error.as_ref().map(|error| {
+        if is_google_source(&status.kind) {
+            summarize_google_validation_error(error).into()
+        } else {
+            "source validation failed".into()
+        }
+    });
     SourceValidationSummary {
         source: status.source.clone(),
         project: status.project.clone(),
@@ -146,14 +178,7 @@ pub fn validation_summary(
         max_documents: status.max_documents,
         max_bytes: status.max_bytes,
         max_seconds: status.max_seconds,
-        // Connector diagnostics are persisted for local troubleshooting, but
-        // arbitrary connector commands may print tokens, paths, or request
-        // headers. Never send that untrusted text through shared status
-        // output; the failure state itself is sufficient for scoped agents.
-        error: status
-            .error
-            .as_ref()
-            .map(|_| "source validation failed".into()),
+        error,
         error_category: status.error.as_deref().and_then(validation_error_category),
     }
 }
