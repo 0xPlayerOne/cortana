@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.1](https://github.com/0xPlayerOne/cortana/compare/v0.27.0...v0.27.1) (2026-08-03)
+
+
+### Maintenance
+
+* **deps:** bump cryptography in the uv group across 1 directory ([d7a180d](https://github.com/0xPlayerOne/cortana/commit/d7a180dc0511328e9dbb233b8bb23b4a06871feb))
+
 ## [0.27.0](https://github.com/0xPlayerOne/cortana/compare/v0.26.3...v0.27.0) (2026-08-03)
 
 
