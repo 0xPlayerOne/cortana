@@ -362,9 +362,19 @@ fn validation_age_seconds(validated_at: DateTime<Utc>) -> u64 {
 /// A validation is current when its age is within the configured freshness
 /// bound. `validation_max_age_hours == 0` disables the bound, mirroring the
 /// `source-validation` readiness check: an age exactly at the bound still
-/// passes, and only an age strictly beyond it is expired.
-fn validation_is_fresh(age_seconds: u64, max_age_hours: u64) -> bool {
-    max_age_hours == 0 || age_seconds <= max_age_hours.saturating_mul(3_600)
+/// passes, and only an age strictly beyond it is expired. A future
+/// `validated_at` (skewed clock) fails a bounded check, matching
+/// `require_success`, while an unlimited bound keeps accepting it.
+fn validation_is_fresh(validated_at: DateTime<Utc>, max_age_hours: u64) -> bool {
+    if max_age_hours == 0 {
+        return true;
+    }
+    !validation_is_future(validated_at)
+        && validation_age_seconds(validated_at) <= max_age_hours.saturating_mul(3_600)
+}
+
+fn validation_is_future(validated_at: DateTime<Utc>) -> bool {
+    Utc::now() < validated_at
 }
 
 fn validation_summary(
@@ -378,7 +388,7 @@ fn validation_summary(
         kind: status.kind.clone(),
         status: status.status.clone(),
         validated_at: status.validated_at.to_rfc3339(),
-        fresh: validation_is_fresh(age_seconds, max_age_hours),
+        fresh: validation_is_fresh(status.validated_at, max_age_hours),
         age_seconds,
         documents: status.documents,
         bytes: status.bytes,
@@ -2394,6 +2404,56 @@ mod tests {
             .as_ref()
             .expect("persisted validation");
         assert!(validation.fresh);
+    }
+
+    #[test]
+    fn status_marks_a_future_validation_stale_but_keeps_zero_age() {
+        let directory = tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            sources: vec![google_source(None)],
+            ..Config::default()
+        };
+        config.ingestion.validation_max_age_hours = 24;
+        let source = config.sources.first().expect("configured source");
+        let fingerprint =
+            source_validation::configuration_fingerprint(source).expect("validation fingerprint");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "succeeded".into(),
+                validated_at: chrono::Utc::now() + chrono::Duration::hours(2),
+                documents: Some(1),
+                bytes: Some(1),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(fingerprint),
+                error: None,
+            },
+        )
+        .expect("validation state");
+
+        let status = IngestionStatus::from_config(&config, false);
+        let validation = status.configured_sources[0]
+            .validation
+            .as_ref()
+            .expect("persisted validation");
+        assert!(!validation.fresh);
+        assert_eq!(validation.age_seconds, 0);
+
+        // `0` disables the freshness bound: the same future record stays fresh.
+        config.ingestion.validation_max_age_hours = 0;
+        let status = IngestionStatus::from_config(&config, false);
+        let validation = status.configured_sources[0]
+            .validation
+            .as_ref()
+            .expect("persisted validation");
+        assert!(validation.fresh);
+        assert_eq!(validation.age_seconds, 0);
     }
 
     #[test]

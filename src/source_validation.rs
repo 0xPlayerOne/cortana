@@ -136,6 +136,12 @@ pub fn require_success(
     if max_age > chrono::Duration::zero() {
         let age = Utc::now().signed_duration_since(validation.validated_at);
         anyhow::ensure!(
+            age >= chrono::Duration::zero(),
+            "source {} validation timestamp is {} in the future; check the system clock and re-run validate-source",
+            source.name,
+            describe_age(-age)
+        );
+        anyhow::ensure!(
             age <= max_age,
             "source {} validation is {} old (maximum {}); re-run validate-source",
             source.name,
@@ -528,6 +534,54 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn future_validation_timestamp_fails_a_bounded_check_but_passes_unlimited() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let source = source();
+        record(
+            directory.path(),
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "succeeded".into(),
+                validated_at: Utc::now() + chrono::Duration::hours(2),
+                documents: Some(12),
+                bytes: Some(512),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(configuration_fingerprint(&source).unwrap()),
+                error: None,
+            },
+        )
+        .unwrap();
+
+        let future = require_success(
+            directory.path(),
+            &source,
+            25,
+            1024,
+            60,
+            chrono::Duration::hours(24),
+        )
+        .expect_err("a future validation timestamp must fail a bounded freshness check");
+        let message = format!("{future:#}");
+        assert!(message.contains("in the future"), "{message}");
+        assert!(message.contains("system clock"), "{message}");
+        assert!(message.contains("re-run validate-source"), "{message}");
+
+        require_success(
+            directory.path(),
+            &source,
+            25,
+            1024,
+            60,
+            chrono::Duration::zero(),
+        )
+        .expect("an unlimited freshness bound accepts future timestamps");
     }
 
     #[cfg(unix)]
