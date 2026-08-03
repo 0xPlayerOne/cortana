@@ -2791,6 +2791,7 @@ const SOURCE_KINDS: Array<{ value: SourceKind; label: string }> = [
   { value: 'google-drive', label: 'Google Drive' },
   { value: 'gmail', label: 'Gmail' },
   { value: 'google-calendar', label: 'Google Calendar' },
+  { value: 'github', label: 'GitHub code' },
   { value: 'slack', label: 'Slack' },
   { value: 'discord', label: 'Discord' },
 ]
@@ -3560,16 +3561,43 @@ function SourcesSection({
                       </Field>
                     </>
                   )}
-                  {(source.kind === 'slack' || source.kind === 'discord') && (
+                  {(source.kind === 'github' ||
+                    source.kind === 'slack' ||
+                    source.kind === 'discord') && (
                     <>
-                      <Field label="Channel IDs" hint="comma or line separated" wide>
-                        <input
-                          value={source.channels.join(', ')}
+                      <Field
+                        label={source.kind === 'github' ? 'Repositories' : 'Channel IDs'}
+                        hint={
+                          source.kind === 'github'
+                            ? 'one owner/repository per line; only these repositories are indexed'
+                            : 'comma or line separated'
+                        }
+                        wide
+                      >
+                        <textarea
+                          value={
+                            source.kind === 'github'
+                              ? source.repositories.join('\n')
+                              : source.channels.join(', ')
+                          }
                           disabled={sourceLocked || !source.editable}
                           required={source.enabled}
-                          onChange={(event) =>
-                            changeSource(index, { channels: splitList(event.target.value) })
+                          rows={source.kind === 'github' ? 3 : 1}
+                          placeholder={
+                            source.kind === 'github' ? 'owner/repository' : 'Channel IDs'
                           }
+                          aria-label={
+                            source.kind === 'github' ? 'GitHub repositories' : 'Channel IDs'
+                          }
+                          onChange={(event) => {
+                            const values = splitList(event.target.value)
+                            changeSource(
+                              index,
+                              source.kind === 'github'
+                                ? { repositories: values }
+                                : { channels: values }
+                            )
+                          }}
                         />
                       </Field>
                       <Field
@@ -3958,6 +3986,7 @@ function newSource(settings: DesktopSettings): SourceSettings {
     root: null,
     source: null,
     channels: [],
+    repositories: [],
     token_env: null,
     token_path: null,
     oauth_client_path: null,
@@ -4140,6 +4169,7 @@ function safeMarkdownUrl(value: string): string | null {
 }
 
 function defaultTokenEnv(kind: SourceKind): string | null {
+  if (kind === 'github') return 'GITHUB_TOKEN'
   if (kind === 'slack') return 'SLACK_BOT_TOKEN'
   if (kind === 'discord') return 'DISCORD_BOT_TOKEN'
   return null
@@ -4150,7 +4180,7 @@ function isGoogleSource(kind: SourceKind) {
 }
 
 function hasBrowserSetup(kind: SourceKind) {
-  return isGoogleSource(kind) || kind === 'slack' || kind === 'discord'
+  return isGoogleSource(kind) || kind === 'github' || kind === 'slack' || kind === 'discord'
 }
 
 function splitList(value: string) {

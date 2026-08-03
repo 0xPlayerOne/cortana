@@ -5,11 +5,19 @@ import {
   Code2,
   Database,
   Folder,
+  Github,
   Mail,
   MessageCircle,
   StickyNote,
 } from 'lucide-react'
-import { siApple, siDiscord, siGmail, siGoogledrive, siGooglecalendar } from 'simple-icons'
+import {
+  siApple,
+  siDiscord,
+  siGithub,
+  siGmail,
+  siGoogledrive,
+  siGooglecalendar,
+} from 'simple-icons'
 import type { SimpleIcon } from 'simple-icons'
 
 type BrandGlyph = Pick<SimpleIcon, 'path' | 'hex'>
@@ -18,6 +26,7 @@ const sourceIcons: Record<string, typeof Folder> = {
   filesystem: Code2,
   'google-drive': Cloud,
   'google-calendar': CalendarDays,
+  github: Github,
   gmail: Mail,
   'apple-notes': StickyNote,
   discord: MessageCircle,
@@ -31,6 +40,7 @@ const sourceBrands: Record<string, BrandGlyph> = {
   gmail: siGmail,
   'google-drive': siGoogledrive,
   'google-calendar': siGooglecalendar,
+  github: siGithub,
   // Slack was removed from the current Simple Icons release. Keep the
   // official CC0-era path local so the connector still gets a real brand
   // mark without pulling a second icon package into the bundle.
@@ -57,6 +67,7 @@ export function sourceDisplayName(kind: string, fallback: string): string {
     'google-drive': 'Google Drive',
     gmail: 'Gmail',
     'google-calendar': 'Google Calendar',
+    github: 'GitHub code',
     slack: 'Slack',
     discord: 'Discord',
   }

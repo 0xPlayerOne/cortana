@@ -157,6 +157,7 @@ export type SourceKind =
   | 'google-drive'
   | 'gmail'
   | 'google-calendar'
+  | 'github'
   | 'slack'
   | 'discord'
   | 'external'
@@ -169,6 +170,7 @@ export type SourceSettings = {
   root: string | null
   source: string | null
   channels: string[]
+  repositories: string[]
   token_env: string | null
   token_path: string | null
   oauth_client_path: string | null

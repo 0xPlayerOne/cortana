@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { Bot, Code2, Cloud, Database, MessageCircle } from 'lucide-react'
+import { Bot, Code2, Cloud, Database, Github, MessageCircle } from 'lucide-react'
 
 import type {
   BrainDocumentSummary,
@@ -249,6 +249,7 @@ test('SourcePanel source and settings shortcuts open the Sources settings sectio
 test('source icons use the exact configured connector kind', () => {
   expect(sourceIconForKind('filesystem')).toBe(Code2)
   expect(sourceIconForKind('google-drive')).toBe(Cloud)
+  expect(sourceIconForKind('github')).toBe(Github)
   expect(sourceIconForKind('slack')).toBe(MessageCircle)
   expect(sourceIconForKind('buzz')).toBe(Bot)
   expect(sourceIconForKind('slack-archive')).toBe(Database)

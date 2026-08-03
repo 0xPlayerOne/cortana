@@ -1355,6 +1355,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token,
             oauth_client: None,
