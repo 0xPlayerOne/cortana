@@ -276,6 +276,11 @@ def fetch_drive(
                                 if stale is not None:
                                     body = stale
                                     stale_ids.add(file_id)
+                                elif strict:
+                                    raise RuntimeError(
+                                        "Drive file content unavailable: "
+                                        f"id={file_id}; refusing partial snapshot"
+                                    )
                                 print(
                                     "drive file content unavailable: "
                                     f"id={file_id} error={error_name} "
@@ -299,6 +304,11 @@ def fetch_drive(
                             cache.commit()
                             pending_writes = 0
                     if not body.strip():
+                        if strict:
+                            raise RuntimeError(
+                                "Drive file has no supported content: "
+                                f"id={file_id}; refusing partial snapshot"
+                            )
                         continue
                     try:
                         updated_at = _timestamp(item.get("modifiedTime"))
@@ -417,6 +427,11 @@ def fetch_gmail(
                         unavailable = 0
                         for message_id, message in zip(missing_ids, fetched, strict=True):
                             if message is None:
+                                if strict:
+                                    raise RuntimeError(
+                                        "Gmail message detail unavailable: "
+                                        f"id={message_id}; refusing partial snapshot"
+                                    )
                                 unavailable += 1
                             else:
                                 if strict and str(message.get("id") or "") != message_id:
