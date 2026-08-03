@@ -130,6 +130,12 @@ export function sourceHealth(source: OperationalSource) {
   }
   if (!source.sync) {
     if (source.validation?.status === 'succeeded') {
+      if (source.validation.fresh === false) {
+        return {
+          state: 'warning',
+          label: `Connector validation expired ${new Date(source.validation.validated_at).toLocaleString()}; re-validate before recurring sync`,
+        }
+      }
       return {
         state: 'healthy',
         label: `Connector validated ${new Date(source.validation.validated_at).toLocaleString()}`,
