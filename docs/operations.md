@@ -71,6 +71,12 @@ operational history bounded. Runtime request counters in a scoped status respons
 per authenticated principal; only the local owner or an admin-scoped principal receives the
 process-wide totals used for operations dashboards.
 
+`[ingestion].sync_freshness_hours` (48 hours by default) is a separate operational bound for a
+successful sync. The API exposes it in `/v1/status`, and the workspace marks a successful run as
+stale when its completion is older than that window. Set it to `0` only when a source is managed
+outside Cortana's scheduler and stale-sync warnings are intentionally disabled; this does not
+disable source-validation freshness or the recurring-sync safety gate.
+
 ### Bounded source smoke checks
 
 Use the checked-in smoke harness when authorizing a new machine or verifying a credential rotation:

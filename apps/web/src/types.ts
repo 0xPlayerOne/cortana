@@ -130,6 +130,7 @@ export type IngestionStatus = {
   max_duration_seconds: number
   request_concurrency: number
   validation_max_age_hours?: number
+  sync_freshness_hours?: number
   validation_state_error?: string | null
   configured_sources: ConfiguredSourceSummary[]
 }
@@ -278,6 +279,7 @@ export type DesktopSettings = {
     max_duration_seconds: number
     document_batch_size: number
     request_concurrency: number
+    sync_freshness_hours: number
   }
   runtime: {
     data_dir: string

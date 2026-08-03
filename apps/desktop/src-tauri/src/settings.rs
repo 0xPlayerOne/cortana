@@ -122,6 +122,7 @@ pub struct IngestionSettings {
     pub max_duration_seconds: u64,
     pub document_batch_size: usize,
     pub request_concurrency: usize,
+    pub sync_freshness_hours: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -925,6 +926,7 @@ fn snapshot(
             max_duration_seconds: u64_value(root, "ingestion", "max_duration_seconds", 900),
             document_batch_size: usize_value(root, "ingestion", "document_batch_size", 16),
             request_concurrency: usize_value(root, "ingestion", "request_concurrency", 1),
+            sync_freshness_hours: u64_value(root, "ingestion", "sync_freshness_hours", 48),
         },
         runtime: RuntimeSettings {
             data_dir: top_string(root, "data_dir", &default_data_path().display().to_string()),
@@ -1373,6 +1375,12 @@ fn validate_update_with_legacy_scopes(
         86_400,
     )?;
     bounded_u64(
+        "sync freshness",
+        update.ingestion.sync_freshness_hours,
+        0,
+        8_760,
+    )?;
+    bounded_u64(
         "connector timeout",
         update.runtime.connector_timeout_seconds,
         1,
@@ -1572,6 +1580,10 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
         (
             "request_concurrency",
             update.ingestion.request_concurrency as i64,
+        ),
+        (
+            "sync_freshness_hours",
+            update.ingestion.sync_freshness_hours as i64,
         ),
     ] {
         set_integer(root, "ingestion", key, value);
@@ -2775,6 +2787,7 @@ mod tests {
                 max_duration_seconds: 1800,
                 document_batch_size: 64,
                 request_concurrency: 2,
+                sync_freshness_hours: 48,
             },
             runtime: RuntimeSettings {
                 data_dir: root.join("data").display().to_string(),
@@ -3103,6 +3116,7 @@ mod tests {
         assert_eq!(state.ingestion.max_duration_seconds, 900);
         assert_eq!(state.ingestion.document_batch_size, 16);
         assert_eq!(state.ingestion.request_concurrency, 1);
+        assert_eq!(state.ingestion.sync_freshness_hours, 48);
         assert_eq!(state.runtime.connector_timeout_seconds, 21_600);
         assert!(!state.hindsight.enabled);
         assert_eq!(state.hindsight.provider, "hindsight");
