@@ -618,14 +618,13 @@ pub fn sync_job_installed() -> bool {
     }
     #[cfg(target_os = "linux")]
     {
-        systemd_unit_path("sync")
-            .map(|path| {
-                let Some(directory) = path.parent() else {
-                    return false;
-                };
-                path.is_file() && directory.join(systemd_timer_unit("sync")).is_file()
-            })
-            .unwrap_or(false)
+        let Ok(path) = systemd_unit_path("sync") else {
+            return false;
+        };
+        let Some(directory) = path.parent() else {
+            return false;
+        };
+        path.is_file() && directory.join(systemd_timer_unit("sync")).is_file()
     }
     #[cfg(target_os = "windows")]
     {

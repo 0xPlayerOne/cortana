@@ -2606,9 +2606,9 @@ function SourcesSection({
     planning: boolean
     flowError: string
   } | null>(null)
-  const [cancelPending, setCancelPending] = useState(false)
   const validationPlanKey = useRef('')
   const sharedJobIds = useRef(new Set<string>())
+  const cancelInFlight = useRef(new Set<string>())
   const foreground = useDesktopForeground()
 
   // In the full Desktop shell, App owns one poller for the source-job list so
@@ -2882,23 +2882,23 @@ function SourcesSection({
   }
 
   const cancel = async () => {
-    if (!observedJob || cancelPending || observedJob.status !== 'running') return
-    const previous = observedJob
-    setCancelPending(true)
+    const current = observedJob
+    if (!current || current.status !== 'running' || cancelInFlight.current.has(current.id)) return
+    cancelInFlight.current.add(current.id)
+    const previous = current
     applyJob({
-      ...observedJob,
+      ...current,
       status: 'cancelling',
-      summary: `Cancelling source ${observedJob.operation}…`,
+      summary: `Cancelling source ${current.operation}…`,
     })
+    setError('')
     try {
-      applyJob(await cancelDesktopSourceValidation(observedJob.id))
+      applyJob(await cancelDesktopSourceValidation(current.id))
     } catch (caught) {
       applyJob(previous)
-      setError(
-        caught instanceof Error ? caught.message : 'Source validation could not be cancelled'
-      )
+      setError(caught instanceof Error ? caught.message : 'Source job cancellation failed')
     } finally {
-      setCancelPending(false)
+      cancelInFlight.current.delete(current.id)
     }
   }
 
@@ -3453,7 +3453,7 @@ function SourcesSection({
             {['running', 'cancelling'].includes(observedJob.status) && (
               <button
                 type="button"
-                disabled={observedJob.status === 'cancelling' || cancelPending}
+                disabled={observedJob.status === 'cancelling'}
                 onClick={() => void cancel()}
               >
                 <CircleStop size={14} /> Cancel

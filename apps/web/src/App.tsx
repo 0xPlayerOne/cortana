@@ -1221,20 +1221,17 @@ export function App() {
     const current = sourceJobs.jobs.find((job) => job.id === id)
     if (!current || current.status !== 'running') return
     sourceCancelInFlightRef.current.add(id)
-    setSourceJobError('')
-    // Mark the job as cancelling before the native round-trip completes. This
-    // keeps every surface (sidebar, Inbox, and footer) honest and prevents a
-    // slow connector from receiving duplicate cancellation requests.
     sourceJobs.remember({
       ...current,
       status: 'cancelling',
       summary: `Cancelling source ${current.operation}…`,
     })
+    setSourceJobError('')
     void cancelDesktopSourceValidation(id)
       .then(sourceJobs.remember)
       .then(() => setSourceJobError(''))
       .catch((caught: unknown) => {
-        // If the native cancellation failed before it could change the job,
+        // If native cancellation failed before it could change the job,
         // restore the last known running snapshot so the operator can retry.
         sourceJobs.remember(current)
         setSourceJobError(

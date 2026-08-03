@@ -212,8 +212,7 @@ mock.module('./api', () => ({
   },
   cancelDesktopSourceValidation: (id: string) => {
     state.cancelCalls.push(id)
-    if (state.cancelDeferred) return state.cancelDeferred.promise
-    return Promise.resolve(jobFor('small', 'cancelled'))
+    return state.cancelDeferred?.promise ?? Promise.resolve(jobFor('small', 'cancelled'))
   },
 }))
 

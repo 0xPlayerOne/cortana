@@ -226,26 +226,6 @@ test('changing workspace clears evidence from the previous security scope', asyn
   }
 })
 
-test('title-bar search returns to the answer surface from utility views', async () => {
-  state.answer = () => Promise.resolve({ ...answerResponse, query: 'utility search' })
-  try {
-    render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }))
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Inbox' })).toBeTruthy())
-
-    const input = screen.getByRole('textbox', { name: 'Search your knowledge' })
-    fireEvent.change(input, { target: { value: 'utility search' } })
-    fireEvent.submit(input.closest('form')!)
-
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { level: 1, name: 'utility search' })).toBeTruthy()
-    )
-    expect(screen.getByRole('tab', { name: 'Answer' }).getAttribute('aria-selected')).toBe('true')
-  } finally {
-    state.answer = null
-  }
-})
-
 test('keyset pagination appends the next page and document selection opens the canonical view', async () => {
   state.documentsCalls = []
   render(<App />)

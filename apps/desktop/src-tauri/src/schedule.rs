@@ -187,10 +187,8 @@ mod tests {
 
     #[test]
     fn rejects_intervals_that_are_too_aggressive_or_slow() {
-        let mut settings = ScheduleSettings {
-            sync_interval_seconds: MIN_SYNC_INTERVAL_SECONDS - 1,
-            ..ScheduleSettings::default()
-        };
+        let mut settings = ScheduleSettings::default();
+        settings.sync_interval_seconds = MIN_SYNC_INTERVAL_SECONDS - 1;
         assert!(validate(&settings).is_err());
         settings.sync_interval_seconds = MAX_SYNC_INTERVAL_SECONDS + 1;
         assert!(validate(&settings).is_err());

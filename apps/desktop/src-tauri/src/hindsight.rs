@@ -30,7 +30,9 @@ pub async fn status() -> Result<HindsightStatus, String> {
         .map(settings::secret_value_for_env)
         .transpose()?
         .flatten()
-        .filter(|value| !value.is_empty() && value.trim() == value && !value.contains(['\r', '\n']));
+        .filter(|value| {
+            !value.is_empty() && value.trim() == value && !value.contains(['\r', '\n'])
+        });
     let token_configured = token.is_some();
 
     if !config.enabled {
@@ -104,7 +106,10 @@ pub async fn status() -> Result<HindsightStatus, String> {
             endpoint,
             bank,
             token_configured: true,
-            detail: Some(format!("Hindsight health endpoint returned HTTP {}.", response.status().as_u16())),
+            detail: Some(format!(
+                "Hindsight health endpoint returned HTTP {}.",
+                response.status().as_u16()
+            )),
         })
     }
 }
@@ -142,7 +147,13 @@ fn endpoint_label(base_url: &str) -> String {
 fn sanitize_error(error: &str) -> String {
     let value = error
         .chars()
-        .map(|character| if character.is_control() { ' ' } else { character })
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
         .collect::<String>();
     let value = value.split_whitespace().collect::<Vec<_>>().join(" ");
     if value.chars().count() > 512 {
@@ -161,14 +172,19 @@ mod tests {
     #[test]
     fn health_url_preserves_reverse_proxy_path_and_rejects_unsafe_urls() {
         assert_eq!(
-            health_url("https://example.test/hindsight").expect("health URL").as_str(),
+            health_url("https://example.test/hindsight")
+                .expect("health URL")
+                .as_str(),
             "https://example.test/hindsight/health"
         );
         assert!(health_url("https://user:pass@example.test").is_err());
         assert!(health_url("https://example.test/?token=secret").is_err());
         assert!(health_url("http://example.test").is_err());
         assert!(health_url("file:///tmp/hindsight").is_err());
-        assert_eq!(endpoint_label("https://user:pass@example.test"), "<invalid endpoint>");
+        assert_eq!(
+            endpoint_label("https://user:pass@example.test"),
+            "<invalid endpoint>"
+        );
     }
 
     #[test]
