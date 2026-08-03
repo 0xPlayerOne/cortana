@@ -1809,6 +1809,8 @@ fn verify_database(path: &Path) -> Result<()> {
         "database does not exist: {}",
         path.display()
     );
+    let metadata = std::fs::metadata(path)?;
+    anyhow::ensure!(metadata.len() > 0, "database is empty: {}", path.display());
     let connection = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let result: String = connection.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
     anyhow::ensure!(result == "ok", "database integrity check failed: {result}");

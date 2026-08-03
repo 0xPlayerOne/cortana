@@ -265,32 +265,49 @@ async fn api_check(api_url: &str) -> ReadinessCheck {
 }
 
 fn backup_check(directory: &Path, max_age_hours: u64) -> ReadinessCheck {
-    let latest = std::fs::read_dir(directory).ok().and_then(|entries| {
-        entries
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                entry
-                    .path()
-                    .extension()
-                    .is_some_and(|extension| extension == "sqlite3")
-            })
-            .filter_map(|entry| {
-                let metadata = std::fs::symlink_metadata(entry.path()).ok()?;
-                if !metadata.file_type().is_file() {
-                    return None;
-                }
-                metadata
-                    .modified()
-                    .ok()
-                    .map(|modified| (entry.path(), modified))
-            })
-            .max_by_key(|(_, modified)| *modified)
-    });
-    let Some((path, modified)) = latest else {
+    let mut candidates = std::fs::read_dir(directory)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .is_some_and(|extension| extension == "sqlite3")
+        })
+        .filter_map(|entry| {
+            let path = entry.path();
+            let metadata = std::fs::symlink_metadata(&path).ok()?;
+            if !metadata.file_type().is_file() {
+                return None;
+            }
+            metadata.modified().ok().map(|modified| (path, modified))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| right.1.cmp(&left.1));
+    let mut invalid = Vec::new();
+    let Some((path, modified)) = candidates.into_iter().find(|(path, _)| {
+        if Store::verify(path).is_ok() {
+            true
+        } else {
+            invalid.push(path.display().to_string());
+            false
+        }
+    }) else {
+        let detail = if invalid.is_empty() {
+            format!("no verified SQLite backup found in {}", directory.display())
+        } else {
+            format!(
+                "no verified SQLite backup found in {}; invalid candidates: {}",
+                directory.display(),
+                invalid.join(", ")
+            )
+        };
         return ReadinessCheck {
             name: "backup-freshness".into(),
             passed: false,
-            detail: format!("no SQLite backup found in {}", directory.display()),
+            detail,
         };
     };
     let age = SystemTime::now()
@@ -301,10 +318,15 @@ fn backup_check(directory: &Path, max_age_hours: u64) -> ReadinessCheck {
         name: "backup-freshness".into(),
         passed: age <= maximum,
         detail: format!(
-            "{} is {} hours old (maximum {})",
+            "{} is a verified backup {} hours old (maximum {}){}",
             path.display(),
             age.as_secs() / 3600,
-            max_age_hours
+            max_age_hours,
+            if invalid.is_empty() {
+                String::new()
+            } else {
+                format!("; ignored {} invalid newer candidate(s)", invalid.len())
+            }
         ),
     }
 }
@@ -417,8 +439,29 @@ mod tests {
     fn backup_freshness_requires_a_sqlite_snapshot() {
         let directory = tempdir().expect("temporary directory");
         assert!(!backup_check(directory.path(), 48).passed);
-        File::create(directory.path().join("backup.sqlite3")).expect("backup fixture");
+        File::create(directory.path().join("backup.sqlite3")).expect("invalid backup fixture");
+        assert!(!backup_check(directory.path(), 48).passed);
+        let store = Store::open(&directory.path().join("source.sqlite3")).expect("source store");
+        store
+            .backup(&directory.path().join("verified.sqlite3"))
+            .expect("verified backup fixture");
         assert!(backup_check(directory.path(), 48).passed);
+    }
+
+    #[test]
+    fn backup_freshness_uses_an_older_verified_backup_when_newest_is_corrupt() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("source.sqlite3")).expect("source store");
+        store
+            .backup(&directory.path().join("verified.sqlite3"))
+            .expect("verified backup fixture");
+        std::thread::sleep(Duration::from_millis(5));
+        File::create(directory.path().join("newest.sqlite3")).expect("invalid backup fixture");
+
+        let check = backup_check(directory.path(), 48);
+        assert!(check.passed);
+        assert!(check.detail.contains("verified backup"));
+        assert!(check.detail.contains("ignored 1 invalid newer candidate"));
     }
 
     #[cfg(unix)]

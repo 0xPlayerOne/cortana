@@ -280,10 +280,12 @@ embedding task, and recurring sync remains opt-in and validation-gated on every 
 ## Read-only production readiness
 
 Run `cortana readiness` to check API liveness, embedding availability, embedding/index generation
-compatibility, database integrity, backup freshness, query mode, and recurring-sync state. A
-generation mismatch is reported with both fingerprints and readiness never changes the existing
-index. If the provider endpoint changed but the model, dimension, and vector space are known to be
-identical, an operator can adopt the exact stored generation without re-embedding the corpus:
+compatibility, database integrity, verified backup freshness, query mode, and recurring-sync state.
+Readiness runs SQLite integrity verification on the newest backup candidates and ignores a corrupt
+newer file when an older verified snapshot is still within the configured age bound. A generation
+mismatch is reported with both fingerprints and readiness never changes the existing index. If the
+provider endpoint changed but the model, dimension, and vector space are known to be identical, an
+operator can adopt the exact stored generation without re-embedding the corpus:
 
 Desktop readiness also reports the local `text-embeddings-router` executable when the configured
 embedding provider is local. On macOS, if Homebrew is already installed, the Settings installer
