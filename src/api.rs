@@ -2518,6 +2518,62 @@ mod tests {
         assert_eq!(invalid.status(), StatusCode::BAD_REQUEST);
     }
 
+    #[test]
+    fn document_cursor_decode_rejects_invalid_payloads() {
+        assert!(decode_document_cursor("not-valid-base64").is_err());
+
+        let malformed_json = URL_SAFE_NO_PAD.encode("not-json");
+        assert!(decode_document_cursor(&malformed_json).is_err());
+
+        let oversized = URL_SAFE_NO_PAD.encode(&vec![b'X'; 513]);
+        assert!(decode_document_cursor(&oversized).is_err());
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let non_hex_id = URL_SAFE_NO_PAD.encode(
+            serde_json::to_vec(&EncodedDocumentCursor {
+                updated_at: now.clone(),
+                id: "not-a-hex-id".into(),
+            })
+            .expect("encode invalid id cursor"),
+        );
+        let non_hex = decode_document_cursor(&non_hex_id).expect_err("invalid ids should fail");
+        assert_eq!(
+            non_hex,
+            (
+                StatusCode::BAD_REQUEST,
+                "invalid document cursor".to_string()
+            )
+        );
+
+        let invalid_updated_at = URL_SAFE_NO_PAD.encode(
+            serde_json::to_vec(&EncodedDocumentCursor {
+                updated_at: "2026-13-01T00:00:00Z".into(),
+                id: "deadbeef".into(),
+            })
+            .expect("encode invalid updated_at cursor"),
+        );
+        let invalid_time = decode_document_cursor(&invalid_updated_at)
+            .expect_err("invalid timestamps should fail");
+        assert_eq!(
+            invalid_time,
+            (
+                StatusCode::BAD_REQUEST,
+                "invalid document cursor".to_string()
+            )
+        );
+
+        let valid = URL_SAFE_NO_PAD.encode(
+            serde_json::to_vec(&EncodedDocumentCursor {
+                updated_at: now.clone(),
+                id: "feedface".into(),
+            })
+            .expect("encode valid cursor"),
+        );
+        let decoded = decode_document_cursor(&valid).expect("decode valid cursor");
+        assert_eq!(decoded.id, "feedface");
+        assert_eq!(decoded.updated_at, now);
+    }
+
     #[tokio::test]
     async fn scoped_tokens_filter_evidence_and_admin_only_audit_omits_queries() {
         let (_directory, state) = test_state(None);
