@@ -106,63 +106,71 @@ test('workspace and source selection scopes the source tree and document request
   state.documentsCalls = []
   render(<App />)
 
-  // Initial load: every configured source is visible.
-  await waitFor(() => expect(screen.getByRole('button', { name: /^work-code/ })).toBeTruthy())
-  expect(screen.getByRole('button', { name: /^personal-notes/ })).toBeTruthy()
+  // Sources are scoped to the primary workspace by default.
+  fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
+  await waitFor(() => expect(screen.getByRole('combobox')).toBeTruthy())
+  const workspaceSelect = screen.getByRole('combobox') as HTMLSelectElement
+  const primaryWorkspace = workspaceSelect.value
+  expect(primaryWorkspace).toBeTruthy()
+
+  // Primary workspace sources render, while other workspace sources are hidden.
+  if (primaryWorkspace === 'work') {
+    await waitFor(() => expect(screen.getByRole('button', { name: /^work-code/ })).toBeTruthy())
+    expect(screen.queryByRole('button', { name: /^personal-notes/ })).toBeNull()
+  } else {
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^personal-notes/ })).toBeTruthy()
+    )
+    expect(screen.queryByRole('button', { name: /^work-code/ })).toBeNull()
+  }
+
+  const targetWorkspace = primaryWorkspace === 'personal' ? 'work' : 'personal'
+  const targetWorkspaceSource = new RegExp(
+    `^${targetWorkspace === 'work' ? 'work-code' : 'personal-notes'}`
+  )
 
   // Selecting a workspace filters the source tree to that project.
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'work' } })
-  await waitFor(() => expect(screen.queryByRole('button', { name: /^personal-notes/ })).toBeNull())
-  expect(screen.getByRole('button', { name: /^team-slack/ })).toBeTruthy()
+  fireEvent.change(workspaceSelect, { target: { value: targetWorkspace } })
+  await waitFor(() => expect(workspaceSelect.value).toBe(targetWorkspace))
+  const primaryHiddenSource = new RegExp(
+    `^${primaryWorkspace === 'work' ? 'work-code' : 'personal-notes'}`
+  )
+  expect(screen.queryByRole('button', { name: primaryHiddenSource })).toBeNull()
+  expect(screen.getByRole('button', { name: targetWorkspaceSource })).toBeTruthy()
   expect(state.documentsCalls.at(-1)).toEqual({
-    project: 'work',
+    project: targetWorkspace,
     source: undefined,
     query: undefined,
     cursor: undefined,
   })
 
   // Selecting a source inside the workspace presses it and rescopes documents.
-  const workCode = screen.getByRole('button', { name: /^work-code/ })
-  fireEvent.click(workCode)
-  await waitFor(() => expect(workCode.getAttribute('aria-pressed')).toBe('true'))
+  const firstSource = screen.getByRole('button', { name: targetWorkspaceSource })
+  fireEvent.click(firstSource)
+  await waitFor(() => expect(firstSource.getAttribute('aria-pressed')).toBe('true'))
   expect(state.documentsCalls.at(-1)).toEqual({
-    project: 'work',
-    source: 'work-code',
+    project: targetWorkspace,
+    source: targetWorkspace === 'work' ? 'work-code' : 'personal-notes',
     query: undefined,
     cursor: undefined,
   })
 
   // Clicking the same source again toggles the selection off.
-  fireEvent.click(workCode)
-  await waitFor(() => expect(workCode.getAttribute('aria-pressed')).toBe('false'))
+  fireEvent.click(firstSource)
+  await waitFor(() => expect(firstSource.getAttribute('aria-pressed')).toBe('false'))
   expect(state.documentsCalls.at(-1)?.source).toBeUndefined()
 
-  // Back to "All workspaces": a source from another project then switches
-  // both the workspace scope and the selected source.
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } })
-  await waitFor(() => expect(screen.getByRole('button', { name: /^personal-notes/ })).toBeTruthy())
-  fireEvent.click(screen.getByRole('button', { name: /^personal-notes/ }))
-  await waitFor(() =>
-    expect(
-      screen.getByRole('button', { name: /^personal-notes/ }).getAttribute('aria-pressed')
-    ).toBe('true')
-  )
-  expect(state.documentsCalls.at(-1)).toEqual({
-    project: 'personal',
-    source: 'personal-notes',
-    query: undefined,
-    cursor: undefined,
-  })
-
-  // "All workspaces" clears the workspace and the source selection.
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: '' } })
-  await waitFor(() =>
-    expect(
-      screen.getByRole('button', { name: /^personal-notes/ }).getAttribute('aria-pressed')
-    ).toBe('false')
-  )
-  expect(state.documentsCalls.at(-1)?.project).toBeUndefined()
-  expect(state.documentsCalls.at(-1)?.source).toBeUndefined()
+  // Switching back to the primary workspace should return only that workspace's sources.
+  fireEvent.change(workspaceSelect, { target: { value: primaryWorkspace } })
+  await waitFor(() => expect(workspaceSelect.value).toBe(primaryWorkspace))
+  if (primaryWorkspace === 'work') {
+    expect(screen.getByRole('button', { name: /^work-code/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^personal-notes/ })).toBeNull()
+  } else {
+    expect(screen.getByRole('button', { name: /^personal-notes/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^work-code/ })).toBeNull()
+  }
+  expect(state.documentsCalls.at(-1)?.project).toBe(primaryWorkspace)
 })
 
 test('document filter bounds requests to the native query byte budget', async () => {

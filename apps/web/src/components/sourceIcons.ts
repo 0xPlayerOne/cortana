@@ -1,6 +1,7 @@
 import {
   Bot,
   CalendarDays,
+  Cloud,
   Code2,
   Database,
   Folder,
@@ -11,7 +12,7 @@ import {
 
 const sourceIcons: Record<string, typeof Folder> = {
   filesystem: Code2,
-  'google-drive': Folder,
+  'google-drive': Cloud,
   'google-calendar': CalendarDays,
   gmail: Mail,
   'apple-notes': StickyNote,

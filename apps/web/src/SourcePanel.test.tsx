@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { Bot, Code2, Database, Folder, MessageCircle } from 'lucide-react'
+import { Bot, Code2, Cloud, Database, MessageCircle } from 'lucide-react'
 
 import type {
   BrainDocumentSummary,
@@ -21,11 +21,19 @@ const workspace: WorkspaceSettings = {
   color: '#5A9BD5',
 }
 
+const personalWorkspace: WorkspaceSettings = {
+  id: 'personal',
+  name: 'Personal',
+  account_label: null,
+  color: '#E8A83B',
+}
+
 function renderPanel(
   statusValue: BrainStatus | null,
   statusError: string,
   sourceJobError = '',
-  onRetryStatus?: () => void
+  onRetryStatus?: () => void,
+  workspaceId = 'work'
 ) {
   const docs: BrainDocumentSummary[] = []
   const noJobs: DesktopSourceJob[] = []
@@ -36,8 +44,8 @@ function renderPanel(
       statusError={statusError}
       onRetryStatus={onRetryStatus}
       sourceJobError={sourceJobError}
-      workspace=""
-      workspaces={[workspace]}
+      workspace={workspaceId}
+      workspaces={workspaceId === 'work' ? [workspace] : [personalWorkspace]}
       documentQuery=""
       selected=""
       documents={docs}
@@ -60,6 +68,14 @@ function renderPanel(
 test('SourcePanel reports loading while status is still resolving', () => {
   renderPanel(null, '')
   expect(screen.getByText('Loading source index and health…')).toBeTruthy()
+})
+
+test('workspace picker shows the display scope without account metadata', () => {
+  renderPanel(demoStatus, '')
+  const picker = screen.getByRole('combobox', { name: 'Workspace' }) as HTMLSelectElement
+  expect(picker.textContent).toContain('Work')
+  expect(picker.textContent).not.toContain('All workspaces')
+  expect(document.querySelector('.workspace-picker-mark')).toBeTruthy()
 })
 
 test('SourcePanel surfaces status errors instead of empty-source phantom state', () => {
@@ -91,7 +107,7 @@ test('SourcePanel exposes a retry action for document list failures', () => {
       open={false}
       status={demoStatus}
       statusError=""
-      workspace=""
+      workspace="work"
       workspaces={[workspace]}
       documentQuery=""
       selected=""
@@ -131,7 +147,7 @@ test('document filter exposes a clear action only when text is present', () => {
       open={false}
       status={demoStatus}
       statusError=""
-      workspace=""
+      workspace="work"
       workspaces={[workspace]}
       documentQuery="legacy"
       selected=""
@@ -172,7 +188,7 @@ test('SourcePanel source and settings shortcuts open the Sources settings sectio
       open={false}
       status={null}
       statusError=""
-      workspace=""
+      workspace="work"
       workspaces={[workspace]}
       documentQuery=""
       selected=""
@@ -202,7 +218,7 @@ test('SourcePanel source and settings shortcuts open the Sources settings sectio
 
 test('source icons use the exact configured connector kind', () => {
   expect(sourceIconForKind('filesystem')).toBe(Code2)
-  expect(sourceIconForKind('google-drive')).toBe(Folder)
+  expect(sourceIconForKind('google-drive')).toBe(Cloud)
   expect(sourceIconForKind('slack')).toBe(MessageCircle)
   expect(sourceIconForKind('buzz')).toBe(Bot)
   expect(sourceIconForKind('slack-archive')).toBe(Database)
@@ -317,8 +333,8 @@ test('source panel exposes setup and Google authorization actions only when requ
       open={false}
       status={actionStatus}
       statusError=""
-      workspace=""
-      workspaces={[workspace]}
+      workspace="work"
+      workspaces={[workspace, personalWorkspace]}
       documentQuery=""
       selected=""
       documents={[]}
@@ -345,9 +361,40 @@ test('source panel exposes setup and Google authorization actions only when requ
     />
   )
   fireEvent.click(screen.getByRole('button', { name: 'Open team-slack setup' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Authorize personal-drive' }))
   expect(setupSource).toBe('team-slack')
   expect(setupProject).toBe('work')
+
+  cleanup()
+
+  render(
+    <SourcePanel
+      open={false}
+      status={actionStatus}
+      statusError=""
+      workspace="personal"
+      workspaces={[personalWorkspace, workspace]}
+      documentQuery=""
+      selected=""
+      documents={[]}
+      selectedDocument=""
+      documentsLoading={false}
+      documentsError=""
+      hasMoreDocuments={false}
+      onSelect={() => {}}
+      onSelectWorkspace={() => {}}
+      onDocumentQueryChange={() => {}}
+      onSelectDocument={() => {}}
+      onLoadMoreDocuments={() => {}}
+      onOpenSourcesSettings={() => {}}
+      onAuthorizeSource={(source, project) => {
+        authorizedSource = source
+        authorizedProject = project
+      }}
+      onClose={() => {}}
+      jobs={[]}
+    />
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Authorize personal-drive' }))
   expect(authorizedSource).toBe('personal-drive')
   expect(authorizedProject).toBe('personal')
   expect(screen.queryByRole('button', { name: 'Authorize team-slack' })).toBeNull()
@@ -378,8 +425,8 @@ test('Google setup action identifies the source editor instead of a provider URL
       open={false}
       status={actionStatus}
       statusError=""
-      workspace=""
-      workspaces={[workspace]}
+      workspace="personal"
+      workspaces={[personalWorkspace]}
       documentQuery=""
       selected=""
       documents={[]}

@@ -104,10 +104,17 @@ test('every rail button is enabled and Search focuses the query input', async ()
   await renderApp()
 
   for (const label of RAIL_LABELS) {
+    if (label === 'Timeline') continue
     const button = railButton(label)
     expect(button.hasAttribute('disabled')).toBe(false)
     expect(button.getAttribute('title')).toBe(label)
   }
+
+  // Timeline is result-only: without a search answer/evidence it stays
+  // disabled with an honest tooltip instead of opening an empty timeline.
+  const timeline = railButton('Timeline')
+  expect(timeline.hasAttribute('disabled')).toBe(true)
+  expect(timeline.getAttribute('title')).toBe('Timeline: available once a search returns evidence')
 
   fireEvent.click(railButton('Search'))
   await waitFor(() =>
@@ -138,7 +145,23 @@ test('Graph and Timeline rail buttons route to the existing workspace tabs', asy
   expect(railButton('Graph').className).toContain('active')
   expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
 
-  // Timeline routes to the workspace Timeline tab and unselects Graph.
+  // Without a search result the Timeline rail stays disabled and cannot
+  // select the result-only timeline tab.
+  expect(railButton('Timeline').hasAttribute('disabled')).toBe(true)
+  fireEvent.click(railButton('Timeline'))
+  expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('false')
+  expect(railButton('Timeline').className).not.toContain('active')
+
+  // A search result unlocks Timeline, which routes to the workspace Timeline
+  // tab and unselects Graph.
+  state.answer = () => Promise.resolve(answerResponse)
+  const input = screen.getByLabelText('Search your knowledge')
+  fireEvent.change(input, { target: { value: 'release cadence' } })
+  fireEvent.submit(input.closest('form')!)
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'release cadence' })).toBeTruthy()
+  )
+  expect(railButton('Timeline').hasAttribute('disabled')).toBe(false)
   fireEvent.click(railButton('Timeline'))
   await waitFor(() =>
     expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true')

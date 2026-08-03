@@ -7,12 +7,19 @@ import { safeSourceLink } from '../sourceLinks'
 import type { AnswerResponse, BrainDocument, BrainGraphPage, Evidence } from '../types'
 
 const tabs = [
-  { id: 'answer', label: 'Answer', icon: CortanaBrandMark },
+  { id: 'answer', label: 'Answer', icon: AppIcon },
   { id: 'document', label: 'Document', icon: BookOpen },
   { id: 'sources', label: 'Evidence', icon: FileText },
   { id: 'graph', label: 'Graph', icon: Network },
   { id: 'timeline', label: 'Timeline', icon: History },
 ] as const
+
+export type WorkspaceTab = (typeof tabs)[number]['id']
+
+// Result-only views stay inert until a search returns an answer or evidence.
+// The Document tab is the default primary view and Graph remains an explicit
+// separate view, so neither is gated.
+const resultGatedTabs = new Set<WorkspaceTab>(['answer', 'sources', 'timeline'])
 
 async function openSourceLink(href: string): Promise<boolean> {
   if (!isDesktopApp) return false
@@ -26,8 +33,6 @@ async function openSourceLink(href: string): Promise<boolean> {
     return false
   }
 }
-
-export type WorkspaceTab = (typeof tabs)[number]['id']
 
 export function Workspace({
   query,
@@ -67,6 +72,7 @@ export function Workspace({
   onRetry: () => void
 }) {
   const active = evidence[selected] ?? null
+  const hasResults = answer !== null || evidence.length > 0
   const selectEvidenceByChunkId = (chunkId: string) => {
     const next = evidence.findIndex((item) => item.chunk_id === chunkId)
     if (next >= 0) {
@@ -85,21 +91,28 @@ export function Workspace({
   return (
     <main className="workspace">
       <div className="workspace-tabs" role="tablist" aria-label="Result views">
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button
-            type="button"
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            className={tab === id ? 'active' : ''}
-            onClick={() => onTabChange(id)}
-          >
-            <Icon size={15} />
-            {label}
-            {id === 'document' && document && <span className="count-pill">1</span>}
-            {id === 'sources' && <span className="count-pill">{evidence.length}</span>}
-          </button>
-        ))}
+        {tabs.map(({ id, label, icon: Icon }) => {
+          const gated = resultGatedTabs.has(id) && !hasResults
+          return (
+            <button
+              type="button"
+              key={id}
+              role="tab"
+              aria-selected={tab === id}
+              className={tab === id ? 'active' : ''}
+              disabled={gated}
+              title={gated ? 'Available once a search returns evidence' : undefined}
+              onClick={() => onTabChange(id)}
+            >
+              <Icon size={15} />
+              {label}
+              {id === 'document' && document && <span className="count-pill">1</span>}
+              {id === 'sources' && evidence.length > 0 && (
+                <span className="count-pill">{evidence.length}</span>
+              )}
+            </button>
+          )
+        })}
       </div>
       {documentLoading ? (
         <EmptyState title="Opening document" detail="Loading the canonical indexed content…" />
@@ -413,7 +426,7 @@ function AnswerView({
   return (
     <article className="answer-view">
       <span className="eyebrow">
-        <CortanaBrandMark size={14} /> Evidence brief
+        <AppIcon size={14} /> Evidence brief
       </span>
       <h1>{query}</h1>
       {response && (
@@ -555,7 +568,7 @@ function GraphView({
         </svg>
       )}
       <div className="graph-center">
-        <CortanaBrandMark size={24} />
+        <AppIcon size={24} />
       </div>
       <div className="graph-summary" role="status">
         <span>
@@ -641,7 +654,7 @@ function EmptyState({
 }) {
   return (
     <div className="empty-state">
-      <CortanaBrandMark size={28} />
+      <AppIcon size={28} />
       <h1>{title}</h1>
       <p>{detail}</p>
       {action && (
@@ -653,30 +666,6 @@ function EmptyState({
   )
 }
 
-function CortanaBrandMark({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      viewBox="0 0 1024 1024"
-      width={size}
-      height={size}
-      fill="none"
-      aria-hidden="true"
-      role="presentation"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <rect x="88" y="88" width="848" height="848" rx="188" fill="#111d31" />
-      <path
-        d="M512 164C330 164 183 311 183 493s147 329 329 329 329-147 329-329S694 164 512 164Zm0 72c142 0 257 115 257 257S654 750 512 750 255 635 255 493 370 236 512 236Z"
-        fill="#0d2748"
-      />
-      <path
-        d="M482 266c-98 14-175 96-183 195l6 3c8-96 85-176 182-187zM542 266c98 11 175 93 183 194l-6 2c-8-97-86-176-184-187z"
-        fill="#4ed5ff"
-      />
-      <path
-        d="M510 334c-88 0-159 70-159 158s70 158 159 158 159-70 159-158-70-158-159-158Zm0 54c57 0 104 47 104 104s-47 104-104 104-104-47-104-104 47-104 104-104Z"
-        fill="#5ad9ff"
-      />
-    </svg>
-  )
+function AppIcon({ size = 16 }: { size?: number }) {
+  return <img src="/app-icon.svg" alt="" width={size} height={size} aria-hidden="true" />
 }

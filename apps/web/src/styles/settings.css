@@ -30,6 +30,18 @@
   gap: 8px;
 }
 
+.settings-theme-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-theme-control select {
+  min-width: 140px;
+}
+
 .settings-header h1 {
   margin: 2px 0 7px;
   color: #f0efe9;
@@ -282,6 +294,32 @@
   cursor: pointer;
 }
 
+.workspace-advanced-details {
+  margin-top: 12px;
+  border-top: 1px solid #333;
+  padding-top: 12px;
+}
+
+.workspace-advanced-details > summary {
+  cursor: pointer;
+  color: #b7b8b2;
+  font-size: 11px;
+  user-select: none;
+}
+
+.workspace-advanced-fields {
+  margin-top: 9px;
+  display: grid;
+  gap: 10px;
+}
+
+.workspace-advanced-note {
+  display: block;
+  margin: 0 0 7px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .source-settings-toolbar {
   display: flex;
   align-items: center;
@@ -495,6 +533,39 @@
   gap: 10px;
 }
 
+.source-service-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--amber-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-elevated);
+}
+
+.source-service-icon--google-drive {
+  color: #7bc8ff;
+}
+
+.source-service-icon--gmail {
+  color: #ff9d8f;
+}
+
+.source-service-icon--discord,
+.source-service-icon--slack {
+  color: #b5a5ff;
+}
+
+.source-service-icon--apple-notes {
+  color: #f6d575;
+}
+
+.source-service-icon--buzz {
+  color: #8ee8b0;
+}
+
 .source-enable > span {
   display: flex;
   min-width: 0;
@@ -550,6 +621,34 @@
   margin-top: 17px;
   padding-top: 17px;
   border-top: 1px solid #363734;
+}
+
+.source-settings-details {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.source-settings-details > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0 0;
+  gap: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  list-style-position: inside;
+}
+
+.source-settings-details > summary span {
+  color: #d8d7d1;
+  font-weight: 600;
+}
+
+.source-settings-details > summary small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .source-managed-note,
@@ -1193,6 +1292,50 @@
 
 .release-notes {
   margin-top: 18px;
+}
+
+.safe-markdown {
+  max-height: 300px;
+  padding: 12px;
+  overflow: auto;
+  color: #c5c7c1;
+  background: #141513;
+  border: 1px solid #343632;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.safe-markdown h1,
+.safe-markdown h2,
+.safe-markdown h3 {
+  margin: 14px 0 7px;
+  color: #e8e7e0;
+  font-size: 13px;
+}
+
+.safe-markdown p {
+  margin: 8px 0;
+}
+
+.safe-markdown ul,
+.safe-markdown ol {
+  margin: 10px 0 10px 18px;
+  padding: 0;
+}
+
+.safe-markdown li {
+  margin: 4px 0;
+}
+
+.safe-markdown code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #f2b98f;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.safe-markdown a {
+  color: #98d7ff;
 }
 
 .release-notes pre,
