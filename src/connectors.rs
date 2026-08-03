@@ -142,7 +142,16 @@ fn filesystem_document(
         Ok(content) if !content.trim().is_empty() => content,
         _ => return Ok(None),
     };
-    let relative = path.strip_prefix(canonical_root).unwrap_or(path);
+    // `sync-files` also accepts a single file as its root. In that case the
+    // walker yields the root itself, so stripping the root produces an empty
+    // path and would collapse every one-file import onto the same source ID.
+    // Use the filename as the stable relative identity for that shape while
+    // preserving directory-root identities.
+    let relative = if path == canonical_root {
+        path.file_name().map(Path::new).unwrap_or(path)
+    } else {
+        path.strip_prefix(canonical_root).unwrap_or(path)
+    };
     let updated_at = metadata
         .modified()
         .ok()
@@ -264,6 +273,22 @@ mod tests {
 
         assert_eq!(documents.len(), 1);
         assert_eq!(documents[0].source_id, "keep.rs");
+    }
+
+    #[test]
+    fn filesystem_source_uses_filename_for_a_single_file_root() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let file = directory.path().join("single.rs");
+        std::fs::write(&file, "fn single() {}").expect("source file");
+
+        let documents = filesystem_documents(&file, "code", "work").expect("documents");
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].source_id, "single.rs");
+        assert_eq!(documents[0].title, "single.rs");
+
+        let plan = filesystem_plan(&file, &[], 1, 1_000, Duration::from_secs(5))
+            .expect("single-file plan");
+        assert_eq!(plan.documents, 1);
     }
 
     #[test]
