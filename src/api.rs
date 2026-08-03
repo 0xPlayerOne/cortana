@@ -2525,7 +2525,7 @@ mod tests {
         let malformed_json = URL_SAFE_NO_PAD.encode("not-json");
         assert!(decode_document_cursor(&malformed_json).is_err());
 
-        let oversized = URL_SAFE_NO_PAD.encode(&vec![b'X'; 513]);
+        let oversized = URL_SAFE_NO_PAD.encode(vec![b'X'; 513]);
         assert!(decode_document_cursor(&oversized).is_err());
 
         let now = chrono::Utc::now().to_rfc3339();
