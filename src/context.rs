@@ -12,6 +12,9 @@ pub struct ContextBundle {
     pub context: String,
     pub evidence: Vec<Evidence>,
     pub metrics: ContextMetrics,
+    pub retrieval_mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retrieval_warning: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -24,6 +27,16 @@ pub struct ContextMetrics {
 }
 
 pub fn build(query: &str, evidence: &[Evidence], max_tokens: usize) -> ContextBundle {
+    build_with_retrieval(query, evidence, max_tokens, "hybrid", None)
+}
+
+pub fn build_with_retrieval(
+    query: &str,
+    evidence: &[Evidence],
+    max_tokens: usize,
+    retrieval_mode: &str,
+    retrieval_warning: Option<&str>,
+) -> ContextBundle {
     let max_tokens = max_tokens.clamp(MIN_CONTEXT_TOKENS, MAX_CONTEXT_TOKENS);
     let max_chars = max_tokens.saturating_mul(CHARS_PER_TOKEN);
     let query_prefix = "# Cortana evidence context\n\nQuery: ";
@@ -65,6 +78,8 @@ pub fn build(query: &str, evidence: &[Evidence], max_tokens: usize) -> ContextBu
             max_tokens,
         },
         evidence: included,
+        retrieval_mode: retrieval_mode.to_string(),
+        retrieval_warning: retrieval_warning.map(str::to_string),
     }
 }
 
@@ -136,6 +151,8 @@ mod tests {
         assert_eq!(bundle.metrics.included, 1);
         assert_eq!(bundle.metrics.omitted, 0);
         assert_eq!(bundle.evidence, rows);
+        assert_eq!(bundle.retrieval_mode, "hybrid");
+        assert!(bundle.retrieval_warning.is_none());
     }
 
     #[test]

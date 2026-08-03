@@ -50,6 +50,14 @@ pub struct AnswerResponse {
     pub cached: bool,
     pub latency_ms: u64,
     pub warnings: Vec<String>,
+    #[serde(default = "default_retrieval_mode")]
+    pub retrieval_mode: String,
+    #[serde(default)]
+    pub retrieval_degraded: bool,
+}
+
+fn default_retrieval_mode() -> String {
+    "hybrid".into()
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -270,7 +278,7 @@ impl AnswerEngine {
             }
         };
         let searches = plan.queries.iter().map(|query| {
-            retrieval::retrieve_scoped(
+            retrieval::retrieve_scoped_with_status(
                 &self.store,
                 &self.embedder,
                 query,
@@ -288,9 +296,18 @@ impl AnswerEngine {
             }
         };
         let mut successful = Vec::new();
+        let mut retrieval_degraded = false;
         for result in results {
             match result {
-                Ok(evidence) => successful.push(evidence),
+                Ok(retrieval) => {
+                    if retrieval.degraded() {
+                        retrieval_degraded = true;
+                        if let Some(warning) = retrieval.warning {
+                            warnings.push(warning);
+                        }
+                    }
+                    successful.push(retrieval.evidence);
+                }
                 Err(error) => warnings.push(format!("retrieval fallback: {error}")),
             }
         }
@@ -319,12 +336,20 @@ impl AnswerEngine {
             cached: false,
             latency_ms: elapsed_ms(started),
             warnings,
+            retrieval_mode: if retrieval_degraded {
+                "lexical-fallback".into()
+            } else {
+                "hybrid".into()
+            },
+            retrieval_degraded,
         };
         // Keep deterministic extractive answers cacheable when no model is
         // configured, but never persist a degraded response from a configured
-        // model. A transient provider outage must not mask recovery until the
-        // answer-cache TTL expires.
-        if self.model.is_none() || response.mode == "synthesized" {
+        // model or a lexical retrieval fallback. A transient provider outage
+        // must not mask recovery until the answer-cache TTL expires.
+        if self.model.is_none()
+            || (response.mode == "synthesized" && !response.retrieval_degraded)
+        {
             self.store.cache_query(
                 &cache_key,
                 &serde_json::to_string(&response)?,
