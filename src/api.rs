@@ -9,7 +9,7 @@ use anyhow::Result;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Extension, Path as AxumPath, Query as AxumQuery, State},
-    http::{Request, StatusCode, header},
+    http::{HeaderValue, Request, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -28,11 +28,13 @@ use crate::{
     config::{Config, SourceConfig, WorkspaceConfig},
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
-    model::Evidence,
     retrieval,
     source_validation::{self, SourceValidationStatus},
     store::{AuditEvent, DocumentCursor, DocumentSummary, Store, StoreStats},
 };
+
+#[cfg(test)]
+use crate::model::Evidence;
 
 const MAX_DOCUMENT_CONTENT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DOCUMENT_SCOPE_LENGTH: usize = 256;
@@ -95,6 +97,7 @@ struct RuntimeMetrics {
     contexts: AtomicU64,
     answers: AtomicU64,
     errors: AtomicU64,
+    retrieval_fallbacks: AtomicU64,
     principals: Mutex<HashMap<String, PrincipalMetrics>>,
 }
 
@@ -104,6 +107,7 @@ struct PrincipalMetrics {
     contexts: u64,
     answers: u64,
     errors: u64,
+    retrieval_fallbacks: u64,
 }
 
 impl RuntimeMetrics {
@@ -114,6 +118,7 @@ impl RuntimeMetrics {
             contexts: AtomicU64::new(0),
             answers: AtomicU64::new(0),
             errors: AtomicU64::new(0),
+            retrieval_fallbacks: AtomicU64::new(0),
             principals: Mutex::new(HashMap::new()),
         }
     }
@@ -128,6 +133,9 @@ impl RuntimeMetrics {
             PrincipalMetric::Context => self.contexts.fetch_add(1, Ordering::Relaxed),
             PrincipalMetric::Answer => self.answers.fetch_add(1, Ordering::Relaxed),
             PrincipalMetric::Error => self.errors.fetch_add(1, Ordering::Relaxed),
+            PrincipalMetric::RetrievalFallback => {
+                self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed)
+            }
         };
         let mut principals = self
             .principals
@@ -139,6 +147,9 @@ impl RuntimeMetrics {
             PrincipalMetric::Context => counters.contexts = counters.contexts.saturating_add(1),
             PrincipalMetric::Answer => counters.answers = counters.answers.saturating_add(1),
             PrincipalMetric::Error => counters.errors = counters.errors.saturating_add(1),
+            PrincipalMetric::RetrievalFallback => {
+                counters.retrieval_fallbacks = counters.retrieval_fallbacks.saturating_add(1)
+            }
         }
     }
 
@@ -149,6 +160,7 @@ impl RuntimeMetrics {
                 contexts: self.contexts.load(Ordering::Relaxed),
                 answers: self.answers.load(Ordering::Relaxed),
                 errors: self.errors.load(Ordering::Relaxed),
+                retrieval_fallbacks: self.retrieval_fallbacks.load(Ordering::Relaxed),
             };
         }
         self.principals
@@ -166,6 +178,7 @@ enum PrincipalMetric {
     Context,
     Answer,
     Error,
+    RetrievalFallback,
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,6 +216,7 @@ struct Status {
     contexts_total: u64,
     answers_total: u64,
     errors_total: u64,
+    retrieval_fallbacks_total: u64,
     query: QueryRuntimeStatus,
     ingestion: IngestionStatus,
     workspaces: Vec<WorkspaceConfig>,
@@ -1099,6 +1113,7 @@ async fn status(
         contexts_total: counters.contexts,
         answers_total: counters.answers,
         errors_total: counters.errors,
+        retrieval_fallbacks_total: counters.retrieval_fallbacks,
         query: state.answer.status(),
         ingestion,
         workspaces,
@@ -1181,7 +1196,21 @@ async fn answer(
         .answer_scoped(request, &principal.acl_labels())
         .await;
     let (outcome, count) = match &result {
-        Ok(response) => ("succeeded", Some(response.evidence.len())),
+        Ok(response) => {
+            if response.retrieval_degraded {
+                state
+                    .metrics
+                    .record(&principal, PrincipalMetric::RetrievalFallback);
+            }
+            (
+                if response.retrieval_degraded {
+                    "degraded"
+                } else {
+                    "succeeded"
+                },
+                Some(response.evidence.len()),
+            )
+        }
         Err(_) => ("failed", None),
     };
     record_audit(
@@ -1204,12 +1233,12 @@ async fn search(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
     Json(request): Json<SearchRequest>,
-) -> Result<Json<Vec<Evidence>>, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
     validate_query(&request.query)?;
     let started = Instant::now();
     state.metrics.record(&principal, PrincipalMetric::Search);
-    match retrieval::retrieve_scoped(
+    match retrieval::retrieve_scoped_with_status(
         &state.store,
         &state.embedder,
         &request.query,
@@ -1220,18 +1249,40 @@ async fn search(
     )
     .await
     {
-        Ok(evidence) => {
+        Ok(retrieval) => {
+            if retrieval.degraded() {
+                state
+                    .metrics
+                    .record(&principal, PrincipalMetric::RetrievalFallback);
+            }
+            let mut response = Json(&retrieval.evidence).into_response();
+            response.headers_mut().insert(
+                "x-cortana-retrieval-mode",
+                HeaderValue::from_static(retrieval.mode.as_str()),
+            );
+            response.headers_mut().insert(
+                "x-cortana-retrieval-degraded",
+                HeaderValue::from_static(if retrieval.degraded() {
+                    "true"
+                } else {
+                    "false"
+                }),
+            );
             record_audit(
                 &state,
                 &principal,
                 "search",
                 request.project.as_deref(),
                 request.source.as_deref(),
-                "succeeded",
-                Some(evidence.len()),
+                if retrieval.degraded() {
+                    "degraded"
+                } else {
+                    "succeeded"
+                },
+                Some(retrieval.evidence.len()),
                 started,
             );
-            Ok(Json(evidence))
+            Ok(response)
         }
         Err(error) => {
             record_audit(
@@ -1259,7 +1310,7 @@ async fn context(
     validate_query(&request.query)?;
     let started = Instant::now();
     state.metrics.record(&principal, PrincipalMetric::Context);
-    let evidence = match retrieval::retrieve_scoped(
+    let retrieval = match retrieval::retrieve_scoped_with_status(
         &state.store,
         &state.embedder,
         &request.query,
@@ -1270,7 +1321,7 @@ async fn context(
     )
     .await
     {
-        Ok(evidence) => evidence,
+        Ok(retrieval) => retrieval,
         Err(error) => {
             record_audit(
                 &state,
@@ -1286,20 +1337,31 @@ async fn context(
             return Err(internal_error(error));
         }
     };
+    if retrieval.degraded() {
+        state
+            .metrics
+            .record(&principal, PrincipalMetric::RetrievalFallback);
+    }
     record_audit(
         &state,
         &principal,
         "context",
         request.project.as_deref(),
         request.source.as_deref(),
-        "succeeded",
-        Some(evidence.len()),
+        if retrieval.degraded() {
+            "degraded"
+        } else {
+            "succeeded"
+        },
+        Some(retrieval.evidence.len()),
         started,
     );
-    Ok(Json(context_bundle::build(
+    Ok(Json(context_bundle::build_with_retrieval(
         &request.query,
-        &evidence,
+        &retrieval.evidence,
         request.max_tokens,
+        retrieval.mode.as_str(),
+        retrieval.warning.as_deref(),
     )))
 }
 
@@ -1384,7 +1446,10 @@ async fn metrics(
          cortana_answer_requests_total {}\n\
          # HELP cortana_query_errors_total Query pipeline errors.\n\
          # TYPE cortana_query_errors_total counter\n\
-         cortana_query_errors_total {}\n",
+         cortana_query_errors_total {}\n\
+         # HELP cortana_retrieval_fallbacks_total Queries that used lexical retrieval because the embedding provider was unavailable or timed out.\n\
+         # TYPE cortana_retrieval_fallbacks_total counter\n\
+         cortana_retrieval_fallbacks_total {}\n",
         state.metrics.uptime_seconds(),
         stats.documents,
         stats.chunks,
@@ -1396,6 +1461,7 @@ async fn metrics(
         state.metrics.contexts.load(Ordering::Relaxed),
         state.metrics.answers.load(Ordering::Relaxed),
         state.metrics.errors.load(Ordering::Relaxed),
+        state.metrics.retrieval_fallbacks.load(Ordering::Relaxed),
     );
     Ok(([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], body))
 }
@@ -1505,13 +1571,14 @@ async fn shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use anyhow::anyhow;
+    use async_trait::async_trait;
     use axum::body::{Body, to_bytes};
     use axum::http::Request;
     use tempfile::tempdir;
     use tower::ServiceExt;
 
     use crate::config::{AuthTokenConfig, SourceConfig};
-    use crate::embed::DeterministicEmbedder;
+    use crate::embed::{DeterministicEmbedder, Embedder};
     use crate::model::Document;
 
     use super::*;
@@ -1534,6 +1601,19 @@ mod tests {
             .expect("fingerprint");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
         (directory, AppState::new(store, embedder, token))
+    }
+
+    struct UnavailableEmbedder;
+
+    #[async_trait]
+    impl Embedder for UnavailableEmbedder {
+        async fn embed(&self, _input: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+            anyhow::bail!("embedding provider unavailable")
+        }
+
+        fn fingerprint(&self) -> String {
+            "unavailable:test".into()
+        }
     }
 
     fn write_private_fixture(path: &std::path::Path, body: &str) {
@@ -2336,6 +2416,8 @@ mod tests {
             .expect("answer body");
         let value: serde_json::Value = serde_json::from_slice(&body).expect("answer JSON");
         assert_eq!(value["mode"], "extractive");
+        assert_eq!(value["retrieval_mode"], "hybrid");
+        assert_eq!(value["retrieval_degraded"], false);
         assert_eq!(value["cached"], false);
         assert_eq!(value["plan"]["model_generated"], false);
         assert_eq!(
@@ -2343,6 +2425,70 @@ mod tests {
             serde_json::json!(["unknown topic"])
         );
         assert_eq!(value["evidence"], serde_json::json!([]));
+    }
+
+    #[tokio::test]
+    async fn search_surfaces_lexical_fallback_without_changing_the_json_shape() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .upsert(
+                &Document {
+                    source: "notes".into(),
+                    source_id: "fallback-runbook".into(),
+                    title: "Fallback runbook".into(),
+                    content: "Use lexical retrieval while embeddings are offline.".into(),
+                    uri: None,
+                    updated_at: chrono::Utc::now(),
+                    project: "demo".into(),
+                    acl: Vec::new(),
+                    metadata: serde_json::json!({}),
+                },
+                &[(
+                    "Use lexical retrieval while embeddings are offline.".into(),
+                    vec![1.0, 0.0],
+                )],
+            )
+            .expect("document");
+        let state = AppState::new(
+            store,
+            Arc::new(UnavailableEmbedder),
+            None,
+        );
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"lexical retrieval","project":"demo","source":null,"limit":10}"#,
+                    ))
+                    .expect("search request"),
+            )
+            .await
+            .expect("search response");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("x-cortana-retrieval-mode")
+                .and_then(|value| value.to_str().ok()),
+            Some("lexical-fallback")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-cortana-retrieval-degraded")
+                .and_then(|value| value.to_str().ok()),
+            Some("true")
+        );
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("search body");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("search JSON");
+        assert!(value.is_array());
+        assert_eq!(value.as_array().map(Vec::len), Some(1));
     }
 
     #[tokio::test]

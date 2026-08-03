@@ -16,6 +16,34 @@ pub const MAX_QUERY_BYTES: usize = 16 * 1024;
 /// The public retrieval result cap shared by MCP, HTTP, and the CLI.
 pub const MAX_RESULT_LIMIT: usize = 50;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RetrievalMode {
+    Hybrid,
+    LexicalFallback,
+}
+
+impl RetrievalMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Hybrid => "hybrid",
+            Self::LexicalFallback => "lexical-fallback",
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct RetrievalOutcome {
+    pub evidence: Vec<Evidence>,
+    pub mode: RetrievalMode,
+    pub warning: Option<String>,
+}
+
+impl RetrievalOutcome {
+    pub fn degraded(&self) -> bool {
+        self.mode == RetrievalMode::LexicalFallback
+    }
+}
+
 pub async fn retrieve(
     store: &Store,
     embedder: &Arc<dyn Embedder>,
@@ -45,7 +73,29 @@ pub async fn retrieve_scoped(
     limit: usize,
     principal_acl: &[String],
 ) -> Result<Vec<Evidence>> {
-    retrieve_with_timeout(
+    Ok(retrieve_scoped_with_status(
+        store,
+        embedder,
+        query,
+        project,
+        source,
+        limit,
+        principal_acl,
+    )
+    .await?
+    .evidence)
+}
+
+pub async fn retrieve_scoped_with_status(
+    store: &Store,
+    embedder: &Arc<dyn Embedder>,
+    query: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+    limit: usize,
+    principal_acl: &[String],
+) -> Result<RetrievalOutcome> {
+    retrieve_with_timeout_status(
         store,
         embedder,
         query,
@@ -67,6 +117,28 @@ pub async fn retrieve_sources_scoped(
     limit: usize,
     principal_acl: &[String],
 ) -> Result<Vec<Evidence>> {
+    Ok(retrieve_sources_scoped_with_status(
+        store,
+        embedder,
+        query,
+        project,
+        sources,
+        limit,
+        principal_acl,
+    )
+    .await?
+    .evidence)
+}
+
+pub async fn retrieve_sources_scoped_with_status(
+    store: &Store,
+    embedder: &Arc<dyn Embedder>,
+    query: &str,
+    project: Option<&str>,
+    sources: &[String],
+    limit: usize,
+    principal_acl: &[String],
+) -> Result<RetrievalOutcome> {
     validate_query(query)?;
     let mut unique_sources = sources
         .iter()
@@ -77,9 +149,14 @@ pub async fn retrieve_sources_scoped(
     unique_sources.dedup();
     unique_sources.truncate(32);
     if unique_sources.is_empty() {
-        return Ok(Vec::new());
+        return Ok(RetrievalOutcome {
+            evidence: Vec::new(),
+            mode: RetrievalMode::Hybrid,
+            warning: None,
+        });
     }
-    let query_embedding = query_embedding(embedder, query, INTERACTIVE_EMBEDDING_TIMEOUT).await;
+    let (query_embedding, warning) =
+        query_embedding(embedder, query, INTERACTIVE_EMBEDDING_TIMEOUT).await;
     let result_limit = limit.min(MAX_RESULT_LIMIT);
     let mut fused = HashMap::<String, (Evidence, f32)>::new();
     for source in unique_sources {
@@ -115,11 +192,19 @@ pub async fn retrieve_sources_scoped(
             .then_with(|| left.chunk_id.cmp(&right.chunk_id))
     });
     rows.truncate(result_limit);
-    Ok(rows)
+    Ok(RetrievalOutcome {
+        evidence: rows,
+        mode: if warning.is_some() {
+            RetrievalMode::LexicalFallback
+        } else {
+            RetrievalMode::Hybrid
+        },
+        warning: warning.map(str::to_string),
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn retrieve_with_timeout(
+async fn retrieve_with_timeout_status(
     store: &Store,
     embedder: &Arc<dyn Embedder>,
     query: &str,
@@ -128,10 +213,10 @@ async fn retrieve_with_timeout(
     limit: usize,
     embedding_timeout: Duration,
     principal_acl: &[String],
-) -> Result<Vec<Evidence>> {
+) -> Result<RetrievalOutcome> {
     validate_query(query)?;
-    let query_embedding = query_embedding(embedder, query, embedding_timeout).await;
-    rank(
+    let (query_embedding, warning) = query_embedding(embedder, query, embedding_timeout).await;
+    let evidence = rank(
         store,
         query,
         query_embedding.as_deref(),
@@ -139,7 +224,16 @@ async fn retrieve_with_timeout(
         source,
         limit.min(MAX_RESULT_LIMIT),
         principal_acl,
-    )
+    )?;
+    Ok(RetrievalOutcome {
+        evidence,
+        mode: if warning.is_some() {
+            RetrievalMode::LexicalFallback
+        } else {
+            RetrievalMode::Hybrid
+        },
+        warning: warning.map(str::to_string),
+    })
 }
 
 fn validate_query(query: &str) -> Result<()> {
@@ -155,22 +249,37 @@ async fn query_embedding(
     embedder: &Arc<dyn Embedder>,
     query: &str,
     embedding_timeout: Duration,
-) -> Option<Vec<f32>> {
+) -> (Option<Vec<f32>>, Option<&'static str>) {
     // Keep the lexical query untouched, but collapse insignificant whitespace
     // before embedding so equivalent UI/MCP inputs reuse one cache entry.
     let embedding_query = query.split_whitespace().collect::<Vec<_>>().join(" ");
     match tokio::time::timeout(embedding_timeout, embedder.embed(&[embedding_query])).await {
-        Ok(Ok(vectors)) => vectors.into_iter().next(),
+        Ok(Ok(vectors)) => match vectors.into_iter().next() {
+            Some(vector) => (Some(vector), None),
+            None => {
+                tracing::warn!("query embedding returned no vector; using lexical retrieval");
+                (
+                    None,
+                    Some("query embedding unavailable; using lexical retrieval"),
+                )
+            }
+        },
         Ok(Err(error)) => {
             tracing::warn!(%error, "query embedding unavailable; using lexical retrieval");
-            None
+            (
+                None,
+                Some("query embedding unavailable; using lexical retrieval"),
+            )
         }
         Err(_) => {
             tracing::warn!(
                 timeout_seconds = embedding_timeout.as_secs_f32(),
                 "query embedding saturated; using lexical retrieval"
             );
-            None
+            (
+                None,
+                Some("query embedding timed out; using lexical retrieval"),
+            )
         }
     }
 }
@@ -528,17 +637,24 @@ mod tests {
             )
             .expect("upsert");
 
-        let evidence = retrieve(
+        let outcome = retrieve_scoped_with_status(
             &store,
             &(Arc::new(UnavailableEmbedder) as Arc<dyn Embedder>),
             "Qwen",
             Some("cortana"),
             None,
             10,
+            &["*".into()],
         )
         .await
         .expect("lexical fallback");
 
+        assert_eq!(outcome.mode, RetrievalMode::LexicalFallback);
+        assert_eq!(
+            outcome.warning.as_deref(),
+            Some("query embedding unavailable; using lexical retrieval")
+        );
+        let evidence = outcome.evidence;
         assert_eq!(evidence.len(), 1);
         assert_eq!(evidence[0].title, "Qwen runbook");
         assert_eq!(evidence[0].semantic_rank, None);
@@ -720,7 +836,7 @@ mod tests {
             )
             .expect("upsert");
 
-        let evidence = retrieve_with_timeout(
+        let evidence = retrieve_with_timeout_status(
             &store,
             &(Arc::new(SlowEmbedder) as Arc<dyn Embedder>),
             "blue green",
@@ -731,7 +847,8 @@ mod tests {
             &["*".into()],
         )
         .await
-        .expect("timeout fallback");
+        .expect("timeout fallback")
+        .evidence;
 
         assert_eq!(evidence.len(), 1);
         assert_eq!(evidence[0].semantic_rank, None);
