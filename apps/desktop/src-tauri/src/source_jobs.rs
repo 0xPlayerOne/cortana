@@ -623,6 +623,7 @@ pub fn open_setup(source_name: &str) -> Result<SetupOpenOutcome, String> {
         "google-drive" | "gmail" | "google-calendar" => {
             "https://console.cloud.google.com/apis/credentials"
         }
+        "github" => "https://github.com/settings/tokens",
         "slack" => "https://api.slack.com/apps",
         "discord" => "https://discord.com/developers/applications",
         _ => return Err("this source does not have a browser-based account setup page".into()),

@@ -14,6 +14,7 @@ from cortana import __version__
 from .apple_notes import fetch as fetch_apple_notes
 from .buzz import fetch as fetch_buzz
 from .chat import fetch_discord, fetch_slack
+from .github import fetch as fetch_github
 from .google import fetch_calendar, fetch_drive, fetch_gmail, validate_token_path
 from .model import Document, emit
 
@@ -55,6 +56,10 @@ def parser() -> argparse.ArgumentParser:
     discord = commands.add_parser("discord")
     discord.add_argument("--channel", action="append", required=True, dest="channels")
     discord.add_argument("--token-env", default="DISCORD_BOT_TOKEN")
+
+    github = commands.add_parser("github")
+    github.add_argument("--repo", action="append", required=True, dest="repositories")
+    github.add_argument("--token-env", default="GITHUB_TOKEN")
 
     drive = commands.add_parser("google-drive")
     _google_arguments(drive)
@@ -111,6 +116,13 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
             arguments.project,
             arguments.token_env,
             cache_dir=None if arguments.no_cache else arguments.cache_dir,
+            max_documents=arguments.max_documents,
+        )
+    if arguments.connector == "github":
+        return fetch_github(
+            arguments.repositories,
+            arguments.project,
+            token_env=arguments.token_env,
             max_documents=arguments.max_documents,
         )
     token_path = _token_path(arguments)

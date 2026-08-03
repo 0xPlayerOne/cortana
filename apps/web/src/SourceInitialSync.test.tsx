@@ -35,6 +35,7 @@ const workSource: SourceSettings = {
   root: '/Users/you/code',
   source: null,
   channels: [],
+  repositories: [],
   token_env: null,
   token_path: null,
   oauth_client_path: null,

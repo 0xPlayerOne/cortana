@@ -77,6 +77,7 @@ const workSource: SourceSettings = {
   root: '/Users/you/code',
   source: null,
   channels: [],
+  repositories: [],
   token_env: null,
   token_path: null,
   oauth_client_path: null,
@@ -1399,6 +1400,37 @@ test('source settings quarantine legacy scopes until they are assigned to a work
 
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
     expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(false)
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
+test('GitHub code sources expose an explicit workspace-scoped repository allowlist', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    sources: [
+      {
+        ...workSource,
+        name: 'work-github',
+        kind: 'github',
+        repositories: ['0xPlayerOne/cortana'],
+        token_env: 'GITHUB_TOKEN',
+      },
+    ],
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    fireEvent.click(screen.getByText('Advanced source settings'))
+
+    const repositories = screen.getByRole('textbox', { name: 'GitHub repositories' })
+    expect((repositories as HTMLTextAreaElement).value).toBe('0xPlayerOne/cortana')
+    expect(screen.getByRole('button', { name: 'Setup' })).toBeTruthy()
+    expect(screen.getByText(/only these repositories are indexed/)).toBeTruthy()
   } finally {
     state.settings = originalSettings
   }

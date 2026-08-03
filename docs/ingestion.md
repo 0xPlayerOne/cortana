@@ -110,9 +110,21 @@ At most once per day Slack performs a full history refresh to capture edits and 
 validation disables the cache, and a bounded trial or initial sync never prunes cached threads it
 did not enumerate.
 
+GitHub code sources use an explicit repository allowlist and the GitHub REST API. Each selected
+`owner/repository` is resolved to its default branch, enumerated through the Git tree API, and
+limited to UTF-8 text/code files; generated trees, vendored dependencies, binary blobs, and files
+larger than 512 KiB are skipped. A truncated tree fails closed rather than pretending that a
+partial repository is a complete snapshot. The connector does not search the account, follow
+repository links, or clone arbitrary URLs. Bounded validation and trial syncs stop before the
+configured document cap and never reconcile deletions.
+
 ## Credentials
 
 - Slack and Discord tokens are read only from the configured environment-variable name.
+- GitHub code sources read a personal or GitHub App access token only from the configured
+  environment-variable name and require an explicit repository allowlist. The Desktop setup
+  link opens GitHub's token settings; repository discovery/OAuth selection is intentionally not
+  implicit and remains the next onboarding layer.
 - Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Desktop authorization uses a
   Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
   and the minimum read-only scopes required by the Google sources that share that token. Refresh

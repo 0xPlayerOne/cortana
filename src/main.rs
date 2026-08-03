@@ -994,7 +994,7 @@ fn mcp_source_groups(config: &Config) -> (Vec<String>, Vec<String>) {
     for source in config.sources.iter().filter(|source| source.enabled) {
         let stored_source = source.source.clone().unwrap_or_else(|| source.name.clone());
         match source.kind.as_str() {
-            "filesystem" => code.push(stored_source),
+            "filesystem" | "github" => code.push(stored_source),
             "buzz" | "gmail" | "slack" | "discord" => messages.push(stored_source),
             _ => {}
         }
@@ -1516,6 +1516,7 @@ fn ad_hoc_filesystem_source(
         root: Some(root),
         source: Some(source),
         channels: Vec::new(),
+        repositories: Vec::new(),
         token_env: None,
         token: None,
         oauth_client: None,
@@ -2968,6 +2969,9 @@ fn connector_arguments(command: &mut Vec<String>, source: &SourceConfig) -> Resu
     for channel in &source.channels {
         command.extend(["--channel".into(), channel.clone()]);
     }
+    for repository in &source.repositories {
+        command.extend(["--repo".into(), repository.clone()]);
+    }
     if let Some(token_env) = &source.token_env {
         command.extend(["--token-env".into(), token_env.clone()]);
     }
@@ -2996,6 +3000,11 @@ fn connector_arguments(command: &mut Vec<String>, source: &SourceConfig) -> Resu
     anyhow::ensure!(
         !matches!(source.kind.as_str(), "slack" | "discord") || !source.channels.is_empty(),
         "source {} requires at least one channel",
+        source.name
+    );
+    anyhow::ensure!(
+        source.kind != "github" || !source.repositories.is_empty(),
+        "source {} requires at least one GitHub repository",
         source.name
     );
     Ok(())
@@ -3249,6 +3258,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3296,6 +3306,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: Some("/tmp/google-token.json".into()),
             oauth_client: None,
@@ -3341,6 +3352,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: Some("/tmp/google-token.json".into()),
             oauth_client: None,
@@ -3383,6 +3395,51 @@ mod tests {
     }
 
     #[test]
+    fn github_connector_commands_include_only_explicit_repositories() {
+        let config = Config::default();
+        let source = SourceConfig {
+            name: "work-github".into(),
+            kind: "github".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            repositories: vec!["acme/one".into(), "acme/two".into()],
+            token_env: Some("GITHUB_TOKEN".into()),
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        let command = configured_connector_command(&config, &source, Some(25), true)
+            .expect("GitHub connector command");
+        assert!(
+            command
+                .windows(2)
+                .any(|pair| pair[0] == "--repo" && pair[1] == "acme/one")
+        );
+        assert!(
+            command
+                .windows(2)
+                .any(|pair| pair[0] == "--repo" && pair[1] == "acme/two")
+        );
+        assert!(
+            command
+                .windows(2)
+                .any(|pair| pair[0] == "--token-env" && pair[1] == "GITHUB_TOKEN")
+        );
+        assert!(command.iter().any(|argument| argument == "github"));
+    }
+
+    #[test]
     fn external_connector_commands_never_receive_budget_flags() {
         let config = Config::default();
         let source = SourceConfig {
@@ -3393,6 +3450,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3434,6 +3492,7 @@ mod tests {
             root: Some(directory.path().join("code")),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3469,6 +3528,7 @@ mod tests {
             root: Some(directory.path().join("code")),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3526,6 +3586,7 @@ mod tests {
             root: Some(std::env::temp_dir()),
             source: Some(name.into()),
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3711,6 +3772,7 @@ mod tests {
             root: Some(root),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3909,6 +3971,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
