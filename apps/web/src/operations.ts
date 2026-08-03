@@ -66,6 +66,9 @@ export type OperationalSource = {
   latest_updated_at: string | null
   sync: SourceSyncSummary | null
   sync_freshness_hours: number | null
+  max_documents: number
+  max_bytes: number
+  max_duration_seconds: number
   authorization?: ConfiguredSourceSummary['authorization']
   validation?: ConfiguredSourceSummary['validation']
 }
@@ -101,9 +104,27 @@ export function operationalSources(status: BrainStatus | null): OperationalSourc
       latest_updated_at: source.latest_updated_at,
       sync: runs.get(key) ?? null,
       sync_freshness_hours: status.ingestion.sync_freshness_hours ?? null,
+      max_documents: 0,
+      max_bytes: 0,
+      max_duration_seconds: 0,
     })
   }
   return configured
+}
+
+export function validationCoversConfiguredBudget(
+  source: OperationalSource
+): source is OperationalSource & {
+  validation: NonNullable<OperationalSource['validation']>
+} {
+  if (!source.validation) return false
+  if (source.validation.status !== 'succeeded') return false
+  if (source.validation.fresh === false) return false
+
+  const hasSufficientDocuments = source.validation.max_documents >= source.max_documents
+  const hasSufficientBytes = source.validation.max_bytes >= source.max_bytes
+  const hasSufficientDuration = source.validation.max_seconds >= source.max_duration_seconds
+  return hasSufficientDocuments && hasSufficientBytes && hasSufficientDuration
 }
 
 export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.now()) {
@@ -131,12 +152,21 @@ export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.n
       }
     }
   }
+  const validationRequiredLabel = (labelSuffix: string) =>
+    `Validation ${labelSuffix}; re-validate before recurring sync`
+
   if (!source.sync) {
     if (source.validation?.status === 'succeeded') {
       if (source.validation.fresh === false) {
         return {
           state: 'warning',
           label: `Connector validation expired ${new Date(source.validation.validated_at).toLocaleString()}; re-validate before recurring sync`,
+        }
+      }
+      if (!validationCoversConfiguredBudget(source)) {
+        return {
+          state: 'warning',
+          label: validationRequiredLabel('does not cover the configured sync budget'),
         }
       }
       return {
@@ -150,7 +180,10 @@ export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.n
         label: `Validation failed${source.validation.error_category ? ` (${source.validation.error_category})` : ''} ${new Date(source.validation.validated_at).toLocaleString()}`,
       }
     }
-    return { state: 'never', label: 'Enabled; connector not yet validated' }
+    return {
+      state: 'warning',
+      label: validationRequiredLabel('not yet completed'),
+    }
   }
   const completed = source.sync.completed_at
     ? new Date(source.sync.completed_at).toLocaleString()
@@ -168,6 +201,12 @@ export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.n
       return {
         state: 'warning',
         label: `Last sync succeeded ${completed}; stale after ${formatDuration(freshnessHours * 3_600)} (age ${formatDuration(ageSeconds)}); run sync`,
+      }
+    }
+    if (!validationCoversConfiguredBudget(source)) {
+      return {
+        state: 'warning',
+        label: validationRequiredLabel('has not been fully validated for configured limits'),
       }
     }
     return { state: 'healthy', label: `Last sync succeeded ${completed}` }
