@@ -122,3 +122,67 @@ test('graph failures expose a retry action', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
   expect(retries).toBe(1)
 })
+
+test('graph retries stay outside the live summary and document nodes describe their destination', () => {
+  render(
+    <Workspace
+      {...props}
+      document={null}
+      tab="graph"
+      graph={{
+        nodes: [
+          {
+            id: 'document:one',
+            kind: 'document',
+            label: 'A very long document title that remains readable when the graph card is narrow',
+            project: 'work',
+            source: 'notes',
+            document_id: 'one',
+          },
+        ],
+        edges: [{ source: 'source:notes', target: 'document:one', kind: 'contains' }],
+        next_cursor: null,
+      }}
+      graphError="Graph data unavailable"
+      onRetryGraph={() => {}}
+      onSelectDocument={() => {}}
+    />
+  )
+
+  const summary = screen.getByRole('status')
+  expect(summary.querySelector('button')).toBeNull()
+  expect(screen.getByRole('button', { name: 'Retry graph' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: /Open document:/ })).toBeTruthy()
+  expect(screen.getByRole('button', { name: /Open document:/ }).getAttribute('title')).toBe(
+    'Open document'
+  )
+  expect(document.querySelector('.graph-links line')).toBeTruthy()
+})
+
+test('an empty graph page does not reuse unrelated retrieved evidence', () => {
+  render(
+    <Workspace
+      {...props}
+      document={null}
+      tab="graph"
+      evidence={[
+        {
+          chunk_id: 'stale-evidence',
+          source: 'notes',
+          source_id: 'note-1',
+          title: 'Stale filtered result',
+          uri: null,
+          content: 'This result belongs to a previous query.',
+          score: 0.8,
+          semantic_rank: 1,
+          lexical_rank: null,
+          updated_at: '2026-01-01T00:00:00Z',
+        },
+      ]}
+      graph={{ nodes: [], edges: [], next_cursor: null }}
+    />
+  )
+
+  expect(screen.getByRole('heading', { name: 'No graph data' })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: /Stale filtered result/ })).toBeNull()
+})

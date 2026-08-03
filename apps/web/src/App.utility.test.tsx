@@ -172,7 +172,10 @@ test('graph and timeline evidence actions open the selected source', async () =>
       expect(screen.getByRole('tab', { name: rail }).getAttribute('aria-selected')).toBe('true')
     )
     const evidenceButton = screen.getByRole('button', {
-      name: new RegExp(`${rail} evidence: Deployment playbook`),
+      name:
+        rail === 'Graph'
+          ? 'Open evidence: Deployment playbook'
+          : new RegExp(`${rail} evidence: Deployment playbook`),
     })
     fireEvent.click(evidenceButton)
     await waitFor(() =>
@@ -212,8 +215,8 @@ test('graph view renders indexed document nodes when the graph endpoint responds
   try {
     await renderApp()
     fireEvent.click(railButton('Graph'))
-    await waitFor(() => expect(screen.getByText('1 nodes · 0 links')).toBeTruthy())
-    expect(screen.getByRole('button', { name: 'Graph evidence: Release process' })).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('Showing 1 of 1 document · 0 links')).toBeTruthy())
+    expect(screen.getByRole('button', { name: 'Open document: Release process' })).toBeTruthy()
   } finally {
     state.graph = null
   }

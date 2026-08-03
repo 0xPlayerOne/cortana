@@ -501,16 +501,24 @@ function GraphView({
   onSelectDocument: (id: string) => void
 }) {
   const graphDocuments = graph?.nodes.filter((node) => node.kind === 'document') ?? []
+  const usingEvidenceFallback = graph === null
   const nodes = graphDocuments.length
     ? graphDocuments.slice(0, 12)
-    : evidence.slice(0, 8).map((item) => ({
-        id: item.chunk_id,
-        kind: 'document' as const,
-        label: item.title,
-        project: '',
-        source: item.source,
-        document_id: null,
-      }))
+    : usingEvidenceFallback
+      ? evidence.slice(0, 8).map((item) => ({
+          id: item.chunk_id,
+          kind: 'document' as const,
+          label: item.title,
+          project: '',
+          source: item.source,
+          document_id: null,
+        }))
+      : []
+  const visibleNodeIds = new Set(nodes.map((node) => node.id))
+  const visibleEdges =
+    graph && !usingEvidenceFallback
+      ? graph.edges.filter((edge) => visibleNodeIds.has(edge.target))
+      : []
   if (graphLoading && nodes.length === 0) {
     return (
       <EmptyState
@@ -529,27 +537,49 @@ function GraphView({
   }
   return (
     <div className="graph-view">
+      {visibleEdges.length > 0 && (
+        <svg className="graph-links" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+          {nodes.map((node, index) => {
+            if (!visibleEdges.some((edge) => edge.target === node.id)) return null
+            const angle = (index / Math.max(nodes.length, 1)) * Math.PI * 2 - Math.PI / 2
+            return (
+              <line
+                key={`edge:${node.id}`}
+                x1="50"
+                y1="50"
+                x2={50 + 31 * Math.cos(angle)}
+                y2={50 + 31 * Math.sin(angle)}
+              />
+            )
+          })}
+        </svg>
+      )}
       <div className="graph-center">
         <Sparkles size={24} />
       </div>
       <div className="graph-summary" role="status">
-        {graph
-          ? `${graph.nodes.length} nodes · ${graph.edges.length} links`
-          : graphLoading
-            ? 'Loading indexed graph…'
-            : 'Retrieved evidence'}
-        {graphError ? ` · ${graphError}` : ''}
-        {graphError && onRetry && (
+        <span>
+          {graph && !usingEvidenceFallback
+            ? `Showing ${nodes.length} of ${graphDocuments.length} document${graphDocuments.length === 1 ? '' : 's'} · ${visibleEdges.length} link${visibleEdges.length === 1 ? '' : 's'}`
+            : graphLoading
+              ? 'Loading indexed graph…'
+              : 'Retrieved evidence'}
+          {graphError ? ` · ${graphError}` : ''}
+        </span>
+      </div>
+      {graphError && onRetry && (
+        <div className="graph-actions">
           <button type="button" className="link-button" onClick={onRetry}>
             Retry graph
           </button>
-        )}
-      </div>
+        </div>
+      )}
       {nodes.map((node, index) => (
         <button
           type="button"
           key={node.id}
-          aria-label={`Graph evidence: ${node.label}`}
+          aria-label={`${node.document_id ? 'Open document' : 'Open evidence'}: ${node.label}`}
+          title={node.document_id ? 'Open document' : 'Open retrieved evidence'}
           style={
             {
               '--angle': `${(index / Math.max(nodes.length, 1)) * Math.PI * 2}rad`,
