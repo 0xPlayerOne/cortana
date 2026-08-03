@@ -167,19 +167,23 @@ def _fetch_slack_cached(
             ).fetchone()
             full = row is None or _full_refresh_due(str(row[1]))
             latest_ts = None if row is None else str(row[0] or "")
-            latest_cursor = _slack_timestamp(latest_ts) if latest_ts else None
-            if not full and latest_ts and latest_cursor is None:
+            cached_cursor = _slack_timestamp(latest_ts) if latest_ts else None
+            if not full and latest_ts and cached_cursor is None:
                 # A damaged cursor must not turn into an unbounded or skipped
                 # incremental query. Rebuild this channel snapshot instead.
                 full = True
                 latest_ts = None
+            # Newest message timestamp enumerated so far. It is persisted only
+            # after every page for the channel succeeds, so a partial snapshot
+            # never advances the cursor past records never enumerated.
+            newest_ts = latest_ts
+            newest_cursor = cached_cursor
             cursor = ""
             while True:
                 params: dict[str, Any] = {"channel": channel_id, "limit": 200}
-                if full:
-                    if cursor:
-                        params["cursor"] = cursor
-                elif latest_cursor is not None:
+                if cursor:
+                    params["cursor"] = cursor
+                elif not full and cached_cursor is not None:
                     params["oldest"] = latest_ts
                 response = _get_with_backoff(client, "/conversations.history", params=params)
                 payload = _slack_payload(response)
@@ -190,7 +194,10 @@ def _fetch_slack_cached(
                     parent_timestamp = _slack_timestamp(parent.get("ts"))
                     if parent_timestamp is None:
                         continue
-                    if not full and latest_cursor is not None and parent_timestamp <= latest_cursor:
+                    # Keep the incremental threshold fixed at the cached cursor
+                    # so later pages can deliver messages older than the newest
+                    # one seen on an earlier page.
+                    if not full and cached_cursor is not None and parent_timestamp <= cached_cursor:
                         continue
                     if full:
                         cache.execute(
@@ -217,9 +224,9 @@ def _fetch_slack_cached(
                                 ),
                             ),
                         )
-                    if latest_cursor is None or parent_timestamp > latest_cursor:
-                        latest_ts = str(parent["ts"])
-                        latest_cursor = parent_timestamp
+                    if newest_cursor is None or parent_timestamp > newest_cursor:
+                        newest_ts = str(parent["ts"])
+                        newest_cursor = parent_timestamp
                 cache.commit()
                 response_metadata = payload.get("response_metadata")
                 cursor = str(
@@ -227,7 +234,7 @@ def _fetch_slack_cached(
                     if isinstance(response_metadata, dict)
                     else ""
                 )
-                if not full or not cursor:
+                if not cursor:
                     break
             if full:
                 cache.execute(
@@ -239,7 +246,7 @@ def _fetch_slack_cached(
                 "INSERT OR REPLACE INTO slack_channels(channel_id,latest_ts,last_full) VALUES(?,?,?)",
                 (
                     channel_id,
-                    latest_ts,
+                    newest_ts,
                     dt.datetime.now(dt.UTC).isoformat() if full else str(row[1]),
                 ),
             )

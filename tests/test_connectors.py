@@ -656,6 +656,125 @@ def test_slack_cache_rebuilds_when_cursor_is_corrupt(
     assert oldest_values == [None]
 
 
+def test_slack_incremental_pagination_continues_while_next_cursor_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SLACK_TEST_TOKEN", "secret")
+    real_client = httpx.Client
+    history_requests: list[tuple[str | None, str | None]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/conversations.history"):
+            cursor = request.url.params.get("cursor")
+            history_requests.append((request.url.params.get("oldest"), cursor))
+            messages = (
+                [{"ts": "11.0", "user": "U2", "text": "Older new message"}]
+                if cursor
+                else [{"ts": "12.0", "user": "U1", "text": "Newest"}]
+            )
+            return response(
+                {
+                    "ok": True,
+                    "messages": messages,
+                    "response_metadata": {"next_cursor": "" if cursor else "next-page"},
+                },
+                request=request,
+            )
+        raise AssertionError(f"unexpected Slack request: {request.url}")
+
+    monkeypatch.setattr(
+        chat.httpx,
+        "Client",
+        lambda **_kwargs: real_client(
+            base_url="https://slack.test",
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    with sqlite3.connect(cache / "slack.sqlite3") as connection:
+        connection.execute(
+            "CREATE TABLE slack_channels("
+            "channel_id TEXT PRIMARY KEY,latest_ts TEXT,last_full TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO slack_channels(channel_id,latest_ts,last_full) VALUES(?,?,?)",
+            ("C1", "10.0", "2099-01-01T00:00:00+00:00"),
+        )
+        connection.commit()
+
+    documents = list(chat.fetch_slack(["C1"], "work", "SLACK_TEST_TOKEN", cache_dir=cache))
+
+    assert [document.source_id for document in documents] == ["C1:11.0", "C1:12.0"]
+    assert history_requests == [("10.0", None), (None, "next-page")]
+    connection = sqlite3.connect(cache / "slack.sqlite3")
+    try:
+        row = connection.execute(
+            "SELECT latest_ts,last_full FROM slack_channels WHERE channel_id='C1'"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row == ("12.0", "2099-01-01T00:00:00+00:00")
+
+
+def test_slack_incremental_page_failure_keeps_cached_cursor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SLACK_TEST_TOKEN", "secret")
+    real_client = httpx.Client
+    history_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal history_calls
+        if request.url.path.endswith("/conversations.history"):
+            history_calls += 1
+            if history_calls == 1:
+                return response(
+                    {
+                        "ok": True,
+                        "messages": [{"ts": "12.0", "user": "U1", "text": "Newest"}],
+                        "response_metadata": {"next_cursor": "next-page"},
+                    },
+                    request=request,
+                )
+            raise RuntimeError("simulated Slack history failure")
+        raise AssertionError(f"unexpected Slack request: {request.url}")
+
+    monkeypatch.setattr(
+        chat.httpx,
+        "Client",
+        lambda **_kwargs: real_client(
+            base_url="https://slack.test",
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    with sqlite3.connect(cache / "slack.sqlite3") as connection:
+        connection.execute(
+            "CREATE TABLE slack_channels("
+            "channel_id TEXT PRIMARY KEY,latest_ts TEXT,last_full TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO slack_channels(channel_id,latest_ts,last_full) VALUES(?,?,?)",
+            ("C1", "10.0", "2099-01-01T00:00:00+00:00"),
+        )
+        connection.commit()
+
+    with pytest.raises(RuntimeError, match="simulated Slack history failure"):
+        list(chat.fetch_slack(["C1"], "work", "SLACK_TEST_TOKEN", cache_dir=cache))
+
+    assert history_calls == 2
+    connection = sqlite3.connect(cache / "slack.sqlite3")
+    try:
+        row = connection.execute(
+            "SELECT latest_ts,last_full FROM slack_channels WHERE channel_id='C1'"
+        ).fetchone()
+    finally:
+        connection.close()
+    assert row == ("10.0", "2099-01-01T00:00:00+00:00")
+
+
 def test_slack_bounded_run_does_not_mutate_cursor_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -831,7 +950,9 @@ def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
         return httpx.Response(200, text="Quarterly roadmap", request=request)
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    documents = list(fetch_drive(token, "work", client=client))
+    # Bounded trials tolerate the unsupported image/png file (no content);
+    # complete runs fail closed on unsupported content.
+    documents = list(fetch_drive(token, "work", client=client, max_documents=10))
 
     assert len(documents) == 1
     assert documents[0].content == "Quarterly roadmap"
@@ -917,6 +1038,7 @@ def test_google_drive_skips_malformed_listing_records(
             token,
             "work",
             client=httpx.Client(transport=httpx.MockTransport(handler)),
+            max_documents=10,
         )
     )
 
@@ -924,6 +1046,98 @@ def test_google_drive_skips_malformed_listing_records(
     diagnostic = capsys.readouterr().err
     assert "Drive file skipped: record=0 is not an object" in diagnostic
     assert "Drive file skipped: id=bad-time" in diagnostic
+
+
+def test_google_drive_full_mode_rejects_malformed_listing_records(
+    tmp_path: Path,
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response(
+            {"files": [None, {"name": "missing id"}]},
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive file record=0 is not an object"):
+        list(fetch_drive(token, "work", client=client))
+
+
+def test_google_drive_full_mode_rejects_non_object_listing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response(["not", "an", "object"], request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive listing is not an object"):
+        list(fetch_drive(token, "work", client=client))
+
+    # A capped run still tolerates the malformed listing with a diagnostic.
+    assert list(fetch_drive(token, "work", client=client, max_documents=5)) == []
+    assert "Drive listing skipped" in capsys.readouterr().err
+
+
+def test_google_drive_full_mode_rejects_incomplete_search(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "doc1",
+                            "name": "Doc",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ],
+                    "incompleteSearch": True,
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="body", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive listing is incomplete"):
+        list(fetch_drive(token, "work", client=client))
+
+    # Bounded validation runs keep tolerating incomplete searches.
+    capped = list(fetch_drive(token, "work", client=client, max_documents=5))
+    assert [document.source_id for document in capped] == ["doc1"]
+
+
+def test_google_drive_full_mode_rejects_invalid_modified_time(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "bad-time",
+                            "name": "Bad timestamp",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "not-a-timestamp",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="body", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive file has invalid modifiedTime: id=bad-time"):
+        list(fetch_drive(token, "work", client=client))
 
 
 def test_google_drive_bounds_oversized_exports_with_explicit_metadata(tmp_path: Path) -> None:
@@ -1033,6 +1247,70 @@ def test_google_drive_capped_run_does_not_prune_cached_bodies(tmp_path: Path) ->
     finally:
         connection.close()
     assert bodies == [("doc1",), ("doc2",)], "a capped run must not prune cached bodies"
+
+
+def test_google_drive_full_mode_rejects_unresolved_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "doc1",
+                            "name": "Roadmap",
+                            "mimeType": "application/vnd.google-apps.document",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="never reached", request=request)
+
+    def content(_session: GoogleSession, _item: dict[str, Any]) -> str:
+        raise ValueError("sensitive provider detail")
+
+    monkeypatch.setattr(google, "_drive_content", content)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive file content unavailable: id=doc1") as error:
+        list(fetch_drive(token, "work", client=client))
+    assert "sensitive provider detail" not in str(error.value)
+
+    # Bounded trials keep the diagnostic skip for unresolved content.
+    capped = list(fetch_drive(token, "work", client=client, max_documents=5))
+    assert capped == []
+    assert "drive file content unavailable: id=doc1 error=ValueError" in capsys.readouterr().err
+
+
+def test_google_drive_full_mode_rejects_unsupported_content(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "bin1",
+                            "name": "Image",
+                            "mimeType": "image/png",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="unused", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive file has no supported content: id=bin1"):
+        list(fetch_drive(token, "work", client=client))
 
 
 def test_google_drive_isolates_content_failure_and_uses_stale_cache(
@@ -1188,11 +1466,77 @@ def test_google_gmail_skips_malformed_listing_records(
             token,
             "work",
             client=httpx.Client(transport=httpx.MockTransport(handler)),
+            max_documents=10,
         )
     )
 
     assert [document.source_id for document in documents] == ["m1"]
     assert "Gmail message skipped: record=0 is not an object" in capsys.readouterr().err
+
+
+def test_google_gmail_full_mode_rejects_malformed_listing_records(
+    tmp_path: Path,
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response(
+            {"messages": [None, {"labelIds": ["INBOX"]}]},
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Gmail message record=0 is not an object"):
+        list(fetch_gmail(token, "work", client=client))
+
+
+def test_google_gmail_full_mode_rejects_detail_id_mismatch(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response({"messages": [{"id": "m1"}]}, request=request)
+        return response(
+            {
+                "id": "other-id",
+                "payload": {
+                    "headers": [{"name": "Subject", "value": "Mismatch"}],
+                    "mimeType": "text/plain",
+                    "body": {"data": base64.urlsafe_b64encode(b"body").decode()},
+                },
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Gmail message detail id mismatch: requested=m1"):
+        list(fetch_gmail(token, "work", client=client))
+
+
+def test_google_gmail_full_mode_rejects_conversion_failure(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response({"messages": [{"id": "m1"}]}, request=request)
+        return response(
+            {
+                "id": "m1",
+                "payload": {
+                    "headers": [{"name": "Date", "value": "not-a-date"}],
+                    "mimeType": "text/plain",
+                    "body": {"data": base64.urlsafe_b64encode(b"body").decode()},
+                },
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Gmail message conversion failed: id=m1"):
+        list(fetch_gmail(token, "work", client=client))
 
 
 def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
@@ -1277,7 +1621,9 @@ def test_google_gmail_capped_run_does_not_prune_cached_messages(tmp_path: Path) 
     assert messages == [("m1",), ("m2",)], "a capped run must not prune cached messages"
 
 
-def test_google_gmail_skips_isolated_inaccessible_message(tmp_path: Path) -> None:
+def test_google_gmail_skips_isolated_inaccessible_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     token = tmp_path / "token.json"
     write_token(token, '{"token":"access"}')
 
@@ -1306,9 +1652,42 @@ def test_google_gmail_skips_isolated_inaccessible_message(tmp_path: Path) -> Non
         )
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    documents = list(fetch_gmail(token, "work", client=client))
+    # Bounded trials tolerate an isolated denied detail; complete runs fail closed.
+    documents = list(fetch_gmail(token, "work", client=client, max_documents=10))
 
     assert [document.source_id for document in documents] == ["available"]
+    assert "gmail message skipped: id=denied status=403" in capsys.readouterr().err
+
+
+def test_google_gmail_full_mode_rejects_isolated_detail_denial(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response(
+                {"messages": [{"id": "available"}, {"id": "denied"}]},
+                request=request,
+            )
+        if request.url.path.endswith("/denied"):
+            return response({"error": "forbidden"}, status=403, request=request)
+        return response(
+            {
+                "id": "available",
+                "threadId": "t1",
+                "internalDate": "1700000000000",
+                "payload": {
+                    "headers": [{"name": "Subject", "value": "Available"}],
+                    "mimeType": "text/plain",
+                    "body": {"data": base64.urlsafe_b64encode(b"Still indexed").decode()},
+                },
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Gmail message detail unavailable: id=denied"):
+        list(fetch_gmail(token, "work", client=client))
 
 
 def test_google_gmail_refuses_broad_detail_denial(
