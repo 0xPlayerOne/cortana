@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.24.1](https://github.com/0xPlayerOne/cortana/compare/v0.24.0...v0.24.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **ci:** pin Code Foundry tree reconciliation ([2129096](https://github.com/0xPlayerOne/cortana/commit/2129096aaa5c86a36d1e0df6bca991700f1f61d6))
+* **ingest:** bound batch allocation by document budget ([07e06fa](https://github.com/0xPlayerOne/cortana/commit/07e06fa214f8ff8669c613c8fdaecf84ab59b05d))
+* **release:** align desktop lockfile version ([4ed1901](https://github.com/0xPlayerOne/cortana/commit/4ed190184a0a6d580133380d621af5d2c23d430f))
+* **release:** pin published asset checkout ([7fdd37a](https://github.com/0xPlayerOne/cortana/commit/7fdd37ab4425397cc8ff5efbf107500f97868c09))
+* **status:** preserve scoped sync health without indexed docs ([b87d7f9](https://github.com/0xPlayerOne/cortana/commit/b87d7f96bfd935669f6ae283b52f2a47b49e1502))
+* **sync:** classify connector timeouts as budget failures ([719fcef](https://github.com/0xPlayerOne/cortana/commit/719fceff36028d749744b720dfdedc92ad789c7a))
+
+
+### Tests
+
+* **ci:** lock release merge policy ([8535f1c](https://github.com/0xPlayerOne/cortana/commit/8535f1c34933b10270f5677dc23c6f6d9141271e))
+* **desktop:** add native IPC harness ([5d3b2d0](https://github.com/0xPlayerOne/cortana/commit/5d3b2d0d449ea0fdd7b17b5bfb1a688ca0bac21b))
+* **desktop:** expand native IPC coverage ([a00cd6f](https://github.com/0xPlayerOne/cortana/commit/a00cd6f52419afc7bceb0d5e7cae7e0df37a680d))
+
+
+### Maintenance
+
+* **ci:** adopt Code Foundry 0.34.14 ([65eb432](https://github.com/0xPlayerOne/cortana/commit/65eb432bbd1bffc811bb2fe18503125da3b830c2))
+
 ## [0.24.0](https://github.com/0xPlayerOne/cortana/compare/v0.23.1...v0.24.0) (2026-08-03)
 
 
