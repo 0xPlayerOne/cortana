@@ -44,6 +44,9 @@
   --theme-error-fg: #f0c1bd;
   --theme-error-bg: #3a201e;
   --theme-error-border: #77403b;
+  --theme-warning-fg: #f0d18c;
+  --theme-warning-bg: #302719;
+  --theme-warning-border: #715a2e;
 
   --ink: var(--theme-ink);
   --panel: var(--theme-surface);
@@ -82,6 +85,9 @@
   --theme-error-fg: #f0c1bd;
   --theme-error-bg: #3a201e;
   --theme-error-border: #77403b;
+  --theme-warning-fg: #f0d18c;
+  --theme-warning-bg: #302719;
+  --theme-warning-border: #715a2e;
   --amber: #59defc;
   --amber-soft: #8cd7ff;
 }
@@ -113,6 +119,9 @@
   --theme-error-fg: #ffd4ce;
   --theme-error-bg: #4a252b;
   --theme-error-border: #b8666d;
+  --theme-warning-fg: #ffe3a3;
+  --theme-warning-bg: #3f321d;
+  --theme-warning-border: #a7833c;
   --amber: #6ad9ff;
   --amber-soft: #b3e0ff;
 }

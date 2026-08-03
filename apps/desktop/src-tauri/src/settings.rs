@@ -1881,6 +1881,15 @@ fn validate_sources(
                 source.name, source.project
             ));
         }
+        if source.enabled
+            && !workspace_ids.contains(&source.project)
+            && legacy_source_scopes.contains(&source.project)
+        {
+            return Err(format!(
+                "source `{}` is enabled but not assigned to a visible workspace `{}`; assign it before enabling or syncing",
+                source.name, source.project
+            ));
+        }
         source.editable = source.kind != "external";
         normalize_optional_text(&mut source.root);
         normalize_optional_text(&mut source.source);
@@ -3403,6 +3412,20 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["work", "personal", "special"]
         );
+
+        let mut unsafe_update = valid_update(temp.path());
+        unsafe_update.workspaces = current.workspaces.clone();
+        unsafe_update.sources = current.sources.clone();
+        unsafe_update
+            .sources
+            .iter_mut()
+            .find(|source| source.project == "community")
+            .expect("legacy community source")
+            .enabled = true;
+        let error = store
+            .save(unsafe_update)
+            .expect_err("enabled legacy sources must be assigned first");
+        assert!(error.contains("not assigned to a visible workspace"));
 
         let mut update = valid_update(temp.path());
         update.workspaces = current.workspaces;
