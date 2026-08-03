@@ -836,6 +836,48 @@ def test_google_drive_reuses_content_until_modified(tmp_path: Path) -> None:
     assert (cache / "drive.sqlite3").stat().st_mode & 0o777 == 0o600
 
 
+def test_google_drive_capped_run_does_not_prune_cached_bodies(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    cache = tmp_path / "cache"
+    content_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal content_requests
+        if request.url.path == "/drive/v3/files":
+            page_size = int(request.url.params.get("pageSize") or 1000)
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": f"doc{index}",
+                            "name": f"Doc {index}",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                        for index in (1, 2)
+                    ][:page_size]
+                },
+                request=request,
+            )
+        content_requests += 1
+        return httpx.Response(200, text="body", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    full = list(fetch_drive(token, "work", client=client, cache_dir=cache))
+    capped = list(fetch_drive(token, "work", client=client, cache_dir=cache, max_documents=1))
+
+    assert [document.source_id for document in full] == ["doc1", "doc2"]
+    assert [document.source_id for document in capped] == ["doc1"]
+    assert content_requests == 2, "the capped run must reuse cached bodies"
+    connection = sqlite3.connect(cache / "drive.sqlite3")
+    try:
+        bodies = connection.execute("SELECT id FROM files ORDER BY id").fetchall()
+    finally:
+        connection.close()
+    assert bodies == [("doc1",), ("doc2",)], "a capped run must not prune cached bodies"
+
+
 def test_google_drive_isolates_content_failure_and_uses_stale_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1031,6 +1073,51 @@ def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
     assert detail_requests == 1
     assert (cache / "gmail.sqlite3").stat().st_mode & 0o777 == 0o600
     assert cache.stat().st_mode & 0o777 == 0o700
+
+
+def test_google_gmail_capped_run_does_not_prune_cached_messages(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    cache = tmp_path / "cache"
+    detail_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal detail_requests
+        if request.url.path.endswith("/messages"):
+            maximum = int(request.url.params.get("maxResults") or 500)
+            return response(
+                {"messages": [{"id": "m1"}, {"id": "m2"}][:maximum]},
+                request=request,
+            )
+        detail_requests += 1
+        message_id = request.url.path.rsplit("/", 1)[-1]
+        return response(
+            {
+                "id": message_id,
+                "payload": {
+                    "headers": [{"name": "Subject", "value": message_id}],
+                    "mimeType": "text/plain",
+                    "body": {
+                        "data": base64.urlsafe_b64encode(message_id.encode()).decode(),
+                    },
+                },
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    full = list(fetch_gmail(token, "work", client=client, cache_dir=cache))
+    capped = list(fetch_gmail(token, "work", client=client, cache_dir=cache, max_documents=1))
+
+    assert [document.source_id for document in full] == ["m1", "m2"]
+    assert [document.source_id for document in capped] == ["m1"]
+    assert detail_requests == 2, "the capped run must reuse cached messages"
+    connection = sqlite3.connect(cache / "gmail.sqlite3")
+    try:
+        messages = connection.execute("SELECT id FROM messages ORDER BY id").fetchall()
+    finally:
+        connection.close()
+    assert messages == [("m1",), ("m2",)], "a capped run must not prune cached messages"
 
 
 def test_google_gmail_skips_isolated_inaccessible_message(tmp_path: Path) -> None:

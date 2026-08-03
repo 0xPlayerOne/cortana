@@ -381,6 +381,7 @@ fn source_validation_check(config: &Config, allow_sync_service: bool) -> Readine
             max_documents,
             max_bytes,
             max_seconds,
+            chrono::Duration::hours(config.ingestion.validation_max_age_hours as i64),
         ) {
             problems.push(format!("{error}"));
         }
@@ -627,6 +628,39 @@ mod tests {
                 .detail
                 .contains("validation duration limit was smaller than this sync")
         );
+    }
+
+    #[test]
+    fn source_validation_rejects_a_lapsed_validation_until_revalidated() {
+        let (directory, config) = config_with_source(configured_source(true));
+        let source = &config.sources[0];
+        let mut lapsed = succeeded_validation(source, 25, 1024, 60);
+        lapsed.validated_at = chrono::Utc::now() - chrono::Duration::days(30);
+        source_validation::record(directory.path(), lapsed).expect("lapsed validation");
+
+        let check = source_validation_check(&config, true);
+        assert!(!check.passed);
+        assert!(check.detail.contains("30 days old"));
+        assert!(check.detail.contains("re-run validate-source"));
+
+        let mut fresh = succeeded_validation(source, 25, 1024, 60);
+        fresh.validated_at = chrono::Utc::now();
+        source_validation::record(directory.path(), fresh).expect("fresh validation");
+        assert!(source_validation_check(&config, true).passed);
+    }
+
+    #[test]
+    fn source_validation_accepts_any_age_when_the_freshness_bound_is_disabled() {
+        let (directory, mut config) = config_with_source(configured_source(true));
+        config.ingestion.validation_max_age_hours = 0;
+        let source = &config.sources[0];
+        let mut lapsed = succeeded_validation(source, 25, 1024, 60);
+        lapsed.validated_at = chrono::Utc::now() - chrono::Duration::days(30);
+        source_validation::record(directory.path(), lapsed).expect("lapsed validation");
+
+        let check = source_validation_check(&config, true);
+        assert!(check.passed);
+        assert!(check.detail.contains("every enabled source"));
     }
 
     #[test]

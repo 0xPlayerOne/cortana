@@ -32,7 +32,11 @@ entries, and cache hits without logging queries or evidence.
 `/v1/status` also reports whether recurring ingestion is installed, the global and per-source
 safety budgets, every ACL-visible configured source including disabled or not-yet-indexed sources,
 its configured ACL labels, a non-secret authorization summary, and the latest persisted validation
-and sync outcomes for each source. The local owner sees the complete inventory; scoped principals
+and sync outcomes for each source. Each per-source validation summary reports a `fresh` flag and a
+bounded `age_seconds` computed against the configured
+`[ingestion].validation_max_age_hours` bound (168 hours by default; `0` accepts any age), so a
+succeeded validation that has lapsed is reported as expired rather than healthy. The local owner
+sees the complete inventory; scoped principals
 see only matching source/project counters, workspaces, validation state, and sync outcomes; an
 admin-scoped principal may inspect the complete operational view. The
 authorization summary reports only the connector method (`none`, `token`, or
@@ -44,8 +48,9 @@ owner-local validation state and Desktop job log. Sync
 outcomes are recorded as `running`, `succeeded`,
 `failed`, `cancelled`, or `budget_exceeded`. A process interruption intentionally leaves a
 `running` record behind so the workspace can distinguish an interrupted run from a source that
-never started. The workspace refreshes this status every 15 seconds and keeps query availability
-separate from ingestion health. Cortana retains the newest 100 run records per source to keep this
+never started. Before a new sync starts, recovery only marks `running` rows as `cancelled` and
+preserves any completed run status and outcome counters. The workspace refreshes this
+status every 15 seconds and keeps query availability separate from ingestion health. Cortana retains the newest 100 run records per source to keep this
 operational history bounded. Runtime request counters in a scoped status response are maintained
 per authenticated principal; only the local owner or an admin-scoped principal receives the
 process-wide totals used for operations dashboards.
@@ -138,8 +143,27 @@ cortana --config ~/.config/cortana/config.toml service install \
 
 The installer re-checks every enabled source before scheduling recurring sync and refuses to
 install the job unless each source has a current successful validation covering its configured
-document, byte, and duration budgets. Re-run `validate-source` (or the Desktop validation flow)
-after changing a source or its budgets.
+document, byte, and duration budgets. A validation stays current for
+`[ingestion].validation_max_age_hours` (168 hours by default; `0` accepts any age): re-run
+`validate-source` (or the Desktop validation flow) after changing a source or its budgets, and
+re-validate periodically so a revoked credential or changed scope cannot keep a stale record
+blessing the schedule. The installed job runs `sync --require-validation` without `--source`, so
+every scheduled run re-applies the same gate before any connector is contacted: a source whose
+validation lapsed or failed, whose configuration changed since validation, or whose resolved
+budgets grew past the validated ones fails the run fast (nonzero exit, visible in the job log)
+instead of ingesting against a stale validation. The same freshness bound gates
+`sync --require-validation` and the readiness `source-validation` check. Re-run `validate-source`
+(or the Desktop validation flow) after changing a source or its budgets; the next scheduled run
+picks up the new validation record automatically.
+blessing the schedule. The installed job runs `sync --require-validation` without `--source`, so
+every scheduled run re-applies the same gate before any connector is contacted: a source whose
+validation lapsed or failed, whose configuration changed since validation, or whose resolved
+budgets grew past the validated ones fails the run fast (nonzero exit, visible in the job log)
+instead of ingesting against a stale validation. The same freshness bound gates
+`sync --require-validation` and the readiness `source-validation` check. Re-run `validate-source`
+(or the Desktop validation flow) after changing a source or its budgets; the next scheduled run
+picks up the new validation record automatically. `/v1/status` marks a lapsed validation expired
+so the workspace flags the source for re-validation instead of showing it as healthy.
 
 Re-running `service install` without `--enable-sync-service` removes any prior recurring sync job
 and leaves Cortana in query-only mode.
@@ -172,7 +196,10 @@ cortana service stop embedding
 The checked-in templates in [`packaging/systemd`](../packaging/systemd) remain useful for manual
 package-manager installs and hardened deployments. The generated units use the current executable,
 config path, working directory, and data directory, and recurring sync remains disabled unless
-`--enable-sync-service` is explicitly supplied. For a cloud embedding provider, pass
+`--enable-sync-service` is explicitly supplied. The recurring sync unit is generated with the
+same `sync --require-validation` guard as the macOS and Windows jobs, so each scheduled run
+re-checks every enabled source's validation before contacting a connector. For a cloud embedding
+provider, pass
 `--no-embedding-service`.
 
 The generated user units can also be managed directly:
@@ -228,12 +255,14 @@ enabled source has a current successful validation at equal or larger document, 
 budgets than its configured limits. The check reads only the owner-local validation state and never
 contacts a connector: it fails when a source was never validated, its last validation failed, its
 configuration changed since validation (the validation record stores a configuration fingerprint),
-or its resolved budgets grew past the validated ones — for example after raising `[ingestion]`
-defaults behind an override-less source. This mirrors the install-time recurring-sync gate, so an
-operator who changed a source after installing the sync schedule sees the mismatch in `cortana
-readiness` instead of discovering it from a failing scheduled run. Without the flag, source
-validation is not required for query-only readiness; per-source validation state remains visible in
-`/v1/status` at any time.
+its resolved budgets grew past the validated ones — for example after raising `[ingestion]`
+defaults behind an override-less source — or its validation lapsed past
+`[ingestion].validation_max_age_hours` (168 hours by default; `0` disables the bound). This mirrors
+the install-time recurring-sync gate, and because the installed recurring job re-checks the same
+gate on every scheduled run, an operator who changed a source after installing the sync schedule
+sees the mismatch in `cortana readiness` before the next scheduled run fails fast with the same
+reason. Without the flag, source validation is not required for query-only readiness; per-source
+validation state remains visible in `/v1/status` at any time.
 
 ## Secrets
 

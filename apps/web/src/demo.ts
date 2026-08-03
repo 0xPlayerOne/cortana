@@ -86,6 +86,7 @@ export const demoStatus: BrainStatus = {
     max_bytes_per_source: 134217728,
     max_duration_seconds: 900,
     request_concurrency: 1,
+    validation_max_age_hours: 168,
     configured_sources: [
       ['work-code', 'filesystem', 'work'],
       ['personal-gmail', 'gmail', 'personal'],

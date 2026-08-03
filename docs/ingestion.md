@@ -23,6 +23,16 @@ Set global defaults in `[ingestion]`, tighter source-specific `max_documents`, `
 Ingestion uses one embedding request at a time by default even when interactive queries allow more
 concurrency.
 
+Bounded syncs (for example Desktop trial or initial syncs, which never reconcile) pass the run's
+document cap upstream to built-in connectors so a Drive listing stops at the permitted scope
+instead of emitting a whole page that trips the live output safety bound. Validation applies the
+same cap with `--no-cache` so a read-only probe never mutates a persistent cache with a partial
+snapshot; bounded sync keeps caches enabled and capped connector runs never prune cached bodies
+or messages they did not list. Reconciliation runs never pass the cap: they always receive the
+full snapshot and fail closed when it exceeds a ceiling, so a truncated snapshot can never trigger
+deletion reconciliation. Arbitrary external commands keep the plain JSONL contract and never
+receive connector flags; their output is enforced by the live spool bound and the spool preflight.
+
 Configured source names are index namespaces. This prevents two Gmail accounts, Drive accounts, or
 Slack workspaces from deleting or colliding with one another. The original adapter kind is retained
 in metadata for provenance. Names are unique, lower-case, and limited to 64 letters, numbers,
@@ -170,7 +180,10 @@ cortana sync --source SOURCE \
 
 `--require-validation` fails before opening the index or embedding provider unless the selected
 source is enabled and its latest validation succeeded for the exact current source configuration
-at equal or larger document and byte limits. The validation record stores only a one-way
+at equal or larger document and byte limits. Omitting `--source` widens the same check to every
+enabled source; the installed recurring sync job always invokes this all-sources form, so each
+scheduled run re-checks validation freshness and budgets before any connector is contacted. The
+validation record stores only a one-way
 configuration fingerprint. Trial sync may embed and index committed batches, but it never deletes
 records absent from the bounded snapshot. Cancellation preserves already committed batches.
 

@@ -84,6 +84,49 @@ fn guarded_sync_fails_before_opening_the_index_without_validation() {
 }
 
 #[test]
+fn guarded_all_sources_sync_fails_before_opening_the_index_without_validation() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n\
+             [embedding]\n\
+             dimension = 256\n\
+             [[sources]]\n\
+             name = \"safe-source\"\n\
+             kind = \"external\"\n\
+             project = \"personal\"\n\
+             command = [\"/usr/bin/false\"]\n\
+             [[sources]]\n\
+             name = \"second-source\"\n\
+             kind = \"external\"\n\
+             project = \"personal\"\n\
+             command = [\"/usr/bin/false\"]\n"
+        ),
+    )
+    .expect("write config");
+
+    // The recurring sync job invokes this exact all-sources form; it must
+    // re-check every enabled source before the index is opened.
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["sync", "--require-validation", "--no-reconcile"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "recurring sync requires a current successful validation for source safe-source",
+        ))
+        .stderr(predicate::str::contains(
+            "source safe-source has not been validated",
+        ));
+    assert!(!data.join("cortana.sqlite3").exists());
+}
+
+#[test]
 fn offline_ingest_and_search_round_trip() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");
@@ -787,6 +830,280 @@ fn source_budget_rejects_snapshot_before_partial_ingestion() {
     let sync_status: String = connection
         .query_row(
             "SELECT status FROM sync_runs WHERE source='external-demo'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("sync status");
+    assert_eq!(sync_status, "budget_exceeded");
+}
+
+#[test]
+fn bounded_connector_sync_accepts_its_permitted_one_document_scope() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let input = directory.path().join("drive.jsonl");
+    fs::write(
+        &input,
+        concat!(
+            "{\"source\":\"google-drive\",\"source_id\":\"one\",\"title\":\"One\",",
+            "\"content\":\"first document\",\"project\":\"demo\"}\n",
+            "{\"source\":\"google-drive\",\"source_id\":\"two\",\"title\":\"Two\",",
+            "\"content\":\"second document\",\"project\":\"demo\"}\n"
+        ),
+    )
+    .expect("write drive source");
+    // The fake built-in connector verifies the bounded sync passes the
+    // upstream document cap (without --no-cache) and then emits its whole
+    // fixture; the cap is what keeps the spool inside the live output safety
+    // bound and the sync inside its permitted one-document scope.
+    let connector = format!(
+        "case \" $* \" in *\" --max-documents 1 \"*) ;; *) exit 1 ;; esac; head -n 1 {input:?}\n"
+    );
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n[connectors]\n\
+             command = [\"/bin/sh\", \"-c\", {connector:?}]\n\
+             [[sources]]\nname = \"bounded-drive\"\nkind = \"google-drive\"\nproject = \"demo\"\n\
+             token = \"/tmp/fake-google-token.json\"\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args([
+            "sync",
+            "--source",
+            "bounded-drive",
+            "--no-reconcile",
+            "--max-documents",
+            "1",
+            "--max-bytes",
+            "1048576",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("synced source=bounded-drive"))
+        .stdout(predicate::str::contains("changed=1"));
+
+    let connection =
+        Connection::open(data.join("cortana.sqlite3")).expect("open initialized index");
+    let documents: i64 = connection
+        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        .expect("document count");
+    assert_eq!(
+        documents, 1,
+        "only the permitted one-document scope is ingested"
+    );
+    let source_id: String = connection
+        .query_row("SELECT source_id FROM documents", [], |row| row.get(0))
+        .expect("ingested source id");
+    assert_eq!(source_id, "one");
+    let sync_status: String = connection
+        .query_row(
+            "SELECT status FROM sync_runs WHERE source='bounded-drive'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("sync status");
+    assert_eq!(sync_status, "succeeded");
+    let sync_documents: i64 = connection
+        .query_row(
+            "SELECT documents FROM sync_runs WHERE source='bounded-drive'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("sync document count");
+    assert_eq!(sync_documents, 1);
+}
+
+#[test]
+fn bounded_connector_sync_still_rejects_over_budget_content_bytes() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let input = directory.path().join("drive.jsonl");
+    // One valid document whose searchable content alone exceeds the byte
+    // budget. It stays below the live output safety bound (budget bytes plus
+    // per-document headroom) so the spool validation must reject it.
+    let content = "x".repeat(50_000);
+    fs::write(
+        &input,
+        format!(
+            "{{\"source\":\"google-drive\",\"source_id\":\"one\",\"title\":\"One\",\
+             \"content\":\"{content}\",\"project\":\"demo\"}}\n"
+        ),
+    )
+    .expect("write drive source");
+    let connector = format!(
+        "case \" $* \" in *\" --max-documents 1 \"*) ;; *) exit 1 ;; esac; cat {input:?}\n"
+    );
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n[connectors]\n\
+             command = [\"/bin/sh\", \"-c\", {connector:?}]\n\
+             [[sources]]\nname = \"bounded-drive\"\nkind = \"google-drive\"\nproject = \"demo\"\n\
+             token = \"/tmp/fake-google-token.json\"\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args([
+            "sync",
+            "--source",
+            "bounded-drive",
+            "--no-reconcile",
+            "--max-documents",
+            "1",
+            "--max-bytes",
+            "1024",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "source bounded-drive exceeds the 1024 byte budget",
+        ));
+
+    let connection =
+        Connection::open(data.join("cortana.sqlite3")).expect("open initialized index");
+    let documents: i64 = connection
+        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        .expect("document count");
+    assert_eq!(documents, 0, "over-budget content must not be ingested");
+    let sync_status: String = connection
+        .query_row(
+            "SELECT status FROM sync_runs WHERE source='bounded-drive'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("sync status");
+    assert_eq!(sync_status, "budget_exceeded");
+}
+
+#[test]
+fn reconcile_sync_fails_closed_when_builtin_snapshot_exceeds_document_budget() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let input = directory.path().join("drive.jsonl");
+    fs::write(
+        &input,
+        concat!(
+            "{\"source\":\"google-drive\",\"source_id\":\"one\",\"title\":\"One\",",
+            "\"content\":\"first document\",\"project\":\"demo\"}\n",
+            "{\"source\":\"google-drive\",\"source_id\":\"two\",\"title\":\"Two\",",
+            "\"content\":\"second document\",\"project\":\"demo\"}\n"
+        ),
+    )
+    .expect("write drive source");
+    // A reconciliation run must never receive the upstream cap: the full
+    // snapshot is emitted and the fail-closed preflight rejects it instead of
+    // truncating and then deleting the records outside the scope.
+    let connector =
+        format!("case \" $* \" in *\" --max-documents \"*) exit 1 ;; esac; cat {input:?}\n");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n[connectors]\n\
+             command = [\"/bin/sh\", \"-c\", {connector:?}]\n\
+             [[sources]]\nname = \"bounded-drive\"\nkind = \"google-drive\"\nproject = \"demo\"\n\
+             token = \"/tmp/fake-google-token.json\"\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args([
+            "sync",
+            "--source",
+            "bounded-drive",
+            "--max-documents",
+            "1",
+            "--max-bytes",
+            "1048576",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "source bounded-drive exceeds the 1 document budget",
+        ));
+
+    let connection =
+        Connection::open(data.join("cortana.sqlite3")).expect("open initialized index");
+    let documents: i64 = connection
+        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        .expect("document count");
+    assert_eq!(documents, 0, "a truncated snapshot must never be ingested");
+    let sync_status: String = connection
+        .query_row(
+            "SELECT status FROM sync_runs WHERE source='bounded-drive'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("sync status");
+    assert_eq!(sync_status, "budget_exceeded");
+}
+
+#[test]
+fn sync_live_output_bound_stops_oversized_external_output() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let input = directory.path().join("oversized.jsonl");
+    fs::write(&input, "x".repeat(100_000)).expect("write oversized source");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n\
+             [[sources]]\nname = \"oversized\"\nkind = \"external\"\nproject = \"demo\"\n\
+             command = [\"/bin/cat\", {input:?}]\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args([
+            "sync",
+            "--source",
+            "oversized",
+            "--max-documents",
+            "1",
+            "--max-bytes",
+            "1",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "connector oversized exceeded its live output safety bound",
+        ));
+
+    let connection =
+        Connection::open(data.join("cortana.sqlite3")).expect("open initialized index");
+    let documents: i64 = connection
+        .query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))
+        .expect("document count");
+    assert_eq!(
+        documents, 0,
+        "oversized external output must not be ingested"
+    );
+    let sync_status: String = connection
+        .query_row(
+            "SELECT status FROM sync_runs WHERE source='oversized'",
             [],
             |row| row.get(0),
         )
