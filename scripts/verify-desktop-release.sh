@@ -55,6 +55,93 @@ PY
 
 staging="$(mktemp -d "${TMPDIR:-/tmp}/cortana-release-assets.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
+
+core_archives=(
+    "cortana-${tag}-aarch64-apple-darwin.tar.gz"
+    "cortana-${tag}-x86_64-unknown-linux-gnu.tar.gz"
+)
+for asset in "${core_archives[@]}" "Cortana_aarch64.app.tar.gz"; do
+    gh release download "$tag" --repo "$repo" --pattern "$asset" --dir "$staging" --clobber >/dev/null
+done
+
+python3 - "$staging" "${core_archives[@]}" "Cortana_aarch64.app.tar.gz" <<'PY'
+import os
+import sys
+import tarfile
+from pathlib import PurePosixPath
+
+root = sys.argv[1]
+core_archives = sys.argv[2:4]
+app_archive = sys.argv[4]
+
+
+def path_matches(name, expected):
+    name = name.strip("/")
+    expected = expected.strip("/")
+    return (
+        name == expected
+        or name.endswith("/" + expected)
+        or name.startswith(expected + "/")
+        or ("/" + expected + "/") in ("/" + name + "/")
+    )
+
+
+def verify_archive(path, label, required):
+    with tarfile.open(path, "r:gz") as archive:
+        members = []
+        for member in archive.getmembers():
+            normalized = PurePosixPath(member.name)
+            if (
+                normalized.is_absolute()
+                or ".." in normalized.parts
+                or "\\" in member.name
+                or member.issym()
+                or member.islnk()
+            ):
+                raise SystemExit(f"{label} contains an unsafe archive member: {member.name}")
+            members.append((normalized.as_posix().lstrip("./"), member))
+
+    for expected, kind in required:
+        matches = [
+            member for name, member in members if path_matches(name, expected)
+        ]
+        if not matches:
+            raise SystemExit(f"{label} is missing {expected}")
+        if kind == "file" and not any(member.isfile() for member in matches):
+            raise SystemExit(f"{label} does not contain a regular file for {expected}")
+        if kind == "executable" and not any(
+            member.isfile() and member.mode & 0o111 for member in matches
+        ):
+            raise SystemExit(f"{label} contains a non-executable {expected}")
+
+
+for filename in core_archives:
+    verify_archive(
+        os.path.join(root, filename),
+        filename,
+        (
+            ("bin/cortana", "executable"),
+            ("install.sh", "executable"),
+            ("config.example.toml", "file"),
+            ("share/cortana/web/index.html", "file"),
+            ("dist", "prefix"),
+            ("scripts/install-release.sh", "file"),
+            ("scripts/verify-release.sh", "file"),
+        ),
+    )
+
+verify_archive(
+    os.path.join(root, app_archive),
+    app_archive,
+    (
+        ("Contents/MacOS/cortana", "executable"),
+        ("Contents/MacOS/cortana-desktop", "executable"),
+        ("Contents/Resources/resources/cortana-connectors", "prefix"),
+    ),
+)
+print("verified core archives and macOS sidecar/resources")
+PY
+
 gh release download "$tag" --repo "$repo" --pattern latest.json --dir "$staging" --clobber >/dev/null
 python3 - "$staging/latest.json" "$tag" <<'PY'
 import json
