@@ -28,6 +28,30 @@ describe('operational source visibility', () => {
     expect(sourceHealth(discord!).state).toBe('failed')
   })
 
+  test('surfaces a safe validation failure category', () => {
+    const status = structuredClone(demoStatus)
+    const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!
+    buzz.validation = {
+      source: 'buzz',
+      project: 'agents',
+      kind: 'buzz',
+      status: 'failed',
+      validated_at: '2026-08-03T00:00:00Z',
+      fresh: true,
+      age_seconds: 60,
+      documents: null,
+      bytes: null,
+      max_documents: 25,
+      max_bytes: 1_048_576,
+      max_seconds: 60,
+      error: 'source validation failed',
+      error_category: 'authorization',
+    }
+
+    const source = operationalSources(status).find((item) => item.name === 'buzz')
+    expect(sourceHealth(source!).label).toContain('(authorization)')
+  })
+
   test('flags a stale successful sync instead of claiming it is healthy forever', () => {
     const status = structuredClone(demoStatus)
     const gmail = status.ingestion.configured_sources.find(
