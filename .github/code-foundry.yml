@@ -37,4 +37,4 @@ custom_workflows: preserve
 codeql_rust_shards: '["src","apps/desktop/src-tauri","third_party/glib-0.18.5"]'
 codeql_rust_threads: 2
 codeql_rust_max_parallel: 3
-release_merge_strategy: squash
+release_merge_strategy: rebase
