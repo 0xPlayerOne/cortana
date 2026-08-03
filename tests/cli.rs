@@ -127,6 +127,46 @@ fn guarded_all_sources_sync_fails_before_opening_the_index_without_validation() 
 }
 
 #[test]
+fn service_install_sync_option_fails_before_service_manager_execution_without_validation() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n\
+             [embedding]\n\
+             dimension = 256\n\
+             [[sources]]\n\
+             name = \"safe-source\"\n\
+             kind = \"external\"\n\
+             project = \"personal\"\n\
+             command = [\"/usr/bin/false\"]\n"
+        ),
+    )
+    .expect("write config");
+
+    // Explicit recurring sync install must fail at source-validation gating before any
+    // service-manager command is invoked.
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["service", "install", "--no-web", "--enable-sync-service"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "recurring sync requires a current successful validation for source safe-source",
+        ))
+        .stderr(predicate::str::contains(
+            "source safe-source has not been validated",
+        ));
+
+    assert!(!data.join("source-validations.lock").exists());
+    assert!(!data.join("cortana.sqlite3").exists());
+}
+
+#[test]
 fn offline_ingest_and_search_round_trip() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");
