@@ -1021,6 +1021,15 @@ struct SourceLimits {
 }
 
 impl SourceLimits {
+    // Safe preallocation bound for an ingestion batch. A bounded run can never
+    // hold more than `max_documents` documents in flight, so an arbitrarily
+    // large configured `document_batch_size` must not turn into an oversized
+    // `Vec::with_capacity` allocation. Capacity is only an allocation hint;
+    // flushing still follows `document_batch_size`.
+    fn batch_capacity(&self) -> usize {
+        self.document_batch_size.min(self.max_documents).max(1)
+    }
+
     fn resolve(config: &Config, source: &SourceConfig, overrides: SyncOverrides) -> Result<Self> {
         let limits = Self {
             max_documents: overrides
@@ -2453,7 +2462,7 @@ async fn sync_source_documents(
             &source.exclude,
         )?;
         let mut seen = Vec::new();
-        let mut batch = Vec::with_capacity(control.limits.document_batch_size);
+        let mut batch = Vec::with_capacity(control.limits.batch_capacity());
         let mut content_bytes = 0_u64;
         for document in documents {
             control.check(&source.name)?;
@@ -2511,7 +2520,7 @@ async fn sync_source_documents(
                 .with_context(|| format!("failed to open {}", spool.display()))?,
         );
         let mut seen = Vec::new();
-        let mut batch = Vec::with_capacity(control.limits.document_batch_size);
+        let mut batch = Vec::with_capacity(control.limits.batch_capacity());
         for line in reader.lines() {
             control.check(&source.name)?;
             let line = line?;
@@ -3040,7 +3049,8 @@ mod tests {
         Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
         SyncOverrides, chunk, cleanup_connector_spools, configured_connector_command,
         context_bundle, ensure_recurring_sync_validated, ingest_documents, private_file,
-        require_sync_validation, run_connector_to_spool, validation_overrides,
+        require_sync_validation, run_connector_to_spool, validate_connector_spool,
+        validation_overrides,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
@@ -3059,6 +3069,111 @@ mod tests {
         assert_eq!(explicit.max_documents, Some(100));
         assert_eq!(explicit.max_bytes, Some(64 * 1024 * 1024));
         assert_eq!(explicit.max_seconds, Some(900));
+    }
+
+    #[test]
+    fn batch_capacity_is_bounded_by_the_document_budget() {
+        // An arbitrarily large configured batch size must never become an
+        // oversized preallocation on a run with a small document budget.
+        let tiny_budget = SourceLimits {
+            max_documents: 1,
+            max_bytes: 1024,
+            max_seconds: 60,
+            document_batch_size: usize::MAX,
+            request_concurrency: 1,
+        };
+        assert_eq!(tiny_budget.batch_capacity(), 1);
+
+        // max_documents=10 with a batch size larger than the cap: the batch
+        // preallocates for the cap, never beyond it.
+        let bounded = SourceLimits {
+            max_documents: 10,
+            max_bytes: 1024,
+            max_seconds: 60,
+            document_batch_size: 16,
+            request_concurrency: 1,
+        };
+        assert_eq!(bounded.batch_capacity(), 10);
+
+        // Capacity is only an allocation hint: when the budget permits, the
+        // full configured batch size is still used for preallocation.
+        let unbounded = SourceLimits {
+            max_documents: usize::MAX,
+            max_bytes: u64::MAX,
+            max_seconds: 3600,
+            document_batch_size: 16,
+            request_concurrency: 1,
+        };
+        assert_eq!(unbounded.batch_capacity(), 16);
+    }
+
+    #[tokio::test]
+    async fn connector_spool_validation_rejects_snapshots_over_the_document_budget() {
+        // Reconciliation runs validate the full uncapped spool and must keep
+        // failing closed when a source exceeds its document budget instead of
+        // silently truncating and deleting the remainder of the index.
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let spool = directory.path().join("connector.jsonl");
+        let mut lines = String::new();
+        for index in 0..11 {
+            let document = Document {
+                source: "connector".into(),
+                source_id: format!("doc-{index}"),
+                title: "Document".into(),
+                content: "body".into(),
+                uri: None,
+                updated_at: Utc::now(),
+                project: "work".into(),
+                acl: Vec::new(),
+                metadata: serde_json::json!({}),
+            };
+            lines.push_str(&serde_json::to_string(&document).expect("serialize"));
+            lines.push('\n');
+        }
+        std::fs::write(&spool, lines).expect("spool");
+
+        let source = SourceConfig {
+            name: "over-budget".into(),
+            kind: "external".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        let cancellation = Cancellation::inert();
+        let control = SourceControl {
+            limits: SourceLimits {
+                max_documents: 10,
+                max_bytes: 1024 * 1024,
+                max_seconds: 60,
+                document_batch_size: 16,
+                request_concurrency: 1,
+            },
+            started: std::time::Instant::now(),
+            cancellation: &cancellation,
+        };
+
+        let error = validate_connector_spool(&spool, &source, &control)
+            .err()
+            .expect("over-budget spool must be rejected");
+        assert!(
+            format!("{error:#}").contains("document budget"),
+            "unexpected error: {error:#}"
+        );
+        cancellation.stop();
     }
 
     #[test]
