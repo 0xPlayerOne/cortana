@@ -691,6 +691,37 @@ impl Store {
             .map_err(Into::into)
     }
 
+    /// Return the retained metadata-only audit trail for an operator export.
+    ///
+    /// The HTTP endpoint intentionally caps responses at 500 rows. Exports
+    /// need to preserve the configured retention window instead, so the CLI
+    /// applies its own explicit upper bound before calling this method.
+    pub fn audit_events_for_export(&self, limit: usize) -> Result<Vec<AuditEvent>> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT timestamp,principal,action,project,source,outcome,result_count,latency_ms
+             FROM audit_events ORDER BY id DESC LIMIT ?1",
+        )?;
+        let mut events = statement
+            .query_map([i64::try_from(limit).unwrap_or(i64::MAX)], |row| {
+                Ok(AuditEvent {
+                    timestamp: row.get(0)?,
+                    principal: row.get(1)?,
+                    action: row.get(2)?,
+                    project: row.get(3)?,
+                    source: row.get(4)?,
+                    outcome: row.get(5)?,
+                    result_count: row.get(6)?,
+                    latency_ms: row.get(7)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        // Select the newest retained events like the interactive endpoint,
+        // then emit them oldest-first so exports replay chronologically.
+        events.reverse();
+        Ok(events)
+    }
+
     pub fn list_documents_scoped(
         &self,
         project: Option<&str>,
@@ -2523,6 +2554,15 @@ mod tests {
         assert_eq!(events[1].result_count, Some(1));
         assert_eq!(events[0].principal, "agent");
         assert_eq!(events[0].project.as_deref(), Some("demo"));
+
+        // Interactive API reads are newest-first and capped at 500, while an
+        // operator export preserves the retained window in chronological order.
+        let export = store
+            .audit_events_for_export(2)
+            .expect("audit export events");
+        assert_eq!(export.len(), 2);
+        assert_eq!(export[0].result_count, Some(1));
+        assert_eq!(export[1].result_count, Some(2));
 
         assert!(
             !store
