@@ -27,11 +27,14 @@ Bounded syncs (for example Desktop trial or initial syncs, which never reconcile
 document cap upstream to built-in connectors so a Drive listing stops at the permitted scope
 instead of emitting a whole page that trips the live output safety bound. Validation applies the
 same cap with `--no-cache` so a read-only probe never mutates a persistent cache with a partial
-snapshot; bounded sync keeps caches enabled and capped connector runs never prune cached bodies
-or messages they did not list. Reconciliation runs never pass the cap: they always receive the
-full snapshot and fail closed when it exceeds a ceiling, so a truncated snapshot can never trigger
-deletion reconciliation. Arbitrary external commands keep the plain JSONL contract and never
-receive connector flags; their output is enforced by the live spool bound and the spool preflight.
+snapshot. Slack and Discord also use their uncached bounded path for trial or initial runs, even
+when a cache directory is configured; this prevents a partial page from advancing an incremental
+cursor past records that were never enumerated. Complete runs retain their caches, and capped
+Google runs never prune cached bodies or messages they did not list. Reconciliation runs never pass
+the cap: they always receive the full snapshot and fail closed when it exceeds a ceiling, so a
+truncated snapshot can never trigger deletion reconciliation. Arbitrary external commands keep the
+plain JSONL contract and never receive connector flags; their output is enforced by the live spool
+bound and the spool preflight.
 
 Configured source names are index namespaces. This prevents two Gmail accounts, Drive accounts, or
 Slack workspaces from deleting or colliding with one another. The original adapter kind is retained

@@ -284,6 +284,23 @@ variable name with `cortana mcp --token-env NAME`; Cortana resolves the value pr
 the configured principal, and enforces the same scopes and ACLs. Omitting `--token-env` keeps the
 MCP process in the unrestricted local-owner profile and must not be used for a shared agent.
 
+### Rotate a shared-agent token
+
+Rotate credentials without interrupting an agent by using a new environment-variable name:
+
+1. Add the new secret value through **Settings → Access** (or the owner-only `secrets.env` file)
+   and keep the old principal unchanged.
+2. Point a new principal at that variable with the same least-privilege scopes and ACL labels.
+3. Verify one bounded `status` or `context` request using the new token and confirm the audit event
+   has the expected principal and scope. Do not put either token in shell history or a request body.
+4. Remove the old principal and secret, save, and restart only the affected API/MCP process. A
+   failed verification can be rolled back by restoring the previous principal from the local
+   configuration backup; token rotation never changes the canonical index.
+
+Desktop removes secret values that are no longer referenced by any source, provider, or principal
+when settings are saved. Keep the old principal until the new credential has been tested, then
+export the bounded metadata-only audit trail for the rotation record.
+
 Cortana Desktop can create and edit these principals from **Settings → Access**. Token values are
 write-only and stored in the managed owner-only secret file. The native process selects a matching
 credential by scope for its fixed loopback requests; the webview never receives the value.
