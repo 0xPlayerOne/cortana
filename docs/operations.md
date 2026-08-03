@@ -54,7 +54,10 @@ bounded `age_seconds` computed against the configured
 succeeded validation that has lapsed is reported as expired rather than healthy. The local owner
 sees the complete inventory; scoped principals
 see only matching source/project counters, workspaces, validation state, and sync outcomes; an
-admin-scoped principal may inspect the complete operational view. The
+admin-scoped principal may inspect the complete operational view. Sync outcomes for an
+ACL-visible configured source stay visible to that principal even when the source has not
+indexed any documents yet, so a failed, interrupted, or budget-exceeded run is not hidden from
+the principals allowed to view that source. The
 authorization summary reports only the connector method (`none`, `token`, or
 `google_oauth`) plus setup and authorization booleans; it never exposes token values, paths, OAuth
 client paths, or environment contents. Validation proves bounded connector
