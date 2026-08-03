@@ -14,7 +14,9 @@ use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbe
 use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
-use cortana::{api, google_oauth, mcp, migration, service, source_validation, supervisor};
+use cortana::{
+    api, google_oauth, mcp, migration, service, source_status, source_validation, supervisor,
+};
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
 use serde::Deserialize;
@@ -909,18 +911,20 @@ async fn main() -> Result<()> {
         }
         Some(Command::Mcp { token_env }) => {
             let (code_sources, message_sources) = mcp_source_groups(&config);
-            let configured_sources = config
+            let mut configured_sources = config
                 .sources
                 .iter()
-                .map(|source| mcp::ConfiguredSourceStatus {
-                    name: source.name.clone(),
-                    source: source.source.clone().unwrap_or_else(|| source.name.clone()),
-                    kind: source.kind.clone(),
-                    project: source.project.clone(),
-                    enabled: source.enabled,
-                    acl: source.acl.clone(),
-                })
-                .collect();
+                .map(|source| source_status::configured_source_status(&config, source))
+                .collect::<Vec<_>>();
+            let validation_fingerprints = source_status::validation_fingerprints(&config);
+            if let Err(message) = source_status::refresh_source_validations(
+                &mut configured_sources,
+                &config.data_dir,
+                config.ingestion.validation_max_age_hours,
+                &validation_fingerprints,
+            ) {
+                tracing::warn!(%message, "failed to load source validation state for MCP status");
+            }
             let principal = if let Some(name) = token_env {
                 let token = config
                     .environment_value(&name)
