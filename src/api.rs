@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -515,6 +515,17 @@ impl IngestionStatus {
             .configured_sources
             .retain(|source| acl_allows(&source.acl, &acl));
         status
+    }
+
+    /// Canonical (source, project) keys of the ACL-visible configured sources.
+    /// Sync runs are recorded under these keys, so the scoped stats query can
+    /// keep surfacing failed/running/budget-exceeded health for an authorized
+    /// source that has not indexed any documents yet.
+    fn visible_sync_source_keys(&self) -> HashSet<(String, String)> {
+        self.configured_sources
+            .iter()
+            .map(|source| (source.source.clone(), source.project.clone()))
+            .collect()
     }
 }
 
@@ -1094,13 +1105,15 @@ async fn status(
 ) -> Result<Json<Status>, (StatusCode, String)> {
     let acl = principal.acl_labels();
     let owner = principal.is_owner();
+    let ingestion = state.ingestion.refreshed().visible_to(&principal);
     let stats = if owner {
         state.store.stats()
     } else {
-        state.store.stats_scoped(&acl)
+        state
+            .store
+            .stats_scoped(&acl, &ingestion.visible_sync_source_keys())
     }
     .map_err(internal_error)?;
-    let ingestion = state.ingestion.refreshed().visible_to(&principal);
     let source_projects = if owner {
         stats
             .sources
@@ -1606,6 +1619,7 @@ mod tests {
     use crate::config::{AuthTokenConfig, SourceConfig};
     use crate::embed::{DeterministicEmbedder, Embedder};
     use crate::model::Document;
+    use crate::store::SyncRunStatus;
 
     use super::*;
 
@@ -2148,6 +2162,146 @@ mod tests {
             admin_names,
             vec!["work-drive", "personal-notes", "public-reference"]
         );
+    }
+
+    #[tokio::test]
+    async fn scoped_status_includes_sync_runs_for_acl_visible_sources_without_documents() {
+        let (_directory, state) = test_state(None);
+        let failed = state
+            .store
+            .begin_sync("work-drive", "work", 100, 2_048, 30)
+            .expect("begin failed sync");
+        state
+            .store
+            .finish_sync(&failed, SyncRunStatus::Failed, None, None, None)
+            .expect("finish failed sync");
+        let running = state
+            .store
+            .begin_sync("personal-notes", "personal", 50, 1_024, 60)
+            .expect("begin running sync");
+        let store = state.store.clone();
+
+        let mut config: Config = toml::from_str(
+            r#"
+            [[sources]]
+            name = "work-drive"
+            kind = "google-drive"
+            project = "work"
+            acl = ["work"]
+
+            [[sources]]
+            name = "personal-notes"
+            kind = "apple-notes"
+            project = "personal"
+            acl = ["personal"]
+            "#,
+        )
+        .expect("configuration");
+        config.data_dir = _directory.path().to_path_buf();
+        config.auth.tokens = vec![
+            AuthTokenConfig {
+                principal: "work-agent".into(),
+                token_env: "WORK_TOKEN".into(),
+                scopes: vec![STATUS_SCOPE.into()],
+                acl: vec!["work".into()],
+            },
+            AuthTokenConfig {
+                principal: "personal-agent".into(),
+                token_env: "PERSONAL_TOKEN".into(),
+                scopes: vec![STATUS_SCOPE.into()],
+                acl: vec!["personal".into()],
+            },
+            AuthTokenConfig {
+                principal: "auditor".into(),
+                token_env: "ADMIN_TOKEN".into(),
+                scopes: vec![ADMIN_SCOPE.into(), STATUS_SCOPE.into()],
+                acl: Vec::new(),
+            },
+        ];
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config
+            .environment
+            .insert("PERSONAL_TOKEN".into(), "personal-secret".into());
+        config
+            .environment
+            .insert("ADMIN_TOKEN".into(), "admin-secret".into());
+        let policy = AuthPolicy::from_config(&config, None).expect("auth policy");
+        let app = router(state.with_config(&config, false).with_auth_policy(policy));
+
+        let work_status = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("status request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(work_status.status(), StatusCode::OK);
+        let work_body = to_bytes(work_status.into_body(), 1024 * 1024)
+            .await
+            .expect("status body");
+        let work_value: serde_json::Value =
+            serde_json::from_slice(&work_body).expect("status JSON");
+        assert_eq!(work_value["documents"], 0);
+        assert_eq!(work_value["sources"], serde_json::json!([]));
+        let work_runs = work_value["sync_runs"].as_array().expect("sync runs");
+        assert_eq!(work_runs.len(), 1);
+        assert_eq!(work_runs[0]["source"], "work-drive");
+        assert_eq!(work_runs[0]["project"], "work");
+        assert_eq!(work_runs[0]["status"], "failed");
+        assert!(work_runs[0]["completed_at"].is_string());
+        assert_eq!(work_runs[0]["budget_documents"], 100);
+
+        let personal_status = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer personal-secret")
+                    .body(Body::empty())
+                    .expect("status request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(personal_status.status(), StatusCode::OK);
+        let personal_body = to_bytes(personal_status.into_body(), 1024 * 1024)
+            .await
+            .expect("status body");
+        let personal_value: serde_json::Value =
+            serde_json::from_slice(&personal_body).expect("status JSON");
+        let personal_runs = personal_value["sync_runs"].as_array().expect("sync runs");
+        assert_eq!(personal_runs.len(), 1);
+        assert_eq!(personal_runs[0]["source"], "personal-notes");
+        assert_eq!(personal_runs[0]["status"], "running");
+        assert!(personal_runs[0]["completed_at"].is_null());
+
+        let admin_status = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer admin-secret")
+                    .body(Body::empty())
+                    .expect("status request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(admin_status.status(), StatusCode::OK);
+        let admin_body = to_bytes(admin_status.into_body(), 1024 * 1024)
+            .await
+            .expect("status body");
+        let admin_value: serde_json::Value =
+            serde_json::from_slice(&admin_body).expect("status JSON");
+        let admin_runs = admin_value["sync_runs"].as_array().expect("sync runs");
+        assert_eq!(admin_runs.len(), 2, "owner view keeps every run");
+
+        store
+            .finish_sync(&running, SyncRunStatus::Cancelled, None, None, None)
+            .expect("finish running sync");
     }
 
     #[test]
