@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::io::Read;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -40,6 +41,7 @@ const MAX_DOCUMENT_CONTENT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DOCUMENT_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_QUERY_LENGTH: usize = 256;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
+const MAX_GOOGLE_TOKEN_BYTES: usize = 64 * 1024;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -561,10 +563,55 @@ fn regular_file_ready(path: &std::path::Path) -> bool {
 }
 
 fn google_token_env_ready(config: &Config, name: &str) -> bool {
-    config.environment_value(name).is_some_and(|value| {
-        let path = std::path::Path::new(value.trim());
-        path.is_absolute() && secure_regular_file_ready(path)
-    })
+    config
+        .environment_value(name)
+        .as_deref()
+        .is_some_and(google_token_destination_value_ready)
+}
+
+fn google_token_destination_value_ready(value: &str) -> bool {
+    let path = std::path::Path::new(value.trim());
+    path.is_absolute() && secure_regular_file_ready(path)
+}
+
+fn google_token_file_ready(path: &std::path::Path) -> bool {
+    if !secure_regular_file_ready(path) {
+        return false;
+    }
+    let mut file = match std::fs::File::open(path) {
+        Ok(file) => std::io::BufReader::new(file),
+        Err(_) => return false,
+    };
+    let mut bytes = Vec::new();
+    if file
+        .by_ref()
+        .take((MAX_GOOGLE_TOKEN_BYTES as u64) + 1)
+        .read_to_end(&mut bytes)
+        .is_err()
+    {
+        return false;
+    }
+    if bytes.len() > MAX_GOOGLE_TOKEN_BYTES {
+        return false;
+    }
+    let token = match serde_json::from_slice::<serde_json::Value>(&bytes) {
+        Ok(serde_json::Value::Object(token)) => token,
+        _ => return false,
+    };
+    let has_access_token = token
+        .get("token")
+        .or_else(|| token.get("access_token"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|token| !token.trim().is_empty());
+    let has_refresh_token = token
+        .get("refresh_token")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|token| !token.trim().is_empty());
+    let has_client_id = token
+        .get("client_id")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| !value.trim().is_empty());
+    has_access_token || (has_refresh_token && has_client_id)
 }
 
 fn secure_regular_file_ready(path: &std::path::Path) -> bool {
@@ -629,7 +676,7 @@ fn source_authorization_summary(
         let oauth_client_ready = source
             .oauth_client
             .as_ref()
-            .is_some_and(|path| secure_regular_file_ready(path));
+            .is_some_and(|path| secure_regular_file_ready(path.as_path()));
         let token_env_ready = source
             .token_env
             .as_deref()
@@ -637,7 +684,7 @@ fn source_authorization_summary(
         let token_file_ready = source
             .token
             .as_ref()
-            .is_some_and(|path| secure_regular_file_ready(path));
+            .is_some_and(|path| google_token_file_ready(path.as_path()));
         let token_destination_ready = source
             .token
             .as_deref()
@@ -646,7 +693,8 @@ fn source_authorization_summary(
                 .token_env
                 .as_deref()
                 .and_then(|name| config.environment_value(name))
-                .is_some_and(|value| google_token_destination_value_ready(&value));
+                .as_deref()
+                .is_some_and(google_token_destination_value_ready);
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::GoogleOauth,
             // A migrated/private token file is a complete authorization path on
@@ -668,7 +716,7 @@ fn source_authorization_summary(
         let token_file_ready = source
             .token
             .as_ref()
-            .is_some_and(|path| secure_regular_file_ready(path));
+            .is_some_and(|path| secure_regular_file_ready(path.as_path()));
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::Token,
             setup_required: !token_env_ready && !token_file_ready,
@@ -681,10 +729,6 @@ fn source_authorization_summary(
             authorized: true,
         }
     }
-}
-
-fn google_token_destination_value_ready(value: &str) -> bool {
-    google_token_destination_ready(Path::new(value.trim()))
 }
 
 fn google_token_destination_ready(path: &Path) -> bool {
@@ -1725,10 +1769,10 @@ mod tests {
     }
 
     #[test]
-    fn google_token_file_is_complete_authorization_without_oauth_client() {
+    fn google_token_file_with_access_token_authorizes_google_source() {
         let directory = tempdir().expect("temporary directory");
         let token = directory.path().join("google-token.json");
-        write_private_fixture(&token, "{}\n");
+        write_private_fixture(&token, "{\"token\":\"abc\",\"client_id\":\"unused\"}\n");
         let summary = source_authorization_summary(&Config::default(), &google_source(Some(token)));
 
         assert!(summary.authorized);
@@ -1740,7 +1784,96 @@ mod tests {
     }
 
     #[test]
-    fn google_token_environment_value_must_be_an_existing_absolute_file() {
+    fn google_token_file_with_refresh_token_and_client_id_authorizes_google_source() {
+        let directory = tempdir().expect("temporary directory");
+        let token = directory.path().join("google-token.json");
+        write_private_fixture(
+            &token,
+            "{\"refresh_token\":\"refresh\",\"client_id\":\"client-id\"}\n",
+        );
+        let summary = source_authorization_summary(&Config::default(), &google_source(Some(token)));
+
+        assert!(summary.authorized);
+        assert!(!summary.setup_required);
+    }
+
+    #[test]
+    fn google_token_file_without_credentials_is_not_authorized() {
+        let directory = tempdir().expect("temporary directory");
+        let token = directory.path().join("google-token.json");
+        write_private_fixture(&token, "{\"foo\": \"bar\"}\n");
+
+        let summary = source_authorization_summary(&Config::default(), &google_source(Some(token)));
+        assert!(!summary.authorized);
+        assert!(summary.setup_required);
+    }
+
+    #[test]
+    fn google_token_file_rejects_malformed_json() {
+        let directory = tempdir().expect("temporary directory");
+        let token = directory.path().join("google-token.json");
+        write_private_fixture(&token, "{token: [\"unclosed\"\n");
+        let summary = source_authorization_summary(&Config::default(), &google_source(Some(token)));
+
+        assert!(!summary.authorized);
+        assert!(summary.setup_required);
+    }
+
+    #[test]
+    fn google_token_file_rejects_non_object_payloads() {
+        let directory = tempdir().expect("temporary directory");
+        let token = directory.path().join("google-token.json");
+        write_private_fixture(&token, "[]\n");
+
+        let summary = source_authorization_summary(&Config::default(), &google_source(Some(token)));
+        assert!(!summary.authorized);
+        assert!(summary.setup_required);
+    }
+
+    #[test]
+    fn google_token_file_rejects_oversized_payload() {
+        let directory = tempdir().expect("temporary directory");
+        let token = directory.path().join("google-token.json");
+        std::fs::write(&token, vec![b'{'; MAX_GOOGLE_TOKEN_BYTES + 1]).expect("oversized fixture");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&token, std::fs::Permissions::from_mode(0o600))
+                .expect("secure fixture");
+        }
+
+        let summary = source_authorization_summary(&Config::default(), &google_source(Some(token)));
+        assert!(!summary.authorized);
+        assert!(summary.setup_required);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn google_token_environment_value_rejects_symlinked_parent() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempdir().expect("temporary directory");
+        let real = directory.path().join("real");
+        std::fs::create_dir(&real).expect("real token directory");
+        let token = real.join("google-token.json");
+        write_private_fixture(&token, "{\"token\":\"abc\"}\n");
+        let linked = directory.path().join("linked");
+        symlink(&real, &linked).expect("symlink token directory");
+
+        let mut source = google_source(None);
+        source.token_env = Some("GOOGLE_TOKEN_PATH".into());
+        let mut config = Config::default();
+        config.environment.insert(
+            "GOOGLE_TOKEN_PATH".into(),
+            linked.join("google-token.json").display().to_string(),
+        );
+
+        let summary = source_authorization_summary(&config, &source);
+        assert!(!summary.authorized);
+    }
+
+    #[test]
+    fn google_token_environment_value_requires_an_absolute_valid_authorization_payload() {
         let directory = tempdir().expect("temporary directory");
         let token = directory.path().join("google-token.json");
         let mut source = google_source(None);
@@ -1760,38 +1893,13 @@ mod tests {
         );
         assert!(!source_authorization_summary(&config, &source).authorized);
 
-        write_private_fixture(&token, "{}\n");
+        write_private_fixture(&token, "{\"access_token\":\"abc\"}\n");
         config
             .environment
             .insert("GOOGLE_TOKEN_PATH".into(), token.display().to_string());
         let ready = source_authorization_summary(&config, &source);
         assert!(ready.authorized);
         assert!(!ready.setup_required);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn google_token_environment_value_rejects_symlinked_parent() {
-        use std::os::unix::fs::symlink;
-
-        let directory = tempdir().expect("temporary directory");
-        let real = directory.path().join("real");
-        std::fs::create_dir(&real).expect("real token directory");
-        let token = real.join("google-token.json");
-        write_private_fixture(&token, "{}\n");
-        let linked = directory.path().join("linked");
-        symlink(&real, &linked).expect("symlink token directory");
-
-        let mut source = google_source(None);
-        source.token_env = Some("GOOGLE_TOKEN_PATH".into());
-        let mut config = Config::default();
-        config.environment.insert(
-            "GOOGLE_TOKEN_PATH".into(),
-            linked.join("google-token.json").display().to_string(),
-        );
-
-        let summary = source_authorization_summary(&config, &source);
-        assert!(!summary.authorized);
     }
 
     #[test]
@@ -2647,7 +2755,7 @@ mod tests {
             .expect("gmail status");
         assert_eq!(gmail["authorization"]["method"], "google_oauth");
         assert_eq!(gmail["authorization"]["setup_required"], false);
-        assert_eq!(gmail["authorization"]["authorized"], true);
+        assert_eq!(gmail["authorization"]["authorized"], false);
 
         let calendar = configured
             .as_array()
@@ -2656,6 +2764,58 @@ mod tests {
         assert_eq!(calendar["authorization"]["method"], "google_oauth");
         assert_eq!(calendar["authorization"]["setup_required"], true);
         assert_eq!(calendar["authorization"]["authorized"], false);
+    }
+
+    #[tokio::test]
+    async fn status_does_not_leak_google_token_values() {
+        let (directory, state) = test_state(None);
+        let token_path = directory.path().join("google-token.json");
+        let secret = "top-secret-token-value";
+        write_private_fixture(
+            &token_path,
+            &format!("{{\"access_token\":\"{secret}\",\"client_id\":\"id\"}}"),
+        );
+        let mut config: Config = toml::from_str(&format!(
+            r#"
+            [[sources]]
+            name = "gmail"
+            kind = "google-drive"
+            enabled = true
+            project = "work"
+            token = "{token_path_display}"
+            acl = ["work"]
+            "#,
+            token_path_display = token_path.display(),
+        ))
+        .expect("configuration");
+        config.data_dir = directory.path().to_path_buf();
+
+        let response = router(state.with_config(&config, false))
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("status body");
+        let text = String::from_utf8(body.clone().to_vec()).expect("status text");
+        assert!(text.contains("gmail"));
+        assert!(!text.contains("top-secret-token-value"));
+
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("status JSON");
+        let configured_source = &value["ingestion"]["configured_sources"][0];
+        assert_eq!(configured_source["name"], "gmail");
+        assert_eq!(configured_source["authorization"]["method"], "google_oauth");
+        let authorization = configured_source["authorization"]
+            .as_object()
+            .expect("authorization summary");
+        assert_eq!(authorization.len(), 3);
     }
 
     #[tokio::test]
