@@ -7,6 +7,33 @@ use rusqlite::Connection;
 use tempfile::tempdir;
 
 #[test]
+fn model_evaluation_is_opt_in_without_changing_safe_runtime_default() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let missing_key = "CORTANA_TEST_MISSING_QUERY_KEY_7E5B";
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n[query]\nsynthesis_enabled = false\napi_key_env = {missing_key:?}\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["eval", "--model"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(format!(
+            "query API key environment variable {missing_key} is not set"
+        )))
+        .stderr(predicate::str::contains("query synthesis is not enabled").not());
+}
+
+#[test]
 fn google_authorization_fails_closed_before_opening_browser() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

@@ -667,6 +667,18 @@ pub fn configured_model(
     )))
 }
 
+/// Validate the configured query provider without making any network call:
+/// base URL contract, a non-empty model name, and language-model client
+/// construction. `cortana eval --model` is itself the opt-in quality gate for
+/// the planner+synthesis path, so the CLI enables synthesis on its in-memory
+/// evaluation config only after this validation succeeds.
+pub fn validate_query_provider(config: &QueryConfig) -> Result<()> {
+    let mut evaluation = config.clone();
+    evaluation.synthesis_enabled = true;
+    configured_model(&evaluation, None)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -808,6 +820,37 @@ mod tests {
             "The release is ready [1].\n\nRecurring sync is disabled [2].",
             2
         ));
+    }
+
+    #[test]
+    fn validate_query_provider_enforces_provider_contract_without_network() {
+        let valid = QueryConfig {
+            synthesis_enabled: false,
+            base_url: "http://127.0.0.1:8008/v1".into(),
+            model: "mock-model".into(),
+            ..QueryConfig::default()
+        };
+        assert!(validate_query_provider(&valid).is_ok());
+
+        let empty_model = QueryConfig {
+            model: String::new(),
+            ..valid.clone()
+        };
+        let error = validate_query_provider(&empty_model).expect_err("empty model must fail");
+        assert!(
+            error.to_string().contains("query model must not be empty"),
+            "unexpected error: {error}"
+        );
+
+        let invalid_url = QueryConfig {
+            base_url: "not-a-url".into(),
+            ..valid
+        };
+        let error = validate_query_provider(&invalid_url).expect_err("invalid URL must fail");
+        assert!(
+            error.to_string().contains("query provider URL is invalid"),
+            "unexpected error: {error}"
+        );
     }
 
     #[tokio::test]
