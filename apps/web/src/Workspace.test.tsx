@@ -14,6 +14,7 @@ const props = {
   selected: 0,
   loading: false,
   error: '',
+  document: null,
   documentLoading: false,
   graph: null,
   graphLoading: false,
@@ -185,4 +186,93 @@ test('an empty graph page does not reuse unrelated retrieved evidence', () => {
 
   expect(screen.getByRole('heading', { name: 'No graph data' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: /Stale filtered result/ })).toBeNull()
+})
+
+const evidenceItem = {
+  chunk_id: 'release-notes',
+  source: 'work-code',
+  source_id: 'release-1',
+  title: 'Release notes',
+  uri: null,
+  content: 'Evidence excerpt',
+  score: 0.9,
+  semantic_rank: 1,
+  lexical_rank: null,
+  updated_at: '2026-01-01T00:00:00Z',
+}
+
+test('document is the default primary view and result tabs stay disabled until a search returns evidence', () => {
+  render(<Workspace {...props} />)
+
+  expect(screen.getByRole('tab', { name: 'Document' }).getAttribute('aria-selected')).toBe('true')
+  expect(screen.getByRole('heading', { name: 'Choose a document' })).toBeTruthy()
+  for (const name of ['Answer', 'Evidence', 'Timeline']) {
+    const tab = screen.getByRole('tab', { name })
+    expect(tab.hasAttribute('disabled')).toBe(true)
+    expect(tab.getAttribute('title')).toBe('Available once a search returns evidence')
+  }
+  // Document and Graph remain first-class views without a search result.
+  expect(screen.getByRole('tab', { name: 'Document' }).hasAttribute('disabled')).toBe(false)
+  expect(screen.getByRole('tab', { name: 'Graph' }).hasAttribute('disabled')).toBe(false)
+  // No evidence means no misleading count pill on the Evidence tab.
+  expect(screen.getByRole('tab', { name: 'Evidence' }).textContent).not.toContain('0')
+})
+
+test('disabled result tabs cannot be activated before a search', () => {
+  let changed = ''
+  render(
+    <Workspace
+      {...props}
+      onTabChange={(next) => {
+        changed = next
+      }}
+    />
+  )
+
+  fireEvent.click(screen.getByRole('tab', { name: 'Answer' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Evidence' }))
+  fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
+  expect(changed).toBe('')
+})
+
+test('answer, evidence, and timeline tabs enable once evidence arrives and keep direct result navigation', () => {
+  let changed = ''
+  render(
+    <Workspace
+      {...props}
+      tab="answer"
+      answer={null}
+      evidence={[evidenceItem]}
+      onTabChange={(next) => {
+        changed = next
+      }}
+    />
+  )
+
+  for (const name of ['Answer', 'Evidence', 'Timeline']) {
+    expect(screen.getByRole('tab', { name: new RegExp(name) }).hasAttribute('disabled')).toBe(false)
+  }
+  expect(screen.getByRole('tab', { name: /Evidence/ }).textContent).toContain('1')
+
+  // Clicking a cited passage still routes straight to the Evidence tab.
+  fireEvent.click(screen.getByRole('button', { name: /Release notes/ }))
+  expect(changed).toBe('sources')
+})
+
+test('workspace renders the shipped app icon asset with decorative alt/aria behavior', () => {
+  render(<Workspace {...props} />)
+
+  // The Answer tab, empty state, and graph center all share the real asset.
+  const icons = Array.from(document.querySelectorAll<HTMLImageElement>('img[src="/app-icon.svg"]'))
+  expect(icons.length).toBeGreaterThanOrEqual(2)
+  for (const icon of icons) {
+    expect(icon.getAttribute('alt')).toBe('')
+    expect(icon.getAttribute('aria-hidden')).toBe('true')
+  }
+  expect(
+    screen.getByRole('tab', { name: 'Answer' }).querySelector('img[src="/app-icon.svg"]')
+  ).toBeTruthy()
+  expect(document.querySelector('.empty-state img')).toBeTruthy()
+  // No inline CortanaBrandMark markup remains anywhere in the workspace.
+  expect(document.querySelector('svg[viewBox="0 0 1024 1024"]')).toBeNull()
 })

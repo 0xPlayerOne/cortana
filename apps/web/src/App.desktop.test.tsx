@@ -26,6 +26,7 @@ afterEach(cleanup)
 afterEach(() => {
   window.localStorage.removeItem('cortana.workspace-selection.v1')
   window.localStorage.removeItem('cortana.source-selection.v1')
+  window.localStorage.removeItem('cortana.theme.v1')
   state.getDocumentsCalls = []
   state.getGraphCalls = 0
   state.saveSettingsCalls = 0
@@ -499,22 +500,27 @@ test('desktop shell restores workspace and source scope and clears stale selecti
   window.localStorage.setItem('cortana.workspace-selection.v1', 'missing')
   render(<App />)
   await waitFor(() => {
-    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('')
-    expect(window.localStorage.getItem('cortana.workspace-selection.v1')).toBeNull()
+    const migrated = (screen.getByRole('combobox') as HTMLSelectElement).value
+    expect(migrated).toBeTruthy()
+    expect(window.localStorage.getItem('cortana.workspace-selection.v1')).toBe(migrated)
   })
 
   cleanup()
+  window.localStorage.setItem('cortana.workspace-selection.v1', 'personal')
   window.localStorage.setItem('cortana.source-selection.v1', 'work-code')
   render(<App />)
   await waitFor(() => {
+    expect(state.getDocumentsCalls.at(-1)?.workspace).toBe('personal')
     expect(state.getDocumentsCalls.at(-1)?.source).toBeUndefined()
     expect(window.localStorage.getItem('cortana.source-selection.v1')).toBeNull()
   })
 
   cleanup()
+  window.localStorage.setItem('cortana.workspace-selection.v1', 'personal')
   window.localStorage.setItem('cortana.source-selection.v1', 'missing')
   render(<App />)
   await waitFor(() => {
+    expect(state.getDocumentsCalls.at(-1)?.workspace).toBe('personal')
     expect(state.getDocumentsCalls.at(-1)?.source).toBeUndefined()
     expect(window.localStorage.getItem('cortana.source-selection.v1')).toBeNull()
   })
@@ -967,6 +973,69 @@ test('embedding settings explain local service command ownership', async () => {
   }
 })
 
+test('embedding model field supports preset catalog with custom fallback', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    embedding: {
+      ...desktopSettings.embedding,
+      provider: 'local',
+      model: 'Qwen/Qwen3-Embedding-0.6B',
+      base_url: 'http://127.0.0.1:6999/v1',
+    },
+  }
+
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Embedding' }))
+
+    const catalog = screen.getByRole('combobox', { name: 'Model catalog' })
+    expect((catalog as HTMLSelectElement).value).toBe('Qwen/Qwen3-Embedding-0.6B')
+
+    fireEvent.change(catalog, { target: { value: 'Custom' } })
+    const custom = screen.getByRole('textbox', { name: 'Model' }) as HTMLInputElement
+    fireEvent.change(custom, { target: { value: 'local/custom-model' } })
+    expect(custom.value).toBe('local/custom-model')
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
+test('query model field supports catalog and custom text mode', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    query: {
+      ...desktopSettings.query,
+      provider: 'cloud',
+      model: 'gpt-4o-mini',
+      base_url: 'https://api.openai.com/v1',
+    },
+  }
+
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Query' }))
+
+    const catalog = screen.getByRole('combobox', { name: 'Model catalog' })
+    fireEvent.change(catalog, { target: { value: 'claude-3-5-sonnet-20241022' } })
+    expect((catalog as HTMLSelectElement).value).toBe('claude-3-5-sonnet-20241022')
+
+    fireEvent.change(catalog, { target: { value: 'Custom' } })
+    const custom = screen.getByRole('textbox', { name: 'Model' }) as HTMLInputElement
+    fireEvent.change(custom, { target: { value: 'custom-model-name' } })
+    expect(custom.value).toBe('custom-model-name')
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
 test('settings add controls avoid reusing removed identifiers', async () => {
   const originalSettings = state.settings
   const originalConfirm = window.confirm
@@ -1009,7 +1078,7 @@ test('settings add controls avoid reusing removed identifiers', async () => {
     fireEvent.click(screen.getByRole('button', { name: /Add workspace/ }))
     expect(
       (screen.getAllByLabelText(/Scope ID/) as HTMLInputElement[]).map((input) => input.value)
-    ).toContain('workspace-1')
+    ).toContain('new-workspace')
 
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
     fireEvent.click(screen.getByRole('button', { name: 'Remove source-1' }))
@@ -1048,6 +1117,31 @@ test('workspace controls protect scopes assigned to sources', async () => {
       (screen.getByRole('button', { name: 'Remove Work' }) as HTMLButtonElement).disabled
     ).toBe(true)
     expect((screen.getAllByLabelText(/Scope ID/)[0] as HTMLInputElement).disabled).toBe(true)
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
+test('workspace cards show display name and advanced details', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    workspaces: [{ id: 'work', name: 'Work', account_label: 'team@example.com', color: '#5A9BD5' }],
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+
+    fireEvent.click(screen.getByText('Advanced workspace details'))
+    expect(screen.getByText('ID is internal; account labels are optional metadata.')).toBeTruthy()
+    expect(screen.getByLabelText(/Scope ID/i)).toBeTruthy()
+    expect(screen.getByLabelText(/Account label/i)).toBeTruthy()
+    expect(screen.getByDisplayValue('Work')).toBeTruthy()
   } finally {
     state.settings = originalSettings
   }
@@ -1182,6 +1276,31 @@ test('the footer updates shortcut opens the updates section directly', async () 
   await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
 })
 
+test('updates section renders release markdown safely', async () => {
+  const originalNotes = desktopUpdate.release_notes
+  const originalChangelog = desktopUpdate.changelog
+  desktopUpdate.release_notes =
+    '# Release Notes\n\n- Indexed local Q&A\n- Added [dashboard](https://example.com/help)\n\n`inline` code'
+  desktopUpdate.changelog = '### Changelog\n\n1. Added feature\n2. Fixed bugs'
+
+  try {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /· Updates/ }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Updates' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Updates' }))
+
+    expect(screen.getByRole('heading', { name: 'Release Notes' })).toBeTruthy()
+    expect(screen.getByText('Indexed local Q&A')).toBeTruthy()
+    const link = screen.getByRole('link', { name: 'dashboard' }) as HTMLAnchorElement
+    expect(link.href).toBe('https://example.com/help')
+    expect(screen.getByText('inline')).toBeTruthy()
+  } finally {
+    desktopUpdate.release_notes = originalNotes
+    desktopUpdate.changelog = originalChangelog
+  }
+})
+
 test('the footer updates shortcut respects unsaved settings changes', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => false
@@ -1213,6 +1332,29 @@ test('source settings opens the Sources section directly', async () => {
 
   const sources = screen.getByRole('button', { name: 'Sources' })
   expect(sources.className).toContain('active')
+})
+
+test('source settings show a compact workspace-first row with collapsed advanced controls', async () => {
+  const originalSettings = state.settings
+  state.settings = { ...desktopSettings, sources: [workSource] }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+
+    expect(screen.getByText('Work · Files and code · Enabled')).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'Files and code connector' })).toBeTruthy()
+    const summary = screen.getByText('Advanced source settings')
+    const details = summary.closest('details') as HTMLDetailsElement
+    expect(details.open).toBe(false)
+    fireEvent.click(summary)
+    expect(details.open).toBe(true)
+    expect(screen.getByLabelText('Source label')).toBeTruthy()
+  } finally {
+    state.settings = originalSettings
+  }
 })
 
 test('source tree toggles a saved connector without touching indexed data', async () => {
@@ -1281,9 +1423,9 @@ test('settings navigation opens workspace and services first and groups plugins'
   const navigation = screen.getByRole('navigation', { name: 'Settings sections' })
   const buttons = within(navigation).getAllByRole('button')
   const labels = buttons.map((button) => button.textContent)
-  expect(labels[0]).toBe('Workspaces')
-  expect(labels[1]).toBe('Sources')
-  expect(labels[2]).toBe('Services')
+  expect(labels[0]).toBe('Services')
+  expect(labels[1]).toBe('Workspaces')
+  expect(labels[2]).toBe('Sources')
   expect(labels[3]).toBe('Readiness')
 
   fireEvent.click(screen.getByRole('button', { name: 'Plugins' }))
@@ -1293,6 +1435,21 @@ test('settings navigation opens workspace and services first and groups plugins'
   await waitFor(() =>
     expect(screen.getByRole('heading', { name: 'Hindsight memory sidecar' })).toBeTruthy()
   )
+})
+
+test('settings theme control updates and persists', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy())
+
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+
+  const themeSelect = await screen.findByLabelText('Theme')
+  expect(themeSelect).toBeTruthy()
+  fireEvent.change(themeSelect, { target: { value: 'accessible' } })
+
+  expect(window.localStorage.getItem('cortana.theme.v1')).toBe('accessible')
+  expect(document.documentElement.getAttribute('data-theme')).toBe('accessible')
 })
 
 test('settings refuses padded or control-character source labels before save', async () => {
@@ -1935,6 +2092,41 @@ test('installer progress survives settings section changes', async () => {
   } finally {
     window.confirm = originalConfirm
     state.installerJob = null
+  }
+})
+
+test('saving settings with restart_required triggers a background restart and clears the notice on success', async () => {
+  const originalSettings = state.settings
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.settings = {
+    ...desktopSettings,
+    restart_required: true,
+    embedding: {
+      ...desktopSettings.embedding,
+      provider: 'local',
+      model: 'qwen/Qwen3-Embedding-0.6B',
+      base_url: 'http://127.0.0.1:6999/v1',
+    },
+  }
+  state.serviceRestartCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    fireEvent.change(screen.getAllByLabelText('Display name')[0], { target: { value: 'Alpha' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
+    await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
+  } finally {
+    window.confirm = originalConfirm
+    state.settings = originalSettings
+    state.serviceRestartCalls = 0
   }
 })
 

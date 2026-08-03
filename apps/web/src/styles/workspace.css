@@ -46,6 +46,11 @@
   content: '';
 }
 
+.workspace-tabs button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .count-pill {
   padding: 2px 6px;
   border-radius: var(--radius-xs);
@@ -597,8 +602,9 @@
   height: 100%;
 }
 
-.empty-state svg {
-  color: var(--amber);
+.empty-state img {
+  width: 28px;
+  height: 28px;
 }
 
 .empty-state h1 {

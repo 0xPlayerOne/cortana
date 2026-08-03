@@ -129,6 +129,12 @@
   border-bottom: 1px solid var(--line);
 }
 
+.brand-mark-icon {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
 .rail-button {
   position: relative;
   display: grid;
@@ -146,6 +152,16 @@
 .rail-button:hover {
   color: #e5e4de;
   background: #1f2a3d;
+}
+
+.rail-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.rail-button:disabled:hover {
+  color: #a8b2c5;
+  background: transparent;
 }
 
 .rail-button.active {
@@ -203,12 +219,28 @@
 }
 
 .sidebar-workspace-select select {
-  width: 100%;
+  min-width: 0;
+  flex: 1;
   height: 34px;
   padding: 0 9px;
   color: #e3e2dc;
   border: 1px solid var(--line);
   background: var(--panel);
+}
+
+.workspace-picker {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+}
+
+.workspace-picker-mark {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid var(--panel);
 }
 
 .panel-heading,
@@ -340,7 +372,6 @@
   margin-bottom: 11px;
 }
 
-.project-row,
 .source-tree button {
   display: grid;
   width: 100%;
@@ -351,7 +382,6 @@
   gap: 5px;
 }
 
-.project-row strong,
 .source-tree button span {
   overflow: hidden;
   font-size: 13px;
@@ -359,19 +389,9 @@
   white-space: nowrap;
 }
 
-.project-row span,
 .source-tree button small {
   color: #a5a7a1;
   font-size: 12px;
-}
-
-.project-row {
-  grid-template-columns: 17px 22px minmax(0, 1fr) auto;
-  color: #c6c7c2;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
 }
 
 .source-tree button {
