@@ -146,6 +146,41 @@ def test_apple_notes_honors_document_cap(monkeypatch: pytest.MonkeyPatch) -> Non
     assert [document.source_id for document in documents] == ["x-coredata://note/0"]
 
 
+def test_apple_notes_bounds_script_when_max_documents_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["args"] = args
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    list(apple_notes.fetch(project="personal", max_documents=2))
+
+    script = captured["args"][4]
+    assert "const maxDocuments = 2;" in script
+    assert "break outer;" in script
+
+
+def test_apple_notes_uses_unbounded_script_when_not_capped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["args"] = args
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    list(apple_notes.fetch(project="personal"))
+
+    script = captured["args"][4]
+    assert "const maxDocuments = undefined;" in script
+
+
 def test_apple_notes_reports_actionable_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     def timeout(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         raise subprocess.TimeoutExpired(["osascript"], 120)
