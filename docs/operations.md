@@ -55,6 +55,29 @@ operational history bounded. Runtime request counters in a scoped status respons
 per authenticated principal; only the local owner or an admin-scoped principal receives the
 process-wide totals used for operations dashboards.
 
+### Bounded source smoke checks
+
+Use the checked-in smoke harness when authorizing a new machine or verifying a credential rotation:
+
+```bash
+scripts/source-smoke.sh --config "$HOME/.config/cortana/config.toml"
+```
+
+It parses source names and connector kinds with Python's standard TOML reader, then runs each
+selected `validate-source` within a positive document, byte, and wall-clock budget. It never enables
+a source, installs a recurring job, writes indexed data, or prints token values. Pass source names
+to limit the check, or `--include-disabled` to validate configured sources that are currently off.
+
+After the read-only checks pass, `--sync` adds a deliberately bounded trial for non-filesystem
+connectors. Trials always use `--no-reconcile` so a partial snapshot cannot delete existing records;
+filesystem/code sources are validation-only unless `--include-filesystem` is explicitly supplied.
+The summary is a tab-separated operational result and the command exits nonzero if any validation
+or requested trial fails:
+
+```bash
+scripts/source-smoke.sh --sync --max-documents 25 --max-bytes 5242880 --max-seconds 60
+```
+
 Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
 queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
 evidence; returned rows have no `semantic_rank`, and a warning records the degraded mode. Cached
