@@ -17,6 +17,22 @@ HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for examp
 `RUST_LOG=cortana=debug,tower_http=info`, to change verbosity. Request headers and evidence content
 are never logged.
 
+The metadata-only audit trail is retained to the configured `[auth].audit_max_events` bound (10,000
+by default). It records principal, action, scope, outcome, result count, and latency, never query
+text, document content, credentials, or bearer tokens. Administrators can export the retained
+window for incident review without exposing it through a scoped agent principal:
+
+```bash
+cortana --config ~/.config/cortana/config.toml audit export ./audit.jsonl
+cortana --config ~/.config/cortana/config.toml audit export --format json ./audit.json --force
+```
+
+Exports default to newline-delimited JSON and refuse to overwrite an existing file unless `--force`
+is supplied. Destination files are created with owner-only permissions on Unix. Treat project and
+source labels as operationally sensitive and store exports under the same retention policy as other
+incident records. The HTTP `GET /v1/audit` endpoint remains capped at 500 rows for interactive
+inspection.
+
 SQLite runs in WAL mode so retrieval remains available during connector syncs and compatible
 embedding imports. Query-side cache hit counters and new query-vector cache writes are
 best-effort while another process owns SQLite's writer lock; Cortana serves the retrieval result
