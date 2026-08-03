@@ -99,6 +99,22 @@ type Section =
   | 'ingestion'
   | 'advanced'
 
+const PLUGIN_SECTIONS: Array<{ key: 'hindsight' | 'honcho'; label: string }> = [
+  { key: 'hindsight', label: 'Hindsight' },
+  { key: 'honcho', label: 'Honcho' },
+]
+
+const SETTINGS_NAV_PRIMARY_SECTIONS: Section[] = ['workspaces', 'sources', 'services', 'readiness']
+const SETTINGS_NAV_SECONDARY_SECTIONS: Section[] = [
+  'updates',
+  'access',
+  'audit',
+  'embedding',
+  'query',
+  'ingestion',
+  'advanced',
+]
+
 function useDesktopForeground(): boolean {
   const [foreground, setForeground] = useState(
     () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
@@ -435,32 +451,52 @@ export function SettingsView({
       )}
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
-          {(
-            [
-              'readiness',
-              'services',
-              'updates',
-              'access',
-              'audit',
-              'workspaces',
-              'sources',
-              'embedding',
-              'query',
-              'hindsight',
-              'honcho',
-              'ingestion',
-              'advanced',
-            ] as Section[]
-          ).map((item) => (
+          {SETTINGS_NAV_PRIMARY_SECTIONS.map((item) => (
             <button
               type="button"
               key={item}
-              className={section === item ? 'active' : ''}
+              className={`settings-nav-item ${section === item ? 'active' : ''}`}
               onClick={() => setSection(item)}
             >
               {item[0].toUpperCase() + item.slice(1)}
             </button>
           ))}
+          <div className="settings-nav-divider" aria-hidden="true" />
+          {SETTINGS_NAV_SECONDARY_SECTIONS.map((item) => (
+            <button
+              type="button"
+              key={item}
+              className={`settings-nav-item ${section === item ? 'active' : ''}`}
+              onClick={() => setSection(item)}
+            >
+              {item[0].toUpperCase() + item.slice(1)}
+            </button>
+          ))}
+          <div className="settings-nav-group">
+            <button
+              type="button"
+              className={`settings-nav-item ${
+                section === 'hindsight' || section === 'honcho' ? 'active' : ''
+              }`}
+              onClick={() => setSection('hindsight')}
+            >
+              Plugins
+            </button>
+            <div className="settings-nav-subgroup" role="group" aria-label="Plugins">
+              {PLUGIN_SECTIONS.map((plugin) => (
+                <button
+                  type="button"
+                  key={plugin.key}
+                  className={`settings-nav-item settings-nav-item--sub ${
+                    section === plugin.key ? 'active' : ''
+                  }`}
+                  onClick={() => setSection(plugin.key)}
+                >
+                  {plugin.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="settings-paths">
             <span>Config</span>
             <code title={settings.config_path}>{settings.config_path}</code>
