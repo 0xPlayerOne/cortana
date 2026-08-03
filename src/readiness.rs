@@ -7,6 +7,7 @@ use crate::answer;
 use crate::config::Config;
 use crate::embed::Embedder;
 use crate::service;
+use crate::source_validation;
 use crate::store::Store;
 
 #[derive(Clone, Debug, Serialize)]
@@ -44,6 +45,7 @@ pub async fn run(
     let acl = public_acl_check(config, store);
     let backup = backup_check(&config.data_dir.join("backups"), max_backup_age_hours);
     let sync = sync_check(allow_sync_service);
+    let validation = source_validation_check(config, allow_sync_service);
     // These probes do not share mutable state. Run them together so readiness
     // is bounded by the slowest external dependency rather than their sum.
     let (embedding, api, query) = tokio::join!(
@@ -59,6 +61,7 @@ pub async fn run(
         api,
         backup,
         sync,
+        validation,
         query,
     ];
     ReadinessReport {
@@ -324,6 +327,80 @@ fn sync_check(allow_sync_service: bool) -> ReadinessCheck {
     }
 }
 
+/// Verify the recurring-sync validation gate without touching any connector.
+///
+/// Query-only readiness never requires source validation, mirroring the
+/// `sync-service` check: an operator blesses recurring sync explicitly with
+/// `--allow-sync-service`, and only then does every enabled source need a
+/// current successful validation at equal or larger budgets than its
+/// configured limits. This closes the loop with `ensure_recurring_sync_validated`
+/// (the install gate) and `require_success` (the per-source gate): a source
+/// whose configuration changed, whose validation failed or lapsed, or whose
+/// budget grew after the last `validate-source` run fails production readiness
+/// even though the scheduled job would still attempt the sync.
+fn source_validation_check(config: &Config, allow_sync_service: bool) -> ReadinessCheck {
+    if !allow_sync_service {
+        return ReadinessCheck {
+            name: "source-validation".into(),
+            passed: true,
+            detail: "not required for query-only readiness; rerun with --allow-sync-service to verify recurring-sync source validation"
+                .into(),
+        };
+    }
+    let mut problems = Vec::new();
+    for source in config.sources.iter().filter(|source| source.enabled) {
+        // Mirror SourceLimits::resolve in main.rs so readiness blesses the same
+        // budgets the recurring sync job and install gate resolve.
+        let max_documents = source
+            .max_documents
+            .unwrap_or(config.ingestion.max_documents_per_source);
+        let max_bytes = source
+            .max_bytes
+            .unwrap_or(config.ingestion.max_bytes_per_source);
+        let max_seconds = source
+            .max_duration_seconds
+            .unwrap_or(config.ingestion.max_duration_seconds);
+        if max_documents == 0 {
+            problems.push(format!(
+                "source {} requires a positive document budget",
+                source.name
+            ));
+        } else if max_bytes == 0 {
+            problems.push(format!(
+                "source {} requires a positive byte budget",
+                source.name
+            ));
+        } else if max_seconds == 0 {
+            problems.push(format!(
+                "source {} requires a positive duration budget",
+                source.name
+            ));
+        } else if let Err(error) = source_validation::require_success(
+            &config.data_dir,
+            source,
+            max_documents,
+            max_bytes,
+            max_seconds,
+        ) {
+            problems.push(format!("{error}"));
+        }
+    }
+    ReadinessCheck {
+        name: "source-validation".into(),
+        passed: problems.is_empty(),
+        detail: if problems.is_empty() {
+            if config.sources.iter().any(|source| source.enabled) {
+                "every enabled source has a current successful validation at its configured budgets"
+                    .to_string()
+            } else {
+                "no enabled sources require validation".to_string()
+            }
+        } else {
+            problems.join("; ")
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs::File;
@@ -331,8 +408,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::config::AuthTokenConfig;
+    use crate::config::{AuthTokenConfig, SourceConfig};
     use crate::model::Document;
+    use crate::source_validation::SourceValidationStatus;
 
     #[test]
     fn backup_freshness_requires_a_sqlite_snapshot() {
@@ -402,5 +480,189 @@ mod tests {
         assert!(check.detail.contains("deterministic:16"));
         assert!(check.detail.contains("deterministic:32"));
         assert!(check.detail.contains("rebuild into a new generation"));
+    }
+
+    fn configured_source(enabled: bool) -> SourceConfig {
+        SourceConfig {
+            name: "drive".into(),
+            kind: "google-drive".into(),
+            enabled,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: Some(25),
+            max_bytes: Some(1024),
+            max_duration_seconds: Some(60),
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: vec!["work".into()],
+        }
+    }
+
+    fn succeeded_validation(
+        source: &SourceConfig,
+        max_documents: usize,
+        max_bytes: u64,
+        max_seconds: u64,
+    ) -> SourceValidationStatus {
+        SourceValidationStatus {
+            source: source.name.clone(),
+            project: source.project.clone(),
+            kind: source.kind.clone(),
+            status: "succeeded".into(),
+            validated_at: chrono::Utc::now(),
+            documents: Some(5),
+            bytes: Some(256),
+            max_documents,
+            max_bytes,
+            max_seconds,
+            configuration_fingerprint: source_validation::configuration_fingerprint(source).ok(),
+            error: None,
+        }
+    }
+
+    fn config_with_source(source: SourceConfig) -> (tempfile::TempDir, Config) {
+        let directory = tempdir().expect("temporary directory");
+        let config = Config {
+            data_dir: directory.path().to_path_buf(),
+            sources: vec![source],
+            ..Config::default()
+        };
+        (directory, config)
+    }
+
+    #[test]
+    fn source_validation_is_not_required_for_query_only_readiness() {
+        let (directory, config) = config_with_source(configured_source(true));
+        let check = source_validation_check(&config, false);
+        assert!(check.passed);
+        assert_eq!(check.name, "source-validation");
+        assert!(check.detail.contains("--allow-sync-service"));
+        assert!(
+            !source_validation::load(directory.path())
+                .expect("empty state")
+                .contains_key("drive")
+        );
+    }
+
+    #[test]
+    fn source_validation_requires_a_current_success_before_blessing_sync() {
+        let (directory, config) = config_with_source(configured_source(true));
+
+        let missing = source_validation_check(&config, true);
+        assert!(!missing.passed);
+        assert!(missing.detail.contains("drive has not been validated"));
+
+        let source = &config.sources[0];
+        source_validation::record(directory.path(), succeeded_validation(source, 25, 1024, 60))
+            .expect("validation");
+        let passing = source_validation_check(&config, true);
+        assert!(passing.passed);
+        assert!(passing.detail.contains("every enabled source"));
+    }
+
+    #[test]
+    fn source_validation_detects_configuration_drift() {
+        let (directory, mut config) = config_with_source(configured_source(true));
+        let source = &config.sources[0];
+        source_validation::record(directory.path(), succeeded_validation(source, 25, 1024, 60))
+            .expect("validation");
+
+        config.sources[0].query = Some("from:someone@example.com".into());
+        let changed = source_validation_check(&config, true);
+        assert!(!changed.passed);
+        assert!(
+            changed
+                .detail
+                .contains("configuration changed since validation")
+        );
+    }
+
+    #[test]
+    fn source_validation_tracks_budget_growth_without_configuration_changes() {
+        // The validation fingerprint covers only the source entry. Raising the
+        // [ingestion] defaults behind an override-less source grows the resolved
+        // budget without changing the fingerprint, so require_success must catch
+        // the growth through its limit comparison instead.
+        let base = configured_source(true);
+        let override_less = SourceConfig {
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            ..base
+        };
+        let (directory, mut config) = config_with_source(override_less);
+        config.ingestion.max_documents_per_source = 25;
+        config.ingestion.max_bytes_per_source = 1024;
+        config.ingestion.max_duration_seconds = 60;
+        source_validation::record(
+            directory.path(),
+            succeeded_validation(&config.sources[0], 25, 1024, 60),
+        )
+        .expect("validation");
+        assert!(source_validation_check(&config, true).passed);
+
+        config.ingestion.max_documents_per_source = 26;
+        let grown = source_validation_check(&config, true);
+        assert!(!grown.passed);
+        assert!(
+            grown
+                .detail
+                .contains("validation limits were smaller than this sync")
+        );
+
+        config.ingestion.max_documents_per_source = 25;
+        config.ingestion.max_duration_seconds = 61;
+        let longer = source_validation_check(&config, true);
+        assert!(!longer.passed);
+        assert!(
+            longer
+                .detail
+                .contains("validation duration limit was smaller than this sync")
+        );
+    }
+
+    #[test]
+    fn source_validation_rejects_failed_state_positive_budgets_and_disabled_sources() {
+        let (directory, config) = config_with_source(configured_source(true));
+        let source = &config.sources[0];
+        let mut failed = succeeded_validation(source, 25, 1024, 60);
+        failed.status = "failed".into();
+        failed.error = Some("connector error".into());
+        source_validation::record(directory.path(), failed).expect("failed validation");
+        let rejected = source_validation_check(&config, true);
+        assert!(!rejected.passed);
+        assert!(
+            rejected
+                .detail
+                .contains("latest validation did not succeed")
+        );
+
+        let (directory, config) = config_with_source(configured_source(false));
+        let check = source_validation_check(&config, true);
+        assert!(check.passed);
+        assert!(
+            check
+                .detail
+                .contains("no enabled sources require validation")
+        );
+        assert!(
+            !source_validation::load(directory.path())
+                .expect("empty state")
+                .contains_key("drive")
+        );
+
+        let (_, mut config) = config_with_source(configured_source(true));
+        config.sources[0].max_documents = Some(0);
+        let zero = source_validation_check(&config, true);
+        assert!(!zero.passed);
+        assert!(zero.detail.contains("requires a positive document budget"));
     }
 }
