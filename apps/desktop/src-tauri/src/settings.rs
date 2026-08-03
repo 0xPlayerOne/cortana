@@ -1,8 +1,9 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     fs::{self, OpenOptions},
-    io::{Read, Seek, SeekFrom, Write},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
+    sync::{Mutex, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -14,6 +15,8 @@ const MAX_SOURCES: usize = 128;
 const MAX_AUTH_PRINCIPALS: usize = 64;
 const MAX_SECRET_BYTES: usize = 16 * 1024;
 const MAX_AUDIT_READ_BYTES: u64 = 2 * 1024 * 1024;
+const DEFAULT_AUDIT_MAX_EVENTS: usize = 10_000;
+const MAX_DESKTOP_AUDIT_EVENTS: usize = 1_000_000;
 const MAX_PORTABLE_SETTINGS_BYTES: u64 = 2 * 1024 * 1024;
 const PORTABLE_SETTINGS_VERSION: u32 = 1;
 const SOURCE_KINDS: &[&str] = &[
@@ -27,6 +30,8 @@ const SOURCE_KINDS: &[&str] = &[
     "discord",
     "external",
 ];
+
+static DESKTOP_AUDIT_COUNTS: OnceLock<Mutex<HashMap<PathBuf, usize>>> = OnceLock::new();
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -2295,6 +2300,25 @@ pub(crate) fn append_audit_event(
     set_directory_owner_only(directory)?;
     let path = directory.join("desktop-audit.jsonl");
     reject_symlink(&path)?;
+    let max_events = read_config(config_path)
+        .ok()
+        .map(|root| {
+            usize_value(
+                &root,
+                "auth",
+                "audit_max_events",
+                DEFAULT_AUDIT_MAX_EVENTS,
+            )
+        })
+        .unwrap_or(DEFAULT_AUDIT_MAX_EVENTS)
+        .min(MAX_DESKTOP_AUDIT_EVENTS);
+    if max_events == 0 {
+        return Ok(());
+    }
+    let counts = DESKTOP_AUDIT_COUNTS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut counts = counts
+        .lock()
+        .map_err(|_| "desktop audit retention lock poisoned".to_string())?;
     let mut options = OpenOptions::new();
     options.create(true).append(true);
     #[cfg(unix)]
@@ -2308,7 +2332,98 @@ pub(crate) fn append_audit_event(
     writeln!(file, "{event}").map_err(|error| format!("append desktop audit log: {error}"))?;
     file.sync_data()
         .map_err(|error| format!("sync desktop audit log: {error}"))?;
+    drop(file);
+
+    let count = if let Some(count) = counts.get_mut(&path) {
+        count
+    } else {
+        let count = count_audit_lines(&path)?;
+        counts.insert(path.clone(), count);
+        counts
+            .get_mut(&path)
+            .expect("inserted desktop audit count")
+    };
+    *count = count.saturating_add(1);
+    if *count > max_events {
+        trim_audit_log(&path, max_events)?;
+        *count = max_events;
+    }
     set_owner_only(&path)
+}
+
+fn count_audit_lines(path: &Path) -> Result<usize, String> {
+    let file = match OpenOptions::new().read(true).open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(format!("open desktop audit log for retention: {error}")),
+    };
+    let mut count = 0;
+    for line in BufReader::new(file).lines() {
+        let line = line.map_err(|error| format!("read desktop audit log for retention: {error}"))?;
+        if !line.trim().is_empty() {
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+fn trim_audit_log(path: &Path, max_events: usize) -> Result<(), String> {
+    if max_events == 0 {
+        return Ok(());
+    }
+    reject_symlink(path)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .open(path)
+        .map_err(|error| format!("open desktop audit log for retention: {error}"))?;
+    let mut retained = VecDeque::with_capacity(max_events.min(4096));
+    for line in BufReader::new(file).lines() {
+        let line = line.map_err(|error| format!("read desktop audit log for retention: {error}"))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        if retained.len() == max_events {
+            retained.pop_front();
+        }
+        retained.push_back(line);
+    }
+
+    let temporary = path.with_extension(format!("jsonl.trim.{}", std::process::id()));
+    reject_symlink(&temporary)?;
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut created_temporary = false;
+    let result = (|| -> Result<(), String> {
+        let mut output = options
+            .open(&temporary)
+            .map_err(|error| format!("create desktop audit retention file: {error}"))?;
+        created_temporary = true;
+        for line in retained {
+            writeln!(output, "{line}")
+                .map_err(|error| format!("write desktop audit retention file: {error}"))?;
+        }
+        output
+            .sync_data()
+            .map_err(|error| format!("sync desktop audit retention file: {error}"))?;
+        set_owner_only(&temporary)?;
+        #[cfg(windows)]
+        if path.exists() {
+            fs::remove_file(path)
+                .map_err(|error| format!("replace desktop audit log: {error}"))?;
+        }
+        fs::rename(&temporary, path)
+            .map_err(|error| format!("replace desktop audit log: {error}"))?;
+        set_owner_only(path)
+    })();
+    if result.is_err() && created_temporary && temporary.exists() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }
 
 fn reject_symlink(path: &Path) -> Result<(), String> {
@@ -2875,6 +2990,45 @@ mod tests {
                 .iter()
                 .all(|event| event["secret_values_recorded"] == false)
         );
+    }
+
+    #[test]
+    fn desktop_audit_retention_keeps_newest_events_and_private_permissions() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let config_path = temp.path().join("config/config.toml");
+        fs::create_dir_all(config_path.parent().expect("config parent"))
+            .expect("config directory");
+        fs::write(&config_path, "[auth]\naudit_max_events = 3\n").expect("audit config");
+
+        for id in 0..5 {
+            append_audit_event(
+                &config_path,
+                &serde_json::json!({
+                    "id": id,
+                    "event": "test",
+                    "secret_values_recorded": false,
+                }),
+            )
+            .expect("append audit event");
+        }
+
+        let events = desktop_audit_events_at(&config_path, 10).expect("read audit events");
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0]["id"], 4);
+        assert_eq!(events[1]["id"], 3);
+        assert_eq!(events[2]["id"], 2);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(config_path.parent().expect("config parent").join("desktop-audit.jsonl"))
+                    .expect("audit metadata")
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o600
+            );
+        }
     }
 
     #[test]
