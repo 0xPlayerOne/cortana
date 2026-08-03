@@ -20,8 +20,97 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Read-only release preflight: Release Please must never run (and therefore
+  # never merge a version PR) while staging still contains source code that has
+  # not been promoted to main. Releasing over unpromoted work makes Release /
+  # Reconcile fail when it tries to reconcile the new release metadata onto a
+  # staging branch that carries unpromoted commits. The gate only fetches
+  # origin/main and origin/staging and classifies the direct tree diff:
+  # ready=true when the trees are equal or differ only in approved Release
+  # Please metadata, ready=false otherwise. It consumes no secrets, never
+  # pushes or runs a source sync, and never fails the workflow: an unready
+  # staging simply skips the release job with an explicit notice and summary.
+  preflight:
+    name: Release preflight
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      reason: ${{ steps.gate.outputs.reason }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Fetch origin/main and origin/staging
+        run: git fetch --no-tags origin main staging
+      - name: Gate release on staging promotion state
+        id: gate
+        env:
+          # Approved Release Please metadata: the runtime default release files
+          # plus every extra-file in release-please-config.json. Any other path
+          # in the direct main/staging tree diff means staging carries
+          # unpromoted source code.
+          RELEASE_FILES: |
+            .release-please-manifest.json
+            CHANGELOG.md
+            Cargo.lock
+            Cargo.toml
+            bun.lock
+            bun.lockb
+            package-lock.json
+            package.json
+            pnpm-lock.yaml
+            pyproject.toml
+            uv.lock
+            version.txt
+            yarn.lock
+            apps/web/package.json
+            apps/desktop/package.json
+            apps/desktop/src-tauri/Cargo.toml
+            apps/desktop/src-tauri/Cargo.lock
+            apps/desktop/src-tauri/tauri.conf.json
+            src/cortana/__init__.py
+        run: |
+          set -euo pipefail
+          if git diff --quiet origin/main origin/staging; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "reason=main and staging trees are identical" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          unexpected=()
+          while IFS= read -r path; do
+            if ! grep -Fxq "$path" <<<"$RELEASE_FILES"; then
+              unexpected+=("$path")
+            fi
+          done < <(git diff --name-only origin/main origin/staging)
+          if [ "${#unexpected[@]}" -eq 0 ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "reason=staging differs from main only in approved Release Please metadata" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=staging contains unpromoted files: ${unexpected[*]}" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Release skipped: staging contains unpromoted source::${unexpected[*]}"
+            {
+              printf '%s\n' '## Release skipped: staging is not ready'
+              printf '%s\n' ''
+              printf '%s\n' 'Release Please was not run because **staging contains source code that has not'
+              printf '%s\n' 'been promoted to main**. Releasing now would publish version metadata that'
+              printf '%s\n' 'reconciles over unpromoted work and cause `Release / Reconcile` to fail.'
+              printf '%s\n' ''
+              printf '%s\n' 'Promote staging to main first, then rerun this workflow.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   release:
     name: Release
+    needs: preflight
+    # Skip (never fail) when staging carries unpromoted source code; the
+    # preflight job above annotates the run with the reason.
+    if: needs.preflight.outputs.ready == 'true'
     uses: 0xPlayerOne/code-foundry/.github/workflows/release.yml@v0.34.14
     with:
       runner: ubuntu-slim
