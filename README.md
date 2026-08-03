@@ -76,7 +76,9 @@ equally bounded non-reconciling trial sync — never a full-corpus or recurring 
 
 For a repeatable operator check across the configured sources, use the bounded smoke harness. It
 reads only source names and kinds from the TOML file, never prints credentials, and exits nonzero
-when authorization or validation fails:
+when authorization or validation fails. Filesystem/code validations pass `--sample`, so an
+oversized root records a bounded sample instead of failing; connector sources keep ordinary
+fail-closed validation:
 
 ```bash
 scripts/source-smoke.sh --config "$HOME/.config/cortana/config.toml"
@@ -100,9 +102,10 @@ Inspect the Desktop source panel or `/v1/status` and query a known item. Only af
 cursor, ACL, and cache behavior is verified should you choose a larger complete snapshot. Recurring
 sync remains a separate confirmation-gated operation.
 
-To run the same bounded trial for every non-filesystem source after validation, add `--sync`. Trials
-always pass `--no-reconcile`; filesystem and code sources remain validation-only unless
-`--include-filesystem` is explicitly supplied:
+To run the same bounded trial for every connector source after validation, add `--sync`. Trials
+always pass `--no-reconcile` and use the same budgets as the validation, so a filesystem/code
+trial (enabled with `--include-filesystem`) can rely on the matching `--sample` validation while
+never authorizing a full-corpus sync:
 
 ```bash
 scripts/source-smoke.sh --sync

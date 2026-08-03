@@ -89,13 +89,17 @@ scripts/source-smoke.sh --config "$HOME/.config/cortana/config.toml"
 ```
 
 It parses source names and connector kinds with Python's standard TOML reader, then runs each
-selected `validate-source` within a positive document, byte, and wall-clock budget. It never enables
+selected `validate-source` within a positive document, byte, and wall-clock budget. Filesystem/code
+validations pass `--sample`, so an oversized root is recorded as a bounded sample instead of
+failing; connector sources keep ordinary fail-closed validation. It never enables
 a source, installs a recurring job, writes indexed data, or prints token values. Pass source names
 to limit the check, or `--include-disabled` to validate configured sources that are currently off.
 
-After the read-only checks pass, `--sync` adds a deliberately bounded trial for non-filesystem
-connectors. Trials always use `--no-reconcile` so a partial snapshot cannot delete existing records;
-filesystem/code sources are validation-only unless `--include-filesystem` is explicitly supplied.
+After the read-only checks pass, `--sync` adds a deliberately bounded trial for connector sources,
+and for filesystem/code sources when `--include-filesystem` is also supplied. Trials always use
+`--no-reconcile --require-validation` with the same budgets as the validation, so a filesystem
+trial can rely on the matching sampled validation while a partial snapshot can never delete
+existing records or authorize a full-corpus sync.
 The summary is a tab-separated operational result and the command exits nonzero if any validation
 or requested trial fails:
 
