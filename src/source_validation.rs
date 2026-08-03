@@ -101,6 +101,7 @@ pub fn require_success(
     max_documents: usize,
     max_bytes: u64,
     max_seconds: u64,
+    max_age: chrono::Duration,
 ) -> Result<()> {
     let validations = load(data_dir)?;
     let validation = validations
@@ -132,7 +133,31 @@ pub fn require_success(
         "source {} validation duration limit was smaller than this sync",
         source.name
     );
+    if max_age > chrono::Duration::zero() {
+        let age = Utc::now().signed_duration_since(validation.validated_at);
+        anyhow::ensure!(
+            age <= max_age,
+            "source {} validation is {} old (maximum {}); re-run validate-source",
+            source.name,
+            describe_age(age),
+            describe_age(max_age)
+        );
+    }
     Ok(())
+}
+
+fn describe_age(age: chrono::Duration) -> String {
+    let days = age.num_days();
+    if days >= 1 {
+        format!("{days} day{}", if days == 1 { "" } else { "s" })
+    } else {
+        let hours = age.num_hours();
+        if hours >= 1 {
+            format!("{hours} hour{}", if hours == 1 { "" } else { "s" })
+        } else {
+            format!("{} minutes", age.num_minutes().max(0))
+        }
+    }
 }
 
 fn owner_only_file(path: &Path) -> Result<File> {
@@ -356,12 +381,153 @@ mod tests {
             },
         )
         .unwrap();
-        require_success(directory.path(), &source, 25, 1024, 60).unwrap();
-        assert!(require_success(directory.path(), &source, 26, 1024, 60).is_err());
-        assert!(require_success(directory.path(), &source, 25, 1024, 61).is_err());
+        require_success(
+            directory.path(),
+            &source,
+            25,
+            1024,
+            60,
+            chrono::Duration::hours(168),
+        )
+        .unwrap();
+        assert!(
+            require_success(
+                directory.path(),
+                &source,
+                26,
+                1024,
+                60,
+                chrono::Duration::hours(168)
+            )
+            .is_err()
+        );
+        assert!(
+            require_success(
+                directory.path(),
+                &source,
+                25,
+                1024,
+                61,
+                chrono::Duration::hours(168)
+            )
+            .is_err()
+        );
         let mut changed = source;
         changed.query = Some("from:someone@example.com".into());
-        assert!(require_success(directory.path(), &changed, 25, 1024, 60).is_err());
+        assert!(
+            require_success(
+                directory.path(),
+                &changed,
+                25,
+                1024,
+                60,
+                chrono::Duration::hours(168)
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn required_validation_lapses_after_the_freshness_bound() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let source = source();
+        let mut status = SourceValidationStatus {
+            source: source.name.clone(),
+            project: source.project.clone(),
+            kind: source.kind.clone(),
+            status: "succeeded".into(),
+            validated_at: Utc::now() - chrono::Duration::hours(48),
+            documents: Some(12),
+            bytes: Some(512),
+            max_documents: 25,
+            max_bytes: 1024,
+            max_seconds: 60,
+            configuration_fingerprint: Some(configuration_fingerprint(&source).unwrap()),
+            error: None,
+        };
+        record(directory.path(), status.clone()).unwrap();
+
+        let lapsed = require_success(
+            directory.path(),
+            &source,
+            25,
+            1024,
+            60,
+            chrono::Duration::hours(24),
+        )
+        .expect_err("a 48-hour-old validation must not satisfy a 24-hour bound");
+        assert!(format!("{lapsed:#}").contains("2 days old"));
+        assert!(format!("{lapsed:#}").contains("re-run validate-source"));
+
+        assert!(
+            require_success(
+                directory.path(),
+                &source,
+                25,
+                1024,
+                60,
+                chrono::Duration::hours(72),
+            )
+            .is_ok()
+        );
+
+        status.validated_at = Utc::now() - chrono::Duration::minutes(30);
+        record(directory.path(), status).unwrap();
+        require_success(
+            directory.path(),
+            &source,
+            25,
+            1024,
+            60,
+            chrono::Duration::hours(24),
+        )
+        .expect("a fresh validation must pass");
+        let hour_old = require_success(
+            directory.path(),
+            &source,
+            25,
+            1024,
+            60,
+            chrono::Duration::minutes(25),
+        )
+        .expect_err("a 30-minute-old validation must fail a 25-minute bound");
+        assert!(format!("{hour_old:#}").contains("30 minutes old"));
+        assert!(format!("{hour_old:#}").contains("maximum 25 minutes"));
+    }
+
+    #[test]
+    fn zero_freshness_bound_accepts_any_validation_age() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let source = source();
+        record(
+            directory.path(),
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "succeeded".into(),
+                validated_at: Utc::now() - chrono::Duration::days(365),
+                documents: Some(12),
+                bytes: Some(512),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(configuration_fingerprint(&source).unwrap()),
+                error: None,
+            },
+        )
+        .unwrap();
+        assert!(
+            require_success(
+                directory.path(),
+                &source,
+                25,
+                1024,
+                60,
+                chrono::Duration::zero()
+            )
+            .is_ok()
+        );
     }
 
     #[cfg(unix)]

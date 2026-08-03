@@ -5,6 +5,9 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 const MAX_CONFIGURED_SOURCES: usize = 128;
+// `chrono::Duration::hours` accepts a signed hour count. Reject values that
+// cannot be represented before the freshness bound is converted at runtime.
+const MAX_VALIDATION_MAX_AGE_HOURS: u64 = (i64::MAX as u64) / 3_600;
 const SUPPORTED_SOURCE_KINDS: &[&str] = &[
     "filesystem",
     "apple-notes",
@@ -99,6 +102,8 @@ pub struct IngestionConfig {
     pub document_batch_size: usize,
     #[serde(default = "default_ingestion_request_concurrency")]
     pub request_concurrency: usize,
+    #[serde(default = "default_validation_max_age_hours")]
+    pub validation_max_age_hours: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -232,6 +237,7 @@ impl Default for IngestionConfig {
             max_duration_seconds: default_ingestion_max_duration(),
             document_batch_size: default_ingestion_document_batch_size(),
             request_concurrency: default_ingestion_request_concurrency(),
+            validation_max_age_hours: default_validation_max_age_hours(),
         }
     }
 }
@@ -381,6 +387,10 @@ impl Config {
 }
 
 fn validate_source_definitions(config: &Config) -> Result<()> {
+    anyhow::ensure!(
+        config.ingestion.validation_max_age_hours <= MAX_VALIDATION_MAX_AGE_HOURS,
+        "ingestion validation_max_age_hours exceeds the supported maximum"
+    );
     anyhow::ensure!(
         config.sources.len() <= MAX_CONFIGURED_SOURCES,
         "configured sources exceed the {MAX_CONFIGURED_SOURCES} source safety limit"
@@ -629,6 +639,15 @@ fn default_ingestion_max_duration() -> u64 {
     15 * 60
 }
 
+/// A successful source validation stays current for this long. The install
+/// gate for recurring sync, `sync --require-validation`, and the readiness
+/// `source-validation` check all refuse a validation older than the bound so a
+/// revoked credential or changed scope cannot keep a stale record blessing the
+/// schedule. `0` disables the freshness bound (fail-open opt-out).
+fn default_validation_max_age_hours() -> u64 {
+    168
+}
+
 fn default_ingestion_document_batch_size() -> usize {
     16
 }
@@ -695,6 +714,7 @@ mod tests {
         assert_eq!(config.ingestion.max_documents_per_source, 2_000);
         assert_eq!(config.ingestion.max_bytes_per_source, 128 * 1024 * 1024);
         assert_eq!(config.ingestion.request_concurrency, 1);
+        assert_eq!(config.ingestion.validation_max_age_hours, 168);
         validate_source_definitions(&config).expect("source definitions are safe");
     }
 
@@ -762,6 +782,14 @@ mod tests {
             let config: Config = toml::from_str(source_block).expect("fixture config");
             assert!(validate_source_definitions(&config).is_err());
         }
+    }
+
+    #[test]
+    fn rejects_unrepresentable_validation_freshness_bounds() {
+        let mut config = Config::default();
+        config.ingestion.validation_max_age_hours = MAX_VALIDATION_MAX_AGE_HOURS + 1;
+        let error = validate_source_definitions(&config).expect_err("bound must fit chrono");
+        assert!(error.to_string().contains("validation_max_age_hours"));
     }
 
     #[test]

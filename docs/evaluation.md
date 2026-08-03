@@ -44,4 +44,7 @@ vectors. The JSON also exposes `embedding_generation.stored` and
 adoption path. It never invokes a connector, starts a sync, or writes indexed content. The safe
 default fails when a recurring sync service is installed.
 After every source has been explicitly validated, `--allow-sync-service` records that operational
-acknowledgement for the check; it does not install or start the service.
+acknowledgement for the check; it does not install or start the service. Validations must also be
+current: a record older than `[ingestion].validation_max_age_hours` (168 hours by default; `0`
+disables the bound) fails the check until `validate-source` is re-run, so a revoked credential or
+changed scope cannot keep an old preflight blessing the schedule.
