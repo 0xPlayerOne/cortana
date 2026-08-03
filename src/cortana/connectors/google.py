@@ -324,7 +324,10 @@ def fetch_drive(
                 page_token = payload.get("nextPageToken")
                 if not page_token:
                     break
-        if cache is not None:
+        if cache is not None and max_documents is None:
+            # A capped run is a partial snapshot: it must never prune cached
+            # bodies it did not list, or every bounded sync would invalidate
+            # the whole derived cache. Additive writes above are safe.
             cache.execute("DELETE FROM files WHERE id NOT IN (SELECT id FROM seen)")
             cache.commit()
     finally:
@@ -432,7 +435,10 @@ def fetch_gmail(
                 page_token = listing.get("nextPageToken")
                 if not page_token:
                     break
-        if cache is not None:
+        if cache is not None and max_documents is None:
+            # A capped run is a partial snapshot and must not prune cached
+            # messages it never listed; only a complete run reconciles the
+            # persistent message cache.
             cache.execute("DELETE FROM messages WHERE id NOT IN (SELECT id FROM seen)")
             cache.commit()
     finally:
