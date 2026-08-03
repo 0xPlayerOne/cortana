@@ -419,6 +419,9 @@ fn source_validation_check(config: &Config, allow_sync_service: bool) -> Readine
             max_bytes,
             max_seconds,
             chrono::Duration::hours(config.ingestion.validation_max_age_hours as i64),
+            // Recurring sync reconciles the full corpus, so a bounded sample
+            // validation must never satisfy this gate.
+            true,
         ) {
             problems.push(format!("{error}"));
         }
@@ -641,6 +644,7 @@ mod tests {
             max_bytes,
             max_seconds,
             configuration_fingerprint: source_validation::configuration_fingerprint(source).ok(),
+            complete: None,
             error: None,
         }
     }

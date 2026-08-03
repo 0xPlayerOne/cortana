@@ -1743,6 +1743,7 @@ mod tests {
                 max_bytes: 4096,
                 max_seconds: 45,
                 configuration_fingerprint: Some(validation_fingerprint),
+                complete: None,
                 error: None,
             },
         )
@@ -2050,6 +2051,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(fingerprint),
+                complete: None,
                 error: None,
             },
         )
@@ -2093,6 +2095,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(fingerprint),
+                complete: None,
                 error: None,
             },
         )
@@ -2142,6 +2145,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(fingerprint),
+                complete: None,
                 error: None,
             },
         )
@@ -2191,6 +2195,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(fingerprint),
+                complete: None,
                 error: None,
             },
         )
@@ -2226,6 +2231,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(fingerprint),
+                complete: None,
                 error: Some("Bearer top-secret /Users/amf/private".into()),
             },
         )
@@ -2272,6 +2278,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(fingerprint),
+                complete: None,
                 error: Some("Drive listing is incomplete; refusing partial snapshot".into()),
             },
         )

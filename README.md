@@ -70,7 +70,9 @@ cortana validate-source SOURCE \
 ```
 
 Review the source result in Desktop or `/v1/status` before proceeding. Do not use a production-sized
-budget as a validation shortcut.
+budget as a validation shortcut. A filesystem root larger than the requested budgets fails closed
+unless you explicitly pass `--sample`, which records a bounded sample that can authorize only an
+equally bounded non-reconciling trial sync — never a full-corpus or recurring sync.
 
 For a repeatable operator check across the configured sources, use the bounded smoke harness. It
 reads only source names and kinds from the TOML file, never prints credentials, and exits nonzero

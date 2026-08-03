@@ -31,6 +31,12 @@ pub struct SourceValidationStatus {
     pub max_seconds: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub configuration_fingerprint: Option<String>,
+    /// Whether the validation covered the entire source within its limits.
+    /// `Some(false)` marks a bounded sample that may authorize only equally
+    /// bounded non-reconciling runs; `None` (records persisted before
+    /// sampling existed) is treated as complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub complete: Option<bool>,
     pub error: Option<String>,
 }
 
@@ -102,6 +108,7 @@ pub fn require_success(
     max_bytes: u64,
     max_seconds: u64,
     max_age: chrono::Duration,
+    reconcile: bool,
 ) -> Result<()> {
     let validations = load(data_dir)?;
     let validation = validations
@@ -110,6 +117,11 @@ pub fn require_success(
     anyhow::ensure!(
         validation.status == "succeeded",
         "source {} latest validation did not succeed",
+        source.name
+    );
+    anyhow::ensure!(
+        !reconcile || validation.complete != Some(false),
+        "source {} latest validation was a bounded sample and cannot authorize a full-corpus sync; re-run validate-source without --sample for the complete source",
         source.name
     );
     anyhow::ensure!(
@@ -344,6 +356,7 @@ mod tests {
             max_bytes: 1024,
             max_seconds: 30,
             configuration_fingerprint: None,
+            complete: None,
             error: Some("line one\nline two".into()),
         };
         record(directory.path(), status("failed")).expect("first record");
@@ -383,6 +396,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(configuration_fingerprint(&source).unwrap()),
+                complete: None,
                 error: None,
             },
         )
@@ -394,6 +408,7 @@ mod tests {
             1024,
             60,
             chrono::Duration::hours(168),
+            false,
         )
         .unwrap();
         assert!(
@@ -403,7 +418,8 @@ mod tests {
                 26,
                 1024,
                 60,
-                chrono::Duration::hours(168)
+                chrono::Duration::hours(168),
+                false
             )
             .is_err()
         );
@@ -414,7 +430,8 @@ mod tests {
                 25,
                 1024,
                 61,
-                chrono::Duration::hours(168)
+                chrono::Duration::hours(168),
+                false
             )
             .is_err()
         );
@@ -427,10 +444,86 @@ mod tests {
                 25,
                 1024,
                 60,
-                chrono::Duration::hours(168)
+                chrono::Duration::hours(168),
+                false
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn sampled_validation_never_authorizes_a_full_corpus_sync() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let source = source();
+        let status_for = |complete: Option<bool>| SourceValidationStatus {
+            source: source.name.clone(),
+            project: source.project.clone(),
+            kind: source.kind.clone(),
+            status: "succeeded".into(),
+            validated_at: Utc::now(),
+            documents: Some(12),
+            bytes: Some(512),
+            max_documents: 25,
+            max_bytes: 1024,
+            max_seconds: 60,
+            configuration_fingerprint: Some(configuration_fingerprint(&source).unwrap()),
+            complete,
+            error: None,
+        };
+
+        // A sampled (partial) record satisfies only equally bounded
+        // non-reconciling runs; it must never bless a reconciling sync.
+        record(directory.path(), status_for(Some(false))).unwrap();
+        let sampled = require_success(
+            directory.path(),
+            &source,
+            25,
+            1024,
+            60,
+            chrono::Duration::hours(168),
+            true,
+        )
+        .expect_err("a bounded sample must not authorize a full-corpus sync");
+        assert!(format!("{sampled:#}").contains("bounded sample"));
+        assert!(format!("{sampled:#}").contains("--sample"));
+        require_success(
+            directory.path(),
+            &source,
+            25,
+            1024,
+            60,
+            chrono::Duration::hours(168),
+            false,
+        )
+        .expect("an equally bounded non-reconciling run accepts a sample");
+
+        // A sample that covered the whole corpus is complete and blesses
+        // reconciling syncs like any other successful validation.
+        record(directory.path(), status_for(Some(true))).unwrap();
+        require_success(
+            directory.path(),
+            &source,
+            25,
+            1024,
+            60,
+            chrono::Duration::hours(168),
+            true,
+        )
+        .expect("a complete validation authorizes a full-corpus sync");
+
+        // Records persisted before sampling existed carry no completeness
+        // marker and keep their legacy full-corpus authority.
+        record(directory.path(), status_for(None)).unwrap();
+        require_success(
+            directory.path(),
+            &source,
+            25,
+            1024,
+            60,
+            chrono::Duration::hours(168),
+            true,
+        )
+        .expect("a legacy record without a completeness marker stays complete");
     }
 
     #[test]
@@ -449,6 +542,7 @@ mod tests {
             max_bytes: 1024,
             max_seconds: 60,
             configuration_fingerprint: Some(configuration_fingerprint(&source).unwrap()),
+            complete: None,
             error: None,
         };
         record(directory.path(), status.clone()).unwrap();
@@ -460,6 +554,7 @@ mod tests {
             1024,
             60,
             chrono::Duration::hours(24),
+            false,
         )
         .expect_err("a 48-hour-old validation must not satisfy a 24-hour bound");
         assert!(format!("{lapsed:#}").contains("2 days old"));
@@ -473,6 +568,7 @@ mod tests {
                 1024,
                 60,
                 chrono::Duration::hours(72),
+                false,
             )
             .is_ok()
         );
@@ -486,6 +582,7 @@ mod tests {
             1024,
             60,
             chrono::Duration::hours(24),
+            false,
         )
         .expect("a fresh validation must pass");
         let hour_old = require_success(
@@ -495,6 +592,7 @@ mod tests {
             1024,
             60,
             chrono::Duration::minutes(25),
+            false,
         )
         .expect_err("a 30-minute-old validation must fail a 25-minute bound");
         assert!(format!("{hour_old:#}").contains("30 minutes old"));
@@ -519,6 +617,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(configuration_fingerprint(&source).unwrap()),
+                complete: None,
                 error: None,
             },
         )
@@ -530,7 +629,8 @@ mod tests {
                 25,
                 1024,
                 60,
-                chrono::Duration::zero()
+                chrono::Duration::zero(),
+                false
             )
             .is_ok()
         );
@@ -554,6 +654,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 60,
                 configuration_fingerprint: Some(configuration_fingerprint(&source).unwrap()),
+                complete: None,
                 error: None,
             },
         )
@@ -566,6 +667,7 @@ mod tests {
             1024,
             60,
             chrono::Duration::hours(24),
+            false,
         )
         .expect_err("a future validation timestamp must fail a bounded freshness check");
         let message = format!("{future:#}");
@@ -580,6 +682,7 @@ mod tests {
             1024,
             60,
             chrono::Duration::zero(),
+            false,
         )
         .expect("an unlimited freshness bound accepts future timestamps");
     }
@@ -622,6 +725,7 @@ mod tests {
                 max_bytes: 1024,
                 max_seconds: 30,
                 configuration_fingerprint: None,
+                complete: None,
                 error: None,
             },
         )

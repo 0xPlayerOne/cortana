@@ -19,14 +19,29 @@ const TEXT_EXTENSIONS: &[&str] = &[
 pub struct FilesystemPlan {
     pub documents: usize,
     pub bytes: u64,
+    /// Whether the walk covered the entire source within the requested
+    /// budgets. `false` means the walk stopped at a budget, so the plan is a
+    /// bounded sample of a larger corpus and must never authorize a
+    /// full-corpus (reconciling) sync.
+    pub complete: bool,
 }
 
+/// Walk a filesystem source and report its scope.
+///
+/// When `sample` is false (the default, fail-closed mode) the walk errors as
+/// soon as the document or byte budget is exceeded. When `sample` is true the
+/// walk instead stops at the requested budgets and reports the bounded prefix
+/// with `complete: false`, so an explicitly sampled validation can authorize
+/// an equally bounded non-reconciling run without ever blessing a full
+/// corpus. The wall-clock budget stays a hard error in both modes: a walk
+/// that cannot finish within its time budget must never be blessed.
 pub fn filesystem_plan(
     root: &Path,
     excludes: &[String],
     max_documents: usize,
     max_bytes: u64,
     max_duration: Duration,
+    sample: bool,
 ) -> Result<FilesystemPlan> {
     let canonical_root = root
         .canonicalize()
@@ -37,6 +52,7 @@ pub fn filesystem_plan(
     let mut plan = FilesystemPlan {
         documents: 0,
         bytes: 0,
+        complete: true,
     };
     for entry in WalkBuilder::new(&canonical_root)
         .hidden(false)
@@ -62,16 +78,26 @@ pub fn filesystem_plan(
         if bytes == 0 || bytes > 2_000_000 {
             continue;
         }
+        if sample {
+            // Stop at the requested budgets instead of failing; the reported
+            // scope never exceeds them and the plan is marked partial. The
+            // time budget is still enforced above as a hard error.
+            if plan.documents >= max_documents || plan.bytes.saturating_add(bytes) > max_bytes {
+                plan.complete = false;
+                return Ok(plan);
+            }
+        } else {
+            anyhow::ensure!(
+                plan.documents < max_documents,
+                "filesystem source exceeds the {max_documents} document budget"
+            );
+            anyhow::ensure!(
+                plan.bytes.saturating_add(bytes) <= max_bytes,
+                "filesystem source exceeds the {max_bytes} byte budget"
+            );
+        }
         plan.documents = plan.documents.saturating_add(1);
         plan.bytes = plan.bytes.saturating_add(bytes);
-        anyhow::ensure!(
-            plan.documents <= max_documents,
-            "filesystem source exceeds the {max_documents} document budget"
-        );
-        anyhow::ensure!(
-            plan.bytes <= max_bytes,
-            "filesystem source exceeds the {max_bytes} byte budget"
-        );
     }
     Ok(plan)
 }
@@ -257,9 +283,63 @@ mod tests {
         std::fs::write(directory.path().join("one.rs"), "fn one() {}").expect("first file");
         std::fs::write(directory.path().join("two.rs"), "fn two() {}").expect("second file");
 
-        let error = filesystem_plan(directory.path(), &[], 1, 1_000, Duration::from_secs(5))
-            .expect_err("document budget");
+        let error = filesystem_plan(
+            directory.path(),
+            &[],
+            1,
+            1_000,
+            Duration::from_secs(5),
+            false,
+        )
+        .expect_err("document budget");
         assert!(error.to_string().contains("1 document budget"));
+    }
+
+    #[test]
+    fn sampled_filesystem_plan_truncates_instead_of_failing() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        std::fs::write(directory.path().join("one.rs"), "fn one() {}").expect("first file");
+        std::fs::write(directory.path().join("two.rs"), "fn two() {}").expect("second file");
+
+        let plan = filesystem_plan(
+            directory.path(),
+            &[],
+            1,
+            1_000,
+            Duration::from_secs(5),
+            true,
+        )
+        .expect("sampled plan");
+        assert_eq!(plan.documents, 1);
+        assert!(!plan.complete, "a walk truncated by its budget is partial");
+
+        let plan = filesystem_plan(
+            directory.path(),
+            &[],
+            2,
+            1_000,
+            Duration::from_secs(5),
+            true,
+        )
+        .expect("complete sampled plan");
+        assert_eq!(plan.documents, 2);
+        assert!(
+            plan.complete,
+            "a sample covering the whole corpus is complete"
+        );
+    }
+
+    #[test]
+    fn sampled_filesystem_plan_never_reports_scope_beyond_its_budgets() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        std::fs::write(directory.path().join("one.rs"), "aa").expect("first file");
+        std::fs::write(directory.path().join("two.rs"), "bb").expect("second file");
+
+        let plan = filesystem_plan(directory.path(), &[], 10, 3, Duration::from_secs(5), true)
+            .expect("sampled plan");
+        assert_eq!(plan.documents, 1);
+        assert!(plan.bytes <= 3, "byte scope must stay within the budget");
+        assert!(!plan.complete);
     }
 
     #[test]
@@ -286,9 +366,10 @@ mod tests {
         assert_eq!(documents[0].source_id, "single.rs");
         assert_eq!(documents[0].title, "single.rs");
 
-        let plan = filesystem_plan(&file, &[], 1, 1_000, Duration::from_secs(5))
+        let plan = filesystem_plan(&file, &[], 1, 1_000, Duration::from_secs(5), false)
             .expect("single-file plan");
         assert_eq!(plan.documents, 1);
+        assert!(plan.complete);
     }
 
     #[test]
