@@ -164,6 +164,22 @@ fi
 
 failures=0
 printf 'source\tkind\tenabled\tvalidation\ttrial_sync\tnote\n'
+
+classify_failure() {
+  local log_path="$1"
+  if grep -Eqi 'timed out|timeout' "$log_path"; then
+    printf 'timeout'
+  elif grep -Eqi '403 forbidden|401 unauthorized|authorization denied|permission denied' "$log_path"; then
+    printf 'authorization denied'
+  elif grep -Eqi 'no such file or directory|does not exist|not found' "$log_path"; then
+    printf 'credential or path missing'
+  elif grep -Eqi 'exceeds .*budget|safety bound|budget exceeded' "$log_path"; then
+    printf 'configured budget exceeded'
+  else
+    printf 'connector or validation error'
+  fi
+}
+
 for entry in "${configured_sources[@]}"; do
   IFS=$'\t' read -r source kind enabled <<< "$entry"
   validation_status="failed"
@@ -178,7 +194,7 @@ for entry in "${configured_sources[@]}"; do
       --max-seconds "$max_seconds" >"$validation_log" 2>&1; then
     validation_status="passed"
   else
-    note="validation failed"
+    note="validation: $(classify_failure "$validation_log")"
     failures=$((failures + 1))
   fi
 
@@ -201,7 +217,7 @@ for entry in "${configured_sources[@]}"; do
       sync_status="passed"
     else
       sync_status="failed"
-      note="${note:+$note; }trial sync failed"
+      note="${note:+$note; }trial: $(classify_failure "$sync_log")"
       failures=$((failures + 1))
     fi
   fi
