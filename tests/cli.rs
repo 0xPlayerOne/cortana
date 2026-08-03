@@ -562,6 +562,136 @@ fn configured_external_source_sync_is_incremental() {
 }
 
 #[test]
+fn external_source_sync_reconciliation_deletes_and_preserves_records_with_no_reconcile() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let input = directory.path().join("external.jsonl");
+    let two_records = r#"{"source":"upstream","source_id":"one","title":"Run one","content":"first","project":"demo"}
+{"source":"upstream","source_id":"two","title":"Run two","content":"second","project":"demo"}
+"#;
+
+    fs::write(&input, two_records).expect("write initial external fixture");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n\
+             [[sources]]\nname = \"external-demo\"\nkind = \"external\"\nproject = \"demo\"\n\
+             command = [\"/bin/cat\", {input:?}]\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["sync", "--source", "external-demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "synced source=external-demo deleted=0",
+        ));
+
+    let connection = Connection::open(data.join("cortana.sqlite3")).expect("open index");
+    let documents: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM documents WHERE source='external-demo' AND project='demo'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("initial document count");
+    assert_eq!(documents, 2);
+
+    fs::write(
+        &input,
+        r#"{"source":"upstream","source_id":"one","title":"Run one","content":"first","project":"demo"}
+"#,
+    )
+    .expect("write single-record fixture");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["sync", "--source", "external-demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "synced source=external-demo deleted=1",
+        ));
+
+    let post_reconcile_documents: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM documents WHERE source='external-demo' AND project='demo'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("post-reconcile document count");
+    assert_eq!(post_reconcile_documents, 1);
+    let deleted_record_exists: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM documents WHERE source='external-demo' AND source_id='two'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("deleted record check");
+    assert_eq!(deleted_record_exists, 0);
+
+    fs::write(&input, two_records).expect("restore missing record in fixture");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["sync", "--source", "external-demo", "--no-reconcile"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "synced source=external-demo deleted=0",
+        ));
+    let final_documents: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM documents WHERE source='external-demo' AND project='demo'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("post-no-reconcile document count");
+    assert_eq!(final_documents, 2);
+    drop(connection);
+
+    fs::write(
+        &input,
+        r#"{"source":"upstream","source_id":"one","title":"Run one","content":"first","project":"demo"}
+"#,
+    )
+    .expect("write partial non-reconciling fixture");
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["sync", "--source", "external-demo", "--no-reconcile"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "synced source=external-demo deleted=0",
+        ));
+
+    let connection = Connection::open(data.join("cortana.sqlite3")).expect("reopen index");
+    let final_documents: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM documents WHERE source='external-demo' AND project='demo'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("final document count");
+    assert_eq!(
+        final_documents, 2,
+        "no-reconcile must preserve missing records"
+    );
+}
+
+#[test]
 fn source_failure_does_not_block_later_sources() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");
