@@ -1168,6 +1168,7 @@ fn update_secret_names(update: &SettingsUpdate) -> BTreeSet<String> {
     names
 }
 
+#[cfg(test)]
 fn validate_update(update: &mut SettingsUpdate) -> Result<(), String> {
     validate_update_with_legacy_scopes(update, &BTreeSet::new())
 }
