@@ -20,7 +20,8 @@ raw-evidence fallback.
    `search` only for another focused pass, an explicit source, or exact debugging details.
 3. Use source filters for exact configured source names. Inspect `brain_status` when source names,
    configured-but-not-yet-indexed sources, or index freshness are uncertain; it reports the
-   configured source inventory without exposing credentials.
+   configured source inventory without exposing credentials, including the cumulative retrieval
+   fallback counter.
 4. Reuse a context bundle within the same task. Cortana persistently caches query and ingestion
    embeddings, but avoiding redundant retrieval also saves ranking and context-window work.
 5. Treat returned rows as evidence, preserving their source URI and timestamp. Prefer exact lexical
@@ -81,7 +82,9 @@ For an HTTP-only client, send:
 
 Use the `Authorization` header for a configured shared principal; do not send a token in the
 request body or URL. HTTP and MCP share the same retrieval limits: queries must be non-empty and
-at most 16 KiB, and each tool returns at most 50 evidence rows. A local owner-only HTTP server may
+at most 16 KiB, and each tool returns at most 50 evidence rows. HTTP search preserves its
+evidence-array response shape and exposes `x-cortana-retrieval-mode` and
+`x-cortana-retrieval-degraded` headers. A local owner-only HTTP server may
 omit the header when no `[[auth.tokens]]` are configured, but shared agents must use a scoped
 bearer principal so ACL labels and status/query permissions are enforced.
 
@@ -93,8 +96,11 @@ cortana context "the concrete question" --project optional-project --max-tokens 
 
 The command prints stable JSON containing the Markdown context (with `[n]` citations), the
 included evidence rows, and retrieval/metrics fields (`retrieved`, `included`, `omitted`,
-`estimated_tokens`, `max_tokens`). Omit `--max-tokens` to use the configured `[query].context_tokens`
-budget. Use `--offline` for the deterministic embedding path.
+`estimated_tokens`, `max_tokens`, and `retrieval_mode`). If the embedding provider is unavailable
+or exceeds the interactive budget, `retrieval_mode` is `lexical-fallback` and the bundle includes
+a non-secret `retrieval_warning`; disclose that degradation to the user instead of presenting it
+as semantic retrieval. Omit `--max-tokens` to use the configured `[query].context_tokens` budget.
+Use `--offline` for the deterministic embedding path.
 
 The CLI fallback is owner-local: it carries no bearer credentials, so it cannot enforce scoped
 `[[auth.tokens]]` principals or document ACL labels. Shared or narrowly scoped agents must use the
