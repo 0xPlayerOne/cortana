@@ -9,6 +9,8 @@ from pathlib import Path
 
 import httpx
 
+from cortana import __version__
+
 from .apple_notes import fetch as fetch_apple_notes
 from .buzz import fetch as fetch_buzz
 from .chat import fetch_discord, fetch_slack
@@ -30,7 +32,12 @@ def parser() -> argparse.ArgumentParser:
         type=int,
         help="stop after emitting this many documents (used by bounded validation)",
     )
-    commands = root.add_subparsers(dest="connector", required=True)
+    root.add_argument(
+        "--version",
+        action="store_true",
+        help="print connector package version",
+    )
+    commands = root.add_subparsers(dest="connector", required=False)
 
     commands.add_parser("apple-notes")
 
@@ -68,6 +75,13 @@ def parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     arguments = parser().parse_args(argv)
+    if arguments.version:
+        print(__version__)
+        return 0
+    if arguments.connector is None:
+        raise RuntimeError(
+            "a connector command is required; use --version to report package version"
+        )
     if arguments.max_documents is not None and arguments.max_documents <= 0:
         raise RuntimeError("--max-documents must be greater than zero")
     documents = _documents(arguments)
