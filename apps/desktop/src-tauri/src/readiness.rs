@@ -54,36 +54,28 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
         tool_status("rust", "Rust toolchain", &["rustc"], false, false),
         embedding_runtime_status(),
     );
-    let cortana = if let Ok(version) = &bundled_version {
-        ToolStatus {
-            id: "cortana",
-            label: "Cortana runtime",
-            required: true,
-            available: true,
-            path: Some("bundled sidecar".into()),
-            version: Some(bounded_output(&version.stdout)),
-            install_supported: false,
-            detail: "Cryptographically bound to this desktop release.".into(),
-        }
-    } else {
-        tool_status("cortana", "Cortana runtime", &["cortana"], true, false).await
-    };
+    let cortana = bundled_runtime_status(bundled_version.as_ref());
     let python = python_status(uv.available).await;
-    let tools = vec![cortana.clone(), uv, python, connector, embedding_runtime, rust];
+    let tools = vec![
+        cortana.clone(),
+        uv,
+        python,
+        connector,
+        embedding_runtime,
+        rust,
+    ];
     let (core, core_error) = if bundled_version.is_ok() {
         match sidecar_readiness(app).await {
-            Ok(report) => (Some(report), None),
-            Err(error) => (None, Some(error)),
-        }
-    } else if let Some(path) = cortana.path.as_deref() {
-        match core_readiness(path).await {
             Ok(report) => (Some(report), None),
             Err(error) => (None, Some(error)),
         }
     } else {
         (
             None,
-            Some("Install the Cortana runtime before running production checks.".into()),
+            Some(
+                "The bundled Cortana runtime is unavailable; reinstall this Desktop release."
+                    .into(),
+            ),
         )
     };
 
@@ -100,6 +92,33 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
         core,
         core_error,
         tools,
+    }
+}
+
+fn bundled_runtime_status(
+    result: Result<&tauri_plugin_shell::process::Output, &String>,
+) -> ToolStatus {
+    match result {
+        Ok(version) => ToolStatus {
+            id: "cortana",
+            label: "Cortana runtime",
+            required: true,
+            available: true,
+            path: Some("bundled sidecar".into()),
+            version: Some(bounded_output(&version.stdout)),
+            install_supported: false,
+            detail: "Cryptographically bound to this desktop release.".into(),
+        },
+        Err(_) => ToolStatus {
+            id: "cortana",
+            label: "Cortana runtime",
+            required: true,
+            available: false,
+            path: None,
+            version: None,
+            install_supported: false,
+            detail: "Bundled Cortana runtime unavailable; reinstall this Desktop release.".into(),
+        },
     }
 }
 
@@ -418,21 +437,6 @@ fn connector_relative_path() -> &'static str {
     "venv/bin/cortana-connectors"
 }
 
-async fn core_readiness(path: &str) -> Result<Value, String> {
-    let output = timeout(
-        READINESS_TIMEOUT,
-        Command::new(path)
-            .arg("readiness")
-            .stdin(Stdio::null())
-            .kill_on_drop(true)
-            .output(),
-    )
-    .await
-    .map_err(|_| "Cortana readiness exceeded 90 seconds".to_string())?
-    .map_err(|error| format!("start Cortana readiness: {error}"))?;
-    parse_readiness_output(&output.stdout, &output.stderr)
-}
-
 fn parse_readiness_output(stdout: &[u8], stderr: &[u8]) -> Result<Value, String> {
     if stdout.len() > MAX_READINESS_BYTES {
         return Err("Cortana readiness response exceeded 64 KiB".into());
@@ -660,6 +664,17 @@ mod tests {
     #[test]
     fn executable_lookup_does_not_treat_missing_tools_as_available() {
         assert!(find_executable("cortana-tool-that-does-not-exist").is_none());
+    }
+
+    #[test]
+    fn missing_bundled_runtime_fails_closed_without_path_fallback() {
+        let error = "sidecar unavailable".to_string();
+        let status = bundled_runtime_status(Err(&error));
+        assert!(status.required);
+        assert!(!status.available);
+        assert!(status.path.is_none());
+        assert!(!status.install_supported);
+        assert!(status.detail.contains("reinstall"));
     }
 
     #[test]

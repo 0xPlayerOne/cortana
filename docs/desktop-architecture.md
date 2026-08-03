@@ -23,6 +23,9 @@ replace its path or arguments. The sidecar is included inside the updater-signed
 so Desktop readiness never depends on a separately downloaded Cortana executable. Each artifact also
 contains the connector package source (without credentials or a venv) as a private Tauri resource;
 the native installer can use that fixed resource to create the user's connector environment locally.
+If the bundled sidecar is missing or cannot be started, readiness fails closed and asks the user to
+reinstall the matching Desktop release; it never falls back to a `cortana` executable found on
+`PATH`.
 
 Secrets and source credentials remain outside the renderer. The settings bridge returns only
 configured/unset metadata and accepts write-only named secret updates. It refuses symlinked config

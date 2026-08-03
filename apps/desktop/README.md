@@ -48,6 +48,9 @@ production gates without starting an ingestion run. A local embedding provider r
 that local runtime. Installing the runtime does not download model weights or start a service;
 weights are fetched by the embedding service on its first approved start. Fixed tool installers
 require a confirmation and native approval, expose bounded logs, and can be cancelled or retried.
+Readiness uses only the cryptographically matched sidecar shipped with this Desktop release. If it
+is missing, the panel fails closed and asks the user to reinstall; it never uses a separate
+`cortana` executable from `PATH`.
 On a first launch, the guided setup opens this panel and
 runs the read-only scan automatically; every installation still requires separate approval. Tauri
 release bundles carry the connector source and metadata needed for the approved **Install** action:
