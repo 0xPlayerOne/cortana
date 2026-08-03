@@ -78,6 +78,8 @@ jobs:
           test -f "${archive}/share/cortana/web/index.html"
           test -n "$(find "${archive}/dist" -maxdepth 1 -name '*.whl' -print -quit)"
           "${archive}/install.sh" --help
+          test -x "${archive}/scripts/backup-restore-drill.sh"
+          "${archive}/scripts/backup-restore-drill.sh" --help
           tar -czf "${archive}.tar.gz" "${archive}"
           shasum -a 256 "${archive}.tar.gz" > "${archive}.tar.gz.sha256"
           scripts/verify-release.sh "${archive}.tar.gz" "${archive}.tar.gz.sha256"
