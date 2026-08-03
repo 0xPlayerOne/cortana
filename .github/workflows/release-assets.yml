@@ -30,7 +30,7 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
     steps:
       - name: Checkout release
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ env.RELEASE_TAG }}
       - name: Install Rust target
@@ -116,7 +116,7 @@ jobs:
       CORTANA_DESKTOP_TARGET: ${{ matrix.target }}
     steps:
       - name: Checkout release
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ env.RELEASE_TAG }}
       - name: Install Tauri system dependencies
@@ -181,7 +181,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Checkout release verifier
-        uses: actions/checkout@3d3c42a5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ env.RELEASE_TAG }}
       - name: Verify cross-platform assets and updater manifest
