@@ -1137,11 +1137,60 @@ mod tests {
         }
     }
 
+    use std::{env, ffi::OsString, sync::Mutex};
+
+    /// Process-wide environment mutation is a global side effect in Rust tests.
+    ///
+    /// The production code resolves the settings root through `settings::default_config_path`,
+    /// which reads `CORTANA_CONFIG` when set. That makes path injection feasible only via
+    /// this variable in tests. We therefore serialize env reads/writes in-process so the
+    /// override stays scoped to this test and can be deterministic for tests running in the
+    /// same process; this cannot protect against cross-process test invocation with a shared
+    /// process environment.
+    static CORTANA_CONFIG_LOCK: Mutex<()> = Mutex::new(());
+
+    struct CortanaConfigScope {
+        previous: Option<OsString>,
+    }
+
+    impl CortanaConfigScope {
+        fn with(path: &Path) -> Self {
+            let previous = env::var_os("CORTANA_CONFIG");
+            // SAFETY: environment mutation is process-global; guarded by `CORTANA_CONFIG_LOCK`
+            // and restored on scope drop.
+            unsafe { env::set_var("CORTANA_CONFIG", path) };
+            Self { previous }
+        }
+    }
+
+    impl Drop for CortanaConfigScope {
+        fn drop(&mut self) {
+            // SAFETY: environment mutation is process-global; guarded by `CORTANA_CONFIG_LOCK`
+            // and restored here for this scope.
+            match self.previous.clone() {
+                Some(previous) => unsafe { env::set_var("CORTANA_CONFIG", previous) },
+                None => unsafe { env::remove_var("CORTANA_CONFIG") },
+            }
+        }
+    }
+
+    fn with_cortana_config_override<T, F>(path: &Path, operation: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        let _lock = CORTANA_CONFIG_LOCK
+            .lock()
+            .expect("failed to acquire CORTANA_CONFIG lock");
+        let _scope = CortanaConfigScope::with(path);
+        operation()
+    }
+
     fn ipc_test_app() -> tauri::App<tauri::test::MockRuntime> {
         tauri::test::mock_builder()
             .manage(updater::UpdaterState::default())
             .manage(source_jobs::SourceJobState::default())
             .invoke_handler(tauri::generate_handler![
+                desktop_schedule_get,
                 desktop_update_status,
                 desktop_source_jobs_status
             ])
@@ -1160,18 +1209,6 @@ mod tests {
     }
 
     #[test]
-    fn native_ipc_dispatches_update_status() {
-        let app = ipc_test_app();
-        let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
-            .build()
-            .expect("build mock desktop window");
-
-        let response = invoke_json(&window, "desktop_update_status").expect("IPC response");
-        assert_eq!(response["phase"], "idle");
-        assert_eq!(response["restart_required"], false);
-    }
-
-    #[test]
     fn native_ipc_dispatches_source_job_status() {
         let app = ipc_test_app();
         let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
@@ -1180,6 +1217,35 @@ mod tests {
 
         let response = invoke_json(&window, "desktop_source_jobs_status").expect("IPC response");
         assert_eq!(response, Value::Array(Vec::new()));
+    }
+
+    #[test]
+    fn native_ipc_dispatches_default_schedule_when_missing() {
+        let temp = tempfile::tempdir().expect("temporary config directory");
+        let config_path = temp.path().join("cortana/config.toml");
+
+        with_cortana_config_override(&config_path, || {
+            let app = ipc_test_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
+
+            let response = invoke_json(&window, "desktop_schedule_get").expect("IPC response");
+            assert_eq!(response["sync_interval_seconds"], 900);
+            assert_eq!(response["backup_interval_seconds"], 86400);
+        });
+    }
+
+    #[test]
+    fn native_ipc_dispatches_idle_update_status_without_restart() {
+        let app = ipc_test_app();
+        let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+            .build()
+            .expect("build mock desktop window");
+
+        let response = invoke_json(&window, "desktop_update_status").expect("IPC response");
+        assert_eq!(response["phase"], "idle");
+        assert_eq!(response["restart_required"], false);
     }
 
     fn principal(scopes: &[&str]) -> settings::AuthPrincipalSettings {
