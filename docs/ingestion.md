@@ -256,3 +256,8 @@ Cortana requires that trailer before it reconciles each `(source, project)` repr
 stream, so a broken or truncated pipe cannot delete an earlier snapshot. Pass
 `--no-reconcile` only when intentionally importing a partial snapshot. Do not import vectors whose
 model, dimensions, or preprocessing are uncertain; rebuild those records through normal ingestion.
+
+When changing the embedding model for an existing index, `cortana rebuild-embeddings --from ...
+--force` provides the safe full-corpus path. It preserves canonical documents, ACLs, provenance,
+and chunk text while replacing only their vectors, with an atomic generation swap after all chunks
+are embedded successfully.

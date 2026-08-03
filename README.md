@@ -191,7 +191,9 @@ embeddings are intentionally fingerprinted as different index generations and ca
 If only an endpoint fingerprint changed and you have verified that the stored vectors are still
 the same model, dimension, and vector space, use the explicit `migrate-embedding --from ...
 --force` command to adopt the generation without a corpus rebuild; otherwise rebuild or import
-vectors into a new generation.
+vectors into a new generation. For a true model or preprocessing change, use the guarded
+`rebuild-embeddings --from ... --force` command: it re-embeds every stored chunk behind a
+recovery snapshot and only swaps the live vectors after the entire corpus succeeds.
 See [the ingestion guide](docs/ingestion.md) and
 [`config.example.toml`](config.example.toml) for Google Drive, Gmail, Calendar, Apple Notes, Slack,
 Discord, Buzz, filesystem/code, and external adapters.
