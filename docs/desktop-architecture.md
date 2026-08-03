@@ -163,12 +163,14 @@ will be derived from the model and loopback endpoint; Desktop preserves explicit
 but never accepts arbitrary shell commands from the renderer.
 
 The source editor supports the native filesystem, Apple Notes, Buzz, Google Drive, Gmail, Google
-Calendar, Slack, and Discord connector schemas. It can retain, disable, or remove an existing
-external command connector, but cannot create or modify command arrays. Google token files and
-OAuth client files and local roots must be absolute non-root paths; Slack and Discord require
-explicit channels and a validated environment-variable name. Canonical source labels are unique
-within each workspace, must not be padded with whitespace or contain control characters, and cannot
-merge connectors' indexed scope or health history. Saving or authorizing source
+Calendar, GitHub code, Slack, and Discord connector schemas. GitHub code requires an explicit
+`owner/repository` allowlist and a configured token environment variable; OAuth/device-flow
+authorization and repository discovery remain the next onboarding layer. It can retain, disable,
+or remove an existing external command connector, but cannot create or modify command arrays.
+Google token files and OAuth client files and local roots must be absolute non-root paths; Slack
+and Discord require explicit channels and a validated environment-variable name. Canonical source
+labels are unique within each workspace, must not be padded with whitespace or contain control
+characters, and cannot merge connectors' indexed scope or health history. Saving or authorizing source
 settings never starts ingestion. The knowledge sidebar also exposes a confirmation-gated
 enable/disable switch for each saved connector; it writes only that source's enabled flag, leaves
 existing indexed data untouched, and is disabled while a Settings draft is unsaved or first-launch
