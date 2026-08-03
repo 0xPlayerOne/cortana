@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.0](https://github.com/0xPlayerOne/cortana/compare/v0.20.0...v0.21.0) (2026-08-03)
+
+
+### Features
+
+* **query:** add model-backed evaluation ([77eb666](https://github.com/0xPlayerOne/cortana/commit/77eb666f83319ee1de755297da616373345abe8e))
+
 ## [0.20.0](https://github.com/0xPlayerOne/cortana/compare/v0.19.7...v0.20.0) (2026-08-03)
 
 
