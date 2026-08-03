@@ -292,6 +292,20 @@ mod tests {
     }
 
     #[test]
+    fn filesystem_directory_roots_keep_relative_identifiers_for_nested_files() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let root = directory.path().join("src");
+        std::fs::create_dir_all(root.join("nested")).expect("nested directory");
+        std::fs::write(root.join("nested/mod.rs"), "mod source").expect("source file");
+
+        let documents = filesystem_documents(&root, "code", "work").expect("documents");
+
+        assert_eq!(documents.len(), 1);
+        assert_eq!(documents[0].source_id, "nested/mod.rs");
+        assert_eq!(documents[0].title, "nested/mod.rs");
+    }
+
+    #[test]
     fn filesystem_source_escapes_special_characters_in_file_uris() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let root = directory.path().join("project with #hash");

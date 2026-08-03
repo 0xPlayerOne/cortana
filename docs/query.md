@@ -104,7 +104,9 @@ This setting does not affect ingestion and does not start any background work.
 
 `cortana eval --model` is a separate, opt-in quality gate for the real planner+synthesis path. It
 always uses local synthetic fixtures and the deterministic embedder. It never opens personal data,
-does not run source syncs, and requires `[query]` model configuration to be valid.
+does not run source syncs, and requires the configured `[query]` provider (and its optional API key)
+to be valid. The command enables synthesis only in memory for this run; the safe production
+default remains extractive fallback when `synthesis_enabled = false`.
 
 ```bash
 cortana --config /path/to/config.toml eval --model

@@ -18,6 +18,94 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 
 ## Quick start
 
+Use the numbered path below for a new local installation. The release installer installs the
+signed application bundle; the checkout installer builds the application and connector runtime
+from source. Neither path downloads embedding weights, authorizes a source, performs a first sync,
+or enables recurring ingestion automatically.
+
+### 1. Install the application
+
+Choose one path:
+
+1. **Release archive (recommended for normal use).** Extract a matching GitHub release archive and
+   run `./install.sh`.
+2. **Git checkout (contributors or unreleased changes).** Run `./scripts/install-local.sh` from the
+   checkout. Set `CORTANA_INSTALL_SERVICE=0` when you want to install files without starting the
+   per-user services yet.
+3. **Agent integration (optional).** Add
+   `CORTANA_INSTALL_AGENT_INTEGRATIONS=1` to the checkout installer, or run
+   `./scripts/install-agent-integrations.sh` after installation. MCP client configuration remains
+   an explicit agent-side step.
+
+The installer preserves an existing configuration and index. It does not overwrite secrets, run a
+connector, rebuild embeddings, or delete data. After installation, keep the application in its
+safe query-only state until the source checks in the next steps pass.
+
+### 2. Initialize and check the local runtime
+
+From a checkout, use the built binary; from a release install, use the installed `cortana` command:
+
+```bash
+cortana init
+cortana doctor
+cortana readiness --max-backup-age-hours 48
+```
+
+`doctor` checks configuration and dependencies. `readiness` is read-only and confirms the database,
+embedding provider, API, backup freshness, and that recurring sync is not installed. A readiness
+failure is a stop sign; it never repairs the index implicitly.
+
+### 3. Authorize and validate one source
+
+Authorize only the source you intend to use, then run a small read-only validation. Google OAuth is
+started with `cortana authorize-google SOURCE`; Apple Notes uses the host permission; token-backed
+sources read only the configured environment variable. Validation never embeds, indexes, or
+reconciles data:
+
+```bash
+cortana validate-source SOURCE \
+  --max-documents 25 \
+  --max-bytes 5242880 \
+  --max-seconds 60
+```
+
+Review the source result in Desktop or `/v1/status` before proceeding. Do not use a production-sized
+budget as a validation shortcut.
+
+### 4. Run one bounded sync
+
+Plan the source first, then run a deliberately small non-reconciling trial. A trial cannot delete
+records that are missing from a partial snapshot:
+
+```bash
+cortana sync --source SOURCE --plan
+cortana sync --source SOURCE \
+  --max-documents 25 \
+  --max-bytes 5242880 \
+  --max-seconds 60 \
+  --no-reconcile
+```
+
+Inspect the Desktop source panel or `/v1/status` and query a known item. Only after the connector,
+cursor, ACL, and cache behavior is verified should you choose a larger complete snapshot. Recurring
+sync remains a separate confirmation-gated operation.
+
+### 5. Start, stop, and uninstall safely
+
+The service commands affect only Cortana's per-user jobs and preserve configuration, data, logs,
+and backups:
+
+```bash
+cortana service status --json
+cortana service stop server
+cortana service stop embedding
+cortana service uninstall
+```
+
+Use `cortana service start NAME` or `cortana service install --web-dir PATH` to resume the core
+services. Never remove the data directory as part of an ordinary uninstall; take and verify a
+backup first if the index is no longer needed.
+
 ```bash
 # From an extracted GitHub release archive (binary, UI, and connector wheel).
 ./install.sh
@@ -86,6 +174,8 @@ See [the ingestion guide](docs/ingestion.md) and
 Discord, Buzz, filesystem/code, and external adapters.
 See [the query guide](docs/query.md) for planned retrieval, cited synthesis, local model-gateway
 configuration, cloud providers, cache invalidation, and degraded operation.
+See the [agent integration guide](docs/integrations.md) for Codex, Hermes, Buzz, MCP, HTTP, and
+CLI setup with scoped principals and cache-aware context retrieval.
 See the [operations guide](docs/operations.md) for service management, authenticated remote access,
 telemetry, backup, restore, and Linux systemd units.
 Run the isolated [evaluation and readiness gates](docs/evaluation.md) before enabling synthesis or

@@ -410,10 +410,6 @@ async fn main() -> Result<()> {
         let config_path = cli.config.clone().unwrap_or_else(default_config_path);
         let mut config = Config::load(Some(&config_path))?;
         config.load_environment()?;
-        anyhow::ensure!(
-            config.query.synthesis_enabled,
-            "query synthesis is not enabled in the active configuration"
-        );
         let query_api_key = config
             .query
             .api_key_env
@@ -424,6 +420,14 @@ async fn main() -> Result<()> {
                 })
             })
             .transpose()?;
+        // `eval --model` is itself the opt-in quality gate for the real
+        // planner+synthesis path, so a production config that keeps the safe
+        // runtime default (`synthesis_enabled = false`) must not block it.
+        // Validate the configured provider (API key above; base URL and model
+        // here) before enabling synthesis only on this in-memory copy; the
+        // on-disk config and the runtime default are left untouched.
+        cortana::answer::validate_query_provider(&config.query)?;
+        config.query.synthesis_enabled = true;
         let report = match fixture {
             Some(path) => {
                 cortana::evaluation::run_with_config(path, &config.query, query_api_key).await?
