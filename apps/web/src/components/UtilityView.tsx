@@ -419,6 +419,11 @@ function ConversationsView({
           <h3>{query}</h3>
           <div className="utility-meta">
             <span>{answer.mode}</span>
+            <span>
+              {answer.retrieval_degraded
+                ? 'lexical fallback'
+                : answer.retrieval_mode || 'hybrid retrieval'}
+            </span>
             <span>{answer.cached ? 'cache hit' : `${answer.latency_ms} ms`}</span>
             <span>
               {answer.plan.queries.length}{' '}
@@ -493,6 +498,10 @@ function AgentToolsView({
         ) : contextBundle ? (
           <>
             <div className="utility-metrics">
+              <Metric
+                label="Retrieval"
+                value={contextBundle.retrieval_mode || 'hybrid'}
+              />
               <Metric label="Retrieved" value={contextBundle.metrics.retrieved.toLocaleString()} />
               <Metric label="Included" value={contextBundle.metrics.included.toLocaleString()} />
               <Metric label="Omitted" value={contextBundle.metrics.omitted.toLocaleString()} />
@@ -505,6 +514,11 @@ function AgentToolsView({
                 value={contextBundle.metrics.max_tokens.toLocaleString()}
               />
             </div>
+            {contextBundle.retrieval_warning && (
+              <p className="answer-warning" role="status">
+                {contextBundle.retrieval_warning}
+              </p>
+            )}
             {contextBundle.evidence.length > 0 && (
               <div className="utility-list utility-list-spaced">
                 {contextBundle.evidence.map((item) => (
@@ -626,6 +640,10 @@ function IndexView({
             value={`${status.query_cache_entries.toLocaleString()} entries`}
           />
           <Metric label="Query cache hits" value={status.query_cache_hits.toLocaleString()} />
+          <Metric
+            label="Retrieval fallbacks"
+            value={(status.retrieval_fallbacks_total ?? 0).toLocaleString()}
+          />
           <Metric label="Answers total" value={status.answers_total.toLocaleString()} />
         </div>
       </section>
