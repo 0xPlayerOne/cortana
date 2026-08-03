@@ -26,6 +26,34 @@ block promotion. Model quality is deliberately separate because it depends on lo
 the configured provider; enable synthesis and run a bounded query-only benchmark only after the
 deterministic gate passes.
 
+```bash
+# deterministic gate (default, offline)
+cortana eval
+
+# model-backed evaluator (planner+synthesis), bounded and fixture-only
+cortana --config /path/to/config.toml eval --model
+```
+
+`--model` always runs against synthetic fixtures only, does not open or modify a personal index,
+and does not trigger syncs or connector activity. The model-backed run extends `answer` report fields
+with provider-backed-specific metrics:
+
+- `attempted` / `passed`
+- `planner_model_used` / `synthesis_model_used`
+- `citations_valid`, `expected_evidence_present`, `forbidden_citations_absent`
+- `fallback_mode`, `fallback_provider_unavailable`
+- `latency_ms`, `deadline_ms`
+
+The command exits nonzero when model quality thresholds fail.
+
+```toml
+[query]
+synthesis_enabled = true
+base_url = "http://127.0.0.1:8008/v1"
+model = "auto-efficient"
+```
+
+
 ## Production readiness
 
 `cortana readiness` performs read-only operational checks and emits JSON:

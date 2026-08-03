@@ -100,6 +100,17 @@ synthesis_enabled = false
 
 This setting does not affect ingestion and does not start any background work.
 
+## Model-backed evaluation run
+
+`cortana eval --model` is a separate, opt-in quality gate for the real planner+synthesis path. It
+always uses local synthetic fixtures and the deterministic embedder. It never opens personal data,
+does not run source syncs, and requires `[query]` model configuration to be valid.
+
+```bash
+cortana --config /path/to/config.toml eval --model
+```
+
+
 ## Planned and synthesized answers
 
 After an OpenAI-compatible model endpoint is healthy, enable synthesis:
