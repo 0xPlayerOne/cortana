@@ -26,7 +26,10 @@ import httpx
 from .http import json_payload
 from .model import Document
 
-DRIVE_FIELDS = "nextPageToken,files(id,name,mimeType,modifiedTime,webViewLink,owners(displayName))"
+DRIVE_FIELDS = (
+    "nextPageToken,incompleteSearch,"
+    "files(id,name,mimeType,modifiedTime,webViewLink,owners(displayName))"
+)
 GOOGLE_EXPORTS = {
     "application/vnd.google-apps.document": ("text/plain", "txt"),
     "application/vnd.google-apps.presentation": ("text/plain", "txt"),
@@ -206,6 +209,7 @@ def fetch_drive(
         raise ValueError("max_content_chars must be greater than zero")
     if max_documents is not None and max_documents <= 0:
         raise ValueError("max_documents must be greater than zero")
+    strict = max_documents is None
     cache = _drive_cache(cache_dir)
     try:
         with GoogleSession(token_path, client) as session:
@@ -230,12 +234,18 @@ def fetch_drive(
                 )
                 payload = json_payload(response)
                 if not isinstance(payload, dict):
+                    if strict:
+                        raise RuntimeError(
+                            "Drive listing is not an object; refusing partial snapshot"
+                        )
                     print(
                         "Drive listing skipped: provider returned a non-object value",
                         file=sys.stderr,
                     )
                     break
-                items = _google_records(payload.get("files"), "Drive file")
+                if strict and payload.get("incompleteSearch"):
+                    raise RuntimeError("Drive listing is incomplete; refusing partial snapshot")
+                items = _google_records(payload.get("files"), "Drive file", strict=strict)
                 bodies: dict[str, str] = {}
                 missing_items: list[dict[str, Any]] = []
                 downloaded_ids: set[str] = set()
@@ -293,6 +303,10 @@ def fetch_drive(
                     try:
                         updated_at = _timestamp(item.get("modifiedTime"))
                     except (TypeError, ValueError, OverflowError, OSError) as error:
+                        if strict:
+                            raise RuntimeError(
+                                f"Drive file has invalid modifiedTime: id={file_id}"
+                            ) from error
                         _warn_skipped_record("Drive file", file_id, error)
                         continue
                     content, content_truncated = _bounded_content(body, max_content_chars)
@@ -344,6 +358,7 @@ def fetch_gmail(
     cache_dir: Path | None = None,
     max_documents: int | None = None,
 ) -> Iterable[Document]:
+    strict = max_documents is None
     cache = _gmail_cache(cache_dir)
     try:
         with GoogleSession(token_path, client) as session:
@@ -367,6 +382,10 @@ def fetch_gmail(
                 )
                 listing = json_payload(response)
                 if not isinstance(listing, dict):
+                    if strict:
+                        raise RuntimeError(
+                            "Gmail listing is not an object; refusing partial snapshot"
+                        )
                     print(
                         "Gmail listing skipped: provider returned a non-object value",
                         file=sys.stderr,
@@ -374,7 +393,9 @@ def fetch_gmail(
                     break
                 messages: dict[str, dict[str, Any]] = {}
                 missing_ids: list[str] = []
-                references = _google_records(listing.get("messages"), "Gmail message")
+                references = _google_records(
+                    listing.get("messages"), "Gmail message", strict=strict
+                )
                 if max_documents is not None:
                     references = references[: max_documents - emitted]
                 for reference in references:
@@ -398,6 +419,11 @@ def fetch_gmail(
                             if message is None:
                                 unavailable += 1
                             else:
+                                if strict and str(message.get("id") or "") != message_id:
+                                    raise RuntimeError(
+                                        "Gmail message detail id mismatch: "
+                                        f"requested={message_id} received={message.get('id')}"
+                                    )
                                 messages[message_id] = message
                         maximum_unavailable = max(10, len(missing_ids) // 10)
                         if unavailable > maximum_unavailable:
@@ -429,6 +455,10 @@ def fetch_gmail(
                             limit_reached = True
                             break
                     except (AttributeError, TypeError, ValueError, KeyError) as error:
+                        if strict:
+                            raise RuntimeError(
+                                f"Gmail message conversion failed: id={message_id}"
+                            ) from error
                         _warn_skipped_record("Gmail message", message.get("id"), error)
                 if limit_reached:
                     break
@@ -936,20 +966,36 @@ def _timestamp(value: object) -> dt.datetime:
     return parsed.astimezone(dt.UTC)
 
 
-def _google_records(value: object, kind: str) -> list[dict[str, Any]]:
-    """Return usable provider records without aborting the surrounding sync."""
+def _google_records(value: object, kind: str, strict: bool = False) -> list[dict[str, Any]]:
+    """Return usable provider records.
+
+    Capped runs skip malformed records with a diagnostic so bounded validation
+    can tolerate provider noise. Strict (uncapped) runs fail closed instead:
+    a record that cannot be parsed would otherwise be silently omitted from
+    what downstream reconciliation treats as a complete snapshot.
+    """
     if value is None:
+        if strict:
+            raise RuntimeError(f"{kind} list is missing; refusing partial snapshot")
         return []
     if not isinstance(value, list):
+        if strict:
+            raise RuntimeError(f"{kind} list is not a list; refusing partial snapshot")
         print(f"{kind} list skipped: provider returned a non-list value", file=sys.stderr)
         return []
     records: list[dict[str, Any]] = []
     for index, record in enumerate(value):
         if not isinstance(record, dict):
+            if strict:
+                raise RuntimeError(
+                    f"{kind} record={index} is not an object; refusing partial snapshot"
+                )
             print(f"{kind} skipped: record={index} is not an object", file=sys.stderr)
             continue
         record_id = str(record.get("id") or "").strip()
         if not record_id:
+            if strict:
+                raise RuntimeError(f"{kind} record={index} has no id; refusing partial snapshot")
             print(f"{kind} skipped: record={index} has no id", file=sys.stderr)
             continue
         record["id"] = record_id

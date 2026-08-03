@@ -1036,6 +1036,7 @@ def test_google_drive_skips_malformed_listing_records(
             token,
             "work",
             client=httpx.Client(transport=httpx.MockTransport(handler)),
+            max_documents=10,
         )
     )
 
@@ -1043,6 +1044,98 @@ def test_google_drive_skips_malformed_listing_records(
     diagnostic = capsys.readouterr().err
     assert "Drive file skipped: record=0 is not an object" in diagnostic
     assert "Drive file skipped: id=bad-time" in diagnostic
+
+
+def test_google_drive_full_mode_rejects_malformed_listing_records(
+    tmp_path: Path,
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response(
+            {"files": [None, {"name": "missing id"}]},
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive file record=0 is not an object"):
+        list(fetch_drive(token, "work", client=client))
+
+
+def test_google_drive_full_mode_rejects_non_object_listing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response(["not", "an", "object"], request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive listing is not an object"):
+        list(fetch_drive(token, "work", client=client))
+
+    # A capped run still tolerates the malformed listing with a diagnostic.
+    assert list(fetch_drive(token, "work", client=client, max_documents=5)) == []
+    assert "Drive listing skipped" in capsys.readouterr().err
+
+
+def test_google_drive_full_mode_rejects_incomplete_search(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "doc1",
+                            "name": "Doc",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ],
+                    "incompleteSearch": True,
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="body", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive listing is incomplete"):
+        list(fetch_drive(token, "work", client=client))
+
+    # Bounded validation runs keep tolerating incomplete searches.
+    capped = list(fetch_drive(token, "work", client=client, max_documents=5))
+    assert [document.source_id for document in capped] == ["doc1"]
+
+
+def test_google_drive_full_mode_rejects_invalid_modified_time(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "bad-time",
+                            "name": "Bad timestamp",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "not-a-timestamp",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="body", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Drive file has invalid modifiedTime: id=bad-time"):
+        list(fetch_drive(token, "work", client=client))
 
 
 def test_google_drive_bounds_oversized_exports_with_explicit_metadata(tmp_path: Path) -> None:
@@ -1307,11 +1400,77 @@ def test_google_gmail_skips_malformed_listing_records(
             token,
             "work",
             client=httpx.Client(transport=httpx.MockTransport(handler)),
+            max_documents=10,
         )
     )
 
     assert [document.source_id for document in documents] == ["m1"]
     assert "Gmail message skipped: record=0 is not an object" in capsys.readouterr().err
+
+
+def test_google_gmail_full_mode_rejects_malformed_listing_records(
+    tmp_path: Path,
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response(
+            {"messages": [None, {"labelIds": ["INBOX"]}]},
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Gmail message record=0 is not an object"):
+        list(fetch_gmail(token, "work", client=client))
+
+
+def test_google_gmail_full_mode_rejects_detail_id_mismatch(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response({"messages": [{"id": "m1"}]}, request=request)
+        return response(
+            {
+                "id": "other-id",
+                "payload": {
+                    "headers": [{"name": "Subject", "value": "Mismatch"}],
+                    "mimeType": "text/plain",
+                    "body": {"data": base64.urlsafe_b64encode(b"body").decode()},
+                },
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Gmail message detail id mismatch: requested=m1"):
+        list(fetch_gmail(token, "work", client=client))
+
+
+def test_google_gmail_full_mode_rejects_conversion_failure(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/messages"):
+            return response({"messages": [{"id": "m1"}]}, request=request)
+        return response(
+            {
+                "id": "m1",
+                "payload": {
+                    "headers": [{"name": "Date", "value": "not-a-date"}],
+                    "mimeType": "text/plain",
+                    "body": {"data": base64.urlsafe_b64encode(b"body").decode()},
+                },
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(RuntimeError, match="Gmail message conversion failed: id=m1"):
+        list(fetch_gmail(token, "work", client=client))
 
 
 def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
