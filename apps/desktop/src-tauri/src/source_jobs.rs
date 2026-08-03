@@ -119,6 +119,7 @@ pub struct InitialSyncPlan {
     pub writes_indexed_data: bool,
     pub requires_validation: bool,
     pub validation_covers_budget: Option<bool>,
+    pub validation_complete: Option<bool>,
     pub plan_id: String,
 }
 
@@ -147,21 +148,31 @@ impl SourceJobState {
         budget: Option<InitialSyncBudget>,
     ) -> Result<SourceJobSnapshot, String> {
         let source = settings::configured_source(source_name)?;
+        // Filesystem sources are validated as a bounded sample: a root larger
+        // than the requested budget records a partial validation instead of
+        // failing, so an equally bounded non-reconciling initial or trial sync
+        // can proceed while full-corpus sync stays blocked on a complete
+        // validation. The persisted record carries the completeness marker.
+        let sample = source.kind == "filesystem";
         let (args, summary) = match budget {
             Some(budget) => {
                 let (documents, bytes, seconds) = budget.limits();
                 (
-                    validation_args_with(source_name, documents, bytes, seconds),
+                    validation_args_with(source_name, documents, bytes, seconds, sample),
                     format!(
-                        "Read-only connector validation is running with a {documents} document, {} MiB, {} minute limit.",
+                        "Read-only connector validation is running with a {documents} document, {} MiB, {} minute limit.{}",
                         bytes / (1024 * 1024),
-                        seconds / 60
+                        seconds / 60,
+                        sample_summary_suffix(sample),
                     ),
                 )
             }
             None => (
-                validation_args(source_name),
-                "Read-only connector validation is running with a 25 document, 5 MiB, 60 second limit.".into(),
+                validation_args(source_name, sample),
+                format!(
+                    "Read-only connector validation is running with a 25 document, 5 MiB, 60 second limit.{}",
+                    sample_summary_suffix(sample),
+                ),
             ),
         };
         self.start(app, source, "validation", args, summary, None, false)
@@ -216,7 +227,8 @@ impl SourceJobState {
         data_dir: &Path,
     ) -> Result<InitialSyncPlan, String> {
         let (budget_documents, budget_bytes, budget_seconds) = budget.limits();
-        let validation_covers_budget = validation_covers_budget_at(data_dir, &source.name, budget)?;
+        let (validation_covers_budget, validation_complete) =
+            validation_coverage_at(data_dir, &source.name, budget)?;
         let plan_id = format!(
             "plan-{}-{}",
             now(),
@@ -265,6 +277,7 @@ impl SourceJobState {
             writes_indexed_data: true,
             requires_validation: true,
             validation_covers_budget,
+            validation_complete,
             plan_id,
         })
     }
@@ -665,12 +678,18 @@ fn job_sequence(id: &str) -> Option<u64> {
     id.rsplit_once('-')?.1.parse().ok()
 }
 
-fn validation_args(source: &str) -> Vec<String> {
-    validation_args_with(source, 25, 5_242_880, 60)
+fn validation_args(source: &str, sample: bool) -> Vec<String> {
+    validation_args_with(source, 25, 5_242_880, 60, sample)
 }
 
-fn validation_args_with(source: &str, documents: usize, bytes: u64, seconds: u64) -> Vec<String> {
-    [
+fn validation_args_with(
+    source: &str,
+    documents: usize,
+    bytes: u64,
+    seconds: u64,
+    sample: bool,
+) -> Vec<String> {
+    let mut args = [
         "validate-source",
         source,
         "--max-documents",
@@ -682,7 +701,19 @@ fn validation_args_with(source: &str, documents: usize, bytes: u64, seconds: u64
     ]
     .into_iter()
     .map(str::to_string)
-    .collect()
+    .collect::<Vec<_>>();
+    if sample {
+        args.push("--sample".to_string());
+    }
+    args
+}
+
+fn sample_summary_suffix(sample: bool) -> &'static str {
+    if sample {
+        " A larger folder records a bounded sample that cannot authorize full-corpus sync."
+    } else {
+        ""
+    }
 }
 
 fn authorization_args(source: &str) -> Vec<String> {
@@ -768,13 +799,17 @@ fn validate_plan_id(id: &str) -> Result<(), String> {
 }
 
 /// Read-only hint about whether the latest validation record for a source
-/// covers the selected budget. The sidecar remains the authoritative gate via
-/// `--require-validation`; this only drives Desktop plan messaging.
-fn validation_covers_budget_at(
+/// covers the selected budget and whether that validation was complete. The
+/// sidecar remains the authoritative gate via `--require-validation`; this
+/// only drives Desktop plan messaging. A bounded sample that meets the budget
+/// still covers a non-reconciling initial sync (which never deletes records),
+/// so coverage does not depend on completeness; the completeness marker is
+/// surfaced separately so the UI can warn that full-corpus sync stays blocked.
+fn validation_coverage_at(
     data_dir: &Path,
     source_name: &str,
     budget: InitialSyncBudget,
-) -> Result<Option<bool>, String> {
+) -> Result<(Option<bool>, Option<bool>), String> {
     let path = data_dir.join("source-validations.json");
     match fs::symlink_metadata(&path) {
         Ok(metadata) => {
@@ -785,7 +820,9 @@ fn validation_covers_budget_at(
                 ));
             }
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((None, None));
+        }
         Err(error) => return Err(format!("inspect source validation state: {error}")),
     }
     let file = open_validation_state(&path)?;
@@ -803,7 +840,7 @@ fn validation_covers_budget_at(
         .and_then(Value::as_object)
         .and_then(|sources| sources.get(source_name))
     else {
-        return Ok(None);
+        return Ok((None, None));
     };
     let (Some(status), Some(max_documents), Some(max_bytes), Some(max_seconds)) = (
         record.get("status").and_then(Value::as_str),
@@ -813,15 +850,22 @@ fn validation_covers_budget_at(
     ) else {
         // A record that omits any coverage field cannot be proven to cover the
         // budget; treat it as unknown so the UI asks for a fresh validation.
-        return Ok(None);
+        return Ok((None, None));
     };
     let (documents, bytes, seconds) = budget.limits();
-    Ok(Some(
-        status == "succeeded"
-            && max_documents >= documents as u64
-            && max_bytes >= bytes
-            && max_seconds >= seconds,
-    ))
+    let covers = status == "succeeded"
+        && max_documents >= documents as u64
+        && max_bytes >= bytes
+        && max_seconds >= seconds;
+    Ok((Some(covers), record.get("complete").and_then(Value::as_bool)))
+}
+
+fn validation_covers_budget_at(
+    data_dir: &Path,
+    source_name: &str,
+    budget: InitialSyncBudget,
+) -> Result<Option<bool>, String> {
+    Ok(validation_coverage_at(data_dir, source_name, budget)?.0)
 }
 
 fn open_validation_state(path: &Path) -> Result<fs::File, String> {
@@ -1094,7 +1138,7 @@ mod tests {
     #[test]
     fn validation_command_has_fixed_read_only_limits() {
         assert_eq!(
-            validation_args("personal-drive"),
+            validation_args("personal-drive", false),
             [
                 "validate-source",
                 "personal-drive",
@@ -1106,6 +1150,23 @@ mod tests {
                 "60",
             ]
         );
+        assert_eq!(
+            validation_args("work-code", true),
+            [
+                "validate-source",
+                "work-code",
+                "--max-documents",
+                "25",
+                "--max-bytes",
+                "5242880",
+                "--max-seconds",
+                "60",
+                "--sample",
+            ]
+        );
+        assert!(sample_summary_suffix(false).is_empty());
+        assert!(sample_summary_suffix(true).contains("bounded sample"));
+        assert!(sample_summary_suffix(true).contains("full-corpus sync"));
     }
 
     #[test]
@@ -1227,7 +1288,7 @@ mod tests {
     #[test]
     fn budget_scoped_validation_uses_the_selected_limits_and_legacy_stays_fixed() {
         assert_eq!(
-            validation_args_with("mail", 100, 26_214_400, 900),
+            validation_args_with("mail", 100, 26_214_400, 900, false),
             [
                 "validate-source",
                 "mail",
@@ -1240,7 +1301,21 @@ mod tests {
             ]
         );
         assert_eq!(
-            validation_args("mail"),
+            validation_args_with("work-code", 100, 26_214_400, 900, true),
+            [
+                "validate-source",
+                "work-code",
+                "--max-documents",
+                "100",
+                "--max-bytes",
+                "26214400",
+                "--max-seconds",
+                "900",
+                "--sample",
+            ]
+        );
+        assert_eq!(
+            validation_args("mail", false),
             [
                 "validate-source",
                 "mail",
@@ -1318,6 +1393,7 @@ mod tests {
         assert!(plan.writes_indexed_data);
         assert!(plan.requires_validation);
         assert_eq!(plan.validation_covers_budget, None);
+        assert_eq!(plan.validation_complete, None);
         assert!(plan.acl.is_empty());
         assert!(plan.plan_id.starts_with("plan-"));
 
@@ -1330,6 +1406,7 @@ mod tests {
             )
             .expect("covered plan");
         assert_eq!(plan.validation_covers_budget, Some(true));
+        assert_eq!(plan.validation_complete, None);
     }
 
     #[test]
@@ -1490,6 +1567,67 @@ mod tests {
         assert_eq!(
             validation_covers_budget_at(temp.path(), "work-code", InitialSyncBudget::Large),
             Ok(Some(false))
+        );
+    }
+
+    #[test]
+    fn sampled_validation_still_covers_a_non_reconciling_initial_sync_budget() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let state = SourceJobState::default();
+        std::fs::write(
+            temp.path().join("source-validations.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "sources": {
+                    "work-code": {
+                        "status": "succeeded",
+                        "max_documents": 500,
+                        "max_bytes": 67108864,
+                        "max_seconds": 1800,
+                        "complete": false,
+                    }
+                }
+            }))
+            .expect("serialize state"),
+        )
+        .expect("write state");
+
+        // A bounded sample meeting the tier limits covers the non-reconciling
+        // initial sync, and the completeness marker is surfaced for messaging
+        // so the UI can warn that full-corpus sync stays blocked.
+        assert_eq!(
+            validation_coverage_at(temp.path(), "work-code", InitialSyncBudget::Medium),
+            Ok((Some(true), Some(false)))
+        );
+        let plan = state
+            .build_initial_sync_plan(
+                &test_source("work-code", true),
+                InitialSyncBudget::Medium,
+                temp.path(),
+            )
+            .expect("plan");
+        assert_eq!(plan.validation_covers_budget, Some(true));
+        assert_eq!(plan.validation_complete, Some(false));
+
+        // A complete record at the same limits covers and is marked complete.
+        std::fs::write(
+            temp.path().join("source-validations.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "sources": {
+                    "work-code": {
+                        "status": "succeeded",
+                        "max_documents": 500,
+                        "max_bytes": 67108864,
+                        "max_seconds": 1800,
+                        "complete": true,
+                    }
+                }
+            }))
+            .expect("serialize state"),
+        )
+        .expect("write state");
+        assert_eq!(
+            validation_coverage_at(temp.path(), "work-code", InitialSyncBudget::Medium),
+            Ok((Some(true), Some(true)))
         );
     }
 

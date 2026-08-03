@@ -177,6 +177,28 @@ When the three overrides are omitted, the CLI applies the same safe defaults: 25
 5 MiB, and 60 seconds. Use larger explicit limits only when you are deliberately proving coverage
 for a matching guided initial-sync or recurring-sync budget.
 
+Filesystem sources larger than the requested budgets fail closed by default: a root whose
+preflight walk exceeds the document, byte, or wall-clock limits is rejected, because a truncated
+validation must never bless a full-corpus sync. To validate a broad code or notes root with a
+small budget, opt in explicitly with `--sample`:
+
+```bash
+cortana validate-source CODE_ROOT --sample \
+  --max-documents 25 \
+  --max-bytes 5242880 \
+  --max-seconds 60
+```
+
+A sampled validation walks at most the requested document, byte, and wall-clock limits and
+records the outcome in `source-validations.json` with `complete: false`; if the sample happens to
+cover the whole root, it records `complete: true` and keeps full-corpus authority. A sampled
+record satisfies an explicitly equal-or-smaller non-reconciling trial or initial sync
+(`sync --require-validation --no-reconcile` with matching limits), but it can never authorize a
+reconciling sync, the recurring-sync job, or the `--allow-sync-service` readiness gate, which all
+require a complete validation at equal or larger limits. `--sample` applies only to filesystem
+sources; connector validations already run a capped snapshot and are rejected if the flag is
+supplied.
+
 Validation can target a disabled source by exact name. It fetches only that connector snapshot,
 enforces the wall-clock and live stdout/stderr spool bounds, parses every emitted document, then
 deletes the private spool. It never opens the index, embeds content, or reconciles records. The
@@ -185,10 +207,12 @@ latest metadata-only outcome is written atomically to the owner-only
 that is merely configured. This record contains counts, limits, timestamps, and a bounded error
 summary—never credentials, source content, or connector output.
 Filesystem validation performs the same bounded preflight walk used by sync, so start with a
-narrow root and conservative limits. Desktop can also run this read-only validation at one of the
-guided initial-sync budget tiers (100, 500, or 2,000 documents with matching byte and duration
-limits) so the resulting record covers a subsequent initial sync; the limits shown in
-`source-validations.json` always reflect the validation that actually ran.
+narrow root and conservative limits, or pass `--sample` to validate an oversized root as a
+bounded sample as described above. Desktop runs filesystem validations in sample mode at one of
+the guided initial-sync budget tiers (100, 500, or 2,000 documents with matching byte and duration
+limits) so the resulting record covers a subsequent non-reconciling initial sync; the limits shown
+in `source-validations.json` always reflect the validation that actually ran, and a Desktop
+initial-sync plan reports whether the covering validation was complete or a bounded sample.
 
 Desktop exposes a separately confirmed guarded trial sync after validation. It invokes the fixed
 equivalent of:
@@ -201,7 +225,10 @@ cortana sync --source SOURCE \
 
 `--require-validation` fails before opening the index or embedding provider unless the selected
 source is enabled and its latest validation succeeded for the exact current source configuration
-at equal or larger document and byte limits. Omitting `--source` widens the same check to every
+at equal or larger document and byte limits. A reconciling run additionally requires the
+validation to be complete: a bounded sample recorded with `--sample` is rejected for any sync
+that deletes records absent from its snapshot, while a non-reconciling trial may rely on a
+matching sample. Omitting `--source` widens the same check to every
 enabled source; the installed recurring sync job always invokes this all-sources form, so each
 scheduled run re-checks validation freshness and budgets before any connector is contacted. The
 validation record stores only a one-way

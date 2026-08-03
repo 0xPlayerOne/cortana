@@ -221,6 +221,11 @@ enum Command {
             help = "Override the wall-clock budget for this validation (default: 60 seconds)"
         )]
         max_seconds: Option<u64>,
+        #[arg(
+            long,
+            help = "Filesystem only: validate at most the requested budgets and record a bounded sample when the source is larger; a sampled validation never authorizes a full-corpus sync"
+        )]
+        sample: bool,
     },
     /// Authorize a configured Google source in the system browser without reading source data.
     AuthorizeGoogle { source: String },
@@ -530,6 +535,7 @@ async fn main() -> Result<()> {
             limits.max_documents,
             limits.max_bytes,
             Duration::from_secs(limits.max_seconds),
+            false,
         )?;
         println!(
             "{}",
@@ -548,12 +554,14 @@ async fn main() -> Result<()> {
         max_documents,
         max_bytes,
         max_seconds,
+        sample,
     }) = cli.command.as_ref()
     {
         return validate_configured_source(
             &config,
             source,
             validation_overrides(*max_documents, *max_bytes, *max_seconds),
+            *sample,
         )
         .await;
     }
@@ -565,6 +573,7 @@ async fn main() -> Result<()> {
     if let Some(Command::Sync {
         source,
         plan: false,
+        no_reconcile,
         max_documents,
         max_bytes,
         max_seconds,
@@ -580,6 +589,7 @@ async fn main() -> Result<()> {
                 max_bytes: *max_bytes,
                 max_seconds: *max_seconds,
             },
+            !*no_reconcile,
         )?;
     }
     match &cli.command {
@@ -1192,6 +1202,7 @@ fn plan_configured_sources(
                 limits.max_documents,
                 limits.max_bytes,
                 Duration::from_secs(limits.max_seconds),
+                false,
             )?)?
         } else {
             serde_json::json!({
@@ -1327,6 +1338,7 @@ async fn validate_configured_source(
     config: &Config,
     selected: &str,
     overrides: SyncOverrides,
+    sample: bool,
 ) -> Result<()> {
     let source = config
         .sources
@@ -1334,6 +1346,12 @@ async fn validate_configured_source(
         .find(|source| source.name == selected)
         .with_context(|| format!("configured source {selected} was not found"))?;
     let limits = SourceLimits::resolve(config, source, overrides)?;
+    anyhow::ensure!(
+        !sample || source.kind == "filesystem",
+        "source {} kind {} does not support --sample; only filesystem validation can record a bounded sample",
+        source.name,
+        source.kind
+    );
     let cancellation = Cancellation::inert();
     let control = SourceControl {
         limits,
@@ -1352,11 +1370,17 @@ async fn validate_configured_source(
                 limits.max_documents,
                 limits.max_bytes,
                 control.remaining(&source.name)?,
+                sample,
             )?;
             return Ok(serde_json::json!({
                 "documents": scope.documents,
                 "bytes": scope.bytes,
-                "inspection": "filesystem preflight"
+                "complete": scope.complete,
+                "inspection": if scope.complete {
+                    "filesystem preflight"
+                } else {
+                    "filesystem sample"
+                }
             }));
         }
         cleanup_connector_spools(&config.data_dir)?;
@@ -1375,6 +1399,7 @@ async fn validate_configured_source(
         Ok(serde_json::json!({
             "documents": scope.documents,
             "bytes": scope.bytes,
+            "complete": true,
             "inspection": "connector snapshot"
         }))
     }
@@ -1397,6 +1422,7 @@ async fn validate_configured_source(
                 max_seconds: limits.max_seconds,
                 configuration_fingerprint: source_validation::configuration_fingerprint(source)
                     .ok(),
+                complete: None,
                 error: Some(error.to_string()),
             };
             if let Err(state_error) = source_validation::record(&config.data_dir, status) {
@@ -1422,6 +1448,7 @@ async fn validate_configured_source(
             max_bytes: limits.max_bytes,
             max_seconds: limits.max_seconds,
             configuration_fingerprint: Some(source_validation::configuration_fingerprint(source)?),
+            complete: result.get("complete").and_then(serde_json::Value::as_bool),
             error: None,
         },
     )?;
@@ -1449,9 +1476,10 @@ fn require_sync_validation(
     config: &Config,
     selected: Option<&str>,
     overrides: SyncOverrides,
+    reconcile: bool,
 ) -> Result<()> {
     let Some(selected) = selected else {
-        return require_enabled_sources_validated(config, overrides);
+        return require_enabled_sources_validated(config, overrides, reconcile);
     };
     let source = config
         .sources
@@ -1470,6 +1498,7 @@ fn require_sync_validation(
         limits.max_bytes,
         limits.max_seconds,
         chrono::Duration::hours(config.ingestion.validation_max_age_hours as i64),
+        reconcile,
     )
 }
 
@@ -1697,7 +1726,9 @@ fn write_audit_export(
 }
 
 fn ensure_recurring_sync_validated(config: &Config) -> Result<()> {
-    require_enabled_sources_validated(config, SyncOverrides::default())
+    // The recurring job runs a full-corpus (reconciling) sync, so only a
+    // complete validation may bless it; sampled records never qualify.
+    require_enabled_sources_validated(config, SyncOverrides::default(), true)
 }
 
 /// Re-check that every enabled source has a current successful validation at
@@ -1708,8 +1739,15 @@ fn ensure_recurring_sync_validated(config: &Config) -> Result<()> {
 /// lapsed, failed, lost its configuration fingerprint, or covers smaller
 /// budgets than the configured limits fails the run fast instead of ingesting
 /// against it; `service install --enable-sync-service` applies the same gate
-/// once before scheduling the job.
-fn require_enabled_sources_validated(config: &Config, overrides: SyncOverrides) -> Result<()> {
+/// once before scheduling the job. `reconcile` marks whether the guarded run
+/// will delete records absent from its snapshot: reconciling runs require a
+/// complete validation, while an explicitly bounded non-reconciling run may
+/// rely on a matching successful sample validation.
+fn require_enabled_sources_validated(
+    config: &Config,
+    overrides: SyncOverrides,
+    reconcile: bool,
+) -> Result<()> {
     let mut checked = 0usize;
     for source in config.sources.iter().filter(|source| source.enabled) {
         checked += 1;
@@ -1722,6 +1760,7 @@ fn require_enabled_sources_validated(config: &Config, overrides: SyncOverrides) 
             limits.max_bytes,
             limits.max_seconds,
             chrono::Duration::hours(config.ingestion.validation_max_age_hours as i64),
+            reconcile,
         )
         .with_context(|| {
             format!(
@@ -2469,11 +2508,13 @@ async fn sync_source_documents(
             control.limits.max_documents,
             control.limits.max_bytes,
             control.remaining(&source.name)?,
+            !reconcile,
         )?;
         tracing::info!(
             source = source.name,
             documents = plan.documents,
             bytes = plan.bytes,
+            complete = plan.complete,
             "filesystem source passed ingestion preflight"
         );
         control.check(&source.name)?;
@@ -2490,20 +2531,31 @@ async fn sync_source_documents(
             control.check(&source.name)?;
             let mut document = document?;
             normalize_documents(std::slice::from_mut(&mut document), source);
-            content_bytes = content_bytes
-                .saturating_add(u64::try_from(document.content.len()).unwrap_or(u64::MAX));
-            anyhow::ensure!(
-                seen.len() < control.limits.max_documents,
-                "source {} exceeds the {} document budget",
-                source.name,
-                control.limits.max_documents
-            );
-            anyhow::ensure!(
-                content_bytes <= control.limits.max_bytes,
-                "source {} exceeds the {} byte budget",
-                source.name,
-                control.limits.max_bytes
-            );
+            let document_bytes = u64::try_from(document.content.len()).unwrap_or(u64::MAX);
+            if reconcile {
+                content_bytes = content_bytes.saturating_add(document_bytes);
+                anyhow::ensure!(
+                    seen.len() < control.limits.max_documents,
+                    "source {} exceeds the {} document budget",
+                    source.name,
+                    control.limits.max_documents
+                );
+                anyhow::ensure!(
+                    content_bytes <= control.limits.max_bytes,
+                    "source {} exceeds the {} byte budget",
+                    source.name,
+                    control.limits.max_bytes
+                );
+            } else if seen.len() >= control.limits.max_documents
+                || content_bytes.saturating_add(document_bytes) > control.limits.max_bytes
+            {
+                // A bounded non-reconciling run stops at its budgets instead
+                // of failing, mirroring the capped connector snapshot below:
+                // the partial snapshot never deletes records absent from it.
+                break;
+            } else {
+                content_bytes = content_bytes.saturating_add(document_bytes);
+            }
             seen.push(document.source_id.clone());
             batch.push(document);
             if batch.len() >= control.limits.document_batch_size {
@@ -3072,8 +3124,8 @@ mod tests {
         SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
         configured_connector_command, context_bundle, ensure_recurring_sync_validated,
         failure_status, ingest_documents, is_budget_exceeded, private_file,
-        require_sync_validation, run_connector_to_spool, validate_connector_spool,
-        validation_overrides,
+        require_sync_validation, run_connector_to_spool, validate_configured_source,
+        validate_connector_spool, validation_overrides,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
@@ -3447,6 +3499,7 @@ mod tests {
             configuration_fingerprint: Some(
                 cortana::source_validation::configuration_fingerprint(&source).unwrap(),
             ),
+            complete: None,
             error: None,
         };
         cortana::source_validation::record(directory.path(), status.clone())
@@ -3509,6 +3562,7 @@ mod tests {
                 max_bytes,
                 max_seconds,
                 configuration_fingerprint: Some(configuration_fingerprint(source).unwrap()),
+                complete: None,
                 error: None,
             },
         )
@@ -3529,7 +3583,7 @@ mod tests {
 
         // The scheduled guard must fail as soon as any enabled source lacks a
         // current successful validation.
-        let error = require_sync_validation(&config, None, SyncOverrides::default())
+        let error = require_sync_validation(&config, None, SyncOverrides::default(), true)
             .expect_err("guarded run must reject a missing validation");
         assert!(format!("{error:#}").contains("work-code"));
         assert!(format!("{error:#}").contains("has not been validated"));
@@ -3537,7 +3591,7 @@ mod tests {
         record_success(directory.path(), &current, 25, 1024, 60);
         // The second source was validated at budgets below its configured limits.
         record_success(directory.path(), &stale, 10, 512, 30);
-        let error = require_sync_validation(&config, None, SyncOverrides::default())
+        let error = require_sync_validation(&config, None, SyncOverrides::default(), true)
             .expect_err("guarded run must reject a stale validation budget");
         assert!(format!("{error:#}").contains("notes"));
         assert!(format!("{error:#}").contains("smaller"));
@@ -3556,7 +3610,7 @@ mod tests {
         config.sources.push(second.clone());
         record_success(directory.path(), &first, 25, 1024, 60);
         record_success(directory.path(), &second, 25, 1024, 60);
-        require_sync_validation(&config, None, SyncOverrides::default())
+        require_sync_validation(&config, None, SyncOverrides::default(), true)
             .expect("every enabled source is current at its configured budgets");
 
         // Run-level budget overrides raise the required validation coverage for
@@ -3566,15 +3620,170 @@ mod tests {
             max_bytes: Some(2048),
             max_seconds: Some(300),
         };
-        let error = require_sync_validation(&config, None, overrides)
+        let error = require_sync_validation(&config, None, overrides, true)
             .expect_err("run-level overrides must be covered by validation");
         assert!(format!("{error:#}").contains("work-code"));
         assert!(format!("{error:#}").contains("smaller"));
 
         record_success(directory.path(), &first, 100, 2048, 300);
         record_success(directory.path(), &second, 100, 2048, 300);
-        require_sync_validation(&config, None, overrides)
+        require_sync_validation(&config, None, overrides, true)
             .expect("re-validated sources cover the run-level limits");
+    }
+
+    #[test]
+    fn sampled_validation_blesses_only_equally_bounded_non_reconciling_syncs() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        let source = filesystem_source("work-code");
+        config.sources.push(source.clone());
+        record(
+            directory.path(),
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "succeeded".into(),
+                validated_at: Utc::now(),
+                documents: Some(1),
+                bytes: Some(64),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(configuration_fingerprint(&source).unwrap()),
+                complete: Some(false),
+                error: None,
+            },
+        )
+        .expect("record sampled validation");
+
+        require_sync_validation(&config, Some("work-code"), SyncOverrides::default(), false)
+            .expect("an equally bounded non-reconciling trial sync accepts a sample");
+
+        let error =
+            require_sync_validation(&config, Some("work-code"), SyncOverrides::default(), true)
+                .expect_err("a reconciling sync must reject a sampled validation");
+        assert!(format!("{error:#}").contains("bounded sample"));
+        assert!(format!("{error:#}").contains("--sample"));
+
+        let error = require_sync_validation(&config, None, SyncOverrides::default(), true)
+            .expect_err("the all-sources gate must reject a sampled validation");
+        assert!(format!("{error:#}").contains("work-code"));
+    }
+
+    #[test]
+    fn validate_source_command_parses_the_sample_flag() {
+        let cli = Cli::try_parse_from(["cortana", "validate-source", "work-code", "--sample"])
+            .expect("validate-source with --sample");
+        match cli.command.expect("command") {
+            Command::ValidateSource { sample, .. } => assert!(sample),
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let cli = Cli::try_parse_from(["cortana", "validate-source", "work-code"])
+            .expect("plain validate-source");
+        match cli.command.expect("command") {
+            Command::ValidateSource { sample, .. } => assert!(!sample),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn filesystem_validation_records_a_partial_scope_only_when_sampled() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let root = directory.path().join("root");
+        std::fs::create_dir_all(&root).expect("source root");
+        std::fs::write(root.join("one.rs"), "aa").expect("first file");
+        std::fs::write(root.join("two.rs"), "bb").expect("second file");
+        let data_dir = directory.path().join("data");
+        let mut config = Config {
+            data_dir: data_dir.clone(),
+            ..Config::default()
+        };
+        config.sources.push(SourceConfig {
+            name: "work-code".into(),
+            kind: "filesystem".into(),
+            enabled: true,
+            project: "work".into(),
+            root: Some(root),
+            source: Some("work-code".into()),
+            channels: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        });
+
+        // A root larger than the budget fails closed without --sample.
+        let error = validate_configured_source(
+            &config,
+            "work-code",
+            validation_overrides(Some(1), None, None),
+            false,
+        )
+        .await
+        .expect_err("an oversized root must fail a plain validation");
+        assert!(format!("{error:#}").contains("1 document budget"));
+
+        // The same bounded validation records a partial sample with --sample.
+        validate_configured_source(
+            &config,
+            "work-code",
+            validation_overrides(Some(1), None, None),
+            true,
+        )
+        .await
+        .expect("a sampled validation accepts an oversized root");
+        let validations = cortana::source_validation::load(&data_dir).expect("validation state");
+        let record = validations
+            .get("work-code")
+            .expect("persisted validation record");
+        assert_eq!(record.status, "succeeded");
+        assert_eq!(record.documents, Some(1));
+        assert_eq!(record.complete, Some(false));
+
+        // A root that fits the budget records a complete validation even with
+        // --sample, so it keeps full-corpus authority.
+        validate_configured_source(
+            &config,
+            "work-code",
+            validation_overrides(Some(10), None, None),
+            true,
+        )
+        .await
+        .expect("a sample covering the whole corpus succeeds");
+        let validations = cortana::source_validation::load(&data_dir).expect("validation state");
+        assert_eq!(validations["work-code"].complete, Some(true));
+        assert_eq!(validations["work-code"].documents, Some(2));
+
+        // --sample is rejected for non-filesystem kinds before any connector
+        // is contacted.
+        let mut remote = SourceConfig {
+            kind: "google-drive".into(),
+            ..config.sources[0].clone()
+        };
+        remote.name = "drive".into();
+        config.sources.push(remote);
+        let error = validate_configured_source(
+            &config,
+            "drive",
+            validation_overrides(None, None, None),
+            true,
+        )
+        .await
+        .expect_err("--sample must be rejected for connector sources");
+        assert!(format!("{error:#}").contains("does not support --sample"));
     }
 
     struct BatchRecordingEmbedder {

@@ -81,7 +81,10 @@ cancellation also terminates shell and package-manager helpers.
 Source validation is a third native boundary. The renderer sends only an exact configured source
 name. Native Rust reloads the owner-local configuration, rejects an unknown name, then constructs
 the declared sidecar command with fixed `validate-source` arguments and limits of 25 documents,
-5 MiB, and 60 seconds. Only one validation runs at a time; progress is bounded, sanitized, and
+5 MiB, and 60 seconds. Filesystem sources additionally receive `--sample` so a root larger than
+the budget records a bounded partial validation instead of failing; the persisted record carries a
+completeness marker, and only complete validations can bless full-corpus syncs. Only one
+validation runs at a time; progress is bounded, sanitized, and
 cancellable. The command cannot start sync, embedding, indexing, or reconciliation, and its
 metadata-only lifecycle is appended to the Desktop audit log. The same command can optionally
 validate at one of the fixed initial-sync budget tiers so a later validation-gated initial sync
@@ -111,7 +114,8 @@ protocol. The renderer sends only a configured source name, one of three fixed b
 (100 documents/25 MiB/15 minutes, 500/64 MiB/30 minutes, or 2,000/128 MiB/60 minutes), and a
 plan/execute operation; it can never supply CLI flags, raw numbers, or credentials. A plan
 request is read-only: native Rust resolves the saved source, returns the exact budget limits that
-execution will enforce, reports whether the latest validation record covers that budget, and
+execution will enforce, reports whether the latest validation record covers that budget and
+whether that validation was complete or a bounded sample, and
 issues a short-lived one-shot plan id. Execution requires that plan id plus an explicit approval,
 an enabled source, and a successful validation record at equal or larger limits; it then runs the
 fixed `sync --source NAME --require-validation --no-reconcile --max-documents N --max-bytes B

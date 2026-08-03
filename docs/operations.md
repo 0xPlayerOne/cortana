@@ -225,16 +225,21 @@ cortana --config ~/.config/cortana/config.toml service install \
 
 The installer re-checks every enabled source before scheduling recurring sync and refuses to
 install the job unless each source has a current successful validation covering its configured
-document, byte, and duration budgets. A validation stays current for
+document, byte, and duration budgets. Because the recurring job reconciles the full corpus, a
+bounded sample recorded by `validate-source --sample` never satisfies this gate; only a complete
+validation qualifies. A validation stays current for
 `[ingestion].validation_max_age_hours` (168 hours by default; `0` accepts any age): re-run
 `validate-source` (or the Desktop validation flow) after changing a source or its budgets, and
 re-validate periodically so a revoked credential or changed scope cannot keep a stale record
 blessing the schedule. The installed job runs `sync --require-validation` without `--source`, so
 every scheduled run re-applies the same gate before any connector is contacted: a source whose
-validation lapsed or failed, whose configuration changed since validation, or whose resolved
-budgets grew past the validated ones fails the run fast (nonzero exit, visible in the job log)
+validation lapsed or failed, whose configuration changed since validation, whose resolved
+budgets grew past the validated ones, or whose only validation was a sampled one fails the run
+fast (nonzero exit, visible in the job log)
 instead of ingesting against a stale validation. The same freshness bound gates
-`sync --require-validation` and the readiness `source-validation` check. Re-run `validate-source`
+`sync --require-validation` and the readiness `source-validation` check, and both require a
+complete validation for reconciling runs; a non-reconciling run (`--no-reconcile`) may rely on a
+matching successful sample instead. Re-run `validate-source`
 (or the Desktop validation flow) after changing a source or its budgets; the next scheduled run
 picks up the new validation record automatically.
 blessing the schedule. The installed job runs `sync --require-validation` without `--source`, so
