@@ -252,7 +252,9 @@ def fetch_drive(
                 stale_ids: set[str] = set()
                 for item in items:
                     file_id = item["id"]
-                    modified_time = str(item.get("modifiedTime") or "")
+                    modified_time = _drive_modified_time(item, file_id, strict)
+                    if modified_time is None:
+                        continue
                     body = _cached_drive_content(cache, file_id, modified_time)
                     if body is None:
                         missing_items.append(item)
@@ -290,14 +292,9 @@ def fetch_drive(
                             bodies[file_id] = body
                 for item in items:
                     file_id = str(item["id"])
-                    raw_modified_time = item.get("modifiedTime")
-                    if strict and (
-                        not isinstance(raw_modified_time, str) or not raw_modified_time.strip()
-                    ):
-                        raise RuntimeError(
-                            f"Drive file has no modifiedTime: id={file_id}; refusing partial snapshot"
-                        )
-                    modified_time = str(raw_modified_time or "")
+                    modified_time = _drive_modified_time(item, file_id, strict)
+                    if modified_time is None:
+                        continue
                     body = bodies[file_id]
                     if file_id in downloaded_ids and cache is not None:
                         cache.execute(
@@ -1079,6 +1076,18 @@ def _timestamp(value: object) -> dt.datetime:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=dt.UTC)
     return parsed.astimezone(dt.UTC)
+
+
+def _drive_modified_time(item: dict[str, Any], file_id: str, strict: bool) -> str | None:
+    modified_time = item.get("modifiedTime")
+    if not isinstance(modified_time, str) or not modified_time.strip():
+        if strict:
+            raise RuntimeError(
+                f"Drive file has no modifiedTime: id={file_id}; refusing partial snapshot"
+            )
+        _warn_skipped_record("Drive file", file_id, "missing modifiedTime")
+        return None
+    return modified_time
 
 
 def _google_records(value: object, kind: str, strict: bool = False) -> list[dict[str, Any]]:
