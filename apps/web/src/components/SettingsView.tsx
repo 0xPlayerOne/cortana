@@ -18,6 +18,8 @@ import {
   Zap,
 } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
+import { applyTheme, readThemePreference, SUPPORTED_THEMES, type ThemeMode } from '../theme'
+import { sourceIconForKind } from './sourceIcons'
 
 import {
   cancelDesktopInstaller,
@@ -104,7 +106,7 @@ const PLUGIN_SECTIONS: Array<{ key: 'hindsight' | 'honcho'; label: string }> = [
   { key: 'honcho', label: 'Honcho' },
 ]
 
-const SETTINGS_NAV_PRIMARY_SECTIONS: Section[] = ['workspaces', 'sources', 'services', 'readiness']
+const SETTINGS_NAV_PRIMARY_SECTIONS: Section[] = ['services', 'workspaces', 'sources', 'readiness']
 const SETTINGS_NAV_SECONDARY_SECTIONS: Section[] = [
   'updates',
   'access',
@@ -269,17 +271,26 @@ export function SettingsView({
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [theme, setTheme] = useState<ThemeMode>(readThemePreference)
   const [localReadiness, setLocalReadiness] = useState<DesktopReadiness | null>(null)
   const setupReadiness = externalReadiness === undefined ? localReadiness : externalReadiness
   const setSetupReadiness = onReadiness ?? setLocalReadiness
   const [localInstallerJob, setLocalInstallerJob] = useState<DesktopInstallJob | null>(null)
   const installerJob = externalInstallerJob === undefined ? localInstallerJob : externalInstallerJob
   const setInstallerJob = onInstallerJob ?? setLocalInstallerJob
+  const componentMounted = useRef(true)
 
   const applyLoadedSettings = (next: DesktopSettings) => {
     setSettings(next)
     onLoaded?.(next)
   }
+
+  useEffect(() => {
+    componentMounted.current = true
+    return () => {
+      componentMounted.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (!isDesktopApp) return
@@ -302,10 +313,47 @@ export function SettingsView({
     onDirtyChange?.(dirty)
   }, [dirty, onDirtyChange])
 
+  const restartAfterSaveIfNeeded = (next: DesktopSettings) => {
+    if (!next.restart_required) return
+    onServiceActivity?.({
+      target: 'core services',
+      action: 'restart',
+      status: 'running',
+      detail: null,
+    })
+
+    void runDesktopServicesActionAll('restart')
+      .then(() => {
+        if (!componentMounted.current) return
+        onServiceActivity?.({
+          target: 'core services',
+          action: 'restart',
+          status: 'succeeded',
+          detail: null,
+        })
+        setSettings((current) => (current ? { ...current, restart_required: false } : current))
+        setSaved(false)
+      })
+      .catch((caught: unknown) => {
+        if (!componentMounted.current) return
+        onServiceActivity?.({
+          target: 'core services',
+          action: 'restart',
+          status: 'failed',
+          detail: caught instanceof Error ? caught.message : 'Core services restart failed',
+        })
+      })
+  }
+
   const update = (change: (draft: DesktopSettings) => DesktopSettings) => {
     setSettings((current) => (current ? change(current) : current))
     setSaved(false)
     setDirty(true)
+  }
+
+  const onThemeChange = (next: ThemeMode) => {
+    setTheme(next)
+    applyTheme(next)
   }
 
   const retrySettingsLoad = () => {
@@ -380,6 +428,7 @@ export function SettingsView({
       setSaved(true)
       setDirty(false)
       onSaved(next)
+      restartAfterSaveIfNeeded(next)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to save settings')
     } finally {
@@ -420,6 +469,20 @@ export function SettingsView({
           <p>Changes are written locally and audited. Secret values never return to this window.</p>
         </div>
         <div className="settings-header-actions">
+          <label className="settings-theme-control" htmlFor="theme-select">
+            <span>Theme</span>
+            <select
+              id="theme-select"
+              value={theme}
+              onChange={(event) => onThemeChange(event.target.value as ThemeMode)}
+            >
+              {SUPPORTED_THEMES.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
           {dirty && (
             <button
               type="button"
@@ -1508,12 +1571,12 @@ function UpdatesSection({
       {update?.release_notes && (
         <div className="release-notes">
           <h3>Version {update.available_version}</h3>
-          <pre>{update.release_notes}</pre>
+          <SafeMarkdown text={update.release_notes} />
         </div>
       )}
       <div className="release-notes">
         <h3>Installed changelog</h3>
-        <pre>{update?.changelog || 'Loading changelog…'}</pre>
+        <SafeMarkdown text={update?.changelog || 'Loading changelog…'} />
       </div>
       {update && (
         <button type="button" className="link-button" onClick={() => void openProject()}>
@@ -2523,29 +2586,65 @@ function WorkspaceSection({
   settings: DesktopSettings
   update: (change: (draft: DesktopSettings) => DesktopSettings) => void
 }) {
+  const hasWorkspaceSources = (workspaceId: string) =>
+    settings.sources.some((source) => source.project === workspaceId)
+
   const addWorkspace = () =>
-    update((current) => ({
-      ...current,
-      workspaces: [
-        ...current.workspaces,
-        {
-          id: nextAvailableIdentifier(
-            'workspace',
-            current.workspaces.map((workspace) => workspace.id)
-          ),
-          name: 'New workspace',
-          account_label: null,
-          color: '#A875D6',
-        },
-      ],
-    }))
-  const changeWorkspace = (index: number, patch: Partial<WorkspaceSettings>) =>
-    update((current) => ({
-      ...current,
-      workspaces: current.workspaces.map((workspace, position) =>
-        position === index ? { ...workspace, ...patch } : workspace
-      ),
-    }))
+    update((current) => {
+      const nextName = 'New workspace'
+      const nextId = ensureWorkspaceIdentifierUnique(
+        deriveWorkspaceIdentifier(nextName),
+        current.workspaces.map((workspace) => workspace.id)
+      )
+      return {
+        ...current,
+        workspaces: [
+          ...current.workspaces,
+          {
+            id: nextId,
+            name: nextName,
+            account_label: null,
+            color: '#A875D6',
+          },
+        ],
+      }
+    })
+
+  const changeWorkspace = (index: number, patch: Partial<WorkspaceSettings>) => {
+    update((current) => {
+      const currentWorkspace = current.workspaces[index]
+      if (!currentWorkspace) return current
+
+      const remainingIds = current.workspaces
+        .map((workspace) => workspace.id)
+        .filter((candidate) => candidate !== currentWorkspace.id)
+      const nextName = patch.name ?? currentWorkspace.name
+      const shouldDeriveId =
+        patch.id === undefined &&
+        patch.name !== undefined &&
+        !hasWorkspaceSources(currentWorkspace.id) &&
+        isWorkspaceIdDerivedFromName(currentWorkspace)
+      const nextId = patch.id
+        ? patch.id
+        : shouldDeriveId
+          ? ensureWorkspaceIdentifierUnique(deriveWorkspaceIdentifier(nextName), remainingIds)
+          : currentWorkspace.id
+
+      return {
+        ...current,
+        workspaces: current.workspaces.map((workspace, position) =>
+          position === index
+            ? {
+                ...workspace,
+                ...patch,
+                id: nextId,
+              }
+            : workspace
+        ),
+      }
+    })
+  }
+
   return (
     <SettingsSection
       title="Workspaces"
@@ -2556,14 +2655,14 @@ function WorkspaceSection({
           <article className="workspace-card" key={`${workspace.id}:${index}`}>
             <div className="workspace-card-heading">
               <i style={{ background: workspace.color || '#E8A83B' }} />
-              <strong>Workspace {index + 1}</strong>
+              <strong>{workspace.name || 'New workspace'}</strong>
               {settings.workspaces.length > 1 && (
                 <button
                   type="button"
                   aria-label={`Remove ${workspace.name}`}
-                  disabled={settings.sources.some((source) => source.project === workspace.id)}
+                  disabled={hasWorkspaceSources(workspace.id)}
                   title={
-                    settings.sources.some((source) => source.project === workspace.id)
+                    hasWorkspaceSources(workspace.id)
                       ? 'Move assigned sources before removing this workspace'
                       : 'Remove workspace'
                   }
@@ -2586,31 +2685,39 @@ function WorkspaceSection({
                 maxLength={80}
               />
             </Field>
-            <Field label="Scope ID" hint="lowercase letters, numbers, dashes">
-              <input
-                value={workspace.id}
-                disabled={settings.sources.some((source) => source.project === workspace.id)}
-                title={
-                  settings.sources.some((source) => source.project === workspace.id)
-                    ? 'Move assigned sources before changing this workspace ID'
-                    : undefined
-                }
-                onChange={(event) => changeWorkspace(index, { id: event.target.value })}
-                required
-                maxLength={32}
-                pattern="[a-z0-9][a-z0-9_-]*"
-              />
-            </Field>
-            <Field label="Account label" hint="shown only as a local reminder">
-              <input
-                value={workspace.account_label || ''}
-                onChange={(event) =>
-                  changeWorkspace(index, { account_label: event.target.value || null })
-                }
-                maxLength={128}
-                placeholder="team@example.com"
-              />
-            </Field>
+            <details className="workspace-advanced-details">
+              <summary>Advanced workspace details</summary>
+              <div className="workspace-advanced-fields">
+                <small className="workspace-advanced-note">
+                  ID is internal; account labels are optional metadata.
+                </small>
+                <Field label="Scope ID" hint="lowercase letters, numbers, dashes">
+                  <input
+                    value={workspace.id}
+                    disabled={hasWorkspaceSources(workspace.id)}
+                    title={
+                      hasWorkspaceSources(workspace.id)
+                        ? 'Move assigned sources before changing this workspace ID'
+                        : undefined
+                    }
+                    onChange={(event) => changeWorkspace(index, { id: event.target.value })}
+                    required
+                    maxLength={32}
+                    pattern="[a-z0-9][a-z0-9_-]*"
+                  />
+                </Field>
+                <Field label="Account label" hint="shown only as a local reminder">
+                  <input
+                    value={workspace.account_label || ''}
+                    onChange={(event) =>
+                      changeWorkspace(index, { account_label: event.target.value || null })
+                    }
+                    maxLength={128}
+                    placeholder="team@example.com"
+                  />
+                </Field>
+              </div>
+            </details>
             <Field label="Color">
               <input
                 type="color"
@@ -3012,6 +3119,12 @@ function SourcesSection({
             : undefined
           const runningThis = activeJob?.source === source.name
           const sourceLocked = runningThis
+          const sourceLabel =
+            SOURCE_KINDS.find((kind) => kind.value === source.kind)?.label || 'External connector'
+          const workspaceLabel =
+            settings.workspaces.find((workspace) => workspace.id === source.project)?.name ||
+            source.project
+          const SourceIcon = sourceIconForKind(source.kind)
           return (
             <article className="source-settings-card" key={`${source.name}:${index}`}>
               <header>
@@ -3022,11 +3135,18 @@ function SourcesSection({
                     disabled={sourceLocked}
                     onChange={(event) => changeSource(index, { enabled: event.target.checked })}
                   />
+                  <span
+                    className={`source-service-icon source-service-icon--${source.kind}`}
+                    title={sourceLabel}
+                    aria-label={`${sourceLabel} connector`}
+                    role="img"
+                  >
+                    <SourceIcon size={17} aria-hidden="true" />
+                  </span>
                   <span>
                     <strong>{source.name || 'New source'}</strong>
                     <small>
-                      {SOURCE_KINDS.find((kind) => kind.value === source.kind)?.label ||
-                        'External connector'}
+                      {workspaceLabel} · {sourceLabel} · {source.enabled ? 'Enabled' : 'Disabled'}
                     </small>
                   </span>
                 </label>
@@ -3131,360 +3251,369 @@ function SourcesSection({
                 </div>
               )}
 
-              <div className="form-grid source-form-grid">
-                <Field label="Source name" hint="stable lowercase identifier">
-                  <input
-                    value={source.name}
-                    disabled={sourceLocked || !source.editable}
-                    required
-                    maxLength={64}
-                    pattern="[a-z0-9][a-z0-9_-]*"
-                    onChange={(event) => changeSource(index, { name: event.target.value })}
-                  />
-                </Field>
-                <Field label="Connector">
-                  <select
-                    value={source.kind}
-                    disabled={sourceLocked || !source.editable}
-                    onChange={(event) =>
-                      changeSource(index, {
-                        kind: event.target.value as SourceKind,
-                        token_env: defaultTokenEnv(event.target.value as SourceKind),
-                      })
-                    }
-                  >
-                    {source.kind === 'external' && (
-                      <option value="external">External command</option>
-                    )}
-                    {SOURCE_KINDS.map((kind) => (
-                      <option key={kind.value} value={kind.value}>
-                        {kind.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Workspace">
-                  <select
-                    value={source.project}
-                    disabled={sourceLocked}
-                    onChange={(event) => changeSource(index, { project: event.target.value })}
-                  >
-                    {settings.workspaces.map((workspace) => (
-                      <option key={workspace.id} value={workspace.id}>
-                        {workspace.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                {(source.kind === 'filesystem' || source.kind === 'buzz') && (
-                  <Field
-                    label={source.kind === 'buzz' ? 'Buzz data directory' : 'Root directory'}
-                    hint="absolute, non-root path"
-                    wide
-                  >
-                    <div className="path-input">
-                      <input
-                        value={source.root || ''}
-                        disabled={sourceLocked || !source.editable}
-                        required={source.enabled}
-                        placeholder="/Users/you/Documents"
-                        onChange={(event) =>
-                          changeSource(index, { root: event.target.value || null })
-                        }
-                      />
-                      <button
-                        type="button"
-                        disabled={sourceLocked || !source.editable}
-                        aria-label="Choose source directory"
-                        title="Choose source directory"
-                        onClick={() => void choosePath(index, 'directory', 'root')}
-                      >
-                        <FolderOpen size={14} />
-                      </button>
-                    </div>
-                  </Field>
-                )}
-                <Field label="Source label" hint="identifier stored on indexed documents">
-                  <input
-                    aria-label="Source label"
-                    value={source.source || ''}
-                    disabled={sourceLocked || !source.editable}
-                    maxLength={128}
-                    placeholder={source.name}
-                    onChange={(event) =>
-                      changeSource(index, { source: event.target.value || null })
-                    }
-                  />
-                </Field>
-                {source.kind === 'filesystem' && (
-                  <Field label="Excluded paths" hint="comma or line separated, relative paths">
+              <details className="source-settings-details">
+                <summary>
+                  <span>Advanced source settings</span>
+                  <small>Workspace, credentials, filters, and safety limits</small>
+                </summary>
+                <div className="form-grid source-form-grid">
+                  <Field label="Source name" hint="stable lowercase identifier">
                     <input
-                      value={source.exclude.join(', ')}
+                      value={source.name}
+                      disabled={sourceLocked || !source.editable}
+                      required
+                      maxLength={64}
+                      pattern="[a-z0-9][a-z0-9_-]*"
+                      onChange={(event) => changeSource(index, { name: event.target.value })}
+                    />
+                  </Field>
+                  <Field label="Connector">
+                    <select
+                      value={source.kind}
                       disabled={sourceLocked || !source.editable}
                       onChange={(event) =>
-                        changeSource(index, { exclude: splitList(event.target.value) })
+                        changeSource(index, {
+                          kind: event.target.value as SourceKind,
+                          token_env: defaultTokenEnv(event.target.value as SourceKind),
+                        })
+                      }
+                    >
+                      {source.kind === 'external' && (
+                        <option value="external">External command</option>
+                      )}
+                      {SOURCE_KINDS.map((kind) => (
+                        <option key={kind.value} value={kind.value}>
+                          {kind.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Workspace">
+                    <select
+                      value={source.project}
+                      disabled={sourceLocked}
+                      onChange={(event) => changeSource(index, { project: event.target.value })}
+                    >
+                      {settings.workspaces.map((workspace) => (
+                        <option key={workspace.id} value={workspace.id}>
+                          {workspace.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  {(source.kind === 'filesystem' || source.kind === 'buzz') && (
+                    <Field
+                      label={source.kind === 'buzz' ? 'Buzz data directory' : 'Root directory'}
+                      hint="absolute, non-root path"
+                      wide
+                    >
+                      <div className="path-input">
+                        <input
+                          value={source.root || ''}
+                          disabled={sourceLocked || !source.editable}
+                          required={source.enabled}
+                          placeholder="/Users/you/Documents"
+                          onChange={(event) =>
+                            changeSource(index, { root: event.target.value || null })
+                          }
+                        />
+                        <button
+                          type="button"
+                          disabled={sourceLocked || !source.editable}
+                          aria-label="Choose source directory"
+                          title="Choose source directory"
+                          onClick={() => void choosePath(index, 'directory', 'root')}
+                        >
+                          <FolderOpen size={14} />
+                        </button>
+                      </div>
+                    </Field>
+                  )}
+                  <Field label="Source label" hint="identifier stored on indexed documents">
+                    <input
+                      aria-label="Source label"
+                      value={source.source || ''}
+                      disabled={sourceLocked || !source.editable}
+                      maxLength={128}
+                      placeholder={source.name}
+                      onChange={(event) =>
+                        changeSource(index, { source: event.target.value || null })
                       }
                     />
                   </Field>
-                )}
-                {isGoogleSource(source.kind) && (
-                  <>
-                    <Field
-                      label="Google OAuth token file"
-                      hint="private token created by Cortana; optional when a token path environment variable is configured"
-                      wide
-                    >
-                      <div className="path-input">
+                  {source.kind === 'filesystem' && (
+                    <Field label="Excluded paths" hint="comma or line separated, relative paths">
+                      <input
+                        value={source.exclude.join(', ')}
+                        disabled={sourceLocked || !source.editable}
+                        onChange={(event) =>
+                          changeSource(index, { exclude: splitList(event.target.value) })
+                        }
+                      />
+                    </Field>
+                  )}
+                  {isGoogleSource(source.kind) && (
+                    <>
+                      <Field
+                        label="Google OAuth token file"
+                        hint="private token created by Cortana; optional when a token path environment variable is configured"
+                        wide
+                      >
+                        <div className="path-input">
+                          <input
+                            value={source.token_path || ''}
+                            disabled={sourceLocked || !source.editable}
+                            required={source.enabled && !source.token_env}
+                            placeholder="/Users/you/.config/cortana/google-token.json"
+                            onChange={(event) =>
+                              changeSource(index, { token_path: event.target.value || null })
+                            }
+                          />
+                          <button
+                            type="button"
+                            disabled={sourceLocked || !source.editable}
+                            aria-label="Choose Google token destination"
+                            title="Choose Google token destination"
+                            onClick={() => void choosePath(index, 'google-token', 'token_path')}
+                          >
+                            <FolderOpen size={14} />
+                          </button>
+                        </div>
+                      </Field>
+                      <Field
+                        label="Google Desktop OAuth client JSON"
+                        hint="downloaded from Google Cloud Console; required to authorize"
+                        wide
+                      >
+                        <div className="path-input">
+                          <input
+                            value={source.oauth_client_path || ''}
+                            disabled={sourceLocked || !source.editable}
+                            placeholder="/Users/you/Downloads/google-oauth-client.json"
+                            onChange={(event) =>
+                              changeSource(index, {
+                                oauth_client_path: event.target.value || null,
+                              })
+                            }
+                          />
+                          <button
+                            type="button"
+                            disabled={sourceLocked || !source.editable}
+                            aria-label="Choose Google OAuth client JSON"
+                            title="Choose Google OAuth client JSON"
+                            onClick={() =>
+                              void choosePath(index, 'oauth-client', 'oauth_client_path')
+                            }
+                          >
+                            <FolderOpen size={14} />
+                          </button>
+                        </div>
+                      </Field>
+                      <Field
+                        label="Google token path environment variable"
+                        hint="optional; its value must be an absolute OAuth token JSON path"
+                      >
                         <input
-                          value={source.token_path || ''}
+                          value={source.token_env || ''}
                           disabled={sourceLocked || !source.editable}
-                          required={source.enabled && !source.token_env}
-                          placeholder="/Users/you/.config/cortana/google-token.json"
+                          pattern="[A-Z_][A-Z0-9_]*"
+                          placeholder="CORTANA_GOOGLE_TOKEN_PATH"
                           onChange={(event) =>
-                            changeSource(index, { token_path: event.target.value || null })
+                            changeSource(index, { token_env: event.target.value || null })
                           }
                         />
-                        <button
-                          type="button"
-                          disabled={sourceLocked || !source.editable}
-                          aria-label="Choose Google token destination"
-                          title="Choose Google token destination"
-                          onClick={() => void choosePath(index, 'google-token', 'token_path')}
-                        >
-                          <FolderOpen size={14} />
-                        </button>
-                      </div>
-                    </Field>
-                    <Field
-                      label="Google Desktop OAuth client JSON"
-                      hint="downloaded from Google Cloud Console; required to authorize"
-                      wide
-                    >
-                      <div className="path-input">
+                      </Field>
+                      <Field
+                        label="Google token path value"
+                        hint="write-only path; leave blank to keep the existing value"
+                      >
+                        <div className="secret-input">
+                          <input
+                            type="password"
+                            autoComplete="new-password"
+                            disabled={sourceLocked || !source.editable || !source.token_env}
+                            value={source.token_env ? secretValues[source.token_env] || '' : ''}
+                            onChange={(event) => {
+                              if (source.token_env) {
+                                onSecret({
+                                  ...secretValues,
+                                  [source.token_env]: event.target.value,
+                                })
+                              }
+                            }}
+                          />
+                          {source.token_env &&
+                            secret?.configured &&
+                            !clearedSecrets.has(secret.name) && (
+                              <button
+                                type="button"
+                                disabled={sourceLocked}
+                                onClick={() => onClearSecret(source.token_env!)}
+                              >
+                                Clear
+                              </button>
+                            )}
+                        </div>
+                      </Field>
+                      <Field label="Google query" hint="optional provider-native filter" wide>
                         <input
-                          value={source.oauth_client_path || ''}
+                          value={source.query || ''}
                           disabled={sourceLocked || !source.editable}
-                          placeholder="/Users/you/Downloads/google-oauth-client.json"
+                          maxLength={2048}
+                          placeholder={source.kind === 'gmail' ? 'newer_than:1y' : ''}
+                          onChange={(event) =>
+                            changeSource(index, { query: event.target.value || null })
+                          }
+                        />
+                      </Field>
+                    </>
+                  )}
+                  {(source.kind === 'slack' || source.kind === 'discord') && (
+                    <>
+                      <Field label="Channel IDs" hint="comma or line separated" wide>
+                        <input
+                          value={source.channels.join(', ')}
+                          disabled={sourceLocked || !source.editable}
+                          required={source.enabled}
+                          onChange={(event) =>
+                            changeSource(index, { channels: splitList(event.target.value) })
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Token variable"
+                        hint={
+                          secret?.configured && !clearedSecrets.has(secret.name)
+                            ? `Configured via ${secret.source}`
+                            : 'stored in Cortana owner-only secret file'
+                        }
+                      >
+                        <input
+                          value={source.token_env || ''}
+                          disabled={sourceLocked || !source.editable}
+                          required={source.enabled}
+                          pattern="[A-Z_][A-Z0-9_]*"
+                          onChange={(event) =>
+                            changeSource(index, { token_env: event.target.value || null })
+                          }
+                        />
+                      </Field>
+                      <Field label="New token" hint="write-only; leave blank to keep existing">
+                        <div className="secret-input">
+                          <input
+                            type="password"
+                            autoComplete="new-password"
+                            disabled={sourceLocked || !source.editable || !source.token_env}
+                            value={source.token_env ? secretValues[source.token_env] || '' : ''}
+                            onChange={(event) => {
+                              if (source.token_env) {
+                                onSecret({
+                                  ...secretValues,
+                                  [source.token_env]: event.target.value,
+                                })
+                              }
+                            }}
+                          />
+                          {source.token_env &&
+                            secret?.configured &&
+                            !clearedSecrets.has(secret.name) && (
+                              <button
+                                type="button"
+                                disabled={sourceLocked}
+                                onClick={() => onClearSecret(source.token_env!)}
+                              >
+                                Clear
+                              </button>
+                            )}
+                        </div>
+                      </Field>
+                    </>
+                  )}
+                  {source.editable && (
+                    <>
+                      <Field label="Document limit" hint="blank uses global budget">
+                        <input
+                          type="number"
+                          disabled={sourceLocked}
+                          min={1}
+                          max={1000000}
+                          value={source.max_documents ?? ''}
                           onChange={(event) =>
                             changeSource(index, {
-                              oauth_client_path: event.target.value || null,
+                              max_documents: optionalNumber(event.target.value),
                             })
                           }
                         />
-                        <button
-                          type="button"
-                          disabled={sourceLocked || !source.editable}
-                          aria-label="Choose Google OAuth client JSON"
-                          title="Choose Google OAuth client JSON"
-                          onClick={() =>
-                            void choosePath(index, 'oauth-client', 'oauth_client_path')
+                      </Field>
+                      <Field label="Content limit (bytes)" hint="blank uses global budget">
+                        <input
+                          type="number"
+                          disabled={sourceLocked}
+                          min={1024}
+                          max={1099511627776}
+                          value={source.max_bytes ?? ''}
+                          onChange={(event) =>
+                            changeSource(index, { max_bytes: optionalNumber(event.target.value) })
                           }
-                        >
-                          <FolderOpen size={14} />
-                        </button>
-                      </div>
-                    </Field>
-                    <Field
-                      label="Google token path environment variable"
-                      hint="optional; its value must be an absolute OAuth token JSON path"
-                    >
-                      <input
-                        value={source.token_env || ''}
-                        disabled={sourceLocked || !source.editable}
-                        pattern="[A-Z_][A-Z0-9_]*"
-                        placeholder="CORTANA_GOOGLE_TOKEN_PATH"
-                        onChange={(event) =>
-                          changeSource(index, { token_env: event.target.value || null })
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Google token path value"
-                      hint="write-only path; leave blank to keep the existing value"
-                    >
-                      <div className="secret-input">
-                        <input
-                          type="password"
-                          autoComplete="new-password"
-                          disabled={sourceLocked || !source.editable || !source.token_env}
-                          value={source.token_env ? secretValues[source.token_env] || '' : ''}
-                          onChange={(event) => {
-                            if (source.token_env) {
-                              onSecret({
-                                ...secretValues,
-                                [source.token_env]: event.target.value,
-                              })
-                            }
-                          }}
                         />
-                        {source.token_env &&
-                          secret?.configured &&
-                          !clearedSecrets.has(secret.name) && (
-                            <button
-                              type="button"
-                              disabled={sourceLocked}
-                              onClick={() => onClearSecret(source.token_env!)}
-                            >
-                              Clear
-                            </button>
-                          )}
-                      </div>
-                    </Field>
-                    <Field label="Google query" hint="optional provider-native filter" wide>
-                      <input
-                        value={source.query || ''}
-                        disabled={sourceLocked || !source.editable}
-                        maxLength={2048}
-                        placeholder={source.kind === 'gmail' ? 'newer_than:1y' : ''}
-                        onChange={(event) =>
-                          changeSource(index, { query: event.target.value || null })
-                        }
-                      />
-                    </Field>
-                  </>
-                )}
-                {(source.kind === 'slack' || source.kind === 'discord') && (
-                  <>
-                    <Field label="Channel IDs" hint="comma or line separated" wide>
-                      <input
-                        value={source.channels.join(', ')}
-                        disabled={sourceLocked || !source.editable}
-                        required={source.enabled}
-                        onChange={(event) =>
-                          changeSource(index, { channels: splitList(event.target.value) })
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Token variable"
-                      hint={
-                        secret?.configured && !clearedSecrets.has(secret.name)
-                          ? `Configured via ${secret.source}`
-                          : 'stored in Cortana owner-only secret file'
-                      }
-                    >
-                      <input
-                        value={source.token_env || ''}
-                        disabled={sourceLocked || !source.editable}
-                        required={source.enabled}
-                        pattern="[A-Z_][A-Z0-9_]*"
-                        onChange={(event) =>
-                          changeSource(index, { token_env: event.target.value || null })
-                        }
-                      />
-                    </Field>
-                    <Field label="New token" hint="write-only; leave blank to keep existing">
-                      <div className="secret-input">
+                      </Field>
+                      <Field
+                        label="Content limit (characters)"
+                        hint="blank uses connector defaults"
+                      >
                         <input
-                          type="password"
-                          autoComplete="new-password"
-                          disabled={sourceLocked || !source.editable || !source.token_env}
-                          value={source.token_env ? secretValues[source.token_env] || '' : ''}
-                          onChange={(event) => {
-                            if (source.token_env) {
-                              onSecret({
-                                ...secretValues,
-                                [source.token_env]: event.target.value,
-                              })
-                            }
-                          }}
+                          type="number"
+                          disabled={sourceLocked}
+                          min={1}
+                          max={10000000}
+                          value={source.max_content_chars ?? ''}
+                          onChange={(event) =>
+                            changeSource(index, {
+                              max_content_chars: optionalNumber(event.target.value),
+                            })
+                          }
                         />
-                        {source.token_env &&
-                          secret?.configured &&
-                          !clearedSecrets.has(secret.name) && (
-                            <button
-                              type="button"
-                              disabled={sourceLocked}
-                              onClick={() => onClearSecret(source.token_env!)}
-                            >
-                              Clear
-                            </button>
-                          )}
-                      </div>
-                    </Field>
-                  </>
-                )}
-                {source.editable && (
-                  <>
-                    <Field label="Document limit" hint="blank uses global budget">
-                      <input
-                        type="number"
-                        disabled={sourceLocked}
-                        min={1}
-                        max={1000000}
-                        value={source.max_documents ?? ''}
-                        onChange={(event) =>
-                          changeSource(index, {
-                            max_documents: optionalNumber(event.target.value),
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label="Content limit (bytes)" hint="blank uses global budget">
-                      <input
-                        type="number"
-                        disabled={sourceLocked}
-                        min={1024}
-                        max={1099511627776}
-                        value={source.max_bytes ?? ''}
-                        onChange={(event) =>
-                          changeSource(index, { max_bytes: optionalNumber(event.target.value) })
-                        }
-                      />
-                    </Field>
-                    <Field label="Content limit (characters)" hint="blank uses connector defaults">
-                      <input
-                        type="number"
-                        disabled={sourceLocked}
-                        min={1}
-                        max={10000000}
-                        value={source.max_content_chars ?? ''}
-                        onChange={(event) =>
-                          changeSource(index, {
-                            max_content_chars: optionalNumber(event.target.value),
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label="Duration limit (seconds)" hint="blank uses the global budget">
-                      <input
-                        type="number"
-                        disabled={sourceLocked}
-                        min={1}
-                        max={86400}
-                        value={source.max_duration_seconds ?? ''}
-                        onChange={(event) =>
-                          changeSource(index, {
-                            max_duration_seconds: optionalNumber(event.target.value),
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label="Document labels" hint="comma or line separated" wide>
-                      <input
-                        disabled={sourceLocked}
-                        value={source.labels.join(', ')}
-                        onChange={(event) =>
-                          changeSource(index, { labels: splitList(event.target.value) })
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Document ACL labels"
-                      hint="comma or line separated; leave blank only for public data"
-                      wide
-                    >
-                      <input
-                        disabled={sourceLocked}
-                        value={source.acl.join(', ')}
-                        onChange={(event) =>
-                          changeSource(index, { acl: splitList(event.target.value) })
-                        }
-                      />
-                    </Field>
-                  </>
-                )}
-              </div>
+                      </Field>
+                      <Field label="Duration limit (seconds)" hint="blank uses the global budget">
+                        <input
+                          type="number"
+                          disabled={sourceLocked}
+                          min={1}
+                          max={86400}
+                          value={source.max_duration_seconds ?? ''}
+                          onChange={(event) =>
+                            changeSource(index, {
+                              max_duration_seconds: optionalNumber(event.target.value),
+                            })
+                          }
+                        />
+                      </Field>
+                      <Field label="Document labels" hint="comma or line separated" wide>
+                        <input
+                          disabled={sourceLocked}
+                          value={source.labels.join(', ')}
+                          onChange={(event) =>
+                            changeSource(index, { labels: splitList(event.target.value) })
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Document ACL labels"
+                        hint="comma or line separated; leave blank only for public data"
+                        wide
+                      >
+                        <input
+                          disabled={sourceLocked}
+                          value={source.acl.join(', ')}
+                          onChange={(event) =>
+                            changeSource(index, { acl: splitList(event.target.value) })
+                          }
+                        />
+                      </Field>
+                    </>
+                  )}
+                </div>
+              </details>
             </article>
           )
         })}
@@ -3760,6 +3889,164 @@ function nextAvailableIdentifier(prefix: string, used: readonly string[]): strin
   }
 }
 
+function deriveWorkspaceIdentifier(name: string): string {
+  const normalized = name
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  if (!normalized) return 'workspace'
+
+  const candidate = normalized.slice(0, 32).replace(/-[0-9]+$/, '')
+  if (/^[a-z0-9][a-z0-9-]*$/.test(candidate)) return candidate
+  return `workspace-${normalized}`.slice(0, 32)
+}
+
+function ensureWorkspaceIdentifierUnique(base: string, used: readonly string[]): string {
+  const trimmed = base.trim() || 'workspace'
+  const occupied = new Set(used)
+  if (!occupied.has(trimmed) && isWorkspaceIdentifierSafe(trimmed)) return trimmed
+
+  let counter = 1
+  while (occupied.has(`${trimmed}-${counter}`)) counter += 1
+  return `${trimmed}-${counter}`
+}
+
+function isWorkspaceIdentifierSafe(value: string) {
+  return /^[a-z0-9][a-z0-9_-]*$/.test(value)
+}
+
+function isWorkspaceIdDerivedFromName(workspace: WorkspaceSettings) {
+  return (
+    isWorkspaceIdentifierSafe(workspace.id) &&
+    workspace.id === deriveWorkspaceIdentifier(workspace.name)
+  )
+}
+
+function SafeMarkdown({ text }: { text: string }) {
+  return <div className="safe-markdown">{renderMarkdownToNodes(text)}</div>
+}
+
+function renderMarkdownToNodes(text: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  let currentList: { ordered: boolean; items: string[] } | null = null
+
+  const closeList = () => {
+    if (!currentList) return
+    const key = nodes.length
+    if (currentList.ordered) {
+      nodes.push(
+        <ol key={`list-${key}`}>
+          {currentList.items.map((item, index) => (
+            <li key={`${key}-${index}`}>{parseInlineMarkdown(item)}</li>
+          ))}
+        </ol>
+      )
+    } else {
+      nodes.push(
+        <ul key={`list-${key}`}>
+          {currentList.items.map((item, index) => (
+            <li key={`${key}-${index}`}>{parseInlineMarkdown(item)}</li>
+          ))}
+        </ul>
+      )
+    }
+    currentList = null
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trimEnd()
+    const heading = trimmed.match(/^(#{1,6})\s+(.+)$/)
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/)
+    const ordered = trimmed.match(/^\d+\.\s+(.+)$/)
+
+    if (!trimmed) {
+      closeList()
+      continue
+    }
+
+    if (heading) {
+      closeList()
+      const level = heading[1].length
+      const title = parseInlineMarkdown(heading[2])
+      if (level === 1) nodes.push(<h1 key={`h-${nodes.length}`}>{title}</h1>)
+      else if (level === 2) nodes.push(<h2 key={`h-${nodes.length}`}>{title}</h2>)
+      else nodes.push(<h3 key={`h-${nodes.length}`}>{title}</h3>)
+      continue
+    }
+
+    if (bullet) {
+      if (!currentList || currentList.ordered) {
+        closeList()
+        currentList = { ordered: false, items: [] }
+      }
+      currentList.items.push(bullet[1])
+      continue
+    }
+
+    if (ordered) {
+      if (!currentList || !currentList.ordered) {
+        closeList()
+        currentList = { ordered: true, items: [] }
+      }
+      currentList.items.push(ordered[1])
+      continue
+    }
+
+    closeList()
+    nodes.push(<p key={`p-${nodes.length}`}>{parseInlineMarkdown(trimmed)}</p>)
+  }
+
+  closeList()
+  return nodes
+}
+
+function parseInlineMarkdown(value: string): ReactNode[] {
+  const parts = value.split(/(`[^`]*`|\[[^\]]+\]\([^)]+\))/g)
+  const nodes: ReactNode[] = []
+
+  for (const [index, part] of parts.entries()) {
+    if (!part) continue
+    if (part.startsWith('`') && part.endsWith('`')) {
+      nodes.push(<code key={`code-${index}`}>{part.slice(1, -1)}</code>)
+      continue
+    }
+
+    const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/)
+    if (link) {
+      const url = safeMarkdownUrl(link[2])
+      if (url) {
+        nodes.push(
+          <a key={`link-${index}`} href={url} target="_blank" rel="noreferrer">
+            {link[1]}
+          </a>
+        )
+      } else {
+        nodes.push(<span key={`text-${index}`}>{part}</span>)
+      }
+      continue
+    }
+
+    nodes.push(<span key={`text-${index}`}>{part}</span>)
+  }
+  return nodes
+}
+
+function safeMarkdownUrl(value: string): string | null {
+  try {
+    const candidate = new URL(value)
+    if (candidate.protocol === 'http:' || candidate.protocol === 'https:') return candidate.href
+    return null
+  } catch {
+    return null
+  }
+}
+
 function defaultTokenEnv(kind: SourceKind): string | null {
   if (kind === 'slack') return 'SLACK_BOT_TOKEN'
   if (kind === 'discord') return 'DISCORD_BOT_TOKEN'
@@ -3832,6 +4119,11 @@ function validateSourceIdentityScopes(sources: readonly SourceSettings[]): strin
 
 type ProviderValue = DesktopSettings['embedding'] | DesktopSettings['query']
 
+type ModelChoice = {
+  value: string
+  label: string
+}
+
 function EmbeddingSection({
   settings,
   secretValues,
@@ -3860,6 +4152,18 @@ function EmbeddingSection({
       clearedSecrets={clearedSecrets}
       onClearSecret={onClearSecret}
       update={setEmbedding}
+      modelCatalog={
+        settings.embedding.provider === 'local'
+          ? [
+              { value: 'Qwen/Qwen3-Embedding-0.6B', label: 'Qwen/Qwen3-Embedding-0.6B' },
+              { value: 'Qwen/Qwen3-Embedding-4B', label: 'Qwen/Qwen3-Embedding-4B' },
+            ]
+          : [
+              { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+              { value: 'gpt-4o', label: 'gpt-4o' },
+              { value: 'text-embedding-3-small', label: 'text-embedding-3-small' },
+            ]
+      }
     >
       <div className="settings-note">
         <strong>Local service command:</strong>{' '}
@@ -3934,6 +4238,7 @@ function ProviderSection<T extends ProviderValue>({
   onSecret,
   clearedSecrets,
   onClearSecret,
+  modelCatalog,
   update,
   children,
 }: {
@@ -3945,12 +4250,59 @@ function ProviderSection<T extends ProviderValue>({
   onSecret: (values: Record<string, string>) => void
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
+  modelCatalog: readonly ModelChoice[]
   update: (provider: T) => void
   children?: ReactNode
 }) {
   const secret = provider.api_key_env
     ? secrets.find((item) => item.name === provider.api_key_env)
     : undefined
+  const catalogValues = modelCatalog.map((candidate) => candidate.value)
+  const [modelMode, setModelMode] = useState<'catalog' | 'custom'>(() =>
+    catalogValues.includes(provider.model) ? 'catalog' : 'custom'
+  )
+
+  useEffect(() => {
+    setModelMode(catalogValues.includes(provider.model) ? 'catalog' : 'custom')
+  }, [catalogValues.join('\u0000'), provider.model])
+
+  const modelInput = (
+    <Field label="Model">
+      <input
+        aria-label="Model"
+        value={provider.model}
+        onChange={(event) => update({ ...provider, model: event.target.value })}
+        required
+        maxLength={256}
+      />
+    </Field>
+  )
+
+  const modelSelect = (
+    <Field label="Model">
+      <select
+        aria-label="Model catalog"
+        value={modelMode === 'catalog' ? provider.model : 'custom'}
+        onChange={(event) => {
+          const selected = event.target.value
+          if (selected === 'custom') {
+            setModelMode('custom')
+            return
+          }
+          setModelMode('catalog')
+          update({ ...provider, model: selected })
+        }}
+      >
+        {modelCatalog.map((candidate) => (
+          <option key={candidate.value} value={candidate.value}>
+            {candidate.label}
+          </option>
+        ))}
+        <option value="custom">Custom</option>
+      </select>
+    </Field>
+  )
+
   return (
     <SettingsSection title={title} description={description}>
       <div className="form-grid">
@@ -3975,14 +4327,7 @@ function ProviderSection<T extends ProviderValue>({
             <option value="cloud">Cloud</option>
           </select>
         </Field>
-        <Field label="Model">
-          <input
-            value={provider.model}
-            onChange={(event) => update({ ...provider, model: event.target.value })}
-            required
-            maxLength={256}
-          />
-        </Field>
+        {modelMode === 'custom' ? modelInput : modelSelect}
         <Field label="OpenAI-compatible endpoint" wide>
           <input
             type="url"
@@ -4060,6 +4405,19 @@ function QuerySection({
       clearedSecrets={clearedSecrets}
       onClearSecret={onClearSecret}
       update={setQuery}
+      modelCatalog={
+        settings.query.provider === 'local'
+          ? [
+              { value: 'qwen2.5-72b-instruct', label: 'qwen2.5-72b-instruct' },
+              { value: 'gemma2-27b-it', label: 'gemma2-27b-it' },
+            ]
+          : [
+              { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+              { value: 'gpt-4o', label: 'gpt-4o' },
+              { value: 'claude-3-5-sonnet-20241022', label: 'claude-3.5-sonnet' },
+              { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash' },
+            ]
+      }
     >
       <label className="toggle-row">
         <input

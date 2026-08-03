@@ -4,7 +4,6 @@ import {
   CircleStop,
   Database,
   ExternalLink,
-  Folder,
   KeyRound,
   LoaderCircle,
   Search,
@@ -92,7 +91,6 @@ export function SourcePanel({
   jobs?: DesktopSourceJob[]
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(new Set())
   const sources = useMemo(
     () => operationalSources(status).filter((item) => !workspace || item.project === workspace),
     [status, workspace]
@@ -108,6 +106,7 @@ export function SourcePanel({
     [sources]
   )
   const active = activeJobs(jobs)
+  const selectedWorkspace = workspaces.find((item) => item.id === workspace) ?? workspaces[0]
   const statusLoading = status === null && statusError === ''
   const sourceModeClass = status
     ? status.ingestion.scheduled
@@ -161,15 +160,24 @@ export function SourcePanel({
       </div>
       <label className="sidebar-workspace-select">
         <span>Workspace</span>
-        <select value={workspace} onChange={(event) => onSelectWorkspace(event.target.value)}>
-          <option value="">All workspaces</option>
-          {workspaces.map((item) => (
-            <option value={item.id} key={item.id}>
-              {item.name}
-              {item.account_label ? ` · ${item.account_label}` : ''}
-            </option>
-          ))}
-        </select>
+        <div className="workspace-picker">
+          <i
+            className="workspace-picker-mark"
+            style={{ background: selectedWorkspace?.color || 'var(--amber)' }}
+            aria-hidden="true"
+          />
+          <select
+            value={workspace || workspaces[0]?.id || ''}
+            onChange={(event) => onSelectWorkspace(event.target.value)}
+            aria-label="Workspace"
+          >
+            {workspaces.map((item) => (
+              <option value={item.id} key={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </label>
       <div className={`source-mode ${sourceModeClass}`}>
         <i />
@@ -257,161 +265,138 @@ export function SourcePanel({
         <div className="source-tree">
           {projects.map(([project, items]) => (
             <section key={project}>
-              <button
-                type="button"
-                className="project-row"
-                aria-expanded={!collapsedProjects.has(project)}
-                onClick={() =>
-                  setCollapsedProjects((current) => {
-                    const next = new Set(current)
-                    if (next.has(project)) next.delete(project)
-                    else next.add(project)
-                    return next
-                  })
-                }
-              >
-                {collapsedProjects.has(project) ? (
-                  <ChevronRight size={14} />
-                ) : (
-                  <ChevronDown size={14} />
-                )}
-                <Folder size={17} />
-                <strong>{project[0]?.toUpperCase() + project.slice(1)}</strong>
-                <span>{items.reduce((sum, item) => sum + item.documents, 0).toLocaleString()}</span>
-              </button>
-              {!collapsedProjects.has(project) &&
-                items.map((item) => {
-                  const Icon = sourceIconForKind(item.kind)
-                  const health = sourceHealth(item)
-                  const key = `${item.project}:${item.source}`
-                  const isCollapsed = collapsed.has(key)
-                  // Source names are only unique inside a workspace. When the
-                  // panel shows all workspaces, matching by name alone would
-                  // highlight every same-named connector and make a click
-                  // appear to select the wrong account.
-                  const isSelected = selected === item.source && workspace === item.project
-                  const auth = item.authorization
-                  const needsProviderSetup = Boolean(auth?.setup_required)
-                  const needsGoogleAuthorization =
-                    auth?.method === 'google_oauth' && !auth.authorized && !needsProviderSetup
-                  const sourceJobActive = active.some(
-                    (job) =>
-                      job.project === item.project &&
-                      (job.source === item.source || job.source === item.name)
-                  )
-                  return (
-                    <div className="source-node" key={key}>
-                      <div className="source-row">
+              {items.map((item) => {
+                const Icon = sourceIconForKind(item.kind)
+                const health = sourceHealth(item)
+                const key = `${item.project}:${item.source}`
+                const isCollapsed = collapsed.has(key)
+                // Source names are only unique inside a workspace. When the
+                // panel shows all workspaces, matching by name alone would
+                // highlight every same-named connector and make a click
+                // appear to select the wrong account.
+                const isSelected = selected === item.source && workspace === item.project
+                const auth = item.authorization
+                const needsProviderSetup = Boolean(auth?.setup_required)
+                const needsGoogleAuthorization =
+                  auth?.method === 'google_oauth' && !auth.authorized && !needsProviderSetup
+                const sourceJobActive = active.some(
+                  (job) =>
+                    job.project === item.project &&
+                    (job.source === item.source || job.source === item.name)
+                )
+                return (
+                  <div className="source-node" key={key}>
+                    <div className="source-row">
+                      <button
+                        type="button"
+                        className="tree-toggle"
+                        aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
+                        title={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
+                        aria-expanded={!isCollapsed}
+                        onClick={() => {
+                          setCollapsed((current) => {
+                            const next = new Set(current)
+                            if (next.has(key)) next.delete(key)
+                            else next.add(key)
+                            return next
+                          })
+                        }}
+                      >
+                        {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                      </button>
+                      <button
+                        type="button"
+                        className={`source-select ${isSelected ? 'selected' : ''}`}
+                        aria-pressed={isSelected}
+                        onClick={() => onSelect(item.source, item.project)}
+                        title={health.label}
+                      >
+                        <Icon size={17} />
+                        <span>{item.name}</span>
+                        <i className={`source-health ${health.state}`} />
+                        <small>{item.documents.toLocaleString()}</small>
+                      </button>
+                      {onOpenSourceSetup && needsProviderSetup && (
                         <button
                           type="button"
-                          className="tree-toggle"
-                          aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
-                          title={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
-                          aria-expanded={!isCollapsed}
-                          onClick={() => {
-                            setCollapsed((current) => {
-                              const next = new Set(current)
-                              if (next.has(key)) next.delete(key)
-                              else next.add(key)
-                              return next
-                            })
+                          className="source-action"
+                          aria-label={`Open ${item.name} setup`}
+                          title={
+                            sourceJobActive
+                              ? 'Wait for the active source job to finish'
+                              : auth?.method === 'google_oauth'
+                                ? 'Open Google source settings'
+                                : 'Open the provider setup page'
+                          }
+                          disabled={
+                            sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
+                          }
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onOpenSourceSetup(item.source, item.project)
                           }}
                         >
-                          {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+                          <ExternalLink size={13} />
                         </button>
+                      )}
+                      {onAuthorizeSource && needsGoogleAuthorization && (
                         <button
                           type="button"
-                          className={`source-select ${isSelected ? 'selected' : ''}`}
-                          aria-pressed={isSelected}
-                          onClick={() => onSelect(item.source, item.project)}
-                          title={health.label}
+                          className="source-action"
+                          aria-label={`Authorize ${item.name}`}
+                          title={
+                            sourceJobActive
+                              ? 'Wait for the active source job to finish'
+                              : 'Authorize this Google source in your browser'
+                          }
+                          disabled={
+                            sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
+                          }
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onAuthorizeSource(item.source, item.project)
+                          }}
                         >
-                          <Icon size={17} />
-                          <span>{item.name}</span>
-                          <i className={`source-health ${health.state}`} />
-                          <small>{item.documents.toLocaleString()}</small>
+                          <KeyRound size={13} />
                         </button>
-                        {onOpenSourceSetup && needsProviderSetup && (
-                          <button
-                            type="button"
-                            className="source-action"
-                            aria-label={`Open ${item.name} setup`}
-                            title={
-                              sourceJobActive
-                                ? 'Wait for the active source job to finish'
-                                : auth?.method === 'google_oauth'
-                                  ? 'Open Google source settings'
-                                  : 'Open the provider setup page'
-                            }
-                            disabled={
-                              sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
-                            }
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              onOpenSourceSetup(item.source, item.project)
-                            }}
-                          >
-                            <ExternalLink size={13} />
-                          </button>
-                        )}
-                        {onAuthorizeSource && needsGoogleAuthorization && (
-                          <button
-                            type="button"
-                            className="source-action"
-                            aria-label={`Authorize ${item.name}`}
-                            title={
-                              sourceJobActive
-                                ? 'Wait for the active source job to finish'
-                                : 'Authorize this Google source in your browser'
-                            }
-                            disabled={
-                              sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
-                            }
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              onAuthorizeSource(item.source, item.project)
-                            }}
-                          >
-                            <KeyRound size={13} />
-                          </button>
-                        )}
-                        {onToggleSource && item.kind !== 'indexed' && (
-                          <button
-                            type="button"
-                            role="switch"
-                            className={`source-enable-toggle ${item.enabled ? 'enabled' : ''}`}
-                            aria-checked={item.enabled}
-                            aria-busy={sourceToggleBusy === key}
-                            aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.name}`}
-                            title={
-                              sourceJobActive
-                                ? 'Wait for the active source job to finish'
-                                : sourceToggleBusy !== null
-                                  ? 'Saving source setting…'
-                                  : sourceToggleDisabled
-                                    ? 'Save or discard settings changes before toggling a source'
-                                    : `${item.enabled ? 'Disable' : 'Enable'} ${item.name}`
-                            }
-                            disabled={
-                              sourceToggleDisabled || sourceToggleBusy !== null || sourceJobActive
-                            }
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              onToggleSource(item.source, item.project, !item.enabled)
-                            }}
-                          >
-                            <span />
-                          </button>
-                        )}
-                      </div>
-                      {!isCollapsed && (
-                        <span className="source-node-hint">
-                          {item.chunks.toLocaleString()} chunks · {health.label}
-                        </span>
+                      )}
+                      {onToggleSource && item.kind !== 'indexed' && (
+                        <button
+                          type="button"
+                          role="switch"
+                          className={`source-enable-toggle ${item.enabled ? 'enabled' : ''}`}
+                          aria-checked={item.enabled}
+                          aria-busy={sourceToggleBusy === key}
+                          aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.name}`}
+                          title={
+                            sourceJobActive
+                              ? 'Wait for the active source job to finish'
+                              : sourceToggleBusy !== null
+                                ? 'Saving source setting…'
+                                : sourceToggleDisabled
+                                  ? 'Save or discard settings changes before toggling a source'
+                                  : `${item.enabled ? 'Disable' : 'Enable'} ${item.name}`
+                          }
+                          disabled={
+                            sourceToggleDisabled || sourceToggleBusy !== null || sourceJobActive
+                          }
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onToggleSource(item.source, item.project, !item.enabled)
+                          }}
+                        >
+                          <span />
+                        </button>
                       )}
                     </div>
-                  )
-                })}
+                    {!isCollapsed && (
+                      <span className="source-node-hint">
+                        {item.chunks.toLocaleString()} chunks · {health.label}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
             </section>
           ))}
         </div>

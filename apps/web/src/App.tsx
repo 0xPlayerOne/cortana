@@ -54,6 +54,7 @@ import {
   sourceJobAttention,
   useSourceJobs,
 } from './sourceJobs'
+import { applyTheme, readThemePreference } from './theme'
 import type {
   AnswerResponse,
   BrainDocument,
@@ -149,11 +150,24 @@ export function App() {
     : sourceJobs.error
       ? sourceJobs.retry
       : undefined
+
+  const workspaces = desktopSettings?.workspaces.length
+    ? desktopSettings.workspaces
+    : status?.workspaces.length
+      ? status.workspaces
+      : Array.from(new Set(status?.sources.map((item) => item.project) ?? [])).map((id) => ({
+          id,
+          name: id[0]?.toUpperCase() + id.slice(1),
+          account_label: null,
+          color: null,
+        }))
+  const effectiveWorkspace = workspace || workspaces[0]?.id || ''
+
   const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
   const desktopSettingsRequestRef = useRef(0)
   const desktopServicesRequestRef = useRef(0)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
-  const documentScope = `${workspace}\u0000${source}\u0000${debouncedDocumentQuery}`
+  const documentScope = `${effectiveWorkspace}\u0000${source}\u0000${debouncedDocumentQuery}`
   const documentFetchReady = !isDesktopApp || desktopSettings?.needs_setup === false
   const documentScopeRef = useRef(documentScope)
   const searchAbortRef = useRef<AbortController | null>(null)
@@ -182,6 +196,10 @@ export function App() {
     // snapshot after the operator has already reconciled a newer one.
     desktopSettingsRequestRef.current += 1
     setDesktopSettings(next)
+  }, [])
+
+  useEffect(() => {
+    applyTheme(readThemePreference())
   }, [])
 
   useEffect(() => {
@@ -359,7 +377,7 @@ export function App() {
     setDocumentsError('')
     setActiveDocument(null)
     void getDocuments(
-      workspace || undefined,
+      effectiveWorkspace || undefined,
       source || undefined,
       debouncedDocumentQuery || undefined,
       undefined,
@@ -399,7 +417,14 @@ export function App() {
         setDocumentsLoading(false)
       }
     }
-  }, [debouncedDocumentQuery, documentFetchReady, documentRetryNonce, source, view, workspace])
+  }, [
+    debouncedDocumentQuery,
+    documentFetchReady,
+    documentRetryNonce,
+    source,
+    view,
+    effectiveWorkspace,
+  ])
 
   useEffect(() => {
     if (view !== 'knowledge' || workspaceTab !== 'graph' || !documentFetchReady) {
@@ -418,7 +443,7 @@ export function App() {
     setGraphError('')
     setGraphLoading(true)
     void getGraph(
-      workspace || undefined,
+      effectiveWorkspace || undefined,
       source || undefined,
       debouncedDocumentQuery || undefined,
       undefined,
@@ -445,7 +470,7 @@ export function App() {
     graphRetryNonce,
     source,
     view,
-    workspace,
+    effectiveWorkspace,
     workspaceTab,
   ])
 
@@ -818,7 +843,7 @@ export function App() {
   async function runSearch(
     value: string,
     nextSource = source,
-    nextWorkspace = workspace,
+    nextWorkspace = effectiveWorkspace,
     recordHistory = true
   ) {
     if (recordHistory) {
@@ -1043,28 +1068,31 @@ export function App() {
   }
 
   function chooseSource(next: string, project?: string) {
-    const nextWorkspace = project ?? workspace
+    const requestedWorkspace = project ?? workspace
+    const nextWorkspace = requestedWorkspace || (workspaces[0]?.id ?? '')
     const sameScope = source === next && workspace === nextWorkspace
     const nextSource = sameScope ? '' : next
     abortSearchRequest()
     abortContextRequest()
     clearScopedResults()
     scopeSources(nextWorkspace, nextSource)
-    if (project) {
-      setWorkspace(project)
+    if (project || workspace !== nextWorkspace) {
+      setWorkspace(nextWorkspace)
       if (isDesktopApp) {
-        writeWorkspacePreference(project)
-        writeSourceSelectionPreference(nextSource)
+        writeWorkspacePreference(nextWorkspace)
       }
+    }
+    if (isDesktopApp) {
+      writeSourceSelectionPreference(nextSource)
     }
     setSource(nextSource)
     setLeftOpen(false)
   }
 
   function chooseWorkspace(next: string) {
-    const nextWorkspace = next
+    const nextWorkspace = next || (workspaces[0]?.id ?? '')
     const nextSource = ''
-    if (nextWorkspace !== workspace || source !== nextSource) {
+    if (nextWorkspace !== effectiveWorkspace || source !== nextSource) {
       abortSearchRequest()
       abortContextRequest()
       clearScopedResults()
@@ -1090,7 +1118,7 @@ export function App() {
     setDocumentsError('')
     try {
       const page = await getDocuments(
-        workspace || undefined,
+        effectiveWorkspace || undefined,
         source || undefined,
         debouncedDocumentQuery || undefined,
         documentCursor,
@@ -1150,7 +1178,7 @@ export function App() {
 
   async function retrieveAgentContext() {
     const requestId = ++contextRequestRef.current
-    const requestedScope = contextScope(activeQuery, workspace, source)
+    const requestedScope = contextScope(activeQuery, effectiveWorkspace, source)
     setContextLoading(true)
     setContextError('')
     contextScopeRef.current = requestedScope
@@ -1160,7 +1188,7 @@ export function App() {
     try {
       const next = await getContext(
         activeQuery,
-        workspace || undefined,
+        effectiveWorkspace || undefined,
         source || undefined,
         controller.signal
       )
@@ -1265,7 +1293,10 @@ export function App() {
   function openTimeline() {
     if (!canLeaveSettings()) return
     setView('knowledge')
-    setWorkspaceTab('timeline')
+    // The Timeline view is result-only: without a current answer/evidence
+    // result the shortcut falls back to the primary Document view instead of
+    // selecting an empty timeline.
+    setWorkspaceTab(answer !== null || evidence.length > 0 ? 'timeline' : 'document')
   }
 
   function maximumPaneWidth(side: 'source' | 'context') {
@@ -1296,30 +1327,19 @@ export function App() {
     window.addEventListener('pointerup', stop)
   }
 
-  const workspaces = desktopSettings?.workspaces.length
-    ? desktopSettings.workspaces
-    : status?.workspaces.length
-      ? status.workspaces
-      : Array.from(new Set(status?.sources.map((item) => item.project) ?? [])).map((id) => ({
-          id,
-          name: id[0]?.toUpperCase() + id.slice(1),
-          account_label: null,
-          color: null,
-        }))
-
-  const configuredSourcesForWorkspace = workspace
+  const configuredSourcesForWorkspace = effectiveWorkspace
     ? Array.from(
         new Set([
           ...(desktopSettings?.sources ?? [])
-            .filter((item) => item.project === workspace)
+            .filter((item) => item.project === effectiveWorkspace)
             .flatMap((item) =>
               [item.name, item.source].filter((value): value is string => Boolean(value))
             ),
           ...(status?.ingestion.configured_sources ?? [])
-            .filter((item) => item.project === workspace)
+            .filter((item) => item.project === effectiveWorkspace)
             .map((item) => item.source),
           ...(status?.sources ?? [])
-            .filter((item) => item.project === workspace)
+            .filter((item) => item.project === effectiveWorkspace)
             .map((item) => item.source),
         ])
       )
@@ -1337,29 +1357,26 @@ export function App() {
     desktopSettings.sources.length > 0
 
   const workspaceScope = workspaces.map((item) => item.id).join('\u0000')
+
   useEffect(() => {
-    if (!workspace || !workspaceScope) return
-    if (workspaces.some((item) => item.id === workspace)) return
-    chooseWorkspace('')
-  }, [workspace, workspaceScope])
+    if (!workspaceScope) return
+    if (workspace && workspaces.some((item) => item.id === workspace)) return
+    chooseWorkspace(workspaces[0]?.id ?? '')
+  }, [workspace, workspaceScope, workspaces[0]?.id])
 
   useEffect(() => {
     if (!isDesktopApp || !source) return
-    // Source selection is a workspace-scoped filter. The public "All
-    // workspaces" scope intentionally has no selected source, so a stale
-    // preference from a prior workspace must not create an invisible filter
-    // that the source tree cannot highlight or clear.
-    if (!workspace) {
-      writeSourceSelectionPreference('')
-      setSource('')
-      scopeSources('', '')
-      return
-    }
     if (!sourceInventoryReady || configuredSourcesForWorkspace.includes(source)) return
     writeSourceSelectionPreference('')
     setSource('')
-    scopeSources(workspace, '')
-  }, [workspace, source, sourceInventoryReady, configuredSourcesForWorkspace.join('\u0000')])
+    scopeSources(effectiveWorkspace, '')
+  }, [
+    effectiveWorkspace,
+    isDesktopApp,
+    source,
+    sourceInventoryReady,
+    configuredSourcesForWorkspace.join('\u0000'),
+  ])
 
   return (
     <div
@@ -1382,7 +1399,7 @@ export function App() {
             const next = queryHistory[nextIndex]
             setQueryHistoryIndex(nextIndex)
             setQuery(next)
-            void runSearch(next, source, workspace, false)
+            void runSearch(next, source, effectiveWorkspace, false)
           }}
           onHistoryForward={() => {
             const nextIndex = queryHistoryIndex + 1
@@ -1390,7 +1407,7 @@ export function App() {
             const next = queryHistory[nextIndex]
             setQueryHistoryIndex(nextIndex)
             setQuery(next)
-            void runSearch(next, source, workspace, false)
+            void runSearch(next, source, effectiveWorkspace, false)
           }}
         />
         <form className="search-form" onSubmit={submit}>
@@ -1417,6 +1434,7 @@ export function App() {
       <Navigation
         view={view}
         workspaceTab={workspaceTab}
+        resultAvailable={answer !== null || evidence.length > 0}
         onNavigate={navigate}
         onSearch={focusSearch}
         onOpenGraph={openGraph}
@@ -1488,20 +1506,23 @@ export function App() {
                 if (statusRequestRef.current !== statusRequestId) return
                 setStatusError('Status unavailable after saving settings')
               })
-            if (workspace && !next.workspaces.some((item) => item.id === workspace)) {
-              chooseWorkspace('')
+            if (
+              !next.workspaces.some((item) => item.id === effectiveWorkspace) &&
+              next.workspaces.length > 0
+            ) {
+              chooseWorkspace(next.workspaces[0].id)
             } else if (
               source &&
               !next.sources.some(
                 (item) =>
                   (item.name === source || item.source === source) &&
-                  (!workspace || item.project === workspace)
+                  (!effectiveWorkspace || item.project === effectiveWorkspace)
               )
             ) {
               abortSearchRequest()
               abortContextRequest()
               clearScopedResults()
-              scopeSources(workspace, '')
+              scopeSources(effectiveWorkspace, '')
               setSource('')
               if (isDesktopApp) writeSourceSelectionPreference('')
             }
@@ -1512,7 +1533,7 @@ export function App() {
           <SourcePanel
             open={leftOpen}
             status={status}
-            workspace={workspace}
+            workspace={effectiveWorkspace}
             workspaces={workspaces}
             documentQuery={documentQuery}
             selected={source}
@@ -1696,11 +1717,11 @@ export function App() {
               type="button"
               onClick={() => {
                 setCommandPaletteOpen(false)
-                chooseWorkspace('')
+                chooseWorkspace(workspaces[0]?.id ?? '')
                 setDocumentQuery('')
               }}
             >
-              Clear workspace scope
+              Reset to primary workspace
             </button>
             {workspaces.map((item) => (
               <button

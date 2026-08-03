@@ -11,24 +11,74 @@
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 
-  --theme-background: #0f1624;
-  --theme-surface: #171f2f;
-  --theme-muted: #a8b2c5;
-  --theme-line: #2a3445;
-
   --radius-xs: 8px;
   --radius-sm: 10px;
   --radius-pill: 999px;
 
   --amber: #59defc;
   --amber-soft: #8cd7ff;
-  --ink: #151b2b;
-  --panel: #1b2332;
+
+  --theme-background: #0f1624;
+  --theme-surface: #171f2f;
+  --theme-panel: #1b2332;
+  --theme-paper: #eef2fb;
+  --theme-paper-ink: #1e2436;
+  --theme-muted: #a8b2c5;
+  --theme-line: #2a3445;
+  --theme-ink: #151b2b;
+  --theme-surface-elevated: #1f293c;
+  --theme-tooltip-bg: #152238;
+
+  --ink: var(--theme-ink);
+  --panel: var(--theme-surface);
   --line: var(--theme-line);
   --muted: var(--theme-muted);
-  --paper: #eef2fb;
-  --paper-ink: #1e2436;
-  --surface-elevated: #1f293c;
+  --paper: var(--theme-paper);
+  --paper-ink: var(--theme-paper-ink);
+  --surface-elevated: var(--theme-surface-elevated);
+  --quick-tooltip-bg: var(--theme-tooltip-bg);
+}
+
+:root[data-theme='blue'] {
+  --theme-background: #0f1624;
+  --theme-surface: #171f2f;
+  --theme-panel: #1b2332;
+  --theme-paper: #eef2fb;
+  --theme-paper-ink: #1e2436;
+  --theme-muted: #a8b2c5;
+  --theme-line: #2a3445;
+  --theme-ink: #151b2b;
+  --theme-surface-elevated: #1f293c;
+  --theme-tooltip-bg: #152238;
+  --amber: #59defc;
+  --amber-soft: #8cd7ff;
+}
+
+:root[data-theme='accessible'] {
+  --theme-background: #0a1022;
+  --theme-surface: #131f38;
+  --theme-panel: #182846;
+  --theme-paper: #f2f6ff;
+  --theme-paper-ink: #1a2745;
+  --theme-muted: #c7d4f6;
+  --theme-line: #3d5275;
+  --theme-ink: #0b121f;
+  --theme-surface-elevated: #1f355a;
+  --theme-tooltip-bg: #1e3760;
+  --amber: #6ad9ff;
+  --amber-soft: #b3e0ff;
+}
+
+html[data-theme='blue'],
+html[data-theme='accessible'] {
+  --ink: var(--theme-ink);
+  --panel: var(--theme-surface);
+  --line: var(--theme-line);
+  --muted: var(--theme-muted);
+  --paper: var(--theme-paper);
+  --paper-ink: var(--theme-paper-ink);
+  --surface-elevated: var(--theme-surface-elevated);
+  --quick-tooltip-bg: var(--theme-tooltip-bg);
 }
 
 button,
@@ -88,7 +138,7 @@ select:focus-visible {
   transform: translateX(-50%);
   transform-origin: top;
   border-radius: var(--radius-xs);
-  background: #152238;
+  background: var(--quick-tooltip-bg);
   color: #ebeff7;
   content: attr(data-tooltip);
   opacity: 0;
@@ -104,7 +154,7 @@ select:focus-visible {
   width: 8px;
   height: 8px;
   transform: translate(-50%, 4px) rotate(45deg);
-  background: #152238;
+  background: var(--quick-tooltip-bg);
   content: '';
   opacity: 0;
   pointer-events: none;
