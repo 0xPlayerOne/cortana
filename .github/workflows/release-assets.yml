@@ -163,3 +163,26 @@ jobs:
           tagName: ${{ env.RELEASE_TAG }}
           tauriScript: bun tauri
           args: ${{ matrix.args }}
+
+  verify:
+    name: Verify published release assets
+    needs: [binaries, desktop]
+    if: >-
+      always() &&
+      needs.binaries.result == 'success' &&
+      needs.desktop.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout release verifier
+        uses: actions/checkout@3d3c42a5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Verify cross-platform assets and updater manifest
+        run: scripts/verify-desktop-release.sh "$RELEASE_TAG"
