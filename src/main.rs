@@ -82,6 +82,16 @@ enum Command {
         #[arg(long, help = "Confirm the metadata and derived-cache migration")]
         force: bool,
     },
+    /// Re-embed every indexed chunk and atomically adopt a new generation.
+    RebuildEmbeddings {
+        #[arg(long, value_name = "FINGERPRINT")]
+        from: String,
+        #[arg(
+            long,
+            help = "Confirm a full-corpus re-embedding and recovery snapshot"
+        )]
+        force: bool,
+    },
     /// Run deterministic retrieval and answer quality gates in an isolated temporary index.
     Eval {
         #[arg(long, help = "Use a custom synthetic evaluation fixture")]
@@ -632,6 +642,21 @@ async fn main() -> Result<()> {
     if let Some(Command::MigrateEmbedding { from, force }) = cli.command.as_ref() {
         return migrate_embedding_generation(&config, &store, base_embedder.as_ref(), from, *force);
     }
+    if let Some(Command::RebuildEmbeddings { from, force }) = cli.command.as_ref() {
+        let rebuild_embedder: Arc<dyn Embedder> = Arc::new(CachedEmbedder::with_limit(
+            store.clone(),
+            base_embedder.clone(),
+            cache_max_entries,
+        ));
+        return rebuild_embedding_generation(
+            &config,
+            &store,
+            rebuild_embedder.as_ref(),
+            from,
+            *force,
+        )
+        .await;
+    }
     store.ensure_fingerprint(&base_embedder.fingerprint())?;
     let embedder: Arc<dyn Embedder> = Arc::new(CachedEmbedder::with_limit(
         store.clone(),
@@ -919,6 +944,7 @@ async fn main() -> Result<()> {
             Command::Init { .. }
             | Command::MigrateHermes { .. }
             | Command::MigrateEmbedding { .. }
+            | Command::RebuildEmbeddings { .. }
             | Command::Eval { .. }
             | Command::AuthorizeGoogle { .. }
             | Command::ValidateSource { .. }
@@ -1776,6 +1802,122 @@ fn migrate_embedding_generation(
     println!("  to: {target}");
     println!("  verified backup: {}", backup.display());
     println!("  indexed documents were not rebuilt; derived caches were cleared");
+    Ok(())
+}
+
+async fn rebuild_embedding_generation(
+    config: &Config,
+    store: &Store,
+    embedder: &dyn Embedder,
+    from: &str,
+    force: bool,
+) -> Result<()> {
+    anyhow::ensure!(
+        force,
+        "embedding rebuild re-embeds the entire index and creates a recovery snapshot; rerun with --force after reviewing the target provider"
+    );
+    let target = embedder.fingerprint();
+    let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+    let current = store
+        .stats()?
+        .embedding_fingerprint
+        .context("the index has no embedding generation; initialize it before rebuilding")?;
+    anyhow::ensure!(
+        current == from,
+        "embedding generation does not match --from (expected: {from}; actual: {current})"
+    );
+    anyhow::ensure!(
+        current != target,
+        "embedding generation already matches configured provider: {target}"
+    );
+
+    // Probe before creating a recovery snapshot or staging table so a missing
+    // local/cloud provider fails without changing the index.
+    embedder
+        .probe()
+        .await
+        .context("embedding provider probe failed")?;
+    store.integrity_check()?;
+    let backup = config.data_dir.join("backups").join(format!(
+        "cortana-embedding-rebuild-{}-{}.sqlite3",
+        chrono::Utc::now().format("%Y%m%d-%H%M%S"),
+        uuid::Uuid::new_v4()
+    ));
+    store.backup(&backup)?;
+    let expected = store.begin_embedding_rebuild(&current, &target)?;
+    let rebuild = async {
+        let concurrency = embedder.request_concurrency().max(1);
+        let mut after = None;
+        let mut processed = 0_usize;
+        loop {
+            let page = store.embedding_rebuild_chunks(after.as_deref(), 256)?;
+            if page.is_empty() {
+                break;
+            }
+            let requests = page
+                .iter()
+                .map(|(_, content)| content.clone())
+                .collect::<Vec<_>>();
+            let batches = stream::iter(requests.chunks(EMBEDDING_REQUEST_SIZE))
+                .map(|request| embedder.embed(request))
+                .buffered(concurrency)
+                .try_collect::<Vec<_>>()
+                .await?;
+            let vectors = batches.into_iter().flatten().collect::<Vec<_>>();
+            anyhow::ensure!(
+                vectors.len() == page.len(),
+                "embedding provider returned an unexpected vector count during rebuild"
+            );
+            let staged = page
+                .into_iter()
+                .zip(vectors)
+                .map(|((chunk_id, _), vector)| (chunk_id, vector))
+                .collect::<Vec<_>>();
+            after = staged.last().map(|(chunk_id, _)| chunk_id.clone());
+            store.stage_embedding_rebuild(&staged)?;
+            processed = processed.saturating_add(staged.len());
+            if processed.is_multiple_of(1_000) || processed == expected {
+                eprintln!("rebuilding embeddings: {processed}/{expected} chunks");
+            }
+        }
+        anyhow::ensure!(
+            processed == expected,
+            "embedding rebuild scanned {processed} of {expected} chunks"
+        );
+        Ok::<usize, anyhow::Error>(processed)
+    }
+    .await;
+    let processed = match rebuild {
+        Ok(processed) => processed,
+        Err(error) => {
+            if let Err(discard_error) = store.discard_embedding_rebuild() {
+                tracing::warn!(%discard_error, "embedding rebuild cleanup failed");
+            }
+            return Err(error);
+        }
+    };
+    let committed = store.commit_embedding_rebuild(&current, &target)?;
+    anyhow::ensure!(
+        committed == processed,
+        "embedding rebuild commit count mismatch"
+    );
+    if let Err(error) = store.record_audit(
+        "local-cli",
+        "embedding-generation-rebuild",
+        None,
+        None,
+        "ok",
+        Some(committed),
+        0,
+        config.auth.audit_max_events,
+    ) {
+        tracing::warn!(%error, "embedding generation rebuild audit write failed");
+    }
+    println!("embedding generation rebuilt");
+    println!("  from: {current}");
+    println!("  to: {target}");
+    println!("  chunks: {committed}");
+    println!("  verified backup: {}", backup.display());
     Ok(())
 }
 
@@ -3600,6 +3742,25 @@ mod tests {
                 assert!(force);
             }
             _ => panic!("expected the migrate-embedding subcommand"),
+        }
+    }
+
+    #[test]
+    fn rebuild_embeddings_command_requires_exact_source_and_confirmation() {
+        let cli = Cli::try_parse_from([
+            "cortana",
+            "rebuild-embeddings",
+            "--from",
+            "legacy:model:16",
+            "--force",
+        ])
+        .expect("embedding rebuild command");
+        match cli.command {
+            Some(Command::RebuildEmbeddings { from, force }) => {
+                assert_eq!(from, "legacy:model:16");
+                assert!(force);
+            }
+            _ => panic!("expected the rebuild-embeddings subcommand"),
         }
     }
 
