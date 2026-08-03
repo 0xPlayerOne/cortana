@@ -223,6 +223,18 @@ changed; rebuild or re-import vectors into a new generation instead. Recurring s
 default unless the operator explicitly supplies `--allow-sync-service`; see the
 [evaluation guide](evaluation.md).
 
+With `--allow-sync-service`, readiness also runs a `source-validation` check that verifies every
+enabled source has a current successful validation at equal or larger document, byte, and duration
+budgets than its configured limits. The check reads only the owner-local validation state and never
+contacts a connector: it fails when a source was never validated, its last validation failed, its
+configuration changed since validation (the validation record stores a configuration fingerprint),
+or its resolved budgets grew past the validated ones — for example after raising `[ingestion]`
+defaults behind an override-less source. This mirrors the install-time recurring-sync gate, so an
+operator who changed a source after installing the sync schedule sees the mismatch in `cortana
+readiness` instead of discovering it from a failing scheduled run. Without the flag, source
+validation is not required for query-only readiness; per-source validation state remains visible in
+`/v1/status` at any time.
+
 ## Secrets
 
 An optional `[runtime].env_file` supplies connector, cloud-provider, and HTTP-token environment
