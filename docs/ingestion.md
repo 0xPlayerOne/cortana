@@ -170,7 +170,10 @@ cortana sync --source SOURCE \
 
 `--require-validation` fails before opening the index or embedding provider unless the selected
 source is enabled and its latest validation succeeded for the exact current source configuration
-at equal or larger document and byte limits. The validation record stores only a one-way
+at equal or larger document and byte limits. Omitting `--source` widens the same check to every
+enabled source; the installed recurring sync job always invokes this all-sources form, so each
+scheduled run re-checks validation freshness and budgets before any connector is contacted. The
+validation record stores only a one-way
 configuration fingerprint. Trial sync may embed and index committed batches, but it never deletes
 records absent from the bounded snapshot. Cancellation preserves already committed batches.
 
