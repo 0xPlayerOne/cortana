@@ -34,7 +34,7 @@ pub struct ServiceStatus {
     pub last_exit_status: Option<i32>,
 }
 
-pub async fn status(app: &AppHandle) -> Result<ServiceReport, String> {
+pub async fn status<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<ServiceReport, String> {
     let output = sidecar_output(app, &["service", "status", "--json"]).await?;
     parse_report(&output.stdout, &output.stderr, output.success)
 }
@@ -225,8 +225,8 @@ fn audit_action(
     let _ = settings::append_audit_event(&settings::default_config_path(), &event);
 }
 
-async fn sidecar_output(
-    app: &AppHandle,
+async fn sidecar_output<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     args: &[&str],
 ) -> Result<SidecarOutput, String> {
     let command = app
