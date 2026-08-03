@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/0xPlayerOne/cortana/compare/v0.25.0...v0.26.0) (2026-08-03)
+
+
+### Features
+
+* **status:** surface bounded-sample validation completeness ([c8b2d2b](https://github.com/0xPlayerOne/cortana/commit/c8b2d2ba241a10809a228c63c4e039e2f54b6eaf))
+
 ## [0.25.0](https://github.com/0xPlayerOne/cortana/compare/v0.24.7...v0.25.0) (2026-08-03)
 
 
