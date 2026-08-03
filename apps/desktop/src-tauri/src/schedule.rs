@@ -187,15 +187,24 @@ mod tests {
 
     #[test]
     fn rejects_intervals_that_are_too_aggressive_or_slow() {
-        let mut settings = ScheduleSettings::default();
-        settings.sync_interval_seconds = MIN_SYNC_INTERVAL_SECONDS - 1;
-        assert!(validate(&settings).is_err());
-        settings.sync_interval_seconds = MAX_SYNC_INTERVAL_SECONDS + 1;
-        assert!(validate(&settings).is_err());
-        settings.sync_interval_seconds = ScheduleSettings::default().sync_interval_seconds;
-        settings.backup_interval_seconds = MIN_BACKUP_INTERVAL_SECONDS - 1;
-        assert!(validate(&settings).is_err());
-        settings.backup_interval_seconds = MAX_BACKUP_INTERVAL_SECONDS + 1;
-        assert!(validate(&settings).is_err());
+        let invalid = [
+            ScheduleSettings {
+                sync_interval_seconds: MIN_SYNC_INTERVAL_SECONDS - 1,
+                ..ScheduleSettings::default()
+            },
+            ScheduleSettings {
+                sync_interval_seconds: MAX_SYNC_INTERVAL_SECONDS + 1,
+                ..ScheduleSettings::default()
+            },
+            ScheduleSettings {
+                backup_interval_seconds: MIN_BACKUP_INTERVAL_SECONDS - 1,
+                ..ScheduleSettings::default()
+            },
+            ScheduleSettings {
+                backup_interval_seconds: MAX_BACKUP_INTERVAL_SECONDS + 1,
+                ..ScheduleSettings::default()
+            },
+        ];
+        assert!(invalid.iter().all(|settings| validate(settings).is_err()));
     }
 }
