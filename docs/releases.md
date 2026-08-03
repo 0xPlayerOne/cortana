@@ -22,6 +22,15 @@ commit restores those already-published capabilities to Release Please's
 conventional-commit history after that promotion was merged as one squash commit;
 it does not change runtime behavior or trigger a corpus sync.
 
+## 0.23.0 release-history recovery
+
+The agent integration guide, model-backed evaluation opt-in, nested filesystem
+coverage, and numbered local setup path landed together in the 2026-08-03
+promotion. This metadata-only marker restores those already-published staging
+capabilities to Release Please's conventional-commit history after the
+promotion was merged as one squash commit. It changes documentation only; it
+does not alter runtime behavior, credentials, or trigger a corpus sync.
+
 ## Desktop release gates
 
 The desktop pipeline follows a staged audit policy:
