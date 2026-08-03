@@ -4,15 +4,18 @@ set -euo pipefail
 # Run bounded source authorization/validation checks and, when explicitly
 # requested, non-reconciling trial syncs. This is intentionally a small
 # operator probe: it never enables a source, installs a schedule, or deletes
-# records from a partial snapshot.
+# records from a partial snapshot. Filesystem/code validations pass --sample
+# so an oversized root records a bounded sample; connector sources keep
+# ordinary fail-closed validation, and no token value is ever read or printed.
 
 usage() {
   cat <<'EOF'
 Usage: scripts/source-smoke.sh [OPTIONS] [SOURCE ...]
 
-Validate configured sources within a bounded budget. With --sync, also ingest
-a bounded, non-reconciling trial for connector sources. Filesystem/code sources
-are validation-only unless --include-filesystem is provided.
+Validate configured sources within a bounded budget. Filesystem/code sources
+are validated as a bounded sample (--sample); connector sources keep ordinary
+fail-closed validation. With --sync, also ingest a bounded, non-reconciling
+trial; filesystem/code trials require --include-filesystem.
 
 Options:
   --config PATH             Cortana TOML configuration
@@ -188,10 +191,21 @@ for entry in "${configured_sources[@]}"; do
 
   validation_log="$(mktemp "${TMPDIR:-/tmp}/cortana-source-validation.XXXXXX")"
   sync_log="$(mktemp "${TMPDIR:-/tmp}/cortana-source-sync.XXXXXX")"
-  if "$binary_path" --config "$config_path" validate-source "$source" \
-      --max-documents "$max_documents" \
-      --max-bytes "$max_bytes" \
-      --max-seconds "$max_seconds" >"$validation_log" 2>&1; then
+  # Filesystem/code validations explicitly opt into a bounded sample so a root
+  # larger than the budget records a partial validation instead of failing;
+  # connector sources keep the ordinary fail-closed preflight. The sample can
+  # authorize only the equally bounded non-reconciling trial below.
+  validation_args=(
+    validate-source "$source"
+    --max-documents "$max_documents"
+    --max-bytes "$max_bytes"
+    --max-seconds "$max_seconds"
+  )
+  if [[ "$kind" == "filesystem" ]]; then
+    validation_args+=(--sample)
+  fi
+  if "$binary_path" --config "$config_path" "${validation_args[@]}" \
+      >"$validation_log" 2>&1; then
     validation_status="passed"
   else
     note="validation: $(classify_failure "$validation_log")"
@@ -214,6 +228,10 @@ for entry in "${configured_sources[@]}"; do
         --max-bytes "$max_bytes" \
         --max-seconds "$max_seconds" \
         --require-validation >"$sync_log" 2>&1; then
+      # The trial is equally bounded (same budgets as the validation above)
+      # and non-reconciling, so for filesystem sources it may rely on the
+      # matching sampled validation via --require-validation while never
+      # authorizing a full-corpus sync.
       sync_status="passed"
     else
       sync_status="failed"
