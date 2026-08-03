@@ -201,24 +201,19 @@ const evidenceItem = {
   updated_at: '2026-01-01T00:00:00Z',
 }
 
-test('document is the default primary view and result tabs stay disabled until a search returns evidence', () => {
+test('document is the default primary view and result tabs stay hidden until a search returns evidence', () => {
   render(<Workspace {...props} />)
 
   expect(screen.getByRole('tab', { name: 'Document' }).getAttribute('aria-selected')).toBe('true')
   expect(screen.getByRole('heading', { name: 'Choose a document' })).toBeTruthy()
   for (const name of ['Answer', 'Evidence', 'Timeline']) {
-    const tab = screen.getByRole('tab', { name })
-    expect(tab.hasAttribute('disabled')).toBe(true)
-    expect(tab.getAttribute('title')).toBe('Available once a search returns evidence')
+    expect(screen.queryByRole('tab', { name })).toBeNull()
   }
-  // Document and Graph remain first-class views without a search result.
+  // Document remains first-class without a search result; Graph is a rail-only view.
   expect(screen.getByRole('tab', { name: 'Document' }).hasAttribute('disabled')).toBe(false)
-  expect(screen.getByRole('tab', { name: 'Graph' }).hasAttribute('disabled')).toBe(false)
-  // No evidence means no misleading count pill on the Evidence tab.
-  expect(screen.getByRole('tab', { name: 'Evidence' }).textContent).not.toContain('0')
 })
 
-test('disabled result tabs cannot be activated before a search', () => {
+test('result tabs cannot be activated before a search because they are hidden', () => {
   let changed = ''
   render(
     <Workspace
@@ -229,9 +224,9 @@ test('disabled result tabs cannot be activated before a search', () => {
     />
   )
 
-  fireEvent.click(screen.getByRole('tab', { name: 'Answer' }))
-  fireEvent.click(screen.getByRole('tab', { name: 'Evidence' }))
-  fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
+  expect(screen.queryByRole('tab', { name: 'Answer' })).toBeNull()
+  expect(screen.queryByRole('tab', { name: 'Evidence' })).toBeNull()
+  expect(screen.queryByRole('tab', { name: 'Timeline' })).toBeNull()
   expect(changed).toBe('')
 })
 
@@ -260,11 +255,27 @@ test('answer, evidence, and timeline tabs enable once evidence arrives and keep 
 })
 
 test('workspace renders the shipped app icon asset with decorative alt/aria behavior', () => {
-  render(<Workspace {...props} />)
+  render(
+    <Workspace
+      {...props}
+      tab="answer"
+      answer={{
+        query: 'release',
+        answer: 'Evidence brief',
+        evidence: [evidenceItem],
+        plan: { queries: ['release'], model_generated: false },
+        mode: 'extractive',
+        cached: false,
+        latency_ms: 0,
+        warnings: [],
+      }}
+      evidence={[evidenceItem]}
+    />
+  )
 
-  // The Answer tab, empty state, and graph center all share the real asset.
+  // The Answer tab uses the shipped asset as its product mark.
   const icons = Array.from(document.querySelectorAll<HTMLImageElement>('img[src="/app-icon.svg"]'))
-  expect(icons.length).toBeGreaterThanOrEqual(2)
+  expect(icons.length).toBeGreaterThanOrEqual(1)
   for (const icon of icons) {
     expect(icon.getAttribute('alt')).toBe('')
     expect(icon.getAttribute('aria-hidden')).toBe('true')
@@ -272,7 +283,6 @@ test('workspace renders the shipped app icon asset with decorative alt/aria beha
   expect(
     screen.getByRole('tab', { name: 'Answer' }).querySelector('img[src="/app-icon.svg"]')
   ).toBeTruthy()
-  expect(document.querySelector('.empty-state img')).toBeTruthy()
   // No inline CortanaBrandMark markup remains anywhere in the workspace.
   expect(document.querySelector('svg[viewBox="0 0 1024 1024"]')).toBeNull()
 })

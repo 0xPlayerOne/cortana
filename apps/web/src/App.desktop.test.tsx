@@ -1142,6 +1142,9 @@ test('workspace cards show display name and advanced details', async () => {
     expect(screen.getByLabelText(/Scope ID/i)).toBeTruthy()
     expect(screen.getByLabelText(/Account label/i)).toBeTruthy()
     expect(screen.getByDisplayValue('Work')).toBeTruthy()
+    expect((screen.getByLabelText(/Scope ID/i) as HTMLInputElement).readOnly).toBe(true)
+    const upload = screen.getByLabelText('Upload logo for Work') as HTMLInputElement
+    expect(upload.accept).toContain('image/png')
   } finally {
     state.settings = originalSettings
   }
@@ -1344,7 +1347,8 @@ test('source settings show a compact workspace-first row with collapsed advanced
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
 
-    expect(screen.getByText('Work · Files and code · Enabled')).toBeTruthy()
+    expect(screen.getByText('Files & code')).toBeTruthy()
+    expect(screen.getByText('Work · Enabled')).toBeTruthy()
     expect(screen.getByRole('img', { name: 'Files and code connector' })).toBeTruthy()
     const summary = screen.getByText('Advanced source settings')
     const details = summary.closest('details') as HTMLDetailsElement
@@ -2123,7 +2127,9 @@ test('saving settings with restart_required triggers a background restart and cl
 
     await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
     await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
-    await waitFor(() => expect(screen.queryByText('A service restart is required.')).toBeNull())
+    await waitFor(() =>
+      expect(screen.queryByText('A service restart is still required.')).toBeNull()
+    )
   } finally {
     window.confirm = originalConfirm
     state.settings = originalSettings
@@ -2144,12 +2150,12 @@ test('successful aggregate restart clears the saved-settings notice', async () =
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
     )
-    expect(screen.getByText('A service restart is required.')).toBeTruthy()
+    expect(screen.getByText('A service restart is still required.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open services' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
     await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
-    expect(screen.queryByText('A service restart is required.')).toBeNull()
+    expect(screen.queryByText('A service restart is still required.')).toBeNull()
   } finally {
     state.settings = originalSettings
     window.confirm = originalConfirm

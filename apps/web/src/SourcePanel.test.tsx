@@ -10,7 +10,7 @@ import type {
 } from './types'
 import { demoStatus } from './demo'
 import { SourcePanel } from './components/SourcePanel'
-import { sourceIconForKind } from './components/sourceIcons'
+import { sourceIconForKind } from './components/sourceIconData'
 
 afterEach(cleanup)
 
@@ -76,6 +76,36 @@ test('workspace picker shows the display scope without account metadata', () => 
   expect(picker.textContent).toContain('Work')
   expect(picker.textContent).not.toContain('All workspaces')
   expect(document.querySelector('.workspace-picker-mark')).toBeTruthy()
+})
+
+test('SourcePanel never falls back to an all-workspaces source tree', () => {
+  render(
+    <SourcePanel
+      open={false}
+      status={demoStatus}
+      statusError=""
+      workspace=""
+      workspaces={[workspace, personalWorkspace]}
+      documentQuery=""
+      selected=""
+      documents={[]}
+      selectedDocument=""
+      documentsLoading={false}
+      documentsError=""
+      hasMoreDocuments={false}
+      onSelect={() => {}}
+      onSelectWorkspace={() => {}}
+      onDocumentQueryChange={() => {}}
+      onSelectDocument={() => {}}
+      onLoadMoreDocuments={() => {}}
+      onOpenSourcesSettings={() => {}}
+      onClose={() => {}}
+      jobs={[]}
+    />
+  )
+
+  expect(screen.getByRole('button', { name: /^work-code/ })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: /^personal-gmail/ })).toBeNull()
 })
 
 test('SourcePanel surfaces status errors instead of empty-source phantom state', () => {

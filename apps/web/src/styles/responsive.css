@@ -87,7 +87,7 @@
     overflow-x: auto;
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    background: #1b1c1a;
+    background: var(--theme-background);
   }
 
   .settings-nav > button {
