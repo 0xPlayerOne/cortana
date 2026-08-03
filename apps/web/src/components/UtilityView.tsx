@@ -498,10 +498,7 @@ function AgentToolsView({
         ) : contextBundle ? (
           <>
             <div className="utility-metrics">
-              <Metric
-                label="Retrieval"
-                value={contextBundle.retrieval_mode || 'hybrid'}
-              />
+              <Metric label="Retrieval" value={contextBundle.retrieval_mode || 'hybrid'} />
               <Metric label="Retrieved" value={contextBundle.metrics.retrieved.toLocaleString()} />
               <Metric label="Included" value={contextBundle.metrics.included.toLocaleString()} />
               <Metric label="Omitted" value={contextBundle.metrics.omitted.toLocaleString()} />
