@@ -72,6 +72,14 @@ cortana validate-source SOURCE \
 Review the source result in Desktop or `/v1/status` before proceeding. Do not use a production-sized
 budget as a validation shortcut.
 
+For a repeatable operator check across the configured sources, use the bounded smoke harness. It
+reads only source names and kinds from the TOML file, never prints credentials, and exits nonzero
+when authorization or validation fails:
+
+```bash
+scripts/source-smoke.sh --config "$HOME/.config/cortana/config.toml"
+```
+
 ### 4. Run one bounded sync
 
 Plan the source first, then run a deliberately small non-reconciling trial. A trial cannot delete
@@ -89,6 +97,14 @@ cortana sync --source SOURCE \
 Inspect the Desktop source panel or `/v1/status` and query a known item. Only after the connector,
 cursor, ACL, and cache behavior is verified should you choose a larger complete snapshot. Recurring
 sync remains a separate confirmation-gated operation.
+
+To run the same bounded trial for every non-filesystem source after validation, add `--sync`. Trials
+always pass `--no-reconcile`; filesystem and code sources remain validation-only unless
+`--include-filesystem` is explicitly supplied:
+
+```bash
+scripts/source-smoke.sh --sync
+```
 
 ### 5. Start, stop, and uninstall safely
 
