@@ -164,13 +164,19 @@ def _fetch_slack_cached(
             ).fetchone()
             full = row is None or _full_refresh_due(str(row[1]))
             latest_ts = None if row is None else str(row[0] or "")
+            latest_cursor = _slack_timestamp(latest_ts) if latest_ts else None
+            if not full and latest_ts and latest_cursor is None:
+                # A damaged cursor must not turn into an unbounded or skipped
+                # incremental query. Rebuild this channel snapshot instead.
+                full = True
+                latest_ts = None
             cursor = ""
             while True:
                 params: dict[str, Any] = {"channel": channel_id, "limit": 200}
                 if full:
                     if cursor:
                         params["cursor"] = cursor
-                elif latest_ts:
+                elif latest_cursor is not None:
                     params["oldest"] = latest_ts
                 response = _get_with_backoff(client, "/conversations.history", params=params)
                 payload = _slack_payload(response)
@@ -181,7 +187,7 @@ def _fetch_slack_cached(
                     parent_timestamp = _slack_timestamp(parent.get("ts"))
                     if parent_timestamp is None:
                         continue
-                    if not full and latest_ts and parent_timestamp <= float(latest_ts):
+                    if not full and latest_cursor is not None and parent_timestamp <= latest_cursor:
                         continue
                     if full:
                         cache.execute(
@@ -208,8 +214,9 @@ def _fetch_slack_cached(
                                 ),
                             ),
                         )
-                    if not latest_ts or parent_timestamp > float(latest_ts):
+                    if latest_cursor is None or parent_timestamp > latest_cursor:
                         latest_ts = str(parent["ts"])
+                        latest_cursor = parent_timestamp
                 cache.commit()
                 response_metadata = payload.get("response_metadata")
                 cursor = str(
