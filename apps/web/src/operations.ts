@@ -120,11 +120,28 @@ export function validationCoversConfiguredBudget(
   if (!source.validation) return false
   if (source.validation.status !== 'succeeded') return false
   if (source.validation.fresh === false) return false
+  // A bounded sample may authorize only equally bounded non-reconciling runs,
+  // never a recurring or full-corpus sync. Failing closed here keeps even a
+  // sample whose numeric budgets match the configured limits from blessing
+  // recurrence; omitted/`null`/`true` keep their legacy full-corpus authority.
+  if (source.validation.complete === false) return false
 
   const hasSufficientDocuments = source.validation.max_documents >= source.max_documents
   const hasSufficientBytes = source.validation.max_bytes >= source.max_bytes
   const hasSufficientDuration = source.validation.max_seconds >= source.max_duration_seconds
   return hasSufficientDocuments && hasSufficientBytes && hasSufficientDuration
+}
+
+/**
+ * Explicit warning for a validation that only sampled the source. Even when
+ * its numeric budgets match the configured limits, a bounded sample cannot
+ * authorize recurring or full-corpus syncs.
+ */
+function boundedSampleWarning(
+  validation: NonNullable<OperationalSource['validation']>,
+  lead: string
+): string {
+  return `${lead} validation was a bounded sample (${new Date(validation.validated_at).toLocaleString()}) and cannot authorize recurring sync; re-validate the complete source`
 }
 
 export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.now()) {
@@ -161,6 +178,12 @@ export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.n
         return {
           state: 'warning',
           label: `Connector validation expired ${new Date(source.validation.validated_at).toLocaleString()}; re-validate before recurring sync`,
+        }
+      }
+      if (source.validation.complete === false) {
+        return {
+          state: 'warning',
+          label: boundedSampleWarning(source.validation, 'Connector'),
         }
       }
       if (!validationCoversConfiguredBudget(source)) {
@@ -201,6 +224,12 @@ export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.n
       return {
         state: 'warning',
         label: `Last sync succeeded ${completed}; stale after ${formatDuration(freshnessHours * 3_600)} (age ${formatDuration(ageSeconds)}); run sync`,
+      }
+    }
+    if (source.validation?.complete === false) {
+      return {
+        state: 'warning',
+        label: boundedSampleWarning(source.validation, `Last sync succeeded ${completed} but its`),
       }
     }
     if (!validationCoversConfiguredBudget(source)) {
