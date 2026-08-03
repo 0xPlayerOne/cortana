@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.1](https://github.com/0xPlayerOne/cortana/compare/v0.26.0...v0.26.1) (2026-08-03)
+
+
+### Bug Fixes
+
+* **google:** harden drive/gmail safety and token checks ([b719c8d](https://github.com/0xPlayerOne/cortana/commit/b719c8d85bd639f93cc82240dd41f4c59c2765fd))
+
 ## [0.26.0](https://github.com/0xPlayerOne/cortana/compare/v0.25.0...v0.26.0) (2026-08-03)
 
 
