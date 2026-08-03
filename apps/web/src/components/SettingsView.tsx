@@ -3168,6 +3168,9 @@ function SourcesSection({
           const workspaceLabel =
             settings.workspaces.find((workspace) => workspace.id === source.project)?.name ||
             `Unassigned (${source.project || 'legacy scope'})`
+          const assignedWorkspace = settings.workspaces.find(
+            (workspace) => workspace.id === source.project
+          )
           const workspaceAssigned = settings.workspaces.some(
             (workspace) => workspace.id === source.project
           )
@@ -3200,6 +3203,27 @@ function SourcesSection({
                       {workspaceLabel} · {source.enabled ? 'Enabled' : 'Disabled'}
                     </small>
                   </span>
+                </label>
+                <label className="source-workspace-picker">
+                  {assignedWorkspace && (
+                    <WorkspaceLogo workspace={assignedWorkspace} size="small" />
+                  )}
+                  <span className="visually-hidden">Assign source workspace</span>
+                  <select
+                    aria-label={`Workspace for ${source.name}`}
+                    value={source.project}
+                    disabled={sourceLocked}
+                    onChange={(event) => changeSource(index, { project: event.target.value })}
+                  >
+                    {!workspaceAssigned && source.project && (
+                      <option value={source.project}>Unassigned: {source.project}</option>
+                    )}
+                    {settings.workspaces.map((workspace) => (
+                      <option key={workspace.id} value={workspace.id}>
+                        {workspace.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <div className="source-card-actions">
                   {hasBrowserSetup(source.kind) && (

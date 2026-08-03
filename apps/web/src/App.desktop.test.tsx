@@ -1391,9 +1391,10 @@ test('source settings quarantine legacy scopes until they are assigned to a work
       (screen.getByRole('button', { name: 'Initial sync' }) as HTMLButtonElement).disabled
     ).toBe(true)
 
-    fireEvent.click(screen.getByText('Advanced source settings'))
-    const workspace = screen.getByLabelText('Workspace') as HTMLSelectElement
-    expect(screen.getByRole('option', { name: 'Unassigned: community' })).toBeTruthy()
+    const workspace = screen.getByRole('combobox', {
+      name: 'Workspace for community-discord',
+    }) as HTMLSelectElement
+    expect(workspace.options[0]?.textContent).toBe('Unassigned: community')
     fireEvent.change(workspace, { target: { value: 'work' } })
 
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
