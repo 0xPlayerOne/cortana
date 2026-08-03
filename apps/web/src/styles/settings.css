@@ -690,6 +690,7 @@
 }
 
 .source-managed-note,
+.source-unassigned-note,
 .empty-source-settings {
   margin-top: 14px;
   padding: 13px;
@@ -698,6 +699,25 @@
   background: var(--theme-control-bg);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.source-unassigned-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--theme-warning-fg);
+  border-color: var(--theme-warning-border);
+  background: var(--theme-warning-bg);
+}
+
+.source-unassigned-note svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.source-unassigned-note code {
+  color: inherit;
+  font-size: 10px;
 }
 
 .empty-source-settings {

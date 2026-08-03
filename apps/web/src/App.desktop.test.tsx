@@ -1361,6 +1361,48 @@ test('source settings show a compact workspace-first row with collapsed advanced
   }
 })
 
+test('source settings quarantine legacy scopes until they are assigned to a workspace', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    sources: [
+      {
+        ...workSource,
+        name: 'community-discord',
+        kind: 'discord',
+        project: 'community',
+        enabled: false,
+      },
+    ],
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+
+    expect(screen.getByRole('alert').textContent).toContain('uses the legacy community scope')
+    expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Validate' }) as HTMLButtonElement).disabled).toBe(
+      true
+    )
+    expect(
+      (screen.getByRole('button', { name: 'Initial sync' }) as HTMLButtonElement).disabled
+    ).toBe(true)
+
+    fireEvent.click(screen.getByText('Advanced source settings'))
+    const workspace = screen.getByLabelText('Workspace') as HTMLSelectElement
+    expect(screen.getByRole('option', { name: 'Unassigned: community' })).toBeTruthy()
+    fireEvent.change(workspace, { target: { value: 'work' } })
+
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(false)
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
 test('source tree toggles a saved connector without touching indexed data', async () => {
   const originalConfirm = window.confirm
   const originalSettings = state.settings

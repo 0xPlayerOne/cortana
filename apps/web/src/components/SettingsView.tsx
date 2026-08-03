@@ -3167,7 +3167,10 @@ function SourcesSection({
             SOURCE_KINDS.find((kind) => kind.value === source.kind)?.label || 'External connector'
           const workspaceLabel =
             settings.workspaces.find((workspace) => workspace.id === source.project)?.name ||
-            source.project
+            `Unassigned (${source.project || 'legacy scope'})`
+          const workspaceAssigned = settings.workspaces.some(
+            (workspace) => workspace.id === source.project
+          )
           return (
             <article className="source-settings-card" key={`${source.name}:${index}`}>
               <header>
@@ -3175,7 +3178,12 @@ function SourcesSection({
                   <input
                     type="checkbox"
                     checked={source.enabled}
-                    disabled={sourceLocked}
+                    disabled={sourceLocked || (!workspaceAssigned && !source.enabled)}
+                    title={
+                      !workspaceAssigned
+                        ? 'Assign this source to a workspace before enabling it'
+                        : undefined
+                    }
                     onChange={(event) => changeSource(index, { enabled: event.target.checked })}
                   />
                   <span
@@ -3226,7 +3234,7 @@ function SourcesSection({
                   )}
                   <button
                     type="button"
-                    disabled={!canValidate || Boolean(activeJob)}
+                    disabled={!canValidate || Boolean(activeJob) || !workspaceAssigned}
                     title={canValidate ? 'Read-only bounded validation' : 'Save changes first'}
                     onClick={() => void validateSource(source)}
                   >
@@ -3239,7 +3247,9 @@ function SourcesSection({
                   </button>
                   <button
                     type="button"
-                    disabled={!canValidate || !source.enabled || Boolean(activeJob)}
+                    disabled={
+                      !canValidate || !source.enabled || Boolean(activeJob) || !workspaceAssigned
+                    }
                     title="Validation-gated trial sync; max 25 documents, 5 MiB, no reconciliation"
                     onClick={() => void trialSyncSource(source)}
                   >
@@ -3252,7 +3262,9 @@ function SourcesSection({
                   </button>
                   <button
                     type="button"
-                    disabled={!canValidate || !source.enabled || Boolean(activeJob)}
+                    disabled={
+                      !canValidate || !source.enabled || Boolean(activeJob) || !workspaceAssigned
+                    }
                     title="Guided initial sync; fixed budget, validation-gated, no reconciliation"
                     onClick={() => openInitialSync(source)}
                   >
@@ -3291,6 +3303,16 @@ function SourcesSection({
                 <div className="source-managed-note">
                   This external command is managed in the TOML file. Desktop can retain, disable, or
                   remove it, but cannot edit or create shell commands.
+                </div>
+              )}
+
+              {!workspaceAssigned && (
+                <div className="source-unassigned-note" role="alert">
+                  <AlertTriangle size={15} />
+                  <span>
+                    This source uses the legacy <code>{source.project || 'unassigned'}</code> scope.
+                    Assign it to a workspace below before enabling, validating, or syncing it.
+                  </span>
                 </div>
               )}
 
@@ -3337,6 +3359,9 @@ function SourcesSection({
                       disabled={sourceLocked}
                       onChange={(event) => changeSource(index, { project: event.target.value })}
                     >
+                      {!workspaceAssigned && source.project && (
+                        <option value={source.project}>Unassigned: {source.project}</option>
+                      )}
                       {settings.workspaces.map((workspace) => (
                         <option key={workspace.id} value={workspace.id}>
                           {workspace.name}
