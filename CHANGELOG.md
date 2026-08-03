@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.22.0](https://github.com/0xPlayerOne/cortana/compare/v0.21.1...v0.22.0) (2026-08-03)
+
+
+### Features
+
+* complete audit export and Slack cursor caching ([#292](https://github.com/0xPlayerOne/cortana/issues/292)) ([0a8bd72](https://github.com/0xPlayerOne/cortana/commit/0a8bd72ae2d1a9101fc04fcd116c6237c6ea29b8))
+
+
+### Bug Fixes
+
+* **desktop:** ignore stale source polls after backgrounding ([#290](https://github.com/0xPlayerOne/cortana/issues/290)) ([5f17bb3](https://github.com/0xPlayerOne/cortana/commit/5f17bb335d47443dad0f490a89e14c6437d18274))
+* **ingestion:** preserve ids for single-file roots ([#296](https://github.com/0xPlayerOne/cortana/issues/296)) ([a7121fa](https://github.com/0xPlayerOne/cortana/commit/a7121fa08045621ab9ec2df6f26020368c95c8eb))
+* rebuild corrupt Slack cursors ([#294](https://github.com/0xPlayerOne/cortana/issues/294)) ([0187c76](https://github.com/0xPlayerOne/cortana/commit/0187c76fa52da7854fba4ca9ecb332421543c7d2))
+
+
+### Tests
+
+* harden document cursor coverage ([#287](https://github.com/0xPlayerOne/cortana/issues/287)) ([2d72833](https://github.com/0xPlayerOne/cortana/commit/2d728336f730efb60e8d77b060e4952142af3142))
+
 ## [0.21.1](https://github.com/0xPlayerOne/cortana/compare/v0.21.0...v0.21.1) (2026-08-03)
 
 
