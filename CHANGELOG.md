@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.24.6](https://github.com/0xPlayerOne/cortana/compare/v0.24.5...v0.24.6) (2026-08-03)
+
+
+### Bug Fixes
+
+* **deps:** bump brace-expansion to 5.0.9 for GHSA-rgw5-rvv9-x895 ([de08a06](https://github.com/0xPlayerOne/cortana/commit/de08a063ce1b60ac6a1d6938310636b4119f56e5))
+* **ingestion:** fail closed on incomplete Google snapshots ([b5cbde2](https://github.com/0xPlayerOne/cortana/commit/b5cbde23777e3f3abfb9cfb51c3c6c72ef74b3cf))
+* **readiness:** honor embedding startup grace ([86b4709](https://github.com/0xPlayerOne/cortana/commit/86b4709d6b3ad09ebbd9da9ee97be2016e2c544a))
+* **test:** satisfy clippy in validation assertion ([793f3ba](https://github.com/0xPlayerOne/cortana/commit/793f3ba0335300b0615629680719244101cda45a))
+* **web:** require validation budget coverage for source health ([c9b2f68](https://github.com/0xPlayerOne/cortana/commit/c9b2f6821d7b65cca9f06cecf492dcb1e4763986))
+
+
+### Tests
+
+* **desktop:** cover redacted settings snapshot over mock IPC ([d2cd44c](https://github.com/0xPlayerOne/cortana/commit/d2cd44c45f06ae32bc81762099394262b8355aa8))
+* **web:** add advanced settings import/export desktop coverage ([8acd5c4](https://github.com/0xPlayerOne/cortana/commit/8acd5c4d5bb4bcd9002ac54b2bbe60e60a9b9385))
+* **web:** fix desktop settings import fixture types ([4935688](https://github.com/0xPlayerOne/cortana/commit/493568859092b341f566ea464460348698f06420))
+
 ## [0.24.5](https://github.com/0xPlayerOne/cortana/compare/v0.24.4...v0.24.5) (2026-08-03)
 
 
