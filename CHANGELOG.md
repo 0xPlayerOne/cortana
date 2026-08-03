@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.3](https://github.com/0xPlayerOne/cortana/compare/v0.26.2...v0.26.3) (2026-08-03)
+
+
+### Bug Fixes
+
+* **web:** make graph overview honest and responsive ([c63e971](https://github.com/0xPlayerOne/cortana/commit/c63e971a59847bef8f1f517b6164dc6921b0eb84))
+
 ## [0.26.2](https://github.com/0xPlayerOne/cortana/compare/v0.26.1...v0.26.2) (2026-08-03)
 
 
