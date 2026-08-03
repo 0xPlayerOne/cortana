@@ -53,7 +53,6 @@ base_url = "http://127.0.0.1:8008/v1"
 model = "auto-efficient"
 ```
 
-
 ## Production readiness
 
 `cortana readiness` performs read-only operational checks and emits JSON:
