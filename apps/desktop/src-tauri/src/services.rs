@@ -90,7 +90,13 @@ pub async fn install_sync(app: &AppHandle, approved: bool) -> Result<ServiceRepo
         audit_action("service.sync_install", "install", &["sync"], "failed", None);
         return Err(bounded_error(&output.stderr));
     }
-    audit_action("service.sync_install", "install", &["sync"], "completed", None);
+    audit_action(
+        "service.sync_install",
+        "install",
+        &["sync"],
+        "completed",
+        None,
+    );
     status(app).await
 }
 
