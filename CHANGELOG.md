@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.27.0](https://github.com/0xPlayerOne/cortana/compare/v0.26.3...v0.27.0) (2026-08-03)
+
+
+### Features
+
+* **web:** add first-pass UI rebrand and settings plugin flow ([de9b6ed](https://github.com/0xPlayerOne/cortana/commit/de9b6ed3ebca26d79a522c0f865d12a9bc04cb41))
+* **web:** finish workspace-first desktop UX ([62ed516](https://github.com/0xPlayerOne/cortana/commit/62ed5167c1c4323b8d033921594f80614c8b9e0b))
+
+
+### Bug Fixes
+
+* **connectors:** guard optional Gmail cache ([9578f4c](https://github.com/0xPlayerOne/cortana/commit/9578f4c6c740adb36b6d83234baec841f420a82f))
+* **web:** clear restart notice after background recovery ([510c63e](https://github.com/0xPlayerOne/cortana/commit/510c63ea772b55096d26bc3f3bbe3e8f38cad6e4))
+
 ## [0.26.3](https://github.com/0xPlayerOne/cortana/compare/v0.26.2...v0.26.3) (2026-08-03)
 
 
