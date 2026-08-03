@@ -60,7 +60,10 @@ impl UpdaterState {
             .clone()
     }
 
-    pub async fn check(&self, app: &AppHandle) -> Result<UpdateSnapshot, String> {
+    pub async fn check<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+    ) -> Result<UpdateSnapshot, String> {
         let _operation = self.operation.lock().await;
         self.update_snapshot(|snapshot| {
             snapshot.phase = "checking";
@@ -72,12 +75,16 @@ impl UpdaterState {
             snapshot.total_bytes = None;
             snapshot.restart_required = false;
         });
-        let result = app
-            .updater()
-            .map_err(|error| format!("initialize signed updater: {error}"))?
-            .check()
-            .await
-            .map_err(|error| format!("check for signed Cortana update: {error}"));
+        // Keep the observable state fail-closed even when the updater plugin
+        // cannot be initialized (for example in a headless test runtime). The
+        // previous `?` returned while leaving the snapshot stuck at `checking`.
+        let result = match app.updater() {
+            Ok(updater) => updater
+                .check()
+                .await
+                .map_err(|error| format!("check for signed Cortana update: {error}")),
+            Err(error) => Err(format!("initialize signed updater: {error}")),
+        };
 
         match result {
             Ok(Some(update)) => {

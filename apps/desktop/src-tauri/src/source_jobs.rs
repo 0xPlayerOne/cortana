@@ -141,9 +141,9 @@ pub struct SourceJobState {
 }
 
 impl SourceJobState {
-    pub fn start_validation(
+    pub fn start_validation<R: tauri::Runtime>(
         &self,
-        app: &AppHandle,
+        app: &tauri::AppHandle<R>,
         source_name: &str,
         budget: Option<InitialSyncBudget>,
     ) -> Result<SourceJobSnapshot, String> {
@@ -188,9 +188,9 @@ impl SourceJobState {
         self.build_initial_sync_plan(&source, budget, Path::new(&data_dir))
     }
 
-    pub fn execute_initial_sync(
+    pub fn execute_initial_sync<R: tauri::Runtime>(
         &self,
-        app: &AppHandle,
+        app: &tauri::AppHandle<R>,
         source_name: &str,
         budget: InitialSyncBudget,
         plan_id: &str,
@@ -337,9 +337,9 @@ impl SourceJobState {
         }
     }
 
-    pub fn start_authorization(
+    pub fn start_authorization<R: tauri::Runtime>(
         &self,
-        app: &AppHandle,
+        app: &tauri::AppHandle<R>,
         source_name: &str,
     ) -> Result<SourceJobSnapshot, String> {
         let source = settings::configured_source(source_name)?;
@@ -407,9 +407,9 @@ impl SourceJobState {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn start(
+    fn start<R: tauri::Runtime>(
         &self,
-        app: &AppHandle,
+        app: &tauri::AppHandle<R>,
         source: settings::SourceSettings,
         operation: &'static str,
         args: Vec<String>,

@@ -19,6 +19,7 @@
     "desktop:dev": "bun run --cwd apps/desktop dev",
     "desktop:info": "bun run --cwd apps/desktop info",
     "desktop:test": "bun run --cwd apps/desktop test",
+    "desktop:test:native": "bun run --cwd apps/desktop test:native",
     "dev": "bun run --cwd apps/web dev",
     "format": "prettier --check .",
     "format:write": "prettier --write .",

@@ -116,3 +116,20 @@ the explicit **Enable recurring sync** action passes those intervals to the bund
 job is already installed, saving changed intervals exposes **Apply recurring sync schedule** until
 the updated job is explicitly confirmed.
 Portable settings remain redacted and machine-local, so this scheduler file is not included.
+
+## Native acceptance tests
+
+`bun run desktop:test:native` prepares the bundled sidecar and connector resources, then runs the
+native acceptance suite: `cargo test native_` in `src-tauri` (a broader `desktop:test` runs the
+whole crate). The suite drives the production Tauri command handlers through `tauri::test`
+MockRuntime IPC dispatch with temporary config/secret/data directories, exercising settings save
+redaction and workspace scopes, read-only autostart status, OAuth/setup fail-closed guards, a real
+bounded filesystem validation job through the bundled `cortana` sidecar
+(start/status/cancel/terminal result), schedule persistence, the real service status report, tray
+close/show policy, and updater fail-closed checks. Sidecar-dependent tests skip with a note when
+the sidecar was not prepared.
+
+Headless harness boundaries that are deliberately not faked and remain manual acceptance on a real
+desktop session: native file dialogs (settings import/export, path picking), window/tray GUI
+events, autostart enable/disable, OAuth browser flows, OS service installation, and signed update
+download/install. The tests never perform network requests or modify host configuration.
