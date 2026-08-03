@@ -460,7 +460,8 @@ def test_discord_cached_connector_honors_document_cap(
         chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN", cache_dir=cache, max_documents=1)
     )
 
-    assert [document.source_id for document in documents] == ["99"]
+    assert [document.source_id for document in documents] == ["100"]
+    assert not (cache / "discord.sqlite3").exists()
 
 
 def test_slack_message_pages_fail_closed_on_invalid_shapes() -> None:
@@ -653,6 +654,49 @@ def test_slack_cache_rebuilds_when_cursor_is_corrupt(
 
     assert [document.source_id for document in documents] == ["C1:20.0"]
     assert oldest_values == [None]
+
+
+def test_slack_bounded_run_does_not_mutate_cursor_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SLACK_TEST_TOKEN", "secret")
+    real_client = httpx.Client
+    history_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal history_calls
+        if request.url.path.endswith("/conversations.history"):
+            history_calls += 1
+            return response(
+                {
+                    "ok": True,
+                    "messages": [
+                        {"ts": "20.0", "user": "U1", "text": "Newest"},
+                        {"ts": "19.0", "user": "U2", "text": "Older"},
+                    ],
+                    "response_metadata": {"next_cursor": "next-page"},
+                },
+                request=request,
+            )
+        raise AssertionError(f"unexpected Slack request: {request.url}")
+
+    monkeypatch.setattr(
+        chat.httpx,
+        "Client",
+        lambda **_kwargs: real_client(
+            base_url="https://slack.test",
+            transport=httpx.MockTransport(handler),
+        ),
+    )
+    cache = tmp_path / "cache"
+
+    documents = list(
+        chat.fetch_slack(["C1"], "work", "SLACK_TEST_TOKEN", cache_dir=cache, max_documents=1)
+    )
+
+    assert [document.source_id for document in documents] == ["C1:20.0"]
+    assert history_calls == 1
+    assert not (cache / "slack.sqlite3").exists()
 
 
 def test_discord_cache_rejects_symlinked_directory_and_database(tmp_path: Path) -> None:

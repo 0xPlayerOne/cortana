@@ -32,7 +32,10 @@ def fetch_slack(
         timeout=30,
         follow_redirects=False,
     ) as client:
-        if cache_dir is not None:
+        # A bounded run is intentionally read-only with respect to the
+        # persistent cursor cache. A partial snapshot must not advance a
+        # cursor past records that were never enumerated.
+        if cache_dir is not None and max_documents is None:
             yield from _fetch_slack_cached(
                 client,
                 channel_ids,
@@ -318,7 +321,10 @@ def fetch_discord(
         timeout=30,
         follow_redirects=False,
     ) as client:
-        if cache_dir is not None:
+        # A bounded run is intentionally read-only with respect to the
+        # persistent cursor cache. A partial snapshot must not advance a
+        # cursor past records that were never enumerated.
+        if cache_dir is not None and max_documents is None:
             yield from _fetch_discord_cached(
                 client,
                 channel_ids,
