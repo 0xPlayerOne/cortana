@@ -138,8 +138,12 @@ cortana --config ~/.config/cortana/config.toml service install \
 
 The installer re-checks every enabled source before scheduling recurring sync and refuses to
 install the job unless each source has a current successful validation covering its configured
-document, byte, and duration budgets. Re-run `validate-source` (or the Desktop validation flow)
-after changing a source or its budgets.
+document, byte, and duration budgets. A validation stays current for
+`[ingestion].validation_max_age_hours` (168 hours by default; `0` accepts any age): re-run
+`validate-source` (or the Desktop validation flow) after changing a source or its budgets, and
+re-validate periodically so a revoked credential or changed scope cannot keep a stale record
+blessing the schedule. The same freshness bound gates `sync --require-validation` and the
+readiness `source-validation` check.
 
 Re-running `service install` without `--enable-sync-service` removes any prior recurring sync job
 and leaves Cortana in query-only mode.
@@ -228,12 +232,13 @@ enabled source has a current successful validation at equal or larger document, 
 budgets than its configured limits. The check reads only the owner-local validation state and never
 contacts a connector: it fails when a source was never validated, its last validation failed, its
 configuration changed since validation (the validation record stores a configuration fingerprint),
-or its resolved budgets grew past the validated ones — for example after raising `[ingestion]`
-defaults behind an override-less source. This mirrors the install-time recurring-sync gate, so an
-operator who changed a source after installing the sync schedule sees the mismatch in `cortana
-readiness` instead of discovering it from a failing scheduled run. Without the flag, source
-validation is not required for query-only readiness; per-source validation state remains visible in
-`/v1/status` at any time.
+its resolved budgets grew past the validated ones — for example after raising `[ingestion]`
+defaults behind an override-less source — or its validation lapsed past
+`[ingestion].validation_max_age_hours` (168 hours by default; `0` disables the bound). This mirrors
+the install-time recurring-sync gate, so an operator who changed a source after installing the sync
+schedule sees the mismatch in `cortana readiness` instead of discovering it from a failing scheduled
+run. Without the flag, source validation is not required for query-only readiness; per-source
+validation state remains visible in `/v1/status` at any time.
 
 ## Secrets
 

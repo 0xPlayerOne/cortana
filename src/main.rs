@@ -1335,6 +1335,7 @@ fn require_sync_validation(
         limits.max_documents,
         limits.max_bytes,
         limits.max_seconds,
+        chrono::Duration::hours(config.ingestion.validation_max_age_hours as i64),
     )
 }
 
@@ -1496,6 +1497,7 @@ fn ensure_recurring_sync_validated(config: &Config) -> Result<()> {
             limits.max_documents,
             limits.max_bytes,
             limits.max_seconds,
+            chrono::Duration::hours(config.ingestion.validation_max_age_hours as i64),
         )
         .with_context(|| {
             format!(
@@ -2695,9 +2697,9 @@ mod tests {
 
     use super::{
         Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
-        chunk, cleanup_connector_spools, configured_connector_command, context_bundle,
-        ensure_recurring_sync_validated, ingest_documents, private_file, run_connector_to_spool,
-        validation_overrides,
+        SyncOverrides, chunk, cleanup_connector_spools, configured_connector_command,
+        context_bundle, ensure_recurring_sync_validated, ingest_documents, private_file,
+        run_connector_to_spool, validation_overrides,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
@@ -2795,6 +2797,68 @@ mod tests {
             .expect_err("missing source validation must block recurring sync");
         assert!(error.to_string().contains("work-code"));
         assert!(error.to_string().contains("current successful validation"));
+    }
+
+    #[test]
+    fn recurring_sync_requires_a_fresh_validation_not_just_a_successful_one() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        let source = SourceConfig {
+            name: "work-code".into(),
+            kind: "filesystem".into(),
+            enabled: true,
+            project: "work".into(),
+            root: Some(directory.path().join("code")),
+            source: Some("work-code".into()),
+            channels: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        config.sources.push(source.clone());
+        let limits = SourceLimits::resolve(&config, &source, SyncOverrides::default())
+            .expect("resolved budgets");
+        let mut status = cortana::source_validation::SourceValidationStatus {
+            source: source.name.clone(),
+            project: source.project.clone(),
+            kind: source.kind.clone(),
+            status: "succeeded".into(),
+            validated_at: chrono::Utc::now() - chrono::Duration::days(30),
+            documents: Some(1),
+            bytes: Some(8),
+            max_documents: limits.max_documents,
+            max_bytes: limits.max_bytes,
+            max_seconds: limits.max_seconds,
+            configuration_fingerprint: Some(
+                cortana::source_validation::configuration_fingerprint(&source).unwrap(),
+            ),
+            error: None,
+        };
+        cortana::source_validation::record(directory.path(), status.clone())
+            .expect("lapsed validation");
+
+        let error = ensure_recurring_sync_validated(&config)
+            .expect_err("a 30-day-old validation must not bless recurring sync");
+        let message = format!("{error:#}");
+        assert!(message.contains("30 days old"));
+        assert!(message.contains("re-run validate-source"));
+
+        status.validated_at = chrono::Utc::now();
+        cortana::source_validation::record(directory.path(), status).expect("fresh validation");
+        ensure_recurring_sync_validated(&config)
+            .expect("a fresh validation must bless recurring sync");
     }
 
     struct BatchRecordingEmbedder {

@@ -94,6 +94,12 @@ max_duration_seconds = 900
 document_batch_size = 16
 # Keep ingestion below query capacity so agents retain responsive retrieval.
 request_concurrency = 1
+# A successful source validation stays current for this long. Recurring sync
+# installation, `sync --require-validation`, and readiness
+# (`--allow-sync-service`) refuse a validation older than the bound so a
+# revoked credential or changed scope cannot keep a stale record blessing the
+# schedule; set 0 to accept any age.
+validation_max_age_hours = 168
 
 [connectors]
 # Change this when Cortana is installed into a dedicated virtual environment.
