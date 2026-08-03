@@ -109,7 +109,7 @@
 .retrieval-diagnostics dd,
 .server-context dd {
   margin: 3px 0 0;
-  color: #dddcd6;
+  color: var(--theme-text-primary);
   font-size: 11px;
 }
 

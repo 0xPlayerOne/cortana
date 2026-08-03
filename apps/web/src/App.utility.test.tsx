@@ -134,14 +134,15 @@ test('titlebar controls perform real navigation actions', async () => {
   expect(screen.getByRole('heading', { level: 1, name: 'Conversations' })).toBeTruthy()
 })
 
-test('Graph and Timeline rail buttons route to the existing workspace tabs', async () => {
+test('Graph is a full-screen rail view and Timeline is result-only', async () => {
   await renderApp()
 
-  // Graph routes to the workspace Graph tab without leaving the workspace.
+  // Graph routes to a full-screen workspace view without a duplicate top tab.
   fireEvent.click(railButton('Graph'))
   await waitFor(() =>
-    expect(screen.getByRole('tab', { name: 'Graph' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('heading', { name: 'Graph unavailable' })).toBeTruthy()
   )
+  expect(screen.queryByRole('tab', { name: 'Graph' })).toBeNull()
   expect(railButton('Graph').className).toContain('active')
   expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
 
@@ -149,7 +150,7 @@ test('Graph and Timeline rail buttons route to the existing workspace tabs', asy
   // select the result-only timeline tab.
   expect(railButton('Timeline').hasAttribute('disabled')).toBe(true)
   fireEvent.click(railButton('Timeline'))
-  expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('false')
+  expect(screen.queryByRole('tab', { name: 'Timeline' })).toBeNull()
   expect(railButton('Timeline').className).not.toContain('active')
 
   // A search result unlocks Timeline, which routes to the workspace Timeline
@@ -168,7 +169,7 @@ test('Graph and Timeline rail buttons route to the existing workspace tabs', asy
   )
   expect(railButton('Timeline').className).toContain('active')
   expect(railButton('Graph').className).not.toContain('active')
-  expect(screen.getByRole('tab', { name: 'Graph' }).getAttribute('aria-selected')).toBe('false')
+  expect(screen.queryByRole('tab', { name: 'Graph' })).toBeNull()
 
   // Knowledge returns the workspace to its default tab.
   fireEvent.click(railButton('Knowledge'))
@@ -191,9 +192,18 @@ test('graph and timeline evidence actions open the selected source', async () =>
 
   for (const rail of ['Graph', 'Timeline']) {
     fireEvent.click(railButton(rail))
-    await waitFor(() =>
-      expect(screen.getByRole('tab', { name: rail }).getAttribute('aria-selected')).toBe('true')
-    )
+    if (rail === 'Graph') {
+      await waitFor(() =>
+        expect(
+          screen.getByRole('button', { name: 'Open evidence: Deployment playbook' })
+        ).toBeTruthy()
+      )
+      expect(screen.queryByRole('tab', { name: 'Graph' })).toBeNull()
+    } else {
+      await waitFor(() =>
+        expect(screen.getByRole('tab', { name: rail }).getAttribute('aria-selected')).toBe('true')
+      )
+    }
     const evidenceButton = screen.getByRole('button', {
       name:
         rail === 'Graph'

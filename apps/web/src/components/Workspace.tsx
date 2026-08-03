@@ -10,11 +10,10 @@ const tabs = [
   { id: 'answer', label: 'Answer', icon: AppIcon },
   { id: 'document', label: 'Document', icon: BookOpen },
   { id: 'sources', label: 'Evidence', icon: FileText },
-  { id: 'graph', label: 'Graph', icon: Network },
   { id: 'timeline', label: 'Timeline', icon: History },
 ] as const
 
-export type WorkspaceTab = (typeof tabs)[number]['id']
+export type WorkspaceTab = (typeof tabs)[number]['id'] | 'graph'
 
 // Result-only views stay inert until a search returns an answer or evidence.
 // The Document tab is the default primary view and Graph remains an explicit
@@ -87,33 +86,39 @@ export function Workspace({
   useEffect(() => {
     if (answer) onTabChange('answer')
   }, [answer, onTabChange])
+  useEffect(() => {
+    // Keep an explicitly submitted search visible while retrieval is in
+    // flight. The result tab is hidden from the tab strip until evidence
+    // arrives, but redirecting it immediately would replace the loading
+    // state with the idle document view.
+    if (!loading && !hasResults && resultGatedTabs.has(tab)) onTabChange('document')
+  }, [hasResults, loading, onTabChange, tab])
 
   return (
     <main className="workspace">
-      <div className="workspace-tabs" role="tablist" aria-label="Result views">
-        {tabs.map(({ id, label, icon: Icon }) => {
-          const gated = resultGatedTabs.has(id) && !hasResults
-          return (
-            <button
-              type="button"
-              key={id}
-              role="tab"
-              aria-selected={tab === id}
-              className={tab === id ? 'active' : ''}
-              disabled={gated}
-              title={gated ? 'Available once a search returns evidence' : undefined}
-              onClick={() => onTabChange(id)}
-            >
-              <Icon size={15} />
-              {label}
-              {id === 'document' && document && <span className="count-pill">1</span>}
-              {id === 'sources' && evidence.length > 0 && (
-                <span className="count-pill">{evidence.length}</span>
-              )}
-            </button>
-          )
-        })}
-      </div>
+      {tab !== 'graph' && (
+        <div className="workspace-tabs" role="tablist" aria-label="Result views">
+          {tabs
+            .filter(({ id }) => id === 'document' || hasResults)
+            .map(({ id, label, icon: Icon }) => (
+              <button
+                type="button"
+                key={id}
+                role="tab"
+                aria-selected={tab === id}
+                className={tab === id ? 'active' : ''}
+                onClick={() => onTabChange(id)}
+              >
+                <Icon size={15} />
+                {label}
+                {id === 'document' && document && <span className="count-pill">1</span>}
+                {id === 'sources' && evidence.length > 0 && (
+                  <span className="count-pill">{evidence.length}</span>
+                )}
+              </button>
+            ))}
+        </div>
+      )}
       {documentLoading ? (
         <EmptyState title="Opening document" detail="Loading the canonical indexed content…" />
       ) : tab === 'document' && document ? (

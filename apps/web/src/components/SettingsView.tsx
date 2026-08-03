@@ -19,7 +19,10 @@ import {
 } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { applyTheme, readThemePreference, SUPPORTED_THEMES, type ThemeMode } from '../theme'
-import { sourceIconForKind } from './sourceIcons'
+import { WorkspaceLogo } from '../workspaceLogos'
+import { readWorkspaceLogoFile, writeWorkspaceLogo } from '../workspaceLogoStore'
+import { SourceIcon } from './sourceIcons'
+import { sourceDisplayName } from './sourceIconData'
 
 import {
   cancelDesktopInstaller,
@@ -743,10 +746,14 @@ export function SettingsView({
         >
           {error ? <AlertTriangle size={16} /> : <Check size={16} />}
           {error ||
-            (saved
-              ? 'Settings saved. Restart affected services to apply them.'
-              : 'A service restart is required.')}
-          {!error && settings.restart_required && (
+            (settings.restart_required && serviceActivity?.status === 'running'
+              ? 'Settings saved. Restarting affected services in the background…'
+              : saved && settings.restart_required
+                ? 'Settings saved. Affected services are restarting in the background.'
+                : saved
+                  ? 'Settings saved.'
+                  : 'A service restart is still required.')}
+          {!error && settings.restart_required && serviceActivity?.status !== 'running' && (
             <button
               type="button"
               className="secondary-button"
@@ -2588,8 +2595,19 @@ function WorkspaceSection({
   settings: DesktopSettings
   update: (change: (draft: DesktopSettings) => DesktopSettings) => void
 }) {
+  const [logoError, setLogoError] = useState('')
   const hasWorkspaceSources = (workspaceId: string) =>
     settings.sources.some((source) => source.project === workspaceId)
+
+  const updateLogo = async (workspaceId: string, file: File | undefined) => {
+    if (!file) return
+    try {
+      writeWorkspaceLogo(workspaceId, await readWorkspaceLogoFile(file))
+      setLogoError('')
+    } catch (caught) {
+      setLogoError(caught instanceof Error ? caught.message : 'Workspace logo could not be saved.')
+    }
+  }
 
   const addWorkspace = () =>
     update((current) => {
@@ -2650,14 +2668,33 @@ function WorkspaceSection({
   return (
     <SettingsSection
       title="Workspaces"
-      description="Create up to three isolated query scopes. Sources and accounts can be assigned to one scope."
+      description="Create up to three isolated query scopes. Sources and accounts can be assigned to one scope. Workspace logos stay local to this Desktop profile and never enter the index or portable settings export."
     >
       <div className="workspace-settings-grid">
         {settings.workspaces.map((workspace, index) => (
           <article className="workspace-card" key={`${workspace.id}:${index}`}>
             <div className="workspace-card-heading">
-              <i style={{ background: workspace.color || '#E8A83B' }} />
-              <strong>{workspace.name || 'New workspace'}</strong>
+              <WorkspaceLogo workspace={workspace} size="large" />
+              <div className="workspace-card-title">
+                <strong>{workspace.name || 'New workspace'}</strong>
+                <small>Workspace identity</small>
+              </div>
+              <label
+                className="workspace-logo-upload quick-tooltip"
+                title="Upload workspace logo"
+                data-tooltip="Upload workspace logo"
+              >
+                <Upload size={14} />
+                <span className="visually-hidden">Upload logo for {workspace.name}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={(event) => {
+                    void updateLogo(workspace.id, event.target.files?.[0])
+                    event.currentTarget.value = ''
+                  }}
+                />
+              </label>
               {settings.workspaces.length > 1 && (
                 <button
                   type="button"
@@ -2693,22 +2730,22 @@ function WorkspaceSection({
                 <small className="workspace-advanced-note">
                   ID is internal; account labels are optional metadata.
                 </small>
-                <Field label="Scope ID" hint="lowercase letters, numbers, dashes">
+                <Field label="Scope ID" hint="generated from the display name; used internally">
                   <input
                     value={workspace.id}
+                    readOnly
                     disabled={hasWorkspaceSources(workspace.id)}
-                    title={
-                      hasWorkspaceSources(workspace.id)
-                        ? 'Move assigned sources before changing this workspace ID'
-                        : undefined
-                    }
-                    onChange={(event) => changeWorkspace(index, { id: event.target.value })}
+                    aria-disabled={hasWorkspaceSources(workspace.id)}
+                    title="Generated from the display name and used internally"
                     required
                     maxLength={32}
                     pattern="[a-z0-9][a-z0-9_-]*"
                   />
                 </Field>
-                <Field label="Account label" hint="shown only as a local reminder">
+                <Field
+                  label="Account label"
+                  hint="optional display note; OAuth credentials belong to each source"
+                >
                   <input
                     value={workspace.account_label || ''}
                     onChange={(event) =>
@@ -2730,6 +2767,11 @@ function WorkspaceSection({
           </article>
         ))}
       </div>
+      {logoError && (
+        <p className="settings-inline-error" role="alert">
+          {logoError}
+        </p>
+      )}
       <button
         type="button"
         className="secondary-button"
@@ -3126,7 +3168,6 @@ function SourcesSection({
           const workspaceLabel =
             settings.workspaces.find((workspace) => workspace.id === source.project)?.name ||
             source.project
-          const SourceIcon = sourceIconForKind(source.kind)
           return (
             <article className="source-settings-card" key={`${source.name}:${index}`}>
               <header>
@@ -3143,12 +3184,12 @@ function SourcesSection({
                     aria-label={`${sourceLabel} connector`}
                     role="img"
                   >
-                    <SourceIcon size={17} aria-hidden="true" />
+                    <SourceIcon kind={source.kind} size={17} />
                   </span>
                   <span>
-                    <strong>{source.name || 'New source'}</strong>
+                    <strong>{sourceDisplayName(source.kind, source.name || 'New source')}</strong>
                     <small>
-                      {workspaceLabel} · {sourceLabel} · {source.enabled ? 'Enabled' : 'Disabled'}
+                      {workspaceLabel} · {source.enabled ? 'Enabled' : 'Disabled'}
                     </small>
                   </span>
                 </label>

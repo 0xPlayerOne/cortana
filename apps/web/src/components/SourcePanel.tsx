@@ -14,7 +14,9 @@ import { useMemo, useState } from 'react'
 
 import { activeJobs, describeSourceJobProgress } from '../sourceJobs'
 import { operationalSources, sourceHealth, type OperationalSource } from '../operations'
-import { sourceIconForKind } from './sourceIcons'
+import { WorkspaceLogo } from '../workspaceLogos'
+import { SourceIcon } from './sourceIcons'
+import { sourceDisplayName } from './sourceIconData'
 import type {
   BrainDocumentSummary,
   BrainStatus,
@@ -91,9 +93,10 @@ export function SourcePanel({
   jobs?: DesktopSourceJob[]
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const selectedWorkspaceId = workspace || workspaces[0]?.id || ''
   const sources = useMemo(
-    () => operationalSources(status).filter((item) => !workspace || item.project === workspace),
-    [status, workspace]
+    () => operationalSources(status).filter((item) => item.project === selectedWorkspaceId),
+    [selectedWorkspaceId, status]
   )
   const projects = useMemo(
     () =>
@@ -107,6 +110,7 @@ export function SourcePanel({
   )
   const active = activeJobs(jobs)
   const selectedWorkspace = workspaces.find((item) => item.id === workspace) ?? workspaces[0]
+  const selectedSource = sources.find((item) => item.source === selected)
   const statusLoading = status === null && statusError === ''
   const sourceModeClass = status
     ? status.ingestion.scheduled
@@ -161,13 +165,9 @@ export function SourcePanel({
       <label className="sidebar-workspace-select">
         <span>Workspace</span>
         <div className="workspace-picker">
-          <i
-            className="workspace-picker-mark"
-            style={{ background: selectedWorkspace?.color || 'var(--amber)' }}
-            aria-hidden="true"
-          />
+          {selectedWorkspace && <WorkspaceLogo workspace={selectedWorkspace} size="small" />}
           <select
-            value={workspace || workspaces[0]?.id || ''}
+            value={selectedWorkspaceId}
             onChange={(event) => onSelectWorkspace(event.target.value)}
             aria-label="Workspace"
           >
@@ -266,7 +266,6 @@ export function SourcePanel({
           {projects.map(([project, items]) => (
             <section key={project}>
               {items.map((item) => {
-                const Icon = sourceIconForKind(item.kind)
                 const health = sourceHealth(item)
                 const key = `${item.project}:${item.source}`
                 const isCollapsed = collapsed.has(key)
@@ -274,7 +273,7 @@ export function SourcePanel({
                 // panel shows all workspaces, matching by name alone would
                 // highlight every same-named connector and make a click
                 // appear to select the wrong account.
-                const isSelected = selected === item.source && workspace === item.project
+                const isSelected = selected === item.source && selectedWorkspaceId === item.project
                 const auth = item.authorization
                 const needsProviderSetup = Boolean(auth?.setup_required)
                 const needsGoogleAuthorization =
@@ -308,11 +307,12 @@ export function SourcePanel({
                         type="button"
                         className={`source-select ${isSelected ? 'selected' : ''}`}
                         aria-pressed={isSelected}
+                        aria-label={`${item.source} ${item.documents.toLocaleString()}`}
                         onClick={() => onSelect(item.source, item.project)}
                         title={health.label}
                       >
-                        <Icon size={17} />
-                        <span>{item.name}</span>
+                        <SourceIcon kind={item.kind} size={17} />
+                        <span>{sourceDisplayName(item.kind, item.name)}</span>
                         <i className={`source-health ${health.state}`} />
                         <small>{item.documents.toLocaleString()}</small>
                       </button>
@@ -403,7 +403,11 @@ export function SourcePanel({
       )}
       <section className="document-explorer">
         <div className="document-explorer-heading">
-          <strong>{selected || workspace || 'All documents'}</strong>
+          <strong>
+            {selectedSource
+              ? sourceDisplayName(selectedSource.kind, selectedSource.source)
+              : selectedWorkspace?.name || selectedWorkspaceId || 'Documents'}
+          </strong>
           <span>{documents.length.toLocaleString()} loaded</span>
         </div>
         <label className="document-filter">
