@@ -108,6 +108,11 @@ export type ConfiguredSourceSummary = {
     kind: string
     status: 'succeeded' | 'failed'
     validated_at: string
+    // `fresh` is false when the succeeded validation is older than the
+    // configured `validation_max_age_hours` bound. Older servers omit both
+    // fields; the workspace treats a missing flag as current.
+    fresh?: boolean
+    age_seconds?: number
     documents: number | null
     bytes: number | null
     max_documents: number
@@ -124,6 +129,7 @@ export type IngestionStatus = {
   max_bytes_per_source: number
   max_duration_seconds: number
   request_concurrency: number
+  validation_max_age_hours?: number
   validation_state_error?: string | null
   configured_sources: ConfiguredSourceSummary[]
 }

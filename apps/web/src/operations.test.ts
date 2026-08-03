@@ -81,6 +81,8 @@ describe('operational source visibility', () => {
       kind: 'buzz',
       status: 'succeeded',
       validated_at: '2026-07-30T06:00:00Z',
+      fresh: true,
+      age_seconds: 60,
       documents: 45,
       bytes: 4096,
       max_documents: 100,
@@ -92,6 +94,56 @@ describe('operational source visibility', () => {
     const source = operationalSources(status).find((item) => item.name === 'buzz')
     expect(sourceHealth(source!).state).toBe('healthy')
     expect(sourceHealth(source!).label).toContain('Connector validated')
+  })
+
+  test('flags an expired succeeded validation as needing re-validation', () => {
+    const status = structuredClone(demoStatus)
+    const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!
+    buzz.validation = {
+      source: 'buzz',
+      project: 'agents',
+      kind: 'buzz',
+      status: 'succeeded',
+      validated_at: '2026-06-30T06:00:00Z',
+      fresh: false,
+      age_seconds: 30 * 24 * 3_600,
+      documents: 45,
+      bytes: 4096,
+      max_documents: 100,
+      max_bytes: 1_048_576,
+      max_seconds: 30,
+      error: null,
+    }
+
+    const source = operationalSources(status).find((item) => item.name === 'buzz')
+    const health = sourceHealth(source!)
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('expired')
+    expect(health.label.toLowerCase()).toContain('re-validate')
+  })
+
+  test('treats a validation without freshness metadata as current', () => {
+    const status = structuredClone(demoStatus)
+    const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!
+    // A server predating the freshness fields never reports `fresh`; the
+    // workspace must not invent an expiry for a record it cannot judge.
+    const legacy = {
+      source: 'buzz',
+      project: 'agents',
+      kind: 'buzz',
+      status: 'succeeded' as const,
+      validated_at: '2026-07-30T06:00:00Z',
+      documents: 45,
+      bytes: 4096,
+      max_documents: 100,
+      max_bytes: 1_048_576,
+      max_seconds: 30,
+      error: null,
+    }
+    buzz.validation = legacy
+
+    const source = operationalSources(status).find((item) => item.name === 'buzz')
+    expect(sourceHealth(source!).state).toBe('healthy')
   })
 })
 

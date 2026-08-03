@@ -15,6 +15,7 @@ use axum::{
     routing::{get, post},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::timeout::TimeoutLayer;
@@ -267,6 +268,7 @@ struct IngestionStatus {
     max_bytes_per_source: u64,
     max_duration_seconds: u64,
     request_concurrency: usize,
+    validation_max_age_hours: u64,
     validation_state_error: Option<String>,
     configured_sources: Vec<ConfiguredSourceStatus>,
     #[serde(skip)]
@@ -301,6 +303,8 @@ struct SourceValidationSummary {
     kind: String,
     status: String,
     validated_at: String,
+    fresh: bool,
+    age_seconds: u64,
     documents: Option<usize>,
     bytes: Option<u64>,
     max_documents: usize,
@@ -324,13 +328,42 @@ struct ConfiguredSourceStatus {
     validation: Option<SourceValidationSummary>,
 }
 
-fn validation_summary(status: &SourceValidationStatus) -> SourceValidationSummary {
+/// Saturating cap for validation-age telemetry in the shared status API. The
+/// persisted record can be arbitrarily old (or its clock skewed), so the
+/// reported age stays bounded and monotonic instead of growing without limit.
+const MAX_STATUS_VALIDATION_AGE_SECONDS: u64 = u32::MAX as u64;
+
+fn validation_age_seconds(validated_at: DateTime<Utc>) -> u64 {
+    let age = Utc::now()
+        .signed_duration_since(validated_at)
+        .num_seconds()
+        .max(0);
+    u64::try_from(age)
+        .unwrap_or_default()
+        .min(MAX_STATUS_VALIDATION_AGE_SECONDS)
+}
+
+/// A validation is current when its age is within the configured freshness
+/// bound. `validation_max_age_hours == 0` disables the bound, mirroring the
+/// `source-validation` readiness check: an age exactly at the bound still
+/// passes, and only an age strictly beyond it is expired.
+fn validation_is_fresh(age_seconds: u64, max_age_hours: u64) -> bool {
+    max_age_hours == 0 || age_seconds <= max_age_hours.saturating_mul(3_600)
+}
+
+fn validation_summary(
+    status: &SourceValidationStatus,
+    max_age_hours: u64,
+) -> SourceValidationSummary {
+    let age_seconds = validation_age_seconds(status.validated_at);
     SourceValidationSummary {
         source: status.source.clone(),
         project: status.project.clone(),
         kind: status.kind.clone(),
         status: status.status.clone(),
         validated_at: status.validated_at.to_rfc3339(),
+        fresh: validation_is_fresh(age_seconds, max_age_hours),
+        age_seconds,
         documents: status.documents,
         bytes: status.bytes,
         max_documents: status.max_documents,
@@ -389,6 +422,7 @@ impl IngestionStatus {
             max_bytes_per_source: config.ingestion.max_bytes_per_source,
             max_duration_seconds: config.ingestion.max_duration_seconds,
             request_concurrency: config.ingestion.request_concurrency,
+            validation_max_age_hours: config.ingestion.validation_max_age_hours,
             validation_state_error: None,
             configured_sources,
             validation_fingerprints,
@@ -413,7 +447,9 @@ impl IngestionStatus {
                                         == Some(fingerprint.as_str())
                                 })
                         })
-                        .map(validation_summary);
+                        .map(|validation| {
+                            validation_summary(validation, self.validation_max_age_hours)
+                        });
                 }
             }
             Err(error) => {
@@ -1895,6 +1931,17 @@ mod tests {
             true
         );
         assert_eq!(value["ingestion"]["max_documents_per_source"], 25);
+        assert_eq!(value["ingestion"]["validation_max_age_hours"], 168);
+        assert!(
+            value["ingestion"]["configured_sources"][0]["validation"]["fresh"]
+                .as_bool()
+                .is_some_and(|fresh| fresh)
+        );
+        assert!(
+            value["ingestion"]["configured_sources"][0]["validation"]["age_seconds"]
+                .as_u64()
+                .is_some_and(|age| age <= 3_600)
+        );
         assert_eq!(value["query"]["mode"], "extractive");
         assert_eq!(value["query"]["max_planned_queries"], 4);
         assert_eq!(value["query_cache_entries"], 0);
@@ -1968,6 +2015,98 @@ mod tests {
             admin_names,
             vec!["work-drive", "personal-notes", "public-reference"]
         );
+    }
+
+    #[test]
+    fn status_marks_a_current_validation_fresh_with_a_bounded_age() {
+        let directory = tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            sources: vec![google_source(None)],
+            ..Config::default()
+        };
+        config.ingestion.validation_max_age_hours = 24;
+        let source = config.sources.first().expect("configured source");
+        let fingerprint =
+            source_validation::configuration_fingerprint(source).expect("validation fingerprint");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "succeeded".into(),
+                validated_at: chrono::Utc::now() - chrono::Duration::hours(2),
+                documents: Some(1),
+                bytes: Some(1),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(fingerprint),
+                error: None,
+            },
+        )
+        .expect("validation state");
+
+        let status = IngestionStatus::from_config(&config, false);
+        let validation = status.configured_sources[0]
+            .validation
+            .as_ref()
+            .expect("current validation");
+        assert!(validation.fresh);
+        // The age only grows between recording and inspection, so a lower bound
+        // of the fixture age (minus sub-second recording skew) is stable.
+        assert!(validation.age_seconds >= 2 * 3_600 - 5);
+        assert_eq!(status.validation_max_age_hours, 24);
+    }
+
+    #[test]
+    fn status_marks_a_lapsed_validation_expired_and_honors_an_unlimited_bound() {
+        let directory = tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            sources: vec![google_source(None)],
+            ..Config::default()
+        };
+        config.ingestion.validation_max_age_hours = 24;
+        let source = config.sources.first().expect("configured source");
+        let fingerprint =
+            source_validation::configuration_fingerprint(source).expect("validation fingerprint");
+        source_validation::record(
+            &config.data_dir,
+            SourceValidationStatus {
+                source: source.name.clone(),
+                project: source.project.clone(),
+                kind: source.kind.clone(),
+                status: "succeeded".into(),
+                validated_at: chrono::Utc::now() - chrono::Duration::hours(200),
+                documents: Some(1),
+                bytes: Some(1),
+                max_documents: 25,
+                max_bytes: 1024,
+                max_seconds: 60,
+                configuration_fingerprint: Some(fingerprint),
+                error: None,
+            },
+        )
+        .expect("validation state");
+
+        let status = IngestionStatus::from_config(&config, false);
+        let validation = status.configured_sources[0]
+            .validation
+            .as_ref()
+            .expect("persisted validation");
+        assert!(!validation.fresh);
+        assert!(validation.age_seconds >= 200 * 3_600);
+
+        // `0` disables the freshness bound: the same lapsed record stays fresh.
+        config.ingestion.validation_max_age_hours = 0;
+        let status = IngestionStatus::from_config(&config, false);
+        let validation = status.configured_sources[0]
+            .validation
+            .as_ref()
+            .expect("persisted validation");
+        assert!(validation.fresh);
     }
 
     #[test]

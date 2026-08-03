@@ -32,7 +32,11 @@ entries, and cache hits without logging queries or evidence.
 `/v1/status` also reports whether recurring ingestion is installed, the global and per-source
 safety budgets, every ACL-visible configured source including disabled or not-yet-indexed sources,
 its configured ACL labels, a non-secret authorization summary, and the latest persisted validation
-and sync outcomes for each source. The local owner sees the complete inventory; scoped principals
+and sync outcomes for each source. Each per-source validation summary reports a `fresh` flag and a
+bounded `age_seconds` computed against the configured
+`[ingestion].validation_max_age_hours` bound (168 hours by default; `0` accepts any age), so a
+succeeded validation that has lapsed is reported as expired rather than healthy. The local owner
+sees the complete inventory; scoped principals
 see only matching source/project counters, workspaces, validation state, and sync outcomes; an
 admin-scoped principal may inspect the complete operational view. The
 authorization summary reports only the connector method (`none`, `token`, or
@@ -150,6 +154,15 @@ instead of ingesting against a stale validation. The same freshness bound gates
 `sync --require-validation` and the readiness `source-validation` check. Re-run `validate-source`
 (or the Desktop validation flow) after changing a source or its budgets; the next scheduled run
 picks up the new validation record automatically.
+blessing the schedule. The installed job runs `sync --require-validation` without `--source`, so
+every scheduled run re-applies the same gate before any connector is contacted: a source whose
+validation lapsed or failed, whose configuration changed since validation, or whose resolved
+budgets grew past the validated ones fails the run fast (nonzero exit, visible in the job log)
+instead of ingesting against a stale validation. The same freshness bound gates
+`sync --require-validation` and the readiness `source-validation` check. Re-run `validate-source`
+(or the Desktop validation flow) after changing a source or its budgets; the next scheduled run
+picks up the new validation record automatically. `/v1/status` marks a lapsed validation expired
+so the workspace flags the source for re-validation instead of showing it as healthy.
 
 Re-running `service install` without `--enable-sync-service` removes any prior recurring sync job
 and leaves Cortana in query-only mode.
