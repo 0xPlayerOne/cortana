@@ -187,7 +187,7 @@
   }
 
   .graph-view > button {
-    --distance: min(31vw, 170px);
+    --distance: min(31vw, calc(50% - 64px));
     width: 115px;
   }
 
