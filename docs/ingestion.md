@@ -209,7 +209,7 @@ the servers a user belongs to. Create an OAuth application in the
 client secret for confidential apps):
 
 ```json
-{"client_id": "123456789012345678", "client_secret": "optional-secret"}
+{ "client_id": "123456789012345678", "client_secret": "optional-secret" }
 ```
 
 Configure an absolute OAuth client path and an absolute private user-token destination on the
