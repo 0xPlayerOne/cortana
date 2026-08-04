@@ -189,10 +189,11 @@ def build_desktop_assets(directory: Path, linux_binary_version: str) -> dict[str
     app = build_app_archive(directory)
     assets[app.name] = app.read_bytes()
     for archive in SIGNED_ARCHIVES:
-        if archive != app.name:
-            assets[archive] = b"signed desktop artifact\n"
+        assets.setdefault(archive, f"synthetic {archive}\n".encode())
         assets[f"{archive}.sig"] = base64.b64encode(MINISIGN_SIGNATURE)
     assets["latest.json"] = latest_manifest()
+    for name in required_asset_names():
+        assets.setdefault(name, b"synthetic release asset\n")
     return assets
 
 
@@ -204,9 +205,9 @@ def fake_gh(bin_dir: Path, assets: dict[str, bytes]) -> None:
         "assets": [
             {
                 "name": name,
-                "size": max(len(assets.get(name, b"")), 1),
+                "size": len(content),
             }
-            for name in required_asset_names()
+            for name, content in sorted(assets.items())
         ]
     }
     (assets_dir / "release-view.json").write_text(json.dumps(view))
@@ -246,10 +247,11 @@ exit 1
     script.chmod(0o755)
 
 
-def fake_minisign(bin_dir: Path, valid: bool = True) -> None:
+def fake_minisign(bin_dir: Path, valid: bool = True, invalid_archive: str | None = None) -> None:
     """Provide a deterministic verifier shim without committing a private key."""
     expected = repr(MINISIGN_SIGNATURE)
     expected_public_key = repr(UPDATER_PUBLIC_KEY.rstrip(b"\n") + b"\n")
+    selected_archive = repr(invalid_archive)
     outcome = "0" if valid else "1"
     script = bin_dir / "minisign"
     script.write_text(
@@ -260,13 +262,16 @@ import sys
 args = sys.argv[1:]
 try:
     if len(args) != 6 or args[0] != '-Vm' or args[2] != '-x' or args[4] != '-p':
-        raise ValueError(f'unexpected minisign arguments: {{args!r}}')
-    Path(args[1]).stat()
-    signature = Path(args[args.index('-x') + 1]).read_bytes()
-    public_key = Path(args[args.index('-p') + 1]).read_bytes()
+        raise ValueError('unexpected minisign invocation')
+    archive = Path(args[1])
+    signature = Path(args[3]).read_bytes()
+    public_key = Path(args[5]).read_bytes()
+    archive.stat()
 except (ValueError, IndexError, OSError):
     raise SystemExit(1)
 if signature.rstrip(b'\\n') != {expected}.rstrip(b'\\n') or public_key != {expected_public_key}:
+    raise SystemExit(1)
+if {selected_archive} is not None and archive.name == {selected_archive}:
     raise SystemExit(1)
 raise SystemExit({outcome})
 """
@@ -295,11 +300,18 @@ def run_desktop_verify(
     force_linux: bool = False,
     minisign_mode: str | None = "valid",
     require_minisign: bool = False,
+    invalid_archive: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     fake_gh(bin_dir, assets)
-    if minisign_mode in {"valid", "invalid"}:
-        fake_minisign(bin_dir, valid=minisign_mode == "valid")
+    if minisign_mode in {"valid", "invalid", "invalid_archive"}:
+        if minisign_mode == "invalid_archive" and invalid_archive is None:
+            invalid_archive = f"Cortana_{VERSION}_amd64.AppImage"
+        fake_minisign(
+            bin_dir,
+            valid=minisign_mode != "invalid",
+            invalid_archive=invalid_archive if minisign_mode == "invalid_archive" else None,
+        )
     if force_linux:
         # Emulate a Linux verifier host so the published-binary execution gate
         # runs on every platform; the fixture binary is a POSIX shell script
@@ -383,6 +395,19 @@ def test_desktop_verify_accepts_matching_published_binary(tmp_path: Path) -> Non
 
 
 @requires_shell
+def test_desktop_verify_rejects_missing_required_asset(tmp_path: Path) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+    missing = f"Cortana_{VERSION}_amd64.AppImage.sig"
+    assets.pop(missing)
+
+    result = run_desktop_verify(tmp_path, assets)
+
+    assert result.returncode == 1
+    assert "release is missing assets" in result.stderr
+    assert missing in result.stderr
+
+
+@requires_shell
 def test_desktop_verify_rejects_published_version_skew(tmp_path: Path) -> None:
     # The published Linux core archive is structurally valid and checksummed,
     # but its binary reports the wrong version; the final asset gate must fail.
@@ -405,6 +430,23 @@ def test_desktop_verify_rejects_invalid_tauri_signature(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "Tauri updater signature verification failed" in result.stderr
+
+
+@requires_shell
+def test_desktop_verify_rejects_invalid_non_first_signed_archive(tmp_path: Path) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+    invalid_archive = f"Cortana_{VERSION}_amd64.AppImage"
+
+    result = run_desktop_verify(
+        tmp_path,
+        assets,
+        minisign_mode="invalid_archive",
+        invalid_archive=invalid_archive,
+    )
+
+    assert result.returncode == 1
+    assert "verified Tauri updater signature: Cortana_aarch64.app.tar.gz" in result.stdout
+    assert f"Tauri updater signature verification failed: {invalid_archive}" in result.stderr
 
 
 @requires_shell

@@ -7,6 +7,7 @@ if [[ -z "$tag" || -z "$repo" ]]; then
   echo "usage: GH_REPO=owner/repo $0 TAG" >&2
   exit 2
 fi
+version="${tag#v}"
 
 assets_json="$(gh release view "$tag" --repo "$repo" --json assets)"
 python3 - "$assets_json" "$tag" <<'PY'
@@ -267,7 +268,6 @@ PY
 # a stale checkout build, an unpromoted version, or a mis-uploaded archive can
 # never pass the published-asset gate. The verifier cannot run foreign-OS
 # binaries, so non-Linux hosts skip execution exactly like verify-release.sh.
-version="${tag#v}"
 if [[ "$(uname -s)" == "Linux" ]]; then
   linux_archive="cortana-${tag}-x86_64-unknown-linux-gnu.tar.gz"
   linux_stage="$staging/linux"
