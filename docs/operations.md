@@ -59,7 +59,7 @@ ACL-visible configured source stay visible to that principal even when the sourc
 indexed any documents yet, so a failed, interrupted, or budget-exceeded run is not hidden from
 the principals allowed to view that source. The
 authorization summary reports only the connector method (`none`, `token`, or
-`google_oauth`) plus setup and authorization booleans; it never exposes token values, paths, OAuth
+(`google_oauth` or `github_oauth`) plus setup and authorization booleans; it never exposes token values, paths, OAuth
 client paths, or environment contents. Validation proves bounded connector
 access without mutating the corpus and is shown separately from synchronization health. Public
 status exposes only a generic validation-failure marker; raw connector diagnostics remain in the
@@ -381,9 +381,10 @@ directory containing `config.toml`, so service working directories do not change
 loaded. Use mode `0600`; process environment variables take precedence.
 
 For shared agents, configure one bearer principal per environment variable under `[[auth.tokens]]`.
-`query`, `status`, and `admin` scopes are enforced independently. Document ACLs are public when
-empty and otherwise require a matching principal label; `*` is reserved for the implicit local
-owner and legacy single-token mode. Answer-cache keys include the sorted ACL labels, preventing
+`query`, `status`, and `admin` scopes are enforced independently. New source records inherit their
+workspace ACL when no explicit source ACL is configured; existing empty-ACL rows are treated as
+legacy public data until migrated. Restricted documents require a matching principal label; `*` is
+reserved for the implicit local owner and legacy single-token mode. Answer-cache keys include the sorted ACL labels, preventing
 reuse across authorization boundaries. `GET /v1/audit` requires `admin` and returns at most 500
 metadata-only events. Audit records contain principal, action, project/source scope, outcome,
 result count, latency, and timestamp—never query text, evidence, bearer tokens, or token hashes.
@@ -418,12 +419,16 @@ Before adding the first shared principal, assign matching ACL defaults to every 
 in that trust domain, then preview legacy rows:
 
 ```bash
-cortana acl plan --project work=work --project personal=personal
+cortana acl plan --project work=work --project personal=personal \
+  --project special=special --quarantine-unmapped
 ```
 
 The plan is read-only and reports configuration mismatches. After reviewing the exact counts,
-`cortana acl apply ... --force` updates only empty/public ACL rows, increments the corpus revision
-once, and leaves already restricted documents unchanged. Apply refuses to run when any configured
-source in a mapped project has a different ACL, preventing the next sync from silently making the
-rows public again. `cortana readiness` fails whenever shared token principals coexist with public
+`cortana acl apply ... --quarantine-unmapped --force` updates only empty/public ACL rows, assigning
+explicit mappings to known workspaces and the reserved `__quarantine__` label to every other
+public project. It increments the corpus revision once and leaves already restricted documents
+unchanged. Apply refuses to run when any configured source in a mapped project has a different ACL,
+preventing the next sync from silently making rows public again. Review the plan output before
+applying; quarantined records remain owner-visible but are unavailable to scoped agents until
+explicitly mapped. `cortana readiness` fails whenever shared token principals coexist with public
 legacy rows.

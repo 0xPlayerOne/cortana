@@ -19,7 +19,10 @@ import {
 } from 'lucide-react'
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { applyTheme, readThemePreference, SUPPORTED_THEMES, type ThemeMode } from '../theme'
-import { sourceIconForKind } from './sourceIcons'
+import { WorkspaceLogo } from '../workspaceLogos'
+import { readWorkspaceLogoFile, writeWorkspaceLogo } from '../workspaceLogoStore'
+import { SourceIcon } from './sourceIcons'
+import { sourceDisplayName } from './sourceIconData'
 
 import {
   cancelDesktopInstaller,
@@ -29,6 +32,7 @@ import {
   getDesktopAudit,
   getDesktopInstaller,
   getDesktopInfo,
+  listDesktopGithubRepositories,
   getDesktopHindsightStatus,
   getDesktopHonchoStatus,
   getDesktopSchedule,
@@ -80,6 +84,7 @@ import type {
   DesktopUpdate,
   AuditEvent,
   AuthPrincipalSettings,
+  GithubRepositorySummary,
   InitialSyncBudget,
   SourceKind,
   SourceSettings,
@@ -743,10 +748,14 @@ export function SettingsView({
         >
           {error ? <AlertTriangle size={16} /> : <Check size={16} />}
           {error ||
-            (saved
-              ? 'Settings saved. Restart affected services to apply them.'
-              : 'A service restart is required.')}
-          {!error && settings.restart_required && (
+            (settings.restart_required && serviceActivity?.status === 'running'
+              ? 'Settings saved. Restarting affected services in the background…'
+              : saved && settings.restart_required
+                ? 'Settings saved. Affected services are restarting in the background.'
+                : saved
+                  ? 'Settings saved.'
+                  : 'A service restart is still required.')}
+          {!error && settings.restart_required && serviceActivity?.status !== 'running' && (
             <button
               type="button"
               className="secondary-button"
@@ -2588,8 +2597,19 @@ function WorkspaceSection({
   settings: DesktopSettings
   update: (change: (draft: DesktopSettings) => DesktopSettings) => void
 }) {
+  const [logoError, setLogoError] = useState('')
   const hasWorkspaceSources = (workspaceId: string) =>
     settings.sources.some((source) => source.project === workspaceId)
+
+  const updateLogo = async (workspaceId: string, file: File | undefined) => {
+    if (!file) return
+    try {
+      writeWorkspaceLogo(workspaceId, await readWorkspaceLogoFile(file))
+      setLogoError('')
+    } catch (caught) {
+      setLogoError(caught instanceof Error ? caught.message : 'Workspace logo could not be saved.')
+    }
+  }
 
   const addWorkspace = () =>
     update((current) => {
@@ -2650,14 +2670,33 @@ function WorkspaceSection({
   return (
     <SettingsSection
       title="Workspaces"
-      description="Create up to three isolated query scopes. Sources and accounts can be assigned to one scope."
+      description="Create up to three isolated query scopes. Sources and accounts can be assigned to one scope. Workspace logos stay local to this Desktop profile and never enter the index or portable settings export."
     >
       <div className="workspace-settings-grid">
         {settings.workspaces.map((workspace, index) => (
           <article className="workspace-card" key={`${workspace.id}:${index}`}>
             <div className="workspace-card-heading">
-              <i style={{ background: workspace.color || '#E8A83B' }} />
-              <strong>{workspace.name || 'New workspace'}</strong>
+              <WorkspaceLogo workspace={workspace} size="large" />
+              <div className="workspace-card-title">
+                <strong>{workspace.name || 'New workspace'}</strong>
+                <small>Workspace identity</small>
+              </div>
+              <label
+                className="workspace-logo-upload quick-tooltip"
+                title="Upload workspace logo"
+                data-tooltip="Upload workspace logo"
+              >
+                <Upload size={14} />
+                <span className="visually-hidden">Upload logo for {workspace.name}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  onChange={(event) => {
+                    void updateLogo(workspace.id, event.target.files?.[0])
+                    event.currentTarget.value = ''
+                  }}
+                />
+              </label>
               {settings.workspaces.length > 1 && (
                 <button
                   type="button"
@@ -2693,29 +2732,29 @@ function WorkspaceSection({
                 <small className="workspace-advanced-note">
                   ID is internal; account labels are optional metadata.
                 </small>
-                <Field label="Scope ID" hint="lowercase letters, numbers, dashes">
+                <Field label="Scope ID" hint="generated from the display name; used internally">
                   <input
                     value={workspace.id}
+                    readOnly
                     disabled={hasWorkspaceSources(workspace.id)}
-                    title={
-                      hasWorkspaceSources(workspace.id)
-                        ? 'Move assigned sources before changing this workspace ID'
-                        : undefined
-                    }
-                    onChange={(event) => changeWorkspace(index, { id: event.target.value })}
+                    aria-disabled={hasWorkspaceSources(workspace.id)}
+                    title="Generated from the display name and used internally"
                     required
                     maxLength={32}
                     pattern="[a-z0-9][a-z0-9_-]*"
                   />
                 </Field>
-                <Field label="Account label" hint="shown only as a local reminder">
+                <Field
+                  label="Account label"
+                  hint="optional display note; OAuth credentials belong to each source"
+                >
                   <input
                     value={workspace.account_label || ''}
                     onChange={(event) =>
                       changeWorkspace(index, { account_label: event.target.value || null })
                     }
                     maxLength={128}
-                    placeholder="team@example.com"
+                    placeholder="e.g. Nifty League"
                   />
                 </Field>
               </div>
@@ -2730,6 +2769,11 @@ function WorkspaceSection({
           </article>
         ))}
       </div>
+      {logoError && (
+        <p className="settings-inline-error" role="alert">
+          {logoError}
+        </p>
+      )}
       <button
         type="button"
         className="secondary-button"
@@ -2749,9 +2793,26 @@ const SOURCE_KINDS: Array<{ value: SourceKind; label: string }> = [
   { value: 'google-drive', label: 'Google Drive' },
   { value: 'gmail', label: 'Gmail' },
   { value: 'google-calendar', label: 'Google Calendar' },
+  { value: 'github', label: 'GitHub code' },
   { value: 'slack', label: 'Slack' },
   { value: 'discord', label: 'Discord' },
 ]
+
+const UNASSIGNED_WORKSPACE = '__unassigned__'
+
+function initialSourceWorkspace(settings: DesktopSettings): string {
+  const workspaceIds = new Set(settings.workspaces.map((workspace) => workspace.id))
+  if (settings.sources.some((source) => !workspaceIds.has(source.project))) {
+    return UNASSIGNED_WORKSPACE
+  }
+  return (
+    settings.workspaces.find((workspace) =>
+      settings.sources.some((source) => source.project === workspace.id)
+    )?.id ||
+    settings.workspaces[0]?.id ||
+    UNASSIGNED_WORKSPACE
+  )
+}
 
 function SourcesSection({
   settings,
@@ -2778,6 +2839,11 @@ function SourcesSection({
     onJob?.(next)
   }
   const [error, setError] = useState('')
+  const [githubRepositories, setGithubRepositories] = useState<
+    Record<string, { items: GithubRepositorySummary[]; truncated: boolean }>
+  >({})
+  const [githubRepositoriesLoading, setGithubRepositoriesLoading] = useState<string | null>(null)
+  const [sourceWorkspace, setSourceWorkspace] = useState(() => initialSourceWorkspace(settings))
   const [initialSync, setInitialSync] = useState<{
     source: string
     budget: InitialSyncBudget
@@ -2789,6 +2855,30 @@ function SourcesSection({
   const sharedJobIds = useRef(new Set<string>())
   const cancelInFlight = useRef(new Set<string>())
   const foreground = useDesktopForeground()
+
+  const workspaceIds = settings.workspaces.map((workspace) => workspace.id)
+  const unassignedSourceCount = settings.sources.filter(
+    (source) => !workspaceIds.includes(source.project)
+  ).length
+  const sourceWorkspaceIsAssigned = workspaceIds.includes(sourceWorkspace)
+  const visibleSources = settings.sources
+    .map((source, index) => ({ source, index }))
+    .filter(({ source }) =>
+      sourceWorkspace === UNASSIGNED_WORKSPACE
+        ? !workspaceIds.includes(source.project)
+        : source.project === sourceWorkspace
+    )
+  const selectedWorkspace = settings.workspaces.find(({ id }) => id === sourceWorkspace)
+
+  useEffect(() => {
+    if (
+      sourceWorkspaceIsAssigned ||
+      (sourceWorkspace === UNASSIGNED_WORKSPACE && unassignedSourceCount)
+    ) {
+      return
+    }
+    setSourceWorkspace(initialSourceWorkspace(settings))
+  }, [sourceWorkspace, sourceWorkspaceIsAssigned, unassignedSourceCount, settings.workspaces])
 
   // In the full Desktop shell, App owns one poller for the source-job list so
   // SourcePanel, the tray/status bar, and Settings all observe the same
@@ -2963,11 +3053,16 @@ function SourcesSection({
     }))
   }
 
-  const addSource = () =>
+  const addSource = () => {
+    const targetWorkspace = sourceWorkspaceIsAssigned
+      ? sourceWorkspace
+      : settings.workspaces[0]?.id || 'personal'
+    if (!sourceWorkspaceIsAssigned) setSourceWorkspace(targetWorkspace)
     update((current) => ({
       ...current,
-      sources: [...current.sources, newSource(current)],
+      sources: [...current.sources, newSource(current, targetWorkspace)],
     }))
+  }
 
   const validateSource = async (source: SourceSettings) => {
     if (!canValidate) {
@@ -3000,7 +3095,7 @@ function SourcesSection({
     }
     if (
       !window.confirm(
-        `Authorize ${source.name} with Google?\n\nCortana will open the system browser, listen only on a random 127.0.0.1 callback port, request read-only scopes for Google sources sharing this token, and store the resulting token in the configured private file.`
+        `Authorize ${source.name} with ${source.kind === 'github' ? 'GitHub' : 'Google'}?\n\nCortana will open the system browser and store the resulting token in the configured private file. No source data is read during authorization.`
       )
     ) {
       return
@@ -3009,8 +3104,44 @@ function SourcesSection({
     try {
       applyJob(await startDesktopSourceAuthorization(source.name))
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Google authorization failed to start')
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : `${source.kind === 'github' ? 'GitHub' : 'Google'} authorization failed to start`
+      )
     }
+  }
+
+  const discoverGithubRepositories = async (index: number, source: SourceSettings) => {
+    if (!canValidate) {
+      setError('Save source changes before discovering repositories.')
+      return
+    }
+    setError('')
+    setGithubRepositoriesLoading(source.name)
+    try {
+      const result = await listDesktopGithubRepositories(source.name)
+      setGithubRepositories((current) => ({
+        ...current,
+        [source.name]: { items: result.repositories, truncated: result.truncated },
+      }))
+      if (result.truncated) {
+        setError(
+          'GitHub returned more than 1,000 repositories; select from the most recently updated 1,000.'
+        )
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'GitHub repository discovery failed')
+    } finally {
+      setGithubRepositoriesLoading(null)
+    }
+  }
+
+  const toggleGithubRepository = (index: number, source: SourceSettings, fullName: string) => {
+    const repositories = source.repositories.includes(fullName)
+      ? source.repositories.filter((repository) => repository !== fullName)
+      : [...source.repositories, fullName]
+    changeSource(index, { repositories })
   }
 
   const trialSyncSource = async (source: SourceSettings) => {
@@ -3048,7 +3179,7 @@ function SourcesSection({
 
   const choosePath = async (
     index: number,
-    kind: 'directory' | 'oauth-client' | 'google-token',
+    kind: 'directory' | 'oauth-client' | 'google-token' | 'github-token',
     field: 'root' | 'token_path' | 'oauth_client_path'
   ) => {
     setError('')
@@ -3101,6 +3232,45 @@ function SourcesSection({
         </button>
       </div>
 
+      <div className="source-workspace-tabs" role="tablist" aria-label="Source workspace">
+        {settings.workspaces.map((workspace) => {
+          const count = settings.sources.filter((source) => source.project === workspace.id).length
+          return (
+            <button
+              type="button"
+              role="tab"
+              key={workspace.id}
+              aria-selected={sourceWorkspace === workspace.id}
+              className={sourceWorkspace === workspace.id ? 'active' : ''}
+              onClick={() => setSourceWorkspace(workspace.id)}
+            >
+              <WorkspaceLogo workspace={workspace} size="small" />
+              <span>{workspace.name}</span>
+              <small>{count}</small>
+            </button>
+          )
+        })}
+        {unassignedSourceCount > 0 && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sourceWorkspace === UNASSIGNED_WORKSPACE}
+            className={sourceWorkspace === UNASSIGNED_WORKSPACE ? 'active warning' : 'warning'}
+            onClick={() => setSourceWorkspace(UNASSIGNED_WORKSPACE)}
+          >
+            <AlertTriangle size={15} />
+            <span>Needs assignment</span>
+            <small>{unassignedSourceCount}</small>
+          </button>
+        )}
+      </div>
+
+      <p className="source-workspace-caption">
+        {selectedWorkspace
+          ? `Showing sources assigned to ${selectedWorkspace.name}.`
+          : 'Assign legacy sources to a workspace before enabling or syncing them.'}
+      </p>
+
       {activeJob && (
         <div className="safety-note" role="status">
           Settings for {activeJob.source} are locked while its operation is running. Other sources
@@ -3115,7 +3285,21 @@ function SourcesSection({
             <span>Add a source, assign its workspace, then save and run bounded validation.</span>
           </div>
         )}
-        {settings.sources.map((source, index) => {
+        {settings.sources.length > 0 && visibleSources.length === 0 && (
+          <div className="empty-source-settings">
+            <strong>
+              {sourceWorkspace === UNASSIGNED_WORKSPACE
+                ? 'No sources need assignment'
+                : `No sources in ${selectedWorkspace?.name || 'this workspace'}`}
+            </strong>
+            <span>
+              {sourceWorkspace === UNASSIGNED_WORKSPACE
+                ? 'All configured sources are assigned to a workspace.'
+                : 'Add a source to this workspace or choose another workspace above.'}
+            </span>
+          </div>
+        )}
+        {visibleSources.map(({ source, index }) => {
           const secret = source.token_env
             ? settings.secrets.find((item) => item.name === source.token_env)
             : undefined
@@ -3125,8 +3309,13 @@ function SourcesSection({
             SOURCE_KINDS.find((kind) => kind.value === source.kind)?.label || 'External connector'
           const workspaceLabel =
             settings.workspaces.find((workspace) => workspace.id === source.project)?.name ||
-            source.project
-          const SourceIcon = sourceIconForKind(source.kind)
+            `Unassigned (${source.project || 'legacy scope'})`
+          const assignedWorkspace = settings.workspaces.find(
+            (workspace) => workspace.id === source.project
+          )
+          const workspaceAssigned = settings.workspaces.some(
+            (workspace) => workspace.id === source.project
+          )
           return (
             <article className="source-settings-card" key={`${source.name}:${index}`}>
               <header>
@@ -3134,7 +3323,12 @@ function SourcesSection({
                   <input
                     type="checkbox"
                     checked={source.enabled}
-                    disabled={sourceLocked}
+                    disabled={sourceLocked || (!workspaceAssigned && !source.enabled)}
+                    title={
+                      !workspaceAssigned
+                        ? 'Assign this source to a workspace before enabling it'
+                        : undefined
+                    }
                     onChange={(event) => changeSource(index, { enabled: event.target.checked })}
                   />
                   <span
@@ -3143,36 +3337,63 @@ function SourcesSection({
                     aria-label={`${sourceLabel} connector`}
                     role="img"
                   >
-                    <SourceIcon size={17} aria-hidden="true" />
+                    <SourceIcon kind={source.kind} size={17} />
                   </span>
                   <span>
-                    <strong>{source.name || 'New source'}</strong>
+                    <strong>{sourceDisplayName(source.kind, source.name || 'New source')}</strong>
                     <small>
-                      {workspaceLabel} · {sourceLabel} · {source.enabled ? 'Enabled' : 'Disabled'}
+                      {workspaceLabel} · {source.enabled ? 'Enabled' : 'Disabled'}
                     </small>
                   </span>
+                </label>
+                <label className="source-workspace-picker">
+                  {assignedWorkspace && (
+                    <WorkspaceLogo workspace={assignedWorkspace} size="small" />
+                  )}
+                  <span className="visually-hidden">Assign source workspace</span>
+                  <select
+                    aria-label={`Workspace for ${source.name}`}
+                    value={source.project}
+                    disabled={sourceLocked}
+                    onChange={(event) => changeSource(index, { project: event.target.value })}
+                  >
+                    {!workspaceAssigned && source.project && (
+                      <option value={source.project}>Unassigned: {source.project}</option>
+                    )}
+                    {settings.workspaces.map((workspace) => (
+                      <option key={workspace.id} value={workspace.id}>
+                        {workspace.name}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <div className="source-card-actions">
                   {hasBrowserSetup(source.kind) && (
                     <button
                       type="button"
+                      className="source-icon-button quick-tooltip"
+                      aria-label="Setup"
+                      data-tooltip="Setup"
                       disabled={!canValidate || sourceLocked}
                       title="Open the official provider setup page"
                       onClick={() => void openSetup(source)}
                     >
-                      <ExternalLink size={14} /> Setup
+                      <ExternalLink size={14} />
                     </button>
                   )}
-                  {isGoogleSource(source.kind) && (
+                  {(isGoogleSource(source.kind) || source.kind === 'github') && (
                     <button
                       type="button"
+                      className="source-icon-button quick-tooltip"
+                      aria-label="Authorize"
+                      data-tooltip="Authorize"
                       disabled={
                         !canValidate ||
                         (!source.token_path && !source.token_env) ||
                         !source.oauth_client_path ||
                         Boolean(activeJob)
                       }
-                      title="Authorize read-only Google access with PKCE"
+                      title={`Authorize read-only ${source.kind === 'github' ? 'GitHub' : 'Google'} access in the browser`}
                       onClick={() => void authorizeSource(source)}
                     >
                       {runningThis && activeJob?.operation === 'authorization' ? (
@@ -3180,12 +3401,14 @@ function SourcesSection({
                       ) : (
                         <KeyRound size={14} />
                       )}
-                      Authorize
                     </button>
                   )}
                   <button
                     type="button"
-                    disabled={!canValidate || Boolean(activeJob)}
+                    className="source-icon-button quick-tooltip"
+                    aria-label="Validate"
+                    data-tooltip="Validate"
+                    disabled={!canValidate || Boolean(activeJob) || !workspaceAssigned}
                     title={canValidate ? 'Read-only bounded validation' : 'Save changes first'}
                     onClick={() => void validateSource(source)}
                   >
@@ -3194,11 +3417,15 @@ function SourcesSection({
                     ) : (
                       <Play size={14} />
                     )}
-                    Validate
                   </button>
                   <button
                     type="button"
-                    disabled={!canValidate || !source.enabled || Boolean(activeJob)}
+                    className="source-icon-button quick-tooltip"
+                    aria-label="Trial sync"
+                    data-tooltip="Trial sync"
+                    disabled={
+                      !canValidate || !source.enabled || Boolean(activeJob) || !workspaceAssigned
+                    }
                     title="Validation-gated trial sync; max 25 documents, 5 MiB, no reconciliation"
                     onClick={() => void trialSyncSource(source)}
                   >
@@ -3207,11 +3434,15 @@ function SourcesSection({
                     ) : (
                       <Play size={14} />
                     )}
-                    Trial sync
                   </button>
                   <button
                     type="button"
-                    disabled={!canValidate || !source.enabled || Boolean(activeJob)}
+                    className="source-icon-button quick-tooltip"
+                    aria-label="Initial sync"
+                    data-tooltip="Initial sync"
+                    disabled={
+                      !canValidate || !source.enabled || Boolean(activeJob) || !workspaceAssigned
+                    }
                     title="Guided initial sync; fixed budget, validation-gated, no reconciliation"
                     onClick={() => openInitialSync(source)}
                   >
@@ -3220,11 +3451,12 @@ function SourcesSection({
                     ) : (
                       <Zap size={14} />
                     )}
-                    Initial sync
                   </button>
                   <button
                     type="button"
+                    className="source-icon-button quick-tooltip"
                     aria-label={`Remove ${source.name}`}
+                    data-tooltip={`Remove ${source.name}`}
                     disabled={sourceLocked}
                     title={`Remove ${source.name}`}
                     onClick={() => {
@@ -3250,6 +3482,16 @@ function SourcesSection({
                 <div className="source-managed-note">
                   This external command is managed in the TOML file. Desktop can retain, disable, or
                   remove it, but cannot edit or create shell commands.
+                </div>
+              )}
+
+              {!workspaceAssigned && (
+                <div className="source-unassigned-note" role="alert">
+                  <AlertTriangle size={15} />
+                  <span>
+                    This source uses the legacy <code>{source.project || 'unassigned'}</code> scope.
+                    Assign it to a workspace below before enabling, validating, or syncing it.
+                  </span>
                 </div>
               )}
 
@@ -3296,6 +3538,9 @@ function SourcesSection({
                       disabled={sourceLocked}
                       onChange={(event) => changeSource(index, { project: event.target.value })}
                     >
+                      {!workspaceAssigned && source.project && (
+                        <option value={source.project}>Unassigned: {source.project}</option>
+                      )}
                       {settings.workspaces.map((workspace) => (
                         <option key={workspace.id} value={workspace.id}>
                           {workspace.name}
@@ -3470,16 +3715,151 @@ function SourcesSection({
                       </Field>
                     </>
                   )}
-                  {(source.kind === 'slack' || source.kind === 'discord') && (
+                  {source.kind === 'github' && (
                     <>
-                      <Field label="Channel IDs" hint="comma or line separated" wide>
-                        <input
-                          value={source.channels.join(', ')}
+                      <Field
+                        label="Repository chooser"
+                        hint="discover accessible repositories, then select only the ones Cortana may index"
+                        wide
+                      >
+                        <div className="source-repository-chooser">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            disabled={
+                              !canValidate ||
+                              sourceLocked ||
+                              githubRepositoriesLoading === source.name
+                            }
+                            onClick={() => void discoverGithubRepositories(index, source)}
+                          >
+                            {githubRepositoriesLoading === source.name ? (
+                              <LoaderCircle className="spin" size={14} />
+                            ) : (
+                              <RefreshCw size={14} />
+                            )}{' '}
+                            Discover repositories
+                          </button>
+                          {githubRepositories[source.name] && (
+                            <div className="source-repository-options">
+                              {githubRepositories[source.name].items.length === 0 ? (
+                                <small>No accessible repositories returned.</small>
+                              ) : (
+                                githubRepositories[source.name].items.map((repository) => (
+                                  <label key={repository.id}>
+                                    <input
+                                      type="checkbox"
+                                      checked={source.repositories.includes(repository.full_name)}
+                                      disabled={sourceLocked || !source.editable}
+                                      onChange={() =>
+                                        toggleGithubRepository(index, source, repository.full_name)
+                                      }
+                                    />
+                                    <span>
+                                      {repository.full_name}
+                                      {repository.private ? ' · private' : ''}
+                                    </span>
+                                  </label>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </Field>
+                      <Field
+                        label="GitHub OAuth token file"
+                        hint="private token created by Cortana; use this for OAuth or leave blank for an environment token"
+                        wide
+                      >
+                        <div className="path-input">
+                          <input
+                            value={source.token_path || ''}
+                            disabled={sourceLocked || !source.editable}
+                            required={source.enabled && !source.token_env}
+                            placeholder="/Users/you/.config/cortana/github-token.json"
+                            onChange={(event) =>
+                              changeSource(index, { token_path: event.target.value || null })
+                            }
+                          />
+                          <button
+                            type="button"
+                            disabled={sourceLocked || !source.editable}
+                            aria-label="Choose GitHub token destination"
+                            title="Choose GitHub token destination"
+                            onClick={() => void choosePath(index, 'github-token', 'token_path')}
+                          >
+                            <FolderOpen size={14} />
+                          </button>
+                        </div>
+                      </Field>
+                      <Field
+                        label="GitHub OAuth client JSON"
+                        hint="JSON containing the OAuth app client_id; required for browser authorization"
+                        wide
+                      >
+                        <div className="path-input">
+                          <input
+                            value={source.oauth_client_path || ''}
+                            disabled={sourceLocked || !source.editable}
+                            placeholder="/Users/you/.config/cortana/github-oauth-client.json"
+                            onChange={(event) =>
+                              changeSource(index, {
+                                oauth_client_path: event.target.value || null,
+                              })
+                            }
+                          />
+                          <button
+                            type="button"
+                            disabled={sourceLocked || !source.editable}
+                            aria-label="Choose GitHub OAuth client JSON"
+                            title="Choose GitHub OAuth client JSON"
+                            onClick={() =>
+                              void choosePath(index, 'oauth-client', 'oauth_client_path')
+                            }
+                          >
+                            <FolderOpen size={14} />
+                          </button>
+                        </div>
+                      </Field>
+                    </>
+                  )}
+                  {(source.kind === 'github' ||
+                    source.kind === 'slack' ||
+                    source.kind === 'discord') && (
+                    <>
+                      <Field
+                        label={source.kind === 'github' ? 'Repositories' : 'Channel IDs'}
+                        hint={
+                          source.kind === 'github'
+                            ? 'one owner/repository per line; only these repositories are indexed'
+                            : 'comma or line separated'
+                        }
+                        wide
+                      >
+                        <textarea
+                          value={
+                            source.kind === 'github'
+                              ? source.repositories.join('\n')
+                              : source.channels.join(', ')
+                          }
                           disabled={sourceLocked || !source.editable}
                           required={source.enabled}
-                          onChange={(event) =>
-                            changeSource(index, { channels: splitList(event.target.value) })
+                          rows={source.kind === 'github' ? 3 : 1}
+                          placeholder={
+                            source.kind === 'github' ? 'owner/repository' : 'Channel IDs'
                           }
+                          aria-label={
+                            source.kind === 'github' ? 'GitHub repositories' : 'Channel IDs'
+                          }
+                          onChange={(event) => {
+                            const values = splitList(event.target.value)
+                            changeSource(
+                              index,
+                              source.kind === 'github'
+                                ? { repositories: values }
+                                : { channels: values }
+                            )
+                          }}
                         />
                       </Field>
                       <Field
@@ -3493,7 +3873,9 @@ function SourcesSection({
                         <input
                           value={source.token_env || ''}
                           disabled={sourceLocked || !source.editable}
-                          required={source.enabled}
+                          required={
+                            source.enabled && source.kind !== 'github' && !source.token_path
+                          }
                           pattern="[A-Z_][A-Z0-9_]*"
                           onChange={(event) =>
                             changeSource(index, { token_env: event.target.value || null })
@@ -3856,7 +4238,7 @@ function InitialSyncFlow({
   )
 }
 
-function newSource(settings: DesktopSettings): SourceSettings {
+function newSource(settings: DesktopSettings, project?: string): SourceSettings {
   return {
     name: nextAvailableIdentifier(
       'source',
@@ -3864,10 +4246,11 @@ function newSource(settings: DesktopSettings): SourceSettings {
     ),
     kind: 'filesystem',
     enabled: false,
-    project: settings.workspaces[0]?.id || 'personal',
+    project: project || settings.workspaces[0]?.id || 'personal',
     root: null,
     source: null,
     channels: [],
+    repositories: [],
     token_env: null,
     token_path: null,
     oauth_client_path: null,
@@ -4050,6 +4433,7 @@ function safeMarkdownUrl(value: string): string | null {
 }
 
 function defaultTokenEnv(kind: SourceKind): string | null {
+  if (kind === 'github') return 'GITHUB_TOKEN'
   if (kind === 'slack') return 'SLACK_BOT_TOKEN'
   if (kind === 'discord') return 'DISCORD_BOT_TOKEN'
   return null
@@ -4060,7 +4444,7 @@ function isGoogleSource(kind: SourceKind) {
 }
 
 function hasBrowserSetup(kind: SourceKind) {
-  return isGoogleSource(kind) || kind === 'slack' || kind === 'discord'
+  return isGoogleSource(kind) || kind === 'github' || kind === 'slack' || kind === 'discord'
 }
 
 function splitList(value: string) {

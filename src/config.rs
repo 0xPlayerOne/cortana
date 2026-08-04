@@ -16,6 +16,7 @@ const SUPPORTED_SOURCE_KINDS: &[&str] = &[
     "google-drive",
     "gmail",
     "google-calendar",
+    "github",
     "slack",
     "discord",
     "external",
@@ -183,6 +184,9 @@ pub struct SourceConfig {
     pub source: Option<String>,
     #[serde(default)]
     pub channels: Vec<String>,
+    /// Explicit `owner/repository` allowlist for GitHub code sources.
+    #[serde(default)]
+    pub repositories: Vec<String>,
     #[serde(default)]
     pub token_env: Option<String>,
     #[serde(default)]
@@ -207,6 +211,21 @@ pub struct SourceConfig {
     pub command: Vec<String>,
     #[serde(default)]
     pub acl: Vec<String>,
+}
+
+impl SourceConfig {
+    /// Return the ACL that should be applied to records emitted by this
+    /// source. An omitted ACL is intentionally workspace-private rather than
+    /// public; explicit labels can still opt a source into a shared boundary.
+    pub fn effective_acl(&self) -> Vec<String> {
+        if self.acl.is_empty() {
+            return vec![self.project.clone()];
+        }
+        let mut acl = self.acl.clone();
+        let mut seen = HashSet::new();
+        acl.retain(|label| seen.insert(label.clone()));
+        acl
+    }
 }
 
 impl Default for EmbeddingConfig {
@@ -465,6 +484,32 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
             "source `{}` requires a non-empty project",
             source.name
         );
+        if source.kind == "github" {
+            if source.enabled {
+                anyhow::ensure!(
+                    !source.repositories.is_empty(),
+                    "source `{}` requires at least one GitHub repository",
+                    source.name
+                );
+                anyhow::ensure!(
+                    source
+                        .token_env
+                        .as_deref()
+                        .is_some_and(|value| !value.trim().is_empty())
+                        || source.token.is_some(),
+                    "source `{}` requires a GitHub token file or token environment variable",
+                    source.name
+                );
+            }
+            for repository in &source.repositories {
+                anyhow::ensure!(
+                    valid_github_repository(repository),
+                    "source `{}` has an invalid GitHub repository `{}`; use owner/name",
+                    source.name,
+                    repository
+                );
+            }
+        }
         if !workspace_ids.is_empty() {
             anyhow::ensure!(
                 workspace_ids.contains(source.project.as_str()),
@@ -475,6 +520,21 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn valid_github_repository(value: &str) -> bool {
+    let mut parts = value.trim().split('/');
+    let owner = parts.next().unwrap_or_default();
+    let repository = parts.next().unwrap_or_default();
+    parts.next().is_none()
+        && !owner.is_empty()
+        && !repository.is_empty()
+        && owner.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+        && repository.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
 }
 
 /// Validate a provider base URL before a client can send credentials or
@@ -714,23 +774,70 @@ mod tests {
             kind = "filesystem"
             root = "/tmp/project"
             source = "code"
+
+            [[sources]]
+            name = "github-code"
+            kind = "github"
+            project = "work"
+            repositories = ["Acme/Project"]
+            token_env = "GITHUB_TOKEN"
             "#,
         )
         .expect("valid source config");
 
-        assert_eq!(config.sources.len(), 2);
+        assert_eq!(config.sources.len(), 3);
         assert!(config.sources[0].enabled);
         assert_eq!(config.sources[0].max_content_chars, Some(12_345));
         assert_eq!(config.sources[0].max_documents, Some(100));
         assert_eq!(config.sources[0].max_bytes, Some(2_048));
         assert_eq!(config.sources[0].max_duration_seconds, Some(30));
         assert_eq!(config.sources[1].source.as_deref(), Some("code"));
+        assert_eq!(config.sources[2].repositories, ["Acme/Project"]);
         assert_eq!(config.ingestion.max_documents_per_source, 2_000);
         assert_eq!(config.ingestion.max_bytes_per_source, 128 * 1024 * 1024);
         assert_eq!(config.ingestion.request_concurrency, 1);
         assert_eq!(config.ingestion.validation_max_age_hours, 168);
         assert_eq!(config.ingestion.sync_freshness_hours, 48);
         validate_source_definitions(&config).expect("source definitions are safe");
+    }
+
+    #[test]
+    fn enabled_github_sources_require_a_safe_allowlist_and_token_name() {
+        let mut config = Config::default();
+        config.sources.push(SourceConfig {
+            name: "github-code".into(),
+            kind: "github".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            repositories: vec!["acme/project".into()],
+            token_env: Some("GITHUB_TOKEN".into()),
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        });
+        validate_source_definitions(&config).expect("valid GitHub source");
+
+        config.sources[0].repositories = vec!["https://github.com/acme/project".into()];
+        assert!(validate_source_definitions(&config).is_err());
+        config.sources[0].repositories = vec!["acme/project".into()];
+        config.sources[0].token_env = None;
+        assert!(validate_source_definitions(&config).is_err());
+        config.sources[0].token = Some(PathBuf::from(
+            "/Users/example/.config/cortana/github-token.json",
+        ));
+        validate_source_definitions(&config)
+            .expect("GitHub token file is an accepted credential path");
     }
 
     #[test]
@@ -862,6 +969,36 @@ mod tests {
             Some("me@example.com")
         );
         assert_eq!(config.sources[0].project, "personal");
+    }
+
+    #[test]
+    fn source_acl_defaults_to_its_workspace_and_preserves_explicit_labels() {
+        let mut source = SourceConfig {
+            name: "notes".into(),
+            kind: "apple-notes".into(),
+            enabled: true,
+            project: "personal".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            repositories: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        assert_eq!(source.effective_acl(), vec!["personal"]);
+
+        source.acl = vec!["shared".into(), "personal".into(), "shared".into()];
+        assert_eq!(source.effective_acl(), vec!["shared", "personal"]);
     }
 
     #[cfg(unix)]

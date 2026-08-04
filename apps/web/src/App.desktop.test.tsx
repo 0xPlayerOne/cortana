@@ -77,6 +77,7 @@ const workSource: SourceSettings = {
   root: '/Users/you/code',
   source: null,
   channels: [],
+  repositories: [],
   token_env: null,
   token_path: null,
   oauth_client_path: null,
@@ -1083,6 +1084,7 @@ test('settings add controls avoid reusing removed identifiers', async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
     fireEvent.click(screen.getByRole('button', { name: 'Remove source-1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add source' }))
+    fireEvent.click(screen.getByRole('tab', { name: /Two/ }))
     expect(
       (screen.getAllByLabelText(/Source name/) as HTMLInputElement[]).map((input) => input.value)
     ).toContain('source-1')
@@ -1140,8 +1142,13 @@ test('workspace cards show display name and advanced details', async () => {
     fireEvent.click(screen.getByText('Advanced workspace details'))
     expect(screen.getByText('ID is internal; account labels are optional metadata.')).toBeTruthy()
     expect(screen.getByLabelText(/Scope ID/i)).toBeTruthy()
-    expect(screen.getByLabelText(/Account label/i)).toBeTruthy()
+    const accountLabel = screen.getByLabelText(/Account label/i)
+    expect(accountLabel).toBeTruthy()
+    expect(accountLabel.getAttribute('placeholder')).toBe('e.g. Nifty League')
     expect(screen.getByDisplayValue('Work')).toBeTruthy()
+    expect((screen.getByLabelText(/Scope ID/i) as HTMLInputElement).readOnly).toBe(true)
+    const upload = screen.getByLabelText('Upload logo for Work') as HTMLInputElement
+    expect(upload.accept).toContain('image/png')
   } finally {
     state.settings = originalSettings
   }
@@ -1336,7 +1343,13 @@ test('source settings opens the Sources section directly', async () => {
 
 test('source settings show a compact workspace-first row with collapsed advanced controls', async () => {
   const originalSettings = state.settings
-  state.settings = { ...desktopSettings, sources: [workSource] }
+  state.settings = {
+    ...desktopSettings,
+    sources: [
+      workSource,
+      { ...workSource, name: 'personal-notes', project: 'personal', enabled: false },
+    ],
+  }
   try {
     render(<App />)
     await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
@@ -1344,14 +1357,95 @@ test('source settings show a compact workspace-first row with collapsed advanced
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
 
-    expect(screen.getByText('Work · Files and code · Enabled')).toBeTruthy()
+    expect(screen.getByText('Files & code')).toBeTruthy()
+    expect(screen.getByText('Work · Enabled')).toBeTruthy()
+    expect(screen.queryByText('Personal · Disabled')).toBeNull()
     expect(screen.getByRole('img', { name: 'Files and code connector' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: /Personal/ }))
+    expect(screen.getByText('Personal · Disabled')).toBeTruthy()
+    expect(screen.queryByText('Work · Enabled')).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: /Work/ }))
     const summary = screen.getByText('Advanced source settings')
     const details = summary.closest('details') as HTMLDetailsElement
     expect(details.open).toBe(false)
     fireEvent.click(summary)
     expect(details.open).toBe(true)
     expect(screen.getByLabelText('Source label')).toBeTruthy()
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
+test('source settings quarantine legacy scopes until they are assigned to a workspace', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    sources: [
+      {
+        ...workSource,
+        name: 'community-discord',
+        kind: 'discord',
+        project: 'community',
+        enabled: false,
+      },
+    ],
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+
+    fireEvent.click(screen.getByRole('tab', { name: /Needs assignment/ }))
+    expect(screen.getByRole('alert').textContent).toContain('uses the legacy community scope')
+    expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Validate' }) as HTMLButtonElement).disabled).toBe(
+      true
+    )
+    expect(
+      (screen.getByRole('button', { name: 'Initial sync' }) as HTMLButtonElement).disabled
+    ).toBe(true)
+
+    const workspace = screen.getByRole('combobox', {
+      name: 'Workspace for community-discord',
+    }) as HTMLSelectElement
+    expect(workspace.options[0]?.textContent).toBe('Unassigned: community')
+    fireEvent.change(workspace, { target: { value: 'work' } })
+
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(false)
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
+test('GitHub code sources expose an explicit workspace-scoped repository allowlist', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    sources: [
+      {
+        ...workSource,
+        name: 'work-github',
+        kind: 'github',
+        repositories: ['0xPlayerOne/cortana'],
+        token_env: 'GITHUB_TOKEN',
+      },
+    ],
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    fireEvent.click(screen.getByText('Advanced source settings'))
+
+    const repositories = screen.getByRole('textbox', { name: 'GitHub repositories' })
+    expect((repositories as HTMLTextAreaElement).value).toBe('0xPlayerOne/cortana')
+    expect(screen.getByRole('button', { name: 'Setup' })).toBeTruthy()
+    expect(screen.getByText(/only these repositories are indexed/)).toBeTruthy()
   } finally {
     state.settings = originalSettings
   }
@@ -2123,7 +2217,9 @@ test('saving settings with restart_required triggers a background restart and cl
 
     await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
     await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
-    await waitFor(() => expect(screen.queryByText('A service restart is required.')).toBeNull())
+    await waitFor(() =>
+      expect(screen.queryByText('A service restart is still required.')).toBeNull()
+    )
   } finally {
     window.confirm = originalConfirm
     state.settings = originalSettings
@@ -2144,12 +2240,12 @@ test('successful aggregate restart clears the saved-settings notice', async () =
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
     )
-    expect(screen.getByText('A service restart is required.')).toBeTruthy()
+    expect(screen.getByText('A service restart is still required.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open services' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
     await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
-    expect(screen.queryByText('A service restart is required.')).toBeNull()
+    expect(screen.queryByText('A service restart is still required.')).toBeNull()
   } finally {
     state.settings = originalSettings
     window.confirm = originalConfirm

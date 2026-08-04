@@ -26,6 +26,7 @@ const SOURCE_KINDS: &[&str] = &[
     "google-drive",
     "gmail",
     "google-calendar",
+    "github",
     "slack",
     "discord",
     "external",
@@ -148,6 +149,8 @@ pub struct SourceSettings {
     pub root: Option<String>,
     pub source: Option<String>,
     pub channels: Vec<String>,
+    #[serde(default)]
+    pub repositories: Vec<String>,
     pub token_env: Option<String>,
     pub token_path: Option<String>,
     pub oauth_client_path: Option<String>,
@@ -999,6 +1002,7 @@ fn configured_sources(root: &Table) -> Vec<SourceSettings> {
                         root: table_optional_string(item, "root"),
                         source: table_optional_string(item, "source"),
                         channels: table_string_array(item, "channels"),
+                        repositories: table_string_array(item, "repositories"),
                         token_env: table_optional_string(item, "token_env"),
                         token_path: table_optional_string(item, "token"),
                         oauth_client_path: table_optional_string(item, "oauth_client"),
@@ -1709,6 +1713,7 @@ fn apply_sources(root: &mut Table, sources: &[SourceSettings]) {
                 set_table_optional_string(&mut table, "root", &source.root);
                 set_table_optional_string(&mut table, "source", &source.source);
                 set_table_string_array(&mut table, "channels", &source.channels);
+                set_table_string_array(&mut table, "repositories", &source.repositories);
                 set_table_optional_string(&mut table, "token_env", &source.token_env);
                 set_table_optional_string(&mut table, "token", &source.token_path);
                 set_table_optional_string(&mut table, "oauth_client", &source.oauth_client_path);
@@ -1881,6 +1886,15 @@ fn validate_sources(
                 source.name, source.project
             ));
         }
+        if source.enabled
+            && !workspace_ids.contains(&source.project)
+            && legacy_source_scopes.contains(&source.project)
+        {
+            return Err(format!(
+                "source `{}` is enabled but not assigned to a visible workspace `{}`; assign it before enabling or syncing",
+                source.name, source.project
+            ));
+        }
         source.editable = source.kind != "external";
         normalize_optional_text(&mut source.root);
         normalize_optional_text(&mut source.source);
@@ -1908,6 +1922,17 @@ fn validate_sources(
             }
         }
         normalize_string_list("source channel", &mut source.channels, 100, 128)?;
+        normalize_string_list("source repository", &mut source.repositories, 32, 256)?;
+        if source.kind == "github" {
+            for repository in &source.repositories {
+                if !valid_github_repository(repository) {
+                    return Err(format!(
+                        "source `{}` has an invalid GitHub repository `{}`; use owner/name",
+                        source.name, repository
+                    ));
+                }
+            }
+        }
         normalize_string_list("source label", &mut source.labels, 100, 128)?;
         normalize_string_list("source ACL", &mut source.acl, 100, 128)?;
         normalize_string_list("source exclude", &mut source.exclude, 256, 512)?;
@@ -2010,6 +2035,15 @@ fn validate_source_paths_and_credentials(source: &SourceSettings) -> Result<(), 
                 source.kind, source.name
             ))
         }
+        "github"
+            if source.repositories.is_empty()
+                || (source.token_env.is_none() && source.token_path.is_none()) =>
+        {
+            Err(format!(
+                "GitHub source `{}` needs repositories and a token environment name or token file",
+                source.name
+            ))
+        }
         "google-drive" | "gmail" | "google-calendar"
             if source.token_path.is_none() && source.token_env.is_none() =>
         {
@@ -2020,6 +2054,21 @@ fn validate_source_paths_and_credentials(source: &SourceSettings) -> Result<(), 
         }
         _ => Ok(()),
     }
+}
+
+fn valid_github_repository(value: &str) -> bool {
+    let mut parts = value.trim().split('/');
+    let owner = parts.next().unwrap_or_default();
+    let repository = parts.next().unwrap_or_default();
+    parts.next().is_none()
+        && !owner.is_empty()
+        && !repository.is_empty()
+        && owner
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+        && repository
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
 }
 
 fn validate_source_path(source: &str, label: &str, value: &str) -> Result<(), String> {
@@ -2817,6 +2866,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -3404,6 +3454,20 @@ mod tests {
             vec!["work", "personal", "special"]
         );
 
+        let mut unsafe_update = valid_update(temp.path());
+        unsafe_update.workspaces = current.workspaces.clone();
+        unsafe_update.sources = current.sources.clone();
+        unsafe_update
+            .sources
+            .iter_mut()
+            .find(|source| source.project == "community")
+            .expect("legacy community source")
+            .enabled = true;
+        let error = store
+            .save(unsafe_update)
+            .expect_err("enabled legacy sources must be assigned first");
+        assert!(error.contains("not assigned to a visible workspace"));
+
         let mut update = valid_update(temp.path());
         update.workspaces = current.workspaces;
         update.sources = current.sources;
@@ -3475,6 +3539,7 @@ mod tests {
             root: None,
             source: None,
             channels: vec!["C012345".into()],
+            repositories: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -3490,6 +3555,37 @@ mod tests {
         });
         let error = validate_update(&mut update).expect_err("enabled Slack needs credentials");
         assert!(error.contains("token environment"));
+    }
+
+    #[test]
+    fn github_source_requires_a_repository_allowlist_and_token() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let mut update = valid_update(temp.path());
+        let mut source = source_settings("github-code", "github");
+        source.enabled = true;
+        source.repositories = vec!["acme/project".into()];
+        source.token_env = Some("GITHUB_TOKEN".into());
+        update.sources.push(source.clone());
+        validate_update(&mut update).expect("valid GitHub source");
+
+        source.repositories = vec!["https://github.com/acme/project".into()];
+        update.sources = vec![source.clone()];
+        assert!(validate_update(&mut update).is_err());
+        source.repositories = vec!["acme/project".into()];
+        source.token_env = None;
+        update.sources = vec![source];
+        assert!(validate_update(&mut update).is_err());
+        let mut token_file_source = source_settings("github-file", "github");
+        token_file_source.enabled = true;
+        token_file_source.repositories = vec!["acme/project".into()];
+        token_file_source.token_path = Some(
+            temp.path()
+                .join("github-token.json")
+                .display()
+                .to_string(),
+        );
+        update.sources = vec![token_file_source];
+        validate_update(&mut update).expect("GitHub token file is an accepted credential path");
     }
 
     #[test]

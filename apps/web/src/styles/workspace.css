@@ -16,7 +16,7 @@
   gap: 9px;
   padding: 0 20px;
   border-bottom: 1px solid var(--line);
-  background: #1a2334;
+  background: var(--surface-elevated);
 }
 
 .workspace-tabs button {
@@ -26,14 +26,14 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  color: #b5bfd5;
+  color: var(--theme-text-secondary);
   border: 0;
   background: transparent;
   cursor: pointer;
 }
 
 .workspace-tabs button.active {
-  color: #f0f3fc;
+  color: var(--theme-text-primary);
 }
 
 .workspace-tabs button.active::after {
@@ -54,7 +54,7 @@
 .count-pill {
   padding: 2px 6px;
   border-radius: var(--radius-xs);
-  background: #2f3a4f;
+  background: var(--theme-control-bg);
   font-size: 11px;
 }
 
@@ -69,14 +69,14 @@
   align-items: center;
   padding: 0 28px;
   gap: 7px;
-  color: #8d97ab;
+  color: var(--theme-content-subtle);
   border-bottom: 1px solid var(--line);
   font-size: 13px;
 }
 
 .breadcrumbs strong {
   overflow: hidden;
-  color: #393a37;
+  color: var(--theme-content-text);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -111,7 +111,7 @@
 
 .byline {
   margin: 0;
-  color: #696a66;
+  color: var(--theme-content-subtle);
   font-size: 12px;
 }
 
@@ -126,10 +126,10 @@
   max-width: 100%;
   overflow: hidden;
   padding: 4px 7px;
-  color: #64655f;
-  border: 1px solid #d6d2c8;
+  color: var(--theme-content-subtle);
+  border: 1px solid var(--theme-content-border);
   border-radius: 10px;
-  background: #f5f2e9;
+  background: var(--theme-content-surface);
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -138,7 +138,7 @@
 .rule {
   height: 1px;
   margin: 24px 0;
-  background: #d7d4cb;
+  background: var(--theme-content-border);
 }
 
 .document-body > p:not(.byline) {
@@ -152,7 +152,7 @@
 .document-outline {
   min-width: 0;
   padding: 8px 0 0 20px;
-  border-left: 1px solid #d8d5cd;
+  border-left: 1px solid var(--theme-content-border);
 }
 
 .document-outline strong {
@@ -164,8 +164,8 @@
 .document-outline a {
   display: block;
   padding: 7px 9px;
-  color: #4b4c48;
-  border-left: 2px solid #d1cec5;
+  color: var(--theme-content-text);
+  border-left: 2px solid var(--theme-content-border);
   font-size: 12px;
   text-decoration: none;
 }
@@ -177,13 +177,13 @@
 .document-outline > span {
   display: block;
   padding: 5px 0;
-  color: #62635f;
+  color: var(--theme-content-subtle);
   font-size: 12px;
 }
 
 .document-metadata {
   margin-top: 12px;
-  color: #575853;
+  color: var(--theme-content-subtle);
   font-size: 11px;
 }
 
@@ -200,7 +200,7 @@
 
 .document-metadata dl > div {
   padding: 5px 0;
-  border-top: 1px solid #dedbd3;
+  border-top: 1px solid var(--theme-content-border);
 }
 
 .document-metadata dt {
@@ -250,7 +250,7 @@
   grid-template-columns: 18px minmax(0, 1fr) auto;
   padding: 0 6px;
   gap: 4px;
-  color: #4c5364;
+  color: var(--theme-content-text);
   border: 0;
   border-top: 1px solid #dedbd3;
   background: transparent;
@@ -267,20 +267,20 @@
 
 .document-relations button small {
   max-width: 90px;
-  color: #777873;
+  color: var(--theme-content-subtle);
   font-size: 10px;
 }
 
 .document-outline small {
   display: block;
-  color: #70716d;
+  color: var(--theme-content-subtle);
   text-align: center;
 }
 
 .evidence-footer {
   margin-top: 34px;
   padding-top: 20px;
-  border-top: 1px solid #d8d5cd;
+  border-top: 1px solid var(--theme-content-border);
 }
 
 .evidence-footer h2 {
@@ -291,7 +291,7 @@
   width: 49%;
   overflow: hidden;
   padding: 6px 5px;
-  color: #445477;
+  color: var(--theme-content-text);
   border: 0;
   background: transparent;
   cursor: pointer;
@@ -316,7 +316,7 @@
   align-items: center;
   margin-bottom: 17px;
   gap: 7px;
-  color: #9b6b19;
+  color: var(--amber);
   font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
@@ -324,7 +324,7 @@
 
 .answer-view .lead {
   margin: 20px 0 30px;
-  color: #5b5c57;
+  color: var(--theme-content-subtle);
   font-family: Georgia, serif;
   font-size: 18px;
 }
@@ -338,10 +338,10 @@
 
 .answer-meta span {
   padding: 5px 9px;
-  color: #5c5d58;
-  border: 1px solid #d1cec5;
+  color: var(--theme-content-subtle);
+  border: 1px solid var(--theme-content-border);
   border-radius: 12px;
-  background: #f4f2eb;
+  background: var(--theme-content-surface);
   font-size: 11px;
 }
 
@@ -349,7 +349,7 @@
   margin: 22px 0 30px;
   padding: 22px 24px;
   border-left: 3px solid var(--amber);
-  background: #f3f0e7;
+  background: var(--theme-content-surface);
 }
 
 .answer-copy p {
@@ -365,7 +365,7 @@
 
 .answer-plan {
   margin: 0 0 26px;
-  color: #5f605b;
+  color: var(--theme-content-subtle);
   font-size: 12px;
 }
 

@@ -286,7 +286,7 @@ impl BrainServer {
     }
 
     #[tool(
-        description = "Search configured Buzz, Gmail, Slack, and Discord evidence without invoking a language model"
+        description = "Search configured Buzz, Gmail, Slack, Discord, and other communication evidence without invoking a language model"
     )]
     async fn search_messages(&self, Parameters(params): Parameters<DomainSearchParams>) -> String {
         self.domain_search("mcp.search_messages", &self.message_sources, params)
@@ -783,7 +783,7 @@ mod tests {
             .iter()
             .filter_map(|source| source["name"].as_str())
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["work-drive", "public-reference"]);
+        assert_eq!(names, vec!["work-drive"]);
     }
 
     #[tokio::test]

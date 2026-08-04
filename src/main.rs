@@ -15,7 +15,8 @@ use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
 use cortana::{
-    api, google_oauth, mcp, migration, service, source_status, source_validation, supervisor,
+    api, github_oauth, google_oauth, mcp, migration, service, source_status, source_validation,
+    supervisor,
 };
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -32,6 +33,7 @@ const DEFAULT_CONTEXT_LIMIT: usize = 10;
 const VALIDATION_MAX_DOCUMENTS: usize = 25;
 const VALIDATION_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const VALIDATION_MAX_SECONDS: u64 = 60;
+const QUARANTINE_ACL_LABEL: &str = "__quarantine__";
 
 #[derive(Debug, Parser)]
 #[command(name = "cortana", version, about = "Agent-native second brain")]
@@ -229,6 +231,10 @@ enum Command {
     },
     /// Authorize a configured Google source in the system browser without reading source data.
     AuthorizeGoogle { source: String },
+    /// Authorize a configured GitHub source through the device flow without reading repository content.
+    AuthorizeGithub { source: String },
+    /// List bounded GitHub repositories visible to a configured source for selection.
+    GithubRepositories { source: String },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -362,11 +368,21 @@ enum AclAction {
     Plan {
         #[arg(long = "project", value_name = "PROJECT=LABEL[,LABEL]")]
         projects: Vec<String>,
+        #[arg(
+            long,
+            help = "Include every unmapped public project in the quarantine plan"
+        )]
+        quarantine_unmapped: bool,
     },
     /// Apply explicit project ACLs after source defaults agree.
     Apply {
         #[arg(long = "project", value_name = "PROJECT=LABEL[,LABEL]")]
         projects: Vec<String>,
+        #[arg(
+            long,
+            help = "Assign unmapped public projects to the reserved quarantine ACL"
+        )]
+        quarantine_unmapped: bool,
         #[arg(long, help = "Confirm mutation of legacy public ACL rows")]
         force: bool,
     },
@@ -568,6 +584,16 @@ async fn main() -> Result<()> {
     if let Some(Command::AuthorizeGoogle { source }) = cli.command.as_ref() {
         let outcome = google_oauth::authorize(&config, source).await?;
         println!("{}", serde_json::to_string(&outcome)?);
+        return Ok(());
+    }
+    if let Some(Command::AuthorizeGithub { source }) = cli.command.as_ref() {
+        let outcome = github_oauth::authorize(&config, source).await?;
+        println!("{}", serde_json::to_string(&outcome)?);
+        return Ok(());
+    }
+    if let Some(Command::GithubRepositories { source }) = cli.command.as_ref() {
+        let repositories = github_oauth::list_repositories(&config, source).await?;
+        println!("{}", serde_json::to_string(&repositories)?);
         return Ok(());
     }
     if let Some(Command::Sync {
@@ -961,6 +987,8 @@ async fn main() -> Result<()> {
             | Command::RebuildEmbeddings { .. }
             | Command::Eval { .. }
             | Command::AuthorizeGoogle { .. }
+            | Command::AuthorizeGithub { .. }
+            | Command::GithubRepositories { .. }
             | Command::ValidateSource { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
@@ -994,7 +1022,7 @@ fn mcp_source_groups(config: &Config) -> (Vec<String>, Vec<String>) {
     for source in config.sources.iter().filter(|source| source.enabled) {
         let stored_source = source.source.clone().unwrap_or_else(|| source.name.clone());
         match source.kind.as_str() {
-            "filesystem" => code.push(stored_source),
+            "filesystem" | "github" => code.push(stored_source),
             "buzz" | "gmail" | "slack" | "discord" => messages.push(stored_source),
             _ => {}
         }
@@ -1226,12 +1254,37 @@ fn plan_configured_sources(
 }
 
 fn manage_acl(config: &Config, store: &Store, action: &AclAction) -> Result<()> {
-    let (values, apply, force) = match action {
-        AclAction::Plan { projects } => (projects, false, false),
-        AclAction::Apply { projects, force } => (projects, true, *force),
+    let (values, apply, force, quarantine_unmapped) = match action {
+        AclAction::Plan {
+            projects,
+            quarantine_unmapped,
+        } => (projects, false, false, *quarantine_unmapped),
+        AclAction::Apply {
+            projects,
+            quarantine_unmapped,
+            force,
+        } => (projects, true, *force, *quarantine_unmapped),
     };
-    let mappings = parse_project_acl_mappings(values)?;
+    let explicit_mappings = parse_project_acl_mappings(values)?;
     let public = store.public_acl_summary()?;
+    let mut mappings = explicit_mappings.clone();
+    if quarantine_unmapped {
+        mappings.extend(
+            public
+                .iter()
+                .filter(|summary| {
+                    !explicit_mappings
+                        .iter()
+                        .any(|(project, _)| project == &summary.project)
+                })
+                .map(|summary| {
+                    (
+                        summary.project.clone(),
+                        vec![QUARANTINE_ACL_LABEL.to_string()],
+                    )
+                }),
+        );
+    }
     let alignment_errors = acl_alignment_errors(config, &mappings);
     if apply {
         anyhow::ensure!(force, "ACL apply requires --force");
@@ -1252,6 +1305,7 @@ fn manage_acl(config: &Config, store: &Store, action: &AclAction) -> Result<()> 
                 "documents_changed": changed,
                 "corpus_revision": store.corpus_revision()?,
                 "remaining_public": store.public_acl_summary()?,
+                "quarantine_unmapped": quarantine_unmapped,
             })
         );
         return Ok(());
@@ -1270,6 +1324,15 @@ fn manage_acl(config: &Config, store: &Store, action: &AclAction) -> Result<()> 
             })
         })
         .collect::<Vec<_>>();
+    let unmapped_public = public
+        .iter()
+        .filter(|summary| {
+            !explicit_mappings
+                .iter()
+                .any(|(project, _)| project == &summary.project)
+        })
+        .map(|summary| summary.project.clone())
+        .collect::<Vec<_>>();
     println!(
         "{}",
         serde_json::json!({
@@ -1277,6 +1340,8 @@ fn manage_acl(config: &Config, store: &Store, action: &AclAction) -> Result<()> 
             "public": public,
             "proposed": proposed,
             "source_alignment_errors": alignment_errors,
+            "quarantine_unmapped": quarantine_unmapped,
+            "unmapped_public": unmapped_public,
         })
     );
     Ok(())
@@ -1307,6 +1372,10 @@ fn parse_project_acl_mappings(values: &[String]) -> Result<Vec<(String, Vec<Stri
             !labels.iter().any(|label| label == "*"),
             "ACL migration cannot assign the reserved owner wildcard"
         );
+        anyhow::ensure!(
+            !labels.iter().any(|label| label == QUARANTINE_ACL_LABEL),
+            "ACL migration cannot assign the reserved quarantine label"
+        );
         mappings.push((project.to_string(), labels));
     }
     Ok(mappings)
@@ -1321,9 +1390,7 @@ fn acl_alignment_errors(config: &Config, mappings: &[(String, Vec<String>)]) -> 
         else {
             continue;
         };
-        let mut configured = source.acl.clone();
-        configured.sort();
-        configured.dedup();
+        let configured = source.effective_acl();
         if &configured != expected {
             errors.push(format!(
                 "{} has acl={configured:?}, expected {expected:?}",
@@ -1516,6 +1583,7 @@ fn ad_hoc_filesystem_source(
         root: Some(root),
         source: Some(source),
         channels: Vec::new(),
+        repositories: Vec::new(),
         token_env: None,
         token: None,
         oauth_client: None,
@@ -2943,7 +3011,7 @@ fn normalize_documents(documents: &mut [Document], source: &SourceConfig) {
         document.source.clone_from(&canonical);
         document.project.clone_from(&source.project);
         if document.acl.is_empty() {
-            document.acl.clone_from(&source.acl);
+            document.acl = source.effective_acl();
         }
         if !document.metadata.is_object() {
             document.metadata = serde_json::json!({});
@@ -2967,6 +3035,9 @@ fn connector_arguments(command: &mut Vec<String>, source: &SourceConfig) -> Resu
     }
     for channel in &source.channels {
         command.extend(["--channel".into(), channel.clone()]);
+    }
+    for repository in &source.repositories {
+        command.extend(["--repo".into(), repository.clone()]);
     }
     if let Some(token_env) = &source.token_env {
         command.extend(["--token-env".into(), token_env.clone()]);
@@ -2996,6 +3067,11 @@ fn connector_arguments(command: &mut Vec<String>, source: &SourceConfig) -> Resu
     anyhow::ensure!(
         !matches!(source.kind.as_str(), "slack" | "discord") || !source.channels.is_empty(),
         "source {} requires at least one channel",
+        source.name
+    );
+    anyhow::ensure!(
+        source.kind != "github" || !source.repositories.is_empty(),
+        "source {} requires at least one GitHub repository",
         source.name
     );
     Ok(())
@@ -3120,8 +3196,8 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
-        SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
+        AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits,
+        SyncLock, SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
         configured_connector_command, context_bundle, ensure_recurring_sync_validated,
         failure_status, ingest_documents, is_budget_exceeded, private_file,
         require_sync_validation, run_connector_to_spool, validate_configured_source,
@@ -3132,6 +3208,32 @@ mod tests {
     use cortana::model::Document;
     use cortana::source_validation::{SourceValidationStatus, configuration_fingerprint, record};
     use cortana::store::Store;
+
+    #[test]
+    fn acl_plan_can_include_unmapped_public_projects_in_quarantine() {
+        let cli = Cli::try_parse_from([
+            "cortana",
+            "acl",
+            "plan",
+            "--project",
+            "work=work",
+            "--quarantine-unmapped",
+        ])
+        .expect("ACL plan command");
+        match cli.command {
+            Some(Command::Acl {
+                action:
+                    AclAction::Plan {
+                        projects,
+                        quarantine_unmapped,
+                    },
+            }) => {
+                assert_eq!(projects, vec!["work=work"]);
+                assert!(quarantine_unmapped);
+            }
+            _ => panic!("expected the ACL plan subcommand"),
+        }
+    }
 
     #[test]
     fn validate_source_defaults_to_safe_read_only_bounds() {
@@ -3249,6 +3351,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3296,6 +3399,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: Some("/tmp/google-token.json".into()),
             oauth_client: None,
@@ -3341,6 +3445,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: Some("/tmp/google-token.json".into()),
             oauth_client: None,
@@ -3383,6 +3488,51 @@ mod tests {
     }
 
     #[test]
+    fn github_connector_commands_include_only_explicit_repositories() {
+        let config = Config::default();
+        let source = SourceConfig {
+            name: "work-github".into(),
+            kind: "github".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            repositories: vec!["acme/one".into(), "acme/two".into()],
+            token_env: Some("GITHUB_TOKEN".into()),
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        let command = configured_connector_command(&config, &source, Some(25), true)
+            .expect("GitHub connector command");
+        assert!(
+            command
+                .windows(2)
+                .any(|pair| pair[0] == "--repo" && pair[1] == "acme/one")
+        );
+        assert!(
+            command
+                .windows(2)
+                .any(|pair| pair[0] == "--repo" && pair[1] == "acme/two")
+        );
+        assert!(
+            command
+                .windows(2)
+                .any(|pair| pair[0] == "--token-env" && pair[1] == "GITHUB_TOKEN")
+        );
+        assert!(command.iter().any(|argument| argument == "github"));
+    }
+
+    #[test]
     fn external_connector_commands_never_receive_budget_flags() {
         let config = Config::default();
         let source = SourceConfig {
@@ -3393,6 +3543,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3434,6 +3585,7 @@ mod tests {
             root: Some(directory.path().join("code")),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3469,6 +3621,7 @@ mod tests {
             root: Some(directory.path().join("code")),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3526,6 +3679,7 @@ mod tests {
             root: Some(std::env::temp_dir()),
             source: Some(name.into()),
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3711,6 +3865,7 @@ mod tests {
             root: Some(root),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,
@@ -3909,6 +4064,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
             token_env: None,
             token: None,
             oauth_client: None,

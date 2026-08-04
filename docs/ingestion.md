@@ -110,9 +110,23 @@ At most once per day Slack performs a full history refresh to capture edits and 
 validation disables the cache, and a bounded trial or initial sync never prunes cached threads it
 did not enumerate.
 
+GitHub code sources use an explicit repository allowlist and the GitHub REST API. Each selected
+`owner/repository` is resolved to its default branch, enumerated through the Git tree API, and
+limited to UTF-8 text/code files; generated trees, vendored dependencies, binary blobs, and files
+larger than 512 KiB are skipped. A truncated tree fails closed rather than pretending that a
+partial repository is a complete snapshot. The connector does not search the account, follow
+repository links, or clone arbitrary URLs. Bounded validation and trial syncs stop before the
+configured document cap and never reconcile deletions.
+
 ## Credentials
 
 - Slack and Discord tokens are read only from the configured environment-variable name.
+- GitHub code sources read either a personal/GitHub App access token from the configured
+  environment-variable name or a private OAuth token JSON file, and always require an explicit
+  repository allowlist. `cortana authorize-github SOURCE` uses the configured GitHub OAuth client
+  id JSON and device flow, while `cortana github-repositories SOURCE` returns a bounded safe
+  repository list for Desktop selection. The Desktop chooser persists only explicitly checked
+  `owner/repository` entries. Neither command reads repository content.
 - Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Desktop authorization uses a
   Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
   and the minimum read-only scopes required by the Google sources that share that token. Refresh
@@ -275,11 +289,13 @@ External connectors must emit one JSON object per line:
 provenance, channel/account identifiers, participants, and source-specific fields in `metadata`;
 never place credentials there.
 
-Set `acl` on a source to apply a default access label to every document that connector emits
-without its own ACL. Empty document ACLs are public when the source also has no default. A
-document with one or more labels is returned only to a query principal with at least one matching
-label; the implicit loopback owner can access all labels. Use stable trust-domain labels such as
-`personal`, `work`, or `shared`, not user-controlled channel names.
+Set `acl` on a source to apply explicit access labels to every document that connector emits
+without its own ACL. When omitted, the source automatically inherits its `project` workspace label;
+new source records are therefore private to that workspace by default. A document with one or more
+labels is returned only to a query principal with at least one matching label; the implicit loopback
+owner can access all labels. Use stable trust-domain labels such as `personal`, `work`, or `shared`,
+not user-controlled channel names. Existing empty-ACL rows are legacy public data and must be
+reviewed with `cortana acl plan` before enabling shared principals.
 
 ## Pre-embedded import
 

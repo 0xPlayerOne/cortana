@@ -110,6 +110,22 @@ describe('operational source visibility', () => {
     expect(health.label).toContain('Google OAuth setup required')
   })
 
+  test('surfaces GitHub oauth readiness in source health', () => {
+    const status = structuredClone(demoStatus)
+    const source = status.ingestion.configured_sources.find((item) => item.name === 'work-code')!
+    source.enabled = true
+    source.authorization = {
+      method: 'github_oauth',
+      setup_required: false,
+      authorized: false,
+    }
+
+    const operational = operationalSources(status).find((item) => item.name === 'work-code')
+    const health = sourceHealth(operational!)
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('GitHub token authorization required')
+  })
+
   test('distinguishes a validated connector from an unproven source', () => {
     const status = structuredClone(demoStatus)
     const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!

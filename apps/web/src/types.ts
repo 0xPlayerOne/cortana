@@ -86,9 +86,22 @@ export type SourceSyncSummary = {
 }
 
 export type SourceAuthorizationSummary = {
-  method: 'none' | 'token' | 'google_oauth'
+  method: 'none' | 'token' | 'google_oauth' | 'github_oauth'
   setup_required: boolean
   authorized: boolean
+}
+
+export type GithubRepositorySummary = {
+  id: number
+  full_name: string
+  private: boolean
+  default_branch: string
+  html_url: string
+}
+
+export type GithubRepositoryList = {
+  repositories: GithubRepositorySummary[]
+  truncated: boolean
 }
 
 export type ConfiguredSourceSummary = {
@@ -157,6 +170,7 @@ export type SourceKind =
   | 'google-drive'
   | 'gmail'
   | 'google-calendar'
+  | 'github'
   | 'slack'
   | 'discord'
   | 'external'
@@ -169,6 +183,7 @@ export type SourceSettings = {
   root: string | null
   source: string | null
   channels: string[]
+  repositories: string[]
   token_env: string | null
   token_path: string | null
   oauth_client_path: string | null

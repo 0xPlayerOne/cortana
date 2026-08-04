@@ -58,8 +58,9 @@ failure is a stop sign; it never repairs the index implicitly.
 ### 3. Authorize and validate one source
 
 Authorize only the source you intend to use, then run a small read-only validation. Google OAuth is
-started with `cortana authorize-google SOURCE`; Apple Notes uses the host permission; token-backed
-sources read only the configured environment variable. Validation never embeds, indexes, or
+started with `cortana authorize-google SOURCE`; GitHub uses `cortana authorize-github SOURCE`
+with a configured device-flow client id and private token destination; Apple Notes uses the host
+permission; token-backed sources read only the configured environment variable. Validation never embeds, indexes, or
 reconciles data:
 
 ```bash
@@ -200,8 +201,8 @@ vectors into a new generation. For a true model or preprocessing change, use the
 `rebuild-embeddings --from ... --force` command: it re-embeds every stored chunk behind a
 recovery snapshot and only swaps the live vectors after the entire corpus succeeds.
 See [the ingestion guide](docs/ingestion.md) and
-[`config.example.toml`](config.example.toml) for Google Drive, Gmail, Calendar, Apple Notes, Slack,
-Discord, Buzz, filesystem/code, and external adapters.
+[`config.example.toml`](config.example.toml) for Google Drive, Gmail, Calendar, Apple Notes,
+GitHub code, Slack, Discord, Buzz, filesystem/code, and external adapters.
 See [the query guide](docs/query.md) for planned retrieval, cited synthesis, local model-gateway
 configuration, cloud providers, cache invalidation, and degraded operation.
 See the [agent integration guide](docs/integrations.md) for Codex, Hermes, Buzz, MCP, HTTP, and

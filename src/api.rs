@@ -816,7 +816,10 @@ fn fallback_workspaces(
     source_projects: impl IntoIterator<Item = String>,
 ) -> Vec<WorkspaceConfig> {
     if !configured.is_empty() {
-        return configured.iter().take(3).cloned().collect();
+        // Explicit configuration is authoritative. Never silently hide a
+        // workspace (and its source assignment) from the operator UI; only
+        // synthesized fallback workspaces are bounded below.
+        return configured.to_vec();
     }
     let mut project_ids: BTreeSet<String> = source_projects
         .into_iter()
@@ -1271,7 +1274,7 @@ mod tests {
     use crate::embed::{DeterministicEmbedder, Embedder};
     use crate::model::Document;
     use crate::source_status::{
-        MAX_GOOGLE_TOKEN_BYTES, SourceAuthorizationMethod, source_authorization_summary,
+        MAX_TOKEN_FILE_BYTES, SourceAuthorizationMethod, source_authorization_summary,
         validation_error_category,
     };
     use crate::source_validation::{self, SourceValidationStatus};
@@ -1355,6 +1358,32 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            repositories: Vec::new(),
+            token_env: None,
+            token,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        }
+    }
+
+    fn github_source(token: Option<std::path::PathBuf>) -> SourceConfig {
+        SourceConfig {
+            name: "work-github".into(),
+            kind: "github".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            repositories: vec!["owner/repository".into()],
             token_env: None,
             token,
             oauth_client: None,
@@ -1383,6 +1412,42 @@ mod tests {
             summary.method,
             SourceAuthorizationMethod::GoogleOauth
         ));
+    }
+
+    #[test]
+    fn github_token_file_authorizes_github_source() {
+        let directory = tempdir().expect("temporary directory");
+        let token = directory.path().join("github-token.json");
+        write_private_fixture(
+            &token,
+            "{\"access_token\":\"gho_test\",\"token_type\":\"bearer\"}\n",
+        );
+        let summary = source_authorization_summary(&Config::default(), &github_source(Some(token)));
+
+        assert!(summary.authorized);
+        assert!(!summary.setup_required);
+        assert!(matches!(
+            summary.method,
+            SourceAuthorizationMethod::GithubOauth
+        ));
+    }
+
+    #[test]
+    fn github_token_environment_requires_a_bearer_shaped_value() {
+        let mut source = github_source(None);
+        source.token_env = Some("GITHUB_TOKEN".into());
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("GITHUB_TOKEN".into(), "gho_test\n".into());
+        assert!(!source_authorization_summary(&config, &source).authorized);
+
+        config
+            .environment
+            .insert("GITHUB_TOKEN".into(), "gho_test".into());
+        let summary = source_authorization_summary(&config, &source);
+        assert!(summary.authorized);
+        assert!(!summary.setup_required);
     }
 
     #[test]
@@ -1436,7 +1501,7 @@ mod tests {
     fn google_token_file_rejects_oversized_payload() {
         let directory = tempdir().expect("temporary directory");
         let token = directory.path().join("google-token.json");
-        std::fs::write(&token, vec![b'{'; MAX_GOOGLE_TOKEN_BYTES + 1]).expect("oversized fixture");
+        std::fs::write(&token, vec![b'{'; MAX_TOKEN_FILE_BYTES + 1]).expect("oversized fixture");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -1569,7 +1634,7 @@ mod tests {
                 color: None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(fallback_workspaces(&oversized, std::iter::empty()).len(), 3);
+        assert_eq!(fallback_workspaces(&oversized, std::iter::empty()).len(), 4);
     }
 
     #[tokio::test]
@@ -1865,7 +1930,7 @@ mod tests {
             .iter()
             .map(|source| source.name.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["work-drive", "public-reference"]);
+        assert_eq!(names, vec!["work-drive"]);
 
         let mut admin_config = auth_config;
         admin_config.auth.tokens[0].scopes = vec![ADMIN_SCOPE.into()];
