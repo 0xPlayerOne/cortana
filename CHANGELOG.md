@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.8](https://github.com/0xPlayerOne/cortana/compare/v0.29.7...v0.29.8) (2026-08-04)
+
+
+### Bug Fixes
+
+* align offline init with deterministic embeddings ([5fa5d40](https://github.com/0xPlayerOne/cortana/commit/5fa5d40c2e06aa01fa10ea0c630d40fc3944d94a))
+
 ## [0.29.7](https://github.com/0xPlayerOne/cortana/compare/v0.29.6...v0.29.7) (2026-08-04)
 
 
