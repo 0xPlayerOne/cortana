@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.29.2](https://github.com/0xPlayerOne/cortana/compare/v0.29.1...v0.29.2) (2026-08-04)
+
+
+### Documentation
+
+* refresh desktop release audit evidence ([87f332e](https://github.com/0xPlayerOne/cortana/commit/87f332eced20088ecdf45a614e863025a8f13767))
+
+
+### Tests
+
+* **web:** serialize bun UI suite ([a6eae23](https://github.com/0xPlayerOne/cortana/commit/a6eae23b4fcfcce63c86614f08aa0e07d76af677))
+
 ## [0.29.1](https://github.com/0xPlayerOne/cortana/compare/v0.29.0...v0.29.1) (2026-08-04)
 
 
