@@ -76,6 +76,22 @@ jobs:
             src/cortana/__init__.py
         run: |
           set -euo pipefail
+          latest_main_sha="$(git rev-parse origin/main)"
+          if [ "${{ github.event_name }}" = "push" ] && [ "$latest_main_sha" != "${{ github.sha }}" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "reason=stale push event: workflow SHA ${{ github.sha }} is no longer origin/main ($latest_main_sha)" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Release skipped: stale push event::A newer commit is now on main; this run will not publish from an older SHA."
+            {
+              printf '%s\n' '## Release skipped: stale push event'
+              printf '%s\n' ''
+              printf '%s\n' 'A newer commit is now on `main`; this run was triggered by an older push SHA.'
+              printf '%s\n' 'Skipping release prevents publishing a tag from stale source.'
+              printf '%s\n' ''
+              printf '%s\n' "Triggered SHA: \`${{ github.sha }}\`"
+              printf '%s\n' "Current main:  \`$latest_main_sha\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           if git diff --quiet origin/main origin/staging; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
             echo "reason=main and staging trees are identical" >> "$GITHUB_OUTPUT"
