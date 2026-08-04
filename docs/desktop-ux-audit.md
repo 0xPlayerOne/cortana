@@ -50,9 +50,9 @@ is not part of a visual/UI change.
 - Installed core and Desktop are v0.27.3 with 47,658 documents and 77,472
   chunks. Query-only readiness passes. Recurring-sync readiness remains gated
   because work-drive, work-gmail, work-calendar, personal-calendar,
-  community-discord, and buzz currently have only bounded smoke validation.
+  community-discord, and buzz have only smaller bounded validations.
 - A 25-document/5 MiB/60-second smoke validation passed for all 12 enabled
-  sources. Shared-token configuration is empty. Full-budget recurring-sync
-  validation remains pending for the listed bounded sources.
+  sources. Shared bearer token configuration is empty. Full-budget
+  recurring-sync validation remains pending for the listed bounded sources.
 - Deterministic evaluation passes. Model-backed eval is not yet production-proven because
   the configured query provider at `127.0.0.1:8008` is unavailable.
