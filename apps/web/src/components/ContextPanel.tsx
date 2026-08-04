@@ -45,6 +45,8 @@ export function ContextPanel({
           type="button"
           aria-label="Close agent context"
           title="Close agent context"
+          data-tooltip="Close agent context"
+          className="quick-tooltip"
           onClick={onClose}
         >
           <X size={17} />
@@ -150,6 +152,8 @@ export function ContextPanel({
           type="button"
           aria-label="Copy agent context"
           title="Copy agent context"
+          data-tooltip="Copy agent context"
+          className="quick-tooltip"
           onClick={() => void copy()}
         >
           {copied ? <Check size={17} /> : <Copy size={17} />}

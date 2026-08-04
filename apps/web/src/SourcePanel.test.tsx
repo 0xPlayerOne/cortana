@@ -10,7 +10,8 @@ import type {
 } from './types'
 import { demoStatus } from './demo'
 import { SourcePanel } from './components/SourcePanel'
-import { sourceIconForKind } from './components/sourceIconData'
+import { SourceIcon } from './components/sourceIcons'
+import { sourceBrandForKind, sourceIconForKind } from './components/sourceIconData'
 
 afterEach(cleanup)
 
@@ -253,6 +254,33 @@ test('source icons use the exact configured connector kind', () => {
   expect(sourceIconForKind('slack')).toBe(MessageCircle)
   expect(sourceIconForKind('buzz')).toBe(Bot)
   expect(sourceIconForKind('slack-archive')).toBe(Database)
+})
+
+test('source icons keep brand fidelity for Notes and Drive and fall back to lucide glyphs', () => {
+  // Apple Notes must not render as the generic code/folder glyph, and Drive
+  // must render its brand mark rather than the plain cloud fallback.
+  expect(sourceBrandForKind('apple-notes')).toBeDefined()
+  expect(sourceBrandForKind('google-drive')).toBeDefined()
+  expect(sourceBrandForKind('gmail')).toBeDefined()
+  expect(sourceBrandForKind('google-calendar')).toBeDefined()
+
+  const { container: notesContainer } = render(<SourceIcon kind="apple-notes" />)
+  const notesPath = notesContainer.querySelector('svg path')
+  expect(notesPath).toBeTruthy()
+  expect(notesPath?.getAttribute('d')).toBe(sourceBrandForKind('apple-notes')?.path)
+
+  const { container: driveContainer } = render(<SourceIcon kind="google-drive" />)
+  const drivePath = driveContainer.querySelector('svg path')
+  expect(drivePath).toBeTruthy()
+  expect(drivePath?.getAttribute('d')).toBe(sourceBrandForKind('google-drive')?.path)
+
+  // Connectors without a brand glyph render their lucide fallback icon.
+  const { container: filesContainer } = render(<SourceIcon kind="filesystem" />)
+  const filesSvg = filesContainer.querySelector('svg')
+  expect(filesSvg).toBeTruthy()
+  // Lucide glyphs are stroke-based (fill="none"); brand marks are filled.
+  expect(filesSvg?.getAttribute('fill')).toBe('none')
+  expect(filesSvg?.querySelector('path')).toBeTruthy()
 })
 
 test('source selection is scoped to the active workspace when names repeat', () => {
