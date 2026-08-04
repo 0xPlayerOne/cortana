@@ -590,7 +590,7 @@ mod tests {
             scopes: vec![QUERY_SCOPE.into()],
             acl: vec!["work".into()],
         }];
-        let principal = AuthPolicy::from_config(&config, None)
+        let principal = AuthPolicy::from_config(&config)
             .expect("policy")
             .authenticate("work-secret")
             .expect("principal");
@@ -669,11 +669,11 @@ mod tests {
                 acl: vec!["work".into()],
             },
         ];
-        let work_principal = AuthPolicy::from_config(&config, None)
+        let work_principal = AuthPolicy::from_config(&config)
             .expect("policy")
             .authenticate("work-secret")
             .expect("work principal");
-        let admin_principal = AuthPolicy::from_config(&config, None)
+        let admin_principal = AuthPolicy::from_config(&config)
             .expect("policy")
             .authenticate("admin-secret")
             .expect("admin principal");
@@ -894,7 +894,7 @@ mod tests {
             scopes: vec![STATUS_SCOPE.into()],
             acl: vec!["work".into()],
         }];
-        let principal = AuthPolicy::from_config(&config, None)
+        let principal = AuthPolicy::from_config(&config)
             .expect("policy")
             .authenticate("work-secret")
             .expect("principal");
@@ -946,7 +946,7 @@ mod tests {
             scopes: vec![ADMIN_SCOPE.into(), STATUS_SCOPE.into()],
             acl: vec!["work".into()],
         }];
-        let principal = AuthPolicy::from_config(&config, None)
+        let principal = AuthPolicy::from_config(&config)
             .expect("policy")
             .authenticate("admin-secret")
             .expect("principal");

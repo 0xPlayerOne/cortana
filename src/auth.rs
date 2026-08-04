@@ -66,19 +66,18 @@ pub struct AuthPolicy {
     credentials: Vec<Credential>,
 }
 
-impl AuthPolicy {
-    pub fn legacy(token: Option<String>) -> Self {
-        let credentials = token
-            .map(|value| Credential {
-                digest: Sha256::digest(value.as_bytes()).into(),
-                principal: Principal::local("legacy-api-token"),
-            })
-            .into_iter()
-            .collect();
-        Self { credentials }
+impl Default for AuthPolicy {
+    /// An empty policy accepts local requests without a bearer token; HTTP
+    /// authentication requires configured `[[auth.tokens]]` principals.
+    fn default() -> Self {
+        Self {
+            credentials: Vec::new(),
+        }
     }
+}
 
-    pub fn from_config(config: &Config, legacy_token: Option<String>) -> Result<Self> {
+impl AuthPolicy {
+    pub fn from_config(config: &Config) -> Result<Self> {
         let mut credentials = Vec::new();
         let mut principals = HashSet::new();
         for token in &config.auth.tokens {
@@ -123,13 +122,6 @@ impl AuthPolicy {
                     scopes,
                     acl,
                 },
-            });
-        }
-        if let Some(value) = legacy_token {
-            anyhow::ensure!(!value.is_empty(), "auth bearer token must not be empty");
-            credentials.push(Credential {
-                digest: Sha256::digest(value.as_bytes()).into(),
-                principal: Principal::local("legacy-api-token"),
             });
         }
         let mut digests = HashSet::new();
@@ -198,7 +190,7 @@ mod tests {
             acl: vec!["work".into()],
         }];
 
-        let policy = AuthPolicy::from_config(&config, None).expect("valid policy");
+        let policy = AuthPolicy::from_config(&config).expect("valid policy");
         let principal = policy.authenticate("work-secret").expect("principal");
         assert_eq!(principal.name, "work-agent");
         assert!(principal.has_scope(QUERY_SCOPE));
@@ -208,15 +200,15 @@ mod tests {
         assert!(policy.authenticate("wrong-secret").is_none());
 
         config.auth.tokens[0].scopes = vec!["unknown".into()];
-        assert!(AuthPolicy::from_config(&config, None).is_err());
+        assert!(AuthPolicy::from_config(&config).is_err());
 
         config.auth.tokens[0].scopes = vec![QUERY_SCOPE.into()];
         config.auth.tokens.push(config.auth.tokens[0].clone());
-        assert!(AuthPolicy::from_config(&config, None).is_err());
+        assert!(AuthPolicy::from_config(&config).is_err());
 
         config.auth.tokens.pop();
         config.auth.tokens[0].scopes = vec![ADMIN_SCOPE.into()];
-        let owner = AuthPolicy::from_config(&config, None)
+        let owner = AuthPolicy::from_config(&config)
             .expect("admin policy")
             .authenticate("work-secret")
             .expect("admin principal");
@@ -244,27 +236,33 @@ mod tests {
             acl: vec!["*".into()],
         }];
 
-        assert!(AuthPolicy::from_config(&config, None).is_err());
-
-        let principal = AuthPolicy::legacy(Some("legacy-secret".into()))
-            .authenticate("legacy-secret")
-            .expect("legacy principal");
-        assert_eq!(principal.acl_labels(), vec!["*".to_string()]);
+        assert!(AuthPolicy::from_config(&config).is_err());
     }
 
     #[test]
-    fn bearer_values_must_be_unique_even_across_legacy_and_named_tokens() {
+    fn bearer_values_must_be_unique_across_named_tokens() {
         let mut config = Config::default();
         config
             .environment
             .insert("WORK_TOKEN".into(), "same-secret".into());
-        config.auth.tokens = vec![AuthTokenConfig {
-            principal: "work-agent".into(),
-            token_env: "WORK_TOKEN".into(),
-            scopes: vec![QUERY_SCOPE.into()],
-            acl: vec!["work".into()],
-        }];
+        config
+            .environment
+            .insert("ADMIN_TOKEN".into(), "same-secret".into());
+        config.auth.tokens = vec![
+            AuthTokenConfig {
+                principal: "work-agent".into(),
+                token_env: "WORK_TOKEN".into(),
+                scopes: vec![QUERY_SCOPE.into()],
+                acl: vec!["work".into()],
+            },
+            AuthTokenConfig {
+                principal: "admin-agent".into(),
+                token_env: "ADMIN_TOKEN".into(),
+                scopes: vec![ADMIN_SCOPE.into()],
+                acl: Vec::new(),
+            },
+        ];
 
-        assert!(AuthPolicy::from_config(&config, Some("same-secret".into())).is_err());
+        assert!(AuthPolicy::from_config(&config).is_err());
     }
 }

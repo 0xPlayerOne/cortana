@@ -303,12 +303,6 @@ enum Command {
             help = "Permit a bearer-authenticated non-loopback bind; terminate TLS upstream"
         )]
         allow_remote: bool,
-        #[arg(
-            long,
-            env = "CORTANA_API_TOKEN_ENV",
-            help = "Environment variable containing the HTTP bearer token"
-        )]
-        api_token_env: Option<String>,
     },
     /// Serve retrieval tools over MCP stdio.
     Mcp {
@@ -974,20 +968,11 @@ async fn main() -> Result<()> {
             web_dir,
             no_web,
             allow_remote,
-            api_token_env,
         }) => {
-            let api_token = api_token_env
-                .as_deref()
-                .map(|name| {
-                    config.environment_value(name).with_context(|| {
-                        format!("HTTP token environment variable {name} is not set")
-                    })
-                })
-                .transpose()?;
-            let auth = cortana::auth::AuthPolicy::from_config(&config, api_token)?;
+            let auth = cortana::auth::AuthPolicy::from_config(&config)?;
             anyhow::ensure!(
                 !allow_remote || auth.requires_token(),
-                "--allow-remote requires --api-token-env or [[auth.tokens]]"
+                "--allow-remote requires configured [[auth.tokens]]"
             );
             let web_dir = (!no_web).then_some(web_dir);
             let query_api_key = config
@@ -1008,7 +993,7 @@ async fn main() -> Result<()> {
                 config.query.clone(),
             );
             api::serve(
-                api::AppState::new(store, embedder, None)
+                api::AppState::new(store, embedder)
                     .with_config(&config, service::sync_job_installed())
                     .with_answer_engine(answer)
                     .with_auth_policy(auth),
@@ -1038,7 +1023,7 @@ async fn main() -> Result<()> {
                 let token = config
                     .environment_value(&name)
                     .with_context(|| format!("MCP token environment variable {name} is not set"))?;
-                let auth = cortana::auth::AuthPolicy::from_config(&config, None)?;
+                let auth = cortana::auth::AuthPolicy::from_config(&config)?;
                 auth.authenticate(&token)
                     .context("MCP token does not match a configured [[auth.tokens]] principal")?
             } else {
