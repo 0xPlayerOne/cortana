@@ -101,6 +101,22 @@ synthesis_enabled = false
 
 This setting does not affect ingestion and does not start any background work.
 
+## Provider model discovery
+
+`cortana provider-models --kind embedding|query` lists the models the configured provider
+advertises through its OpenAI-compatible `/models` endpoint, so Desktop settings can offer the
+provider's real catalog instead of a fixed preset list. The call is read-only and strictly
+bounded: the shared provider URL contract (HTTPS, or HTTP only on loopback) is enforced before any
+request, redirects are never followed, the request has a fixed 10-second timeout, and the
+response body, model count, and every echoed id are capped. Only sanitized model ids are
+returned, plus explicit capability metadata when the provider advertises it — capabilities are
+never inferred from model ids or names. The provider API key is used only for the request
+`Authorization` header and is never printed, stored, or included in errors.
+
+```bash
+cortana provider-models --kind query
+```
+
 ## Model-backed evaluation run
 
 `cortana eval --model` is a separate, opt-in quality gate for the real planner+synthesis path. It

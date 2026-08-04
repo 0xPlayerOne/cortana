@@ -267,7 +267,7 @@ pub async fn list_discord_channels<R: tauri::Runtime>(
     Ok(value)
 }
 
-fn append_bounded_bytes(buffer: &mut Vec<u8>, bytes: &[u8], maximum: usize) {
+pub(crate) fn append_bounded_bytes(buffer: &mut Vec<u8>, bytes: &[u8], maximum: usize) {
     let remaining = maximum.saturating_sub(buffer.len());
     buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
 }
@@ -920,7 +920,7 @@ impl SourceJobState {
     }
 }
 
-fn terminate_source_process(child: CommandChild) -> Result<(), String> {
+pub(crate) fn terminate_source_process(child: CommandChild) -> Result<(), String> {
     let pid = child.pid();
     #[cfg(unix)]
     if pid > 0 && pid <= i32::MAX as u32 {

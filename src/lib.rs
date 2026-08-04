@@ -12,6 +12,7 @@ pub mod google_oauth;
 pub mod mcp;
 pub mod migration;
 pub mod model;
+pub mod provider_models;
 pub mod readiness;
 pub mod retrieval;
 pub mod service;

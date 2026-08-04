@@ -301,6 +301,27 @@ export type AuthPrincipalSettings = {
   acl: string[]
 }
 
+export type ProviderModelKind = 'embedding' | 'query'
+
+/** One model advertised by the configured OpenAI-compatible provider. */
+export type ProviderModelEntry = {
+  id: string
+  object: string | null
+  owned_by: string | null
+  created: number | null
+  /** Explicit capability metadata advertised by the provider; never inferred. */
+  capabilities?: unknown
+}
+
+/** Bounded model catalog returned by `cortana provider-models`. */
+export type ProviderModelList = {
+  kind: ProviderModelKind
+  /** Normalized provider base URL the catalog was fetched from. */
+  provider: string
+  models: ProviderModelEntry[]
+  truncated: boolean
+}
+
 export type DesktopSettings = {
   config_path: string
   secret_file_path: string

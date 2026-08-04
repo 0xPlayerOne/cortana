@@ -132,6 +132,12 @@ configured document cap and never reconcile deletions.
   never reads message content, never starts a sync, and never prints the token. The Desktop
   chooser persists only explicitly checked channel snowflake IDs; the renderer can send only the
   source name and selected channel IDs.
+- `cortana provider-models --kind embedding|query` returns the bounded model catalog the
+  configured OpenAI-compatible provider advertises through `/models` (sanitized ids plus explicit
+  capability metadata only when the provider publishes it). The Desktop model selectors use it
+  when available and fall back to the local Qwen presets or the saved custom model otherwise. The
+  call is read-only, never follows redirects, uses a strict timeout, and never prints the provider
+  API key.
 - Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Desktop authorization uses a
   Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
   and the minimum read-only scopes required by the Google sources that share that token. Refresh

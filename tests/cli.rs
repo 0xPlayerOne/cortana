@@ -1575,3 +1575,117 @@ fn backup_verify_and_restore_round_trip() {
         .stdout(predicate::str::contains("\"title\": \"First\""))
         .stdout(predicate::str::contains("\"title\": \"Second\"").not());
 }
+
+#[test]
+fn provider_model_discovery_rejects_remote_http_before_network() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [embedding]\n\
+             base_url = \"http://provider.example/v1\"\n\
+             model = \"Qwen/Qwen3-Embedding-0.6B\"\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["provider-models", "--kind", "embedding"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("must use HTTPS"))
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn provider_model_discovery_lists_advertised_models_from_loopback_provider() {
+    use std::io::{Read, Write};
+    use std::time::{Duration, Instant};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind provider server");
+    let address = listener.local_addr().expect("provider address");
+    std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let (mut stream, _) = loop {
+            match listener.accept() {
+                Ok(pair) => break pair,
+                Err(_) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+                Err(error) => panic!("provider server accept failed: {error}"),
+            }
+        };
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
+        let mut request = Vec::new();
+        let mut buffer = [0u8; 1024];
+        loop {
+            match stream.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => {
+                    request.extend_from_slice(&buffer[..count]);
+                    if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        let body = br#"{"object":"list","data":[
+            {"id":"qwen2.5-72b-instruct","object":"model","owned_by":"local"},
+            {"id":"gemma2-27b-it","object":"model","capabilities":["completion"]}
+        ]}"#;
+        let headers = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        let _ = stream.write_all(headers.as_bytes());
+        let _ = stream.write_all(body);
+        let _ = stream.flush();
+    });
+
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [embedding]\n\
+             base_url = \"http://{address}/v1\"\n\
+             model = \"Qwen/Qwen3-Embedding-0.6B\"\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    let output = Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["provider-models", "--kind", "embedding"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let parsed: serde_json::Value = serde_json::from_slice(&output).expect("valid JSON output");
+    assert_eq!(parsed["kind"], "embedding");
+    assert_eq!(parsed["provider"], format!("http://{address}/v1"));
+    assert_eq!(parsed["truncated"], false);
+    let ids = parsed["models"]
+        .as_array()
+        .expect("models array")
+        .iter()
+        .map(|model| model["id"].as_str().expect("model id"))
+        .collect::<Vec<_>>();
+    assert_eq!(ids, vec!["qwen2.5-72b-instruct", "gemma2-27b-it"]);
+    assert_eq!(
+        parsed["models"][1]["capabilities"],
+        serde_json::json!(["completion"])
+    );
+}
