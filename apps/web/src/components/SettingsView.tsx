@@ -3371,8 +3371,9 @@ function SourcesSection({
                   {hasBrowserSetup(source.kind) && (
                     <button
                       type="button"
-                      className="source-icon-button"
+                      className="source-icon-button quick-tooltip"
                       aria-label="Setup"
+                      data-tooltip="Setup"
                       disabled={!canValidate || sourceLocked}
                       title="Open the official provider setup page"
                       onClick={() => void openSetup(source)}
@@ -3383,8 +3384,9 @@ function SourcesSection({
                   {(isGoogleSource(source.kind) || source.kind === 'github') && (
                     <button
                       type="button"
-                      className="source-icon-button"
+                      className="source-icon-button quick-tooltip"
                       aria-label="Authorize"
+                      data-tooltip="Authorize"
                       disabled={
                         !canValidate ||
                         (!source.token_path && !source.token_env) ||
@@ -3403,8 +3405,9 @@ function SourcesSection({
                   )}
                   <button
                     type="button"
-                    className="source-icon-button"
+                    className="source-icon-button quick-tooltip"
                     aria-label="Validate"
+                    data-tooltip="Validate"
                     disabled={!canValidate || Boolean(activeJob) || !workspaceAssigned}
                     title={canValidate ? 'Read-only bounded validation' : 'Save changes first'}
                     onClick={() => void validateSource(source)}
@@ -3417,8 +3420,9 @@ function SourcesSection({
                   </button>
                   <button
                     type="button"
-                    className="source-icon-button"
+                    className="source-icon-button quick-tooltip"
                     aria-label="Trial sync"
+                    data-tooltip="Trial sync"
                     disabled={
                       !canValidate || !source.enabled || Boolean(activeJob) || !workspaceAssigned
                     }
@@ -3433,8 +3437,9 @@ function SourcesSection({
                   </button>
                   <button
                     type="button"
-                    className="source-icon-button"
+                    className="source-icon-button quick-tooltip"
                     aria-label="Initial sync"
+                    data-tooltip="Initial sync"
                     disabled={
                       !canValidate || !source.enabled || Boolean(activeJob) || !workspaceAssigned
                     }
@@ -3449,8 +3454,9 @@ function SourcesSection({
                   </button>
                   <button
                     type="button"
-                    className="source-icon-button"
+                    className="source-icon-button quick-tooltip"
                     aria-label={`Remove ${source.name}`}
+                    data-tooltip={`Remove ${source.name}`}
                     disabled={sourceLocked}
                     title={`Remove ${source.name}`}
                     onClick={() => {
