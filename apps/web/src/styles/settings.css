@@ -1079,10 +1079,10 @@
   height: 38px;
   padding: 0 10px;
   color: var(--theme-text-primary);
-  border: 1px solid #40413e;
-  border-radius: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
   outline: 0;
-  background: #181917;
+  background: var(--theme-control-bg);
 }
 
 .form-field input:focus,
