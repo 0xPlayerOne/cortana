@@ -1142,7 +1142,9 @@ test('workspace cards show display name and advanced details', async () => {
     fireEvent.click(screen.getByText('Advanced workspace details'))
     expect(screen.getByText('ID is internal; account labels are optional metadata.')).toBeTruthy()
     expect(screen.getByLabelText(/Scope ID/i)).toBeTruthy()
-    expect(screen.getByLabelText(/Account label/i)).toBeTruthy()
+    const accountLabel = screen.getByLabelText(/Account label/i)
+    expect(accountLabel).toBeTruthy()
+    expect(accountLabel.getAttribute('placeholder')).toBe('e.g. Nifty League')
     expect(screen.getByDisplayValue('Work')).toBeTruthy()
     expect((screen.getByLabelText(/Scope ID/i) as HTMLInputElement).readOnly).toBe(true)
     const upload = screen.getByLabelText('Upload logo for Work') as HTMLInputElement
