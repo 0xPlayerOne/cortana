@@ -37,18 +37,19 @@ is not part of a visual/UI change.
 ## Production blockers before calling the Desktop complete
 
 1. Resolve recurring-sync readiness for work-drive, work-gmail, work-calendar, personal-calendar, community-discord, and buzz while their validations are currently bounded only by smoke limits.
-2. Land and verify provider-aware model capability metadata for supported query/answer
-   providers (implemented on `feat/provider-capabilities`, PR #419).
+2. Deliver the remaining Discord browser OAuth/server authorization and Slack workspace
+   discovery gaps; provider-advertised model metadata is implemented and bounded by
+   `cortana provider-models`.
 3. Discord OAuth/server authorization and Buzz community assignment with per-workspace persistence remain open.
 4. Perform packaged GUI/browser OAuth, service/tray, updater, import/export, backup and
    restore drills on a supported signed Desktop build; complete recurring-sync launch controls with the bounded read-only validation state exposed.
 
 ## Evidence limits
 
-- The current checkout passes `cargo test --all-targets --locked` (195 library
-  tests plus the release-install and MCP protocol targets). This staging-based
-  UI branch passes `bun test apps/web` (216 tests), `tsc -b`, and
-  `eslint apps/web/src`; PR #419 adds six provider-catalog tests once it lands.
+- The current checkout passes `cargo test --all-targets --locked` (292 tests:
+  214 library, 32 binary, 29 CLI, 11 governance, 2 evaluation, 3 release-install,
+  and 1 MCP protocol). The web suite passes 222 tests, `tsc -b`, and
+  `eslint apps/web/src`.
   Regression coverage added for this pass: failed background restarts name
   the failure and offer `Retry restart`/`Open services`; source-toggle saves
   restart in the background and report named failures; the Graph view hides

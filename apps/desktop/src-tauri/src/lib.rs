@@ -20,6 +20,7 @@ mod installer;
 mod hindsight;
 mod honcho;
 mod paths;
+mod provider_models;
 mod readiness;
 mod schedule;
 mod scheduled_services;
@@ -804,6 +805,14 @@ fn desktop_source_validation_cancel(
 }
 
 #[tauri::command]
+async fn desktop_provider_models<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    kind: String,
+) -> Result<Value, String> {
+    provider_models::list_provider_models(&app, &kind).await
+}
+
+#[tauri::command]
 async fn desktop_readiness_scan(app: AppHandle) -> readiness::ReadinessSnapshot {
     readiness::scan(&app).await
 }
@@ -1120,6 +1129,7 @@ pub fn run() {
             desktop_source_setup_open,
             desktop_github_repositories,
             desktop_discord_channels,
+            desktop_provider_models,
             desktop_source_initial_sync,
             desktop_source_validation_status,
             desktop_source_jobs_status,
@@ -1274,6 +1284,7 @@ mod tests {
                 desktop_source_setup_open,
                 desktop_github_repositories,
                 desktop_discord_channels,
+                desktop_provider_models,
                 desktop_source_jobs_status,
                 desktop_source_validation_cancel,
                 desktop_source_validation_start,

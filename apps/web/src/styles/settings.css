@@ -1047,6 +1047,31 @@
   grid-column: 1 / -1;
 }
 
+/* Provider-advertised model selector with the refresh action below it. */
+.model-field {
+  display: flex;
+  min-width: 0;
+  gap: 8px;
+  flex-direction: column;
+}
+
+.model-field .model-refresh {
+  display: flex;
+  align-items: center;
+}
+
+.model-field .model-refresh .secondary-button {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.model-field .model-note {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .form-field input,
 .form-field select,
 .workspace-select select {
