@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.28.0](https://github.com/0xPlayerOne/cortana/compare/v0.27.3...v0.28.0) (2026-08-04)
+
+
+### Features
+
+* **desktop:** add bounded Discord channel discovery ([2a34263](https://github.com/0xPlayerOne/cortana/commit/2a34263b1646f259b55c3d9bda2061b7f5181fb3))
+
+
+### Documentation
+
+* clarify audit validation evidence ([0611412](https://github.com/0xPlayerOne/cortana/commit/0611412e18c8a8c7be7ea7a9230b16c45e990741))
+* record Discord discovery boundary ([9fc341e](https://github.com/0xPlayerOne/cortana/commit/9fc341e0ed639dbe2272143a806d056d9ba6107e))
+* refresh v0.27.3 desktop audit ([71b13ec](https://github.com/0xPlayerOne/cortana/commit/71b13ec33d849b277f8e467d35c0660257e6b300))
+
 ## [0.27.3](https://github.com/0xPlayerOne/cortana/compare/v0.27.2...v0.27.3) (2026-08-04)
 
 
