@@ -14,6 +14,7 @@ import sqlite3
 import stat
 import sys
 import tempfile
+import time
 from collections import deque
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -58,6 +59,17 @@ MAX_DRIVE_STREAM_CHARS = 256_000
 # provider response from filling the temporary volume.
 MAX_DRIVE_PDF_BYTES = 64 * 1024 * 1024
 MAX_TOKEN_FILE_BYTES = 64 * 1024
+GOOGLE_REQUEST_RETRIES = 2
+GOOGLE_RETRY_BACKOFF_SECONDS = (0.25, 0.75)
+GOOGLE_RETRY_STATUSES = {408, 429, 500, 502, 503, 504}
+GOOGLE_TRANSIENT_403_REASONS = {
+    "rateLimitExceeded",
+    "userRateLimitExceeded",
+    "backendError",
+}
+GMAIL_DETAIL_RETRIES = 4
+GMAIL_DETAIL_RETRY_BACKOFF_SECONDS = (0.25, 0.75, 1.5, 3.0)
+GMAIL_DETAIL_CONCURRENCY = 4
 
 
 class _DriveContent(str):
@@ -217,13 +229,62 @@ class GoogleSession:
         token = self._access_token()
         headers = dict(kwargs.pop("headers", {}))
         headers["Authorization"] = f"Bearer {token}"
-        response = self.client.request(method, url, headers=headers, **kwargs)
+        method_upper = method.upper()
+        response: httpx.Response | None = None
+        for attempt in range(GOOGLE_REQUEST_RETRIES + 1):
+            try:
+                response = self.client.request(method, url, headers=headers, **kwargs)
+            except httpx.TimeoutException:
+                if method_upper not in {"GET", "HEAD"} or attempt >= GOOGLE_REQUEST_RETRIES:
+                    raise
+                time.sleep(GOOGLE_RETRY_BACKOFF_SECONDS[attempt])
+                continue
+            if (
+                response.status_code in GOOGLE_RETRY_STATUSES
+                and method_upper in {"GET", "HEAD"}
+                and attempt < GOOGLE_REQUEST_RETRIES
+            ):
+                time.sleep(GOOGLE_RETRY_BACKOFF_SECONDS[attempt])
+                continue
+            if (
+                response.status_code == 403
+                and method_upper in {"GET", "HEAD"}
+                and attempt < GOOGLE_REQUEST_RETRIES
+                and self._google_403_should_retry(response)
+            ):
+                time.sleep(GOOGLE_RETRY_BACKOFF_SECONDS[attempt])
+                continue
+            break
+        if response is None:  # pragma: no cover - the retry loop either returns or raises.
+            raise RuntimeError("Google request returned no response")
         if response.status_code == 401 and self.credentials.get("refresh_token"):
             self._refresh()
             headers["Authorization"] = f"Bearer {self._access_token()}"
             response = self.client.request(method, url, headers=headers, **kwargs)
         response.raise_for_status()
         return response
+
+    @staticmethod
+    def _google_403_should_retry(response: httpx.Response) -> bool:
+        try:
+            error = response.json()
+        except (json.JSONDecodeError, ValueError):
+            return False
+        if not isinstance(error, dict):
+            return False
+        error_payload = error.get("error")
+        if not isinstance(error_payload, dict):
+            return False
+        errors = error_payload.get("errors")
+        if not isinstance(errors, list):
+            return False
+        for entry in errors:
+            if not isinstance(entry, dict):
+                continue
+            reason = entry.get("reason")
+            if reason in GOOGLE_TRANSIENT_403_REASONS:
+                return True
+        return False
 
     @contextmanager
     def stream(self, method: str, url: str, **kwargs: Any) -> Iterable[httpx.Response]:
@@ -573,7 +634,7 @@ def fetch_gmail(
                         messages[message_id] = message
                 if missing_ids:
                     with ThreadPoolExecutor(
-                        max_workers=min(8, len(missing_ids)),
+                        max_workers=min(GMAIL_DETAIL_CONCURRENCY, len(missing_ids)),
                         thread_name_prefix="cortana-gmail",
                     ) as pool:
                         fetched = pool.map(
@@ -668,19 +729,27 @@ def fetch_gmail(
 
 
 def _fetch_gmail_message(session: GoogleSession, message_id: str) -> dict[str, Any] | None:
-    try:
-        response = session.request(
-            "GET",
-            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
-            params={"format": "full"},
-        )
-    except httpx.HTTPStatusError as error:
-        if error.response.status_code not in {403, 404}:
-            raise
-        print(
-            f"gmail message skipped: id={message_id} status={error.response.status_code}",
-            file=sys.stderr,
-        )
+    response: httpx.Response | None = None
+    for attempt in range(GMAIL_DETAIL_RETRIES + 1):
+        try:
+            response = session.request(
+                "GET",
+                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}",
+                params={"format": "full"},
+            )
+            break
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 400 and attempt < GMAIL_DETAIL_RETRIES:
+                time.sleep(GMAIL_DETAIL_RETRY_BACKOFF_SECONDS[attempt])
+                continue
+            if error.response.status_code not in {403, 404}:
+                raise
+            print(
+                f"gmail message skipped: id={message_id} status={error.response.status_code}",
+                file=sys.stderr,
+            )
+            return None
+    if response is None:  # pragma: no cover - loop always breaks or returns above.
         return None
     message = json_payload(response)
     if not isinstance(message, dict) or not str(message.get("id") or "").strip():
