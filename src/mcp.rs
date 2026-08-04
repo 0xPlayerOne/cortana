@@ -147,6 +147,7 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
+        let acl = self.principal.visible_acl();
         match retrieval::retrieve_scoped_with_status(
             &self.store,
             &self.embedder,
@@ -157,7 +158,7 @@ impl BrainServer {
                 .limit
                 .unwrap_or(10)
                 .clamp(1, retrieval::MAX_RESULT_LIMIT),
-            &self.principal.acl_labels(),
+            &acl,
         )
         .await
         {
@@ -224,6 +225,7 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
+        let acl = self.principal.visible_acl();
         match retrieval::retrieve_scoped_with_status(
             &self.store,
             &self.embedder,
@@ -234,7 +236,7 @@ impl BrainServer {
                 .limit
                 .unwrap_or(20)
                 .clamp(1, retrieval::MAX_RESULT_LIMIT),
-            &self.principal.acl_labels(),
+            &acl,
         )
         .await
         {
@@ -310,9 +312,8 @@ impl BrainServer {
             self.audit("mcp.brain_status", None, None, "forbidden", None, started);
             return "authorization error: status scope required".into();
         }
-        let acl = self.principal.acl_labels();
-        let owner = self.principal.is_owner();
-        match if owner {
+        let acl = self.principal.visible_acl();
+        match if self.principal.is_owner() {
             self.store.stats()
         } else {
             let allowed_sync_sources = self
@@ -330,7 +331,7 @@ impl BrainServer {
                     configured_sources: self
                         .configured_sources
                         .iter()
-                        .filter(|source| self.principal.is_owner() || acl_allows(&source.acl, &acl))
+                        .filter(|source| acl_allows(&source.acl, &acl))
                         .cloned()
                         .collect(),
                     retrieval_fallbacks_total: self.retrieval_fallbacks.load(Ordering::Relaxed),
@@ -384,6 +385,7 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
+        let acl = self.principal.visible_acl();
         match retrieval::retrieve_sources_scoped_with_status(
             &self.store,
             &self.embedder,
@@ -391,7 +393,7 @@ impl BrainServer {
             params.project.as_deref(),
             sources,
             params.limit.unwrap_or(10).clamp(1, 50),
-            &self.principal.acl_labels(),
+            &acl,
         )
         .await
         {
@@ -615,6 +617,131 @@ mod tests {
         assert_eq!(audit[0].principal, "work-agent");
         assert_eq!(audit[0].action, "mcp.brain_status");
         assert_eq!(audit[1].action, "mcp.search");
+    }
+
+    #[tokio::test]
+    async fn admin_mcp_principal_with_named_acl_can_access_records_outside_acl_scope() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        for (source_id, acl) in [("work-note", "work"), ("personal-note", "personal")] {
+            let content = format!("shared launch phrase for {source_id}");
+            let vector = embedder
+                .embed(std::slice::from_ref(&content))
+                .await
+                .expect("embedding")
+                .remove(0);
+            store
+                .upsert(
+                    &Document {
+                        source: "notes".into(),
+                        source_id: source_id.into(),
+                        title: source_id.into(),
+                        content: content.clone(),
+                        uri: None,
+                        updated_at: Utc::now(),
+                        project: "demo".into(),
+                        acl: vec![acl.into()],
+                        metadata: serde_json::json!({}),
+                    },
+                    &[(content, vector)],
+                )
+                .expect("document");
+        }
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config
+            .environment
+            .insert("ADMIN_TOKEN".into(), "admin-secret".into());
+        config.auth.tokens = vec![
+            AuthTokenConfig {
+                principal: "work-agent".into(),
+                token_env: "WORK_TOKEN".into(),
+                scopes: vec![QUERY_SCOPE.into()],
+                acl: vec!["work".into()],
+            },
+            AuthTokenConfig {
+                principal: "admin-agent".into(),
+                token_env: "ADMIN_TOKEN".into(),
+                scopes: vec![QUERY_SCOPE.into(), ADMIN_SCOPE.into()],
+                acl: vec!["work".into()],
+            },
+        ];
+        let work_principal = AuthPolicy::from_config(&config, None)
+            .expect("policy")
+            .authenticate("work-secret")
+            .expect("work principal");
+        let admin_principal = AuthPolicy::from_config(&config, None)
+            .expect("policy")
+            .authenticate("admin-secret")
+            .expect("admin principal");
+
+        let work_server =
+            BrainServer::new(store.clone(), embedder.clone()).with_principal(work_principal);
+        let admin_server = BrainServer::new(store, embedder).with_principal(admin_principal);
+
+        let work_rows: Vec<Evidence> = serde_json::from_str(
+            &work_server
+                .search(Parameters(SearchParams {
+                    query: "shared launch phrase".into(),
+                    project: Some("demo".into()),
+                    source: None,
+                    limit: Some(10),
+                }))
+                .await,
+        )
+        .expect("work rows");
+        assert_eq!(work_rows.len(), 1);
+        assert_eq!(work_rows[0].source_id, "work-note");
+
+        let admin_rows: Vec<Evidence> = serde_json::from_str(
+            &admin_server
+                .search(Parameters(SearchParams {
+                    query: "shared launch phrase".into(),
+                    project: Some("demo".into()),
+                    source: None,
+                    limit: Some(10),
+                }))
+                .await,
+        )
+        .expect("admin rows");
+        assert_eq!(admin_rows.len(), 2);
+        let admin_ids = admin_rows
+            .iter()
+            .map(|evidence| evidence.source_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        assert!(admin_ids.contains("work-note"));
+        assert!(admin_ids.contains("personal-note"));
+
+        let work_context: serde_json::Value = serde_json::from_str(
+            &work_server
+                .context(Parameters(ContextParams {
+                    query: "shared launch phrase".into(),
+                    project: Some("demo".into()),
+                    source: None,
+                    limit: Some(10),
+                    max_tokens: Some(200),
+                }))
+                .await,
+        )
+        .expect("work context");
+        assert_eq!(work_context["evidence"].as_array().map(Vec::len), Some(1));
+
+        let admin_context: serde_json::Value = serde_json::from_str(
+            &admin_server
+                .context(Parameters(ContextParams {
+                    query: "shared launch phrase".into(),
+                    project: Some("demo".into()),
+                    source: None,
+                    limit: Some(10),
+                    max_tokens: Some(200),
+                }))
+                .await,
+        )
+        .expect("admin context");
+        assert_eq!(admin_context["evidence"].as_array().map(Vec::len), Some(2));
     }
 
     #[tokio::test]
