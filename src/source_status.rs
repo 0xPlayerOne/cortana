@@ -14,9 +14,9 @@ use serde::{Deserialize, Serialize};
 use crate::config::{Config, SourceConfig};
 use crate::source_validation::{self, SourceValidationStatus};
 
-/// Cap on how large a Google token file may be before it is treated as
+/// Cap on how large an OAuth token file may be before it is treated as
 /// unreadable (defense against pathological files).
-pub(crate) const MAX_GOOGLE_TOKEN_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_TOKEN_FILE_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -280,10 +280,10 @@ fn google_token_env_ready(config: &Config, name: &str) -> bool {
     config
         .environment_value(name)
         .as_deref()
-        .is_some_and(google_token_destination_value_ready)
+        .is_some_and(token_destination_value_ready)
 }
 
-fn google_token_destination_value_ready(value: &str) -> bool {
+fn token_destination_value_ready(value: &str) -> bool {
     let path = Path::new(value.trim());
     path.is_absolute() && secure_regular_file_ready(path)
 }
@@ -299,13 +299,13 @@ fn google_token_file_ready(path: &Path) -> bool {
     let mut bytes = Vec::new();
     if file
         .by_ref()
-        .take((MAX_GOOGLE_TOKEN_BYTES as u64) + 1)
+        .take((MAX_TOKEN_FILE_BYTES as u64) + 1)
         .read_to_end(&mut bytes)
         .is_err()
     {
         return false;
     }
-    if bytes.len() > MAX_GOOGLE_TOKEN_BYTES {
+    if bytes.len() > MAX_TOKEN_FILE_BYTES {
         return false;
     }
     let token = match serde_json::from_slice::<serde_json::Value>(&bytes) {
@@ -339,10 +339,10 @@ fn github_token_file_ready(path: &Path) -> bool {
     let mut bytes = Vec::new();
     if file
         .by_ref()
-        .take((MAX_GOOGLE_TOKEN_BYTES as u64) + 1)
+        .take((MAX_TOKEN_FILE_BYTES as u64) + 1)
         .read_to_end(&mut bytes)
         .is_err()
-        || bytes.len() > MAX_GOOGLE_TOKEN_BYTES
+        || bytes.len() > MAX_TOKEN_FILE_BYTES
     {
         return false;
     }
@@ -444,16 +444,13 @@ pub fn source_authorization_summary(
             .token
             .as_ref()
             .is_some_and(|path| google_token_file_ready(path.as_path()));
-        let token_destination_ready = source
-            .token
-            .as_deref()
-            .is_some_and(google_token_destination_ready)
+        let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready)
             || source
                 .token_env
                 .as_deref()
                 .and_then(|name| config.environment_value(name))
                 .as_deref()
-                .is_some_and(google_token_destination_value_ready);
+                .is_some_and(token_destination_value_ready);
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::GoogleOauth,
             // A migrated/private token file is a complete authorization path on
@@ -478,10 +475,7 @@ pub fn source_authorization_summary(
             .token
             .as_ref()
             .is_some_and(|path| github_token_file_ready(path.as_path()));
-        let token_destination_ready = source
-            .token
-            .as_deref()
-            .is_some_and(google_token_destination_ready);
+        let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready);
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::GithubOauth,
             setup_required: !(token_env_ready
@@ -514,7 +508,7 @@ pub fn source_authorization_summary(
     }
 }
 
-fn google_token_destination_ready(path: &Path) -> bool {
+fn token_destination_ready(path: &Path) -> bool {
     if !path.is_absolute()
         || path.parent().is_none()
         || path.parent().is_none_or(|parent| parent.parent().is_none())
