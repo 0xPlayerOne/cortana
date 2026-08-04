@@ -2754,7 +2754,7 @@ function WorkspaceSection({
                       changeWorkspace(index, { account_label: event.target.value || null })
                     }
                     maxLength={128}
-                    placeholder="team@example.com"
+                    placeholder="e.g. Nifty League"
                   />
                 </Field>
               </div>
