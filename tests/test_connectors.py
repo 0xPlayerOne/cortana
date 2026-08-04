@@ -1038,6 +1038,100 @@ def test_google_drive_bounded_validation_caps_listing_page_and_documents(
     assert len(content_requests) == 2
 
 
+def test_google_drive_downloads_are_batched_before_first_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    files = [
+        {
+            "id": f"doc{index}",
+            "name": f"Document {index}",
+            "mimeType": "text/plain",
+            "modifiedTime": "2026-07-29T12:00:00Z",
+        }
+        for index in range(65)
+    ]
+    started: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/drive/v3/files"
+        return response({"files": files}, request=request)
+
+    def safe_content(_session: GoogleSession, item: dict[str, Any]) -> tuple[str, str | None]:
+        started.append(str(item["id"]))
+        return "bounded body", None
+
+    monkeypatch.setattr(google, "_safe_drive_content", safe_content)
+    documents = fetch_drive(
+        token,
+        "work",
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    first = next(documents)
+    assert first.source_id == "doc0"
+    assert len(started) == google.DRIVE_BATCH_SIZE
+    remaining = list(documents)
+    assert len(remaining) == len(files) - 1
+    assert len(started) == len(files)
+
+
+def test_google_drive_streams_large_text_with_bounded_memory_and_metadata(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    body = "header\n" + ("middle-row\n" * (google.MAX_DRIVE_STREAM_CHARS // 8 + 1000)) + "final-row"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "large",
+                            "name": "Large text",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text=body, request=request)
+
+    cache = tmp_path / "cache"
+    first = next(
+        iter(
+            fetch_drive(
+                token,
+                "work",
+                client=httpx.Client(transport=httpx.MockTransport(handler)),
+                cache_dir=cache,
+                max_content_chars=1000,
+            )
+        )
+    )
+    second = next(
+        iter(
+            fetch_drive(
+                token,
+                "work",
+                client=httpx.Client(transport=httpx.MockTransport(handler)),
+                cache_dir=cache,
+                max_content_chars=1000,
+            )
+        )
+    )
+
+    for document in (first, second):
+        assert len(document.content) <= 1000
+        assert document.content.startswith("header")
+        assert document.content.endswith("final-row")
+        assert "Cortana omitted" in document.content
+        assert document.metadata["content_truncated"] is True
+        assert document.metadata["content_original_chars"] == len(body)
+
+
 def test_google_drive_skips_malformed_listing_records(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
