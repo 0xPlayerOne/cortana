@@ -24,7 +24,7 @@
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "lint": "eslint apps/web/src",
-    "test": "bun test",
+    "test": "bun test --max-concurrency=1",
     "typecheck": "bun run --cwd apps/web typecheck"
   },
   "devDependencies": {
