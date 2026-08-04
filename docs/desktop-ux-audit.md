@@ -55,10 +55,10 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The current checkout passes `cargo test --all-targets --locked` (319 tests:
-  239 library, 32 binary, 31 CLI, 11 governance, 2 evaluation, 3 release-install,
-  and 1 MCP protocol). The Desktop crate passes its native IPC suite (106 tests).
-  The web suite passes 233 tests, `tsc -b`, and `eslint apps/web/src`.
+- The current checkout passes `cargo test --all-targets --locked` (333 tests;
+  the exact per-target split is emitted by Cargo and includes the Buzz discovery
+  CLI/configuration coverage). The Desktop crate passes its native IPC suite
+  (110 tests). The web suite passes 237 tests, `tsc -b`, ESLint, and Prettier.
   Regression coverage added for this pass: failed background restarts name
   the failure and offer `Retry restart`/`Open services`; source-toggle saves
   restart in the background and report named failures; the Graph view hides
