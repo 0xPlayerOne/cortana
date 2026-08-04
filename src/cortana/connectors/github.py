@@ -217,7 +217,9 @@ def _access_token(token_path: Path | None, token_env: str) -> str:
         if not isinstance(token_value, str) or not token_value:
             raise RuntimeError(f"GitHub token file has no access token: {path}")
         token = token_value
-        if len(token) > 16 * 1024 or any(_invalid_token_character(character) for character in token):
+        if len(token) > 16 * 1024 or any(
+            _invalid_token_character(character) for character in token
+        ):
             raise RuntimeError(f"GitHub token file contains an invalid access token: {path}")
         return token
     token = os.environ.get(token_env, "")
