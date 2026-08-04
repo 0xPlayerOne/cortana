@@ -64,7 +64,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
 - The current checkout passes `cargo test --all-targets --locked` (338 tests;
   the exact per-target split is emitted by Cargo and includes the Buzz discovery
   CLI/configuration coverage). The Desktop crate passes its native IPC suite
-  (110 tests). The web suite passes 242 tests, `tsc -b`, ESLint, and Prettier.
+  (110 tests). The web suite passes 250 tests, `tsc -b`, ESLint, and Prettier.
   Regression coverage added for this pass: failed background restarts name
   the failure and offer `Retry restart`/`Open services`; source-toggle saves
   restart in the background and report named failures; the Graph view hides
@@ -97,14 +97,16 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
   OAuth readiness tests also prove Slack/Discord bot-token environment values are never reused as
   browser-user token destinations and that overflowing provider expiry values fail closed.
 - `cargo build --release --locked` succeeds and the built binary reports
-  `cortana 0.28.0`, matching the workspace version. The full Python suite
+  `cortana 0.29.2`, matching the workspace version. The full Python suite
   passes (145 tests), including Drive batch/stream/cache-memory regressions and Google retry/concurrency coverage, and the release-verification regression coverage
-  passes (6 tests in `tests/test_release_verification.py`: the
+  passes (8 tests in `tests/test_release_verification.py`, including the
+  cryptographic Tauri updater signature path and explicit verifier-unavailable gate, alongside the
   installed-vs-checkout version-skew gate and the published-asset desktop
-  gate). The local corpus reports 47,658 documents and 77,472 chunks.
+  gate). The local corpus reports 47,658 documents and 77,472 chunks (last observed
+  on the verified 0.29.2 index).
   Query-only readiness and the explicit `--allow-sync-service` readiness check both pass;
   every enabled source has a current successful validation at its configured budget.
-  The installed `/Applications/Cortana.app` is now v0.29.1 from the verified
+  The installed `/Applications/Cortana.app` is now v0.29.2 from the verified
   published release, matching the current checkout and packaged sidecar. The
   remaining packaged GUI/browser OAuth, service/tray, updater, import/export,
   backup, and restore drills are still manual production gates.
@@ -116,11 +118,10 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
   `writes.documents=0`, `writes.embeddings=0`, and `writes.reconciliations=0`. Drive validation
   stayed near 105 MB RSS after serializing content parsing; the earlier concurrent large-corpus
   probes were stopped before completion when memory rose unsafely.
-- Deterministic evaluation passes. Model-backed synthetic eval passes with a
-  temporary auto-free query configuration against the loopback gateway
-  (`base_url = "http://127.0.0.1:8008/v1"`, `model = "auto-free"`, fixture-only:
-  no personal index opened, no syncs or connectors): the run reported
-  `passed: true` with planner and synthesis models used, valid citations,
-  no fallback, a cache-hit answer within the 55 s deadline, and no leaked
-  sources. This is still fixture-only evidence; production-provenness against
-  the persistent configured provider and the packaged GUI/release remain pending.
+- Deterministic evaluation passes. A model-backed evaluation was also attempted
+  against the persistent configured query provider (fixture-only: no personal
+  index opened, no syncs or connectors). Retrieval and citation cases passed, but
+  the provider was unavailable, so planner/synthesis were not used and the run
+  failed closed with `fallback_provider_unavailable: true`; extractive mode
+  remains the safe production default. Production model-backed proof and the
+  packaged GUI/release drills remain pending.
