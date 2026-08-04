@@ -80,9 +80,10 @@ def test_github_reads_owner_only_access_token_file(tmp_path: Path) -> None:
             return _response(request, {"truncated": False, "tree": []})
         raise AssertionError(request.url)
 
-    assert list(
-        github.fetch(["acme/project"], "work", token_path=token_path, client=_client(handler))
-    ) == []
+    assert (
+        list(github.fetch(["acme/project"], "work", token_path=token_path, client=_client(handler)))
+        == []
+    )
 
 
 def test_github_rejects_truncated_trees(monkeypatch: pytest.MonkeyPatch) -> None:
