@@ -40,9 +40,10 @@ is not part of a visual/UI change.
 1. Complete packaged GUI/browser OAuth, service/tray, updater, import/export, backup and
    restore drills on a supported signed Desktop build. These packaged-app manual drills remain
    unverified because no computer-use tool was available for the required GUI checks.
-2. Prove the persistent configured query provider with a model-backed evaluation. The
-   fixture-only attempt discovered the configured provider route but timed out before a
-   model-backed result, so extractive mode remains the safe production default.
+2. Prove the persistent configured query provider with a model-backed evaluation. Route
+   discovery succeeded, but the configured endpoint was unavailable and the evaluation reported
+   `fallback_provider_unavailable` without a model result, so extractive mode remains the safe
+   production default.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -63,16 +64,17 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The v0.29.8 promotion is merged on both `main` and `staging`; its release-assets workflow is
-  still running, so the last fully verified/install-tested release remains v0.29.7 with 18
-  release assets.
-- The verified v0.29.7 DMG is installed at `/Applications/Cortana.app`; its embedded binary
-  reports `cortana 0.29.7` and passes `codesign --verify --deep --strict`, but the bundle is
+- The v0.29.8 promotion is merged on both `main` and `staging`; release-assets run `30956324623`
+  completed successfully with all 18 assets, core checksums, updater signatures/manifest, and
+  the published Linux binary version verified.
+- The verified v0.29.8 DMG is installed at `/Applications/Cortana.app`; its embedded binary
+  reports `cortana 0.29.8` and passes `codesign --verify --deep --strict`, but the bundle is
   ad-hoc signed (`TeamIdentifier` is unset) and `spctl --assess` rejects it. Developer ID
   signing/notarization therefore remains a release blocker.
-- The 2026-08-04 v0.29.8 promotion validation passed the reported per-target and per-suite counts: Rust
-  unit targets `257` and `32`, Bun web tests `250`, Python tests `146`, and integration suites
-  `35`, `11`, `2`, `3`, and `1`. These are per-target/per-suite figures, not a deduplicated
+- The 2026-08-04 v0.29.8 staging-to-main promotion validation passed the reported per-target and
+  per-suite counts: Rust unit targets `259` and `32`, Bun web tests `250`, Python tests `146`,
+  and integration suites `36`, `11`, `2`, `3`, and `1`. These are per-target/per-suite figures,
+  not a deduplicated
   aggregate.
 - The full Desktop matrix was skipped because promotion change detection found no Desktop changes;
   this run therefore adds no full Desktop build/test evidence. The readiness hardening patch still
