@@ -568,15 +568,38 @@
 }
 
 .document-explorer-heading strong {
+  display: flex;
   min-width: 0;
   flex: 1;
+  align-items: center;
+  gap: 4px;
   overflow: hidden;
   font-size: 12px;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.document-explorer-heading span {
+/* The document explorer follows the workspace -> source hierarchy: the
+   muted workspace segment leads, the source scope trails, and document
+   rows sit indented beneath the source level. */
+.document-explorer-heading strong .explorer-workspace {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--muted);
+  text-overflow: ellipsis;
+}
+
+.document-explorer-heading strong .explorer-separator {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.document-explorer-heading strong .explorer-scope {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.document-explorer-heading > span {
   color: var(--muted);
   font-size: 10px;
 }
@@ -650,6 +673,13 @@
   background: transparent;
   cursor: pointer;
   text-align: left;
+}
+
+.virtual-document-space button.document-node {
+  /* Nest document rows under the workspace/source breadcrumb: the left
+     padding steps the list in from the flat source-tree edge so the
+     explorer visibly reads workspace -> source -> documents. */
+  padding-left: 26px;
 }
 
 .virtual-document-space button span {

@@ -443,12 +443,28 @@ export function SourcePanel({
           ))}
         </div>
       )}
-      <section className="document-explorer">
+      <section className="document-explorer" aria-label="Document explorer">
         <div className="document-explorer-heading">
-          <strong>
-            {selectedSource
-              ? sourceDisplayName(selectedSource.kind, selectedSource.source)
-              : selectedWorkspace?.name || selectedWorkspaceId || 'Documents'}
+          <strong
+            aria-label={`Documents in ${
+              selectedWorkspace?.name || selectedWorkspaceId || 'Documents'
+            } / ${
+              selectedSource
+                ? sourceDisplayName(selectedSource.kind, selectedSource.source)
+                : 'All sources'
+            }`}
+          >
+            <span className="explorer-workspace">
+              {selectedWorkspace?.name || selectedWorkspaceId || 'Documents'}
+            </span>
+            <span className="explorer-separator" aria-hidden="true">
+              /
+            </span>
+            <span className="explorer-scope">
+              {selectedSource
+                ? sourceDisplayName(selectedSource.kind, selectedSource.source)
+                : 'All sources'}
+            </span>
           </strong>
           <span>{documents.length.toLocaleString()} loaded</span>
         </div>
