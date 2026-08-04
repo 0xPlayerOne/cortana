@@ -15,7 +15,8 @@ use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
 use cortana::{
-    api, google_oauth, mcp, migration, service, source_status, source_validation, supervisor,
+    api, github_oauth, google_oauth, mcp, migration, service, source_status, source_validation,
+    supervisor,
 };
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -229,6 +230,10 @@ enum Command {
     },
     /// Authorize a configured Google source in the system browser without reading source data.
     AuthorizeGoogle { source: String },
+    /// Authorize a configured GitHub source through the device flow without reading repository content.
+    AuthorizeGithub { source: String },
+    /// List bounded GitHub repositories visible to a configured source for selection.
+    GithubRepositories { source: String },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -568,6 +573,16 @@ async fn main() -> Result<()> {
     if let Some(Command::AuthorizeGoogle { source }) = cli.command.as_ref() {
         let outcome = google_oauth::authorize(&config, source).await?;
         println!("{}", serde_json::to_string(&outcome)?);
+        return Ok(());
+    }
+    if let Some(Command::AuthorizeGithub { source }) = cli.command.as_ref() {
+        let outcome = github_oauth::authorize(&config, source).await?;
+        println!("{}", serde_json::to_string(&outcome)?);
+        return Ok(());
+    }
+    if let Some(Command::GithubRepositories { source }) = cli.command.as_ref() {
+        let repositories = github_oauth::list_repositories(&config, source).await?;
+        println!("{}", serde_json::to_string(&repositories)?);
         return Ok(());
     }
     if let Some(Command::Sync {
@@ -961,6 +976,8 @@ async fn main() -> Result<()> {
             | Command::RebuildEmbeddings { .. }
             | Command::Eval { .. }
             | Command::AuthorizeGoogle { .. }
+            | Command::AuthorizeGithub { .. }
+            | Command::GithubRepositories { .. }
             | Command::ValidateSource { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },

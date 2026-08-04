@@ -32,6 +32,7 @@ import {
   getDesktopAudit,
   getDesktopInstaller,
   getDesktopInfo,
+  listDesktopGithubRepositories,
   getDesktopHindsightStatus,
   getDesktopHonchoStatus,
   getDesktopSchedule,
@@ -83,6 +84,7 @@ import type {
   DesktopUpdate,
   AuditEvent,
   AuthPrincipalSettings,
+  GithubRepositorySummary,
   InitialSyncBudget,
   SourceKind,
   SourceSettings,
@@ -2821,6 +2823,10 @@ function SourcesSection({
     onJob?.(next)
   }
   const [error, setError] = useState('')
+  const [githubRepositories, setGithubRepositories] = useState<
+    Record<string, { items: GithubRepositorySummary[]; truncated: boolean }>
+  >({})
+  const [githubRepositoriesLoading, setGithubRepositoriesLoading] = useState<string | null>(null)
   const [initialSync, setInitialSync] = useState<{
     source: string
     budget: InitialSyncBudget
@@ -3043,7 +3049,7 @@ function SourcesSection({
     }
     if (
       !window.confirm(
-        `Authorize ${source.name} with Google?\n\nCortana will open the system browser, listen only on a random 127.0.0.1 callback port, request read-only scopes for Google sources sharing this token, and store the resulting token in the configured private file.`
+        `Authorize ${source.name} with ${source.kind === 'github' ? 'GitHub' : 'Google'}?\n\nCortana will open the system browser and store the resulting token in the configured private file. No source data is read during authorization.`
       )
     ) {
       return
@@ -3052,8 +3058,42 @@ function SourcesSection({
     try {
       applyJob(await startDesktopSourceAuthorization(source.name))
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Google authorization failed to start')
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : `${source.kind === 'github' ? 'GitHub' : 'Google'} authorization failed to start`
+      )
     }
+  }
+
+  const discoverGithubRepositories = async (index: number, source: SourceSettings) => {
+    if (!canValidate) {
+      setError('Save source changes before discovering repositories.')
+      return
+    }
+    setError('')
+    setGithubRepositoriesLoading(source.name)
+    try {
+      const result = await listDesktopGithubRepositories(source.name)
+      setGithubRepositories((current) => ({
+        ...current,
+        [source.name]: { items: result.repositories, truncated: result.truncated },
+      }))
+      if (result.truncated) {
+        setError('GitHub returned more than 1,000 repositories; select from the most recently updated 1,000.')
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'GitHub repository discovery failed')
+    } finally {
+      setGithubRepositoriesLoading(null)
+    }
+  }
+
+  const toggleGithubRepository = (index: number, source: SourceSettings, fullName: string) => {
+    const repositories = source.repositories.includes(fullName)
+      ? source.repositories.filter((repository) => repository !== fullName)
+      : [...source.repositories, fullName]
+    changeSource(index, { repositories })
   }
 
   const trialSyncSource = async (source: SourceSettings) => {
@@ -3091,7 +3131,7 @@ function SourcesSection({
 
   const choosePath = async (
     index: number,
-    kind: 'directory' | 'oauth-client' | 'google-token',
+    kind: 'directory' | 'oauth-client' | 'google-token' | 'github-token',
     field: 'root' | 'token_path' | 'oauth_client_path'
   ) => {
     setError('')
@@ -3237,7 +3277,7 @@ function SourcesSection({
                       <ExternalLink size={14} /> Setup
                     </button>
                   )}
-                  {isGoogleSource(source.kind) && (
+                  {(isGoogleSource(source.kind) || source.kind === 'github') && (
                     <button
                       type="button"
                       disabled={
@@ -3246,7 +3286,7 @@ function SourcesSection({
                         !source.oauth_client_path ||
                         Boolean(activeJob)
                       }
-                      title="Authorize read-only Google access with PKCE"
+                      title={`Authorize read-only ${source.kind === 'github' ? 'GitHub' : 'Google'} access in the browser`}
                       onClick={() => void authorizeSource(source)}
                     >
                       {runningThis && activeJob?.operation === 'authorization' ? (
@@ -3561,6 +3601,114 @@ function SourcesSection({
                       </Field>
                     </>
                   )}
+                  {source.kind === 'github' && (
+                    <>
+                      <Field
+                        label="Repository chooser"
+                        hint="discover accessible repositories, then select only the ones Cortana may index"
+                        wide
+                      >
+                        <div className="source-repository-chooser">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            disabled={
+                              !canValidate ||
+                              sourceLocked ||
+                              githubRepositoriesLoading === source.name
+                            }
+                            onClick={() => void discoverGithubRepositories(index, source)}
+                          >
+                            {githubRepositoriesLoading === source.name ? (
+                              <LoaderCircle className="spin" size={14} />
+                            ) : (
+                              <RefreshCw size={14} />
+                            )}{' '}
+                            Discover repositories
+                          </button>
+                          {githubRepositories[source.name] && (
+                            <div className="source-repository-options">
+                              {githubRepositories[source.name].items.length === 0 ? (
+                                <small>No accessible repositories returned.</small>
+                              ) : (
+                                githubRepositories[source.name].items.map((repository) => (
+                                  <label key={repository.id}>
+                                    <input
+                                      type="checkbox"
+                                      checked={source.repositories.includes(repository.full_name)}
+                                      disabled={sourceLocked || !source.editable}
+                                      onChange={() =>
+                                        toggleGithubRepository(index, source, repository.full_name)
+                                      }
+                                    />
+                                    <span>
+                                      {repository.full_name}
+                                      {repository.private ? ' · private' : ''}
+                                    </span>
+                                  </label>
+                                ))
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </Field>
+                      <Field
+                        label="GitHub OAuth token file"
+                        hint="private token created by Cortana; use this for OAuth or leave blank for an environment token"
+                        wide
+                      >
+                        <div className="path-input">
+                          <input
+                            value={source.token_path || ''}
+                            disabled={sourceLocked || !source.editable}
+                            required={source.enabled && !source.token_env}
+                            placeholder="/Users/you/.config/cortana/github-token.json"
+                            onChange={(event) =>
+                              changeSource(index, { token_path: event.target.value || null })
+                            }
+                          />
+                          <button
+                            type="button"
+                            disabled={sourceLocked || !source.editable}
+                            aria-label="Choose GitHub token destination"
+                            title="Choose GitHub token destination"
+                            onClick={() => void choosePath(index, 'github-token', 'token_path')}
+                          >
+                            <FolderOpen size={14} />
+                          </button>
+                        </div>
+                      </Field>
+                      <Field
+                        label="GitHub OAuth client JSON"
+                        hint="JSON containing the OAuth app client_id; required for browser authorization"
+                        wide
+                      >
+                        <div className="path-input">
+                          <input
+                            value={source.oauth_client_path || ''}
+                            disabled={sourceLocked || !source.editable}
+                            placeholder="/Users/you/.config/cortana/github-oauth-client.json"
+                            onChange={(event) =>
+                              changeSource(index, {
+                                oauth_client_path: event.target.value || null,
+                              })
+                            }
+                          />
+                          <button
+                            type="button"
+                            disabled={sourceLocked || !source.editable}
+                            aria-label="Choose GitHub OAuth client JSON"
+                            title="Choose GitHub OAuth client JSON"
+                            onClick={() =>
+                              void choosePath(index, 'oauth-client', 'oauth_client_path')
+                            }
+                          >
+                            <FolderOpen size={14} />
+                          </button>
+                        </div>
+                      </Field>
+                    </>
+                  )}
                   {(source.kind === 'github' ||
                     source.kind === 'slack' ||
                     source.kind === 'discord') && (
@@ -3611,7 +3759,7 @@ function SourcesSection({
                         <input
                           value={source.token_env || ''}
                           disabled={sourceLocked || !source.editable}
-                          required={source.enabled}
+                          required={source.enabled && source.kind !== 'github' && !source.token_path}
                           pattern="[A-Z_][A-Z0-9_]*"
                           onChange={(event) =>
                             changeSource(index, { token_env: event.target.value || null })

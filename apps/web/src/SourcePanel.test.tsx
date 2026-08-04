@@ -331,7 +331,7 @@ test('source-select button is rendered as a button control', () => {
   expect(selectButton.getAttribute('aria-pressed')).toBe('true')
 })
 
-test('source panel exposes setup and Google authorization actions only when required', () => {
+test('source panel exposes setup and browser authorization actions only when required', () => {
   let setupSource = ''
   let setupProject = ''
   let authorizedSource = ''
@@ -359,6 +359,18 @@ test('source panel exposes setup and Google authorization actions only when requ
       ),
     },
   }
+  actionStatus.ingestion.configured_sources.push({
+    name: 'work-github',
+    source: 'work-github',
+    kind: 'github',
+    project: 'work',
+    enabled: true,
+    acl: ['work'],
+    max_documents: 100,
+    max_bytes: 1_048_576,
+    max_duration_seconds: 300,
+    authorization: { method: 'github_oauth', setup_required: false, authorized: false },
+  })
   render(
     <SourcePanel
       open={false}
@@ -394,6 +406,9 @@ test('source panel exposes setup and Google authorization actions only when requ
   fireEvent.click(screen.getByRole('button', { name: 'Open team-slack setup' }))
   expect(setupSource).toBe('team-slack')
   expect(setupProject).toBe('work')
+  fireEvent.click(screen.getByRole('button', { name: 'Authorize work-github' }))
+  expect(authorizedSource).toBe('work-github')
+  expect(authorizedProject).toBe('work')
 
   cleanup()
 

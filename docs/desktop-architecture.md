@@ -130,14 +130,15 @@ renderer can request authorization only for an exact saved source with an absolu
 destination (the `token` field or the path held by `token_env`) and Desktop OAuth client path. Native Rust invokes the bundled sidecar with the fixed
 `authorize-google SOURCE` shape. The sidecar uses Authorization Code + PKCE, a random loopback
 port and state value, fixed HTTPS Google endpoints, bounded callback and token-exchange timeouts,
-minimum read-only scopes, and owner-only atomic token writes. Tokens and authorization codes never
-enter renderer state, logs, command output, or audit records.
+minimum read-only scopes, and owner-only atomic token writes. GitHub sources use the analogous
+`authorize-github SOURCE` device flow with a supplied client-id JSON and owner-only token file.
+Tokens and authorization codes never enter renderer state, logs, command output, or audit records.
 
 Provider setup links are selected by native code from a fixed allowlist and opened in the system
 browser; the renderer cannot supply a URL. File and folder selection also stays native. The
-renderer requests one of three fixed picker kinds—source directory, OAuth client JSON, or Google
-token destination—and receives a validated absolute path. It has no general filesystem
-permission.
+renderer requests one of four fixed picker kinds—source directory, OAuth client JSON, Google
+token destination, or GitHub token destination—and receives a validated absolute path. It has no
+general filesystem permission.
 
 ## Workspaces and settings
 
@@ -164,8 +165,10 @@ but never accepts arbitrary shell commands from the renderer.
 
 The source editor supports the native filesystem, Apple Notes, Buzz, Google Drive, Gmail, Google
 Calendar, GitHub code, Slack, and Discord connector schemas. GitHub code requires an explicit
-`owner/repository` allowlist and a configured token environment variable; OAuth/device-flow
-authorization and repository discovery remain the next onboarding layer. It can retain, disable,
+`owner/repository` allowlist and either a configured token environment variable or private token
+file. The bundled runtime now supports OAuth device-flow authorization and bounded repository
+discovery; the Desktop chooser consumes that typed, allowlisted boundary and persists only the
+selected `owner/repository` values. It can retain, disable,
 or remove an existing external command connector, but cannot create or modify command arrays.
 Google token files and OAuth client files and local roots must be absolute non-root paths; Slack
 and Discord require explicit channels and a validated environment-variable name. Canonical source

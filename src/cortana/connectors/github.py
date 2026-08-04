@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import base64
 import datetime as dt
+import json
 import os
 import re
+import stat
+import sys
 import time
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -72,12 +76,14 @@ _EXCLUDED_PARTS = {
 MAX_BLOB_BYTES = 512 * 1024
 MAX_TREE_ENTRIES = 100_000
 MAX_REPOSITORIES = 32
+MAX_TOKEN_FILE_BYTES = 64 * 1024
 
 
 def fetch(
     repositories: list[str],
     project: str,
     token_env: str = "GITHUB_TOKEN",
+    token_path: Path | None = None,
     max_documents: int | None = None,
     client: httpx.Client | None = None,
 ) -> Iterable[Document]:
@@ -95,8 +101,10 @@ def fetch(
         raise RuntimeError(f"GitHub source supports at most {MAX_REPOSITORIES} repositories")
     if max_documents is not None and max_documents <= 0:
         raise ValueError("max_documents must be greater than zero")
-    token = os.environ.get(token_env, "").strip()
+    token = _access_token(token_path, token_env)
     if not token:
+        if token_path is not None:
+            raise RuntimeError(f"GitHub token file has no access token: {token_path}")
         raise RuntimeError(f"GitHub token environment variable is not configured: {token_env}")
 
     owns_client = client is None
@@ -115,14 +123,18 @@ def fetch(
         for repository in normalized:
             if max_documents is not None and emitted >= max_documents:
                 return
-            metadata = _get_json(session, f"/repos/{repository}")
+            metadata = _get_json(session, f"/repos/{repository}", token)
             if not isinstance(metadata, dict):
                 raise RuntimeError(f"GitHub repository metadata is invalid: {repository}")
             branch = str(metadata.get("default_branch") or "").strip()
             if not branch or not _safe_ref(branch):
                 raise RuntimeError(f"GitHub repository has no safe default branch: {repository}")
             updated_at = _parse_timestamp(metadata.get("pushed_at") or metadata.get("updated_at"))
-            tree = _get_json(session, f"/repos/{repository}/git/trees/{quote(branch, safe='')}")
+            tree = _get_json(
+                session,
+                f"/repos/{repository}/git/trees/{quote(branch, safe='')}",
+                token,
+            )
             if not isinstance(tree, dict):
                 raise RuntimeError(f"GitHub repository tree is invalid: {repository}")
             entries = tree.get("tree")
@@ -150,7 +162,9 @@ def fetch(
                 ):
                     continue
                 payload = _get_json(
-                    session, f"/repos/{repository}/git/blobs/{quote(blob_sha, safe='')}"
+                    session,
+                    f"/repos/{repository}/git/blobs/{quote(blob_sha, safe='')}",
+                    token,
                 )
                 content = _decode_blob(payload, repository, path)
                 if not content.strip():
@@ -189,9 +203,83 @@ def _normalize_repositories(repositories: list[str]) -> list[str]:
     return result
 
 
-def _get_json(client: httpx.Client, path: str) -> Any:
+def _access_token(token_path: Path | None, token_env: str) -> str:
+    if token_path is not None:
+        path = validate_token_path(token_path)
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"GitHub token file is not valid JSON: {path}") from error
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"GitHub token file must contain a JSON object: {path}")
+        token_value = payload.get("access_token") or payload.get("token")
+        if not isinstance(token_value, str) or not token_value:
+            raise RuntimeError(f"GitHub token file has no access token: {path}")
+        token = token_value
+        if len(token) > 16 * 1024 or any(character.isspace() for character in token):
+            raise RuntimeError(f"GitHub token file contains an invalid access token: {path}")
+        return token
+    token = os.environ.get(token_env, "")
+    if len(token) > 16 * 1024 or any(character.isspace() for character in token):
+        raise RuntimeError("GitHub token environment value is invalid")
+    return token
+
+
+def validate_token_path(path: Path) -> Path:
+    path = path.expanduser()
+    if not path.is_absolute():
+        raise RuntimeError("GitHub token path must be absolute")
+    _reject_token_symlink_components(path)
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError as error:
+        raise RuntimeError(f"GitHub token file does not exist: {path}") from error
+    if stat.S_ISLNK(metadata.st_mode):
+        raise RuntimeError(f"GitHub token path must not be a symlink: {path}")
+    if not stat.S_ISREG(metadata.st_mode):
+        raise RuntimeError(f"GitHub token path is not a regular file: {path}")
+    if os.name == "posix" and stat.S_IMODE(metadata.st_mode) & 0o077:
+        raise RuntimeError(f"GitHub token file must be owner-only (mode 600): {path}")
+    if metadata.st_size > MAX_TOKEN_FILE_BYTES:
+        raise RuntimeError(f"GitHub token file exceeds {MAX_TOKEN_FILE_BYTES} bytes: {path}")
+    return path
+
+
+def _reject_token_symlink_components(path: Path) -> None:
+    current = path
+    while True:
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            metadata = None
+        except OSError as error:
+            raise RuntimeError(f"GitHub token path could not be inspected: {current}") from error
+        if (
+            metadata is not None
+            and stat.S_ISLNK(metadata.st_mode)
+            and not _is_token_system_alias(current)
+        ):
+            raise RuntimeError(f"GitHub token path component must not be a symlink: {current}")
+        parent = current.parent
+        if parent == current:
+            break
+        current = parent
+
+
+def _is_token_system_alias(path: Path) -> bool:
+    return sys.platform == "darwin" and path in {Path("/tmp"), Path("/var"), Path("/etc")}
+
+
+def _get_json(client: httpx.Client, path: str, token: str) -> Any:
     for attempt in range(4):
-        response = client.get(path)
+        response = client.get(
+            path,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
         if response.status_code in {429, 500, 502, 503, 504} and attempt < 3:
             delay = _retry_after(response, attempt)
             time.sleep(delay)

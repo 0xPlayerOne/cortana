@@ -121,10 +121,12 @@ configured document cap and never reconcile deletions.
 ## Credentials
 
 - Slack and Discord tokens are read only from the configured environment-variable name.
-- GitHub code sources read a personal or GitHub App access token only from the configured
-  environment-variable name and require an explicit repository allowlist. The Desktop setup
-  link opens GitHub's token settings; repository discovery/OAuth selection is intentionally not
-  implicit and remains the next onboarding layer.
+- GitHub code sources read either a personal/GitHub App access token from the configured
+  environment-variable name or a private OAuth token JSON file, and always require an explicit
+  repository allowlist. `cortana authorize-github SOURCE` uses the configured GitHub OAuth client
+  id JSON and device flow, while `cortana github-repositories SOURCE` returns a bounded safe
+  repository list for Desktop selection. The Desktop chooser persists only explicitly checked
+  `owner/repository` entries. Neither command reads repository content.
 - Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Desktop authorization uses a
   Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
   and the minimum read-only scopes required by the Google sources that share that token. Refresh

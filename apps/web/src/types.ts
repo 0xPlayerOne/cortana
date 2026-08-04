@@ -86,9 +86,22 @@ export type SourceSyncSummary = {
 }
 
 export type SourceAuthorizationSummary = {
-  method: 'none' | 'token' | 'google_oauth'
+  method: 'none' | 'token' | 'google_oauth' | 'github_oauth'
   setup_required: boolean
   authorized: boolean
+}
+
+export type GithubRepositorySummary = {
+  id: number
+  full_name: string
+  private: boolean
+  default_branch: string
+  html_url: string
+}
+
+export type GithubRepositoryList = {
+  repositories: GithubRepositorySummary[]
+  truncated: boolean
 }
 
 export type ConfiguredSourceSummary = {

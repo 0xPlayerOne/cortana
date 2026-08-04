@@ -2035,9 +2035,12 @@ fn validate_source_paths_and_credentials(source: &SourceSettings) -> Result<(), 
                 source.kind, source.name
             ))
         }
-        "github" if source.repositories.is_empty() || source.token_env.is_none() => {
+        "github"
+            if source.repositories.is_empty()
+                || (source.token_env.is_none() && source.token_path.is_none()) =>
+        {
             Err(format!(
-                "GitHub source `{}` needs repositories and a token environment name",
+                "GitHub source `{}` needs repositories and a token environment name or token file",
                 source.name
             ))
         }
@@ -3572,6 +3575,17 @@ mod tests {
         source.token_env = None;
         update.sources = vec![source];
         assert!(validate_update(&mut update).is_err());
+        let mut token_file_source = source_settings("github-file", "github");
+        token_file_source.enabled = true;
+        token_file_source.repositories = vec!["acme/project".into()];
+        token_file_source.token_path = Some(
+            temp.path()
+                .join("github-token.json")
+                .display()
+                .to_string(),
+        );
+        update.sources = vec![token_file_source];
+        validate_update(&mut update).expect("GitHub token file is an accepted credential path");
     }
 
     #[test]

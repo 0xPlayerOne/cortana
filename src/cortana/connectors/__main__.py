@@ -59,6 +59,7 @@ def parser() -> argparse.ArgumentParser:
 
     github = commands.add_parser("github")
     github.add_argument("--repo", action="append", required=True, dest="repositories")
+    github.add_argument("--token", type=Path)
     github.add_argument("--token-env", default="GITHUB_TOKEN")
 
     drive = commands.add_parser("google-drive")
@@ -123,6 +124,7 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
             arguments.repositories,
             arguments.project,
             token_env=arguments.token_env,
+            token_path=arguments.token,
             max_documents=arguments.max_documents,
         )
     token_path = _token_path(arguments)
