@@ -213,6 +213,21 @@ pub struct SourceConfig {
     pub acl: Vec<String>,
 }
 
+impl SourceConfig {
+    /// Return the ACL that should be applied to records emitted by this
+    /// source. An omitted ACL is intentionally workspace-private rather than
+    /// public; explicit labels can still opt a source into a shared boundary.
+    pub fn effective_acl(&self) -> Vec<String> {
+        if self.acl.is_empty() {
+            return vec![self.project.clone()];
+        }
+        let mut acl = self.acl.clone();
+        let mut seen = HashSet::new();
+        acl.retain(|label| seen.insert(label.clone()));
+        acl
+    }
+}
+
 impl Default for EmbeddingConfig {
     fn default() -> Self {
         Self {
@@ -954,6 +969,36 @@ mod tests {
             Some("me@example.com")
         );
         assert_eq!(config.sources[0].project, "personal");
+    }
+
+    #[test]
+    fn source_acl_defaults_to_its_workspace_and_preserves_explicit_labels() {
+        let mut source = SourceConfig {
+            name: "notes".into(),
+            kind: "apple-notes".into(),
+            enabled: true,
+            project: "personal".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            repositories: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        assert_eq!(source.effective_acl(), vec!["personal"]);
+
+        source.acl = vec!["shared".into(), "personal".into(), "shared".into()];
+        assert_eq!(source.effective_acl(), vec!["shared", "personal"]);
     }
 
     #[cfg(unix)]

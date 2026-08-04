@@ -783,7 +783,7 @@ mod tests {
             .iter()
             .filter_map(|source| source["name"].as_str())
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["work-drive", "public-reference"]);
+        assert_eq!(names, vec!["work-drive"]);
     }
 
     #[tokio::test]

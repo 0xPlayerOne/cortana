@@ -1930,7 +1930,7 @@ mod tests {
             .iter()
             .map(|source| source.name.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(names, vec!["work-drive", "public-reference"]);
+        assert_eq!(names, vec!["work-drive"]);
 
         let mut admin_config = auth_config;
         admin_config.auth.tokens[0].scopes = vec![ADMIN_SCOPE.into()];
