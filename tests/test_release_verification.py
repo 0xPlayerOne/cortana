@@ -7,8 +7,10 @@ match the version encoded in the archive name, and the published-asset gate
 and assert its version against the release tag on Linux hosts.
 
 The desktop verifier normally talks to GitHub through ``gh``; the tests
-substitute a fake ``gh`` on ``PATH`` that serves a synthetic release, so the
-whole gate runs offline against locally built archives.
+substitute a fake ``gh`` and ``minisign`` on ``PATH`` that serve a synthetic
+release, so the whole gate runs offline against locally built archives. The
+shim asserts the exact Minisign invocation and key/signature decoding; the
+published-release workflow exercises the real cryptographic verifier.
 """
 
 import base64
@@ -25,9 +27,22 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 VERIFY_RELEASE = ROOT / "scripts" / "verify-release.sh"
 VERIFY_DESKTOP = ROOT / "scripts" / "verify-desktop-release.sh"
+UPDATER_PUBLIC_KEY = base64.b64decode(
+    json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text())["plugins"]["updater"][
+        "pubkey"
+    ]
+)
 
 TAG = "v9.9.9"
 VERSION = "9.9.9"
+SIGNED_ARCHIVES = (
+    "Cortana_aarch64.app.tar.gz",
+    f"Cortana_{VERSION}_amd64.AppImage",
+    f"Cortana_{VERSION}_amd64.deb",
+    f"Cortana-{VERSION}-1.x86_64.rpm",
+    f"Cortana_{VERSION}_x64-setup.exe",
+    f"Cortana_{VERSION}_x64_en-US.msi",
+)
 MINISIGN_SIGNATURE = (
     b"untrusted comment: signature from tauri secret key\n"
     b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -173,7 +188,10 @@ def build_desktop_assets(directory: Path, linux_binary_version: str) -> dict[str
         assets[archive.name + ".sha256"] = (directory / f"{archive.name}.sha256").read_bytes()
     app = build_app_archive(directory)
     assets[app.name] = app.read_bytes()
-    assets["Cortana_aarch64.app.tar.gz.sig"] = base64.b64encode(MINISIGN_SIGNATURE)
+    for archive in SIGNED_ARCHIVES:
+        if archive != app.name:
+            assets[archive] = b"signed desktop artifact\n"
+        assets[f"{archive}.sig"] = base64.b64encode(MINISIGN_SIGNATURE)
     assets["latest.json"] = latest_manifest()
     return assets
 
@@ -231,6 +249,7 @@ exit 1
 def fake_minisign(bin_dir: Path, valid: bool = True) -> None:
     """Provide a deterministic verifier shim without committing a private key."""
     expected = repr(MINISIGN_SIGNATURE)
+    expected_public_key = repr(UPDATER_PUBLIC_KEY.rstrip(b"\n") + b"\n")
     outcome = "0" if valid else "1"
     script = bin_dir / "minisign"
     script.write_text(
@@ -240,13 +259,14 @@ import sys
 
 args = sys.argv[1:]
 try:
+    if len(args) != 6 or args[0] != '-Vm' or args[2] != '-x' or args[4] != '-p':
+        raise ValueError(f'unexpected minisign arguments: {{args!r}}')
+    Path(args[1]).stat()
     signature = Path(args[args.index('-x') + 1]).read_bytes()
     public_key = Path(args[args.index('-p') + 1]).read_bytes()
-    message_flag = '-m' if '-m' in args else '-Vm'
-    Path(args[args.index(message_flag) + 1]).stat()
 except (ValueError, IndexError, OSError):
     raise SystemExit(1)
-if signature.rstrip(b'\\n') != {expected}.rstrip(b'\\n') or not public_key.startswith(b'untrusted comment: minisign public key: '):
+if signature.rstrip(b'\\n') != {expected}.rstrip(b'\\n') or public_key != {expected_public_key}:
     raise SystemExit(1)
 raise SystemExit({outcome})
 """

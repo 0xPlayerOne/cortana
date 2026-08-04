@@ -67,7 +67,8 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
 - The current checkout passes `cargo test --all-targets --locked` (338 tests;
   the exact per-target split is emitted by Cargo and includes the Buzz discovery
   CLI/configuration coverage). The Desktop crate passes its native IPC suite
-  (110 tests). The web suite passes 250 tests, `tsc -b`, ESLint, and Prettier.
+  (123 tests listed, 110 non-ignored tests executed). The web suite passes 250 tests, `tsc -b`,
+  ESLint, and Prettier.
   Regression coverage added for this pass: failed background restarts name
   the failure and offer `Retry restart`/`Open services`; source-toggle saves
   restart in the background and report named failures; the Graph view hides
@@ -102,7 +103,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
 - `cargo build --release --locked` succeeds and the built binary reports
   `cortana 0.29.2`, matching the workspace version. The full Python suite
   passes (145 tests), including Drive batch/stream/cache-memory regressions and Google retry/concurrency coverage, and the release-verification regression coverage
-  passes (8 tests in `tests/test_release_verification.py`, including the
+  passes (10 tests in `tests/test_release_verification.py`, including the
   cryptographic Tauri updater signature path and explicit verifier-unavailable gate, alongside the
   installed-vs-checkout version-skew gate and the published-asset desktop
   gate). The local corpus reports 47,658 documents and 77,472 chunks (last observed
