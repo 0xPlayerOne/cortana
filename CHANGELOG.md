@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.29.9](https://github.com/0xPlayerOne/cortana/compare/v0.29.8...v0.29.9) (2026-08-04)
+
+
+### Bug Fixes
+
+* match nested desktop inputs ([64bdc15](https://github.com/0xPlayerOne/cortana/commit/64bdc1515efa1a0946e1db8f3bb86a3f11e01c62))
+
+
+### Documentation
+
+* record v0.29.8 verification ([680c41d](https://github.com/0xPlayerOne/cortana/commit/680c41dde6f07cb96c569f719d2beae0e77f3caf))
+* refresh desktop audit evidence ([498b1c0](https://github.com/0xPlayerOne/cortana/commit/498b1c0eda9c8dfec03d93fd484aec484c7de2e0))
+
+
+### CI
+
+* cover packaged runtime inputs in desktop gate ([6ecda6f](https://github.com/0xPlayerOne/cortana/commit/6ecda6fbc2b41e0e9764c15c0b0620bdfbfed4ed))
+* include changelog and eval fixture inputs ([6a2bc91](https://github.com/0xPlayerOne/cortana/commit/6a2bc91e618b2985826cb9ab7dd88139f2595f38))
+
 ## [0.29.8](https://github.com/0xPlayerOne/cortana/compare/v0.29.7...v0.29.8) (2026-08-04)
 
 
