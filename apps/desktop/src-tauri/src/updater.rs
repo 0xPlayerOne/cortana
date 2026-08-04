@@ -380,7 +380,7 @@ mod tests {
         let app = tauri::test::mock_app();
         let state = UpdaterState::default();
         let error = tauri::async_runtime::block_on(async {
-            state.install(&app.handle(), "1.2.3", false, false).await
+            state.install(app.handle(), "1.2.3", false, false).await
         })
         .unwrap_err();
         assert_eq!(error, "update installation requires explicit approval");
@@ -395,7 +395,7 @@ mod tests {
         let state = UpdaterState::default();
         for expected in ["".to_string(), "x".repeat(65)] {
             let error = tauri::async_runtime::block_on(async {
-                state.install(&app.handle(), &expected, true, false).await
+                state.install(app.handle(), &expected, true, false).await
             })
             .unwrap_err();
             assert_eq!(error, "invalid expected update version");
@@ -407,7 +407,7 @@ mod tests {
         let app = tauri::test::mock_app();
         let state = UpdaterState::default();
         let error = tauri::async_runtime::block_on(async {
-            state.install(&app.handle(), "1.2.3", true, false).await
+            state.install(app.handle(), "1.2.3", true, false).await
         })
         .unwrap_err();
         assert_eq!(error, "check for an update before installing");
