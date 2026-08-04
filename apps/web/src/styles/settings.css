@@ -545,8 +545,66 @@
   flex-direction: column;
 }
 
+.source-workspace-tabs {
+  display: flex;
+  margin-top: 17px;
+  padding-bottom: 2px;
+  gap: 7px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.source-workspace-tabs button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  padding: 0 11px;
+  gap: 7px;
+  color: var(--theme-text-secondary);
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.source-workspace-tabs button:hover,
+.source-workspace-tabs button.active {
+  color: var(--theme-text-primary);
+  background: var(--theme-control-bg);
+}
+
+.source-workspace-tabs button.active {
+  border-color: var(--line);
+  border-bottom-color: var(--amber);
+}
+
+.source-workspace-tabs button.warning {
+  color: var(--theme-warning-fg);
+}
+
+.source-workspace-tabs button.warning.active {
+  border-bottom-color: var(--theme-warning-fg);
+}
+
+.source-workspace-tabs button small {
+  min-width: 18px;
+  padding: 2px 5px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-elevated);
+  font-size: 10px;
+  text-align: center;
+}
+
+.source-workspace-caption {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .source-settings-card {
-  padding: 17px;
+  padding: 14px 15px;
   border: 1px solid var(--line);
   background: var(--panel);
 }

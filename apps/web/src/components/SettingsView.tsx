@@ -2798,6 +2798,22 @@ const SOURCE_KINDS: Array<{ value: SourceKind; label: string }> = [
   { value: 'discord', label: 'Discord' },
 ]
 
+const UNASSIGNED_WORKSPACE = '__unassigned__'
+
+function initialSourceWorkspace(settings: DesktopSettings): string {
+  const workspaceIds = new Set(settings.workspaces.map((workspace) => workspace.id))
+  if (settings.sources.some((source) => !workspaceIds.has(source.project))) {
+    return UNASSIGNED_WORKSPACE
+  }
+  return (
+    settings.workspaces.find((workspace) =>
+      settings.sources.some((source) => source.project === workspace.id)
+    )?.id ||
+    settings.workspaces[0]?.id ||
+    UNASSIGNED_WORKSPACE
+  )
+}
+
 function SourcesSection({
   settings,
   update,
@@ -2827,6 +2843,7 @@ function SourcesSection({
     Record<string, { items: GithubRepositorySummary[]; truncated: boolean }>
   >({})
   const [githubRepositoriesLoading, setGithubRepositoriesLoading] = useState<string | null>(null)
+  const [sourceWorkspace, setSourceWorkspace] = useState(() => initialSourceWorkspace(settings))
   const [initialSync, setInitialSync] = useState<{
     source: string
     budget: InitialSyncBudget
@@ -2838,6 +2855,30 @@ function SourcesSection({
   const sharedJobIds = useRef(new Set<string>())
   const cancelInFlight = useRef(new Set<string>())
   const foreground = useDesktopForeground()
+
+  const workspaceIds = settings.workspaces.map((workspace) => workspace.id)
+  const unassignedSourceCount = settings.sources.filter(
+    (source) => !workspaceIds.includes(source.project)
+  ).length
+  const sourceWorkspaceIsAssigned = workspaceIds.includes(sourceWorkspace)
+  const visibleSources = settings.sources
+    .map((source, index) => ({ source, index }))
+    .filter(({ source }) =>
+      sourceWorkspace === UNASSIGNED_WORKSPACE
+        ? !workspaceIds.includes(source.project)
+        : source.project === sourceWorkspace
+    )
+  const selectedWorkspace = settings.workspaces.find(({ id }) => id === sourceWorkspace)
+
+  useEffect(() => {
+    if (
+      sourceWorkspaceIsAssigned ||
+      (sourceWorkspace === UNASSIGNED_WORKSPACE && unassignedSourceCount)
+    ) {
+      return
+    }
+    setSourceWorkspace(initialSourceWorkspace(settings))
+  }, [sourceWorkspace, sourceWorkspaceIsAssigned, unassignedSourceCount, settings.workspaces])
 
   // In the full Desktop shell, App owns one poller for the source-job list so
   // SourcePanel, the tray/status bar, and Settings all observe the same
@@ -3012,11 +3053,16 @@ function SourcesSection({
     }))
   }
 
-  const addSource = () =>
+  const addSource = () => {
+    const targetWorkspace = sourceWorkspaceIsAssigned
+      ? sourceWorkspace
+      : settings.workspaces[0]?.id || 'personal'
+    if (!sourceWorkspaceIsAssigned) setSourceWorkspace(targetWorkspace)
     update((current) => ({
       ...current,
-      sources: [...current.sources, newSource(current)],
+      sources: [...current.sources, newSource(current, targetWorkspace)],
     }))
+  }
 
   const validateSource = async (source: SourceSettings) => {
     if (!canValidate) {
@@ -3080,7 +3126,9 @@ function SourcesSection({
         [source.name]: { items: result.repositories, truncated: result.truncated },
       }))
       if (result.truncated) {
-        setError('GitHub returned more than 1,000 repositories; select from the most recently updated 1,000.')
+        setError(
+          'GitHub returned more than 1,000 repositories; select from the most recently updated 1,000.'
+        )
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'GitHub repository discovery failed')
@@ -3184,6 +3232,45 @@ function SourcesSection({
         </button>
       </div>
 
+      <div className="source-workspace-tabs" role="tablist" aria-label="Source workspace">
+        {settings.workspaces.map((workspace) => {
+          const count = settings.sources.filter((source) => source.project === workspace.id).length
+          return (
+            <button
+              type="button"
+              role="tab"
+              key={workspace.id}
+              aria-selected={sourceWorkspace === workspace.id}
+              className={sourceWorkspace === workspace.id ? 'active' : ''}
+              onClick={() => setSourceWorkspace(workspace.id)}
+            >
+              <WorkspaceLogo workspace={workspace} size="small" />
+              <span>{workspace.name}</span>
+              <small>{count}</small>
+            </button>
+          )
+        })}
+        {unassignedSourceCount > 0 && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sourceWorkspace === UNASSIGNED_WORKSPACE}
+            className={sourceWorkspace === UNASSIGNED_WORKSPACE ? 'active warning' : 'warning'}
+            onClick={() => setSourceWorkspace(UNASSIGNED_WORKSPACE)}
+          >
+            <AlertTriangle size={15} />
+            <span>Needs assignment</span>
+            <small>{unassignedSourceCount}</small>
+          </button>
+        )}
+      </div>
+
+      <p className="source-workspace-caption">
+        {selectedWorkspace
+          ? `Showing sources assigned to ${selectedWorkspace.name}.`
+          : 'Assign legacy sources to a workspace before enabling or syncing them.'}
+      </p>
+
       {activeJob && (
         <div className="safety-note" role="status">
           Settings for {activeJob.source} are locked while its operation is running. Other sources
@@ -3198,7 +3285,21 @@ function SourcesSection({
             <span>Add a source, assign its workspace, then save and run bounded validation.</span>
           </div>
         )}
-        {settings.sources.map((source, index) => {
+        {settings.sources.length > 0 && visibleSources.length === 0 && (
+          <div className="empty-source-settings">
+            <strong>
+              {sourceWorkspace === UNASSIGNED_WORKSPACE
+                ? 'No sources need assignment'
+                : `No sources in ${selectedWorkspace?.name || 'this workspace'}`}
+            </strong>
+            <span>
+              {sourceWorkspace === UNASSIGNED_WORKSPACE
+                ? 'All configured sources are assigned to a workspace.'
+                : 'Add a source to this workspace or choose another workspace above.'}
+            </span>
+          </div>
+        )}
+        {visibleSources.map(({ source, index }) => {
           const secret = source.token_env
             ? settings.secrets.find((item) => item.name === source.token_env)
             : undefined
@@ -3759,7 +3860,9 @@ function SourcesSection({
                         <input
                           value={source.token_env || ''}
                           disabled={sourceLocked || !source.editable}
-                          required={source.enabled && source.kind !== 'github' && !source.token_path}
+                          required={
+                            source.enabled && source.kind !== 'github' && !source.token_path
+                          }
                           pattern="[A-Z_][A-Z0-9_]*"
                           onChange={(event) =>
                             changeSource(index, { token_env: event.target.value || null })
@@ -4122,7 +4225,7 @@ function InitialSyncFlow({
   )
 }
 
-function newSource(settings: DesktopSettings): SourceSettings {
+function newSource(settings: DesktopSettings, project?: string): SourceSettings {
   return {
     name: nextAvailableIdentifier(
       'source',
@@ -4130,7 +4233,7 @@ function newSource(settings: DesktopSettings): SourceSettings {
     ),
     kind: 'filesystem',
     enabled: false,
-    project: settings.workspaces[0]?.id || 'personal',
+    project: project || settings.workspaces[0]?.id || 'personal',
     root: null,
     source: null,
     channels: [],

@@ -430,9 +430,13 @@ test('an active source job locks only that source configuration', async () => {
   render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
 
   await waitFor(() => expect(screen.getByText(/Settings for work-code are locked/)).toBeTruthy())
-  const names = screen.getAllByLabelText(/^Source name/) as HTMLInputElement[]
-  expect(names[0].disabled).toBe(true)
-  expect(names[1].disabled).toBe(false)
+  const workNames = screen.getAllByLabelText(/^Source name/) as HTMLInputElement[]
+  expect(workNames).toHaveLength(1)
+  expect(workNames[0].disabled).toBe(true)
+
+  fireEvent.click(screen.getByRole('tab', { name: /Personal/ }))
+  const personalName = screen.getByLabelText(/^Source name/) as HTMLInputElement
+  expect(personalName.disabled).toBe(false)
   expect(
     (screen.getByRole('button', { name: 'Remove personal-notes' }) as HTMLButtonElement).disabled
   ).toBe(false)
