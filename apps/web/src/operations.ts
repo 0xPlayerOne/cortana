@@ -149,13 +149,19 @@ export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.n
     return { state: 'disabled', label: 'Disabled; existing index remains queryable' }
   if (source.authorization && source.authorization.method !== 'none') {
     if (!source.authorization.authorized) {
+      const provider =
+        source.authorization.method === 'google_oauth'
+          ? 'Google'
+          : source.authorization.method === 'github_oauth'
+            ? 'GitHub'
+            : null
       return {
         state: 'warning',
         label:
-          source.authorization.method === 'google_oauth' && source.authorization.setup_required
-            ? 'Google OAuth setup required'
-            : source.authorization.method === 'google_oauth'
-              ? 'Google token authorization required'
+          provider && source.authorization.setup_required
+            ? `${provider} OAuth setup required`
+            : provider
+              ? `${provider} token authorization required`
               : 'Source token required for connector authorization',
       }
     }
@@ -165,7 +171,9 @@ export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.n
         label:
           source.authorization.method === 'google_oauth'
             ? 'Google OAuth needs setup'
-            : 'Token source setup required',
+            : source.authorization.method === 'github_oauth'
+              ? 'GitHub OAuth needs setup'
+              : 'Token source setup required',
       }
     }
   }

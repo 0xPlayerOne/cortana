@@ -480,8 +480,9 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
                     source
                         .token_env
                         .as_deref()
-                        .is_some_and(|value| !value.trim().is_empty()),
-                    "source `{}` requires a GitHub token environment variable",
+                        .is_some_and(|value| !value.trim().is_empty())
+                        || source.token.is_some(),
+                    "source `{}` requires a GitHub token file or token environment variable",
                     source.name
                 );
             }
@@ -817,6 +818,11 @@ mod tests {
         config.sources[0].repositories = vec!["acme/project".into()];
         config.sources[0].token_env = None;
         assert!(validate_source_definitions(&config).is_err());
+        config.sources[0].token = Some(PathBuf::from(
+            "/Users/example/.config/cortana/github-token.json",
+        ));
+        validate_source_definitions(&config)
+            .expect("GitHub token file is an accepted credential path");
     }
 
     #[test]

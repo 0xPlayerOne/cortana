@@ -745,6 +745,14 @@ fn desktop_source_setup_open(source: String) -> Result<source_jobs::SetupOpenOut
 }
 
 #[tauri::command]
+async fn desktop_github_repositories<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    source: String,
+) -> Result<Value, String> {
+    source_jobs::list_github_repositories(&app, &source).await
+}
+
+#[tauri::command]
 fn desktop_source_initial_sync<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     jobs: State<'_, source_jobs::SourceJobState>,
@@ -1102,6 +1110,7 @@ pub fn run() {
             desktop_source_authorization_start,
             desktop_source_trial_sync_start,
             desktop_source_setup_open,
+            desktop_github_repositories,
             desktop_source_initial_sync,
             desktop_source_validation_status,
             desktop_source_jobs_status,
@@ -1254,6 +1263,7 @@ mod tests {
                 desktop_source_authorization_start,
                 desktop_source_initial_sync,
                 desktop_source_setup_open,
+                desktop_github_repositories,
                 desktop_source_jobs_status,
                 desktop_source_validation_cancel,
                 desktop_source_validation_start,

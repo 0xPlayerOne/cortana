@@ -14,8 +14,8 @@ pub async fn pick(app: AppHandle, kind: &str) -> Result<Option<String>, String> 
                 let _ = sender.send(path);
             }),
         "oauth-client" => dialog
-            .set_title("Choose a Google Desktop OAuth client")
-            .add_filter("Google OAuth client", &["json"])
+            .set_title("Choose a Desktop OAuth client")
+            .add_filter("OAuth client", &["json"])
             .pick_file(move |path| {
                 let _ = sender.send(path);
             }),
@@ -23,6 +23,13 @@ pub async fn pick(app: AppHandle, kind: &str) -> Result<Option<String>, String> 
             .set_title("Choose where Cortana should store the Google token")
             .set_file_name("cortana-google-token.json")
             .add_filter("Google token", &["json"])
+            .save_file(move |path| {
+                let _ = sender.send(path);
+            }),
+        "github-token" => dialog
+            .set_title("Choose where Cortana should store the GitHub token")
+            .set_file_name("cortana-github-token.json")
+            .add_filter("GitHub token", &["json"])
             .save_file(move |path| {
                 let _ = sender.send(path);
             }),

@@ -58,8 +58,9 @@ failure is a stop sign; it never repairs the index implicitly.
 ### 3. Authorize and validate one source
 
 Authorize only the source you intend to use, then run a small read-only validation. Google OAuth is
-started with `cortana authorize-google SOURCE`; Apple Notes uses the host permission; token-backed
-sources read only the configured environment variable. Validation never embeds, indexes, or
+started with `cortana authorize-google SOURCE`; GitHub uses `cortana authorize-github SOURCE`
+with a configured device-flow client id and private token destination; Apple Notes uses the host
+permission; token-backed sources read only the configured environment variable. Validation never embeds, indexes, or
 reconciles data:
 
 ```bash

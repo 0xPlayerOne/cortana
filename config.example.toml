@@ -157,6 +157,11 @@ name = "work-github"
 kind = "github"
 project = "work"
 repositories = ["0xPlayerOne/cortana"]
+# For browser authorization, provide a GitHub OAuth app client-id JSON and a
+# private token destination instead of token_env. The Desktop chooser can
+# create the destination file after authorization.
+# token = "/secure/path/github-token.json"
+# oauth_client = "/secure/path/github-oauth-client.json"
 token_env = "GITHUB_TOKEN"
 
 [[sources]]

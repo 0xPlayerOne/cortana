@@ -24,6 +24,7 @@ pub enum SourceAuthorizationMethod {
     None,
     Token,
     GoogleOauth,
+    GithubOauth,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -327,6 +328,51 @@ fn google_token_file_ready(path: &Path) -> bool {
     has_access_token || (has_refresh_token && has_client_id)
 }
 
+fn github_token_file_ready(path: &Path) -> bool {
+    if !secure_regular_file_ready(path) {
+        return false;
+    }
+    let mut file = match std::fs::File::open(path) {
+        Ok(file) => std::io::BufReader::new(file),
+        Err(_) => return false,
+    };
+    let mut bytes = Vec::new();
+    if file
+        .by_ref()
+        .take((MAX_GOOGLE_TOKEN_BYTES as u64) + 1)
+        .read_to_end(&mut bytes)
+        .is_err()
+        || bytes.len() > MAX_GOOGLE_TOKEN_BYTES
+    {
+        return false;
+    }
+    let token = match serde_json::from_slice::<serde_json::Value>(&bytes) {
+        Ok(serde_json::Value::Object(token)) => token,
+        _ => return false,
+    };
+    token
+        .get("access_token")
+        .or_else(|| token.get("token"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(valid_github_bearer)
+}
+
+fn github_token_env_ready(config: &Config, name: &str) -> bool {
+    config
+        .environment_value(name)
+        .is_some_and(|value| valid_github_bearer(&value))
+}
+
+fn valid_github_bearer(value: &str) -> bool {
+    let trimmed = value.trim();
+    value == trimmed
+        && !trimmed.is_empty()
+        && trimmed.len() <= 16 * 1024
+        && !trimmed
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+}
+
 fn secure_regular_file_ready(path: &Path) -> bool {
     regular_file_ready(path) && private_path_components_ready(path)
 }
@@ -414,6 +460,30 @@ pub fn source_authorization_summary(
             // its own. Requiring an OAuth client in that case makes an already
             // authorized Google source appear unhealthy in the desktop status
             // panel and incorrectly invites the user to repeat setup.
+            setup_required: !(token_env_ready
+                || token_file_ready
+                || (oauth_client_ready && token_destination_ready)),
+            authorized: token_env_ready || token_file_ready,
+        }
+    } else if source.kind == "github" {
+        let oauth_client_ready = source
+            .oauth_client
+            .as_ref()
+            .is_some_and(|path| secure_regular_file_ready(path.as_path()));
+        let token_env_ready = source
+            .token_env
+            .as_deref()
+            .is_some_and(|name| !name.trim().is_empty() && github_token_env_ready(config, name));
+        let token_file_ready = source
+            .token
+            .as_ref()
+            .is_some_and(|path| github_token_file_ready(path.as_path()));
+        let token_destination_ready = source
+            .token
+            .as_deref()
+            .is_some_and(google_token_destination_ready);
+        SourceAuthorizationSummary {
+            method: SourceAuthorizationMethod::GithubOauth,
             setup_required: !(token_env_ready
                 || token_file_ready
                 || (oauth_client_ready && token_destination_ready)),

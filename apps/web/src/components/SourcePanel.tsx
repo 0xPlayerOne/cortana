@@ -276,8 +276,10 @@ export function SourcePanel({
                 const isSelected = selected === item.source && selectedWorkspaceId === item.project
                 const auth = item.authorization
                 const needsProviderSetup = Boolean(auth?.setup_required)
-                const needsGoogleAuthorization =
-                  auth?.method === 'google_oauth' && !auth.authorized && !needsProviderSetup
+                const needsBrowserAuthorization =
+                  (auth?.method === 'google_oauth' || auth?.method === 'github_oauth') &&
+                  !auth.authorized &&
+                  !needsProviderSetup
                 const sourceJobActive = active.some(
                   (job) =>
                     job.project === item.project &&
@@ -326,6 +328,8 @@ export function SourcePanel({
                               ? 'Wait for the active source job to finish'
                               : auth?.method === 'google_oauth'
                                 ? 'Open Google source settings'
+                                : auth?.method === 'github_oauth'
+                                  ? 'Open GitHub source settings'
                                 : 'Open the provider setup page'
                           }
                           disabled={
@@ -339,7 +343,7 @@ export function SourcePanel({
                           <ExternalLink size={13} />
                         </button>
                       )}
-                      {onAuthorizeSource && needsGoogleAuthorization && (
+                      {onAuthorizeSource && needsBrowserAuthorization && (
                         <button
                           type="button"
                           className="source-action"
@@ -347,7 +351,9 @@ export function SourcePanel({
                           title={
                             sourceJobActive
                               ? 'Wait for the active source job to finish'
-                              : 'Authorize this Google source in your browser'
+                              : auth?.method === 'github_oauth'
+                                ? 'Authorize this GitHub source in your browser'
+                                : 'Authorize this Google source in your browser'
                           }
                           disabled={
                             sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive

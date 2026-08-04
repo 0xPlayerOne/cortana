@@ -28,6 +28,7 @@ import type {
   AuditEvent,
   DesktopSetupOpen,
   InitialSyncBudget,
+  GithubRepositoryList,
 } from './types'
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
@@ -226,8 +227,13 @@ export async function openDesktopSourceSetup(source: string): Promise<DesktopSet
   return invokeDesktop<DesktopSetupOpen>('desktop_source_setup_open', { source })
 }
 
+export async function listDesktopGithubRepositories(source: string): Promise<GithubRepositoryList> {
+  if (!isDesktopApp) throw new Error('GitHub repository discovery is available in Cortana Desktop')
+  return invokeDesktop<GithubRepositoryList>('desktop_github_repositories', { source })
+}
+
 export async function pickDesktopPath(
-  kind: 'directory' | 'oauth-client' | 'google-token'
+  kind: 'directory' | 'oauth-client' | 'google-token' | 'github-token'
 ): Promise<string | null> {
   if (!isDesktopApp) throw new Error('Native path selection is available in Cortana Desktop')
   return invokeDesktop<string | null>('desktop_path_pick', { kind })

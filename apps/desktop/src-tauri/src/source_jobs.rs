@@ -7,7 +7,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,7 @@ use tauri_plugin_shell::{
     ShellExt,
     process::{CommandChild, CommandEvent},
 };
+use tokio::time::timeout;
 
 #[cfg(test)]
 use tauri_plugin_shell::process::TerminatedPayload;
@@ -24,6 +25,8 @@ use tauri_plugin_shell::process::TerminatedPayload;
 use crate::settings;
 
 const MAX_LOG_BYTES: usize = 64 * 1024;
+const GITHUB_REPOSITORIES_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_GITHUB_REPOSITORIES_BYTES: usize = 512 * 1024;
 const MAX_JOBS: usize = 20;
 const VALIDATION_MAX_DOCUMENTS: &str = "25";
 const VALIDATION_MAX_BYTES: &str = "5242880";
@@ -103,6 +106,115 @@ pub struct SetupOpenOutcome {
     pub kind: String,
     pub url: &'static str,
     pub opened: bool,
+}
+
+/// Discover repositories through the bundled CLI using the already-saved
+/// source configuration. The renderer supplies only a configured source name;
+/// it cannot inject a command, URL, token, or arbitrary GitHub owner.
+pub async fn list_github_repositories<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    source_name: &str,
+) -> Result<Value, String> {
+    let source = settings::configured_source(source_name)?;
+    if source.kind != "github" {
+        return Err("repository discovery is available only for GitHub sources".into());
+    }
+    let command = app
+        .shell()
+        .sidecar("cortana")
+        .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
+        .args(["github-repositories", source.name.as_str()])
+        .env("CORTANA_DESKTOP_PROCESS_GROUP", "1")
+        .set_raw_out(true);
+    let (mut receiver, child) = command
+        .spawn()
+        .map_err(|error| format!("start GitHub repository discovery: {error}"))?;
+    let result = timeout(GITHUB_REPOSITORIES_TIMEOUT, async {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut success = false;
+        while let Some(event) = receiver.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => {
+                    append_bounded_bytes(&mut stdout, &bytes, MAX_GITHUB_REPOSITORIES_BYTES)
+                }
+                CommandEvent::Stderr(bytes) => {
+                    append_bounded_bytes(&mut stderr, &bytes, MAX_LOG_BYTES)
+                }
+                CommandEvent::Error(error) => {
+                    return Err(format!("GitHub repository discovery failed: {error}"));
+                }
+                CommandEvent::Terminated(payload) => {
+                    success = payload.code == Some(0);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok((success, stdout, stderr))
+    })
+    .await;
+    let (success, stdout, _stderr) = match result {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => {
+            let _ = terminate_source_process(child);
+            return Err(error);
+        }
+        Err(_) => {
+            let _ = terminate_source_process(child);
+            return Err("GitHub repository discovery timed out".into());
+        }
+    };
+    if !success {
+        return Err("GitHub repository discovery failed; check source authorization".into());
+    }
+    if stdout.len() >= MAX_GITHUB_REPOSITORIES_BYTES {
+        return Err("GitHub repository discovery response exceeded 512 KiB".into());
+    }
+    let value: Value = serde_json::from_slice(&stdout)
+        .map_err(|_| "GitHub repository discovery returned invalid JSON".to_string())?;
+    validate_github_repository_payload(&value)?;
+    Ok(value)
+}
+
+fn append_bounded_bytes(buffer: &mut Vec<u8>, bytes: &[u8], maximum: usize) {
+    let remaining = maximum.saturating_sub(buffer.len());
+    buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
+}
+
+fn validate_github_repository_payload(value: &Value) -> Result<(), String> {
+    let repositories = value
+        .get("repositories")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "GitHub repository discovery returned an invalid list".to_string())?;
+    if repositories.len() > 1_000 {
+        return Err("GitHub repository discovery returned too many repositories".into());
+    }
+    for repository in repositories {
+        let object = repository
+            .as_object()
+            .ok_or_else(|| "GitHub repository discovery returned an invalid repository".to_string())?;
+        let full_name = object
+            .get("full_name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "GitHub repository discovery returned an invalid name".to_string())?;
+        if full_name.len() > 256
+            || full_name.matches('/').count() != 1
+            || full_name.chars().any(char::is_control)
+        {
+            return Err("GitHub repository discovery returned an unsafe repository name".into());
+        }
+        let html_url = object
+            .get("html_url")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "GitHub repository discovery returned an invalid URL".to_string())?;
+        let url = reqwest::Url::parse(html_url)
+            .map_err(|_| "GitHub repository discovery returned an invalid URL".to_string())?;
+        if url.scheme() != "https" || url.host_str() != Some("github.com") {
+            return Err("GitHub repository discovery returned an unsafe URL".into());
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -343,40 +455,58 @@ impl SourceJobState {
         source_name: &str,
     ) -> Result<SourceJobSnapshot, String> {
         let source = settings::configured_source(source_name)?;
-        if !matches!(
+        let is_google = matches!(
             source.kind.as_str(),
             "google-drive" | "gmail" | "google-calendar"
-        ) {
-            return Err("browser authorization is available only for Google sources".into());
+        );
+        let is_github = source.kind == "github";
+        if !is_google && !is_github {
+            return Err("browser authorization is available only for Google and GitHub sources".into());
         }
-        if (source.token_path.is_none() && source.token_env.is_none())
-            || source.oauth_client_path.is_none()
-        {
+        if is_google {
+            if (source.token_path.is_none() && source.token_env.is_none())
+                || source.oauth_client_path.is_none()
+            {
+                return Err(
+                    "save a Google token destination (file or path environment variable) and Desktop OAuth client path first"
+                        .into(),
+                );
+            }
+            if source.token_path.is_none() {
+                let token_env = source
+                    .token_env
+                    .as_deref()
+                    .ok_or_else(|| "Google token path environment variable is missing".to_string())?;
+                let value = settings::secret_value_for_env(token_env)?
+                    .ok_or_else(|| format!("configure {token_env} with an absolute token path first"))?;
+                if !std::path::Path::new(value.trim()).is_absolute() {
+                    return Err(format!(
+                        "{token_env} must contain an absolute Google token path"
+                    ));
+                }
+            }
+        } else if source.token_path.is_none() || source.oauth_client_path.is_none() {
             return Err(
-                "save a Google token destination (file or path environment variable) and Desktop OAuth client path first"
-                    .into(),
+                "save a GitHub token destination file and OAuth client JSON path first".into(),
             );
         }
-        if source.token_path.is_none() {
-            let token_env = source
-                .token_env
-                .as_deref()
-                .ok_or_else(|| "Google token path environment variable is missing".to_string())?;
-            let value = settings::secret_value_for_env(token_env)?
-                .ok_or_else(|| format!("configure {token_env} with an absolute token path first"))?;
-            if !std::path::Path::new(value.trim()).is_absolute() {
-                return Err(format!(
-                    "{token_env} must contain an absolute Google token path"
-                ));
-            }
-        }
+        let (args, summary) = if is_github {
+            (
+                authorization_args("github", source_name),
+                "Waiting for GitHub authorization in the system browser. No repository data is being read.".into(),
+            )
+        } else {
+            (
+                authorization_args("google", source_name),
+                "Waiting for Google authorization in the system browser. No source data is being read.".into(),
+            )
+        };
         self.start(
             app,
             source,
             "authorization",
-            authorization_args(source_name),
-            "Waiting for Google authorization in the system browser. No source data is being read."
-                .into(),
+            args,
+            summary,
             None,
             false,
         )
@@ -717,8 +847,15 @@ fn sample_summary_suffix(sample: bool) -> &'static str {
     }
 }
 
-fn authorization_args(source: &str) -> Vec<String> {
-    ["authorize-google", source]
+fn authorization_args(provider: &str, source: &str) -> Vec<String> {
+    [
+        if provider == "github" {
+            "authorize-github"
+        } else {
+            "authorize-google"
+        },
+        source,
+    ]
         .into_iter()
         .map(str::to_string)
         .collect()
@@ -1173,8 +1310,12 @@ mod tests {
     #[test]
     fn authorization_command_accepts_only_the_configured_source_name() {
         assert_eq!(
-            authorization_args("personal-drive"),
+            authorization_args("google", "personal-drive"),
             ["authorize-google", "personal-drive"]
+        );
+        assert_eq!(
+            authorization_args("github", "work-github"),
+            ["authorize-github", "work-github"]
         );
     }
 

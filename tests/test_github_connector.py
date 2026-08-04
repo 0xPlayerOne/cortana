@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import base64
+import json
+import os
+import stat
+from pathlib import Path
 
 import httpx
 import pytest
@@ -60,6 +64,25 @@ def test_github_fetches_only_selected_text_blobs(monkeypatch: pytest.MonkeyPatch
     assert documents[0].project == "work"
     assert documents[0].metadata["repository"] == "acme/project"
     assert documents[0].uri == "https://github.com/acme/project/blob/main/src/main.py"
+
+
+def test_github_reads_owner_only_access_token_file(tmp_path: Path) -> None:
+    token_path = tmp_path / "github-token.json"
+    token_path.write_text(json.dumps({"access_token": "secret", "token_type": "bearer"}))
+    if os.name == "posix":
+        token_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["authorization"] == "Bearer secret"
+        if request.url.path == "/repos/acme/project":
+            return _response(request, {"default_branch": "main"})
+        if request.url.path.endswith("/git/trees/main"):
+            return _response(request, {"truncated": False, "tree": []})
+        raise AssertionError(request.url)
+
+    assert list(
+        github.fetch(["acme/project"], "work", token_path=token_path, client=_client(handler))
+    ) == []
 
 
 def test_github_rejects_truncated_trees(monkeypatch: pytest.MonkeyPatch) -> None:
