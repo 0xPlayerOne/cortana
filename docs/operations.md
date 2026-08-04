@@ -169,7 +169,15 @@ and macOS app archive for safe paths, executable runtime files, the connector re
 bundle, the release installer scripts, and the published SHA-256 files against their downloaded
 archives, then executes the published Linux core binary and asserts that its `--version` output
 matches the release tag (on non-Linux hosts the executable check is skipped because the verifier
-cannot run foreign-OS binaries). Re-run the read-only verifier for an existing release with:
+cannot run foreign-OS binaries).
+
+When `minisign` is installed, the verifier decodes Tauri's base64-encoded `.sig` payload and
+cryptographically verifies the downloaded macOS updater archive against the updater public key in
+`apps/desktop/src-tauri/tauri.conf.json`. Set `CORTANA_REQUIRE_MINISIGN=1` in a release gate to fail
+closed when the verifier is unavailable; the default keeps the check portable on hosts without
+`minisign`.
+
+Re-run the read-only verifier for an existing release with:
 
 ```bash
 GH_REPO=0xPlayerOne/cortana scripts/verify-desktop-release.sh v0.23.1

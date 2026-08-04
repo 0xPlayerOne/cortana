@@ -11,6 +11,7 @@ substitute a fake ``gh`` on ``PATH`` that serves a synthetic release, so the
 whole gate runs offline against locally built archives.
 """
 
+import base64
 import hashlib
 import json
 import os
@@ -27,6 +28,10 @@ VERIFY_DESKTOP = ROOT / "scripts" / "verify-desktop-release.sh"
 
 TAG = "v9.9.9"
 VERSION = "9.9.9"
+MINISIGN_SIGNATURE = (
+    b"untrusted comment: signature from tauri secret key\n"
+    b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+)
 
 if sys.platform == "linux":
     HOST_SUFFIX = "unknown-linux-gnu"
@@ -168,7 +173,7 @@ def build_desktop_assets(directory: Path, linux_binary_version: str) -> dict[str
         assets[archive.name + ".sha256"] = (directory / f"{archive.name}.sha256").read_bytes()
     app = build_app_archive(directory)
     assets[app.name] = app.read_bytes()
-    assets["Cortana_aarch64.app.tar.gz.sig"] = b"test-signature"
+    assets["Cortana_aarch64.app.tar.gz.sig"] = base64.b64encode(MINISIGN_SIGNATURE)
     assets["latest.json"] = latest_manifest()
     return assets
 
@@ -223,6 +228,32 @@ exit 1
     script.chmod(0o755)
 
 
+def fake_minisign(bin_dir: Path, valid: bool = True) -> None:
+    """Provide a deterministic verifier shim without committing a private key."""
+    expected = repr(MINISIGN_SIGNATURE)
+    outcome = "0" if valid else "1"
+    script = bin_dir / "minisign"
+    script.write_text(
+        f"""#!/usr/bin/env python3
+from pathlib import Path
+import sys
+
+args = sys.argv[1:]
+try:
+    signature = Path(args[args.index('-x') + 1]).read_bytes()
+    public_key = Path(args[args.index('-p') + 1]).read_bytes()
+    message_flag = '-m' if '-m' in args else '-Vm'
+    Path(args[args.index(message_flag) + 1]).stat()
+except (ValueError, IndexError, OSError):
+    raise SystemExit(1)
+if signature.rstrip(b'\\n') != {expected}.rstrip(b'\\n') or not public_key.startswith(b'untrusted comment: minisign public key: '):
+    raise SystemExit(1)
+raise SystemExit({outcome})
+"""
+    )
+    script.chmod(0o755)
+
+
 def run_script(
     script: Path, args: list[str], env_extra: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
@@ -239,10 +270,16 @@ def run_script(
 
 
 def run_desktop_verify(
-    tmp_path: Path, assets: dict[str, bytes], force_linux: bool = False
+    tmp_path: Path,
+    assets: dict[str, bytes],
+    force_linux: bool = False,
+    minisign_mode: str | None = "valid",
+    require_minisign: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     fake_gh(bin_dir, assets)
+    if minisign_mode in {"valid", "invalid"}:
+        fake_minisign(bin_dir, valid=minisign_mode == "valid")
     if force_linux:
         # Emulate a Linux verifier host so the published-binary execution gate
         # runs on every platform; the fixture binary is a POSIX shell script
@@ -254,6 +291,10 @@ def run_desktop_verify(
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "GH_REPO": "test/repo",
     }
+    if minisign_mode is None:
+        env["CORTANA_MINISIGN_BIN"] = "missing-test-minisign"
+    if require_minisign:
+        env["CORTANA_REQUIRE_MINISIGN"] = "1"
     return run_script(VERIFY_DESKTOP, [TAG], env_extra=env)
 
 
@@ -334,3 +375,31 @@ def test_desktop_verify_rejects_published_version_skew(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "published Linux binary version mismatch" in result.stderr
     assert "expected 'cortana 9.9.9', got 'cortana 1.0.0'" in result.stderr
+
+
+@requires_shell
+def test_desktop_verify_rejects_invalid_tauri_signature(tmp_path: Path) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+
+    result = run_desktop_verify(tmp_path, assets, minisign_mode="invalid")
+
+    assert result.returncode == 1
+    assert "Tauri updater signature verification failed" in result.stderr
+
+
+@requires_shell
+def test_desktop_verify_fails_closed_when_minisign_is_required_but_unavailable(
+    tmp_path: Path,
+) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+
+    result = run_desktop_verify(
+        tmp_path,
+        assets,
+        minisign_mode=None,
+        require_minisign=True,
+    )
+
+    assert result.returncode == 1
+    assert "CORTANA_REQUIRE_MINISIGN=1" in result.stderr
+    assert "unavailable" in result.stderr

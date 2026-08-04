@@ -56,11 +56,24 @@ PY
 staging="$(mktemp -d "${TMPDIR:-/tmp}/cortana-release-assets.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
 
+minisign_bin="${CORTANA_MINISIGN_BIN:-minisign}"
+require_minisign="${CORTANA_REQUIRE_MINISIGN:-0}"
+case "$require_minisign" in
+    0|1) ;;
+    *)
+        echo "CORTANA_REQUIRE_MINISIGN must be 0 or 1" >&2
+        exit 2
+        ;;
+esac
+
+app_archive="Cortana_aarch64.app.tar.gz"
+app_signature="${app_archive}.sig"
+
 core_archives=(
     "cortana-${tag}-aarch64-apple-darwin.tar.gz"
     "cortana-${tag}-x86_64-unknown-linux-gnu.tar.gz"
 )
-for asset in "${core_archives[@]}" "Cortana_aarch64.app.tar.gz"; do
+for asset in "${core_archives[@]}" "$app_archive" "$app_signature"; do
     gh release download "$tag" --repo "$repo" --pattern "$asset" --dir "$staging" --clobber >/dev/null
 done
 for archive in "${core_archives[@]}"; do
@@ -72,7 +85,7 @@ for archive in "${core_archives[@]}"; do
 done
 echo "verified core archive checksums"
 
-python3 - "$staging" "${core_archives[@]}" "Cortana_aarch64.app.tar.gz" <<'PY'
+python3 - "$staging" "${core_archives[@]}" "$app_archive" <<'PY'
 import os
 import sys
 import tarfile
@@ -149,6 +162,49 @@ verify_archive(
 )
 print("verified core archives and macOS sidecar/resources")
 PY
+
+if command -v "$minisign_bin" >/dev/null 2>&1; then
+    updater_config="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/apps/desktop/src-tauri/tauri.conf.json"
+    updater_public_key="$staging/tauri-updater.pub"
+    decoded_signature="$staging/${app_signature}.minisig"
+    python3 - "$updater_config" "$updater_public_key" "$staging/$app_signature" "$decoded_signature" <<'PY'
+import base64
+import json
+import sys
+from pathlib import Path
+
+config_path, public_key_path, signature_path, decoded_signature_path = map(Path, sys.argv[1:])
+try:
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    encoded_public_key = config["plugins"]["updater"]["pubkey"]
+    if not isinstance(encoded_public_key, str):
+        raise TypeError("updater pubkey must be a string")
+    public_key = base64.b64decode(encoded_public_key, validate=True)
+    encoded_signature = signature_path.read_bytes().strip()
+    signature = base64.b64decode(encoded_signature, validate=True)
+except (OSError, UnicodeError, KeyError, TypeError, ValueError) as error:
+    raise SystemExit(f"invalid Tauri updater key/signature encoding: {error}") from error
+
+if not public_key.startswith(b"untrusted comment: minisign public key: "):
+    raise SystemExit("Tauri updater pubkey is not a minisign public key")
+if not signature.startswith(b"untrusted comment: signature from tauri secret key\n"):
+    raise SystemExit("Tauri updater signature is not a minisign signature")
+
+public_key_path.write_bytes(public_key.rstrip(b"\n") + b"\n")
+decoded_signature_path.write_bytes(signature.rstrip(b"\n") + b"\n")
+PY
+    if ! "$minisign_bin" -Vm "$staging/$app_archive" \
+        -x "$decoded_signature" -p "$updater_public_key"; then
+        echo "Tauri updater signature verification failed: $app_archive" >&2
+        exit 1
+    fi
+    echo "verified Tauri updater signature: $app_archive"
+elif [[ "$require_minisign" == "1" ]]; then
+    echo "CORTANA_REQUIRE_MINISIGN=1 but minisign verifier is unavailable" >&2
+    exit 1
+else
+    echo "skipped Tauri updater signature verification: minisign verifier unavailable"
+fi
 
 gh release download "$tag" --repo "$repo" --pattern latest.json --dir "$staging" --clobber >/dev/null
 python3 - "$staging/latest.json" "$tag" <<'PY'
