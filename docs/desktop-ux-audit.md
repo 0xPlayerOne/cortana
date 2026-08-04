@@ -90,7 +90,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
   duplicated, or symlinked.
 - `cargo build --release --locked` succeeds and the built binary reports
   `cortana 0.28.0`, matching the workspace version. The full Python suite
-  passes (137 tests) and the release-verification regression coverage
+  passes (139 tests), including Drive batch/stream/cache-memory regressions, and the release-verification regression coverage
   passes (6 tests in `tests/test_release_verification.py`: the
   installed-vs-checkout version-skew gate and the published-asset desktop
   gate). The local corpus reports 47,658 documents and 77,472 chunks.
