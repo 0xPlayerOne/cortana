@@ -65,6 +65,9 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
 
 - Published release verification for v0.29.3 completed with 18 release assets verified; the
   installed CLI reports `cortana 0.29.3`.
+- The readiness hardening patch passes 19 focused Rust readiness/API tests and 11 focused Desktop
+  readiness tests. Aggregate core, web, Python, and full Desktop counts remain a CI responsibility
+  and are not represented as current evidence here until that matrix reruns.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an

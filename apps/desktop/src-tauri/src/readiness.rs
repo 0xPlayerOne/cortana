@@ -15,7 +15,11 @@ use tauri_plugin_shell::{
 use tokio::{process::Command, time::timeout};
 
 const VERSION_TIMEOUT: Duration = Duration::from_secs(3);
-const READINESS_TIMEOUT: Duration = Duration::from_secs(90);
+// The bundled CLI's comprehensive readiness gate allows 240 seconds for the
+// observed large local corpus. Keep process/IPC margin for the CLI's maximum
+// 300-second embedding probe so Desktop does not report a false timeout while
+// the CLI is still fail-closed.
+const READINESS_TIMEOUT: Duration = Duration::from_secs(330);
 const EMBEDDING_MIGRATION_TIMEOUT: Duration = Duration::from_secs(90);
 const MAX_DETAIL_BYTES: usize = 2_048;
 const MAX_READINESS_BYTES: usize = 64 * 1024;
@@ -95,9 +99,7 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
     }
 }
 
-fn bundled_runtime_status(
-    result: Result<&tauri_plugin_shell::process::Output, &String>,
-) -> ToolStatus {
+fn bundled_runtime_status(result: Result<&ProcessOutput, &String>) -> ToolStatus {
     match result {
         Ok(version) => ToolStatus {
             id: "cortana",
@@ -146,16 +148,13 @@ pub async fn migrate_embedding_generation(app: &AppHandle, from: &str) -> Result
     Ok(bounded_output(&output.stdout))
 }
 
-struct MigrationSidecarOutput {
+struct ProcessOutput {
     success: bool,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
 }
 
-async fn migration_sidecar_output(
-    app: &AppHandle,
-    args: &[&str],
-) -> Result<MigrationSidecarOutput, String> {
+async fn migration_sidecar_output(app: &AppHandle, args: &[&str]) -> Result<ProcessOutput, String> {
     let command = app
         .shell()
         .sidecar("cortana")
@@ -184,7 +183,7 @@ async fn migration_sidecar_output(
                 _ => {}
             }
         }
-        Ok(MigrationSidecarOutput {
+        Ok(ProcessOutput {
             success,
             stdout,
             stderr,
@@ -194,11 +193,11 @@ async fn migration_sidecar_output(
     match result {
         Ok(Ok(output)) => Ok(output),
         Ok(Err(error)) => {
-            terminate_migration_process(child);
+            terminate_process(child);
             Err(error)
         }
         Err(_) => {
-            terminate_migration_process(child);
+            terminate_process(child);
             Err("embedding generation migration timed out".into())
         }
     }
@@ -209,7 +208,7 @@ fn append_migration_output(buffer: &mut Vec<u8>, bytes: &[u8]) {
     buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
 }
 
-fn terminate_migration_process(child: CommandChild) {
+fn terminate_process(child: CommandChild) {
     #[cfg(unix)]
     {
         let pid = child.pid();
@@ -236,16 +235,53 @@ async fn sidecar_output(
     app: &AppHandle,
     args: &[&str],
     duration: Duration,
-) -> Result<tauri_plugin_shell::process::Output, String> {
+) -> Result<ProcessOutput, String> {
     let command = app
         .shell()
         .sidecar("cortana")
         .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
-        .args(args);
-    timeout(duration, command.output())
-        .await
-        .map_err(|_| "bundled Cortana command timed out".to_string())?
-        .map_err(|error| format!("run bundled Cortana runtime: {error}"))
+        .args(args)
+        .env("CORTANA_DESKTOP_PROCESS_GROUP", "1")
+        .set_raw_out(true);
+    let (mut receiver, child) = command
+        .spawn()
+        .map_err(|error| format!("run bundled Cortana runtime: {error}"))?;
+    let result = timeout(duration, async {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut success = false;
+        while let Some(event) = receiver.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => stdout.extend(bytes),
+                CommandEvent::Stderr(bytes) => stderr.extend(bytes),
+                CommandEvent::Error(error) => {
+                    return Err(format!("run bundled Cortana runtime: {error}"));
+                }
+                CommandEvent::Terminated(payload) => {
+                    success = payload.code == Some(0);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok(ProcessOutput {
+            success,
+            stdout,
+            stderr,
+        })
+    })
+    .await;
+    match result {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(error)) => {
+            terminate_process(child);
+            Err(error)
+        }
+        Err(_) => {
+            terminate_process(child);
+            Err("bundled Cortana command timed out".into())
+        }
+    }
 }
 
 async fn tool_status(

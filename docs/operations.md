@@ -338,7 +338,9 @@ embedding task, and recurring sync remains opt-in and validation-gated on every 
 Run `cortana readiness` to check API liveness, embedding availability, embedding/index generation
 compatibility, database integrity, verified backup freshness, query mode, and recurring-sync state.
 Readiness runs SQLite integrity verification on the newest backup candidates and ignores a corrupt
-newer file when an older verified snapshot is still within the configured age bound. A generation
+newer file when an older verified snapshot is still within the configured age bound. Integrity and
+backup probes run on dedicated blocking threads and use the explicit `--storage-timeout-seconds` bound
+(1 to 300 seconds, 240 by default); a timeout or worker failure fails readiness closed. A generation
 mismatch is reported with both fingerprints and readiness never changes the existing index. If the
 provider endpoint changed but the model, dimension, and vector space are known to be identical, an
 operator can adopt the exact stored generation without re-embedding the corpus:

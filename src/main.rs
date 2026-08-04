@@ -114,6 +114,13 @@ enum Command {
         max_backup_age_hours: u64,
         #[arg(
             long,
+            default_value_t = cortana::readiness::READINESS_STORAGE_TIMEOUT_DEFAULT_SECONDS,
+            value_parser = clap::value_parser!(u64).range(1..=300),
+            help = "Bound SQLite integrity and backup verification probes in seconds; timeout fails readiness closed"
+        )]
+        storage_timeout_seconds: u64,
+        #[arg(
+            long,
             help = "Acknowledge an explicitly installed recurring sync service"
         )]
         allow_sync_service: bool,
@@ -723,6 +730,7 @@ async fn main() -> Result<()> {
     if let Some(Command::Readiness {
         api_url,
         max_backup_age_hours,
+        storage_timeout_seconds,
         allow_sync_service,
     }) = cli.command.as_ref()
     {
@@ -732,6 +740,7 @@ async fn main() -> Result<()> {
             base_embedder.as_ref(),
             api_url,
             *max_backup_age_hours,
+            *storage_timeout_seconds,
             *allow_sync_service,
         )
         .await;
