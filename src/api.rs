@@ -53,7 +53,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(store: Store, embedder: Arc<dyn Embedder>, api_token: Option<String>) -> Self {
+    pub fn new(store: Store, embedder: Arc<dyn Embedder>) -> Self {
         let answer = AnswerEngine::new(
             store.clone(),
             embedder.clone(),
@@ -64,7 +64,7 @@ impl AppState {
             store,
             embedder,
             metrics: Arc::new(RuntimeMetrics::new()),
-            auth: AuthPolicy::legacy(api_token),
+            auth: AuthPolicy::default(),
             ingestion: Arc::new(IngestionStatus::default()),
             workspaces: Arc::new(Vec::new()),
             answer,
@@ -1321,14 +1321,14 @@ mod tests {
         );
     }
 
-    fn test_state(token: Option<String>) -> (tempfile::TempDir, AppState) {
+    fn test_state() -> (tempfile::TempDir, AppState) {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
         store
             .ensure_fingerprint("deterministic:16")
             .expect("fingerprint");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
-        (directory, AppState::new(store, embedder, token))
+        (directory, AppState::new(store, embedder))
     }
 
     struct UnavailableEmbedder;
@@ -1654,8 +1654,19 @@ mod tests {
 
     #[tokio::test]
     async fn health_is_public_but_api_and_metrics_require_configured_token() {
-        let (_directory, state) = test_state(Some("secret".into()));
-        let app = router(state);
+        let (_directory, state) = test_state();
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("SHARED_TOKEN".into(), "secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "shared-agent".into(),
+            token_env: "SHARED_TOKEN".into(),
+            scopes: vec![QUERY_SCOPE.into(), STATUS_SCOPE.into(), ADMIN_SCOPE.into()],
+            acl: Vec::new(),
+        }];
+        let policy = AuthPolicy::from_config(&config).expect("auth policy");
+        let app = router(state.with_auth_policy(policy));
         let health = app
             .clone()
             .oneshot(
@@ -1694,8 +1705,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn remote_bind_requires_a_configured_bearer_token() {
+        let (_directory, state) = test_state();
+        let error = serve(state, "0.0.0.0:0", None, true)
+            .await
+            .expect_err("remote bind without configured auth must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("--allow-remote and a bearer token")
+        );
+    }
+
+    #[tokio::test]
     async fn context_rejects_oversized_bodies() {
-        let (_directory, state) = test_state(None);
+        let (_directory, state) = test_state();
         let response = router(state)
             .oneshot(
                 Request::builder()
@@ -1712,7 +1736,7 @@ mod tests {
 
     #[tokio::test]
     async fn search_rejects_oversized_queries_before_embedding() {
-        let (_directory, state) = test_state(None);
+        let (_directory, state) = test_state();
         let body = serde_json::to_vec(&serde_json::json!({
             "query": "x".repeat(retrieval::MAX_QUERY_BYTES + 1)
         }))
@@ -1733,7 +1757,7 @@ mod tests {
 
     #[tokio::test]
     async fn retrieval_rejects_oversized_scope_filters() {
-        let (_directory, state) = test_state(None);
+        let (_directory, state) = test_state();
         let body = serde_json::to_vec(&serde_json::json!({
             "query": "release",
             "project": "x".repeat(MAX_DOCUMENT_SCOPE_LENGTH + 1)
@@ -1755,7 +1779,7 @@ mod tests {
 
     #[tokio::test]
     async fn retrieval_rejects_control_characters_in_scope_filters() {
-        let (_directory, state) = test_state(None);
+        let (_directory, state) = test_state();
         let body = serde_json::to_vec(&serde_json::json!({
             "query": "release",
             "source": "slack\u{0000}work"
@@ -1777,7 +1801,7 @@ mod tests {
 
     #[tokio::test]
     async fn status_reports_safe_ingestion_mode_and_configured_sources() {
-        let (directory, state) = test_state(None);
+        let (directory, state) = test_state();
         let mut config: Config = toml::from_str(
             r##"
             [ingestion]
@@ -1934,7 +1958,7 @@ mod tests {
             scopes: vec![STATUS_SCOPE.into()],
             acl: vec!["work".into()],
         }];
-        let principal = AuthPolicy::from_config(&auth_config, None)
+        let principal = AuthPolicy::from_config(&auth_config)
             .expect("policy")
             .authenticate("work-secret")
             .expect("principal");
@@ -1949,7 +1973,7 @@ mod tests {
 
         let mut admin_config = auth_config;
         admin_config.auth.tokens[0].scopes = vec![ADMIN_SCOPE.into()];
-        let admin = AuthPolicy::from_config(&admin_config, None)
+        let admin = AuthPolicy::from_config(&admin_config)
             .expect("admin policy")
             .authenticate("work-secret")
             .expect("admin principal");
@@ -1967,7 +1991,7 @@ mod tests {
 
     #[tokio::test]
     async fn scoped_status_includes_sync_runs_for_acl_visible_sources_without_documents() {
-        let (_directory, state) = test_state(None);
+        let (_directory, state) = test_state();
         let failed = state
             .store
             .begin_sync("work-drive", "work", 100, 2_048, 30)
@@ -2028,7 +2052,7 @@ mod tests {
         config
             .environment
             .insert("ADMIN_TOKEN".into(), "admin-secret".into());
-        let policy = AuthPolicy::from_config(&config, None).expect("auth policy");
+        let policy = AuthPolicy::from_config(&config).expect("auth policy");
         let app = router(state.with_config(&config, false).with_auth_policy(policy));
 
         let work_status = app
@@ -2404,7 +2428,7 @@ mod tests {
 
     #[tokio::test]
     async fn status_reports_source_authorization_readiness_for_google_and_token_backed_sources() {
-        let (directory, state) = test_state(None);
+        let (directory, state) = test_state();
         let token_path = directory.path().join("google-token.json");
         let oauth_client_path = directory.path().join("google-oauth-client.json");
         let incomplete_oauth_client_path =
@@ -2499,7 +2523,7 @@ mod tests {
 
     #[tokio::test]
     async fn status_does_not_leak_google_token_values() {
-        let (directory, state) = test_state(None);
+        let (directory, state) = test_state();
         let token_path = directory.path().join("google-token.json");
         let secret = "top-secret-token-value";
         write_private_fixture(
@@ -2551,7 +2575,7 @@ mod tests {
 
     #[tokio::test]
     async fn answer_returns_a_bounded_extractive_fallback_without_a_model() {
-        let (_directory, state) = test_state(None);
+        let (_directory, state) = test_state();
         let response = router(state)
             .oneshot(
                 Request::builder()
@@ -2605,7 +2629,7 @@ mod tests {
                 )],
             )
             .expect("document");
-        let state = AppState::new(store, Arc::new(UnavailableEmbedder), None);
+        let state = AppState::new(store, Arc::new(UnavailableEmbedder));
         let response = router(state)
             .oneshot(
                 Request::builder()
@@ -2644,7 +2668,7 @@ mod tests {
 
     #[tokio::test]
     async fn document_routes_page_content_and_reject_invalid_cursors() {
-        let (_directory, state) = test_state(None);
+        let (_directory, state) = test_state();
         for (index, content) in ["first body", "second body"].into_iter().enumerate() {
             state
                 .store
@@ -2876,7 +2900,7 @@ mod tests {
 
     #[tokio::test]
     async fn scoped_tokens_filter_evidence_and_admin_only_audit_omits_queries() {
-        let (_directory, state) = test_state(None);
+        let (_directory, state) = test_state();
         state
             .store
             .upsert(
@@ -2941,7 +2965,7 @@ mod tests {
         config
             .environment
             .insert("PERSONAL_TOKEN".into(), "personal-secret".into());
-        let policy = AuthPolicy::from_config(&config, None).expect("auth policy");
+        let policy = AuthPolicy::from_config(&config).expect("auth policy");
         let app = router(state.with_config(&config, false).with_auth_policy(policy));
         let graph = app
             .clone()
@@ -3106,7 +3130,7 @@ mod tests {
 
     #[tokio::test]
     async fn admin_with_acl_scoped_labels_can_read_documents_outside_acl_and_retrieval_scopes() {
-        let (_directory, state) = test_state(None);
+        let (_directory, state) = test_state();
         state
             .store
             .upsert(
@@ -3163,7 +3187,7 @@ mod tests {
                 acl: vec!["work".into()],
             },
         ];
-        let policy = AuthPolicy::from_config(&config, None).expect("auth policy");
+        let policy = AuthPolicy::from_config(&config).expect("auth policy");
         let app = router(state.with_config(&config, false).with_auth_policy(policy));
 
         let work_search = app

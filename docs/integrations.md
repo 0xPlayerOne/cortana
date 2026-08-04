@@ -86,9 +86,8 @@ The token value lives only in the agent process environment or the private `[run
   metadata-only audit events under the `local-cli` principal. Shared or narrowly scoped agents
   must use the MCP server with `--token-env` or the bearer-authenticated HTTP API.
 
-`serve` binds loopback by default. `--allow-remote` is refused unless a token is configured via
-`--api-token-env` (or `CORTANA_API_TOKEN_ENV`); terminate TLS upstream when exposing an
-authenticated endpoint beyond loopback.
+`serve` binds loopback by default. `--allow-remote` is refused unless bearer principals are configured
+via `[[auth.tokens]]`; terminate TLS upstream when exposing an authenticated endpoint beyond loopback.
 
 ## Client configuration
 
