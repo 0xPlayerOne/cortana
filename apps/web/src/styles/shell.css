@@ -235,14 +235,6 @@
   gap: 7px;
 }
 
-.workspace-picker-mark {
-  width: 10px;
-  height: 10px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  border: 2px solid var(--panel);
-}
-
 .workspace-logo {
   display: inline-grid;
   flex: 0 0 auto;
@@ -275,6 +267,13 @@
   height: 38px;
   border-radius: var(--radius-sm);
   font-size: 15px;
+}
+
+/* The small picker logo keeps a panel-colored ring so it blends with the
+   workspace selector instead of floating as a bare tile. Defined after the
+   logo sizes so the ring wins over the base logo border. */
+.workspace-picker-mark {
+  border: 2px solid var(--panel);
 }
 
 .panel-heading,

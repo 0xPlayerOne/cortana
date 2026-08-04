@@ -1,6 +1,10 @@
 const STORAGE_KEY = 'cortana.workspace-logos.v1'
 const LOGO_EVENT = 'cortana:workspace-logo'
 const MAX_LOGO_BYTES = 200_000
+// A base64 data URL expands a file by ~4/3 plus the image prefix. Gate the
+// stored string on that expanded bound so any file that passes the byte-size
+// check in readWorkspaceLogoFile also passes validation here.
+const MAX_LOGO_DATA_URL_LENGTH = Math.ceil((MAX_LOGO_BYTES * 4) / 3) + 64
 const ALLOWED_LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
 type WorkspaceLogoMap = Record<string, string>
@@ -25,7 +29,7 @@ function readLogoMap(): WorkspaceLogoMap {
 
 export function isWorkspaceLogoDataUrl(value: string): boolean {
   return (
-    value.length <= MAX_LOGO_BYTES &&
+    value.length <= MAX_LOGO_DATA_URL_LENGTH &&
     /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(value)
   )
 }
