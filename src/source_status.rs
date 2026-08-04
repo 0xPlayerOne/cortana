@@ -26,6 +26,7 @@ pub enum SourceAuthorizationMethod {
     GoogleOauth,
     GithubOauth,
     DiscordOauth,
+    SlackOauth,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -405,6 +406,13 @@ fn discord_token_file_ready(path: &Path) -> bool {
         .is_some_and(valid_github_bearer)
 }
 
+fn slack_token_file_ready(path: &Path) -> bool {
+    // Slack user tokens are stored in the same owner-only JSON contract as
+    // Discord's: a bounded `access_token` field is enough to consider the
+    // browser-authorization path complete.
+    discord_token_file_ready(path)
+}
+
 fn secure_regular_file_ready(path: &Path) -> bool {
     regular_file_ready(path) && private_path_components_ready(path)
 }
@@ -512,6 +520,33 @@ pub fn source_authorization_summary(
                 || token_file_ready
                 || (oauth_client_ready && token_destination_ready)),
             authorized: token_env_ready || token_file_ready,
+        }
+    } else if source.kind == "slack" && (source.oauth_client.is_some() || source.token.is_some()) {
+        // Browser OAuth for Slack assigns workspaces (teams) to this source's
+        // workspace. The bot token environment variable remains the
+        // operational sync credential and is reported by the token branch
+        // below when no OAuth paths are configured; it is a credential, never
+        // a path, so the user-token destination is always the explicit
+        // `token` field.
+        let oauth_client_ready = source
+            .oauth_client
+            .as_ref()
+            .is_some_and(|path| secure_regular_file_ready(path.as_path()));
+        let token_file_ready = source
+            .token
+            .as_ref()
+            .is_some_and(|path| slack_token_file_ready(path.as_path()));
+        let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready)
+            || source
+                .token_env
+                .as_deref()
+                .and_then(|name| config.environment_value(name))
+                .as_deref()
+                .is_some_and(token_destination_value_ready);
+        SourceAuthorizationSummary {
+            method: SourceAuthorizationMethod::SlackOauth,
+            setup_required: !(token_file_ready || (oauth_client_ready && token_destination_ready)),
+            authorized: token_file_ready,
         }
     } else if source.kind == "discord" && (source.oauth_client.is_some() || source.token.is_some())
     {
@@ -622,6 +657,8 @@ mod tests {
             source: None,
             channels: vec!["175928847299117064".into()],
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: Some("DISCORD_BOT_TOKEN".into()),
             token,
@@ -688,6 +725,58 @@ mod tests {
         assert_eq!(
             json.get("method"),
             Some(&serde_json::Value::String("discord_oauth".into()))
+        );
+    }
+
+    #[test]
+    fn slack_oauth_authorization_is_reported_only_when_oauth_paths_exist() {
+        use crate::source_status::SourceAuthorizationMethod;
+
+        let directory = tempfile::tempdir().unwrap();
+        let token_path = directory.path().join("slack-token.json");
+        std::fs::write(&token_path, "{\"access_token\":\"valid-token\"}").unwrap();
+        #[cfg(unix)]
+        crate::oauth_common::set_owner_only(&token_path).unwrap();
+        let client_path = directory.path().join("slack-oauth-client.json");
+        std::fs::write(&client_path, "{\"client_id\":\"client-id\"}").unwrap();
+        #[cfg(unix)]
+        crate::oauth_common::set_owner_only(&client_path).unwrap();
+
+        // Bot-token-only sources keep the plain token method (fallback): the
+        // bot token environment variable is a credential, never a path. The
+        // shared fixture helper hardcodes the env name DISCORD_BOT_TOKEN, so
+        // the environment must populate that name for the token branch.
+        let mut config = crate::config::Config::default();
+        config.sources.push(source("slack", None, None));
+        config
+            .environment
+            .insert("DISCORD_BOT_TOKEN".into(), "bot-token".into());
+        let summary = super::source_authorization_summary(&config, &config.sources[0]);
+        assert_eq!(summary.method, SourceAuthorizationMethod::Token);
+        assert!(summary.authorized);
+
+        // OAuth paths flip the method to slack_oauth and gate
+        // authorization on the stored user token file.
+        config.sources[0] = source("slack", Some(token_path.clone()), Some(client_path.clone()));
+        let summary = super::source_authorization_summary(&config, &config.sources[0]);
+        assert_eq!(summary.method, SourceAuthorizationMethod::SlackOauth);
+        assert!(summary.authorized);
+        assert!(!summary.setup_required);
+
+        // Without the user token file, browser authorization is still
+        // required but no setup remains: the client file and the token
+        // destination are both configured.
+        std::fs::remove_file(&token_path).unwrap();
+        config.sources[0] = source("slack", Some(token_path), Some(client_path));
+        let summary = super::source_authorization_summary(&config, &config.sources[0]);
+        assert_eq!(summary.method, SourceAuthorizationMethod::SlackOauth);
+        assert!(!summary.authorized);
+        assert!(!summary.setup_required);
+
+        let json = serde_json::to_value(&summary).expect("summary serializes");
+        assert_eq!(
+            json.get("method"),
+            Some(&serde_json::Value::String("slack_oauth".into()))
         );
     }
 

@@ -126,6 +126,72 @@ fn discord_channel_discovery_fails_closed_before_network_without_token() {
 }
 
 #[test]
+fn slack_workspace_discovery_requires_a_slack_connector() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [[sources]]\n\
+             name = \"community\"\n\
+             kind = \"discord\"\n\
+             project = \"community\"\n\
+             token_env = \"DISCORD_BOT_TOKEN\"\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["slack-workspaces", "community"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not a Slack connector"))
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn slack_workspace_discovery_fails_closed_before_network_without_token() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [[sources]]\n\
+             name = \"team-slack\"\n\
+             kind = \"slack\"\n\
+             project = \"work\"\n\
+             channels = [\"C0123456789\"]\n\
+             token_env = \"SLACK_BOT_TOKEN\"\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    // The bot token environment variable is a credential, never a path: with
+    // no user-token destination configured the command fails closed before
+    // any network or environment read, and the error guides the operator to
+    // the browser authorization flow instead of touching SLACK_BOT_TOKEN.
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["slack-workspaces", "team-slack"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "requires a token file for browser authorization",
+        ))
+        .stderr(predicate::str::contains("SLACK_BOT_TOKEN").not())
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
 fn guarded_sync_fails_before_opening_the_index_without_validation() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

@@ -155,6 +155,15 @@ pub struct SourceSettings {
     /// browser authorization. Channel selection stays in `channels`.
     #[serde(default)]
     pub servers: Vec<String>,
+    /// Slack team (workspace) ids assigned to this source's workspace through
+    /// browser authorization, at most one per source because a Slack user
+    /// token is scoped to exactly one workspace.
+    #[serde(default)]
+    pub teams: Vec<String>,
+    /// Slack team display names kept index-aligned with `teams` so assigned
+    /// workspaces stay identifiable without re-discovery.
+    #[serde(default)]
+    pub team_names: Vec<String>,
     pub token_env: Option<String>,
     pub token_path: Option<String>,
     pub oauth_client_path: Option<String>,
@@ -1015,6 +1024,8 @@ fn configured_sources(root: &Table) -> Vec<SourceSettings> {
                         channels: table_string_array(item, "channels"),
                         repositories: table_string_array(item, "repositories"),
                         servers: table_string_array(item, "servers"),
+                        teams: table_string_array(item, "teams"),
+                        team_names: table_string_array(item, "team_names"),
                         token_env: table_optional_string(item, "token_env"),
                         token_path: table_optional_string(item, "token"),
                         oauth_client_path: table_optional_string(item, "oauth_client"),
@@ -1727,6 +1738,8 @@ fn apply_sources(root: &mut Table, sources: &[SourceSettings]) {
                 set_table_string_array(&mut table, "channels", &source.channels);
                 set_table_string_array(&mut table, "repositories", &source.repositories);
                 set_table_string_array(&mut table, "servers", &source.servers);
+                set_table_string_array(&mut table, "teams", &source.teams);
+                set_table_string_array(&mut table, "team_names", &source.team_names);
                 set_table_optional_string(&mut table, "token_env", &source.token_env);
                 set_table_optional_string(&mut table, "token", &source.token_path);
                 set_table_optional_string(&mut table, "oauth_client", &source.oauth_client_path);
@@ -1937,6 +1950,14 @@ fn validate_sources(
         normalize_string_list("source channel", &mut source.channels, 100, 128)?;
         normalize_string_list("source repository", &mut source.repositories, 32, 256)?;
         normalize_string_list("source server", &mut source.servers, 100, 128)?;
+        normalize_string_list("source team", &mut source.teams, 1, 12)?;
+        normalize_string_list("source team name", &mut source.team_names, 1, 80)?;
+        if source.teams.len() != source.team_names.len() {
+            return Err(format!(
+                "source `{}` must keep Slack team ids and names aligned",
+                source.name
+            ));
+        }
         if source.kind == "github" {
             for repository in &source.repositories {
                 if !valid_github_repository(repository) {
@@ -2874,6 +2895,8 @@ mod tests {
             channels: Vec::new(),
             repositories: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -3558,6 +3581,8 @@ mod tests {
             channels: vec!["C012345".into()],
             repositories: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -3573,6 +3598,44 @@ mod tests {
         });
         let error = validate_update(&mut update).expect_err("enabled Slack needs credentials");
         assert!(error.contains("token environment"));
+    }
+
+    #[test]
+    fn slack_team_assignment_is_bounded_to_one_aligned_team_per_source() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let mut update = valid_update(temp.path());
+        let mut source = source_settings("team-slack", "slack");
+        source.enabled = true;
+        source.token_env = Some("SLACK_BOT_TOKEN".into());
+        source.channels = vec!["C012345".into()];
+        update.sources.push(source.clone());
+
+        // A Slack user token is scoped to exactly one workspace, so the
+        // config contract allows at most one team and keeps the display name
+        // index-aligned.
+        source.teams = vec!["T0123456789".into()];
+        source.team_names = vec!["Acme Engineering".into()];
+        update.sources[0] = source.clone();
+        validate_update(&mut update).expect("one aligned team is valid");
+
+        source.teams = vec!["T0123456789".into(), "T9876543210".into()];
+        source.team_names = vec!["Acme Engineering".into(), "Acme Community".into()];
+        update.sources[0] = source.clone();
+        let error = validate_update(&mut update).expect_err("two teams must fail");
+        assert!(error.contains("has too many values"));
+
+        source.teams = vec!["T0123456789".into()];
+        source.team_names = Vec::new();
+        update.sources[0] = source.clone();
+        let error = validate_update(&mut update).expect_err("misaligned names must fail");
+        assert!(error.contains("must keep Slack team ids and names aligned"));
+
+        // The stored id stays bounded; oversized ids fail closed.
+        source.team_names = vec!["Acme Engineering".into()];
+        source.teams = vec!["T".to_string() + &"x".repeat(64)];
+        update.sources[0] = source.clone();
+        let error = validate_update(&mut update).expect_err("oversized team id must fail");
+        assert!(error.contains("must be between 1 and 12 bytes"));
     }
 
     #[test]

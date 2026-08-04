@@ -18,6 +18,7 @@ pub mod provider_models;
 pub mod readiness;
 pub mod retrieval;
 pub mod service;
+pub mod slack_oauth;
 pub mod source_status;
 pub mod source_validation;
 pub mod store;

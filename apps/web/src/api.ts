@@ -31,6 +31,7 @@ import type {
   GithubRepositoryList,
   DiscordChannelList,
   DiscordServerList,
+  SlackWorkspaceList,
   ProviderModelKind,
   ProviderModelList,
 } from './types'
@@ -246,6 +247,11 @@ export async function listDesktopDiscordServers(source: string): Promise<Discord
   return invokeDesktop<DiscordServerList>('desktop_discord_servers', { source })
 }
 
+export async function listDesktopSlackWorkspaces(source: string): Promise<SlackWorkspaceList> {
+  if (!isDesktopApp) throw new Error('Slack workspace discovery is available in Cortana Desktop')
+  return invokeDesktop<SlackWorkspaceList>('desktop_slack_workspaces', { source })
+}
+
 export async function listDesktopProviderModels(
   kind: ProviderModelKind
 ): Promise<ProviderModelList> {
@@ -254,7 +260,8 @@ export async function listDesktopProviderModels(
 }
 
 export async function pickDesktopPath(
-  kind: 'directory' | 'oauth-client' | 'google-token' | 'github-token' | 'discord-token'
+  kind:
+    'directory' | 'oauth-client' | 'google-token' | 'github-token' | 'discord-token' | 'slack-token'
 ): Promise<string | null> {
   if (!isDesktopApp) throw new Error('Native path selection is available in Cortana Desktop')
   return invokeDesktop<string | null>('desktop_path_pick', { kind })
