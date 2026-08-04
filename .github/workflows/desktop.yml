@@ -44,7 +44,7 @@ jobs:
           changed=false
           while IFS= read -r path; do
             case "$path" in
-              .github/workflows/desktop.yml|apps/desktop/*|apps/web/*|bun.lock|package.json|scripts/verify-vendored-glib.mjs|third_party/glib-0.18.5/*)
+              .github/workflows/desktop.yml|apps/desktop/*|apps/web/*|bun.lock|package.json|Cargo.toml|Cargo.lock|rust-toolchain.toml|src/*|pyproject.toml|uv.lock|README.md|LICENSE|scripts/prepare-desktop-resources.mjs|scripts/prepare-desktop-sidecar.mjs|scripts/verify-vendored-glib.mjs|third_party/glib-0.18.5/*)
                 changed=true
                 break
                 ;;
