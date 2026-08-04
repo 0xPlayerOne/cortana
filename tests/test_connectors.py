@@ -1130,6 +1130,8 @@ def test_google_drive_streams_large_text_with_bounded_memory_and_metadata(tmp_pa
         assert "Cortana omitted" in document.content
         assert document.metadata["content_truncated"] is True
         assert document.metadata["content_original_chars"] == len(body)
+        serialized = json.loads(document.as_json())
+        assert serialized["metadata"]["content_original_chars"] == len(body)
 
 
 def test_google_drive_skips_malformed_listing_records(

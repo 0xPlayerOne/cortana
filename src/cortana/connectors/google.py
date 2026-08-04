@@ -72,6 +72,16 @@ class _DriveContent(str):
         result.truncated = truncated
         return result
 
+    def __reduce_ex__(self, _protocol: int) -> tuple[Any, tuple[str, int, bool]]:
+        # dataclasses.asdict deep-copies Document.content before emitting JSON.
+        # A plain str subclass would call __new__ without the metadata args and
+        # fail closed during a real connector run.
+        return (_restore_drive_content, (str(self), self.original_chars, self.truncated))
+
+
+def _restore_drive_content(value: str, original_chars: int, truncated: bool) -> _DriveContent:
+    return _DriveContent(value, original_chars, truncated)
+
 
 class _BoundedTextAccumulator:
     """Retain a head/tail sample while counting the complete text stream."""
