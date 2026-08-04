@@ -16,8 +16,7 @@ use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
 use cortana::{
     api, discord_oauth, github_oauth, google_oauth, mcp, migration, provider_models, service,
-    source_status,
-    source_validation, supervisor,
+    source_status, source_validation, supervisor,
 };
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
