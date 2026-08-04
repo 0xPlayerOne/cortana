@@ -166,6 +166,30 @@ temporary directory and `recovery.log` for an incident record. The default clean
 freshly-created drill directory. Do not point the drill configuration at the production data
 directory and do not use `restore` on a live installation as part of a routine health check.
 
+## Desktop control plane drill
+
+`scripts/desktop-control-plane-drill.sh` verifies the offline CLI control plane end to end inside
+one fresh `mktemp` directory: `init` of a temporary configuration and data directory, bounded
+ingestion of a two-document JSONL fixture, bounded `search`/`context` retrieval, export of the
+metadata-only audit trail, a verified `backup`, `init` of a second temporary data directory,
+`restore` of the backup into it, and a final `verify` plus restored-content search. Assertions fail
+the drill closed on any missing output, unexpected file, or leaked query/content in the audit
+export.
+
+```bash
+scripts/desktop-control-plane-drill.sh
+```
+
+The drill is disposable and isolated: every invocation uses `--offline` with an explicit `--config`
+(and an exported `CORTANA_CONFIG` fallback) pointing inside the drill directory, so the live
+configuration and index are never read or mutated. It never starts the server, a connector, the
+embedding service, a recurring service, or a sync, and default cleanup removes only the
+freshly-created drill directory. Set `CORTANA_KEEP_DRILL=1` to retain the exact directory and its
+`control-plane.log` for an incident record, and set `CORTANA_BINARY` when testing a checkout.
+
+The drill proves the offline CLI control plane only; it is not a proof of the Desktop GUI, OAuth
+flows, tray integration, or updater behavior, none of which it exercises.
+
 ## Release verification
 
 Published releases have a final cross-platform asset gate. It checks that the core archives,
