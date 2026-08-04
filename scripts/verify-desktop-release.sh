@@ -186,3 +186,30 @@ for platform in required:
         raise SystemExit(f"updater URL points at the wrong release: {platform}")
 print(f"verified updater manifest for {tag}")
 PY
+
+# Final installed-vs-published version gate: execute the published Linux core
+# binary and assert that its own --version output matches the release tag, so
+# a stale checkout build, an unpromoted version, or a mis-uploaded archive can
+# never pass the published-asset gate. The verifier cannot run foreign-OS
+# binaries, so non-Linux hosts skip execution exactly like verify-release.sh.
+version="${tag#v}"
+if [[ "$(uname -s)" == "Linux" ]]; then
+  linux_archive="cortana-${tag}-x86_64-unknown-linux-gnu.tar.gz"
+  linux_stage="$staging/linux"
+  mkdir -p "$linux_stage"
+  tar -xzf "$staging/$linux_archive" -C "$linux_stage"
+  binary="$(find "$linux_stage" -type f -path '*/bin/cortana' -print -quit)"
+  if [[ -z "$binary" || ! -x "$binary" ]]; then
+    echo "published Linux core archive is missing an executable bin/cortana" >&2
+    exit 1
+  fi
+  reported="$("$binary" --version)"
+  expected="cortana ${version}"
+  if [[ "$reported" != "$expected" ]]; then
+    echo "published Linux binary version mismatch: expected '$expected', got '$reported'" >&2
+    exit 1
+  fi
+  echo "verified published Linux binary version matches ${tag}"
+else
+  echo "skipped published binary execution on non-Linux host"
+fi

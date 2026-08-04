@@ -37,6 +37,18 @@ if [[ "$expected_lower" != "$actual_lower" ]]; then
   exit 1
 fi
 
+# The archive name is part of the release contract (cortana-<tag>-<target>.tar.gz).
+# Derive the version the archive claims to be so the packaged binary's own
+# --version output can be asserted against it; an archive whose name does not
+# embed a plain semver version cannot be verified and fails closed.
+archive_base="$(basename "$archive")"
+expected_version="$(printf '%s' "$archive_base" | \
+  sed -n 's/^cortana-v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)-.*\.tar\.gz$/\1/p')"
+if [[ -z "$expected_version" ]]; then
+  echo "cannot derive the expected release version from archive name: $archive_base" >&2
+  exit 1
+fi
+
 listing="$(tar -tzf "$archive")"
 root="$(printf '%s\n' "$listing" | awk -F/ 'NF { print $1; exit }')"
 if [[ -z "$root" || "$root" == .* || "$root" == /* ]]; then
@@ -88,7 +100,13 @@ case "$root" in
   *-apple-darwin) [[ "$host" == "Darwin" ]] && run_binary=true ;;
 esac
 if "$run_binary"; then
-  "$package/bin/cortana" --version >/dev/null
+  reported="$("$package/bin/cortana" --version)"
+  expected="cortana ${expected_version}"
+  if [[ "$reported" != "$expected" ]]; then
+    echo "release binary version mismatch: expected '$expected', got '$reported'" >&2
+    exit 1
+  fi
+  echo "Verified packaged binary version ${expected_version} matches the archive name"
 else
   echo "Verified archive structure and checksum; skipped cross-platform binary execution"
 fi
