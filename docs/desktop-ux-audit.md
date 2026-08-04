@@ -65,6 +65,10 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
 
 - Published release verification for v0.29.4 completed with 18 release assets verified; the
   installed CLI reports `cortana 0.29.4`.
+- The verified v0.29.4 DMG is installed at `/Applications/Cortana.app`; its embedded binary
+  reports `cortana 0.29.4` and passes `codesign --verify --deep --strict`, but the bundle is
+  ad-hoc signed (`TeamIdentifier` is unset) and `spctl --assess` rejects it. Developer ID
+  signing/notarization therefore remains a release blocker.
 - The readiness hardening patch passes 19 focused Rust readiness/API tests and 11 focused Desktop
   readiness tests. Aggregate core, web, Python, and full Desktop counts remain a CI responsibility
   and are not represented as current evidence here until that matrix reruns.
