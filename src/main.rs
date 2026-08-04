@@ -455,6 +455,7 @@ async fn main() -> Result<()> {
             cli.config,
             connector_command.as_deref(),
             data_dir.as_deref(),
+            cli.offline,
         );
     }
     if let Some(Command::MigrateHermes {
@@ -2179,6 +2180,7 @@ fn init(
     path: Option<PathBuf>,
     connector_command: Option<&std::path::Path>,
     data_dir: Option<&std::path::Path>,
+    offline: bool,
 ) -> Result<()> {
     let path = path.unwrap_or_else(default_config_path);
     if path.exists() {
@@ -2189,6 +2191,11 @@ fn init(
         std::fs::create_dir_all(parent)?;
     }
     let mut config = Config::default();
+    if offline {
+        // Keep the generated config aligned with the deterministic embedder
+        // used by every --offline command.
+        config.embedding.dimension = 256;
+    }
     if let Some(data_dir) = data_dir {
         config.data_dir = data_dir.to_path_buf();
     }
