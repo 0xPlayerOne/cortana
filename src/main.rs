@@ -15,8 +15,8 @@ use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
 use cortana::{
-    api, discord_oauth, github_oauth, google_oauth, mcp, migration, provider_models, service,
-    slack_oauth, source_status, source_validation, supervisor,
+    api, buzz_communities, discord_oauth, github_oauth, google_oauth, mcp, migration,
+    provider_models, service, slack_oauth, source_status, source_validation, supervisor,
 };
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -250,6 +250,8 @@ enum Command {
     DiscordServers { source: String },
     /// List the bounded Slack workspace (team) a configured source's authorized user token is scoped to for per-workspace assignment.
     SlackWorkspaces { source: String },
+    /// List the bounded Buzz communities recorded in a configured source's read-only agents/teams.json identity file for per-workspace assignment.
+    BuzzCommunities { source: String },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -651,6 +653,11 @@ async fn main() -> Result<()> {
         println!("{}", serde_json::to_string(&workspaces)?);
         return Ok(());
     }
+    if let Some(Command::BuzzCommunities { source }) = cli.command.as_ref() {
+        let communities = buzz_communities::list_communities(&config, source)?;
+        println!("{}", serde_json::to_string(&communities)?);
+        return Ok(());
+    }
     if let Some(Command::Sync {
         source,
         plan: false,
@@ -1050,6 +1057,7 @@ async fn main() -> Result<()> {
             | Command::DiscordChannels { .. }
             | Command::DiscordServers { .. }
             | Command::SlackWorkspaces { .. }
+            | Command::BuzzCommunities { .. }
             | Command::ValidateSource { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
@@ -1647,6 +1655,8 @@ fn ad_hoc_filesystem_source(
         servers: Vec::new(),
         teams: Vec::new(),
         team_names: Vec::new(),
+        communities: Vec::new(),
+        community_names: Vec::new(),
         repositories: Vec::new(),
         token_env: None,
         token: None,
@@ -3418,6 +3428,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3469,6 +3481,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: Some("/tmp/google-token.json".into()),
@@ -3518,6 +3532,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: Some("/tmp/google-token.json".into()),
@@ -3574,6 +3590,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: vec!["acme/one".into(), "acme/two".into()],
             token_env: Some("GITHUB_TOKEN".into()),
             token: None,
@@ -3622,6 +3640,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3667,6 +3687,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3706,6 +3728,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3767,6 +3791,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3956,6 +3982,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -4158,6 +4186,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,

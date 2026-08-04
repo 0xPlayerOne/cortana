@@ -32,6 +32,7 @@ import type {
   DiscordChannelList,
   DiscordServerList,
   SlackWorkspaceList,
+  BuzzCommunityList,
   ProviderModelKind,
   ProviderModelList,
 } from './types'
@@ -250,6 +251,11 @@ export async function listDesktopDiscordServers(source: string): Promise<Discord
 export async function listDesktopSlackWorkspaces(source: string): Promise<SlackWorkspaceList> {
   if (!isDesktopApp) throw new Error('Slack workspace discovery is available in Cortana Desktop')
   return invokeDesktop<SlackWorkspaceList>('desktop_slack_workspaces', { source })
+}
+
+export async function listDesktopBuzzCommunities(source: string): Promise<BuzzCommunityList> {
+  if (!isDesktopApp) throw new Error('Buzz community discovery is available in Cortana Desktop')
+  return invokeDesktop<BuzzCommunityList>('desktop_buzz_communities', { source })
 }
 
 export async function listDesktopProviderModels(

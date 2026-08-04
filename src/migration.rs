@@ -300,6 +300,8 @@ fn source(
         servers: Vec::new(),
         teams: Vec::new(),
         team_names: Vec::new(),
+        communities: Vec::new(),
+        community_names: Vec::new(),
         repositories: Vec::new(),
         token_env: None,
         token: None,

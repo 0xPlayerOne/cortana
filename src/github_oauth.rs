@@ -568,6 +568,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: vec!["owner/repo".into()],
             token_env: None,
             token: Some(PathBuf::from("relative.json")),
