@@ -764,7 +764,8 @@ fn default_embedding_request_concurrency() -> usize {
 }
 
 fn default_embedding_startup_timeout() -> u64 {
-    120
+    // The first Qwen/Metal load can take several minutes on a cold cache.
+    300
 }
 
 fn default_embedding_memory_limit() -> u64 {
@@ -1095,6 +1096,14 @@ mod tests {
     #[test]
     fn reserves_enough_memory_for_the_default_local_embedding_model() {
         assert_eq!(Config::default().embedding.service.memory_limit_mb, 4_096);
+    }
+
+    #[test]
+    fn allows_time_for_the_default_local_embedding_model_to_start() {
+        assert_eq!(
+            Config::default().embedding.service.startup_timeout_seconds,
+            300
+        );
     }
 
     #[test]

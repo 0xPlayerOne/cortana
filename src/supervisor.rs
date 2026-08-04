@@ -7,10 +7,14 @@ use tokio::process::{Child, Command};
 
 use crate::config::Config;
 
+const EMBEDDING_PROBE_TIMEOUT_SECONDS: u64 = 5;
+
 pub async fn run_embedding(config: &Config) -> Result<()> {
     let (program, arguments) = embedding_command(config)?;
     let probe_url = embedding_probe_url(config)?;
-    let client = Client::builder().timeout(Duration::from_secs(2)).build()?;
+    let client = Client::builder()
+        .timeout(embedding_probe_timeout())
+        .build()?;
     tracing::info!(
         program,
         model = config.embedding.model,
@@ -75,6 +79,10 @@ pub async fn run_embedding(config: &Config) -> Result<()> {
             }
         }
     }
+}
+
+fn embedding_probe_timeout() -> Duration {
+    Duration::from_secs(EMBEDDING_PROBE_TIMEOUT_SECONDS)
 }
 
 pub fn uses_local_service(config: &Config) -> bool {
@@ -211,5 +219,10 @@ mod tests {
             embedding_probe_url(&config).expect("probe").as_str(),
             "http://127.0.0.1:6999/v1/embeddings"
         );
+    }
+
+    #[test]
+    fn gives_real_embedding_probes_a_bounded_inference_window() {
+        assert_eq!(embedding_probe_timeout(), Duration::from_secs(5));
     }
 }
