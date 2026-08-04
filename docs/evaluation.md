@@ -57,8 +57,8 @@ cortana --config /path/to/config.toml eval --model
 
 `--model` always runs against synthetic fixtures only, does not open or modify a personal index,
 and does not trigger syncs or connector activity. Route discovery can succeed even when the
-provider-backed request later times out; a timeout is not model-backed proof, and the extractive
-fallback remains the safe production mode. The model-backed run extends `answer` report fields
+provider-backed endpoint is unavailable; an unavailable provider is not model-backed proof, and
+the extractive fallback remains the safe production mode. The model-backed run extends `answer` report fields
 with provider-backed metrics:
 
 - `attempted` / `passed`
@@ -69,9 +69,9 @@ with provider-backed metrics:
 
 The command exits nonzero when model quality thresholds fail.
 
-The current configured-provider attempt discovered the route successfully but timed out before
-returning a model result. Treat that outcome as pending model-backed proof rather than as a
-successful planner or synthesis evaluation.
+The current configured-provider attempt discovered the route successfully, but the endpoint was
+unavailable and returned `fallback_provider_unavailable` without a model result. Treat that
+outcome as pending model-backed proof rather than as a successful planner or synthesis evaluation.
 
 ```toml
 [query]

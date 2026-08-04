@@ -184,13 +184,14 @@ installs Ubuntu's `minisign` package and sets `CORTANA_REQUIRE_MINISIGN=1`, so t
 if the verifier is unavailable. Local invocations keep the portable default and skip the
 cryptographic check on hosts without `minisign`.
 
-The published v0.29.4 release was verified with 18 release assets, and the installed CLI reports
-`cortana 0.29.4`.
+Published v0.29.8 has 18 release assets; release-assets run `30956324623` completed successfully
+with core checksums, updater signatures/manifest, and the published Linux binary version verified.
+The installed CLI reports `cortana 0.29.8`.
 
 Re-run the read-only verifier for an existing release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana scripts/verify-desktop-release.sh v0.23.1
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.8
 ```
 
 ## macOS launchd
