@@ -56,6 +56,16 @@
   --paper-ink: var(--theme-paper-ink);
   --surface-elevated: var(--theme-surface-elevated);
   --quick-tooltip-bg: var(--theme-tooltip-bg);
+
+  /* Shared button contract: chrome icon buttons, compact action buttons, and
+     text action buttons keep one size/padding per group so the UI never mixes
+     sharp, dense, or mismatched controls. */
+  --btn-chrome-size: 34px;
+  --btn-icon-size: 30px;
+  --btn-compact-height: 30px;
+  --btn-compact-padding: 0 9px;
+  --btn-action-height: 38px;
+  --btn-action-padding: 0 14px;
 }
 
 :root[data-theme='blue'] {
@@ -235,6 +245,19 @@ select:focus-visible {
 .quick-tooltip:focus-visible::before {
   opacity: 1;
   transition: opacity 80ms linear;
+}
+
+/* Bottom-anchored controls (the status bar) keep their fast tooltip above
+   the button so the tip never falls off the viewport edge. */
+.quick-tooltip--above::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.quick-tooltip--above::before {
+  top: auto;
+  bottom: 100%;
+  transform: translate(-50%, -4px) rotate(45deg);
 }
 
 .spin {

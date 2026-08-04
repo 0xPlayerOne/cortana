@@ -290,9 +290,10 @@ export function SourcePanel({
                     <div className="source-row">
                       <button
                         type="button"
-                        className="tree-toggle"
+                        className="tree-toggle quick-tooltip"
                         aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
                         title={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
+                        data-tooltip={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
                         aria-expanded={!isCollapsed}
                         onClick={() => {
                           setCollapsed((current) => {
@@ -321,9 +322,18 @@ export function SourcePanel({
                       {onOpenSourceSetup && needsProviderSetup && (
                         <button
                           type="button"
-                          className="source-action"
+                          className="source-action quick-tooltip"
                           aria-label={`Open ${item.name} setup`}
                           title={
+                            sourceJobActive
+                              ? 'Wait for the active source job to finish'
+                              : auth?.method === 'google_oauth'
+                                ? 'Open Google source settings'
+                                : auth?.method === 'github_oauth'
+                                  ? 'Open GitHub source settings'
+                                  : 'Open the provider setup page'
+                          }
+                          data-tooltip={
                             sourceJobActive
                               ? 'Wait for the active source job to finish'
                               : auth?.method === 'google_oauth'
@@ -346,9 +356,16 @@ export function SourcePanel({
                       {onAuthorizeSource && needsBrowserAuthorization && (
                         <button
                           type="button"
-                          className="source-action"
+                          className="source-action quick-tooltip"
                           aria-label={`Authorize ${item.name}`}
                           title={
+                            sourceJobActive
+                              ? 'Wait for the active source job to finish'
+                              : auth?.method === 'github_oauth'
+                                ? 'Authorize this GitHub source in your browser'
+                                : 'Authorize this Google source in your browser'
+                          }
+                          data-tooltip={
                             sourceJobActive
                               ? 'Wait for the active source job to finish'
                               : auth?.method === 'github_oauth'
@@ -370,11 +387,20 @@ export function SourcePanel({
                         <button
                           type="button"
                           role="switch"
-                          className={`source-enable-toggle ${item.enabled ? 'enabled' : ''}`}
+                          className={`source-enable-toggle ${item.enabled ? 'enabled' : ''} quick-tooltip`}
                           aria-checked={item.enabled}
                           aria-busy={sourceToggleBusy === key}
                           aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.name}`}
                           title={
+                            sourceJobActive
+                              ? 'Wait for the active source job to finish'
+                              : sourceToggleBusy !== null
+                                ? 'Saving source setting…'
+                                : sourceToggleDisabled
+                                  ? 'Save or discard settings changes before toggling a source'
+                                  : `${item.enabled ? 'Disable' : 'Enable'} ${item.name}`
+                          }
+                          data-tooltip={
                             sourceJobActive
                               ? 'Wait for the active source job to finish'
                               : sourceToggleBusy !== null

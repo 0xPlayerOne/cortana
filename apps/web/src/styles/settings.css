@@ -294,8 +294,8 @@
 
 .workspace-logo-upload {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: var(--btn-icon-size);
+  height: var(--btn-icon-size);
   place-items: center;
   color: var(--muted);
   border: 1px solid var(--line);
@@ -325,11 +325,27 @@
 }
 
 .workspace-card-heading button {
-  padding: 5px;
+  display: grid;
+  width: var(--btn-icon-size);
+  height: var(--btn-icon-size);
+  place-items: center;
+  padding: 0;
   color: var(--muted);
-  border: 0;
-  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--surface-elevated);
   cursor: pointer;
+}
+
+.workspace-card-heading button:hover:not(:disabled) {
+  color: var(--theme-text-primary);
+  border-color: var(--line);
+  background: var(--theme-control-bg-hover);
+}
+
+.workspace-card-heading button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .workspace-advanced-details {
@@ -721,19 +737,20 @@
 .source-card-actions button,
 .source-validation-job button {
   display: inline-flex;
-  height: 30px;
+  height: var(--btn-compact-height);
   align-items: center;
-  padding: 0 9px;
+  padding: var(--btn-compact-padding);
   gap: 5px;
   color: var(--theme-text-primary);
   border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
   background: var(--theme-control-bg);
   cursor: pointer;
   font-size: 10px;
 }
 
 .source-card-actions .source-icon-button {
-  width: 30px;
+  width: var(--btn-icon-size);
   justify-content: center;
   padding: 0;
 }
@@ -1107,10 +1124,10 @@
 .primary-button,
 .secondary-button {
   display: inline-flex;
-  height: 38px;
+  height: var(--btn-action-height);
   align-items: center;
   justify-content: center;
-  padding: 0 14px;
+  padding: var(--btn-action-padding);
   gap: 7px;
   color: var(--theme-ink);
   border: 1px solid var(--amber-soft);
@@ -1339,9 +1356,11 @@
   right: 25px;
   bottom: 18px;
   display: flex;
+  max-width: min(560px, calc(100vw - 50px));
   align-items: center;
   padding: 11px 14px;
   gap: 8px;
+  flex-wrap: wrap;
   color: var(--theme-success-fg);
   border: 1px solid var(--theme-success-border);
   background: var(--theme-success-bg);
@@ -1353,6 +1372,13 @@
   color: var(--theme-error-fg);
   border-color: var(--theme-error-border);
   background: var(--theme-error-bg);
+}
+
+.settings-banner .secondary-button {
+  height: 30px;
+  margin-left: 4px;
+  padding: 0 10px;
+  font-size: 11px;
 }
 
 .settings-unavailable {

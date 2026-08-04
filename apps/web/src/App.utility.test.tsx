@@ -179,6 +179,42 @@ test('Graph is a full-screen rail view and Timeline is result-only', async () =>
   expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
 })
 
+test('Graph expands to full width and hides the source and context panels', async () => {
+  await renderApp()
+
+  // The document layout shows the workspace selector and the context panel.
+  expect(screen.getByRole('combobox', { name: 'Workspace' })).toBeTruthy()
+  expect(screen.getByText('Agent context')).toBeTruthy()
+
+  fireEvent.click(railButton('Graph'))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { name: 'Graph unavailable' })).toBeTruthy()
+  )
+
+  // Full-screen graph: no source panel, no context panel, no workspace tabs,
+  // and the shell marks the layout so the graph spans the full width.
+  expect(screen.queryByRole('combobox', { name: 'Workspace' })).toBeNull()
+  expect(screen.queryByText('Agent context')).toBeNull()
+  expect(screen.queryByRole('tab', { name: 'Graph' })).toBeNull()
+  expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
+
+  // The title-bar source action leaves the full-screen graph so the panel
+  // becomes reachable again instead of silently doing nothing.
+  fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Workspace' })).toBeTruthy())
+  expect(screen.getByRole('tab', { name: 'Document' }).getAttribute('aria-selected')).toBe('true')
+
+  // Re-entering the graph hides the panels again; Knowledge restores them.
+  fireEvent.click(railButton('Graph'))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { name: 'Graph unavailable' })).toBeTruthy()
+  )
+  expect(screen.queryByRole('combobox', { name: 'Workspace' })).toBeNull()
+  fireEvent.click(railButton('Knowledge'))
+  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Workspace' })).toBeTruthy())
+  expect(screen.getByText('Agent context')).toBeTruthy()
+})
+
 test('graph and timeline evidence actions open the selected source', async () => {
   state.answer = () => Promise.resolve(answerResponse)
   await renderApp()

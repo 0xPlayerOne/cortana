@@ -2252,6 +2252,106 @@ test('successful aggregate restart clears the saved-settings notice', async () =
   }
 })
 
+test('a failed background restart after saving names the failure and offers recovery', async () => {
+  const originalConfirm = window.confirm
+  const originalSettings = state.settings
+  const originalServiceAction = state.serviceAction
+  window.confirm = () => true
+  state.serviceRestartCalls = 0
+  state.settings = {
+    ...desktopSettings,
+    restart_required: true,
+    embedding: {
+      ...desktopSettings.embedding,
+      provider: 'local',
+      model: 'qwen/Qwen3-Embedding-0.6B',
+      base_url: 'http://127.0.0.1:6999/v1',
+    },
+  }
+  state.serviceAction = () => Promise.reject(new Error('embedding service failed to restart'))
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    fireEvent.change(screen.getAllByLabelText('Display name')[0], { target: { value: 'Alpha' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    // The failure is named instead of claiming the services are restarting.
+    await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Settings saved, but the service restart failed: embedding service failed/)
+      ).toBeTruthy()
+    )
+    expect(
+      screen.queryByText('Settings saved. Affected services are restarting in the background.')
+    ).toBeNull()
+    expect(screen.getByRole('alert')).toBeTruthy()
+    const openServices = screen.getByRole('button', { name: 'Open services' })
+    expect(openServices).toBeTruthy()
+    fireEvent.click(openServices)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+
+    // Retry restart recovers once the native action succeeds again.
+    state.serviceAction = () => Promise.resolve(installedServiceReport)
+    fireEvent.click(screen.getByRole('button', { name: 'Retry restart' }))
+    await waitFor(() => expect(state.serviceRestartCalls).toBe(2))
+    await waitFor(() => expect(screen.queryByText(/service restart failed/)).toBeNull())
+  } finally {
+    window.confirm = originalConfirm
+    state.settings = originalSettings
+    state.serviceAction = originalServiceAction
+    state.serviceRestartCalls = 0
+  }
+})
+
+test('a failed source toggle restart is reported with a manual recovery path', async () => {
+  const originalConfirm = window.confirm
+  const originalSettings = state.settings
+  const originalServiceAction = state.serviceAction
+  const originalApplySettingsUpdate = state.applySettingsUpdate
+  window.confirm = () => true
+  state.applySettingsUpdate = true
+  state.serviceRestartCalls = 0
+  state.settings = {
+    ...desktopSettings,
+    restart_required: true,
+    sources: [{ ...workSource, enabled: false }],
+  }
+  state.serviceAction = () => Promise.reject(new Error('sync service failed to restart'))
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByLabelText('Open sources'))
+    const toggle = await screen.findByRole('switch', { name: 'Enable work-code' })
+    fireEvent.click(toggle)
+
+    // The toggle save reports restart_required, so the shell restarts the
+    // affected services in the background and names the failure on error.
+    await waitFor(() => expect(state.saveSettingsCalls).toBe(1))
+    await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          /Source setting saved, but the service restart failed \(sync service failed to restart\)/
+        )
+      ).toBeTruthy()
+    )
+    // The status bar keeps the failed activity visible and links to Services.
+    expect(screen.getByRole('button', { name: 'Open service activity' })).toBeTruthy()
+  } finally {
+    window.confirm = originalConfirm
+    state.settings = originalSettings
+    state.serviceAction = originalServiceAction
+    state.applySettingsUpdate = originalApplySettingsUpdate
+    state.serviceRestartCalls = 0
+  }
+})
+
 test('services settings keeps repair available for a partial core install', async () => {
   const original = serviceReport.services.map((service) => ({ ...service }))
   serviceReport.services[0] = {
