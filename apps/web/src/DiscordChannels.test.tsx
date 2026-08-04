@@ -44,6 +44,7 @@ const discordSource: SourceSettings = {
   source: null,
   channels: [],
   repositories: [],
+  servers: [],
   token_env: 'DISCORD_BOT_TOKEN',
   token_path: null,
   oauth_client_path: null,

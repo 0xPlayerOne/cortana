@@ -1,32 +1,26 @@
 use std::{
-    fs::{self, OpenOptions},
-    io::Write,
+    fs,
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration as ChronoDuration, Utc};
 use reqwest::{Client, Url, redirect::Policy};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpListener, TcpStream},
-    time::timeout,
-};
-use uuid::Uuid;
+use tokio::net::TcpListener;
 
 use crate::config::{Config, SourceConfig};
+use crate::oauth_common::{
+    self, ensure_owner_only, reject_symlink, reject_symlink_components, validate_credential,
+};
 
 const AUTHORIZATION_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
-const CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_CLIENT_FILE_BYTES: u64 = 64 * 1024;
 const MAX_TOKEN_RESPONSE_BYTES: usize = 64 * 1024;
-const MAX_CALLBACK_BYTES: usize = 8 * 1024;
-const MAX_CALLBACK_CONNECTIONS: usize = 20;
 const DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
 const GMAIL_SCOPE: &str = "https://www.googleapis.com/auth/gmail.readonly";
 const CALENDAR_SCOPE: &str = "https://www.googleapis.com/auth/calendar.readonly";
@@ -110,8 +104,8 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationO
         .context("read Google OAuth callback address")?
         .port();
     let redirect_uri = format!("http://127.0.0.1:{port}/callback");
-    let state = random_secret();
-    let verifier = random_secret();
+    let state = oauth_common::random_secret();
+    let verifier = oauth_common::random_secret();
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     let authorization_url = authorization_url(
         &client.client_id,
@@ -123,7 +117,7 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationO
 
     open::that_detached(authorization_url.as_str())
         .context("open Google authorization in the system browser")?;
-    let code = wait_for_callback(listener, &state).await?;
+    let code = oauth_common::wait_for_callback(listener, &state, "Google").await?;
     let token = exchange_code(&client, &redirect_uri, &verifier, &code).await?;
     verify_granted_scopes(&scopes, token.scope.as_deref())?;
     let refresh_token = token
@@ -321,148 +315,6 @@ fn authorization_url(
     Ok(url)
 }
 
-async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Result<String> {
-    timeout(CALLBACK_TIMEOUT, async {
-        for _ in 0..MAX_CALLBACK_CONNECTIONS {
-            let (mut stream, peer) = listener
-                .accept()
-                .await
-                .context("accept Google OAuth callback")?;
-            if !peer.ip().is_loopback() {
-                continue;
-            }
-            let target = read_request_target(&mut stream).await?;
-            match parse_callback_target(&target, expected_state) {
-                Ok(Some(code)) => {
-                    respond(
-                        &mut stream,
-                        "200 OK",
-                        "Authorization received. Return to Cortana while setup completes.",
-                    )
-                    .await?;
-                    return Ok(code);
-                }
-                Ok(None) => {
-                    respond(
-                        &mut stream,
-                        "400 Bad Request",
-                        "Invalid authorization callback.",
-                    )
-                    .await?;
-                }
-                Err(error) => {
-                    respond(
-                        &mut stream,
-                        "400 Bad Request",
-                        "Authorization was not completed.",
-                    )
-                    .await?;
-                    return Err(error);
-                }
-            }
-        }
-        anyhow::bail!("too many invalid Google OAuth callbacks")
-    })
-    .await
-    .map_err(|_| anyhow::anyhow!("Google authorization timed out after 5 minutes"))?
-}
-
-async fn read_request_target(stream: &mut TcpStream) -> Result<String> {
-    let mut request = Vec::with_capacity(1024);
-    let mut buffer = [0_u8; 1024];
-    loop {
-        let read = stream
-            .read(&mut buffer)
-            .await
-            .context("read Google OAuth callback")?;
-        anyhow::ensure!(read > 0, "Google OAuth callback closed early");
-        request.extend_from_slice(&buffer[..read]);
-        anyhow::ensure!(
-            request.len() <= MAX_CALLBACK_BYTES,
-            "Google OAuth callback exceeded 8 KiB"
-        );
-        if request.windows(4).any(|window| window == b"\r\n\r\n") {
-            break;
-        }
-    }
-    let request = std::str::from_utf8(&request).context("Google OAuth callback was not UTF-8")?;
-    let line = request
-        .lines()
-        .next()
-        .context("Google OAuth callback was empty")?;
-    let mut parts = line.split_ascii_whitespace();
-    anyhow::ensure!(
-        parts.next() == Some("GET"),
-        "Google OAuth callback must use GET"
-    );
-    let target = parts
-        .next()
-        .context("Google OAuth callback target is missing")?;
-    anyhow::ensure!(
-        parts
-            .next()
-            .is_some_and(|version| version.starts_with("HTTP/1.")),
-        "Google OAuth callback has an invalid HTTP version"
-    );
-    anyhow::ensure!(
-        target.len() <= 4096,
-        "Google OAuth callback target is too long"
-    );
-    Ok(target.to_string())
-}
-
-fn parse_callback_target(target: &str, expected_state: &str) -> Result<Option<String>> {
-    let url = Url::parse(&format!("http://127.0.0.1{target}"))
-        .context("Google OAuth callback URL is invalid")?;
-    if url.path() != "/callback" {
-        return Ok(None);
-    }
-    let mut state = None;
-    let mut code = None;
-    let mut error = None;
-    for (name, value) in url.query_pairs() {
-        match name.as_ref() {
-            "state" => {
-                anyhow::ensure!(state.is_none(), "Google OAuth callback repeated state");
-                state = Some(value.into_owned());
-            }
-            "code" => {
-                anyhow::ensure!(code.is_none(), "Google OAuth callback repeated code");
-                code = Some(value.into_owned());
-            }
-            "error" => {
-                anyhow::ensure!(error.is_none(), "Google OAuth callback repeated error");
-                error = Some(value.into_owned());
-            }
-            _ => {}
-        }
-    }
-    if state.as_deref() != Some(expected_state) {
-        return Ok(None);
-    }
-    if let Some(error) = error {
-        validate_credential("Google OAuth error", &error, 256)?;
-        anyhow::bail!("Google authorization was not granted ({error})");
-    }
-    let code = code.context("Google OAuth callback did not contain a code")?;
-    validate_credential("Google authorization code", &code, 4096)?;
-    Ok(Some(code))
-}
-
-async fn respond(stream: &mut TcpStream, status: &str, message: &str) -> Result<()> {
-    let body = format!(
-        "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>Cortana</title><style>body{{font:16px system-ui;background:#1b1c1a;color:#efeee8;display:grid;min-height:90vh;place-items:center}}main{{max-width:34rem;padding:2rem;border:1px solid #454640;background:#242521}}</style><main><h1>Cortana</h1><p>{message}</p></main>"
-    );
-    let response = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
-        body.len()
-    );
-    stream
-        .write_all(response.as_bytes())
-        .await
-        .context("respond to Google OAuth callback")
-}
-
 async fn exchange_code(
     client: &InstalledClient,
     redirect_uri: &str,
@@ -495,31 +347,7 @@ async fn exchange_code(
         "Google token exchange failed with status {}",
         response.status().as_u16()
     );
-    bounded_json(response, MAX_TOKEN_RESPONSE_BYTES)
-        .await
-        .context("Google token response was invalid")
-}
-
-async fn bounded_json<T: DeserializeOwned>(
-    mut response: reqwest::Response,
-    max_bytes: usize,
-) -> Result<T> {
-    anyhow::ensure!(max_bytes > 0, "JSON response safety limit must be positive");
-    if response
-        .content_length()
-        .is_some_and(|length| length > max_bytes as u64)
-    {
-        anyhow::bail!("Google token response exceeded {max_bytes} bytes");
-    }
-    let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await? {
-        anyhow::ensure!(
-            body.len().saturating_add(chunk.len()) <= max_bytes,
-            "Google token response exceeded {max_bytes} bytes"
-        );
-        body.extend_from_slice(&chunk);
-    }
-    serde_json::from_slice(&body).context("JSON response body was invalid")
+    oauth_common::bounded_json(response, MAX_TOKEN_RESPONSE_BYTES, "Google").await
 }
 
 fn verify_granted_scopes(requested: &[String], granted: Option<&str>) -> Result<()> {
@@ -537,54 +365,8 @@ fn verify_granted_scopes(requested: &[String], granted: Option<&str>) -> Result<
 }
 
 fn write_token(path: &Path, token: &StoredToken<'_>) -> Result<()> {
-    reject_symlink(path)?;
-    reject_symlink_components(path)?;
-    let parent = path.parent().context("Google token path has no parent")?;
-    let created_parent = !parent.exists();
-    fs::create_dir_all(parent)
-        .with_context(|| format!("create Google token directory {}", parent.display()))?;
-    if created_parent {
-        set_directory_owner_only(parent)?;
-    }
-    if path.exists() {
-        let backup = path.with_extension("json.backup");
-        reject_symlink(&backup)?;
-        fs::copy(path, &backup)
-            .with_context(|| format!("back up Google token {}", path.display()))?;
-        set_owner_only(&backup)?;
-    }
     let body = serde_json::to_vec_pretty(token)?;
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let temporary = parent.join(format!(
-        ".cortana-google-token-{}-{nonce}.tmp",
-        std::process::id()
-    ));
-    let mut options = OpenOptions::new();
-    options.create_new(true).write(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    let mut file = options
-        .open(&temporary)
-        .with_context(|| format!("create Google token {}", temporary.display()))?;
-    let result = (|| -> Result<()> {
-        file.write_all(&body)?;
-        file.write_all(b"\n")?;
-        file.sync_all()?;
-        drop(file);
-        fs::rename(&temporary, path)
-            .with_context(|| format!("replace Google token {}", path.display()))?;
-        set_owner_only(path)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(&temporary);
-    }
-    result
+    oauth_common::write_owner_only_file(path, &body, "Google token", "cortana-google-token")
 }
 
 fn validate_source_name(value: &str) -> Result<()> {
@@ -604,113 +386,8 @@ fn validate_source_name(value: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_credential(label: &str, value: &str, maximum_bytes: usize) -> Result<()> {
-    anyhow::ensure!(
-        !value.is_empty()
-            && value.len() <= maximum_bytes
-            && !value.contains(['\0', '\n', '\r'])
-            && value.trim() == value,
-        "{label} is invalid"
-    );
-    Ok(())
-}
-
-fn reject_symlink(path: &Path) -> Result<()> {
-    match fs::symlink_metadata(path) {
-        Ok(metadata) => anyhow::ensure!(
-            !metadata.file_type().is_symlink(),
-            "refusing to use symlinked file {}",
-            path.display()
-        ),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
-    }
-    Ok(())
-}
-
-fn reject_symlink_components(path: &Path) -> Result<()> {
-    let mut current = path.to_path_buf();
-    loop {
-        match fs::symlink_metadata(&current) {
-            Ok(metadata) if metadata.file_type().is_symlink() => {
-                anyhow::ensure!(
-                    is_allowed_system_alias(&current),
-                    "refusing to use symlinked path component {}",
-                    current.display()
-                );
-            }
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.into()),
-        }
-        let Some(parent) = current.parent() else {
-            break;
-        };
-        if parent == current {
-            break;
-        }
-        current = parent.to_path_buf();
-    }
-    Ok(())
-}
-
-fn is_allowed_system_alias(path: &Path) -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        // macOS exposes these standard locations as symlinks into /private.
-        path == Path::new("/tmp") || path == Path::new("/var") || path == Path::new("/etc")
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = path;
-        false
-    }
-}
-
-fn random_secret() -> String {
-    format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
-}
-
 fn is_google_source(kind: &str) -> bool {
     matches!(kind, "google-drive" | "gmail" | "google-calendar")
-}
-
-#[cfg(unix)]
-fn set_owner_only(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_owner_only(_path: &Path) -> Result<()> {
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_directory_owner_only(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_directory_owner_only(_path: &Path) -> Result<()> {
-    Ok(())
-}
-
-fn ensure_owner_only(metadata: &fs::Metadata, label: &str) -> Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        anyhow::ensure!(
-            metadata.permissions().mode() & 0o077 == 0,
-            "{label} file must not be accessible by group or others"
-        );
-    }
-    let _ = (metadata, label);
-    Ok(())
 }
 
 #[cfg(test)]
@@ -745,24 +422,43 @@ mod tests {
     #[test]
     fn callback_requires_exact_state_and_path() {
         assert_eq!(
-            parse_callback_target("/callback?state=state&code=code", "state").unwrap(),
+            oauth_common::parse_callback_target(
+                "/callback?state=state&code=code",
+                "state",
+                "Google"
+            )
+            .unwrap(),
             Some("code".into())
         );
         assert!(
-            parse_callback_target("/callback?state=wrong&code=code", "state")
+            oauth_common::parse_callback_target(
+                "/callback?state=wrong&code=code",
+                "state",
+                "Google"
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            oauth_common::parse_callback_target("/favicon.ico", "state", "Google")
                 .unwrap()
                 .is_none()
         );
         assert!(
-            parse_callback_target("/favicon.ico", "state")
-                .unwrap()
-                .is_none()
+            oauth_common::parse_callback_target(
+                "/callback?state=state&error=access_denied",
+                "state",
+                "Google"
+            )
+            .is_err()
         );
         assert!(
-            parse_callback_target("/callback?state=state&error=access_denied", "state").is_err()
-        );
-        assert!(
-            parse_callback_target("/callback?state=state&state=state&code=code", "state").is_err()
+            oauth_common::parse_callback_target(
+                "/callback?state=state&state=state&code=code",
+                "state",
+                "Google"
+            )
+            .is_err()
         );
     }
 
@@ -776,7 +472,7 @@ mod tests {
         )
         .unwrap();
         #[cfg(unix)]
-        set_owner_only(&token).unwrap();
+        oauth_common::set_owner_only(&token).unwrap();
         assert_eq!(
             read_existing_refresh_token(&token).unwrap().as_deref(),
             Some("retained-refresh-token")
@@ -854,6 +550,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: Some(token.clone()),
@@ -893,6 +590,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: Some("GOOGLE_TOKEN_PATH".into()),
             token: None,
@@ -935,6 +633,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: Some("MISSING_GOOGLE_TOKEN_PATH".into()),
             token: None,
@@ -965,6 +664,8 @@ mod tests {
                 root: Some(PathBuf::from("/tmp/cortana/documents")),
                 source: None,
                 channels: Vec::new(),
+                servers: Vec::new(),
+
                 repositories: Vec::new(),
                 token_env: None,
                 token: None,

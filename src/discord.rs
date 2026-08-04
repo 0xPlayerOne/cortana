@@ -144,20 +144,6 @@ fn discord_client() -> Result<Client> {
         .context("build Discord API client")
 }
 
-fn configured_discord_source<'a>(config: &'a Config, selected: &str) -> Result<&'a SourceConfig> {
-    let source = config
-        .sources
-        .iter()
-        .find(|source| source.name == selected)
-        .with_context(|| format!("configured source {selected} was not found"))?;
-    anyhow::ensure!(
-        source.kind == "discord",
-        "source {} is not a Discord connector",
-        source.name
-    );
-    Ok(source)
-}
-
 /// Discord discovery requires the bot token environment variable. The token
 /// is never stored on this source and never appears in errors or output; only
 /// the configured environment-variable name is ever surfaced.
@@ -185,7 +171,7 @@ fn bot_token(config: &Config, source: &SourceConfig) -> Result<String> {
 
 /// Discord snowflakes are decimal 64-bit unsigned ids. Keep them as strings:
 /// renderer numbers cannot represent ids above 2^53 exactly.
-fn validate_snowflake(value: &str, label: &str) -> Result<String> {
+pub(crate) fn validate_snowflake(value: &str, label: &str) -> Result<String> {
     anyhow::ensure!(
         !value.is_empty()
             && value.len() <= MAX_SNOWFLAKE_CHARS
@@ -199,7 +185,7 @@ fn validate_snowflake(value: &str, label: &str) -> Result<String> {
     Ok(value.to_string())
 }
 
-fn sanitize_name(value: &str, label: &str) -> Result<String> {
+pub(crate) fn sanitize_name(value: &str, label: &str) -> Result<String> {
     let sanitized = value
         .chars()
         .filter(|character| !character.is_control())
@@ -248,6 +234,24 @@ fn validate_source_name(value: &str) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn configured_discord_source<'a>(
+    config: &'a Config,
+    selected: &str,
+) -> Result<&'a SourceConfig> {
+    validate_source_name(selected)?;
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.name == selected)
+        .with_context(|| format!("configured source {selected} was not found"))?;
+    anyhow::ensure!(
+        source.kind == "discord",
+        "source {} is not a Discord connector",
+        source.name
+    );
+    Ok(source)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,6 +266,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: token_env.map(str::to_string),
             token: None,

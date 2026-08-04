@@ -86,7 +86,7 @@ export type SourceSyncSummary = {
 }
 
 export type SourceAuthorizationSummary = {
-  method: 'none' | 'token' | 'google_oauth' | 'github_oauth'
+  method: 'none' | 'token' | 'google_oauth' | 'github_oauth' | 'discord_oauth'
   setup_required: boolean
   authorized: boolean
 }
@@ -119,6 +119,16 @@ export type DiscordGuildChannels = {
 
 export type DiscordChannelList = {
   guilds: DiscordGuildChannels[]
+  truncated: boolean
+}
+
+export type DiscordServerSummary = {
+  id: string
+  name: string
+}
+
+export type DiscordServerList = {
+  guilds: DiscordServerSummary[]
   truncated: boolean
 }
 
@@ -202,6 +212,8 @@ export type SourceSettings = {
   source: string | null
   channels: string[]
   repositories: string[]
+  /** Discord servers (guilds) assigned to this source's workspace via browser authorization. */
+  servers: string[]
   token_env: string | null
   token_path: string | null
   oauth_client_path: string | null

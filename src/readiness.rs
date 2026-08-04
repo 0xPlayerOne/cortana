@@ -611,6 +611,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,

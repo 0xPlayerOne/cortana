@@ -138,6 +138,16 @@ configured document cap and never reconcile deletions.
   when available and fall back to the local Qwen presets or the saved custom model otherwise. The
   call is read-only, never follows redirects, uses a strict timeout, and never prints the provider
   API key.
+- `cortana authorize-discord SOURCE` runs Discord browser OAuth (Authorization Code + PKCE against
+  the fixed endpoints `https://discord.com/oauth2/authorize` and
+  `https://discord.com/api/oauth2/token`) with the source's OAuth client JSON and stores the
+  resulting user token in the source's private token file. `cortana discord-servers SOURCE` lists
+  the bounded servers (guilds) the authorized user belongs to using the stored user token against
+  `https://discord.com/api/v10/users/@me/guilds`, refreshing the token once when it is expired or
+  rejected. Server selection is persisted per source in `servers`; each Discord source belongs to
+  exactly one workspace, so that is the per-workspace server assignment. Channel listing and
+  message sync remain bot-token based because Discord exposes them only to bots; a source with no
+  OAuth setup keeps the plain bot-token discovery behavior unchanged.
 - Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Desktop authorization uses a
   Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
   and the minimum read-only scopes required by the Google sources that share that token. Refresh
@@ -186,6 +196,54 @@ Desktop authorization can create or update that file after the OAuth client path
 Authorization does not validate, sync, embed, index, or reconcile the source. After consent,
 run the bounded validation described below. Google may not return a new refresh token on a later
 grant; Cortana preserves the existing refresh token in that case.
+
+### Authorize Discord sources
+
+Discord browser authorization assigns **servers** to a workspace; it does not replace the bot
+token. Discord's API only lets a bot list channels inside a guild and read messages, so the
+configured bot token environment variable remains required for channel discovery and sync. The
+user token from browser OAuth carries the `identify` and `guilds` scopes, which is what can list
+the servers a user belongs to. Create an OAuth application in the
+[Discord developer portal](https://discord.com/developers/applications), add a loopback redirect
+(`http://127.0.0.1`), and save a JSON file with the application's client id (plus the optional
+client secret for confidential apps):
+
+```json
+{"client_id": "123456789012345678", "client_secret": "optional-secret"}
+```
+
+Configure an absolute OAuth client path and an absolute private user-token destination on the
+source (the Desktop token file picker creates the destination before authorization):
+
+```toml
+[[sources]]
+name = "community-discord"
+kind = "discord"
+project = "community"
+channels = ["123456789012345678"]
+servers = ["987654321098765432"]
+token_env = "DISCORD_BOT_TOKEN"
+token = "/Users/example/.config/cortana/discord-user-token.json"
+oauth_client = "/Users/example/.config/cortana/discord-oauth-client.json"
+```
+
+Save the source before choosing **Authorize** in Desktop, or run:
+
+```bash
+cortana authorize-discord community-discord
+```
+
+Cortana opens Discord's authorization page in the system browser and waits up to five minutes
+for the loopback callback. It stores the user token in an owner-only file and never prints it.
+`cortana discord-servers SOURCE` then lists the user's servers; the Desktop server chooser
+persists only explicitly checked guild snowflake IDs into `servers` (per source, so per
+workspace). Access tokens expire after roughly a week; server discovery refreshes the token once
+when it is expired or rejected and persists the refresh atomically. The OAuth client file is
+configuration, not a user token, but Cortana still rejects symlinks, broad permissions, and
+oversized files, and the token destination must be outside every filesystem source root.
+
+Authorization does not validate, sync, embed, index, or reconcile the source. Sources without an
+OAuth client or token file keep the original bot-token-only discovery flow unchanged.
 
 ## Connector contract
 

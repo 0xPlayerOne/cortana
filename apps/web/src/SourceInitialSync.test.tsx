@@ -36,6 +36,7 @@ const workSource: SourceSettings = {
   source: null,
   channels: [],
   repositories: [],
+  servers: [],
   token_env: null,
   token_path: null,
   oauth_client_path: null,

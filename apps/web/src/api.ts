@@ -30,6 +30,7 @@ import type {
   InitialSyncBudget,
   GithubRepositoryList,
   DiscordChannelList,
+  DiscordServerList,
   ProviderModelKind,
   ProviderModelList,
 } from './types'
@@ -240,6 +241,11 @@ export async function listDesktopDiscordChannels(source: string): Promise<Discor
   return invokeDesktop<DiscordChannelList>('desktop_discord_channels', { source })
 }
 
+export async function listDesktopDiscordServers(source: string): Promise<DiscordServerList> {
+  if (!isDesktopApp) throw new Error('Discord server discovery is available in Cortana Desktop')
+  return invokeDesktop<DiscordServerList>('desktop_discord_servers', { source })
+}
+
 export async function listDesktopProviderModels(
   kind: ProviderModelKind
 ): Promise<ProviderModelList> {
@@ -248,7 +254,7 @@ export async function listDesktopProviderModels(
 }
 
 export async function pickDesktopPath(
-  kind: 'directory' | 'oauth-client' | 'google-token' | 'github-token'
+  kind: 'directory' | 'oauth-client' | 'google-token' | 'github-token' | 'discord-token'
 ): Promise<string | null> {
   if (!isDesktopApp) throw new Error('Native path selection is available in Cortana Desktop')
   return invokeDesktop<string | null>('desktop_path_pick', { kind })

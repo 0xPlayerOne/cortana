@@ -28,12 +28,17 @@ const MAX_LOG_BYTES: usize = 64 * 1024;
 const GITHUB_REPOSITORIES_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_GITHUB_REPOSITORIES_BYTES: usize = 512 * 1024;
 const DISCORD_CHANNELS_TIMEOUT: Duration = Duration::from_secs(30);
+const DISCORD_SERVERS_TIMEOUT: Duration = Duration::from_secs(30);
 // The CLI bounds every Discord HTTP response at 512 KiB but the serialized
 // discovery payload can legitimately reach 100 guilds x 100 channels with
 // 100-character names (~1.7 MiB worst case). Bound the Desktop stdout at
 // 2 MiB; the payload validator still caps guilds, channels, names, and ids
 // exactly like the CLI does.
 const MAX_DISCORD_CHANNELS_BYTES: usize = 2 * 1024 * 1024;
+// Server discovery carries only guild ids and names (max 100 guilds), so
+// 512 KiB is more than the worst case; the validator still enforces the
+// same id and name bounds as the CLI.
+const MAX_DISCORD_SERVERS_BYTES: usize = 512 * 1024;
 const MAX_DISCORD_GUILDS: usize = 100;
 const MAX_DISCORD_CHANNELS_PER_GUILD: usize = 100;
 const MAX_DISCORD_NAME_CHARS: usize = 100;
@@ -253,9 +258,7 @@ pub async fn list_discord_channels<R: tauri::Runtime>(
         return Err(if detail.is_empty() {
             "Discord channel discovery failed; check the configured bot token".into()
         } else {
-            format!(
-                "Discord channel discovery failed; check the configured bot token: {detail}"
-            )
+            format!("Discord channel discovery failed; check the configured bot token: {detail}")
         });
     }
     if stdout.len() >= MAX_DISCORD_CHANNELS_BYTES {
@@ -264,6 +267,83 @@ pub async fn list_discord_channels<R: tauri::Runtime>(
     let value: Value = serde_json::from_slice(&stdout)
         .map_err(|_| "Discord channel discovery returned invalid JSON".to_string())?;
     validate_discord_channels_payload(&value)?;
+    Ok(value)
+}
+
+/// Discover Discord servers (guilds) through the bundled CLI using the
+/// stored browser-authorization user token. The renderer supplies only a
+/// configured source name; it cannot inject a command, URL, or token.
+/// Discovery is read-only and the user token never crosses the IPC boundary
+/// or appears in logs.
+pub async fn list_discord_servers<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    source_name: &str,
+) -> Result<Value, String> {
+    let source = settings::configured_source(source_name)?;
+    if source.kind != "discord" {
+        return Err("server discovery is available only for Discord sources".into());
+    }
+    let command = app
+        .shell()
+        .sidecar("cortana")
+        .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
+        .args(["discord-servers", source.name.as_str()])
+        .env("CORTANA_DESKTOP_PROCESS_GROUP", "1")
+        .set_raw_out(true);
+    let (mut receiver, child) = command
+        .spawn()
+        .map_err(|error| format!("start Discord server discovery: {error}"))?;
+    let result = timeout(DISCORD_SERVERS_TIMEOUT, async {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut success = false;
+        while let Some(event) = receiver.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => {
+                    append_bounded_bytes(&mut stdout, &bytes, MAX_DISCORD_SERVERS_BYTES)
+                }
+                CommandEvent::Stderr(bytes) => {
+                    append_bounded_bytes(&mut stderr, &bytes, MAX_LOG_BYTES)
+                }
+                CommandEvent::Error(error) => {
+                    return Err(format!("Discord server discovery failed: {error}"));
+                }
+                CommandEvent::Terminated(payload) => {
+                    success = payload.code == Some(0);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok((success, stdout, stderr))
+    })
+    .await;
+    let (success, stdout, stderr) = match result {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => {
+            let _ = terminate_source_process(child);
+            return Err(error);
+        }
+        Err(_) => {
+            let _ = terminate_source_process(child);
+            return Err("Discord server discovery timed out".into());
+        }
+    };
+    if !success {
+        let detail = sanitize_log(&String::from_utf8_lossy(&stderr));
+        let detail = detail.chars().take(2048).collect::<String>();
+        return Err(if detail.is_empty() {
+            "Discord server discovery failed; check browser authorization".into()
+        } else {
+            format!("Discord server discovery failed; check browser authorization: {detail}")
+        });
+    }
+    if stdout.len() >= MAX_DISCORD_SERVERS_BYTES {
+        return Err("Discord server discovery response exceeded 512 KiB".into());
+    }
+    let value: Value = serde_json::from_slice(&stdout)
+        .map_err(|_| "Discord server discovery returned invalid JSON".to_string())?;
+    validate_discord_servers_payload(&value)?;
     Ok(value)
 }
 
@@ -281,9 +361,9 @@ fn validate_github_repository_payload(value: &Value) -> Result<(), String> {
         return Err("GitHub repository discovery returned too many repositories".into());
     }
     for repository in repositories {
-        let object = repository
-            .as_object()
-            .ok_or_else(|| "GitHub repository discovery returned an invalid repository".to_string())?;
+        let object = repository.as_object().ok_or_else(|| {
+            "GitHub repository discovery returned an invalid repository".to_string()
+        })?;
         let full_name = object
             .get("full_name")
             .and_then(Value::as_str)
@@ -323,23 +403,21 @@ fn validate_discord_channels_payload(value: &Value) -> Result<(), String> {
         let object = guild
             .as_object()
             .ok_or_else(|| "Discord channel discovery returned an invalid guild".to_string())?;
-        validate_discord_snowflake(
-            object
-                .get("id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "Discord channel discovery returned an invalid guild id".to_string())?,
-        )?;
+        validate_discord_snowflake(object.get("id").and_then(Value::as_str).ok_or_else(|| {
+            "Discord channel discovery returned an invalid guild id".to_string()
+        })?)?;
         validate_discord_name(
-            object
-                .get("name")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "Discord channel discovery returned an invalid guild name".to_string())?,
+            object.get("name").and_then(Value::as_str).ok_or_else(|| {
+                "Discord channel discovery returned an invalid guild name".to_string()
+            })?,
             "guild",
         )?;
         let channels = object
             .get("channels")
             .and_then(Value::as_array)
-            .ok_or_else(|| "Discord channel discovery returned an invalid channel list".to_string())?;
+            .ok_or_else(|| {
+                "Discord channel discovery returned an invalid channel list".to_string()
+            })?;
         if channels.len() > MAX_DISCORD_CHANNELS_PER_GUILD {
             return Err("Discord channel discovery returned too many channels".into());
         }
@@ -347,26 +425,18 @@ fn validate_discord_channels_payload(value: &Value) -> Result<(), String> {
             let channel = channel.as_object().ok_or_else(|| {
                 "Discord channel discovery returned an invalid channel".to_string()
             })?;
-            validate_discord_snowflake(
-                channel.get("id").and_then(Value::as_str).ok_or_else(|| {
-                    "Discord channel discovery returned an invalid channel id".to_string()
-                })?,
-            )?;
+            validate_discord_snowflake(channel.get("id").and_then(Value::as_str).ok_or_else(
+                || "Discord channel discovery returned an invalid channel id".to_string(),
+            )?)?;
             validate_discord_name(
-                channel
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| {
-                        "Discord channel discovery returned an invalid channel name".to_string()
-                    })?,
+                channel.get("name").and_then(Value::as_str).ok_or_else(|| {
+                    "Discord channel discovery returned an invalid channel name".to_string()
+                })?,
                 "channel",
             )?;
-            let kind = channel
-                .get("kind")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    "Discord channel discovery returned an invalid channel kind".to_string()
-                })?;
+            let kind = channel.get("kind").and_then(Value::as_str).ok_or_else(|| {
+                "Discord channel discovery returned an invalid channel kind".to_string()
+            })?;
             if kind.is_empty()
                 || kind.len() > 32
                 || !kind
@@ -376,6 +446,37 @@ fn validate_discord_channels_payload(value: &Value) -> Result<(), String> {
                 return Err("Discord channel discovery returned an unsafe channel kind".into());
             }
         }
+    }
+    Ok(())
+}
+
+/// Re-validate the sidecar's Discord server payload before it crosses the
+/// IPC boundary. Guild ids and names are bounded exactly like the CLI
+/// enforces them so a defective or compromised runtime cannot push unsafe
+/// metadata into the renderer.
+fn validate_discord_servers_payload(value: &Value) -> Result<(), String> {
+    let guilds = value
+        .get("guilds")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Discord server discovery returned an invalid list".to_string())?;
+    if guilds.len() > MAX_DISCORD_GUILDS {
+        return Err("Discord server discovery returned too many guilds".into());
+    }
+    for guild in guilds {
+        let object = guild
+            .as_object()
+            .ok_or_else(|| "Discord server discovery returned an invalid guild".to_string())?;
+        validate_discord_snowflake(
+            object.get("id").and_then(Value::as_str).ok_or_else(|| {
+                "Discord server discovery returned an invalid guild id".to_string()
+            })?,
+        )?;
+        validate_discord_name(
+            object.get("name").and_then(Value::as_str).ok_or_else(|| {
+                "Discord server discovery returned an invalid guild name".to_string()
+            })?,
+            "guild",
+        )?;
     }
     Ok(())
 }
@@ -650,8 +751,12 @@ impl SourceJobState {
             "google-drive" | "gmail" | "google-calendar"
         );
         let is_github = source.kind == "github";
-        if !is_google && !is_github {
-            return Err("browser authorization is available only for Google and GitHub sources".into());
+        let is_discord = source.kind == "discord";
+        if !is_google && !is_github && !is_discord {
+            return Err(
+                "browser authorization is available only for Google, GitHub, and Discord sources"
+                    .into(),
+            );
         }
         if is_google {
             if (source.token_path.is_none() && source.token_env.is_none())
@@ -663,27 +768,36 @@ impl SourceJobState {
                 );
             }
             if source.token_path.is_none() {
-                let token_env = source
-                    .token_env
-                    .as_deref()
-                    .ok_or_else(|| "Google token path environment variable is missing".to_string())?;
-                let value = settings::secret_value_for_env(token_env)?
-                    .ok_or_else(|| format!("configure {token_env} with an absolute token path first"))?;
+                let token_env = source.token_env.as_deref().ok_or_else(|| {
+                    "Google token path environment variable is missing".to_string()
+                })?;
+                let value = settings::secret_value_for_env(token_env)?.ok_or_else(|| {
+                    format!("configure {token_env} with an absolute token path first")
+                })?;
                 if !std::path::Path::new(value.trim()).is_absolute() {
                     return Err(format!(
                         "{token_env} must contain an absolute Google token path"
                     ));
                 }
             }
-        } else if source.token_path.is_none() || source.oauth_client_path.is_none() {
-            return Err(
-                "save a GitHub token destination file and OAuth client JSON path first".into(),
-            );
+        } else if (is_discord || is_github)
+            && (source.token_path.is_none() || source.oauth_client_path.is_none())
+        {
+            return Err(if is_discord {
+                "save a Discord user token destination file and OAuth client JSON path first".into()
+            } else {
+                "save a GitHub token destination file and OAuth client JSON path first".into()
+            });
         }
         let (args, summary) = if is_github {
             (
                 authorization_args("github", source_name),
                 "Waiting for GitHub authorization in the system browser. No repository data is being read.".into(),
+            )
+        } else if is_discord {
+            (
+                authorization_args("discord", source_name),
+                "Waiting for Discord authorization in the system browser. No server or channel data is being read.".into(),
             )
         } else {
             (
@@ -691,15 +805,7 @@ impl SourceJobState {
                 "Waiting for Google authorization in the system browser. No source data is being read.".into(),
             )
         };
-        self.start(
-            app,
-            source,
-            "authorization",
-            args,
-            summary,
-            None,
-            false,
-        )
+        self.start(app, source, "authorization", args, summary, None, false)
     }
 
     pub fn start_trial_sync(
@@ -888,8 +994,12 @@ impl SourceJobState {
                 } else {
                     "failed"
                 };
-                job.snapshot.summary =
-                    terminal_summary(job.snapshot.operation, job.snapshot.status, false);
+                job.snapshot.summary = terminal_summary(
+                    job.snapshot.operation,
+                    job.snapshot.status,
+                    false,
+                    &job.snapshot.kind,
+                );
                 job.snapshot.retryable = matches!(job.snapshot.status, "failed" | "cancelled");
                 audit(&job.snapshot, "completed");
             }
@@ -914,7 +1024,12 @@ impl SourceJobState {
         } else {
             "failed"
         };
-        job.snapshot.summary = terminal_summary(job.snapshot.operation, job.snapshot.status, true);
+        job.snapshot.summary = terminal_summary(
+            job.snapshot.operation,
+            job.snapshot.status,
+            true,
+            &job.snapshot.kind,
+        );
         job.snapshot.retryable = true;
         audit(&job.snapshot, "completed");
     }
@@ -1038,17 +1153,12 @@ fn sample_summary_suffix(sample: bool) -> &'static str {
 }
 
 fn authorization_args(provider: &str, source: &str) -> Vec<String> {
-    [
-        if provider == "github" {
-            "authorize-github"
-        } else {
-            "authorize-google"
-        },
-        source,
-    ]
-        .into_iter()
-        .map(str::to_string)
-        .collect()
+    let command = match provider {
+        "github" => "authorize-github",
+        "discord" => "authorize-discord",
+        _ => "authorize-google",
+    };
+    [command, source].into_iter().map(str::to_string).collect()
 }
 
 fn trial_sync_args(source: &str) -> Vec<String> {
@@ -1185,7 +1295,10 @@ fn validation_coverage_at(
         && max_documents >= documents as u64
         && max_bytes >= bytes
         && max_seconds >= seconds;
-    Ok((Some(covers), record.get("complete").and_then(Value::as_bool)))
+    Ok((
+        Some(covers),
+        record.get("complete").and_then(Value::as_bool),
+    ))
 }
 
 fn validation_covers_budget_at(
@@ -1226,7 +1339,7 @@ fn open_validation_state(path: &Path) -> Result<fs::File, String> {
     Ok(file)
 }
 
-fn terminal_summary(operation: &str, status: &str, disconnected: bool) -> String {
+fn terminal_summary(operation: &str, status: &str, disconnected: bool, kind: &str) -> String {
     match (operation, status, disconnected) {
         ("trial-sync", "succeeded", _) => {
             "Guarded trial sync completed without deletion reconciliation.".into()
@@ -1252,12 +1365,30 @@ fn terminal_summary(operation: &str, status: &str, disconnected: bool) -> String
         ("initial-sync", _, false) => {
             "Guarded initial sync failed; deletion reconciliation did not run.".into()
         }
-        ("authorization", "succeeded", _) => {
-            "Google authorization completed and the token was stored privately.".into()
-        }
-        ("authorization", "cancelled", _) => "Google authorization was cancelled.".into(),
-        ("authorization", _, true) => "Google authorization ended without a process result.".into(),
-        ("authorization", _, false) => "Google authorization failed.".into(),
+        ("authorization", "succeeded", _) => match kind {
+            "discord" => {
+                "Discord authorization completed and the user token was stored privately.".into()
+            }
+            "github" => {
+                "GitHub authorization completed and the token was stored privately.".into()
+            }
+            _ => "Google authorization completed and the token was stored privately.".into(),
+        },
+        ("authorization", "cancelled", _) => match kind {
+            "discord" => "Discord authorization was cancelled.".into(),
+            "github" => "GitHub authorization was cancelled.".into(),
+            _ => "Google authorization was cancelled.".into(),
+        },
+        ("authorization", _, true) => match kind {
+            "discord" => "Discord authorization ended without a process result.".into(),
+            "github" => "GitHub authorization ended without a process result.".into(),
+            _ => "Google authorization ended without a process result.".into(),
+        },
+        ("authorization", _, false) => match kind {
+            "discord" => "Discord authorization failed.".into(),
+            "github" => "GitHub authorization failed.".into(),
+            _ => "Google authorization failed.".into(),
+        },
         (_, "succeeded", _) => "Source validation passed. No documents were indexed.".into(),
         (_, "cancelled", _) => "Source validation was cancelled. No documents were indexed.".into(),
         (_, _, true) => {
@@ -1390,8 +1521,14 @@ mod tests {
 
         let snapshots = state.snapshots().expect("snapshots");
         assert_eq!(snapshots.len(), MAX_JOBS);
-        assert_eq!(snapshots.first().map(|item| item.id.as_str()), Some("source-22"));
-        assert_eq!(snapshots.last().map(|item| item.id.as_str()), Some("source-3"));
+        assert_eq!(
+            snapshots.first().map(|item| item.id.as_str()),
+            Some("source-22")
+        );
+        assert_eq!(
+            snapshots.last().map(|item| item.id.as_str()),
+            Some("source-3")
+        );
     }
 
     #[test]
@@ -1506,6 +1643,10 @@ mod tests {
         assert_eq!(
             authorization_args("github", "work-github"),
             ["authorize-github", "work-github"]
+        );
+        assert_eq!(
+            authorization_args("discord", "community-discord"),
+            ["authorize-discord", "community-discord"]
         );
     }
 
@@ -1675,6 +1816,7 @@ mod tests {
             source: None,
             channels: Vec::new(),
             repositories: Vec::new(),
+            servers: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -2038,23 +2180,23 @@ mod tests {
     #[test]
     fn initial_sync_terminal_summaries_cover_cancellation_and_disconnects() {
         assert!(
-            terminal_summary("initial-sync", "succeeded", false)
+            terminal_summary("initial-sync", "succeeded", false, "filesystem")
                 .contains("without deletion reconciliation")
         );
         assert!(
-            terminal_summary("initial-sync", "cancelled", false)
+            terminal_summary("initial-sync", "cancelled", false, "filesystem")
                 .contains("Committed batches remain indexed")
         );
         assert!(
-            terminal_summary("initial-sync", "failed", true)
+            terminal_summary("initial-sync", "failed", true, "filesystem")
                 .contains("ended without a process result")
         );
         assert!(
-            terminal_summary("initial-sync", "failed", false)
+            terminal_summary("initial-sync", "failed", false, "filesystem")
                 .contains("reconciliation did not run")
         );
         assert!(
-            terminal_summary("trial-sync", "cancelled", false)
+            terminal_summary("trial-sync", "cancelled", false, "filesystem")
                 .contains("Committed batches remain indexed")
         );
     }
@@ -2082,7 +2224,9 @@ mod tests {
 
         let mut channels = Vec::new();
         for _ in 0..=MAX_DISCORD_CHANNELS_PER_GUILD {
-            channels.push(serde_json::json!({"id": "175928847299117064", "name": "release", "kind": "text"}));
+            channels.push(
+                serde_json::json!({"id": "175928847299117064", "name": "release", "kind": "text"}),
+            );
         }
         let oversized = serde_json::json!({
             "guilds": [{"id": "175928847299117063", "name": "Engineering", "channels": channels, "truncated": true}],
@@ -2094,11 +2238,13 @@ mod tests {
                 .contains("too many channels")
         );
 
-        assert!(validate_discord_channels_payload(&serde_json::json!({
-            "guilds": [guild()],
-            "truncated": false,
-        }))
-        .is_ok());
+        assert!(
+            validate_discord_channels_payload(&serde_json::json!({
+                "guilds": [guild()],
+                "truncated": false,
+            }))
+            .is_ok()
+        );
     }
 
     #[test]
@@ -2115,7 +2261,10 @@ mod tests {
             ("id", serde_json::json!("")),
             ("name", serde_json::json!("\u{0}Engineering")),
             ("name", serde_json::json!("   ")),
-            ("name", serde_json::json!("x".repeat(MAX_DISCORD_NAME_CHARS + 1))),
+            (
+                "name",
+                serde_json::json!("x".repeat(MAX_DISCORD_NAME_CHARS + 1)),
+            ),
         ] {
             let mut guild = valid.clone();
             guild[field] = value;
@@ -2126,7 +2275,8 @@ mod tests {
             );
         }
 
-        let mut channel = serde_json::json!({"id": "175928847299117064", "name": "release", "kind": "text"});
+        let mut channel =
+            serde_json::json!({"id": "175928847299117064", "name": "release", "kind": "text"});
         channel["kind"] = serde_json::json!("text; drop");
         let payload = serde_json::json!({
             "guilds": [{"id": "175928847299117063", "name": "Engineering", "channels": [channel], "truncated": false}],
@@ -2151,6 +2301,85 @@ mod tests {
         assert!(validate_discord_name("\u{0}Engineering", "guild").is_err());
         assert!(validate_discord_name("   ", "guild").is_err());
         assert!(validate_discord_name(&"x".repeat(101), "guild").is_err());
+    }
+
+    #[test]
+    fn discord_server_payload_validation_enforces_guild_bounds() {
+        let guild = || serde_json::json!({ "id": "175928847299117063", "name": "Engineering" });
+        assert!(
+            validate_discord_servers_payload(&serde_json::json!({
+                "guilds": [guild()],
+                "truncated": false,
+            }))
+            .is_ok()
+        );
+
+        let mut guilds = Vec::new();
+        for _ in 0..=MAX_DISCORD_GUILDS {
+            guilds.push(guild());
+        }
+        assert!(
+            validate_discord_servers_payload(
+                &serde_json::json!({"guilds": guilds, "truncated": true})
+            )
+            .expect_err("too many servers must fail")
+            .contains("too many guilds")
+        );
+
+        for (field, value) in [
+            ("id", serde_json::json!("not-a-snowflake")),
+            ("id", serde_json::json!("0")),
+            ("name", serde_json::json!("\u{0}Engineering")),
+            ("name", serde_json::json!("   ")),
+            (
+                "name",
+                serde_json::json!("x".repeat(MAX_DISCORD_NAME_CHARS + 1)),
+            ),
+        ] {
+            let mut guild = guild();
+            guild[field] = value;
+            assert!(
+                validate_discord_servers_payload(&serde_json::json!({
+                    "guilds": [guild],
+                    "truncated": false,
+                }))
+                .is_err(),
+                "{field} server payload must be rejected"
+            );
+        }
+
+        assert!(
+            validate_discord_servers_payload(&serde_json::json!({"truncated": false})).is_err(),
+            "a missing guild list must fail closed"
+        );
+    }
+
+    #[test]
+    fn authorization_terminal_summaries_name_the_provider() {
+        assert!(
+            terminal_summary("authorization", "succeeded", false, "discord")
+                .contains("Discord authorization completed")
+        );
+        assert!(
+            terminal_summary("authorization", "succeeded", false, "github")
+                .contains("GitHub authorization completed")
+        );
+        assert!(
+            terminal_summary("authorization", "succeeded", false, "gmail")
+                .contains("Google authorization completed")
+        );
+        assert!(
+            terminal_summary("authorization", "cancelled", false, "discord")
+                .contains("Discord authorization was cancelled")
+        );
+        assert!(
+            terminal_summary("authorization", "failed", true, "discord")
+                .contains("Discord authorization ended without a process result")
+        );
+        assert!(
+            terminal_summary("authorization", "failed", false, "discord")
+                .contains("Discord authorization failed")
+        );
     }
 
     #[test]

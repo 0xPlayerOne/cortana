@@ -187,8 +187,9 @@ impl UpdaterState {
         )
         .await
         {
-            Ok(result) => result
-                .map_err(|error| format!("verify and install signed Cortana update: {error}")),
+            Ok(result) => {
+                result.map_err(|error| format!("verify and install signed Cortana update: {error}"))
+            }
             Err(_) => Err(format!(
                 "signed Cortana update timed out after {} seconds",
                 UPDATE_TIMEOUT.as_secs()

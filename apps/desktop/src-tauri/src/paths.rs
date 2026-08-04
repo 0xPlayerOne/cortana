@@ -33,6 +33,13 @@ pub async fn pick(app: AppHandle, kind: &str) -> Result<Option<String>, String> 
             .save_file(move |path| {
                 let _ = sender.send(path);
             }),
+        "discord-token" => dialog
+            .set_title("Choose where Cortana should store the Discord user token")
+            .set_file_name("cortana-discord-token.json")
+            .add_filter("Discord token", &["json"])
+            .save_file(move |path| {
+                let _ = sender.send(path);
+            }),
         "settings-export" => dialog
             .set_title("Export redacted Cortana settings")
             .set_file_name("cortana-settings.json")

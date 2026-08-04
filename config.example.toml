@@ -177,6 +177,14 @@ kind = "discord"
 project = "community"
 channels = ["123456789012345678"]
 token_env = "DISCORD_BOT_TOKEN"
+# Optional browser authorization for per-workspace server assignment. The
+# OAuth client JSON holds the Discord application `client_id` (and optionally
+# `client_secret`); `token` is the private user-token file Cortana creates
+# after consent. The bot token above stays required for channel listing and
+# sync. `servers` records the guilds assigned to this source's workspace.
+# servers = ["987654321098765432"]
+# token = "/Users/you/.config/cortana/discord-user-token.json"
+# oauth_client = "/Users/you/.config/cortana/discord-oauth-client.json"
 
 [[sources]]
 name = "buzz"

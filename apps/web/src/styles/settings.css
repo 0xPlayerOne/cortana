@@ -1101,6 +1101,31 @@
   line-height: 1.4;
 }
 
+.discord-guild {
+  margin: 6px 0;
+}
+
+.discord-guild > strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+
+.discord-guild label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.discord-guild-unassigned {
+  opacity: 0.55;
+}
+
+.discord-guild-unassigned label {
+  cursor: not-allowed;
+}
+
 .secret-input {
   display: flex;
   gap: 7px;

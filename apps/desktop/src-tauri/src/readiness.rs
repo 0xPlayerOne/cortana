@@ -323,9 +323,8 @@ async fn embedding_runtime_status() -> ToolStatus {
         .as_ref()
         .and_then(|snapshot| snapshot.embedding_service_program.as_deref());
     let path = embedding_runtime_path(configured_program);
-    let install_supported = required
-        && cfg!(target_os = "macos")
-        && find_executable("brew").is_some();
+    let install_supported =
+        required && cfg!(target_os = "macos") && find_executable("brew").is_some();
     let detail = match (required, path.as_ref(), configured_program) {
         (false, Some(path), _) => format!("Found optional local runtime at {}", path.display()),
         (false, None, _) => "Not required for the configured cloud embedding provider.".into(),

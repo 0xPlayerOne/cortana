@@ -18,13 +18,14 @@ use crate::source_validation::{self, SourceValidationStatus};
 /// unreadable (defense against pathological files).
 pub(crate) const MAX_TOKEN_FILE_BYTES: usize = 64 * 1024;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceAuthorizationMethod {
     None,
     Token,
     GoogleOauth,
     GithubOauth,
+    DiscordOauth,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -373,6 +374,37 @@ fn valid_github_bearer(value: &str) -> bool {
             .any(|character| character.is_control() || character.is_whitespace())
 }
 
+/// A Discord OAuth user token file is ready when it is a private regular
+/// file whose JSON carries a plausible bearer access token. The bot token
+/// environment variable is a separate credential and is never checked here.
+fn discord_token_file_ready(path: &Path) -> bool {
+    if !secure_regular_file_ready(path) {
+        return false;
+    }
+    let mut file = match std::fs::File::open(path) {
+        Ok(file) => std::io::BufReader::new(file),
+        Err(_) => return false,
+    };
+    let mut bytes = Vec::new();
+    if file
+        .by_ref()
+        .take((MAX_TOKEN_FILE_BYTES as u64) + 1)
+        .read_to_end(&mut bytes)
+        .is_err()
+        || bytes.len() > MAX_TOKEN_FILE_BYTES
+    {
+        return false;
+    }
+    let token = match serde_json::from_slice::<serde_json::Value>(&bytes) {
+        Ok(serde_json::Value::Object(token)) => token,
+        _ => return false,
+    };
+    token
+        .get("access_token")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(valid_github_bearer)
+}
+
 fn secure_regular_file_ready(path: &Path) -> bool {
     regular_file_ready(path) && private_path_components_ready(path)
 }
@@ -444,13 +476,11 @@ pub fn source_authorization_summary(
             .token
             .as_ref()
             .is_some_and(|path| google_token_file_ready(path.as_path()));
-        let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready)
-            || source
-                .token_env
-                .as_deref()
-                .and_then(|name| config.environment_value(name))
-                .as_deref()
-                .is_some_and(token_destination_value_ready);
+        // Discord's `token_env` is the bot credential used for channel
+        // listing/sync. It must never be interpreted as a filesystem path for
+        // the separate browser-OAuth user token; that destination is always
+        // the explicit `token` field.
+        let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready);
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::GoogleOauth,
             // A migrated/private token file is a complete authorization path on
@@ -482,6 +512,32 @@ pub fn source_authorization_summary(
                 || token_file_ready
                 || (oauth_client_ready && token_destination_ready)),
             authorized: token_env_ready || token_file_ready,
+        }
+    } else if source.kind == "discord" && (source.oauth_client.is_some() || source.token.is_some())
+    {
+        // Browser OAuth for Discord assigns servers to this source's
+        // workspace. The bot token environment variable remains the
+        // operational sync credential and is reported by the token branch
+        // below when no OAuth paths are configured.
+        let oauth_client_ready = source
+            .oauth_client
+            .as_ref()
+            .is_some_and(|path| secure_regular_file_ready(path.as_path()));
+        let token_file_ready = source
+            .token
+            .as_ref()
+            .is_some_and(|path| discord_token_file_ready(path.as_path()));
+        let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready)
+            || source
+                .token_env
+                .as_deref()
+                .and_then(|name| config.environment_value(name))
+                .as_deref()
+                .is_some_and(token_destination_value_ready);
+        SourceAuthorizationSummary {
+            method: SourceAuthorizationMethod::DiscordOauth,
+            setup_required: !(token_file_ready || (oauth_client_ready && token_destination_ready)),
+            authorized: token_file_ready,
         }
     } else if source.token_env.is_some() || source.token.is_some() {
         let token_env_ready = source.token_env.as_deref().is_some_and(|name| {
@@ -549,7 +605,91 @@ mod tests {
     use chrono::Utc;
 
     use super::validation_summary;
+    use crate::config::SourceConfig;
     use crate::source_validation::SourceValidationStatus;
+
+    fn source(
+        kind: &str,
+        token: Option<std::path::PathBuf>,
+        oauth_client: Option<std::path::PathBuf>,
+    ) -> SourceConfig {
+        SourceConfig {
+            name: "community".into(),
+            kind: kind.into(),
+            enabled: true,
+            project: "community".into(),
+            root: None,
+            source: None,
+            channels: vec!["175928847299117064".into()],
+            servers: Vec::new(),
+            repositories: Vec::new(),
+            token_env: Some("DISCORD_BOT_TOKEN".into()),
+            token,
+            oauth_client,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn discord_oauth_authorization_is_reported_only_when_oauth_paths_exist() {
+        use crate::source_status::SourceAuthorizationMethod;
+
+        let directory = tempfile::tempdir().unwrap();
+        let token_path = directory.path().join("discord-token.json");
+        std::fs::write(&token_path, "{\"access_token\":\"valid-token\"}").unwrap();
+        #[cfg(unix)]
+        crate::oauth_common::set_owner_only(&token_path).unwrap();
+        let client_path = directory.path().join("discord-oauth-client.json");
+        std::fs::write(&client_path, "{\"client_id\":\"client-id\"}").unwrap();
+        #[cfg(unix)]
+        crate::oauth_common::set_owner_only(&client_path).unwrap();
+
+        // Bot-token-only sources keep the plain token method (fallback).
+        let mut config = crate::config::Config::default();
+        config.sources.push(source("discord", None, None));
+        config
+            .environment
+            .insert("DISCORD_BOT_TOKEN".into(), "bot-token".into());
+        let summary = super::source_authorization_summary(&config, &config.sources[0]);
+        assert_eq!(summary.method, SourceAuthorizationMethod::Token);
+        assert!(summary.authorized);
+
+        // OAuth paths flip the method to discord_oauth and gate
+        // authorization on the stored user token file.
+        config.sources[0] = source(
+            "discord",
+            Some(token_path.clone()),
+            Some(client_path.clone()),
+        );
+        let summary = super::source_authorization_summary(&config, &config.sources[0]);
+        assert_eq!(summary.method, SourceAuthorizationMethod::DiscordOauth);
+        assert!(summary.authorized);
+        assert!(!summary.setup_required);
+
+        // Without the user token file, browser authorization is still
+        // required but no setup remains: the client file and the token
+        // destination are both configured.
+        std::fs::remove_file(&token_path).unwrap();
+        config.sources[0] = source("discord", Some(token_path), Some(client_path));
+        let summary = super::source_authorization_summary(&config, &config.sources[0]);
+        assert_eq!(summary.method, SourceAuthorizationMethod::DiscordOauth);
+        assert!(!summary.authorized);
+        assert!(!summary.setup_required);
+
+        let json = serde_json::to_value(&summary).expect("summary serializes");
+        assert_eq!(
+            json.get("method"),
+            Some(&serde_json::Value::String("discord_oauth".into()))
+        );
+    }
 
     fn validated_status(complete: Option<bool>) -> SourceValidationStatus {
         SourceValidationStatus {

@@ -33,6 +33,7 @@ import {
   getDesktopInstaller,
   getDesktopInfo,
   listDesktopDiscordChannels,
+  listDesktopDiscordServers,
   listDesktopGithubRepositories,
   listDesktopProviderModels,
   getDesktopHindsightStatus,
@@ -87,6 +88,7 @@ import type {
   AuditEvent,
   AuthPrincipalSettings,
   DiscordGuildChannels,
+  DiscordServerSummary,
   GithubRepositorySummary,
   InitialSyncBudget,
   SourceKind,
@@ -2986,6 +2988,10 @@ function SourcesSection({
     Record<string, { guilds: DiscordGuildChannels[]; truncated: boolean }>
   >({})
   const [discordChannelsLoading, setDiscordChannelsLoading] = useState<string | null>(null)
+  const [discordServers, setDiscordServers] = useState<
+    Record<string, { guilds: DiscordServerSummary[]; truncated: boolean }>
+  >({})
+  const [discordServersLoading, setDiscordServersLoading] = useState<string | null>(null)
   const [sourceWorkspace, setSourceWorkspace] = useState(() => initialSourceWorkspace(settings))
   const [initialSync, setInitialSync] = useState<{
     source: string
@@ -3236,9 +3242,11 @@ function SourcesSection({
       )
       return
     }
+    const provider =
+      source.kind === 'github' ? 'GitHub' : source.kind === 'discord' ? 'Discord' : 'Google'
     if (
       !window.confirm(
-        `Authorize ${source.name} with ${source.kind === 'github' ? 'GitHub' : 'Google'}?\n\nCortana will open the system browser and store the resulting token in the configured private file. No source data is read during authorization.`
+        `Authorize ${source.name} with ${provider}?\n\nCortana will open the system browser and store the resulting token in the configured private file. No source data is read during authorization.`
       )
     ) {
       return
@@ -3248,9 +3256,7 @@ function SourcesSection({
       applyJob(await startDesktopSourceAuthorization(source.name))
     } catch (caught) {
       setError(
-        caught instanceof Error
-          ? caught.message
-          : `${source.kind === 'github' ? 'GitHub' : 'Google'} authorization failed to start`
+        caught instanceof Error ? caught.message : `${provider} authorization failed to start`
       )
     }
   }
@@ -3317,6 +3323,36 @@ function SourcesSection({
     changeSource(index, { channels })
   }
 
+  const discoverDiscordServers = async (index: number, source: SourceSettings) => {
+    if (!canValidate) {
+      setError('Save source changes before discovering servers.')
+      return
+    }
+    setError('')
+    setDiscordServersLoading(source.name)
+    try {
+      const result = await listDesktopDiscordServers(source.name)
+      setDiscordServers((current) => ({
+        ...current,
+        [source.name]: { guilds: result.guilds, truncated: result.truncated },
+      }))
+      if (result.truncated) {
+        setError('Discord returned more than 100 servers; select from the first 100.')
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Discord server discovery failed')
+    } finally {
+      setDiscordServersLoading(null)
+    }
+  }
+
+  const toggleDiscordServer = (index: number, source: SourceSettings, guildId: string) => {
+    const servers = source.servers.includes(guildId)
+      ? source.servers.filter((server) => server !== guildId)
+      : [...source.servers, guildId]
+    changeSource(index, { servers })
+  }
+
   const trialSyncSource = async (source: SourceSettings) => {
     if (!canValidate) {
       setError('Save source changes before syncing so the native runtime uses this exact config.')
@@ -3352,7 +3388,7 @@ function SourcesSection({
 
   const choosePath = async (
     index: number,
-    kind: 'directory' | 'oauth-client' | 'google-token' | 'github-token',
+    kind: 'directory' | 'oauth-client' | 'google-token' | 'github-token' | 'discord-token',
     field: 'root' | 'token_path' | 'oauth_client_path'
   ) => {
     setError('')
@@ -3554,7 +3590,9 @@ function SourcesSection({
                       <ExternalLink size={14} />
                     </button>
                   )}
-                  {(isGoogleSource(source.kind) || source.kind === 'github') && (
+                  {(isGoogleSource(source.kind) ||
+                    source.kind === 'github' ||
+                    source.kind === 'discord') && (
                     <button
                       type="button"
                       className="source-icon-button quick-tooltip"
@@ -3562,11 +3600,13 @@ function SourcesSection({
                       data-tooltip="Authorize"
                       disabled={
                         !canValidate ||
-                        (!source.token_path && !source.token_env) ||
+                        (source.kind === 'discord'
+                          ? !source.token_path
+                          : !source.token_path && !source.token_env) ||
                         !source.oauth_client_path ||
                         Boolean(activeJob)
                       }
-                      title={`Authorize read-only ${source.kind === 'github' ? 'GitHub' : 'Google'} access in the browser`}
+                      title={`Authorize read-only ${source.kind === 'github' ? 'GitHub' : source.kind === 'discord' ? 'Discord' : 'Google'} access in the browser`}
                       onClick={() => void authorizeSource(source)}
                     >
                       {runningThis && activeJob?.operation === 'authorization' ? (
@@ -3973,37 +4013,6 @@ function SourcesSection({
                           </button>
                         </div>
                       </Field>
-                      <Field
-                        label="GitHub OAuth client JSON"
-                        hint="JSON containing the OAuth app client_id; required for browser authorization"
-                        wide
-                      >
-                        <div className="path-input">
-                          <input
-                            value={source.oauth_client_path || ''}
-                            disabled={sourceLocked || !source.editable}
-                            placeholder="/Users/you/.config/cortana/github-oauth-client.json"
-                            onChange={(event) =>
-                              changeSource(index, {
-                                oauth_client_path: event.target.value || null,
-                              })
-                            }
-                          />
-                          <button
-                            type="button"
-                            disabled={sourceLocked || !source.editable}
-                            aria-label="Choose GitHub OAuth client JSON"
-                            title="Choose GitHub OAuth client JSON"
-                            data-tooltip="Choose GitHub OAuth client JSON"
-                            className="quick-tooltip"
-                            onClick={() =>
-                              void choosePath(index, 'oauth-client', 'oauth_client_path')
-                            }
-                          >
-                            <FolderOpen size={14} />
-                          </button>
-                        </div>
-                      </Field>
                     </>
                   )}
                   {(source.kind === 'github' ||
@@ -4012,8 +4021,63 @@ function SourcesSection({
                     <>
                       {source.kind === 'discord' && (
                         <Field
+                          label="Server chooser"
+                          hint="assign the servers this workspace may index; authorize with Discord first, then discover and check the servers to assign"
+                          wide
+                        >
+                          <div className="source-repository-chooser">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              aria-label="Discover servers"
+                              disabled={
+                                !canValidate ||
+                                sourceLocked ||
+                                discordServersLoading === source.name
+                              }
+                              onClick={() => void discoverDiscordServers(index, source)}
+                            >
+                              {discordServersLoading === source.name ? (
+                                <LoaderCircle className="spin" size={14} />
+                              ) : (
+                                <RefreshCw size={14} />
+                              )}{' '}
+                              Discover servers
+                            </button>
+                            {discordServers[source.name] && (
+                              <div className="source-repository-options">
+                                {discordServers[source.name].guilds.length === 0 ? (
+                                  <small>No accessible servers returned.</small>
+                                ) : (
+                                  discordServers[source.name].guilds.map((guild) => (
+                                    <label key={guild.id}>
+                                      <input
+                                        type="checkbox"
+                                        checked={source.servers.includes(guild.id)}
+                                        disabled={sourceLocked || !source.editable}
+                                        onChange={() =>
+                                          toggleDiscordServer(index, source, guild.id)
+                                        }
+                                      />
+                                      <span>{guild.name}</span>
+                                    </label>
+                                  ))
+                                )}
+                                {discordServers[source.name].truncated && (
+                                  <small>
+                                    Discord returned more than 100 servers; only the first 100 are
+                                    shown.
+                                  </small>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </Field>
+                      )}
+                      {source.kind === 'discord' && (
+                        <Field
                           label="Channel chooser"
-                          hint="discover servers and channels visible to the bot, then select only the channels Cortana may index"
+                          hint="discover channels with the bot token, then select only the channels Cortana may index; channels outside assigned servers stay available when no servers are assigned"
                           wide
                         >
                           <div className="source-repository-chooser">
@@ -4040,31 +4104,49 @@ function SourcesSection({
                                 {discordChannels[source.name].guilds.length === 0 ? (
                                   <small>No accessible servers returned.</small>
                                 ) : (
-                                  discordChannels[source.name].guilds.map((guild) => (
-                                    <div key={guild.id} className="discord-guild">
-                                      <strong>{guild.name}</strong>
-                                      {guild.truncated && <small> · first 100 channels</small>}
-                                      {guild.channels.length === 0 ? (
-                                        <small>No channels returned.</small>
-                                      ) : (
-                                        guild.channels.map((channel) => (
-                                          <label key={channel.id}>
-                                            <input
-                                              type="checkbox"
-                                              checked={source.channels.includes(channel.id)}
-                                              disabled={sourceLocked || !source.editable}
-                                              onChange={() =>
-                                                toggleDiscordChannel(index, source, channel.id)
+                                  discordChannels[source.name].guilds.map((guild) => {
+                                    const serversAssigned = source.servers.length > 0
+                                    const assigned =
+                                      !serversAssigned || source.servers.includes(guild.id)
+                                    return (
+                                      <div
+                                        key={guild.id}
+                                        className={`discord-guild${assigned ? '' : ' discord-guild-unassigned'}`}
+                                      >
+                                        <strong>{guild.name}</strong>
+                                        {!assigned && (
+                                          <small> · not assigned to this workspace</small>
+                                        )}
+                                        {guild.truncated && <small> · first 100 channels</small>}
+                                        {guild.channels.length === 0 ? (
+                                          <small>No channels returned.</small>
+                                        ) : (
+                                          guild.channels.map((channel) => (
+                                            <label
+                                              key={channel.id}
+                                              title={
+                                                assigned
+                                                  ? undefined
+                                                  : 'Assign this server in the server chooser before selecting its channels'
                                               }
-                                            />
-                                            <span>
-                                              {channel.name} · {channel.kind}
-                                            </span>
-                                          </label>
-                                        ))
-                                      )}
-                                    </div>
-                                  ))
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={source.channels.includes(channel.id)}
+                                                disabled={sourceLocked || !source.editable}
+                                                onChange={() =>
+                                                  toggleDiscordChannel(index, source, channel.id)
+                                                }
+                                              />
+                                              <span>
+                                                {channel.name} · {channel.kind}
+                                              </span>
+                                            </label>
+                                          ))
+                                        )}
+                                      </div>
+                                    )
+                                  })
                                 )}
                                 {discordChannels[source.name].truncated && (
                                   <small>
@@ -4115,16 +4197,20 @@ function SourcesSection({
                       <Field
                         label="Token variable"
                         hint={
-                          secret?.configured && !clearedSecrets.has(secret.name)
-                            ? `Configured via ${secret.source}`
-                            : 'stored in Cortana owner-only secret file'
+                          source.kind === 'discord'
+                            ? 'Discord bot token; required for channel listing and sync'
+                            : secret?.configured && !clearedSecrets.has(secret.name)
+                              ? `Configured via ${secret.source}`
+                              : 'stored in Cortana owner-only secret file'
                         }
                       >
                         <input
                           value={source.token_env || ''}
                           disabled={sourceLocked || !source.editable}
                           required={
-                            source.enabled && source.kind !== 'github' && !source.token_path
+                            source.enabled &&
+                            (source.kind === 'discord' ||
+                              (source.kind !== 'github' && !source.token_path))
                           }
                           pattern="[A-Z_][A-Z0-9_]*"
                           onChange={(event) =>
@@ -4161,6 +4247,70 @@ function SourcesSection({
                             )}
                         </div>
                       </Field>
+                      {source.kind === 'discord' && (
+                        <>
+                          <Field
+                            label="Discord OAuth token file"
+                            hint="private user token created by Cortana; used only to list servers for workspace assignment"
+                            wide
+                          >
+                            <div className="path-input">
+                              <input
+                                value={source.token_path || ''}
+                                disabled={sourceLocked || !source.editable}
+                                placeholder="/Users/you/.config/cortana/discord-user-token.json"
+                                onChange={(event) =>
+                                  changeSource(index, { token_path: event.target.value || null })
+                                }
+                              />
+                              <button
+                                type="button"
+                                disabled={sourceLocked || !source.editable}
+                                aria-label="Choose Discord OAuth token destination"
+                                title="Choose Discord OAuth token destination"
+                                data-tooltip="Choose Discord OAuth token destination"
+                                className="quick-tooltip"
+                                onClick={() =>
+                                  void choosePath(index, 'discord-token', 'token_path')
+                                }
+                              >
+                                <FolderOpen size={14} />
+                              </button>
+                            </div>
+                          </Field>
+                          <Field
+                            label="Discord OAuth client JSON"
+                            hint="JSON containing the OAuth app client_id; required for browser authorization"
+                            wide
+                          >
+                            <div className="path-input">
+                              <input
+                                value={source.oauth_client_path || ''}
+                                disabled={sourceLocked || !source.editable}
+                                placeholder="/Users/you/.config/cortana/discord-oauth-client.json"
+                                onChange={(event) =>
+                                  changeSource(index, {
+                                    oauth_client_path: event.target.value || null,
+                                  })
+                                }
+                              />
+                              <button
+                                type="button"
+                                disabled={sourceLocked || !source.editable}
+                                aria-label="Choose Discord OAuth client JSON"
+                                title="Choose Discord OAuth client JSON"
+                                data-tooltip="Choose Discord OAuth client JSON"
+                                className="quick-tooltip"
+                                onClick={() =>
+                                  void choosePath(index, 'oauth-client', 'oauth_client_path')
+                                }
+                              >
+                                <FolderOpen size={14} />
+                              </button>
+                            </div>
+                          </Field>
+                        </>
+                      )}
                     </>
                   )}
                   {source.editable && (
@@ -4503,6 +4653,7 @@ function newSource(settings: DesktopSettings, project?: string): SourceSettings 
     source: null,
     channels: [],
     repositories: [],
+    servers: [],
     token_env: null,
     token_path: null,
     oauth_client_path: null,
