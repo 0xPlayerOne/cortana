@@ -66,15 +66,24 @@ case "$require_minisign" in
         ;;
 esac
 
-app_archive="Cortana_aarch64.app.tar.gz"
-app_signature="${app_archive}.sig"
+signed_archives=(
+    "Cortana_aarch64.app.tar.gz"
+    "Cortana_${tag#v}_amd64.AppImage"
+    "Cortana_${tag#v}_amd64.deb"
+    "Cortana-${tag#v}-1.x86_64.rpm"
+    "Cortana_${tag#v}_x64-setup.exe"
+    "Cortana_${tag#v}_x64_en-US.msi"
+)
 
 core_archives=(
     "cortana-${tag}-aarch64-apple-darwin.tar.gz"
     "cortana-${tag}-x86_64-unknown-linux-gnu.tar.gz"
 )
-for asset in "${core_archives[@]}" "$app_archive" "$app_signature"; do
+for asset in "${core_archives[@]}" "${signed_archives[@]}"; do
     gh release download "$tag" --repo "$repo" --pattern "$asset" --dir "$staging" --clobber >/dev/null
+done
+for archive in "${signed_archives[@]}"; do
+    gh release download "$tag" --repo "$repo" --pattern "${archive}.sig" --dir "$staging" --clobber >/dev/null
 done
 for archive in "${core_archives[@]}"; do
     gh release download "$tag" --repo "$repo" --pattern "${archive}.sha256" --dir "$staging" --clobber >/dev/null
@@ -85,7 +94,7 @@ for archive in "${core_archives[@]}"; do
 done
 echo "verified core archive checksums"
 
-python3 - "$staging" "${core_archives[@]}" "$app_archive" <<'PY'
+python3 - "$staging" "${core_archives[@]}" "${signed_archives[@]}" <<'PY'
 import os
 import sys
 import tarfile
@@ -93,7 +102,8 @@ from pathlib import PurePosixPath
 
 root = sys.argv[1]
 core_archives = sys.argv[2:4]
-app_archive = sys.argv[4]
+signed_archives = sys.argv[4:]
+app_archive = signed_archives[0]
 
 
 def path_matches(name, expected):
@@ -166,39 +176,48 @@ PY
 if command -v "$minisign_bin" >/dev/null 2>&1; then
     updater_config="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)/apps/desktop/src-tauri/tauri.conf.json"
     updater_public_key="$staging/tauri-updater.pub"
-    decoded_signature="$staging/${app_signature}.minisig"
-    python3 - "$updater_config" "$updater_public_key" "$staging/$app_signature" "$decoded_signature" <<'PY'
+    python3 - "$updater_config" "$updater_public_key" "$staging" "${signed_archives[@]}" <<'PY'
 import base64
 import json
 import sys
 from pathlib import Path
 
-config_path, public_key_path, signature_path, decoded_signature_path = map(Path, sys.argv[1:])
+config_path = Path(sys.argv[1])
+public_key_path = Path(sys.argv[2])
+staging_path = Path(sys.argv[3])
+signed_archives = sys.argv[4:]
 try:
     config = json.loads(config_path.read_text(encoding="utf-8"))
     encoded_public_key = config["plugins"]["updater"]["pubkey"]
     if not isinstance(encoded_public_key, str):
         raise TypeError("updater pubkey must be a string")
     public_key = base64.b64decode(encoded_public_key, validate=True)
-    encoded_signature = signature_path.read_bytes().strip()
-    signature = base64.b64decode(encoded_signature, validate=True)
 except (OSError, UnicodeError, KeyError, TypeError, ValueError) as error:
-    raise SystemExit(f"invalid Tauri updater key/signature encoding: {error}") from error
+    raise SystemExit(f"invalid Tauri updater key encoding: {error}") from error
 
 if not public_key.startswith(b"untrusted comment: minisign public key: "):
     raise SystemExit("Tauri updater pubkey is not a minisign public key")
-if not signature.startswith(b"untrusted comment: signature from tauri secret key\n"):
-    raise SystemExit("Tauri updater signature is not a minisign signature")
-
 public_key_path.write_bytes(public_key.rstrip(b"\n") + b"\n")
-decoded_signature_path.write_bytes(signature.rstrip(b"\n") + b"\n")
+for archive in signed_archives:
+    signature_path = staging_path / f"{archive}.sig"
+    decoded_signature_path = staging_path / f"{archive}.sig.minisig"
+    try:
+        encoded_signature = signature_path.read_bytes().strip()
+        signature = base64.b64decode(encoded_signature, validate=True)
+    except (OSError, UnicodeError, ValueError) as error:
+        raise SystemExit(f"invalid Tauri updater signature encoding for {archive}: {error}") from error
+    if not signature.startswith(b"untrusted comment: signature from tauri secret key\n"):
+        raise SystemExit(f"Tauri updater signature is not a minisign signature: {archive}")
+    decoded_signature_path.write_bytes(signature.rstrip(b"\n") + b"\n")
 PY
-    if ! "$minisign_bin" -Vm "$staging/$app_archive" \
-        -x "$decoded_signature" -p "$updater_public_key"; then
-        echo "Tauri updater signature verification failed: $app_archive" >&2
-        exit 1
-    fi
-    echo "verified Tauri updater signature: $app_archive"
+    for archive in "${signed_archives[@]}"; do
+        if ! "$minisign_bin" -Vm "$staging/$archive" \
+            -x "$staging/$archive.sig.minisig" -p "$updater_public_key"; then
+            echo "Tauri updater signature verification failed: $archive" >&2
+            exit 1
+        fi
+        echo "verified Tauri updater signature: $archive"
+    done
 elif [[ "$require_minisign" == "1" ]]; then
     echo "CORTANA_REQUIRE_MINISIGN=1 but minisign verifier is unavailable" >&2
     exit 1
