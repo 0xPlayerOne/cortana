@@ -104,8 +104,10 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
   gate). The local corpus reports 47,658 documents and 77,472 chunks.
   Query-only readiness and the explicit `--allow-sync-service` readiness check both pass;
   every enabled source has a current successful validation at its configured budget.
-  The installed `/Applications/Cortana.app` remains v0.27.3, so the code is
-  at v0.28.0 while the packaged GUI/release is still pending.
+  The installed `/Applications/Cortana.app` is now v0.29.1 from the verified
+  published release, matching the current checkout and packaged sidecar. The
+  remaining packaged GUI/browser OAuth, service/tray, updater, import/export,
+  backup, and restore drills are still manual production gates.
 - A 25-document/5 MiB/60-second smoke validation passed for all 12 enabled
   sources. Shared bearer token configuration is empty. Full configured validation also passed
   for `work-drive` at 477 documents / 4,512,156 bytes
