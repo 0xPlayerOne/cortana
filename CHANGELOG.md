@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.29.1](https://github.com/0xPlayerOne/cortana/compare/v0.29.0...v0.29.1) (2026-08-04)
+
+
+### Bug Fixes
+
+* **web:** correct workspace logo size boundary ([38fb437](https://github.com/0xPlayerOne/cortana/commit/38fb43718d3c8e4677fb75899a0c659755b1abd8))
+* **web:** finish desktop UX polish ([1118f3d](https://github.com/0xPlayerOne/cortana/commit/1118f3d7a64132085053ce02db1d4a58ff7b94c0))
+
 ## [0.29.0](https://github.com/0xPlayerOne/cortana/compare/v0.28.0...v0.29.0) (2026-08-04)
 
 
