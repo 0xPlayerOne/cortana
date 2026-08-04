@@ -66,6 +66,66 @@ fn google_authorization_fails_closed_before_opening_browser() {
 }
 
 #[test]
+fn discord_channel_discovery_requires_a_discord_connector() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [[sources]]\n\
+             name = \"work-slack\"\n\
+             kind = \"slack\"\n\
+             project = \"work\"\n\
+             token_env = \"SLACK_BOT_TOKEN\"\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["discord-channels", "work-slack"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not a Discord connector"))
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn discord_channel_discovery_fails_closed_before_network_without_token() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [[sources]]\n\
+             name = \"community\"\n\
+             kind = \"discord\"\n\
+             project = \"work\"\n\
+             token_env = \"CORTANA_TEST_DISCORD_BOT_TOKEN\"\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["discord-channels", "community"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "Discord bot token environment variable CORTANA_TEST_DISCORD_BOT_TOKEN is not configured",
+        ))
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
 fn guarded_sync_fails_before_opening_the_index_without_validation() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

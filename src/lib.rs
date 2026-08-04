@@ -4,6 +4,7 @@ pub mod auth;
 pub mod config;
 pub mod connectors;
 pub mod context;
+pub mod discord;
 pub mod embed;
 pub mod evaluation;
 pub mod github_oauth;

@@ -29,6 +29,7 @@ import type {
   DesktopSetupOpen,
   InitialSyncBudget,
   GithubRepositoryList,
+  DiscordChannelList,
 } from './types'
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
@@ -230,6 +231,11 @@ export async function openDesktopSourceSetup(source: string): Promise<DesktopSet
 export async function listDesktopGithubRepositories(source: string): Promise<GithubRepositoryList> {
   if (!isDesktopApp) throw new Error('GitHub repository discovery is available in Cortana Desktop')
   return invokeDesktop<GithubRepositoryList>('desktop_github_repositories', { source })
+}
+
+export async function listDesktopDiscordChannels(source: string): Promise<DiscordChannelList> {
+  if (!isDesktopApp) throw new Error('Discord channel discovery is available in Cortana Desktop')
+  return invokeDesktop<DiscordChannelList>('desktop_discord_channels', { source })
 }
 
 export async function pickDesktopPath(
