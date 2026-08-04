@@ -707,7 +707,6 @@
   box-shadow: inset 2px 0 var(--amber);
 }
 
-.document-tree-empty,
 .document-list-state,
 .document-list-error {
   display: block;
