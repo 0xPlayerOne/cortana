@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.29.4](https://github.com/0xPlayerOne/cortana/compare/v0.29.3...v0.29.4) (2026-08-04)
+
+
+### Bug Fixes
+
+* **readiness:** bound storage and sidecar probes ([ae11d0a](https://github.com/0xPlayerOne/cortana/commit/ae11d0a16c0231ecee3bef35fe0e01f865ecbe43))
+
+
+### Documentation
+
+* refresh v0.29.3 readiness evidence ([0276576](https://github.com/0xPlayerOne/cortana/commit/0276576433965598f6b67e1425d2477f41859456))
+
 ## [0.29.3](https://github.com/0xPlayerOne/cortana/compare/v0.29.2...v0.29.3) (2026-08-04)
 
 
