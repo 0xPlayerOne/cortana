@@ -2,7 +2,7 @@
 
 Cortana is designed to run as a private per-user service. The default server binds only
 `127.0.0.1:7331`; use a TLS-terminating reverse proxy for network access. A non-loopback bind is
-refused unless both `--allow-remote` and `--api-token-env NAME` are provided. The workspace stores
+refused unless `--allow-remote` is paired with configured `[[auth.tokens]]` principals. The workspace stores
 that bearer token only in browser session storage.
 
 ## Health and telemetry
@@ -407,7 +407,7 @@ For shared agents, configure one bearer principal per environment variable under
 `query`, `status`, and `admin` scopes are enforced independently. New source records inherit their
 workspace ACL when no explicit source ACL is configured; existing empty-ACL rows are treated as
 legacy public data until migrated. Restricted documents require a matching principal label; `*` is
-reserved for the implicit local owner and legacy single-token mode. Answer-cache keys include the sorted ACL labels, preventing
+reserved for the implicit local owner. Answer-cache keys include the sorted ACL labels, preventing
 reuse across authorization boundaries. `GET /v1/audit` requires `admin` and returns at most 500
 metadata-only events. Audit records contain principal, action, project/source scope, outcome,
 result count, latency, and timestamp—never query text, evidence, bearer tokens, or token hashes.
