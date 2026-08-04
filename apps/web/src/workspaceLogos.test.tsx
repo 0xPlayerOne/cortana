@@ -20,17 +20,18 @@ afterEach(() => {
 
 const pngDataUrl = 'data:image/png;base64,iVBORw0KGgo='
 
-test('workspace logo data URLs accept the base64-expanded size bound', () => {
+test('workspace logo data URLs accept the exact encoded size boundary', () => {
   expect(isWorkspaceLogoDataUrl(pngDataUrl)).toBe(true)
-  // A 200 KB file encodes to ~266 KB of base64 plus the prefix. The gate must
-  // accept the full expanded size; the old byte-sized string gate rejected
-  // every logo larger than ~146 KB with a misleading validation error.
-  const fullSizePayload = 'A'.repeat(Math.ceil((200_000 * 4) / 3))
-  expect(isWorkspaceLogoDataUrl(`data:image/png;base64,${fullSizePayload}`)).toBe(true)
-  // Anything beyond the expanded bound (which leaves slack for the prefix) is
-  // rejected.
-  const oversizedPayload = 'A'.repeat(Math.ceil((200_000 * 4) / 3) + 64)
-  expect(isWorkspaceLogoDataUrl(`data:image/png;base64,${oversizedPayload}`)).toBe(false)
+  // Base64 encodes every 3 bytes as 4 characters, so a full 200 KB file
+  // produces a payload of exactly 4 * ceil(200000 / 3) characters. The gate
+  // must accept that exact encoded boundary (plus the data-URL prefix slack);
+  // the old byte-sized string gate rejected every logo larger than ~146 KB
+  // with a misleading validation error.
+  const exactBoundaryPayload = 'A'.repeat(4 * Math.ceil(200_000 / 3))
+  expect(isWorkspaceLogoDataUrl(`data:image/png;base64,${exactBoundaryPayload}`)).toBe(true)
+  // One character over the computed data-URL limit is rejected.
+  const oneCharOverPayload = 'A'.repeat(4 * Math.ceil(200_000 / 3) + 64 + 1)
+  expect(isWorkspaceLogoDataUrl(`data:image/png;base64,${oneCharOverPayload}`)).toBe(false)
 })
 
 test('workspace logo data URLs reject non-raster or malformed payloads', () => {
@@ -39,13 +40,14 @@ test('workspace logo data URLs reject non-raster or malformed payloads', () => {
   expect(isWorkspaceLogoDataUrl('not-a-data-url')).toBe(false)
 })
 
-test('workspace logo files reject unsupported types and oversized files', async () => {
+test('workspace logo files reject unsupported types and files over the byte contract', async () => {
   const svg = new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' })
   await expect(readWorkspaceLogoFile(svg)).rejects.toThrow(
     'Choose a PNG, JPEG, WebP, or GIF image.'
   )
-  const oversized = new File([new Uint8Array(200_001)], 'big.png', { type: 'image/png' })
-  await expect(readWorkspaceLogoFile(oversized)).rejects.toThrow(
+  // One byte over the 200 KB contract is rejected at the file gate.
+  const oneByteOver = new File([new Uint8Array(200_001)], 'big.png', { type: 'image/png' })
+  await expect(readWorkspaceLogoFile(oneByteOver)).rejects.toThrow(
     'Workspace logos must be 200 KB or smaller.'
   )
 })
