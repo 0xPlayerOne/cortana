@@ -56,8 +56,10 @@ cortana --config /path/to/config.toml eval --model
 ```
 
 `--model` always runs against synthetic fixtures only, does not open or modify a personal index,
-and does not trigger syncs or connector activity. The model-backed run extends `answer` report fields
-with provider-backed-specific metrics:
+and does not trigger syncs or connector activity. Route discovery can succeed even when the
+provider-backed request later times out; a timeout is not model-backed proof, and the extractive
+fallback remains the safe production mode. The model-backed run extends `answer` report fields
+with provider-backed metrics:
 
 - `attempted` / `passed`
 - `planner_model_used` / `synthesis_model_used`
@@ -66,6 +68,10 @@ with provider-backed-specific metrics:
 - `latency_ms`, `deadline_ms`
 
 The command exits nonzero when model quality thresholds fail.
+
+The current configured-provider attempt discovered the route successfully but timed out before
+returning a model result. Treat that outcome as pending model-backed proof rather than as a
+successful planner or synthesis evaluation.
 
 ```toml
 [query]
@@ -85,9 +91,11 @@ cortana readiness \
 ```
 
 It checks the live API liveness endpoint, embedding probe, embedding/index generation compatibility,
-SQLite integrity, backup freshness, query mode, and recurring-sync installation state. A mismatch
-is reported with the index and configured fingerprints instead of silently rebuilding or mixing
-vectors. The JSON also exposes `embedding_generation.stored` and
+SQLite integrity, backup freshness, query mode, and recurring-sync installation state. This is a
+comprehensive read-only check, not the quick `/healthz` process-liveness probe: an observed run
+scanned roughly 1 GB of database and backup data, taking about 130 seconds for database integrity
+and about 80 seconds for the backup scan. A mismatch is reported with the index and configured
+fingerprints instead of silently rebuilding or mixing vectors. The JSON also exposes `embedding_generation.stored` and
 `embedding_generation.configured` so Desktop can offer the same explicit, confirmation-gated
 adoption path. It never invokes a connector, starts a sync, or writes indexed content. The safe
 default fails when a recurring sync service is installed.

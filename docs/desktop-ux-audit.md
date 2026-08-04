@@ -38,12 +38,11 @@ is not part of a visual/UI change.
 ## Production blockers before calling the Desktop complete
 
 1. Complete packaged GUI/browser OAuth, service/tray, updater, import/export, backup and
-   restore drills on a supported signed Desktop build. The local readiness gate now passes
-   every enabled source at its configured budget, but recurring sync remains deliberately
-   uninstalled and unstarted.
+   restore drills on a supported signed Desktop build. These packaged-app manual drills remain
+   unverified because no computer-use tool was available for the required GUI checks.
 2. Prove the persistent configured query provider with a model-backed evaluation. The
-   deterministic and fixture-only model gates pass, while the current loopback chat route has
-   timed out, so extractive mode remains the safe production default.
+   fixture-only attempt discovered the configured provider route but timed out before a
+   model-backed result, so extractive mode remains the safe production default.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -64,68 +63,18 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
 
 ## Evidence limits
 
-- The current checkout passes `cargo test --all-targets --locked` (338 tests;
-  the exact per-target split is emitted by Cargo and includes the Buzz discovery
-  CLI/configuration coverage). The Desktop crate passes its native IPC suite
-  (123 tests listed, 110 non-ignored tests executed). The web suite passes 250 tests, `tsc -b`,
-  ESLint, and Prettier.
-  Regression coverage added for this pass: failed background restarts name
-  the failure and offer `Retry restart`/`Open services`; source-toggle saves
-  restart in the background and report named failures; the Graph view hides
-  the source/context panels for a full-width layout and restores them on
-  Knowledge; Apple Notes/Drive brand icon fidelity is asserted in
-  `SourcePanel.test.tsx`; the Knowledge document explorer heading asserts the
-  `Workspace / Source` breadcrumb (and `Workspace / All sources` without a
-  selected source), document rows assert the indented `document-node`
-  hierarchy class, and the panel asserts no workflow/folder labels in display
-  data; `SourcePanel.test.tsx` also asserts the only enable switches in
-  Knowledge live inside the Sources panel, and `App.desktop.test.tsx` asserts
-  the Services settings section exposes process health (Start/Stop/Restart
-  all, per-service actions, autostart) with no per-source enable/disable
-  control; Discord browser OAuth server authorization is
-  covered by `DiscordServers.test.tsx` (per-workspace `servers` persistence,
-  truncated-discovery warnings, unassigned-guild markers, and the
-  Discord-named authorize action) plus Rust unit tests in `discord_oauth.rs`,
-  `oauth_common.rs`, `source_status.rs`, and the Desktop sidecar payload
-  validators; Slack workspace discovery is covered by `SlackWorkspaces.test.tsx`
-  (per-workspace `teams`/`team_names` persistence, truncated-discovery warnings,
-  and the Slack-named authorize action) plus Rust unit tests in
-  `slack_oauth.rs`, `source_status.rs`, the Desktop sidecar payload validator,
-  and CLI tests proving discovery fails closed before network access. Buzz
-  community discovery is covered by `BuzzCommunities.test.tsx` (per-workspace
-  `communities`/`community_names` persistence, workspace-tab scoping,
-  truncated-discovery warnings) plus Rust unit tests in `buzz_communities.rs`,
-  `config.rs`, the Desktop settings validator and sidecar payload validator,
-  and CLI tests proving the identity file fails closed when missing, malformed,
-  duplicated, or symlinked.
-  OAuth readiness tests also prove Slack/Discord bot-token environment values are never reused as
-  browser-user token destinations and that overflowing provider expiry values fail closed.
-- `cargo build --release --locked` succeeds and the built binary reports
-  `cortana 0.29.2`, matching the workspace version. The full Python suite
-  passes (145 tests), including Drive batch/stream/cache-memory regressions and Google retry/concurrency coverage, and the release-verification regression coverage
-  passes (10 tests in `tests/test_release_verification.py`, including the
-  cryptographic Tauri updater signature path and explicit verifier-unavailable gate, alongside the
-  installed-vs-checkout version-skew gate and the published-asset desktop
-  gate). The local corpus reports 47,658 documents and 77,472 chunks (last observed
-  on the verified 0.29.2 index).
-  Query-only readiness and the explicit `--allow-sync-service` readiness check both pass;
-  every enabled source has a current successful validation at its configured budget.
-  The installed `/Applications/Cortana.app` is now v0.29.2 from the verified
-  published release, matching the current checkout and packaged sidecar. The
-  remaining packaged GUI/browser OAuth, service/tray, updater, import/export,
-  backup, and restore drills are still manual production gates.
-- A 25-document/5 MiB/60-second smoke validation passed for all 12 enabled
-  sources. Shared bearer token configuration is empty. Full configured validation also passed
-  for `work-drive` at 477 documents / 4,512,156 bytes
-  with 2,000-document / 128 MiB / 900-second limits and for `work-gmail` at 7,372 documents /
-  34,368,094 bytes with 10,000-document / 64 MiB / 600-second limits. Both reported
-  `writes.documents=0`, `writes.embeddings=0`, and `writes.reconciliations=0`. Drive validation
-  stayed near 105 MB RSS after serializing content parsing; the earlier concurrent large-corpus
-  probes were stopped before completion when memory rose unsafely.
-- Deterministic evaluation passes. A model-backed evaluation was also attempted
-  against the persistent configured query provider (fixture-only: no personal
-  index opened, no syncs or connectors). Retrieval and citation cases passed, but
-  the provider was unavailable, so planner/synthesis were not used and the run
-  failed closed with `fallback_provider_unavailable: true`; extractive mode
-  remains the safe production default. Production model-backed proof and the
-  packaged GUI/release drills remain pending.
+- Published release verification for v0.29.3 completed with 18 release assets verified; the
+  installed CLI reports `cortana 0.29.3`.
+- Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
+  SQLite integrity and backup scanning. In the observed run, the database integrity scan took
+  about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
+  unauthenticated process-liveness check and must not be treated as full readiness evidence.
+- A fixture-only model-backed evaluation was attempted against the configured provider without
+  opening a personal index or starting sync/connectors. Route discovery succeeded, but the
+  provider-backed run timed out before producing a model result; extractive mode remains the
+  safe production default.
+- Packaged-app GUI/browser OAuth, service/tray, updater, import/export, backup, and restore drills
+  remain unverified because no computer-use tool was available.
+- Hindsight and Honcho remain disabled-by-default optional adapters; Cortana's canonical store
+  remains the source of truth until provider ACL, deletion, export, and packaged-UI gates are
+  explicitly proven.

@@ -13,6 +13,12 @@ that bearer token only in browser session storage.
 - `POST /v1/answer` runs the bounded human-facing query pipeline.
 - `GET /metrics` exports low-cardinality Prometheus metrics.
 
+`/healthz` only answers whether the process is alive; it does not perform the database or backup
+integrity work used by the CLI's full readiness check. A recent read-only readiness run scanned
+roughly 1 GB and took about 130 seconds for database integrity plus about 80 seconds for the backup
+scan, so use `/healthz` for a quick liveness probe and `cortana readiness` when comprehensive
+evidence is required.
+
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
 `RUST_LOG=cortana=debug,tower_http=info`, to change verbosity. Request headers and evidence content
 are never logged.
@@ -177,6 +183,9 @@ updater public key in `apps/desktop/src-tauri/tauri.conf.json`. The published-re
 installs Ubuntu's `minisign` package and sets `CORTANA_REQUIRE_MINISIGN=1`, so that gate fails closed
 if the verifier is unavailable. Local invocations keep the portable default and skip the
 cryptographic check on hosts without `minisign`.
+
+The published v0.29.3 release was verified with 18 release assets, and the installed CLI reports
+`cortana 0.29.3`.
 
 Re-run the read-only verifier for an existing release with:
 
