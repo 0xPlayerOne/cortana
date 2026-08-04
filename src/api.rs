@@ -816,7 +816,10 @@ fn fallback_workspaces(
     source_projects: impl IntoIterator<Item = String>,
 ) -> Vec<WorkspaceConfig> {
     if !configured.is_empty() {
-        return configured.iter().take(3).cloned().collect();
+        // Explicit configuration is authoritative. Never silently hide a
+        // workspace (and its source assignment) from the operator UI; only
+        // synthesized fallback workspaces are bounded below.
+        return configured.to_vec();
     }
     let mut project_ids: BTreeSet<String> = source_projects
         .into_iter()
@@ -1631,7 +1634,7 @@ mod tests {
                 color: None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(fallback_workspaces(&oversized, std::iter::empty()).len(), 3);
+        assert_eq!(fallback_workspaces(&oversized, std::iter::empty()).len(), 4);
     }
 
     #[tokio::test]
