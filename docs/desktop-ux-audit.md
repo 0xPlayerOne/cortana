@@ -37,25 +37,31 @@ is not part of a visual/UI change.
 
 ## Production blockers before calling the Desktop complete
 
-1. Resolve recurring-sync readiness for work-drive, work-gmail, work-calendar, personal-calendar, community-discord, and buzz while their validations are currently bounded only by smoke limits.
-2. Provider-advertised model metadata is implemented and bounded by
+1. Complete packaged GUI/browser OAuth, service/tray, updater, import/export, backup and
+   restore drills on a supported signed Desktop build. The local readiness gate now passes
+   every enabled source at its configured budget, but recurring sync remains deliberately
+   uninstalled and unstarted.
+2. Prove the persistent configured query provider with a model-backed evaluation. The
+   deterministic and fixture-only model gates pass, while the current loopback chat route has
+   timed out, so extractive mode remains the safe production default.
+3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
-3. Discord browser OAuth/server authorization and per-workspace server/channel
+4. Discord browser OAuth/server authorization and per-workspace server/channel
    persistence landed in this pass (bot-token discovery remains the fallback
    for channel listing and sync). Slack workspace discovery and per-workspace
    team assignment landed alongside it (the `SLACK_BOT_TOKEN` path for channel
    selection and message sync is preserved and never interpreted as a path).
    Buzz community assignment landed in the following pass: `cortana
-buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
+   buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
    file with bounded, fail-closed validation, and the Desktop chooser persists
    per-workspace `communities`/`community_names`.
-4. Perform packaged GUI/browser OAuth, service/tray, updater, import/export, backup and
-   restore drills on a supported signed Desktop build; complete recurring-sync launch controls with the bounded read-only validation state exposed.
+5. Decide whether Hindsight/Honcho should remain optional adapters or receive a production
+   memory-provider rollout after the core retrieval and audit path is proven.
 
 ## Evidence limits
 
-- The current checkout passes `cargo test --all-targets --locked` (333 tests;
+- The current checkout passes `cargo test --all-targets --locked` (338 tests;
   the exact per-target split is emitted by Cargo and includes the Buzz discovery
   CLI/configuration coverage). The Desktop crate passes its native IPC suite
   (110 tests). The web suite passes 242 tests, `tsc -b`, ESLint, and Prettier.
@@ -88,24 +94,26 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
   `config.rs`, the Desktop settings validator and sidecar payload validator,
   and CLI tests proving the identity file fails closed when missing, malformed,
   duplicated, or symlinked.
+  OAuth readiness tests also prove Slack/Discord bot-token environment values are never reused as
+  browser-user token destinations and that overflowing provider expiry values fail closed.
 - `cargo build --release --locked` succeeds and the built binary reports
   `cortana 0.28.0`, matching the workspace version. The full Python suite
   passes (145 tests), including Drive batch/stream/cache-memory regressions and Google retry/concurrency coverage, and the release-verification regression coverage
   passes (6 tests in `tests/test_release_verification.py`: the
   installed-vs-checkout version-skew gate and the published-asset desktop
   gate). The local corpus reports 47,658 documents and 77,472 chunks.
-  Query-only readiness passes. Recurring-sync readiness remains gated
-  because work-drive, work-gmail, work-calendar, personal-calendar,
-  community-discord, and buzz have only smaller bounded validations.
+  Query-only readiness and the explicit `--allow-sync-service` readiness check both pass;
+  every enabled source has a current successful validation at its configured budget.
   The installed `/Applications/Cortana.app` remains v0.27.3, so the code is
   at v0.28.0 while the packaged GUI/release is still pending.
 - A 25-document/5 MiB/60-second smoke validation passed for all 12 enabled
-  sources. Shared bearer token configuration is empty. Full-budget
-  recurring-sync validation remains pending for the listed bounded sources. After the Drive
-  memory-safety fix, a real configured `work-drive` validation also passed at 25 documents / 5 MiB /
-  120 seconds with `writes.documents=0`, `writes.embeddings=0`, and `writes.reconciliations=0`;
-  the follow-up 200-document / 64 MiB / 300-second validation passed at 1,545,858 bytes with the
-  same zero-write guarantees.
+  sources. Shared bearer token configuration is empty. Full configured validation also passed
+  for `work-drive` at 477 documents / 4,512,156 bytes
+  with 2,000-document / 128 MiB / 900-second limits and for `work-gmail` at 7,372 documents /
+  34,368,094 bytes with 10,000-document / 64 MiB / 600-second limits. Both reported
+  `writes.documents=0`, `writes.embeddings=0`, and `writes.reconciliations=0`. Drive validation
+  stayed near 105 MB RSS after serializing content parsing; the earlier concurrent large-corpus
+  probes were stopped before completion when memory rose unsafely.
 - Deterministic evaluation passes. Model-backed synthetic eval passes with a
   temporary auto-free query configuration against the loopback gateway
   (`base_url = "http://127.0.0.1:8008/v1"`, `model = "auto-free"`, fixture-only:
