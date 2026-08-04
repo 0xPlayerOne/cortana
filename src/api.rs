@@ -1274,7 +1274,7 @@ mod tests {
     use crate::embed::{DeterministicEmbedder, Embedder};
     use crate::model::Document;
     use crate::source_status::{
-        MAX_GOOGLE_TOKEN_BYTES, SourceAuthorizationMethod, source_authorization_summary,
+        MAX_TOKEN_FILE_BYTES, SourceAuthorizationMethod, source_authorization_summary,
         validation_error_category,
     };
     use crate::source_validation::{self, SourceValidationStatus};
@@ -1501,7 +1501,7 @@ mod tests {
     fn google_token_file_rejects_oversized_payload() {
         let directory = tempdir().expect("temporary directory");
         let token = directory.path().join("google-token.json");
-        std::fs::write(&token, vec![b'{'; MAX_GOOGLE_TOKEN_BYTES + 1]).expect("oversized fixture");
+        std::fs::write(&token, vec![b'{'; MAX_TOKEN_FILE_BYTES + 1]).expect("oversized fixture");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
