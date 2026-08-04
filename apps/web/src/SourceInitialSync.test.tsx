@@ -313,11 +313,13 @@ test('service action result is not overwritten by stale local refresh', async ()
       poll?.()
     })
     fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
-    state.serviceActionResponse.resolve(fresh)
+    await act(async () => {
+      state.serviceActionResponse?.resolve(fresh)
+    })
 
     await waitFor(() => expect(screen.getByText(/PID 12345/)).toBeTruthy())
 
-    act(() => {
+    await act(async () => {
       staleRefresh.resolve(stale)
     })
 
