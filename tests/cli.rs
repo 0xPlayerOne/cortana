@@ -530,6 +530,52 @@ fn offline_ingest_and_search_round_trip() {
 }
 
 #[test]
+fn offline_init_generates_a_deterministic_import_compatible_config() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["init", "--data-dir"])
+        .arg(&data)
+        .assert()
+        .success();
+
+    let generated = fs::read_to_string(&config).expect("generated config");
+    assert!(generated.contains("dimension = 256"));
+
+    let record = serde_json::json!({
+        "type": "document",
+        "embedding_fingerprint": "deterministic:256",
+        "document": {
+            "source": "offline-init",
+            "source_id": "doc-1",
+            "title": "Offline init",
+            "content": "Generated configs accept deterministic imports.",
+            "project": "test"
+        },
+        "chunks": [{
+            "content": "Generated configs accept deterministic imports.",
+            "embedding": vec![0.0_f32; 256]
+        }]
+    });
+    let stream = format!("{record}\n{{\"type\":\"complete\",\"records\":1}}\n");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["import-embeddings", "-"])
+        .write_stdin(stream)
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("changed=1"));
+}
+
+#[test]
 fn embedding_generation_migration_requires_confirmation_and_preserves_documents() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");
