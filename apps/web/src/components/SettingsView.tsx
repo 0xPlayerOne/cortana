@@ -34,6 +34,7 @@ import {
   getDesktopInfo,
   listDesktopDiscordChannels,
   listDesktopGithubRepositories,
+  listDesktopProviderModels,
   getDesktopHindsightStatus,
   getDesktopHonchoStatus,
   getDesktopSchedule,
@@ -66,7 +67,7 @@ import {
   runDesktopServicesActionAll,
 } from '../api'
 import { buildSetupSteps } from '../setup'
-import { INITIAL_SYNC_BUDGETS } from '../types'
+import { INITIAL_SYNC_BUDGETS, type ProviderModelKind, type ProviderModelEntry } from '../types'
 import { isLoopbackUrl } from '../operations'
 import type {
   DesktopInitialSyncPlan,
@@ -286,11 +287,94 @@ export function SettingsView({
   const installerJob = externalInstallerJob === undefined ? localInstallerJob : externalInstallerJob
   const setInstallerJob = onInstallerJob ?? setLocalInstallerJob
   const componentMounted = useRef(true)
+  const settingsRef = useRef(settings)
+
+  const [providerModels, setProviderModels] = useState<ProviderModelsState[]>([])
+  const [modelsLoading, setModelsLoading] = useState<ProviderModelKind | null>(null)
+  const [modelsError, setModelsError] = useState<Record<ProviderModelKind, string>>({
+    embedding: '',
+    query: '',
+  })
 
   const applyLoadedSettings = (next: DesktopSettings) => {
     setSettings(next)
     onLoaded?.(next)
   }
+
+  /**
+   * Fetch the models advertised by the configured provider through the
+   * bundled CLI. The catalog is applied only when the provider endpoint,
+   * mode, and API key variable are unchanged since the fetch started, so a
+   * stale list can never be attached to a different provider.
+   */
+  const refreshProviderModels = async (kind: ProviderModelKind) => {
+    const current = settingsRef.current
+    if (!current) return
+    const provider = kind === 'embedding' ? current.embedding : current.query
+    const captured = {
+      provider: normalizeProviderUrl(provider.base_url),
+      mode: provider.provider,
+      key_env: provider.api_key_env,
+    }
+    setModelsLoading(kind)
+    setModelsError({ embedding: '', query: '' })
+    try {
+      const list = await listDesktopProviderModels(kind)
+      if (!componentMounted.current) return
+      const live = settingsRef.current
+      if (!live) return
+      const liveProvider = kind === 'embedding' ? live.embedding : live.query
+      if (
+        normalizeProviderUrl(liveProvider.base_url) !== captured.provider ||
+        liveProvider.provider !== captured.mode ||
+        liveProvider.api_key_env !== captured.key_env
+      ) {
+        setModelsError((current) => ({
+          ...current,
+          [kind]: 'Provider endpoint changed while refreshing; run refresh again.',
+        }))
+        return
+      }
+      setProviderModels((existing) => [
+        ...existing.filter((entry) => entry.kind !== kind),
+        {
+          kind,
+          provider: list.provider,
+          mode: captured.mode,
+          key_env: captured.key_env,
+          models: list.models,
+          truncated: list.truncated,
+        },
+      ])
+    } catch (caught) {
+      if (!componentMounted.current) return
+      setModelsError((current) => ({
+        ...current,
+        [kind]: caught instanceof Error ? caught.message : 'Unable to refresh provider models',
+      }))
+    } finally {
+      if (componentMounted.current) setModelsLoading(null)
+    }
+  }
+
+  /** Advertised catalog for a kind, or null when unavailable or stale. */
+  const advertisedModelsFor = (kind: ProviderModelKind) => {
+    const entry = providerModels.find((candidate) => candidate.kind === kind)
+    if (!entry || entry.models.length === 0 || !settings) return null
+    const provider = kind === 'embedding' ? settings.embedding : settings.query
+    if (
+      normalizeProviderUrl(provider.base_url) !== entry.provider ||
+      provider.provider !== entry.mode ||
+      provider.api_key_env !== entry.key_env
+    ) {
+      return null
+    }
+    return entry
+  }
+
+  useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
 
   useEffect(() => {
     componentMounted.current = true
@@ -683,6 +767,16 @@ export function SettingsView({
                 setSaved(false)
               }}
               update={update}
+              advertisedModels={
+                advertisedModelsFor('embedding')?.models.map((model) => ({
+                  value: model.id,
+                  label: model.id,
+                })) ?? null
+              }
+              modelsLoading={modelsLoading === 'embedding'}
+              modelsError={modelsError.embedding}
+              modelsTruncated={advertisedModelsFor('embedding')?.truncated ?? false}
+              onRefreshModels={() => void refreshProviderModels('embedding')}
             />
           )}
           {section === 'query' && (
@@ -703,6 +797,16 @@ export function SettingsView({
                 setSaved(false)
               }}
               update={update}
+              advertisedModels={
+                advertisedModelsFor('query')?.models.map((model) => ({
+                  value: model.id,
+                  label: model.id,
+                })) ?? null
+              }
+              modelsLoading={modelsLoading === 'query'}
+              modelsError={modelsError.query}
+              modelsTruncated={advertisedModelsFor('query')?.truncated ?? false}
+              onRefreshModels={() => void refreshProviderModels('query')}
             />
           )}
           {section === 'hindsight' && (
@@ -4658,6 +4762,21 @@ type ModelChoice = {
   label: string
 }
 
+/** Provider-advertised catalog captured for one provider kind. */
+type ProviderModelsState = {
+  kind: ProviderModelKind
+  /** Normalized base URL the catalog was fetched from. */
+  provider: string
+  mode: 'local' | 'cloud'
+  key_env: string | null
+  models: ProviderModelEntry[]
+  truncated: boolean
+}
+
+function normalizeProviderUrl(value: string): string {
+  return value.trim().replace(/\/+$/, '')
+}
+
 function EmbeddingSection({
   settings,
   secretValues,
@@ -4665,6 +4784,11 @@ function EmbeddingSection({
   clearedSecrets,
   onClearSecret,
   update,
+  advertisedModels,
+  modelsLoading,
+  modelsError,
+  modelsTruncated,
+  onRefreshModels,
 }: {
   settings: DesktopSettings
   secretValues: Record<string, string>
@@ -4672,6 +4796,11 @@ function EmbeddingSection({
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
   update: (change: (draft: DesktopSettings) => DesktopSettings) => void
+  advertisedModels: readonly ModelChoice[] | null
+  modelsLoading: boolean
+  modelsError: string
+  modelsTruncated: boolean
+  onRefreshModels: () => void
 }) {
   const setEmbedding = (embedding: DesktopSettings['embedding']) =>
     update((current) => ({ ...current, embedding }))
@@ -4686,6 +4815,11 @@ function EmbeddingSection({
       clearedSecrets={clearedSecrets}
       onClearSecret={onClearSecret}
       update={setEmbedding}
+      advertisedModels={advertisedModels}
+      modelsLoading={modelsLoading}
+      modelsError={modelsError}
+      modelsTruncated={modelsTruncated}
+      onRefreshModels={onRefreshModels}
       modelCatalog={
         settings.embedding.provider === 'local'
           ? [
@@ -4773,6 +4907,11 @@ function ProviderSection<T extends ProviderValue>({
   clearedSecrets,
   onClearSecret,
   modelCatalog,
+  advertisedModels,
+  modelsLoading,
+  modelsError,
+  modelsTruncated,
+  onRefreshModels,
   update,
   children,
 }: {
@@ -4785,20 +4924,36 @@ function ProviderSection<T extends ProviderValue>({
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
   modelCatalog: readonly ModelChoice[]
+  /** Provider-advertised models; null when unavailable or stale. */
+  advertisedModels: readonly ModelChoice[] | null
+  modelsLoading: boolean
+  modelsError: string
+  modelsTruncated: boolean
+  onRefreshModels: () => void
   update: (provider: T) => void
   children?: ReactNode
 }) {
   const secret = provider.api_key_env
     ? secrets.find((item) => item.name === provider.api_key_env)
     : undefined
-  const catalogValues = modelCatalog.map((candidate) => candidate.value)
-  const [modelMode, setModelMode] = useState<'catalog' | 'custom'>(() =>
-    catalogValues.includes(provider.model) ? 'catalog' : 'custom'
-  )
+  // Provider-advertised models take precedence only while available; the
+  // static catalog (local Qwen defaults, cloud presets) remains the safe
+  // fallback whenever discovery is unavailable or the endpoint changed.
+  const activeCatalog =
+    advertisedModels && advertisedModels.length > 0 ? advertisedModels : modelCatalog
+  const catalogValues = activeCatalog.map((candidate) => candidate.value)
+  // The select mode is derived from the active catalog so a provider refresh
+  // can never leave a stale select visible: when the current model is not in
+  // the active catalog the custom input is shown with the value preserved.
+  // The explicit override remembers only a user's own catalog/custom choice
+  // and is cleared whenever the available catalog changes.
+  const [explicitModelMode, setExplicitModelMode] = useState<'catalog' | 'custom' | null>(null)
+  const modelMode: 'catalog' | 'custom' =
+    explicitModelMode ?? (catalogValues.includes(provider.model) ? 'catalog' : 'custom')
 
   useEffect(() => {
-    setModelMode(catalogValues.includes(provider.model) ? 'catalog' : 'custom')
-  }, [catalogValues.join('\u0000'), provider.model])
+    setExplicitModelMode(null)
+  }, [catalogValues.join('\u0000')])
 
   const modelInput = (
     <Field label="Model">
@@ -4820,14 +4975,20 @@ function ProviderSection<T extends ProviderValue>({
         onChange={(event) => {
           const selected = event.target.value
           if (selected === 'custom') {
-            setModelMode('custom')
+            setExplicitModelMode('custom')
             return
           }
-          setModelMode('catalog')
-          update({ ...provider, model: selected })
+          if (catalogValues.includes(selected)) {
+            setExplicitModelMode('catalog')
+            update({ ...provider, model: selected })
+          } else {
+            // Unmatched selections (programmatic or label-based) open the
+            // custom field with the current model preserved.
+            setExplicitModelMode('custom')
+          }
         }}
       >
-        {modelCatalog.map((candidate) => (
+        {activeCatalog.map((candidate) => (
           <option key={candidate.value} value={candidate.value}>
             {candidate.label}
           </option>
@@ -4835,6 +4996,32 @@ function ProviderSection<T extends ProviderValue>({
         <option value="custom">Custom</option>
       </select>
     </Field>
+  )
+
+  const modelControls = (
+    <div className="model-field">
+      {modelMode === 'custom' ? modelInput : modelSelect}
+      <div className="model-refresh">
+        <button
+          type="button"
+          className="secondary-button"
+          aria-label={`Refresh ${title} models from provider`}
+          disabled={modelsLoading}
+          onClick={onRefreshModels}
+        >
+          {modelsLoading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}{' '}
+          Refresh models
+        </button>
+      </div>
+      {modelsError && <p className="settings-inline-error">{modelsError}</p>}
+      {advertisedModels && advertisedModels.length > 0 && (
+        <small className="model-note">
+          {advertisedModels.length} model{advertisedModels.length === 1 ? '' : 's'} advertised by
+          the provider{modelsTruncated ? ' (first 512 shown)' : ''}. A current model that is not
+          advertised stays selected in the custom field.
+        </small>
+      )}
+    </div>
   )
 
   return (
@@ -4861,7 +5048,7 @@ function ProviderSection<T extends ProviderValue>({
             <option value="cloud">Cloud</option>
           </select>
         </Field>
-        {modelMode === 'custom' ? modelInput : modelSelect}
+        {modelControls}
         <Field label="OpenAI-compatible endpoint" wide>
           <input
             type="url"
@@ -4918,6 +5105,11 @@ function QuerySection({
   clearedSecrets,
   onClearSecret,
   update,
+  advertisedModels,
+  modelsLoading,
+  modelsError,
+  modelsTruncated,
+  onRefreshModels,
 }: {
   settings: DesktopSettings
   secrets: DesktopSettings['secrets']
@@ -4926,6 +5118,11 @@ function QuerySection({
   clearedSecrets: Set<string>
   onClearSecret: (name: string) => void
   update: (change: (draft: DesktopSettings) => DesktopSettings) => void
+  advertisedModels: readonly ModelChoice[] | null
+  modelsLoading: boolean
+  modelsError: string
+  modelsTruncated: boolean
+  onRefreshModels: () => void
 }) {
   const setQuery = (query: DesktopSettings['query']) => update((current) => ({ ...current, query }))
   return (
@@ -4939,6 +5136,11 @@ function QuerySection({
       clearedSecrets={clearedSecrets}
       onClearSecret={onClearSecret}
       update={setQuery}
+      advertisedModels={advertisedModels}
+      modelsLoading={modelsLoading}
+      modelsError={modelsError}
+      modelsTruncated={modelsTruncated}
+      onRefreshModels={onRefreshModels}
       modelCatalog={
         settings.query.provider === 'local'
           ? [

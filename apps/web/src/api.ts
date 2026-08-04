@@ -30,6 +30,8 @@ import type {
   InitialSyncBudget,
   GithubRepositoryList,
   DiscordChannelList,
+  ProviderModelKind,
+  ProviderModelList,
 } from './types'
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
@@ -236,6 +238,13 @@ export async function listDesktopGithubRepositories(source: string): Promise<Git
 export async function listDesktopDiscordChannels(source: string): Promise<DiscordChannelList> {
   if (!isDesktopApp) throw new Error('Discord channel discovery is available in Cortana Desktop')
   return invokeDesktop<DiscordChannelList>('desktop_discord_channels', { source })
+}
+
+export async function listDesktopProviderModels(
+  kind: ProviderModelKind
+): Promise<ProviderModelList> {
+  if (!isDesktopApp) throw new Error('Provider model discovery is available in Cortana Desktop')
+  return invokeDesktop<ProviderModelList>('desktop_provider_models', { kind })
 }
 
 export async function pickDesktopPath(

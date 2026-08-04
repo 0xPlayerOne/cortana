@@ -15,8 +15,8 @@ use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
 use cortana::{
-    api, github_oauth, google_oauth, mcp, migration, service, source_status, source_validation,
-    supervisor,
+    api, github_oauth, google_oauth, mcp, migration, provider_models, service, source_status,
+    source_validation, supervisor,
 };
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -237,6 +237,11 @@ enum Command {
     GithubRepositories { source: String },
     /// List bounded Discord guilds and channels visible to a configured source for selection.
     DiscordChannels { source: String },
+    /// List the models advertised by the configured OpenAI-compatible provider for selection.
+    ProviderModels {
+        #[arg(long, value_enum)]
+        kind: ProviderModelsKind,
+    },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -303,6 +308,12 @@ enum Command {
         #[command(subcommand)]
         action: ServiceAction,
     },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ProviderModelsKind {
+    Embedding,
+    Query,
 }
 
 #[derive(Debug, Subcommand)]
@@ -603,6 +614,15 @@ async fn main() -> Result<()> {
         println!("{}", serde_json::to_string(&channels)?);
         return Ok(());
     }
+    if let Some(Command::ProviderModels { kind }) = cli.command.as_ref() {
+        let kind = match kind {
+            ProviderModelsKind::Embedding => provider_models::ModelKind::Embedding,
+            ProviderModelsKind::Query => provider_models::ModelKind::Query,
+        };
+        let models = provider_models::list_provider_models(&config, kind).await?;
+        println!("{}", serde_json::to_string(&models)?);
+        return Ok(());
+    }
     if let Some(Command::Sync {
         source,
         plan: false,
@@ -719,7 +739,8 @@ async fn main() -> Result<()> {
             | Command::Service { .. }
             | Command::Readiness { .. }
             | Command::Acl { .. }
-            | Command::Audit { .. },
+            | Command::Audit { .. }
+            | Command::ProviderModels { .. },
         ) => {
             unreachable!()
         }
