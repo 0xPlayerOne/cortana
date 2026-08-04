@@ -277,7 +277,9 @@ export function SourcePanel({
                 const auth = item.authorization
                 const needsProviderSetup = Boolean(auth?.setup_required)
                 const needsBrowserAuthorization =
-                  (auth?.method === 'google_oauth' || auth?.method === 'github_oauth') &&
+                  (auth?.method === 'google_oauth' ||
+                    auth?.method === 'github_oauth' ||
+                    auth?.method === 'discord_oauth') &&
                   !auth.authorized &&
                   !needsProviderSetup
                 const sourceJobActive = active.some(
@@ -331,7 +333,9 @@ export function SourcePanel({
                                 ? 'Open Google source settings'
                                 : auth?.method === 'github_oauth'
                                   ? 'Open GitHub source settings'
-                                  : 'Open the provider setup page'
+                                  : auth?.method === 'discord_oauth'
+                                    ? 'Open Discord source settings'
+                                    : 'Open the provider setup page'
                           }
                           data-tooltip={
                             sourceJobActive
@@ -340,7 +344,9 @@ export function SourcePanel({
                                 ? 'Open Google source settings'
                                 : auth?.method === 'github_oauth'
                                   ? 'Open GitHub source settings'
-                                  : 'Open the provider setup page'
+                                  : auth?.method === 'discord_oauth'
+                                    ? 'Open Discord source settings'
+                                    : 'Open the provider setup page'
                           }
                           disabled={
                             sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
@@ -363,14 +369,18 @@ export function SourcePanel({
                               ? 'Wait for the active source job to finish'
                               : auth?.method === 'github_oauth'
                                 ? 'Authorize this GitHub source in your browser'
-                                : 'Authorize this Google source in your browser'
+                                : auth?.method === 'discord_oauth'
+                                  ? 'Authorize this Discord source in your browser'
+                                  : 'Authorize this Google source in your browser'
                           }
                           data-tooltip={
                             sourceJobActive
                               ? 'Wait for the active source job to finish'
                               : auth?.method === 'github_oauth'
                                 ? 'Authorize this GitHub source in your browser'
-                                : 'Authorize this Google source in your browser'
+                                : auth?.method === 'discord_oauth'
+                                  ? 'Authorize this Discord source in your browser'
+                                  : 'Authorize this Google source in your browser'
                           }
                           disabled={
                             sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive

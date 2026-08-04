@@ -565,6 +565,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: vec!["owner/repo".into()],
             token_env: None,
             token: Some(PathBuf::from("relative.json")),

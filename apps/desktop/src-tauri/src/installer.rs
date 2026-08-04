@@ -615,7 +615,10 @@ mod tests {
     fn embedding_runtime_plan_uses_only_the_fixed_homebrew_formula() {
         let plan = install_plan("embedding-runtime", None).expect("plan");
         assert_eq!(plan.commands.len(), 1);
-        assert_eq!(plan.commands[0].args, ["install", "text-embeddings-inference"]);
+        assert_eq!(
+            plan.commands[0].args,
+            ["install", "text-embeddings-inference"]
+        );
         assert!(plan.connector_command.is_none());
     }
 

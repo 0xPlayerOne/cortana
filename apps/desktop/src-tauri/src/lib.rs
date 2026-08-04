@@ -16,9 +16,9 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 
-mod installer;
 mod hindsight;
 mod honcho;
+mod installer;
 mod paths;
 mod provider_models;
 mod readiness;
@@ -142,7 +142,10 @@ fn desktop_bearer_for_scope(scope: &str) -> Result<Option<String>, String> {
     settings::bearer_for_scope(scope)
 }
 
-fn principal_supports_owner_scope(principal: &settings::AuthPrincipalSettings, scope: &str) -> bool {
+fn principal_supports_owner_scope(
+    principal: &settings::AuthPrincipalSettings,
+    scope: &str,
+) -> bool {
     principal.scopes.iter().any(|value| value == "admin")
         && principal.scopes.iter().any(|value| value == scope)
 }
@@ -376,8 +379,8 @@ fn validate_slack_url(url: &Url) -> Result<(), String> {
     if !valid_slack_identifier(&channel) {
         return Err("Slack links contain an invalid channel id".into());
     }
-    let message = message
-        .ok_or_else(|| "Slack links must include a message timestamp".to_string())?;
+    let message =
+        message.ok_or_else(|| "Slack links must include a message timestamp".to_string())?;
     if !valid_slack_timestamp(&message) {
         return Err("Slack links contain an invalid message timestamp".into());
     }
@@ -405,8 +408,8 @@ fn validate_notes_url(url: &Url) -> Result<(), String> {
             return Err("Apple Notes links contain unsupported query data".into());
         }
     }
-    let identifier = identifier
-        .ok_or_else(|| "Apple Notes links must include a note identifier".to_string())?;
+    let identifier =
+        identifier.ok_or_else(|| "Apple Notes links must include a note identifier".to_string())?;
     validate_custom_link_value(&identifier, 1024, true)
         .then_some(())
         .ok_or_else(|| "Apple Notes links contain an invalid note identifier".into())
@@ -508,8 +511,8 @@ fn configured_file_target(url: &Url) -> Result<PathBuf, String> {
     let target = url
         .to_file_path()
         .map_err(|_| "file links must contain an absolute local path".to_string())?;
-    let target = fs::canonicalize(&target)
-        .map_err(|error| format!("resolve local source path: {error}"))?;
+    let target =
+        fs::canonicalize(&target).map_err(|error| format!("resolve local source path: {error}"))?;
     let settings = settings::load()?;
     let roots = settings
         .sources
@@ -762,6 +765,14 @@ async fn desktop_discord_channels<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+async fn desktop_discord_servers<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    source: String,
+) -> Result<Value, String> {
+    source_jobs::list_discord_servers(&app, &source).await
+}
+
+#[tauri::command]
 fn desktop_source_initial_sync<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     jobs: State<'_, source_jobs::SourceJobState>,
@@ -937,11 +948,19 @@ fn install_tray(app: &mut tauri::App) -> tauri::Result<TrayStatus> {
     let corpus = MenuItem::with_id(app, "corpus", "Corpus: checking", false, None::<&str>)?;
     let ingestion =
         MenuItem::with_id(app, "ingestion", "Ingestion: checking", false, None::<&str>)?;
-    let source_jobs =
-        MenuItem::with_id(app, "source-jobs", "Source jobs: checking", false, None::<&str>)?;
+    let source_jobs = MenuItem::with_id(
+        app,
+        "source-jobs",
+        "Source jobs: checking",
+        false,
+        None::<&str>,
+    )?;
     let show = MenuItem::with_id(app, "show", "Show Cortana", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Cortana Desktop", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&health, &corpus, &ingestion, &source_jobs, &show, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[&health, &corpus, &ingestion, &source_jobs, &show, &quit],
+    )?;
 
     let mut builder = TrayIconBuilder::with_id("cortana")
         .menu(&menu)
@@ -1130,6 +1149,7 @@ pub fn run() {
             desktop_github_repositories,
             desktop_discord_channels,
             desktop_provider_models,
+            desktop_discord_servers,
             desktop_source_initial_sync,
             desktop_source_validation_status,
             desktop_source_jobs_status,
@@ -1183,7 +1203,10 @@ mod tests {
         ipc_request_with(command, tauri::ipc::InvokeBody::default())
     }
 
-    fn ipc_request_with(command: &str, body: tauri::ipc::InvokeBody) -> tauri::webview::InvokeRequest {
+    fn ipc_request_with(
+        command: &str,
+        body: tauri::ipc::InvokeBody,
+    ) -> tauri::webview::InvokeRequest {
         tauri::webview::InvokeRequest {
             cmd: command.into(),
             callback: tauri::ipc::CallbackFn(0),
@@ -1201,8 +1224,8 @@ mod tests {
         }
     }
 
-    use std::{env, ffi::OsString, sync::Mutex};
     use serde_json::json;
+    use std::{env, ffi::OsString, sync::Mutex};
 
     /// Process-wide environment mutation is a global side effect in Rust tests.
     ///
@@ -1285,6 +1308,7 @@ mod tests {
                 desktop_github_repositories,
                 desktop_discord_channels,
                 desktop_provider_models,
+                desktop_discord_servers,
                 desktop_source_jobs_status,
                 desktop_source_validation_cancel,
                 desktop_source_validation_start,
@@ -1366,18 +1390,18 @@ mod tests {
     /// Bounded polling helper for source job status over IPC. The production
     /// watcher drives the real sidecar on the global async runtime, so the
     /// test thread only observes the typed command surface.
-    fn wait_for_terminal_job<W>(
-        webview: &W,
-        id: &str,
-        timeout: std::time::Duration,
-    ) -> Value
+    fn wait_for_terminal_job<W>(webview: &W, id: &str, timeout: std::time::Duration) -> Value
     where
         W: AsRef<tauri::Webview<tauri::test::MockRuntime>>,
     {
         let deadline = std::time::Instant::now() + timeout;
         loop {
-            let response = invoke_json_with(webview, "desktop_source_validation_status", json!({ "id": id }))
-                .expect("source job status IPC");
+            let response = invoke_json_with(
+                webview,
+                "desktop_source_validation_status",
+                json!({ "id": id }),
+            )
+            .expect("source job status IPC");
             let status = response["status"].as_str().expect("job status string");
             if !matches!(status, "running" | "cancelling") {
                 return response;
@@ -1480,7 +1504,11 @@ mod tests {
 
         let info = invoke_json(&window, "desktop_info").expect("desktop info IPC");
         assert_eq!(info["platform"], std::env::consts::OS);
-        assert!(info["desktop_version"].as_str().is_some_and(|value| !value.is_empty()));
+        assert!(
+            info["desktop_version"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty())
+        );
         assert!(info["autostart_enabled"].is_boolean());
     }
 
@@ -1488,8 +1516,7 @@ mod tests {
     fn native_google_authorization_and_setup_fail_closed_before_browser_launch() {
         let temp = tempfile::tempdir().expect("temporary config directory");
         let config_path = temp.path().join("cortana/config.toml");
-        fs::create_dir_all(config_path.parent().expect("config parent"))
-            .expect("config directory");
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
         fs::create_dir_all(temp.path().join("cortana/notes")).expect("notes directory");
         fs::write(
             &config_path,
@@ -1513,10 +1540,12 @@ mod tests {
                 json!({ "source": "work-drive" }),
             )
             .expect_err("OAuth must reject incomplete setup without opening a browser");
-            assert!(authorization
-                .as_str()
-                .unwrap_or_default()
-                .contains("save a Google token destination"));
+            assert!(
+                authorization
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("save a Google token destination")
+            );
 
             let setup = invoke_json_with(
                 &window,
@@ -1524,10 +1553,12 @@ mod tests {
                 json!({ "source": "work-notes" }),
             )
             .expect_err("filesystem setup must fail closed without opening a browser");
-            assert!(setup
-                .as_str()
-                .unwrap_or_default()
-                .contains("does not have a browser-based account setup page"));
+            assert!(
+                setup
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("does not have a browser-based account setup page")
+            );
         });
     }
 
@@ -1546,10 +1577,12 @@ mod tests {
                 json!({ "source": "work-notes" }),
             )
             .expect_err("non-Discord sources must fail closed before spawning the sidecar");
-            assert!(error
-                .as_str()
-                .unwrap_or_default()
-                .contains("only for Discord sources"));
+            assert!(
+                error
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("only for Discord sources")
+            );
         });
     }
 
@@ -1557,8 +1590,7 @@ mod tests {
     fn native_discord_channel_discovery_fails_closed_without_configured_token() {
         let temp = tempfile::tempdir().expect("temporary config directory");
         let config_path = temp.path().join("cortana/config.toml");
-        fs::create_dir_all(config_path.parent().expect("config parent"))
-            .expect("config directory");
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
         fs::write(
             &config_path,
             format!(
@@ -1601,12 +1633,115 @@ mod tests {
     }
 
     #[test]
+    fn native_discord_server_discovery_fails_closed_for_other_kinds() {
+        let fixture = filesystem_fixture("work-notes", true);
+        with_cortana_config_override(&fixture.config, || {
+            let app = ipc_test_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
+
+            let error = invoke_json_with(
+                &window,
+                "desktop_discord_servers",
+                json!({ "source": "work-notes" }),
+            )
+            .expect_err("non-Discord sources must fail closed before spawning the sidecar");
+            assert!(
+                error
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("only for Discord sources")
+            );
+        });
+    }
+
+    #[test]
+    fn native_discord_server_discovery_fails_closed_without_authorization() {
+        let temp = tempfile::tempdir().expect("temporary config directory");
+        let config_path = temp.path().join("cortana/config.toml");
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
+        fs::write(
+            &config_path,
+            format!(
+                "data_dir = {}\n\n[[sources]]\nname = \"community\"\nkind = \"discord\"\nenabled = true\nproject = \"work\"\ntoken_env = \"CORTANA_TEST_DISCORD_BOT_TOKEN\"\ntoken = \"/tmp/cortana-test/missing-discord-token.json\"\noauth_client = \"/tmp/cortana-test/missing-oauth-client.json\"\n",
+                toml_string(&temp.path().join("cortana/data").display().to_string()),
+            ),
+        )
+        .expect("test config");
+
+        with_cortana_config_override(&config_path, || {
+            if !bundled_sidecar_available() {
+                eprintln!(
+                    "SKIP: bundled `cortana` sidecar is missing next to the test executable; \
+                     run `bun run desktop:test:native` to prepare it"
+                );
+                return;
+            }
+            let app = ipc_test_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
+
+            // Discovery must fail before any network request when no user
+            // token has been stored, and the error must point at browser
+            // authorization without ever containing a credential value.
+            let error = invoke_json_with(
+                &window,
+                "desktop_discord_servers",
+                json!({ "source": "community" }),
+            )
+            .expect_err("missing user token must fail closed without network access");
+            let message = error.as_str().unwrap_or_default();
+            assert!(
+                message.contains("check browser authorization")
+                    || message.contains("requires browser authorization"),
+                "unexpected server discovery error: {message}"
+            );
+        });
+    }
+
+    #[test]
+    fn native_discord_authorization_fails_closed_without_oauth_paths() {
+        let temp = tempfile::tempdir().expect("temporary config directory");
+        let config_path = temp.path().join("cortana/config.toml");
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
+        fs::write(
+            &config_path,
+            format!(
+                "data_dir = {}\n\n[[sources]]\nname = \"community\"\nkind = \"discord\"\nenabled = true\nproject = \"work\"\ntoken_env = \"CORTANA_TEST_DISCORD_BOT_TOKEN\"\n",
+                toml_string(&temp.path().join("cortana/data").display().to_string()),
+            ),
+        )
+        .expect("test config");
+
+        with_cortana_config_override(&config_path, || {
+            let app = ipc_test_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
+
+            let error = invoke_json_with(
+                &window,
+                "desktop_source_authorization_start",
+                json!({ "source": "community" }),
+            )
+            .expect_err("Discord OAuth must reject incomplete setup without a browser");
+            assert!(
+                error
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("save a Discord user token destination file")
+            );
+        });
+    }
+
+    #[test]
     fn native_ipc_dispatches_redacted_settings_snapshot() {
         let temp = tempfile::tempdir().expect("temporary config directory");
         let config_path = temp.path().join("cortana/config.toml");
         let secret_file_path = temp.path().join("cortana/secrets.env");
-        fs::create_dir_all(config_path.parent().expect("config parent"))
-            .expect("config directory");
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
         fs::write(
             &config_path,
             r##"
@@ -1821,21 +1956,22 @@ mod tests {
         assert!(validate_external_url("https://user:password@example.com").is_err());
         assert!(validate_external_url("mailto:help@example.com").is_ok());
         assert!(validate_external_url("mailto://user:password@example.com").is_err());
-        assert!(validate_external_url(
-            "slack://channel?team=&id=C123ABC&message=1712345678.000100"
-        )
-        .is_ok());
+        assert!(
+            validate_external_url("slack://channel?team=&id=C123ABC&message=1712345678.000100")
+                .is_ok()
+        );
         assert!(validate_external_url("slack://channel?id=C123ABC").is_err());
         assert!(validate_external_url("slack://channel?id=C123ABC&message=1&message=2").is_err());
-        assert!(validate_external_url(
-            "slack://channel?id=C123ABC&message=1&redirect=https://evil.example"
-        )
-        .is_err());
+        assert!(
+            validate_external_url(
+                "slack://channel?id=C123ABC&message=1&redirect=https://evil.example"
+            )
+            .is_err()
+        );
         assert!(validate_external_url("slack://channel?id=C123ABC&message=.").is_err());
-        assert!(validate_external_url(
-            "notes://showNote?identifier=x-coredata%3A%2F%2Fnote-1"
-        )
-        .is_ok());
+        assert!(
+            validate_external_url("notes://showNote?identifier=x-coredata%3A%2F%2Fnote-1").is_ok()
+        );
         assert!(validate_external_url("notes://showNote?identifier=").is_err());
         assert!(validate_external_url("notes://showNote?identifier=x&extra=1").is_err());
         assert!(validate_external_url("buzz://persona/npub123/session%3A1").is_ok());
@@ -1886,13 +2022,12 @@ mod tests {
         assert_eq!(ingestion_label(&attention), "Ingestion: 2 need attention");
 
         assert_eq!(
-            ingestion_label(&serde_json::json!({"sync_runs": [], "ingestion": {"scheduled": true}})),
+            ingestion_label(
+                &serde_json::json!({"sync_runs": [], "ingestion": {"scheduled": true}})
+            ),
             "Ingestion: scheduled"
         );
-        assert_eq!(
-            ingestion_label(&serde_json::json!({})),
-            "Ingestion: manual"
-        );
+        assert_eq!(ingestion_label(&serde_json::json!({})), "Ingestion: manual");
     }
 
     #[test]
@@ -1902,10 +2037,9 @@ mod tests {
 
         with_cortana_config_override(&fixture.config, || {
             let app = ipc_test_app();
-            let window =
-                tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
-                    .build()
-                    .expect("build mock desktop window");
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
 
             let response = invoke_json(&window, "desktop_settings_get").expect("settings get IPC");
             let mut update = response.as_object().expect("snapshot object").clone();
@@ -1953,19 +2087,26 @@ mod tests {
                 json!([{"name": "CORTANA_TEST_QUERY_API_KEY", "value": raw_query_secret, "clear": false}]),
             );
 
-            let saved = invoke_json_with(&window, "desktop_settings_save", json!({ "update": update }))
-                .expect("settings save IPC");
+            let saved = invoke_json_with(
+                &window,
+                "desktop_settings_save",
+                json!({ "update": update }),
+            )
+            .expect("settings save IPC");
             assert_eq!(saved["restart_required"], Value::Bool(true));
             assert_eq!(saved["needs_setup"], Value::Bool(false));
             assert_eq!(saved["workspaces"][0]["name"], "Engineering");
-            assert!(saved["sources"]
-                .as_array()
-                .expect("sources array")
-                .iter()
-                .any(|source| source["name"] == "work-notes"));
+            assert!(
+                saved["sources"]
+                    .as_array()
+                    .expect("sources array")
+                    .iter()
+                    .any(|source| source["name"] == "work-notes")
+            );
             let secrets = saved["secrets"].as_array().expect("secrets array");
             assert!(secrets.iter().any(|secret| {
-                secret["name"] == "CORTANA_TEST_QUERY_API_KEY" && secret["configured"] == Value::Bool(true)
+                secret["name"] == "CORTANA_TEST_QUERY_API_KEY"
+                    && secret["configured"] == Value::Bool(true)
             }));
             let serialized = serde_json::to_string(&saved).expect("serialize save response");
             assert!(
@@ -1977,11 +2118,14 @@ mod tests {
             // write-only secret landed in the managed secret file next to the config.
             let reloaded = invoke_json(&window, "desktop_settings_get").expect("settings get IPC");
             assert_eq!(reloaded["workspaces"][0]["name"], "Engineering");
-            assert!(reloaded["sources"]
-                .as_array()
-                .expect("sources array")
-                .iter()
-                .any(|source| source["name"] == "work-notes" && source["enabled"] == Value::Bool(true)));
+            assert!(
+                reloaded["sources"]
+                    .as_array()
+                    .expect("sources array")
+                    .iter()
+                    .any(|source| source["name"] == "work-notes"
+                        && source["enabled"] == Value::Bool(true))
+            );
             let reloaded_serialized = serde_json::to_string(&reloaded).expect("serialize reload");
             assert!(!reloaded_serialized.contains(raw_query_secret));
             let secrets_file = fixture
@@ -2002,10 +2146,9 @@ mod tests {
         let fixture = filesystem_fixture("work-notes", true);
         with_cortana_config_override(&fixture.config, || {
             let app = ipc_test_app();
-            let window =
-                tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
-                    .build()
-                    .expect("build mock desktop window");
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
 
             let saved = invoke_json_with(
                 &window,
@@ -2015,12 +2158,14 @@ mod tests {
             .expect("schedule save IPC");
             assert_eq!(saved["sync_interval_seconds"], 1800);
             assert_eq!(saved["backup_interval_seconds"], 172800);
-            assert!(fixture
-                .config
-                .parent()
-                .expect("config parent")
-                .join("service-schedule.toml")
-                .is_file());
+            assert!(
+                fixture
+                    .config
+                    .parent()
+                    .expect("config parent")
+                    .join("service-schedule.toml")
+                    .is_file()
+            );
 
             let loaded = invoke_json(&window, "desktop_schedule_get").expect("schedule get IPC");
             assert_eq!(loaded["sync_interval_seconds"], 1800);
@@ -2032,7 +2177,12 @@ mod tests {
                 json!({ "schedule": { "sync_interval_seconds": 30, "backup_interval_seconds": 172800 } }),
             )
             .expect_err("too-aggressive interval must be rejected");
-            assert!(error.as_str().unwrap_or_default().contains("between 60 and"));
+            assert!(
+                error
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("between 60 and")
+            );
 
             let unchanged = invoke_json(&window, "desktop_schedule_get").expect("schedule get IPC");
             assert_eq!(unchanged["sync_interval_seconds"], 1800);
@@ -2049,13 +2199,19 @@ mod tests {
         let error = invoke_json(&window, "desktop_update_check")
             .expect_err("update check must fail closed");
         assert!(
-            error.as_str().unwrap_or_default().contains("does not have any endpoints"),
+            error
+                .as_str()
+                .unwrap_or_default()
+                .contains("does not have any endpoints"),
             "unexpected update check error: {error:?}"
         );
         let status = invoke_json(&window, "desktop_update_status").expect("update status IPC");
         assert_eq!(status["phase"], "failed");
         assert!(
-            status["error"].as_str().unwrap_or_default().contains("does not have any endpoints"),
+            status["error"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("does not have any endpoints"),
             "unexpected update status error: {status}"
         );
     }
@@ -2072,12 +2228,12 @@ mod tests {
                 return;
             }
             let app = ipc_test_app();
-            let window =
-                tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
-                    .build()
-                    .expect("build mock desktop window");
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
 
-            let report = invoke_json(&window, "desktop_services_status").expect("service status IPC");
+            let report =
+                invoke_json(&window, "desktop_services_status").expect("service status IPC");
             assert_eq!(report["platform"], std::env::consts::OS);
             assert!(report["supported"].is_boolean());
             let services = report["services"].as_array().expect("services array");
@@ -2087,8 +2243,18 @@ mod tests {
                 .collect::<Vec<_>>();
             assert_eq!(names, vec!["embedding", "server", "sync", "backup"]);
             for service in services {
-                for key in ["label", "installed", "loaded", "state", "pid", "last_exit_status"] {
-                    assert!(service.get(key).is_some(), "service report must carry `{key}`");
+                for key in [
+                    "label",
+                    "installed",
+                    "loaded",
+                    "state",
+                    "pid",
+                    "last_exit_status",
+                ] {
+                    assert!(
+                        service.get(key).is_some(),
+                        "service report must carry `{key}`"
+                    );
                 }
             }
         });
@@ -2097,10 +2263,16 @@ mod tests {
     #[test]
     fn native_source_validation_lifecycle_runs_the_real_sidecar() {
         let fixture = filesystem_fixture("work-notes", true);
-        fs::write(fixture.root.join("note-1.md"), "bounded acceptance note one")
-            .expect("fixture note");
-        fs::write(fixture.root.join("note-2.md"), "bounded acceptance note two")
-            .expect("fixture note");
+        fs::write(
+            fixture.root.join("note-1.md"),
+            "bounded acceptance note one",
+        )
+        .expect("fixture note");
+        fs::write(
+            fixture.root.join("note-2.md"),
+            "bounded acceptance note two",
+        )
+        .expect("fixture note");
 
         with_cortana_config_override(&fixture.config, || {
             if !bundled_sidecar_available() {
@@ -2111,10 +2283,9 @@ mod tests {
                 return;
             }
             let app = ipc_test_app();
-            let window =
-                tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
-                    .build()
-                    .expect("build mock desktop window");
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
 
             let started = invoke_json_with(
                 &window,
@@ -2127,16 +2298,20 @@ mod tests {
             assert_eq!(started["writes_indexed_data"], Value::Bool(false));
             let id = started["id"].as_str().expect("job id").to_string();
 
-            let terminal =
-                wait_for_terminal_job(&window, &id, std::time::Duration::from_secs(120));
-            assert_eq!(terminal["status"], "succeeded", "job log: {}", terminal["log"]);
+            let terminal = wait_for_terminal_job(&window, &id, std::time::Duration::from_secs(120));
+            assert_eq!(
+                terminal["status"], "succeeded",
+                "job log: {}",
+                terminal["log"]
+            );
             assert_eq!(terminal["exit_code"], 0);
             assert!(!terminal["completed_at_unix_seconds"].is_null());
 
             let state_path = fixture.data_dir.join("source-validations.json");
-            let state: Value =
-                serde_json::from_str(&fs::read_to_string(&state_path).expect("read validation state"))
-                    .expect("parse validation state");
+            let state: Value = serde_json::from_str(
+                &fs::read_to_string(&state_path).expect("read validation state"),
+            )
+            .expect("parse validation state");
             let record = &state["sources"]["work-notes"];
             assert_eq!(record["status"], "succeeded");
             assert_eq!(record["complete"], Value::Bool(true));
@@ -2180,7 +2355,12 @@ mod tests {
                 json!({ "source": "work-notes", "budget": "small", "operation": "execute", "planId": plan_id, "approved": false }),
             )
             .expect_err("unapproved execution must fail");
-            assert!(unapproved.as_str().unwrap_or_default().contains("explicit plan confirmation"));
+            assert!(
+                unapproved
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("explicit plan confirmation")
+            );
 
             let uncovered = invoke_json_with(
                 &window,
@@ -2188,7 +2368,12 @@ mod tests {
                 json!({ "source": "work-notes", "budget": "medium", "operation": "execute", "planId": plan_id, "approved": true }),
             )
             .expect_err("execution beyond validated limits must fail");
-            assert!(uncovered.as_str().unwrap_or_default().contains("equal or larger limits"));
+            assert!(
+                uncovered
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("equal or larger limits")
+            );
         });
     }
 
@@ -2225,22 +2410,22 @@ mod tests {
     fn tray_source_job_label_uses_latest_terminal_result_per_source() {
         let snapshot =
             |source: &str, project: &str, status: &'static str| source_jobs::SourceJobSnapshot {
-            id: format!("source-1-{}", source.len()),
-            operation: "validation",
-            source: source.into(),
-            kind: "filesystem".into(),
-            project: project.into(),
-            acl: Vec::new(),
-            status,
-            summary: String::new(),
-            log: String::new(),
-            started_at_unix_seconds: 1,
-            completed_at_unix_seconds: Some(2),
-            exit_code: Some(0),
-            retryable: false,
-            writes_indexed_data: false,
-            budget: None,
-        };
+                id: format!("source-1-{}", source.len()),
+                operation: "validation",
+                source: source.into(),
+                kind: "filesystem".into(),
+                project: project.into(),
+                acl: Vec::new(),
+                status,
+                summary: String::new(),
+                log: String::new(),
+                started_at_unix_seconds: 1,
+                completed_at_unix_seconds: Some(2),
+                exit_code: Some(0),
+                retryable: false,
+                writes_indexed_data: false,
+                budget: None,
+            };
 
         let history = vec![
             snapshot("work-code", "work", "succeeded"),
@@ -2264,6 +2449,9 @@ mod tests {
             snapshot("notes", "personal", "failed"),
             snapshot("notes", "work", "succeeded"),
         ];
-        assert_eq!(source_jobs_label(&duplicate_names), "Source jobs: 2 need attention");
+        assert_eq!(
+            source_jobs_label(&duplicate_names),
+            "Source jobs: 2 need attention"
+        );
     }
 }

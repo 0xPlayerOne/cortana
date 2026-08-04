@@ -184,6 +184,12 @@ pub struct SourceConfig {
     pub source: Option<String>,
     #[serde(default)]
     pub channels: Vec<String>,
+    /// Explicit Discord server (guild) allowlist assigned to this source's
+    /// workspace. Channels selected for indexing remain in `channels`; the
+    /// server list records which servers browser authorization assigned to
+    /// this workspace so the Desktop chooser can scope channel selection.
+    #[serde(default)]
+    pub servers: Vec<String>,
     /// Explicit `owner/repository` allowlist for GitHub code sources.
     #[serde(default)]
     pub repositories: Vec<String>,
@@ -781,11 +787,19 @@ mod tests {
             project = "work"
             repositories = ["Acme/Project"]
             token_env = "GITHUB_TOKEN"
+
+            [[sources]]
+            name = "community"
+            kind = "discord"
+            project = "community"
+            channels = ["175928847299117064"]
+            servers = ["175928847299117063"]
+            token_env = "DISCORD_BOT_TOKEN"
             "#,
         )
         .expect("valid source config");
 
-        assert_eq!(config.sources.len(), 3);
+        assert_eq!(config.sources.len(), 4);
         assert!(config.sources[0].enabled);
         assert_eq!(config.sources[0].max_content_chars, Some(12_345));
         assert_eq!(config.sources[0].max_documents, Some(100));
@@ -793,6 +807,12 @@ mod tests {
         assert_eq!(config.sources[0].max_duration_seconds, Some(30));
         assert_eq!(config.sources[1].source.as_deref(), Some("code"));
         assert_eq!(config.sources[2].repositories, ["Acme/Project"]);
+        assert_eq!(
+            config.sources[3].servers,
+            ["175928847299117063"],
+            "per-workspace Discord server assignment must round-trip"
+        );
+        assert_eq!(config.sources[3].channels, ["175928847299117064"]);
         assert_eq!(config.ingestion.max_documents_per_source, 2_000);
         assert_eq!(config.ingestion.max_bytes_per_source, 128 * 1024 * 1024);
         assert_eq!(config.ingestion.request_concurrency, 1);
@@ -812,6 +832,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: vec!["acme/project".into()],
             token_env: Some("GITHUB_TOKEN".into()),
             token: None,
@@ -981,6 +1002,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,

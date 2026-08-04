@@ -151,6 +151,10 @@ pub struct SourceSettings {
     pub channels: Vec<String>,
     #[serde(default)]
     pub repositories: Vec<String>,
+    /// Discord servers (guilds) assigned to this source's workspace through
+    /// browser authorization. Channel selection stays in `channels`.
+    #[serde(default)]
+    pub servers: Vec<String>,
     pub token_env: Option<String>,
     pub token_path: Option<String>,
     pub oauth_client_path: Option<String>,
@@ -726,7 +730,11 @@ fn workspace_value(workspace: &WorkspaceSettings) -> Value {
 /// first three workspaces, but a save must not orphan those source scopes and
 /// make the backend reject its own configuration on the next restart.
 fn workspace_values(root: &Table, update: &SettingsUpdate) -> Vec<Value> {
-    let mut values = update.workspaces.iter().map(workspace_value).collect::<Vec<_>>();
+    let mut values = update
+        .workspaces
+        .iter()
+        .map(workspace_value)
+        .collect::<Vec<_>>();
     let mut known = update
         .workspaces
         .iter()
@@ -764,12 +772,15 @@ fn workspace_values(root: &Table, update: &SettingsUpdate) -> Vec<Value> {
         if !known.insert(id.clone()) {
             continue;
         }
-        let workspace = existing.get(&id).cloned().unwrap_or_else(|| WorkspaceSettings {
-            id: id.clone(),
-            name: title_case(&id),
-            account_label: None,
-            color: None,
-        });
+        let workspace = existing
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| WorkspaceSettings {
+                id: id.clone(),
+                name: title_case(&id),
+                account_label: None,
+                color: None,
+            });
         values.push(workspace_value(&workspace));
     }
     values
@@ -1003,6 +1014,7 @@ fn configured_sources(root: &Table) -> Vec<SourceSettings> {
                         source: table_optional_string(item, "source"),
                         channels: table_string_array(item, "channels"),
                         repositories: table_string_array(item, "repositories"),
+                        servers: table_string_array(item, "servers"),
                         token_env: table_optional_string(item, "token_env"),
                         token_path: table_optional_string(item, "token"),
                         oauth_client_path: table_optional_string(item, "oauth_client"),
@@ -1714,6 +1726,7 @@ fn apply_sources(root: &mut Table, sources: &[SourceSettings]) {
                 set_table_optional_string(&mut table, "source", &source.source);
                 set_table_string_array(&mut table, "channels", &source.channels);
                 set_table_string_array(&mut table, "repositories", &source.repositories);
+                set_table_string_array(&mut table, "servers", &source.servers);
                 set_table_optional_string(&mut table, "token_env", &source.token_env);
                 set_table_optional_string(&mut table, "token", &source.token_path);
                 set_table_optional_string(&mut table, "oauth_client", &source.oauth_client_path);
@@ -1923,6 +1936,7 @@ fn validate_sources(
         }
         normalize_string_list("source channel", &mut source.channels, 100, 128)?;
         normalize_string_list("source repository", &mut source.repositories, 32, 256)?;
+        normalize_string_list("source server", &mut source.servers, 100, 128)?;
         if source.kind == "github" {
             for repository in &source.repositories {
                 if !valid_github_repository(repository) {
@@ -2063,12 +2077,12 @@ fn valid_github_repository(value: &str) -> bool {
     parts.next().is_none()
         && !owner.is_empty()
         && !repository.is_empty()
-        && owner
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
-        && repository
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+        && owner.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+        && repository.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
 }
 
 fn validate_source_path(source: &str, label: &str, value: &str) -> Result<(), String> {
@@ -2351,14 +2365,7 @@ pub(crate) fn append_audit_event(
     reject_symlink(&path)?;
     let max_events = read_config(config_path)
         .ok()
-        .map(|root| {
-            usize_value(
-                &root,
-                "auth",
-                "audit_max_events",
-                DEFAULT_AUDIT_MAX_EVENTS,
-            )
-        })
+        .map(|root| usize_value(&root, "auth", "audit_max_events", DEFAULT_AUDIT_MAX_EVENTS))
         .unwrap_or(DEFAULT_AUDIT_MAX_EVENTS)
         .min(MAX_DESKTOP_AUDIT_EVENTS);
     if max_events == 0 {
@@ -2388,9 +2395,7 @@ pub(crate) fn append_audit_event(
     } else {
         let count = count_audit_lines(&path)?;
         counts.insert(path.clone(), count);
-        counts
-            .get_mut(&path)
-            .expect("inserted desktop audit count")
+        counts.get_mut(&path).expect("inserted desktop audit count")
     };
     *count = count.saturating_add(1);
     if *count > max_events {
@@ -2408,7 +2413,8 @@ fn count_audit_lines(path: &Path) -> Result<usize, String> {
     };
     let mut count = 0;
     for line in BufReader::new(file).lines() {
-        let line = line.map_err(|error| format!("read desktop audit log for retention: {error}"))?;
+        let line =
+            line.map_err(|error| format!("read desktop audit log for retention: {error}"))?;
         if !line.trim().is_empty() {
             count += 1;
         }
@@ -2427,7 +2433,8 @@ fn trim_audit_log(path: &Path, max_events: usize) -> Result<(), String> {
         .map_err(|error| format!("open desktop audit log for retention: {error}"))?;
     let mut retained = VecDeque::with_capacity(max_events.min(4096));
     for line in BufReader::new(file).lines() {
-        let line = line.map_err(|error| format!("read desktop audit log for retention: {error}"))?;
+        let line =
+            line.map_err(|error| format!("read desktop audit log for retention: {error}"))?;
         if line.trim().is_empty() {
             continue;
         }
@@ -2462,8 +2469,7 @@ fn trim_audit_log(path: &Path, max_events: usize) -> Result<(), String> {
         set_owner_only(&temporary)?;
         #[cfg(windows)]
         if path.exists() {
-            fs::remove_file(path)
-                .map_err(|error| format!("replace desktop audit log: {error}"))?;
+            fs::remove_file(path).map_err(|error| format!("replace desktop audit log: {error}"))?;
         }
         fs::rename(&temporary, path)
             .map_err(|error| format!("replace desktop audit log: {error}"))?;
@@ -2867,6 +2873,7 @@ mod tests {
             source: None,
             channels: Vec::new(),
             repositories: Vec::new(),
+            servers: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -3046,8 +3053,7 @@ mod tests {
     fn desktop_audit_retention_keeps_newest_events_and_private_permissions() {
         let temp = tempfile::tempdir().expect("temp directory");
         let config_path = temp.path().join("config/config.toml");
-        fs::create_dir_all(config_path.parent().expect("config parent"))
-            .expect("config directory");
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
         fs::write(&config_path, "[auth]\naudit_max_events = 3\n").expect("audit config");
 
         for id in 0..5 {
@@ -3071,10 +3077,15 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             assert_eq!(
-                fs::metadata(config_path.parent().expect("config parent").join("desktop-audit.jsonl"))
-                    .expect("audit metadata")
-                    .permissions()
-                    .mode()
+                fs::metadata(
+                    config_path
+                        .parent()
+                        .expect("config parent")
+                        .join("desktop-audit.jsonl")
+                )
+                .expect("audit metadata")
+                .permissions()
+                .mode()
                     & 0o777,
                 0o600
             );
@@ -3404,8 +3415,7 @@ mod tests {
     fn settings_save_preserves_legacy_source_scopes_outside_visible_workspaces() {
         let temp = tempfile::tempdir().expect("temp directory");
         let config_path = temp.path().join("config/config.toml");
-        fs::create_dir_all(config_path.parent().expect("config parent"))
-            .expect("config directory");
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
         fs::write(
             &config_path,
             r##"
@@ -3478,7 +3488,14 @@ mod tests {
         let saved = fs::read_to_string(&config_path).expect("saved configuration");
         assert!(saved.contains("id = \"community\""));
         assert!(saved.contains("id = \"agents\""));
-        assert_eq!(store.load().expect("reload saved configuration").sources.len(), 5);
+        assert_eq!(
+            store
+                .load()
+                .expect("reload saved configuration")
+                .sources
+                .len(),
+            5
+        );
     }
 
     #[test]
@@ -3540,6 +3557,7 @@ mod tests {
             source: None,
             channels: vec!["C012345".into()],
             repositories: Vec::new(),
+            servers: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -3578,12 +3596,8 @@ mod tests {
         let mut token_file_source = source_settings("github-file", "github");
         token_file_source.enabled = true;
         token_file_source.repositories = vec!["acme/project".into()];
-        token_file_source.token_path = Some(
-            temp.path()
-                .join("github-token.json")
-                .display()
-                .to_string(),
-        );
+        token_file_source.token_path =
+            Some(temp.path().join("github-token.json").display().to_string());
         update.sources = vec![token_file_source];
         validate_update(&mut update).expect("GitHub token file is an accepted credential path");
     }
