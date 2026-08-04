@@ -88,13 +88,25 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
   `config.rs`, the Desktop settings validator and sidecar payload validator,
   and CLI tests proving the identity file fails closed when missing, malformed,
   duplicated, or symlinked.
-- The installed CLI is v0.28.0 while the packaged Desktop binary remains
-  v0.27.3; the local corpus reports 47,658 documents and 77,472 chunks.
+- `cargo build --release --locked` succeeds and the built binary reports
+  `cortana 0.28.0`, matching the workspace version. The full Python suite
+  passes (137 tests) and the release-verification regression coverage
+  passes (6 tests in `tests/test_release_verification.py`: the
+  installed-vs-checkout version-skew gate and the published-asset desktop
+  gate). The local corpus reports 47,658 documents and 77,472 chunks.
   Query-only readiness passes. Recurring-sync readiness remains gated
   because work-drive, work-gmail, work-calendar, personal-calendar,
   community-discord, and buzz have only smaller bounded validations.
+  The installed `/Applications/Cortana.app` remains v0.27.3, so the code is
+  at v0.28.0 while the packaged GUI/release is still pending.
 - A 25-document/5 MiB/60-second smoke validation passed for all 12 enabled
   sources. Shared bearer token configuration is empty. Full-budget
   recurring-sync validation remains pending for the listed bounded sources.
-- Deterministic evaluation passes. Model-backed eval is not yet production-proven because
-  the configured query provider at `127.0.0.1:8008` is unavailable.
+- Deterministic evaluation passes. Model-backed synthetic eval passes with a
+  temporary auto-free query configuration against the loopback gateway
+  (`base_url = "http://127.0.0.1:8008/v1"`, `model = "auto-free"`, fixture-only:
+  no personal index opened, no syncs or connectors): the run reported
+  `passed: true` with planner and synthesis models used, valid citations,
+  no fallback, a cache-hit answer within the 55 s deadline, and no leaked
+  sources. This is still fixture-only evidence; production-provenness against
+  the persistent configured provider and the packaged GUI/release remain pending.
