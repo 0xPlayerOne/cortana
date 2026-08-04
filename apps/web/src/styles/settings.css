@@ -732,6 +732,12 @@
   font-size: 10px;
 }
 
+.source-card-actions .source-icon-button {
+  width: 30px;
+  justify-content: center;
+  padding: 0;
+}
+
 .source-card-actions button:disabled,
 .source-validation-job button:disabled {
   cursor: not-allowed;

@@ -3371,16 +3371,20 @@ function SourcesSection({
                   {hasBrowserSetup(source.kind) && (
                     <button
                       type="button"
+                      className="source-icon-button"
+                      aria-label="Setup"
                       disabled={!canValidate || sourceLocked}
                       title="Open the official provider setup page"
                       onClick={() => void openSetup(source)}
                     >
-                      <ExternalLink size={14} /> Setup
+                      <ExternalLink size={14} />
                     </button>
                   )}
                   {(isGoogleSource(source.kind) || source.kind === 'github') && (
                     <button
                       type="button"
+                      className="source-icon-button"
+                      aria-label="Authorize"
                       disabled={
                         !canValidate ||
                         (!source.token_path && !source.token_env) ||
@@ -3395,11 +3399,12 @@ function SourcesSection({
                       ) : (
                         <KeyRound size={14} />
                       )}
-                      Authorize
                     </button>
                   )}
                   <button
                     type="button"
+                    className="source-icon-button"
+                    aria-label="Validate"
                     disabled={!canValidate || Boolean(activeJob) || !workspaceAssigned}
                     title={canValidate ? 'Read-only bounded validation' : 'Save changes first'}
                     onClick={() => void validateSource(source)}
@@ -3409,10 +3414,11 @@ function SourcesSection({
                     ) : (
                       <Play size={14} />
                     )}
-                    Validate
                   </button>
                   <button
                     type="button"
+                    className="source-icon-button"
+                    aria-label="Trial sync"
                     disabled={
                       !canValidate || !source.enabled || Boolean(activeJob) || !workspaceAssigned
                     }
@@ -3424,10 +3430,11 @@ function SourcesSection({
                     ) : (
                       <Play size={14} />
                     )}
-                    Trial sync
                   </button>
                   <button
                     type="button"
+                    className="source-icon-button"
+                    aria-label="Initial sync"
                     disabled={
                       !canValidate || !source.enabled || Boolean(activeJob) || !workspaceAssigned
                     }
@@ -3439,10 +3446,10 @@ function SourcesSection({
                     ) : (
                       <Zap size={14} />
                     )}
-                    Initial sync
                   </button>
                   <button
                     type="button"
+                    className="source-icon-button"
                     aria-label={`Remove ${source.name}`}
                     disabled={sourceLocked}
                     title={`Remove ${source.name}`}
