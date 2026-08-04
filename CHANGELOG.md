@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.7](https://github.com/0xPlayerOne/cortana/compare/v0.29.6...v0.29.7) (2026-08-04)
+
+
+### Bug Fixes
+
+* allow slow local embedding startup ([d368fe8](https://github.com/0xPlayerOne/cortana/commit/d368fe89423aa39a008fa3955f659d4f50114476))
+
 ## [0.29.6](https://github.com/0xPlayerOne/cortana/compare/v0.29.5...v0.29.6) (2026-08-04)
 
 
