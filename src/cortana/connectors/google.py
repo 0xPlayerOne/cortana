@@ -7,7 +7,6 @@ import email
 import email.policy
 import email.utils
 import html
-import io
 import json
 import os
 import re
@@ -15,8 +14,10 @@ import sqlite3
 import stat
 import sys
 import tempfile
+from collections import deque
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -45,7 +46,93 @@ TEXT_MIME_TYPES = {
     "text/plain",
 }
 DEFAULT_MAX_DRIVE_CONTENT_CHARS = 50_000
+# Drive listing pages hold up to 1000 files; downloaded bodies are fetched,
+# emitted, and cached in fixed batches of this size so a full page never keeps
+# every body in memory at once (a 1000-file page would otherwise retain the
+# whole page's downloaded content before yielding anything).
+DRIVE_BATCH_SIZE = 32
+# Keep a connector response bounded even when a provider returns a very large
+# text export. The fetch layer applies the user-configured limit afterwards.
+MAX_DRIVE_STREAM_CHARS = 256_000
+# PDFs are spooled to disk before parsing; this cap prevents an untrusted
+# provider response from filling the temporary volume.
+MAX_DRIVE_PDF_BYTES = 64 * 1024 * 1024
 MAX_TOKEN_FILE_BYTES = 64 * 1024
+
+
+class _DriveContent(str):
+    """Bounded Drive content with the provider-size metadata kept separately."""
+
+    original_chars: int
+    truncated: bool
+
+    def __new__(cls, value: str, original_chars: int, truncated: bool = False) -> _DriveContent:
+        result = str.__new__(cls, value)
+        result.original_chars = original_chars
+        result.truncated = truncated
+        return result
+
+
+class _BoundedTextAccumulator:
+    """Retain a head/tail sample while counting the complete text stream."""
+
+    def __init__(self, maximum: int) -> None:
+        if maximum <= 0:
+            raise ValueError("maximum must be greater than zero")
+        self.maximum = maximum
+        self.total_chars = 0
+        self._full_parts: list[str] = []
+        self._full_chars = 0
+        self._overflowed = False
+        self._head_limit = maximum // 2
+        self._tail_limit = maximum - self._head_limit
+        self._head = ""
+        self._tail: deque[str] = deque()
+        self._tail_chars = 0
+
+    def append(self, value: str) -> None:
+        if not value:
+            return
+        self.total_chars += len(value)
+        if not self._overflowed:
+            if self._full_chars + len(value) <= self.maximum:
+                self._full_parts.append(value)
+                self._full_chars += len(value)
+                return
+            combined = "".join(self._full_parts) + value
+            self._head = combined[: self._head_limit]
+            self._append_tail(combined[-self._tail_limit :])
+            self._full_parts.clear()
+            self._full_chars = 0
+            self._overflowed = True
+            return
+        self._append_tail(value)
+
+    def _append_tail(self, value: str) -> None:
+        if not value:
+            return
+        if len(value) > self._tail_limit:
+            value = value[-self._tail_limit :]
+        self._tail.append(value)
+        self._tail_chars += len(value)
+        while self._tail_chars > self._tail_limit:
+            excess = self._tail_chars - self._tail_limit
+            first = self._tail[0]
+            if len(first) <= excess:
+                self._tail.popleft()
+                self._tail_chars -= len(first)
+            else:
+                self._tail[0] = first[excess:]
+                self._tail_chars -= excess
+
+    def finish(self) -> _DriveContent:
+        if not self._overflowed:
+            return _DriveContent("".join(self._full_parts), self.total_chars)
+        return _DriveContent(
+            self._head + "".join(self._tail),
+            self.total_chars,
+            truncated=True,
+        )
 
 
 def validate_token_path(path: Path) -> Path:
@@ -127,6 +214,23 @@ class GoogleSession:
             response = self.client.request(method, url, headers=headers, **kwargs)
         response.raise_for_status()
         return response
+
+    @contextmanager
+    def stream(self, method: str, url: str, **kwargs: Any) -> Iterable[httpx.Response]:
+        """Open an authenticated streaming response, refreshing once on 401."""
+        token = self._access_token()
+        headers = dict(kwargs.pop("headers", {}))
+        headers["Authorization"] = f"Bearer {token}"
+        with self.client.stream(method, url, headers=headers, **kwargs) as response:
+            if response.status_code != 401 or not self.credentials.get("refresh_token"):
+                response.raise_for_status()
+                yield response
+                return
+        self._refresh()
+        headers["Authorization"] = f"Bearer {self._access_token()}"
+        with self.client.stream(method, url, headers=headers, **kwargs) as response:
+            response.raise_for_status()
+            yield response
 
     def _access_token(self) -> str:
         token = str(self.credentials.get("token") or self.credentials.get("access_token") or "")
@@ -246,105 +350,124 @@ def fetch_drive(
                 if strict and payload.get("incompleteSearch"):
                     raise RuntimeError("Drive listing is incomplete; refusing partial snapshot")
                 items = _google_records(payload.get("files"), "Drive file", strict=strict)
-                bodies: dict[str, str] = {}
-                missing_items: list[dict[str, Any]] = []
-                downloaded_ids: set[str] = set()
-                stale_ids: set[str] = set()
-                for item in items:
-                    file_id = item["id"]
-                    modified_time = _drive_modified_time(item, file_id, strict)
-                    if modified_time is None:
-                        continue
-                    body = _cached_drive_content(cache, file_id, modified_time)
-                    if body is None:
-                        missing_items.append(item)
-                    else:
-                        bodies[file_id] = body
-                if missing_items:
-                    with ThreadPoolExecutor(
-                        max_workers=min(8, len(missing_items)),
-                        thread_name_prefix="cortana-drive",
-                    ) as pool:
-                        downloaded = pool.map(
-                            lambda item: _safe_drive_content(session, item),
-                            missing_items,
-                        )
-                        for item, (body, error_name) in zip(missing_items, downloaded, strict=True):
-                            file_id = item["id"]
-                            if error_name is None:
-                                downloaded_ids.add(file_id)
-                            else:
-                                stale = _stale_cached_drive_content(cache, file_id)
-                                if stale is not None:
-                                    body = stale
-                                    stale_ids.add(file_id)
-                                elif strict:
-                                    raise RuntimeError(
-                                        "Drive file content unavailable: "
-                                        f"id={file_id}; refusing partial snapshot"
-                                    )
-                                print(
-                                    "drive file content unavailable: "
-                                    f"id={file_id} error={error_name} "
-                                    f"using_stale_cache={stale is not None}",
-                                    file=sys.stderr,
-                                )
+                # Download and emit one bounded batch at a time. A Drive page can
+                # contain 1000 metadata records; retaining all response bodies
+                # until the page completes caused multi-gigabyte RSS spikes.
+                for batch_start in range(0, len(items), DRIVE_BATCH_SIZE):
+                    batch_items = items[batch_start : batch_start + DRIVE_BATCH_SIZE]
+                    bodies: dict[str, str] = {}
+                    missing_items: list[dict[str, Any]] = []
+                    downloaded_ids: set[str] = set()
+                    stale_ids: set[str] = set()
+                    for item in batch_items:
+                        file_id = item["id"]
+                        modified_time = _drive_modified_time(item, file_id, strict)
+                        if modified_time is None:
+                            continue
+                        body = _cached_drive_content(cache, file_id, modified_time)
+                        if body is None:
+                            missing_items.append(item)
+                        else:
                             bodies[file_id] = body
-                for item in items:
-                    file_id = str(item["id"])
-                    modified_time = _drive_modified_time(item, file_id, strict)
-                    if modified_time is None:
-                        continue
-                    body = bodies[file_id]
-                    if file_id in downloaded_ids and cache is not None:
-                        cache.execute(
-                            "INSERT OR REPLACE INTO files(id,modified_time,body) VALUES(?,?,?)",
-                            (file_id, modified_time, body),
-                        )
-                        pending_writes += 1
-                    if cache is not None:
-                        cache.execute("INSERT OR IGNORE INTO seen(id) VALUES(?)", (file_id,))
-                        if pending_writes >= 100:
-                            cache.commit()
-                            pending_writes = 0
-                    if not body.strip():
-                        if strict:
-                            raise RuntimeError(
-                                "Drive file has no supported content: "
-                                f"id={file_id}; refusing partial snapshot"
+                    if missing_items:
+                        with ThreadPoolExecutor(
+                            max_workers=min(8, len(missing_items)),
+                            thread_name_prefix="cortana-drive",
+                        ) as pool:
+                            downloaded = pool.map(
+                                lambda item: _safe_drive_content(session, item),
+                                missing_items,
                             )
-                        continue
-                    try:
-                        updated_at = _timestamp(item.get("modifiedTime"))
-                    except (TypeError, ValueError, OverflowError, OSError) as error:
-                        if strict:
-                            raise RuntimeError(
-                                f"Drive file has invalid modifiedTime: id={file_id}"
-                            ) from error
-                        _warn_skipped_record("Drive file", file_id, error)
-                        continue
-                    content, content_truncated = _bounded_content(body, max_content_chars)
-                    yield Document(
-                        source="google-drive",
-                        source_id=file_id,
-                        title=str(item.get("name") or "Untitled Drive file"),
-                        content=content,
-                        uri=item.get("webViewLink"),
-                        updated_at=updated_at,
-                        project=project,
-                        metadata={
-                            "mime_type": item.get("mimeType"),
-                            "owners": [
-                                owner.get("displayName")
-                                for owner in item.get("owners", [])
-                                if isinstance(owner, dict) and owner.get("displayName")
-                            ],
-                            "content_stale": file_id in stale_ids,
-                            "content_truncated": content_truncated,
-                            "content_original_chars": len(body),
-                        },
-                    )
-                    emitted += 1
+                            for item, (body, error_name) in zip(
+                                missing_items, downloaded, strict=True
+                            ):
+                                file_id = item["id"]
+                                if error_name is None:
+                                    downloaded_ids.add(file_id)
+                                else:
+                                    stale = _stale_cached_drive_content(cache, file_id)
+                                    if stale is not None:
+                                        body = stale
+                                        stale_ids.add(file_id)
+                                    elif strict:
+                                        raise RuntimeError(
+                                            "Drive file content unavailable: "
+                                            f"id={file_id}; refusing partial snapshot"
+                                        )
+                                    print(
+                                        "drive file content unavailable: "
+                                        f"id={file_id} error={error_name} "
+                                        f"using_stale_cache={stale is not None}",
+                                        file=sys.stderr,
+                                    )
+                                bodies[file_id] = body
+                    for item in batch_items:
+                        file_id = str(item["id"])
+                        modified_time = _drive_modified_time(item, file_id, strict)
+                        if modified_time is None:
+                            continue
+                        body = bodies[file_id]
+                        if file_id in downloaded_ids and cache is not None:
+                            cache.execute(
+                                "INSERT OR REPLACE INTO files("
+                                "id,modified_time,body,original_chars,truncated) VALUES(?,?,?,?,?)",
+                                (
+                                    file_id,
+                                    modified_time,
+                                    body,
+                                    getattr(body, "original_chars", len(body)),
+                                    int(bool(getattr(body, "truncated", False))),
+                                ),
+                            )
+                            pending_writes += 1
+                        if cache is not None:
+                            cache.execute("INSERT OR IGNORE INTO seen(id) VALUES(?)", (file_id,))
+                            if pending_writes >= 100:
+                                cache.commit()
+                                pending_writes = 0
+                        if not body.strip():
+                            if strict:
+                                raise RuntimeError(
+                                    "Drive file has no supported content: "
+                                    f"id={file_id}; refusing partial snapshot"
+                                )
+                            continue
+                        try:
+                            updated_at = _timestamp(item.get("modifiedTime"))
+                        except (TypeError, ValueError, OverflowError, OSError) as error:
+                            if strict:
+                                raise RuntimeError(
+                                    f"Drive file has invalid modifiedTime: id={file_id}"
+                                ) from error
+                            _warn_skipped_record("Drive file", file_id, error)
+                            continue
+                        content, content_truncated = _bounded_content(body, max_content_chars)
+                        yield Document(
+                            source="google-drive",
+                            source_id=file_id,
+                            title=str(item.get("name") or "Untitled Drive file"),
+                            content=content,
+                            uri=item.get("webViewLink"),
+                            updated_at=updated_at,
+                            project=project,
+                            metadata={
+                                "mime_type": item.get("mimeType"),
+                                "owners": [
+                                    owner.get("displayName")
+                                    for owner in item.get("owners", [])
+                                    if isinstance(owner, dict) and owner.get("displayName")
+                                ],
+                                "content_stale": file_id in stale_ids,
+                                "content_truncated": content_truncated
+                                or bool(getattr(body, "truncated", False)),
+                                "content_original_chars": getattr(
+                                    body, "original_chars", len(body)
+                                ),
+                            },
+                        )
+                        emitted += 1
+                        if max_documents is not None and emitted >= max_documents:
+                            break
                     if max_documents is not None and emitted >= max_documents:
                         break
                 if max_documents is not None and emitted >= max_documents:
@@ -578,8 +701,20 @@ def _drive_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
     connection = _private_cache(cache_dir / "drive.sqlite3")
     connection.execute(
         "CREATE TABLE IF NOT EXISTS files("
-        "id TEXT PRIMARY KEY,modified_time TEXT NOT NULL,body TEXT NOT NULL)"
+        "id TEXT PRIMARY KEY,modified_time TEXT NOT NULL,body TEXT NOT NULL,"
+        "original_chars INTEGER NOT NULL DEFAULT 0,truncated INTEGER NOT NULL DEFAULT 0)"
     )
+    # Existing installations have the original three-column cache. Add the
+    # metadata columns in place so upgrading does not discard cached content.
+    for column, definition in (
+        ("original_chars", "INTEGER NOT NULL DEFAULT 0"),
+        ("truncated", "INTEGER NOT NULL DEFAULT 0"),
+    ):
+        try:
+            connection.execute(f"ALTER TABLE files ADD COLUMN {column} {definition}")
+        except sqlite3.OperationalError as error:
+            if "duplicate column name" not in str(error).lower():
+                raise
     connection.execute("CREATE TEMP TABLE seen(id TEXT PRIMARY KEY)")
     return connection
 
@@ -643,17 +778,27 @@ def _cached_drive_content(
     if cache is None:
         return None
     row = cache.execute(
-        "SELECT body FROM files WHERE id=? AND modified_time=?",
+        "SELECT body,original_chars,truncated FROM files WHERE id=? AND modified_time=?",
         (file_id, modified_time),
     ).fetchone()
-    return None if row is None else str(row[0])
+    if row is None:
+        return None
+    body = str(row[0])
+    original_chars = int(row[1] or 0) or len(body)
+    return _DriveContent(body, original_chars, bool(row[2]))
 
 
 def _stale_cached_drive_content(cache: sqlite3.Connection | None, file_id: str) -> str | None:
     if cache is None:
         return None
-    row = cache.execute("SELECT body FROM files WHERE id=?", (file_id,)).fetchone()
-    return None if row is None else str(row[0])
+    row = cache.execute(
+        "SELECT body,original_chars,truncated FROM files WHERE id=?", (file_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    body = str(row[0])
+    original_chars = int(row[1] or 0) or len(body)
+    return _DriveContent(body, original_chars, bool(row[2]))
 
 
 def _cached_gmail_message(
@@ -934,33 +1079,63 @@ def _drive_content(session: GoogleSession, item: dict[str, Any]) -> str:
     mime_type = str(item.get("mimeType") or "")
     if mime_type in GOOGLE_EXPORTS:
         export_mime, _extension = GOOGLE_EXPORTS[mime_type]
-        response = session.request(
-            "GET",
+        return _stream_drive_text(
+            session,
             f"https://www.googleapis.com/drive/v3/files/{file_id}/export",
             params={"mimeType": export_mime},
         )
-        return response.text
     if mime_type in TEXT_MIME_TYPES or mime_type.startswith("text/"):
-        response = session.request(
-            "GET",
+        return _stream_drive_text(
+            session,
             f"https://www.googleapis.com/drive/v3/files/{file_id}",
             params={"alt": "media"},
+            mime_type=mime_type,
         )
-        return _plain_text(response.text, mime_type)
     if mime_type == "application/pdf":
-        response = session.request(
-            "GET",
-            f"https://www.googleapis.com/drive/v3/files/{file_id}",
-            params={"alt": "media"},
-        )
         try:
             from pypdf import PdfReader  # type: ignore[import-not-found]
         except ImportError as error:
             raise RuntimeError("PDF ingestion requires `uv sync --extra ingestion`") from error
-        return "\n\n".join(
-            page.extract_text() or "" for page in PdfReader(io.BytesIO(response.content)).pages
-        ).strip()
+        with tempfile.NamedTemporaryFile(prefix="cortana-drive-", suffix=".pdf") as output:
+            total_bytes = 0
+            with session.stream(
+                "GET",
+                f"https://www.googleapis.com/drive/v3/files/{file_id}",
+                params={"alt": "media"},
+            ) as response:
+                for chunk in response.iter_bytes():
+                    total_bytes += len(chunk)
+                    if total_bytes > MAX_DRIVE_PDF_BYTES:
+                        raise RuntimeError(
+                            f"Drive PDF exceeds the {MAX_DRIVE_PDF_BYTES} byte safety limit"
+                        )
+                    output.write(chunk)
+            output.flush()
+            accumulator = _BoundedTextAccumulator(MAX_DRIVE_STREAM_CHARS)
+            for page in PdfReader(output.name).pages:
+                accumulator.append(page.extract_text() or "")
+                accumulator.append("\n\n")
+            result = accumulator.finish()
+            return _DriveContent(str(result).strip(), result.original_chars, result.truncated)
     return ""
+
+
+def _stream_drive_text(
+    session: GoogleSession,
+    url: str,
+    *,
+    params: dict[str, str],
+    mime_type: str | None = None,
+) -> _DriveContent:
+    accumulator = _BoundedTextAccumulator(MAX_DRIVE_STREAM_CHARS)
+    with session.stream("GET", url, params=params) as response:
+        for chunk in response.iter_text():
+            accumulator.append(chunk)
+    result = accumulator.finish()
+    if mime_type is None:
+        return result
+    cleaned = _plain_text(str(result), mime_type)
+    return _DriveContent(cleaned, result.original_chars, result.truncated)
 
 
 def _safe_drive_content(session: GoogleSession, item: dict[str, Any]) -> tuple[str, str | None]:
