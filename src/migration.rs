@@ -298,6 +298,8 @@ fn source(
         source: canonical_source.map(str::to_string),
         channels: Vec::new(),
         servers: Vec::new(),
+        teams: Vec::new(),
+        team_names: Vec::new(),
         repositories: Vec::new(),
         token_env: None,
         token: None,

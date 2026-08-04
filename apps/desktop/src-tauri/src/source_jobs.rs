@@ -29,6 +29,7 @@ const GITHUB_REPOSITORIES_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_GITHUB_REPOSITORIES_BYTES: usize = 512 * 1024;
 const DISCORD_CHANNELS_TIMEOUT: Duration = Duration::from_secs(30);
 const DISCORD_SERVERS_TIMEOUT: Duration = Duration::from_secs(30);
+const SLACK_WORKSPACES_TIMEOUT: Duration = Duration::from_secs(30);
 // The CLI bounds every Discord HTTP response at 512 KiB but the serialized
 // discovery payload can legitimately reach 100 guilds x 100 channels with
 // 100-character names (~1.7 MiB worst case). Bound the Desktop stdout at
@@ -43,6 +44,14 @@ const MAX_DISCORD_GUILDS: usize = 100;
 const MAX_DISCORD_CHANNELS_PER_GUILD: usize = 100;
 const MAX_DISCORD_NAME_CHARS: usize = 100;
 const MAX_DISCORD_SNOWFLAKE_CHARS: usize = 20;
+// Slack workspace discovery carries one team id and name per source (a
+// Slack user token is scoped to exactly one workspace), but the payload
+// contract stays a bounded list; 512 KiB covers far more than the worst
+// case and the validator enforces the same id and name bounds as the CLI.
+const MAX_SLACK_WORKSPACES_BYTES: usize = 512 * 1024;
+const MAX_SLACK_TEAMS: usize = 100;
+const MAX_SLACK_TEAM_ID_CHARS: usize = 12;
+const MAX_SLACK_TEAM_NAME_CHARS: usize = 80;
 const MAX_JOBS: usize = 20;
 const VALIDATION_MAX_DOCUMENTS: &str = "25";
 const VALIDATION_MAX_BYTES: &str = "5242880";
@@ -347,6 +356,84 @@ pub async fn list_discord_servers<R: tauri::Runtime>(
     Ok(value)
 }
 
+/// Discover the Slack workspace (team) the stored browser-authorization user
+/// token is scoped to through the bundled CLI. The renderer supplies only a
+/// configured source name; it cannot inject a command, URL, or token.
+/// Discovery is read-only and the user token never crosses the IPC boundary
+/// or appears in logs. Message sync stays bot-token based via the Python
+/// connector, which keeps reading the configured `SLACK_BOT_TOKEN` variable.
+pub async fn list_slack_workspaces<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    source_name: &str,
+) -> Result<Value, String> {
+    let source = settings::configured_source(source_name)?;
+    if source.kind != "slack" {
+        return Err("workspace discovery is available only for Slack sources".into());
+    }
+    let command = app
+        .shell()
+        .sidecar("cortana")
+        .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
+        .args(["slack-workspaces", source.name.as_str()])
+        .env("CORTANA_DESKTOP_PROCESS_GROUP", "1")
+        .set_raw_out(true);
+    let (mut receiver, child) = command
+        .spawn()
+        .map_err(|error| format!("start Slack workspace discovery: {error}"))?;
+    let result = timeout(SLACK_WORKSPACES_TIMEOUT, async {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut success = false;
+        while let Some(event) = receiver.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => {
+                    append_bounded_bytes(&mut stdout, &bytes, MAX_SLACK_WORKSPACES_BYTES)
+                }
+                CommandEvent::Stderr(bytes) => {
+                    append_bounded_bytes(&mut stderr, &bytes, MAX_LOG_BYTES)
+                }
+                CommandEvent::Error(error) => {
+                    return Err(format!("Slack workspace discovery failed: {error}"));
+                }
+                CommandEvent::Terminated(payload) => {
+                    success = payload.code == Some(0);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok((success, stdout, stderr))
+    })
+    .await;
+    let (success, stdout, stderr) = match result {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => {
+            let _ = terminate_source_process(child);
+            return Err(error);
+        }
+        Err(_) => {
+            let _ = terminate_source_process(child);
+            return Err("Slack workspace discovery timed out".into());
+        }
+    };
+    if !success {
+        let detail = sanitize_log(&String::from_utf8_lossy(&stderr));
+        let detail = detail.chars().take(2048).collect::<String>();
+        return Err(if detail.is_empty() {
+            "Slack workspace discovery failed; check browser authorization".into()
+        } else {
+            format!("Slack workspace discovery failed; check browser authorization: {detail}")
+        });
+    }
+    if stdout.len() >= MAX_SLACK_WORKSPACES_BYTES {
+        return Err("Slack workspace discovery response exceeded 512 KiB".into());
+    }
+    let value: Value = serde_json::from_slice(&stdout)
+        .map_err(|_| "Slack workspace discovery returned invalid JSON".to_string())?;
+    validate_slack_workspaces_payload(&value)?;
+    Ok(value)
+}
+
 pub(crate) fn append_bounded_bytes(buffer: &mut Vec<u8>, bytes: &[u8], maximum: usize) {
     let remaining = maximum.saturating_sub(buffer.len());
     buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
@@ -504,6 +591,59 @@ fn validate_discord_name(value: &str, label: &str) -> Result<(), String> {
         return Err(format!(
             "Discord channel discovery returned an unsafe {label} name"
         ));
+    }
+    Ok(())
+}
+
+/// Re-validate the sidecar's Slack workspace payload before it crosses the
+/// IPC boundary. Team ids and names are bounded exactly like the CLI enforces
+/// them so a defective or compromised runtime cannot push unsafe metadata
+/// into the renderer.
+fn validate_slack_workspaces_payload(value: &Value) -> Result<(), String> {
+    let teams = value
+        .get("teams")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Slack workspace discovery returned an invalid list".to_string())?;
+    if teams.len() > MAX_SLACK_TEAMS {
+        return Err("Slack workspace discovery returned too many teams".into());
+    }
+    for team in teams {
+        let object = team
+            .as_object()
+            .ok_or_else(|| "Slack workspace discovery returned an invalid team".to_string())?;
+        validate_slack_team_id(object.get("id").and_then(Value::as_str).ok_or_else(|| {
+            "Slack workspace discovery returned an invalid team id".to_string()
+        })?)?;
+        validate_slack_team_name(
+            object.get("name").and_then(Value::as_str).ok_or_else(|| {
+                "Slack workspace discovery returned an invalid team name".to_string()
+            })?,
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_slack_team_id(value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || !(9..=MAX_SLACK_TEAM_ID_CHARS).contains(&value.len())
+        || !value.starts_with('T')
+        || !value.bytes().skip(1).all(|byte| byte.is_ascii_alphanumeric())
+    {
+        return Err("Slack workspace discovery returned an invalid team id".into());
+    }
+    Ok(())
+}
+
+fn validate_slack_team_name(value: &str) -> Result<(), String> {
+    let sanitized = value
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect::<String>();
+    if sanitized.trim().is_empty()
+        || sanitized.chars().count() > MAX_SLACK_TEAM_NAME_CHARS
+        || sanitized != value
+    {
+        return Err("Slack workspace discovery returned an unsafe team name".into());
     }
     Ok(())
 }
@@ -752,9 +892,10 @@ impl SourceJobState {
         );
         let is_github = source.kind == "github";
         let is_discord = source.kind == "discord";
-        if !is_google && !is_github && !is_discord {
+        let is_slack = source.kind == "slack";
+        if !is_google && !is_github && !is_discord && !is_slack {
             return Err(
-                "browser authorization is available only for Google, GitHub, and Discord sources"
+                "browser authorization is available only for Google, GitHub, Discord, and Slack sources"
                     .into(),
             );
         }
@@ -780,11 +921,13 @@ impl SourceJobState {
                     ));
                 }
             }
-        } else if (is_discord || is_github)
+        } else if (is_discord || is_github || is_slack)
             && (source.token_path.is_none() || source.oauth_client_path.is_none())
         {
             return Err(if is_discord {
                 "save a Discord user token destination file and OAuth client JSON path first".into()
+            } else if is_slack {
+                "save a Slack user token destination file and OAuth client JSON path first".into()
             } else {
                 "save a GitHub token destination file and OAuth client JSON path first".into()
             });
@@ -798,6 +941,11 @@ impl SourceJobState {
             (
                 authorization_args("discord", source_name),
                 "Waiting for Discord authorization in the system browser. No server or channel data is being read.".into(),
+            )
+        } else if is_slack {
+            (
+                authorization_args("slack", source_name),
+                "Waiting for Slack authorization in the system browser. No workspace or message data is being read. Register the loopback redirect URI http://127.0.0.1:47521/callback in the Slack app first.".into(),
             )
         } else {
             (
@@ -1156,6 +1304,7 @@ fn authorization_args(provider: &str, source: &str) -> Vec<String> {
     let command = match provider {
         "github" => "authorize-github",
         "discord" => "authorize-discord",
+        "slack" => "authorize-slack",
         _ => "authorize-google",
     };
     [command, source].into_iter().map(str::to_string).collect()
@@ -1648,6 +1797,10 @@ mod tests {
             authorization_args("discord", "community-discord"),
             ["authorize-discord", "community-discord"]
         );
+        assert_eq!(
+            authorization_args("slack", "team-slack"),
+            ["authorize-slack", "team-slack"]
+        );
     }
 
     #[test]
@@ -1817,6 +1970,8 @@ mod tests {
             channels: Vec::new(),
             repositories: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -2351,6 +2506,54 @@ mod tests {
         assert!(
             validate_discord_servers_payload(&serde_json::json!({"truncated": false})).is_err(),
             "a missing guild list must fail closed"
+        );
+    }
+
+    #[test]
+    fn slack_workspace_payload_validation_enforces_team_bounds() {
+        let team = || serde_json::json!({ "id": "T0123456789", "name": "Acme Engineering" });
+        assert!(
+            validate_slack_workspaces_payload(&serde_json::json!({
+                "teams": [team()],
+                "truncated": false,
+            }))
+            .is_ok()
+        );
+
+        let mut teams = Vec::new();
+        for _ in 0..=MAX_SLACK_TEAMS {
+            teams.push(team());
+        }
+        assert!(
+            validate_slack_workspaces_payload(&serde_json::json!({"teams": teams}))
+                .expect_err("too many teams must fail")
+                .contains("too many teams")
+        );
+
+        for (field, value) in [
+            ("id", serde_json::json!("C0123456789")),
+            ("id", serde_json::json!("t0123456789")),
+            ("id", serde_json::json!("T0123456789012")),
+            ("id", serde_json::json!("T1234567")),
+            ("name", serde_json::json!("\u{0}Acme")),
+            ("name", serde_json::json!("   ")),
+            ("name", serde_json::json!("x".repeat(MAX_SLACK_TEAM_NAME_CHARS + 1))),
+        ] {
+            let mut team = team();
+            team[field] = value;
+            assert!(
+                validate_slack_workspaces_payload(&serde_json::json!({
+                    "teams": [team],
+                    "truncated": false,
+                }))
+                .is_err(),
+                "{field} workspace payload must be rejected"
+            );
+        }
+
+        assert!(
+            validate_slack_workspaces_payload(&serde_json::json!({})).is_err(),
+            "a missing team list must fail closed"
         );
     }
 

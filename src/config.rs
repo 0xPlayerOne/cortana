@@ -190,6 +190,16 @@ pub struct SourceConfig {
     /// this workspace so the Desktop chooser can scope channel selection.
     #[serde(default)]
     pub servers: Vec<String>,
+    /// Explicit Slack team (workspace) allowlist assigned to this source's
+    /// workspace through browser authorization. A Slack user token is scoped
+    /// to exactly one workspace, so `teams` holds at most one team id; the
+    /// parallel `team_names` records the display names the chooser persisted
+    /// so assigned workspaces stay identifiable without re-discovery.
+    #[serde(default)]
+    pub teams: Vec<String>,
+    /// Display names of the Slack teams in `teams`, kept index-aligned.
+    #[serde(default)]
+    pub team_names: Vec<String>,
     /// Explicit `owner/repository` allowlist for GitHub code sources.
     #[serde(default)]
     pub repositories: Vec<String>,
@@ -795,11 +805,20 @@ mod tests {
             channels = ["175928847299117064"]
             servers = ["175928847299117063"]
             token_env = "DISCORD_BOT_TOKEN"
+
+            [[sources]]
+            name = "team-slack"
+            kind = "slack"
+            project = "work"
+            channels = ["C0123456789"]
+            teams = ["T0123456789"]
+            team_names = ["Acme Engineering"]
+            token_env = "SLACK_BOT_TOKEN"
             "#,
         )
         .expect("valid source config");
 
-        assert_eq!(config.sources.len(), 4);
+        assert_eq!(config.sources.len(), 5);
         assert!(config.sources[0].enabled);
         assert_eq!(config.sources[0].max_content_chars, Some(12_345));
         assert_eq!(config.sources[0].max_documents, Some(100));
@@ -813,6 +832,17 @@ mod tests {
             "per-workspace Discord server assignment must round-trip"
         );
         assert_eq!(config.sources[3].channels, ["175928847299117064"]);
+        assert_eq!(
+            config.sources[4].teams,
+            ["T0123456789"],
+            "per-workspace Slack team assignment must round-trip"
+        );
+        assert_eq!(
+            config.sources[4].team_names,
+            ["Acme Engineering"],
+            "persisted Slack team names must round-trip"
+        );
+        assert_eq!(config.sources[4].channels, ["C0123456789"]);
         assert_eq!(config.ingestion.max_documents_per_source, 2_000);
         assert_eq!(config.ingestion.max_bytes_per_source, 128 * 1024 * 1024);
         assert_eq!(config.ingestion.request_concurrency, 1);
@@ -833,6 +863,8 @@ mod tests {
             source: None,
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: vec!["acme/project".into()],
             token_env: Some("GITHUB_TOKEN".into()),
             token: None,
@@ -1003,6 +1035,8 @@ mod tests {
             source: None,
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,

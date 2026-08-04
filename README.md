@@ -61,7 +61,9 @@ Authorize only the source you intend to use, then run a small read-only validati
 started with `cortana authorize-google SOURCE`; GitHub uses `cortana authorize-github SOURCE`
 with a configured device-flow client id and private token destination; Discord uses
 `cortana authorize-discord SOURCE` with a configured OAuth client JSON and private user-token
-destination to assign servers per workspace; Apple Notes uses the host
+destination to assign servers per workspace; Slack uses `cortana authorize-slack SOURCE` with a
+configured OAuth client JSON and private user-token destination to assign workspaces per
+workspace (`cortana slack-workspaces SOURCE` lists the assigned workspace); Apple Notes uses the host
 permission; token-backed sources read only the configured environment variable. Validation never embeds, indexes, or
 reconciles data:
 

@@ -170,6 +170,18 @@ kind = "slack"
 project = "work"
 channels = ["C0123456789"]
 token_env = "SLACK_BOT_TOKEN"
+# Optional browser authorization for per-workspace workspace assignment. The
+# OAuth client JSON holds the Slack app `client_id` (and optionally
+# `client_secret`); `token` is the private user-token file Cortana creates
+# after consent. The bot token above stays required for channel selection and
+# message sync. `teams` records the workspace assigned to this source (at
+# most one, because a Slack user token is scoped to exactly one workspace)
+# and `team_names` keeps its display name. Register the exact loopback
+# redirect URI http://127.0.0.1:47521/callback in the Slack app first.
+# teams = ["T0123456789"]
+# team_names = ["Acme Engineering"]
+# token = "/Users/you/.config/cortana/slack-user-token.json"
+# oauth_client = "/Users/you/.config/cortana/slack-oauth-client.json"
 
 [[sources]]
 name = "community-discord"

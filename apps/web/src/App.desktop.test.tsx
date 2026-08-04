@@ -79,6 +79,8 @@ const workSource: SourceSettings = {
   channels: [],
   repositories: [],
   servers: [],
+  teams: [],
+  team_names: [],
   token_env: null,
   token_path: null,
   oauth_client_path: null,

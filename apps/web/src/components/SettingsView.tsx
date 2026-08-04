@@ -36,6 +36,7 @@ import {
   listDesktopDiscordServers,
   listDesktopGithubRepositories,
   listDesktopProviderModels,
+  listDesktopSlackWorkspaces,
   getDesktopHindsightStatus,
   getDesktopHonchoStatus,
   getDesktopSchedule,
@@ -91,6 +92,7 @@ import type {
   DiscordServerSummary,
   GithubRepositorySummary,
   InitialSyncBudget,
+  SlackWorkspaceSummary,
   SourceKind,
   SourceSettings,
   WorkspaceSettings,
@@ -2992,6 +2994,10 @@ function SourcesSection({
     Record<string, { guilds: DiscordServerSummary[]; truncated: boolean }>
   >({})
   const [discordServersLoading, setDiscordServersLoading] = useState<string | null>(null)
+  const [slackWorkspaces, setSlackWorkspaces] = useState<
+    Record<string, { teams: SlackWorkspaceSummary[]; truncated: boolean }>
+  >({})
+  const [slackWorkspacesLoading, setSlackWorkspacesLoading] = useState<string | null>(null)
   const [sourceWorkspace, setSourceWorkspace] = useState(() => initialSourceWorkspace(settings))
   const [initialSync, setInitialSync] = useState<{
     source: string
@@ -3243,7 +3249,13 @@ function SourcesSection({
       return
     }
     const provider =
-      source.kind === 'github' ? 'GitHub' : source.kind === 'discord' ? 'Discord' : 'Google'
+      source.kind === 'github'
+        ? 'GitHub'
+        : source.kind === 'discord'
+          ? 'Discord'
+          : source.kind === 'slack'
+            ? 'Slack'
+            : 'Google'
     if (
       !window.confirm(
         `Authorize ${source.name} with ${provider}?\n\nCortana will open the system browser and store the resulting token in the configured private file. No source data is read during authorization.`
@@ -3353,6 +3365,39 @@ function SourcesSection({
     changeSource(index, { servers })
   }
 
+  const discoverSlackWorkspaces = async (index: number, source: SourceSettings) => {
+    if (!canValidate) {
+      setError('Save source changes before discovering workspaces.')
+      return
+    }
+    setError('')
+    setSlackWorkspacesLoading(source.name)
+    try {
+      const result = await listDesktopSlackWorkspaces(source.name)
+      setSlackWorkspaces((current) => ({
+        ...current,
+        [source.name]: { teams: result.teams, truncated: result.truncated },
+      }))
+      if (result.truncated) {
+        setError('Slack returned more than 100 teams; select from the first 100.')
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Slack workspace discovery failed')
+    } finally {
+      setSlackWorkspacesLoading(null)
+    }
+  }
+
+  const toggleSlackTeam = (index: number, source: SourceSettings, team: SlackWorkspaceSummary) => {
+    // A Slack user token is scoped to exactly one workspace, so assigning a
+    // team replaces the previous assignment instead of accumulating.
+    const assigned = source.teams.includes(team.id)
+    changeSource(index, {
+      teams: assigned ? [] : [team.id],
+      team_names: assigned ? [] : [team.name],
+    })
+  }
+
   const trialSyncSource = async (source: SourceSettings) => {
     if (!canValidate) {
       setError('Save source changes before syncing so the native runtime uses this exact config.')
@@ -3388,7 +3433,13 @@ function SourcesSection({
 
   const choosePath = async (
     index: number,
-    kind: 'directory' | 'oauth-client' | 'google-token' | 'github-token' | 'discord-token',
+    kind:
+      | 'directory'
+      | 'oauth-client'
+      | 'google-token'
+      | 'github-token'
+      | 'discord-token'
+      | 'slack-token',
     field: 'root' | 'token_path' | 'oauth_client_path'
   ) => {
     setError('')
@@ -3592,7 +3643,8 @@ function SourcesSection({
                   )}
                   {(isGoogleSource(source.kind) ||
                     source.kind === 'github' ||
-                    source.kind === 'discord') && (
+                    source.kind === 'discord' ||
+                    source.kind === 'slack') && (
                     <button
                       type="button"
                       className="source-icon-button quick-tooltip"
@@ -3600,13 +3652,13 @@ function SourcesSection({
                       data-tooltip="Authorize"
                       disabled={
                         !canValidate ||
-                        (source.kind === 'discord'
+                        (source.kind === 'discord' || source.kind === 'slack'
                           ? !source.token_path
                           : !source.token_path && !source.token_env) ||
                         !source.oauth_client_path ||
                         Boolean(activeJob)
                       }
-                      title={`Authorize read-only ${source.kind === 'github' ? 'GitHub' : source.kind === 'discord' ? 'Discord' : 'Google'} access in the browser`}
+                      title={`Authorize read-only ${source.kind === 'github' ? 'GitHub' : source.kind === 'discord' ? 'Discord' : source.kind === 'slack' ? 'Slack' : 'Google'} access in the browser`}
                       onClick={() => void authorizeSource(source)}
                     >
                       {runningThis && activeJob?.operation === 'authorization' ? (
@@ -4311,6 +4363,119 @@ function SourcesSection({
                           </Field>
                         </>
                       )}
+                      {source.kind === 'slack' && (
+                        <>
+                          <Field
+                            label="Workspace chooser"
+                            hint="assign the workspace this source may index; authorize with Slack first, then discover and check the workspace to assign. A Slack user token is scoped to exactly one workspace, so at most one team can be assigned per source"
+                            wide
+                          >
+                            <div className="source-repository-chooser">
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                aria-label="Discover workspaces"
+                                disabled={
+                                  !canValidate ||
+                                  sourceLocked ||
+                                  slackWorkspacesLoading === source.name
+                                }
+                                onClick={() => void discoverSlackWorkspaces(index, source)}
+                              >
+                                {slackWorkspacesLoading === source.name ? (
+                                  <LoaderCircle className="spin" size={14} />
+                                ) : (
+                                  <RefreshCw size={14} />
+                                )}{' '}
+                                Discover workspaces
+                              </button>
+                              {slackWorkspaces[source.name] && (
+                                <div className="source-repository-options">
+                                  {slackWorkspaces[source.name].teams.length === 0 ? (
+                                    <small>No accessible workspaces returned.</small>
+                                  ) : (
+                                    slackWorkspaces[source.name].teams.map((team) => (
+                                      <label key={team.id}>
+                                        <input
+                                          type="checkbox"
+                                          checked={source.teams.includes(team.id)}
+                                          disabled={sourceLocked || !source.editable}
+                                          onChange={() => toggleSlackTeam(index, source, team)}
+                                        />
+                                        <span>{team.name}</span>
+                                      </label>
+                                    ))
+                                  )}
+                                  {slackWorkspaces[source.name].truncated && (
+                                    <small>
+                                      Slack returned more than 100 teams; only the first 100 are
+                                      shown.
+                                    </small>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </Field>
+                          <Field
+                            label="Slack OAuth token file"
+                            hint="private user token created by Cortana; used only to list the workspace for assignment. The SLACK_BOT_TOKEN environment variable is separate and stays the message-sync credential"
+                            wide
+                          >
+                            <div className="path-input">
+                              <input
+                                value={source.token_path || ''}
+                                disabled={sourceLocked || !source.editable}
+                                placeholder="/Users/you/.config/cortana/slack-user-token.json"
+                                onChange={(event) =>
+                                  changeSource(index, { token_path: event.target.value || null })
+                                }
+                              />
+                              <button
+                                type="button"
+                                disabled={sourceLocked || !source.editable}
+                                aria-label="Choose Slack OAuth token destination"
+                                title="Choose Slack OAuth token destination"
+                                data-tooltip="Choose Slack OAuth token destination"
+                                className="quick-tooltip"
+                                onClick={() => void choosePath(index, 'slack-token', 'token_path')}
+                              >
+                                <FolderOpen size={14} />
+                              </button>
+                            </div>
+                          </Field>
+                          <Field
+                            label="Slack OAuth client JSON"
+                            hint="JSON containing the OAuth app client_id; required for browser authorization. Register the loopback redirect URI http://127.0.0.1:47521/callback in the Slack app first"
+                            wide
+                          >
+                            <div className="path-input">
+                              <input
+                                value={source.oauth_client_path || ''}
+                                disabled={sourceLocked || !source.editable}
+                                placeholder="/Users/you/.config/cortana/slack-oauth-client.json"
+                                onChange={(event) =>
+                                  changeSource(index, {
+                                    oauth_client_path: event.target.value || null,
+                                  })
+                                }
+                              />
+                              <button
+                                type="button"
+                                disabled={sourceLocked || !source.editable}
+                                aria-label="Choose Slack OAuth client JSON"
+                                title="Choose Slack OAuth client JSON"
+                                data-tooltip="Choose Slack OAuth client JSON"
+                                className="quick-tooltip"
+                                onClick={() =>
+                                  void choosePath(index, 'oauth-client', 'oauth_client_path')
+                                }
+                              >
+                                <FolderOpen size={14} />
+                              </button>
+                            </div>
+                          </Field>
+                        </>
+                      )}
                     </>
                   )}
                   {source.editable && (
@@ -4654,6 +4819,8 @@ function newSource(settings: DesktopSettings, project?: string): SourceSettings 
     channels: [],
     repositories: [],
     servers: [],
+    teams: [],
+    team_names: [],
     token_env: null,
     token_path: null,
     oauth_client_path: null,
