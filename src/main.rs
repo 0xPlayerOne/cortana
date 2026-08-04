@@ -1338,9 +1338,7 @@ fn acl_alignment_errors(config: &Config, mappings: &[(String, Vec<String>)]) -> 
         else {
             continue;
         };
-        let mut configured = source.acl.clone();
-        configured.sort();
-        configured.dedup();
+        let configured = source.effective_acl();
         if &configured != expected {
             errors.push(format!(
                 "{} has acl={configured:?}, expected {expected:?}",
@@ -2961,7 +2959,7 @@ fn normalize_documents(documents: &mut [Document], source: &SourceConfig) {
         document.source.clone_from(&canonical);
         document.project.clone_from(&source.project);
         if document.acl.is_empty() {
-            document.acl.clone_from(&source.acl);
+            document.acl = source.effective_acl();
         }
         if !document.metadata.is_object() {
             document.metadata = serde_json::json!({});

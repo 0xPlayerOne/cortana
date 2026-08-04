@@ -200,7 +200,7 @@ pub fn configured_source_status(config: &Config, source: &SourceConfig) -> Confi
         kind: source.kind.clone(),
         project: source.project.clone(),
         enabled: source.enabled,
-        acl: source.acl.clone(),
+        acl: source.effective_acl(),
         max_documents: source
             .max_documents
             .unwrap_or(config.ingestion.max_documents_per_source),
