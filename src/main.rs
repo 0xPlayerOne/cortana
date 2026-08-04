@@ -235,6 +235,8 @@ enum Command {
     AuthorizeGithub { source: String },
     /// List bounded GitHub repositories visible to a configured source for selection.
     GithubRepositories { source: String },
+    /// List bounded Discord guilds and channels visible to a configured source for selection.
+    DiscordChannels { source: String },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -594,6 +596,11 @@ async fn main() -> Result<()> {
     if let Some(Command::GithubRepositories { source }) = cli.command.as_ref() {
         let repositories = github_oauth::list_repositories(&config, source).await?;
         println!("{}", serde_json::to_string(&repositories)?);
+        return Ok(());
+    }
+    if let Some(Command::DiscordChannels { source }) = cli.command.as_ref() {
+        let channels = cortana::discord::list_channels(&config, source).await?;
+        println!("{}", serde_json::to_string(&channels)?);
         return Ok(());
     }
     if let Some(Command::Sync {
@@ -989,6 +996,7 @@ async fn main() -> Result<()> {
             | Command::AuthorizeGoogle { .. }
             | Command::AuthorizeGithub { .. }
             | Command::GithubRepositories { .. }
+            | Command::DiscordChannels { .. }
             | Command::ValidateSource { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },

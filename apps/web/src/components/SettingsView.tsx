@@ -32,6 +32,7 @@ import {
   getDesktopAudit,
   getDesktopInstaller,
   getDesktopInfo,
+  listDesktopDiscordChannels,
   listDesktopGithubRepositories,
   getDesktopHindsightStatus,
   getDesktopHonchoStatus,
@@ -84,6 +85,7 @@ import type {
   DesktopUpdate,
   AuditEvent,
   AuthPrincipalSettings,
+  DiscordGuildChannels,
   GithubRepositorySummary,
   InitialSyncBudget,
   SourceKind,
@@ -2843,6 +2845,10 @@ function SourcesSection({
     Record<string, { items: GithubRepositorySummary[]; truncated: boolean }>
   >({})
   const [githubRepositoriesLoading, setGithubRepositoriesLoading] = useState<string | null>(null)
+  const [discordChannels, setDiscordChannels] = useState<
+    Record<string, { guilds: DiscordGuildChannels[]; truncated: boolean }>
+  >({})
+  const [discordChannelsLoading, setDiscordChannelsLoading] = useState<string | null>(null)
   const [sourceWorkspace, setSourceWorkspace] = useState(() => initialSourceWorkspace(settings))
   const [initialSync, setInitialSync] = useState<{
     source: string
@@ -3142,6 +3148,36 @@ function SourcesSection({
       ? source.repositories.filter((repository) => repository !== fullName)
       : [...source.repositories, fullName]
     changeSource(index, { repositories })
+  }
+
+  const discoverDiscordChannels = async (index: number, source: SourceSettings) => {
+    if (!canValidate) {
+      setError('Save source changes before discovering channels.')
+      return
+    }
+    setError('')
+    setDiscordChannelsLoading(source.name)
+    try {
+      const result = await listDesktopDiscordChannels(source.name)
+      setDiscordChannels((current) => ({
+        ...current,
+        [source.name]: { guilds: result.guilds, truncated: result.truncated },
+      }))
+      if (result.truncated) {
+        setError('Discord returned more than 100 servers; select from the first 100.')
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Discord channel discovery failed')
+    } finally {
+      setDiscordChannelsLoading(null)
+    }
+  }
+
+  const toggleDiscordChannel = (index: number, source: SourceSettings, channelId: string) => {
+    const channels = source.channels.includes(channelId)
+      ? source.channels.filter((channel) => channel !== channelId)
+      : [...source.channels, channelId]
+    changeSource(index, { channels })
   }
 
   const trialSyncSource = async (source: SourceSettings) => {
@@ -3827,6 +3863,73 @@ function SourcesSection({
                     source.kind === 'slack' ||
                     source.kind === 'discord') && (
                     <>
+                      {source.kind === 'discord' && (
+                        <Field
+                          label="Channel chooser"
+                          hint="discover servers and channels visible to the bot, then select only the channels Cortana may index"
+                          wide
+                        >
+                          <div className="source-repository-chooser">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              aria-label="Discover channels"
+                              disabled={
+                                !canValidate ||
+                                sourceLocked ||
+                                discordChannelsLoading === source.name
+                              }
+                              onClick={() => void discoverDiscordChannels(index, source)}
+                            >
+                              {discordChannelsLoading === source.name ? (
+                                <LoaderCircle className="spin" size={14} />
+                              ) : (
+                                <RefreshCw size={14} />
+                              )}{' '}
+                              Discover channels
+                            </button>
+                            {discordChannels[source.name] && (
+                              <div className="source-repository-options">
+                                {discordChannels[source.name].guilds.length === 0 ? (
+                                  <small>No accessible servers returned.</small>
+                                ) : (
+                                  discordChannels[source.name].guilds.map((guild) => (
+                                    <div key={guild.id} className="discord-guild">
+                                      <strong>{guild.name}</strong>
+                                      {guild.truncated && <small> · first 100 channels</small>}
+                                      {guild.channels.length === 0 ? (
+                                        <small>No channels returned.</small>
+                                      ) : (
+                                        guild.channels.map((channel) => (
+                                          <label key={channel.id}>
+                                            <input
+                                              type="checkbox"
+                                              checked={source.channels.includes(channel.id)}
+                                              disabled={sourceLocked || !source.editable}
+                                              onChange={() =>
+                                                toggleDiscordChannel(index, source, channel.id)
+                                              }
+                                            />
+                                            <span>
+                                              {channel.name} · {channel.kind}
+                                            </span>
+                                          </label>
+                                        ))
+                                      )}
+                                    </div>
+                                  ))
+                                )}
+                                {discordChannels[source.name].truncated && (
+                                  <small>
+                                    Discord returned more than 100 servers; only the first 100 are
+                                    shown.
+                                  </small>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </Field>
+                      )}
                       <Field
                         label={source.kind === 'github' ? 'Repositories' : 'Channel IDs'}
                         hint={

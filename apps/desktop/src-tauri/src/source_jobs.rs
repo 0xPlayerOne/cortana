@@ -27,6 +27,17 @@ use crate::settings;
 const MAX_LOG_BYTES: usize = 64 * 1024;
 const GITHUB_REPOSITORIES_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_GITHUB_REPOSITORIES_BYTES: usize = 512 * 1024;
+const DISCORD_CHANNELS_TIMEOUT: Duration = Duration::from_secs(30);
+// The CLI bounds every Discord HTTP response at 512 KiB but the serialized
+// discovery payload can legitimately reach 100 guilds x 100 channels with
+// 100-character names (~1.7 MiB worst case). Bound the Desktop stdout at
+// 2 MiB; the payload validator still caps guilds, channels, names, and ids
+// exactly like the CLI does.
+const MAX_DISCORD_CHANNELS_BYTES: usize = 2 * 1024 * 1024;
+const MAX_DISCORD_GUILDS: usize = 100;
+const MAX_DISCORD_CHANNELS_PER_GUILD: usize = 100;
+const MAX_DISCORD_NAME_CHARS: usize = 100;
+const MAX_DISCORD_SNOWFLAKE_CHARS: usize = 20;
 const MAX_JOBS: usize = 20;
 const VALIDATION_MAX_DOCUMENTS: &str = "25";
 const VALIDATION_MAX_BYTES: &str = "5242880";
@@ -177,6 +188,85 @@ pub async fn list_github_repositories<R: tauri::Runtime>(
     Ok(value)
 }
 
+/// Discover Discord guilds and channels through the bundled CLI using the
+/// already-saved source configuration. The renderer supplies only a configured
+/// source name; it cannot inject a command, URL, token, guild, or channel.
+/// Discovery is read-only: the CLI never reads message content, starts a sync,
+/// or prints the bot token.
+pub async fn list_discord_channels<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    source_name: &str,
+) -> Result<Value, String> {
+    let source = settings::configured_source(source_name)?;
+    if source.kind != "discord" {
+        return Err("channel discovery is available only for Discord sources".into());
+    }
+    let command = app
+        .shell()
+        .sidecar("cortana")
+        .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
+        .args(["discord-channels", source.name.as_str()])
+        .env("CORTANA_DESKTOP_PROCESS_GROUP", "1")
+        .set_raw_out(true);
+    let (mut receiver, child) = command
+        .spawn()
+        .map_err(|error| format!("start Discord channel discovery: {error}"))?;
+    let result = timeout(DISCORD_CHANNELS_TIMEOUT, async {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut success = false;
+        while let Some(event) = receiver.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => {
+                    append_bounded_bytes(&mut stdout, &bytes, MAX_DISCORD_CHANNELS_BYTES)
+                }
+                CommandEvent::Stderr(bytes) => {
+                    append_bounded_bytes(&mut stderr, &bytes, MAX_LOG_BYTES)
+                }
+                CommandEvent::Error(error) => {
+                    return Err(format!("Discord channel discovery failed: {error}"));
+                }
+                CommandEvent::Terminated(payload) => {
+                    success = payload.code == Some(0);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok((success, stdout, stderr))
+    })
+    .await;
+    let (success, stdout, stderr) = match result {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => {
+            let _ = terminate_source_process(child);
+            return Err(error);
+        }
+        Err(_) => {
+            let _ = terminate_source_process(child);
+            return Err("Discord channel discovery timed out".into());
+        }
+    };
+    if !success {
+        let detail = sanitize_log(&String::from_utf8_lossy(&stderr));
+        let detail = detail.chars().take(2048).collect::<String>();
+        return Err(if detail.is_empty() {
+            "Discord channel discovery failed; check the configured bot token".into()
+        } else {
+            format!(
+                "Discord channel discovery failed; check the configured bot token: {detail}"
+            )
+        });
+    }
+    if stdout.len() >= MAX_DISCORD_CHANNELS_BYTES {
+        return Err("Discord channel discovery response exceeded 2 MiB".into());
+    }
+    let value: Value = serde_json::from_slice(&stdout)
+        .map_err(|_| "Discord channel discovery returned invalid JSON".to_string())?;
+    validate_discord_channels_payload(&value)?;
+    Ok(value)
+}
+
 fn append_bounded_bytes(buffer: &mut Vec<u8>, bytes: &[u8], maximum: usize) {
     let remaining = maximum.saturating_sub(buffer.len());
     buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
@@ -213,6 +303,106 @@ fn validate_github_repository_payload(value: &Value) -> Result<(), String> {
         if url.scheme() != "https" || url.host_str() != Some("github.com") {
             return Err("GitHub repository discovery returned an unsafe URL".into());
         }
+    }
+    Ok(())
+}
+
+/// Re-validate the sidecar's Discord discovery payload before it crosses the
+/// IPC boundary. Guilds, channels, names, and ids are bounded exactly like the
+/// CLI enforces them so a defective or compromised runtime cannot push unsafe
+/// metadata into the renderer.
+fn validate_discord_channels_payload(value: &Value) -> Result<(), String> {
+    let guilds = value
+        .get("guilds")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Discord channel discovery returned an invalid list".to_string())?;
+    if guilds.len() > MAX_DISCORD_GUILDS {
+        return Err("Discord channel discovery returned too many guilds".into());
+    }
+    for guild in guilds {
+        let object = guild
+            .as_object()
+            .ok_or_else(|| "Discord channel discovery returned an invalid guild".to_string())?;
+        validate_discord_snowflake(
+            object
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "Discord channel discovery returned an invalid guild id".to_string())?,
+        )?;
+        validate_discord_name(
+            object
+                .get("name")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "Discord channel discovery returned an invalid guild name".to_string())?,
+            "guild",
+        )?;
+        let channels = object
+            .get("channels")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "Discord channel discovery returned an invalid channel list".to_string())?;
+        if channels.len() > MAX_DISCORD_CHANNELS_PER_GUILD {
+            return Err("Discord channel discovery returned too many channels".into());
+        }
+        for channel in channels {
+            let channel = channel.as_object().ok_or_else(|| {
+                "Discord channel discovery returned an invalid channel".to_string()
+            })?;
+            validate_discord_snowflake(
+                channel.get("id").and_then(Value::as_str).ok_or_else(|| {
+                    "Discord channel discovery returned an invalid channel id".to_string()
+                })?,
+            )?;
+            validate_discord_name(
+                channel
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        "Discord channel discovery returned an invalid channel name".to_string()
+                    })?,
+                "channel",
+            )?;
+            let kind = channel
+                .get("kind")
+                .and_then(Value::as_str)
+                .ok_or_else(|| {
+                    "Discord channel discovery returned an invalid channel kind".to_string()
+                })?;
+            if kind.is_empty()
+                || kind.len() > 32
+                || !kind
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            {
+                return Err("Discord channel discovery returned an unsafe channel kind".into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_discord_snowflake(value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > MAX_DISCORD_SNOWFLAKE_CHARS
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+        || value.parse::<u64>().map_or(true, |parsed| parsed == 0)
+    {
+        return Err("Discord channel discovery returned an invalid snowflake id".into());
+    }
+    Ok(())
+}
+
+fn validate_discord_name(value: &str, label: &str) -> Result<(), String> {
+    let sanitized = value
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect::<String>();
+    if sanitized.trim().is_empty()
+        || sanitized.chars().count() > MAX_DISCORD_NAME_CHARS
+        || sanitized != value
+    {
+        return Err(format!(
+            "Discord channel discovery returned an unsafe {label} name"
+        ));
     }
     Ok(())
 }
@@ -1867,6 +2057,100 @@ mod tests {
             terminal_summary("trial-sync", "cancelled", false)
                 .contains("Committed batches remain indexed")
         );
+    }
+
+    #[test]
+    fn discord_payload_validation_enforces_guild_and_channel_bounds() {
+        let guild = || {
+            serde_json::json!({
+                "id": "175928847299117063",
+                "name": "Engineering",
+                "channels": [{"id": "175928847299117064", "name": "release", "kind": "text"}],
+                "truncated": false,
+            })
+        };
+        let mut guilds = Vec::new();
+        for _ in 0..=MAX_DISCORD_GUILDS {
+            guilds.push(guild());
+        }
+        let oversized = serde_json::json!({ "guilds": guilds, "truncated": true });
+        assert!(
+            validate_discord_channels_payload(&oversized)
+                .expect_err("too many guilds must fail")
+                .contains("too many guilds")
+        );
+
+        let mut channels = Vec::new();
+        for _ in 0..=MAX_DISCORD_CHANNELS_PER_GUILD {
+            channels.push(serde_json::json!({"id": "175928847299117064", "name": "release", "kind": "text"}));
+        }
+        let oversized = serde_json::json!({
+            "guilds": [{"id": "175928847299117063", "name": "Engineering", "channels": channels, "truncated": true}],
+            "truncated": false,
+        });
+        assert!(
+            validate_discord_channels_payload(&oversized)
+                .expect_err("too many channels must fail")
+                .contains("too many channels")
+        );
+
+        assert!(validate_discord_channels_payload(&serde_json::json!({
+            "guilds": [guild()],
+            "truncated": false,
+        }))
+        .is_ok());
+    }
+
+    #[test]
+    fn discord_payload_validation_rejects_unsafe_ids_names_and_kinds() {
+        let valid = serde_json::json!({
+            "id": "175928847299117063",
+            "name": "Engineering",
+            "channels": [],
+            "truncated": false,
+        });
+        for (field, value) in [
+            ("id", serde_json::json!("not-a-snowflake")),
+            ("id", serde_json::json!("0")),
+            ("id", serde_json::json!("")),
+            ("name", serde_json::json!("\u{0}Engineering")),
+            ("name", serde_json::json!("   ")),
+            ("name", serde_json::json!("x".repeat(MAX_DISCORD_NAME_CHARS + 1))),
+        ] {
+            let mut guild = valid.clone();
+            guild[field] = value;
+            let payload = serde_json::json!({"guilds": [guild], "truncated": false});
+            assert!(
+                validate_discord_channels_payload(&payload).is_err(),
+                "{field} payload must be rejected"
+            );
+        }
+
+        let mut channel = serde_json::json!({"id": "175928847299117064", "name": "release", "kind": "text"});
+        channel["kind"] = serde_json::json!("text; drop");
+        let payload = serde_json::json!({
+            "guilds": [{"id": "175928847299117063", "name": "Engineering", "channels": [channel], "truncated": false}],
+            "truncated": false,
+        });
+        assert!(
+            validate_discord_channels_payload(&payload)
+                .expect_err("unsafe kind must fail")
+                .contains("unsafe channel kind")
+        );
+    }
+
+    #[test]
+    fn discord_snowflake_and_name_validation_is_narrow() {
+        assert!(validate_discord_snowflake("175928847299117063").is_ok());
+        assert!(validate_discord_snowflake("18446744073709551615").is_ok());
+        for invalid in ["", "0", "abc", "12.5", "-1", " 123", "18446744073709551616"] {
+            assert!(validate_discord_snowflake(invalid).is_err(), "{invalid:?}");
+        }
+        assert!(validate_discord_name("Engineering", "guild").is_ok());
+        assert!(validate_discord_name("release-notes", "channel").is_ok());
+        assert!(validate_discord_name("\u{0}Engineering", "guild").is_err());
+        assert!(validate_discord_name("   ", "guild").is_err());
+        assert!(validate_discord_name(&"x".repeat(101), "guild").is_err());
     }
 
     #[test]

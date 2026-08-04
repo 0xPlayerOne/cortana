@@ -127,6 +127,11 @@ configured document cap and never reconcile deletions.
   id JSON and device flow, while `cortana github-repositories SOURCE` returns a bounded safe
   repository list for Desktop selection. The Desktop chooser persists only explicitly checked
   `owner/repository` entries. Neither command reads repository content.
+- `cortana discord-channels SOURCE` returns a bounded, read-only guild and channel list for
+  Desktop selection using Discord REST v10 and the configured bot token environment variable. It
+  never reads message content, never starts a sync, and never prints the token. The Desktop
+  chooser persists only explicitly checked channel snowflake IDs; the renderer can send only the
+  source name and selected channel IDs.
 - Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Desktop authorization uses a
   Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
   and the minimum read-only scopes required by the Google sources that share that token. Refresh
