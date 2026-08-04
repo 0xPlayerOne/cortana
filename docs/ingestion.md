@@ -76,7 +76,7 @@ Google Drive and Gmail keep owner-only derived caches under
 `data_dir/connector-cache/<source>/`. Complete runs still list every item ID for correct deletion
 reconciliation, but Drive content is downloaded only when its modification timestamp changes and
 immutable Gmail message bodies are downloaded only once. The caches are disposable and can always
-be rebuilt from Google. First-time Drive content and Gmail detail retrieval use bounded eight-worker
+be rebuilt from Google. First-time Drive content and Gmail detail retrieval use bounded two-worker
 and four-worker pools respectively; cache writes and emitted documents remain ordered on the main
 connector thread. Drive downloads are processed in 32-file batches, text and export responses are
 consumed as bounded head/tail streams, and PDF responses are spooled to a temporary file with a 64 MiB cap

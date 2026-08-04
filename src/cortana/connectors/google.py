@@ -70,6 +70,7 @@ GOOGLE_TRANSIENT_403_REASONS = {
 GMAIL_DETAIL_RETRIES = 4
 GMAIL_DETAIL_RETRY_BACKOFF_SECONDS = (0.25, 0.75, 1.5, 3.0)
 GMAIL_DETAIL_CONCURRENCY = 4
+DRIVE_CONTENT_CONCURRENCY = 2
 
 
 class _DriveContent(str):
@@ -442,7 +443,7 @@ def fetch_drive(
                             bodies[file_id] = body
                     if missing_items:
                         with ThreadPoolExecutor(
-                            max_workers=min(8, len(missing_items)),
+                            max_workers=min(DRIVE_CONTENT_CONCURRENCY, len(missing_items)),
                             thread_name_prefix="cortana-drive",
                         ) as pool:
                             downloaded = pool.map(
