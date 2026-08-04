@@ -103,7 +103,9 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
   sources. Shared bearer token configuration is empty. Full-budget
   recurring-sync validation remains pending for the listed bounded sources. After the Drive
   memory-safety fix, a real configured `work-drive` validation also passed at 25 documents / 5 MiB /
-  120 seconds with `writes.documents=0`, `writes.embeddings=0`, and `writes.reconciliations=0`.
+  120 seconds with `writes.documents=0`, `writes.embeddings=0`, and `writes.reconciliations=0`;
+  the follow-up 200-document / 64 MiB / 300-second validation passed at 1,545,858 bytes with the
+  same zero-write guarantees.
 - Deterministic evaluation passes. Model-backed synthetic eval passes with a
   temporary auto-free query configuration against the loopback gateway
   (`base_url = "http://127.0.0.1:8008/v1"`, `model = "auto-free"`, fixture-only:
