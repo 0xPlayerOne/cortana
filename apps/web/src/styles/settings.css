@@ -1073,8 +1073,7 @@
 }
 
 .form-field input,
-.form-field select,
-.workspace-select select {
+.form-field select {
   min-width: 0;
   height: 38px;
   padding: 0 10px;
@@ -1447,19 +1446,6 @@
 
 .settings-unavailable p {
   max-width: 520px;
-}
-
-.workspace-select {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-
-.workspace-select select {
-  width: 105px;
-  height: 25px;
-  font-size: 11px;
 }
 
 .update-card,
