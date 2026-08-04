@@ -25,6 +25,7 @@ import {
   getGraph,
   getStatus,
   openDesktopSourceSetup,
+  runDesktopServicesActionAll,
   saveDesktopSettings,
   cancelDesktopSourceValidation,
   scanDesktopReadiness,
@@ -966,11 +967,48 @@ export function App() {
         secrets: [],
       })
       applyDesktopSettings(next)
-      setSourceToggleNotice(
-        next.restart_required
-          ? 'Source setting saved. Restart the affected services from Settings to apply it.'
-          : 'Source setting saved for future ingestion.'
-      )
+      if (next.restart_required) {
+        // The saved source change needs a service restart to take effect.
+        // Handle it in the background and name the outcome instead of asking
+        // the operator to guess which service needs attention.
+        setServiceActivity({
+          target: 'core services',
+          action: 'restart',
+          status: 'running',
+          detail: null,
+        })
+        setSourceToggleNotice(
+          'Source setting saved. Restarting the affected services in the background…'
+        )
+        void runDesktopServicesActionAll('restart')
+          .then(() => {
+            setServiceActivity({
+              target: 'core services',
+              action: 'restart',
+              status: 'succeeded',
+              detail: null,
+            })
+            applyDesktopSettings({ ...next, restart_required: false })
+            setSourceToggleNotice(
+              'Source setting saved. Affected services restarted in the background.'
+            )
+          })
+          .catch((caught: unknown) => {
+            const detail = caught instanceof Error ? caught.message : 'Core services restart failed'
+            setServiceActivity({
+              target: 'core services',
+              action: 'restart',
+              status: 'failed',
+              detail,
+            })
+            setSourceToggleError(
+              `Source setting saved, but the service restart failed (${detail}). ` +
+                'Open Settings → Services to restart the affected services manually.'
+            )
+          })
+      } else {
+        setSourceToggleNotice('Source setting saved for future ingestion.')
+      }
       try {
         const nextStatus = await getStatus()
         setStatus(nextStatus)
@@ -1241,6 +1279,9 @@ export function App() {
     if (!canLeaveSettings()) return
     setView('knowledge')
     setLeftOpen(true)
+    // The source panel is hidden while the graph is full-screen; leave the
+    // graph so the filter and document list are reachable again.
+    if (workspaceTab === 'graph') setWorkspaceTab('document')
     window.setTimeout(() => document.getElementById('document-filter')?.focus(), 0)
   }
 
@@ -1378,19 +1419,29 @@ export function App() {
     configuredSourcesForWorkspace.join('\u0000'),
   ])
 
+  // The Graph rail is a full-screen alternative to the document workspace:
+  // while it is active the source and context panels collapse so the graph
+  // spans the whole width between the rail and the status bar.
+  const graphFullScreen = view === 'knowledge' && workspaceTab === 'graph'
+
   return (
     <div
-      className="shell"
+      className={`shell ${graphFullScreen ? 'graph-fullscreen' : ''}`}
       style={
         {
-          '--source-width': `${sourceWidth}px`,
-          '--context-width': `${contextWidth}px`,
+          '--source-width': graphFullScreen ? '0px' : `${sourceWidth}px`,
+          '--context-width': graphFullScreen ? '0px' : `${contextWidth}px`,
         } as CSSProperties
       }
     >
       <header className="titlebar">
         <TitleActions
-          onOpenSources={() => setLeftOpen(true)}
+          onOpenSources={() => {
+            setLeftOpen(true)
+            // The source panel is hidden while the graph is full-screen;
+            // leave the graph so the panel is reachable again.
+            if (workspaceTab === 'graph') setWorkspaceTab('document')
+          }}
           canGoBack={queryHistoryIndex > 0}
           canGoForward={queryHistoryIndex >= 0 && queryHistoryIndex < queryHistory.length - 1}
           onHistoryBack={() => {
@@ -1530,75 +1581,79 @@ export function App() {
         />
       ) : view === 'knowledge' ? (
         <>
-          <SourcePanel
-            open={leftOpen}
-            status={status}
-            workspace={effectiveWorkspace}
-            workspaces={workspaces}
-            documentQuery={documentQuery}
-            selected={source}
-            documents={documents}
-            selectedDocument={activeDocument?.id ?? ''}
-            documentsLoading={documentsLoading}
-            documentsError={documentsError}
-            hasMoreDocuments={Boolean(documentCursor)}
-            statusError={statusError}
-            onRetryStatus={retryStatus}
-            sourceJobError={sourceJobsError}
-            onRetrySourceJobs={sourceJobsRetry}
-            onSelect={chooseSource}
-            onSelectWorkspace={chooseWorkspace}
-            onDocumentQueryChange={setDocumentQuery}
-            onSelectDocument={(id) => void chooseDocument(id)}
-            onLoadMoreDocuments={() => void loadMoreDocuments()}
-            onRetryDocuments={retryDocuments}
-            onOpenSourcesSettings={() => {
-              setSettingsSection('sources')
-              setView('settings')
-            }}
-            onOpenSourceSetup={
-              desktopSourceActionsReady
-                ? (name, project) => void openSourceSetup(name, project)
-                : undefined
-            }
-            onAuthorizeSource={
-              desktopSourceActionsReady
-                ? (name, project) => void authorizeSource(name, project)
-                : undefined
-            }
-            onToggleSource={
-              desktopSourceActionsReady
-                ? (name, project, enabled) => void toggleSource(name, project, enabled)
-                : undefined
-            }
-            sourceToggleBusy={sourceToggleBusy}
-            sourceToggleDisabled={
-              settingsDirty || desktopSettings === null || Boolean(desktopSettings?.needs_setup)
-            }
-            sourceToggleError={sourceToggleError}
-            sourceToggleNotice={sourceToggleNotice}
-            onClose={() => setLeftOpen(false)}
-            onCancelSourceJob={cancelSourceJob}
-            jobs={sourceJobs.jobs}
-          />
-          <div
-            className="pane-resizer source-resizer"
-            role="separator"
-            aria-label="Resize sources panel"
-            aria-orientation="vertical"
-            aria-valuemin={220}
-            aria-valuemax={maximumPaneWidth('source')}
-            aria-valuenow={sourceWidth}
-            tabIndex={0}
-            onPointerDown={(event) => beginResize('source', event)}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowLeft') setSourceWidth((width) => Math.max(220, width - 16))
-              else if (event.key === 'ArrowRight')
-                setSourceWidth((width) => Math.min(maximumPaneWidth('source'), width + 16))
-              else return
-              event.preventDefault()
-            }}
-          />
+          {!graphFullScreen && (
+            <SourcePanel
+              open={leftOpen}
+              status={status}
+              workspace={effectiveWorkspace}
+              workspaces={workspaces}
+              documentQuery={documentQuery}
+              selected={source}
+              documents={documents}
+              selectedDocument={activeDocument?.id ?? ''}
+              documentsLoading={documentsLoading}
+              documentsError={documentsError}
+              hasMoreDocuments={Boolean(documentCursor)}
+              statusError={statusError}
+              onRetryStatus={retryStatus}
+              sourceJobError={sourceJobsError}
+              onRetrySourceJobs={sourceJobsRetry}
+              onSelect={chooseSource}
+              onSelectWorkspace={chooseWorkspace}
+              onDocumentQueryChange={setDocumentQuery}
+              onSelectDocument={(id) => void chooseDocument(id)}
+              onLoadMoreDocuments={() => void loadMoreDocuments()}
+              onRetryDocuments={retryDocuments}
+              onOpenSourcesSettings={() => {
+                setSettingsSection('sources')
+                setView('settings')
+              }}
+              onOpenSourceSetup={
+                desktopSourceActionsReady
+                  ? (name, project) => void openSourceSetup(name, project)
+                  : undefined
+              }
+              onAuthorizeSource={
+                desktopSourceActionsReady
+                  ? (name, project) => void authorizeSource(name, project)
+                  : undefined
+              }
+              onToggleSource={
+                desktopSourceActionsReady
+                  ? (name, project, enabled) => void toggleSource(name, project, enabled)
+                  : undefined
+              }
+              sourceToggleBusy={sourceToggleBusy}
+              sourceToggleDisabled={
+                settingsDirty || desktopSettings === null || Boolean(desktopSettings?.needs_setup)
+              }
+              sourceToggleError={sourceToggleError}
+              sourceToggleNotice={sourceToggleNotice}
+              onClose={() => setLeftOpen(false)}
+              onCancelSourceJob={cancelSourceJob}
+              jobs={sourceJobs.jobs}
+            />
+          )}
+          {!graphFullScreen && (
+            <div
+              className="pane-resizer source-resizer"
+              role="separator"
+              aria-label="Resize sources panel"
+              aria-orientation="vertical"
+              aria-valuemin={220}
+              aria-valuemax={maximumPaneWidth('source')}
+              aria-valuenow={sourceWidth}
+              tabIndex={0}
+              onPointerDown={(event) => beginResize('source', event)}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowLeft') setSourceWidth((width) => Math.max(220, width - 16))
+                else if (event.key === 'ArrowRight')
+                  setSourceWidth((width) => Math.min(maximumPaneWidth('source'), width + 16))
+                else return
+                event.preventDefault()
+              }}
+            />
+          )}
           <Workspace
             query={activeQuery}
             answer={answer}
@@ -1618,41 +1673,45 @@ export function App() {
             onSelectDocument={(id) => void chooseDocument(id)}
             onRetry={() => void runSearch(query)}
           />
-          <ContextPanel
-            open={rightOpen}
-            query={activeQuery}
-            evidence={evidence}
-            answer={answer}
-            selected={selected}
-            status={status}
-            context={agentContext}
-            contextTokens={estimateTokens(agentContext)}
-            serverContext={contextBundle}
-            contextLoading={contextLoading}
-            contextError={contextError}
-            onRetrieveContext={() => void retrieveAgentContext()}
-            onSelect={setSelected}
-            onClose={() => setRightOpen(false)}
-          />
-          <div
-            className="pane-resizer context-resizer"
-            role="separator"
-            aria-label="Resize context panel"
-            aria-orientation="vertical"
-            aria-valuemin={280}
-            aria-valuemax={maximumPaneWidth('context')}
-            aria-valuenow={contextWidth}
-            tabIndex={0}
-            onPointerDown={(event) => beginResize('context', event)}
-            onKeyDown={(event) => {
-              if (event.key === 'ArrowLeft')
-                setContextWidth((width) => Math.min(maximumPaneWidth('context'), width + 16))
-              else if (event.key === 'ArrowRight')
-                setContextWidth((width) => Math.max(280, width - 16))
-              else return
-              event.preventDefault()
-            }}
-          />
+          {!graphFullScreen && (
+            <ContextPanel
+              open={rightOpen}
+              query={activeQuery}
+              evidence={evidence}
+              answer={answer}
+              selected={selected}
+              status={status}
+              context={agentContext}
+              contextTokens={estimateTokens(agentContext)}
+              serverContext={contextBundle}
+              contextLoading={contextLoading}
+              contextError={contextError}
+              onRetrieveContext={() => void retrieveAgentContext()}
+              onSelect={setSelected}
+              onClose={() => setRightOpen(false)}
+            />
+          )}
+          {!graphFullScreen && (
+            <div
+              className="pane-resizer context-resizer"
+              role="separator"
+              aria-label="Resize context panel"
+              aria-orientation="vertical"
+              aria-valuemin={280}
+              aria-valuemax={maximumPaneWidth('context')}
+              aria-valuenow={contextWidth}
+              tabIndex={0}
+              onPointerDown={(event) => beginResize('context', event)}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowLeft')
+                  setContextWidth((width) => Math.min(maximumPaneWidth('context'), width + 16))
+                else if (event.key === 'ArrowRight')
+                  setContextWidth((width) => Math.max(280, width - 16))
+                else return
+                event.preventDefault()
+              }}
+            />
+          )}
         </>
       ) : (
         <UtilityView
@@ -1837,7 +1896,9 @@ export function App() {
         {isDesktopApp && (
           <button
             type="button"
-            className="status-link"
+            className="status-link quick-tooltip quick-tooltip--above"
+            title={`Open the Updates section (Cortana ${desktopInfo?.desktop_version || '—'})`}
+            data-tooltip={`Open the Updates section (Cortana ${desktopInfo?.desktop_version || '—'})`}
             onClick={() => {
               if (!canLeaveSettings()) return
               setSettingsSection('updates')
@@ -1899,9 +1960,10 @@ function ActiveSourceJobs({ jobs, onOpen }: { jobs: DesktopSourceJob[]; onOpen: 
   return (
     <button
       type="button"
-      className="source-jobs status-link"
+      className="source-jobs status-link quick-tooltip quick-tooltip--above"
       aria-label="Open active source jobs"
       title={`${detail}. Open the activity inbox.`}
+      data-tooltip={`${detail}. Open the activity inbox.`}
       onClick={onOpen}
     >
       <LoaderCircle className="spin" size={13} /> {active.length} active source job
@@ -1917,9 +1979,10 @@ function SourceJobsErrorIndicator({ error, onOpen }: { error: string; onOpen: ()
   return (
     <button
       type="button"
-      className="source-jobs status-link attention"
+      className="source-jobs status-link attention quick-tooltip quick-tooltip--above"
       aria-label="Open source job status"
       title={`${detail}. Open the activity inbox.`}
+      data-tooltip={`${detail}. Open the activity inbox.`}
       onClick={onOpen}
     >
       <i /> Source jobs: {label}
@@ -1940,9 +2003,10 @@ function SourceJobAttentionIndicator({
   return (
     <button
       type="button"
-      className="source-jobs status-link attention"
+      className="source-jobs status-link attention quick-tooltip quick-tooltip--above"
       aria-label="Open source job attention"
       title={`${detail}. Open the activity inbox.`}
+      data-tooltip={`${detail}. Open the activity inbox.`}
       onClick={onOpen}
     >
       <i /> {attention.length} source job{attention.length === 1 ? '' : 's'} need attention
@@ -1972,9 +2036,10 @@ function InstallerIndicator({
   return (
     <button
       type="button"
-      className={`installer-health ${state}`}
+      className={`installer-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label={`Open installer status for ${job.tool}`}
       title={`${job.summary}. Open readiness for details.`}
+      data-tooltip={`${job.summary}. Open readiness for details.`}
       onClick={onOpen}
     >
       <i /> {label}
@@ -1996,9 +2061,10 @@ function ServiceActivityIndicator({
   return (
     <button
       type="button"
-      className={`service-activity-health ${state}`}
+      className={`service-activity-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label="Open service activity"
       title={`${action} ${activity.target}${activity.detail ? `: ${activity.detail}` : ''}. Open services for details.`}
+      data-tooltip={`${action} ${activity.target}${activity.detail ? `: ${activity.detail}` : ''}. Open services for details.`}
       onClick={onOpen}
     >
       {active && <LoaderCircle className="spin" size={13} />}
@@ -2022,9 +2088,10 @@ function ReadinessActivityIndicator({
   return (
     <button
       type="button"
-      className={`readiness-activity-health ${state}`}
+      className={`readiness-activity-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label="Open readiness activity"
       title={`${activity.detail || (active ? 'System readiness scan is running.' : 'System readiness scan completed.')}`}
+      data-tooltip={`${activity.detail || (active ? 'System readiness scan is running.' : 'System readiness scan completed.')}`}
       onClick={onOpen}
     >
       {active && <LoaderCircle className="spin" size={13} />}
@@ -2049,9 +2116,10 @@ export function ServiceHealthIndicator({
     return (
       <button
         type="button"
-        className="service-activity-health warning"
+        className="service-activity-health warning quick-tooltip quick-tooltip--above"
         aria-label="Open service health"
         title={`${error}. Open Services for details.`}
+        data-tooltip={`${error}. Open Services for details.`}
         onClick={onOpen}
       >
         <i /> Services: unavailable
@@ -2082,9 +2150,10 @@ export function ServiceHealthIndicator({
   return (
     <button
       type="button"
-      className={`service-activity-health ${state}`}
+      className={`service-activity-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label="Open service health"
       title={`${detail}. Open Services for controls.`}
+      data-tooltip={`${detail}. Open Services for controls.`}
       onClick={onOpen}
     >
       <i /> {label}
@@ -2111,12 +2180,14 @@ function SidecarStatusIndicator({
           ? 'reachable'
           : 'warning'
   const readable = status.state.replaceAll('_', ' ')
+  const detail = `${label}: ${readable}${status.detail ? ` — ${status.detail}` : ''}`
   return (
     <button
       type="button"
-      className={`sidecar-health ${state}`}
+      className={`sidecar-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label={`Open ${label} status`}
-      title={`${label}: ${readable}${status.detail ? ` — ${status.detail}` : ''}`}
+      title={detail}
+      data-tooltip={detail}
       onClick={onOpen}
     >
       <i /> {label}: {readable}

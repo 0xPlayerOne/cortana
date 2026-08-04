@@ -196,6 +196,8 @@ function BrainDocumentView({
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
             title={favorite ? 'Remove favorite' : 'Add favorite'}
+            data-tooltip={favorite ? 'Remove favorite' : 'Add favorite'}
+            className="quick-tooltip"
             onClick={() => setFavorite(toggleFavoriteDocument(document.id))}
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
@@ -207,6 +209,8 @@ function BrainDocumentView({
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
               title="Open original source"
+              data-tooltip="Open original source"
+              className="quick-tooltip"
               onClick={(event) => {
                 if (!isDesktopApp) return
                 const uri = sourceHref
@@ -353,6 +357,8 @@ function DocumentView({
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
             title={favorite ? 'Remove favorite' : 'Add favorite'}
+            data-tooltip={favorite ? 'Remove favorite' : 'Add favorite'}
+            className="quick-tooltip"
             onClick={() => setFavorite(toggleFavoriteDocument(active.chunk_id))}
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
@@ -364,6 +370,8 @@ function DocumentView({
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
               title="Open original source"
+              data-tooltip="Open original source"
+              className="quick-tooltip"
               onClick={(event) => {
                 if (!isDesktopApp) return
                 event.preventDefault()
@@ -598,6 +606,8 @@ function GraphView({
           key={node.id}
           aria-label={`${node.document_id ? 'Open document' : 'Open evidence'}: ${node.label}`}
           title={node.document_id ? 'Open document' : 'Open retrieved evidence'}
+          data-tooltip={node.document_id ? 'Open document' : 'Open retrieved evidence'}
+          className="quick-tooltip"
           style={
             {
               '--angle': `${(index / Math.max(nodes.length, 1)) * Math.PI * 2}rad`,

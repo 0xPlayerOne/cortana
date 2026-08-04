@@ -93,8 +93,8 @@
 .breadcrumbs a,
 .mobile-button {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: var(--btn-chrome-size);
+  height: var(--btn-chrome-size);
   padding: 0;
   place-items: center;
   border: 0;
@@ -359,7 +359,7 @@
   padding: 0;
   color: #d79a47;
   border: 1px solid #604827;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: transparent;
 }
 
@@ -527,7 +527,7 @@
   padding: 0;
   color: #a8b2c5;
   border: 1px solid #48515a;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--surface-elevated);
 }
 

@@ -320,8 +320,11 @@ export function SettingsView({
     onDirtyChange?.(dirty)
   }, [dirty, onDirtyChange])
 
-  const restartAfterSaveIfNeeded = (next: DesktopSettings) => {
-    if (!next.restart_required) return
+  // Restarts the affected core services in the background after a save that
+  // reports restart_required. Success clears the pending-restart notice;
+  // failure keeps it visible with an explicit recovery action instead of
+  // leaving the operator guessing which service needs attention.
+  const restartServices = (next: DesktopSettings) => {
     onServiceActivity?.({
       target: 'core services',
       action: 'restart',
@@ -352,6 +355,11 @@ export function SettingsView({
           detail: caught instanceof Error ? caught.message : 'Core services restart failed',
         })
       })
+  }
+
+  const restartAfterSaveIfNeeded = (next: DesktopSettings) => {
+    if (!next.restart_required) return
+    restartServices(next)
   }
 
   const update = (change: (draft: DesktopSettings) => DesktopSettings) => {
@@ -468,6 +476,8 @@ export function SettingsView({
       </main>
     )
   }
+
+  const restartFailed = settings.restart_required && serviceActivity?.status === 'failed'
 
   return (
     <main className="settings-view">
@@ -745,26 +755,41 @@ export function SettingsView({
       </div>
       {(error || saved || settings.restart_required) && (
         <div
-          className={`settings-banner ${error ? 'error' : ''}`}
-          role={error ? 'alert' : 'status'}
+          className={`settings-banner ${error || restartFailed ? 'error' : ''}`}
+          role={error || restartFailed ? 'alert' : 'status'}
         >
-          {error ? <AlertTriangle size={16} /> : <Check size={16} />}
+          {error || restartFailed ? <AlertTriangle size={16} /> : <Check size={16} />}
           {error ||
-            (settings.restart_required && serviceActivity?.status === 'running'
-              ? 'Settings saved. Restarting affected services in the background…'
-              : saved && settings.restart_required
-                ? 'Settings saved. Affected services are restarting in the background.'
-                : saved
-                  ? 'Settings saved.'
-                  : 'A service restart is still required.')}
+            (restartFailed
+              ? `Settings saved, but the service restart failed${
+                  serviceActivity?.detail ? `: ${serviceActivity.detail}` : '.'
+                }`
+              : settings.restart_required && serviceActivity?.status === 'running'
+                ? 'Settings saved. Restarting affected services in the background…'
+                : saved && settings.restart_required
+                  ? 'Settings saved. A service restart is still required.'
+                  : saved
+                    ? 'Settings saved.'
+                    : 'A service restart is still required.')}
           {!error && settings.restart_required && serviceActivity?.status !== 'running' && (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => setSection('services')}
-            >
-              Open services
-            </button>
+            <>
+              {restartFailed && (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => restartServices(settings)}
+                >
+                  <RefreshCw size={14} /> Retry restart
+                </button>
+              )}
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setSection('services')}
+              >
+                Open services
+              </button>
+            </>
           )}
         </div>
       )}
@@ -2035,8 +2060,10 @@ function AccessSection({
                 <strong>{principal.principal || `Principal ${index + 1}`}</strong>
                 <button
                   type="button"
+                  className="quick-tooltip"
                   aria-label={`Remove ${principal.principal}`}
                   title={`Remove ${principal.principal}`}
+                  data-tooltip={`Remove ${principal.principal}`}
                   onClick={() =>
                     update((current) => ({
                       ...current,
@@ -2702,9 +2729,15 @@ function WorkspaceSection({
               {settings.workspaces.length > 1 && (
                 <button
                   type="button"
+                  className="quick-tooltip"
                   aria-label={`Remove ${workspace.name}`}
                   disabled={hasWorkspaceSources(workspace.id)}
                   title={
+                    hasWorkspaceSources(workspace.id)
+                      ? 'Move assigned sources before removing this workspace'
+                      : 'Remove workspace'
+                  }
+                  data-tooltip={
                     hasWorkspaceSources(workspace.id)
                       ? 'Move assigned sources before removing this workspace'
                       : 'Remove workspace'
@@ -3605,6 +3638,8 @@ function SourcesSection({
                           disabled={sourceLocked || !source.editable}
                           aria-label="Choose source directory"
                           title="Choose source directory"
+                          data-tooltip="Choose source directory"
+                          className="quick-tooltip"
                           onClick={() => void choosePath(index, 'directory', 'root')}
                         >
                           <FolderOpen size={14} />
@@ -3657,6 +3692,8 @@ function SourcesSection({
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose Google token destination"
                             title="Choose Google token destination"
+                            data-tooltip="Choose Google token destination"
+                            className="quick-tooltip"
                             onClick={() => void choosePath(index, 'google-token', 'token_path')}
                           >
                             <FolderOpen size={14} />
@@ -3684,6 +3721,8 @@ function SourcesSection({
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose Google OAuth client JSON"
                             title="Choose Google OAuth client JSON"
+                            data-tooltip="Choose Google OAuth client JSON"
+                            className="quick-tooltip"
                             onClick={() =>
                               void choosePath(index, 'oauth-client', 'oauth_client_path')
                             }
@@ -3822,6 +3861,8 @@ function SourcesSection({
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose GitHub token destination"
                             title="Choose GitHub token destination"
+                            data-tooltip="Choose GitHub token destination"
+                            className="quick-tooltip"
                             onClick={() => void choosePath(index, 'github-token', 'token_path')}
                           >
                             <FolderOpen size={14} />
@@ -3849,6 +3890,8 @@ function SourcesSection({
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose GitHub OAuth client JSON"
                             title="Choose GitHub OAuth client JSON"
+                            data-tooltip="Choose GitHub OAuth client JSON"
+                            className="quick-tooltip"
                             onClick={() =>
                               void choosePath(index, 'oauth-client', 'oauth_client_path')
                             }
@@ -4240,6 +4283,8 @@ function InitialSyncFlow({
           type="button"
           aria-label="Close initial sync plan"
           title="Close initial sync plan"
+          data-tooltip="Close initial sync plan"
+          className="quick-tooltip"
           onClick={onClose}
         >
           <X size={15} />
