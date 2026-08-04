@@ -32,16 +32,26 @@ impl Principal {
         self.scopes.contains(scope)
     }
 
-    /// Admin credentials and explicit owner ACLs can inspect the complete
-    /// local brain, including configured sources outside their named labels.
+    /// Admin credentials can inspect the complete local brain, including
+    /// configured sources outside their named labels.
     pub fn is_owner(&self) -> bool {
-        self.has_scope(ADMIN_SCOPE) || self.acl.contains("*")
+        self.has_scope(ADMIN_SCOPE)
     }
 
+    /// ACL labels that govern scoped read access.
     pub fn acl_labels(&self) -> Vec<String> {
         let mut labels = self.acl.iter().cloned().collect::<Vec<_>>();
         labels.sort();
         labels
+    }
+
+    /// Effective ACL used for scoped read paths.
+    pub fn visible_acl(&self) -> Vec<String> {
+        if self.is_owner() {
+            vec!["*".to_string()]
+        } else {
+            self.acl_labels()
+        }
     }
 }
 
@@ -91,6 +101,12 @@ impl AuthPolicy {
                 "auth principal {} has an invalid scope",
                 token.principal
             );
+            let acl = token.acl.iter().cloned().collect::<HashSet<_>>();
+            anyhow::ensure!(
+                !acl.contains("*"),
+                "auth principal {} cannot use reserved acl \"*\"",
+                token.principal
+            );
             let value = config
                 .environment_value(&token.token_env)
                 .with_context(|| {
@@ -105,7 +121,7 @@ impl AuthPolicy {
                 principal: Principal {
                     name: token.principal.clone(),
                     scopes,
-                    acl: token.acl.iter().cloned().collect(),
+                    acl,
                 },
             });
         }
@@ -205,6 +221,35 @@ mod tests {
             .authenticate("work-secret")
             .expect("admin principal");
         assert!(owner.is_owner());
+
+        let wildcard_named = Principal {
+            name: "wildcard-agent".into(),
+            scopes: vec![QUERY_SCOPE.to_string()].into_iter().collect(),
+            acl: vec!["*".to_string()].into_iter().collect(),
+        };
+        assert!(!wildcard_named.is_owner());
+        assert_eq!(wildcard_named.visible_acl(), vec!["*".to_string()]);
+    }
+
+    #[test]
+    fn configured_token_acl_rejects_reserved_wildcard_label() {
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "work-agent".into(),
+            token_env: "WORK_TOKEN".into(),
+            scopes: vec![QUERY_SCOPE.into()],
+            acl: vec!["*".into()],
+        }];
+
+        assert!(AuthPolicy::from_config(&config, None).is_err());
+
+        let principal = AuthPolicy::legacy(Some("legacy-secret".into()))
+            .authenticate("legacy-secret")
+            .expect("legacy principal");
+        assert_eq!(principal.acl_labels(), vec!["*".to_string()]);
     }
 
     #[test]
