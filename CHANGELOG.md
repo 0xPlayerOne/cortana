@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.3](https://github.com/0xPlayerOne/cortana/compare/v0.27.2...v0.27.3) (2026-08-04)
+
+
+### Bug Fixes
+
+* **auth:** enforce owner visibility across retrieval paths ([ed8552b](https://github.com/0xPlayerOne/cortana/commit/ed8552b9b0022e0a90e65d84985b18c30fd2ea58))
+
 ## [0.27.2](https://github.com/0xPlayerOne/cortana/compare/v0.27.1...v0.27.2) (2026-08-04)
 
 
