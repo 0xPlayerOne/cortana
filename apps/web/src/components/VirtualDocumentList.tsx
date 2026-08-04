@@ -115,6 +115,7 @@ export function VirtualDocumentList({
                 tabIndex={-1}
                 aria-selected={selectedDocument === document.id}
                 className={[
+                  'document-node',
                   selectedDocument === document.id ? 'selected-document' : '',
                   activeIndex === index ? 'keyboard-active' : '',
                 ]

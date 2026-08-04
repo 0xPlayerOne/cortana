@@ -1619,6 +1619,30 @@ test('source tree actions resolve a configured source by its canonical label', a
   }
 })
 
+test('Services settings stay a process-health surface with no source enablement controls', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+
+  // Process health actions are the Services surface.
+  expect(screen.getByRole('button', { name: /Start all/ })).toBeTruthy()
+  expect(screen.getByRole('button', { name: /Stop all/ })).toBeTruthy()
+  expect(screen.getByRole('button', { name: /Restart all/ })).toBeTruthy()
+
+  // No per-source enable/disable control lives in Services: no switch, and
+  // the only checkbox is the desktop autostart launch preference, which is
+  // process/launch behavior rather than source enablement.
+  expect(screen.queryByRole('switch')).toBeNull()
+  const checkboxes = screen.getAllByRole('checkbox')
+  expect(checkboxes).toHaveLength(1)
+  expect(screen.getByRole('checkbox', { name: /Open Cortana Desktop at login/ })).toBeTruthy()
+})
+
 test('services settings offers an explicit safe core-service install', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true
