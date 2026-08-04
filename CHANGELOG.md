@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.6](https://github.com/0xPlayerOne/cortana/compare/v0.29.5...v0.29.6) (2026-08-04)
+
+
+### Documentation
+
+* record promotion test counts ([a0b84ba](https://github.com/0xPlayerOne/cortana/commit/a0b84ba8790b3b94d443cd6d8e530915a30d8267))
+
 ## [0.29.5](https://github.com/0xPlayerOne/cortana/compare/v0.29.4...v0.29.5) (2026-08-04)
 
 
