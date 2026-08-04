@@ -101,7 +101,9 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
   at v0.28.0 while the packaged GUI/release is still pending.
 - A 25-document/5 MiB/60-second smoke validation passed for all 12 enabled
   sources. Shared bearer token configuration is empty. Full-budget
-  recurring-sync validation remains pending for the listed bounded sources.
+  recurring-sync validation remains pending for the listed bounded sources. After the Drive
+  memory-safety fix, a real configured `work-drive` validation also passed at 25 documents / 5 MiB /
+  120 seconds with `writes.documents=0`, `writes.embeddings=0`, and `writes.reconciliations=0`.
 - Deterministic evaluation passes. Model-backed synthetic eval passes with a
   temporary auto-free query configuration against the loopback gateway
   (`base_url = "http://127.0.0.1:8008/v1"`, `model = "auto-free"`, fixture-only:
