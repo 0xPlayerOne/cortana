@@ -53,7 +53,7 @@ is not part of a visual/UI change.
    team assignment landed alongside it (the `SLACK_BOT_TOKEN` path for channel
    selection and message sync is preserved and never interpreted as a path).
    Buzz community assignment landed in the following pass: `cortana
-   buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
+buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
    file with bounded, fail-closed validation, and the Desktop chooser persists
    per-workspace `communities`/`community_names`.
 5. Decide whether Hindsight/Honcho should remain optional adapters or receive a production
