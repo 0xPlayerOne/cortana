@@ -104,6 +104,24 @@ export type GithubRepositoryList = {
   truncated: boolean
 }
 
+export type DiscordChannelSummary = {
+  id: string
+  name: string
+  kind: string
+}
+
+export type DiscordGuildChannels = {
+  id: string
+  name: string
+  channels: DiscordChannelSummary[]
+  truncated: boolean
+}
+
+export type DiscordChannelList = {
+  guilds: DiscordGuildChannels[]
+  truncated: boolean
+}
+
 export type ConfiguredSourceSummary = {
   name: string
   source: string

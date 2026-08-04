@@ -753,6 +753,14 @@ async fn desktop_github_repositories<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+async fn desktop_discord_channels<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    source: String,
+) -> Result<Value, String> {
+    source_jobs::list_discord_channels(&app, &source).await
+}
+
+#[tauri::command]
 fn desktop_source_initial_sync<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     jobs: State<'_, source_jobs::SourceJobState>,
@@ -1111,6 +1119,7 @@ pub fn run() {
             desktop_source_trial_sync_start,
             desktop_source_setup_open,
             desktop_github_repositories,
+            desktop_discord_channels,
             desktop_source_initial_sync,
             desktop_source_validation_status,
             desktop_source_jobs_status,
@@ -1264,6 +1273,7 @@ mod tests {
                 desktop_source_initial_sync,
                 desktop_source_setup_open,
                 desktop_github_repositories,
+                desktop_discord_channels,
                 desktop_source_jobs_status,
                 desktop_source_validation_cancel,
                 desktop_source_validation_start,
@@ -1507,6 +1517,75 @@ mod tests {
                 .as_str()
                 .unwrap_or_default()
                 .contains("does not have a browser-based account setup page"));
+        });
+    }
+
+    #[test]
+    fn native_discord_channel_discovery_fails_closed_for_other_kinds() {
+        let fixture = filesystem_fixture("work-notes", true);
+        with_cortana_config_override(&fixture.config, || {
+            let app = ipc_test_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
+
+            let error = invoke_json_with(
+                &window,
+                "desktop_discord_channels",
+                json!({ "source": "work-notes" }),
+            )
+            .expect_err("non-Discord sources must fail closed before spawning the sidecar");
+            assert!(error
+                .as_str()
+                .unwrap_or_default()
+                .contains("only for Discord sources"));
+        });
+    }
+
+    #[test]
+    fn native_discord_channel_discovery_fails_closed_without_configured_token() {
+        let temp = tempfile::tempdir().expect("temporary config directory");
+        let config_path = temp.path().join("cortana/config.toml");
+        fs::create_dir_all(config_path.parent().expect("config parent"))
+            .expect("config directory");
+        fs::write(
+            &config_path,
+            format!(
+                "data_dir = {}\n\n[[sources]]\nname = \"community\"\nkind = \"discord\"\nenabled = true\nproject = \"work\"\ntoken_env = \"CORTANA_TEST_DISCORD_BOT_TOKEN\"\n",
+                toml_string(&temp.path().join("cortana/data").display().to_string()),
+            ),
+        )
+        .expect("test config");
+
+        with_cortana_config_override(&config_path, || {
+            if !bundled_sidecar_available() {
+                eprintln!(
+                    "SKIP: bundled `cortana` sidecar is missing next to the test executable; \
+                     run `bun run desktop:test:native` to prepare it"
+                );
+                return;
+            }
+            let app = ipc_test_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
+
+            // Discovery must fail before any network request when the bot
+            // token environment variable is not configured, and the error
+            // must name only the variable, never a token value.
+            let error = invoke_json_with(
+                &window,
+                "desktop_discord_channels",
+                json!({ "source": "community" }),
+            )
+            .expect_err("missing bot token must fail closed without network access");
+            let message = error.as_str().unwrap_or_default();
+            assert!(
+                message.contains("Discord bot token environment variable"),
+                "unexpected discovery error: {message}"
+            );
+            assert!(message.contains("CORTANA_TEST_DISCORD_BOT_TOKEN"));
+            assert!(!message.contains("Bot "));
         });
     }
 
