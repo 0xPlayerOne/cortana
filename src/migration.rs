@@ -297,6 +297,7 @@ fn source(
         root: root.map(Path::to_path_buf),
         source: canonical_source.map(str::to_string),
         channels: Vec::new(),
+        servers: Vec::new(),
         repositories: Vec::new(),
         token_env: None,
         token: None,

@@ -326,6 +326,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: Some("GOOGLE_TOKEN".into()),
             token: None,

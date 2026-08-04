@@ -15,7 +15,8 @@ use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
 use cortana::{
-    api, github_oauth, google_oauth, mcp, migration, provider_models, service, source_status,
+    api, discord_oauth, github_oauth, google_oauth, mcp, migration, provider_models, service,
+    source_status,
     source_validation, supervisor,
 };
 use fs2::FileExt;
@@ -233,6 +234,8 @@ enum Command {
     AuthorizeGoogle { source: String },
     /// Authorize a configured GitHub source through the device flow without reading repository content.
     AuthorizeGithub { source: String },
+    /// Authorize a configured Discord source in the system browser without reading server or channel data.
+    AuthorizeDiscord { source: String },
     /// List bounded GitHub repositories visible to a configured source for selection.
     GithubRepositories { source: String },
     /// List bounded Discord guilds and channels visible to a configured source for selection.
@@ -242,6 +245,8 @@ enum Command {
         #[arg(long, value_enum)]
         kind: ProviderModelsKind,
     },
+    /// List bounded Discord servers (guilds) the authorized user belongs to for per-workspace assignment.
+    DiscordServers { source: String },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -604,6 +609,11 @@ async fn main() -> Result<()> {
         println!("{}", serde_json::to_string(&outcome)?);
         return Ok(());
     }
+    if let Some(Command::AuthorizeDiscord { source }) = cli.command.as_ref() {
+        let outcome = discord_oauth::authorize(&config, source).await?;
+        println!("{}", serde_json::to_string(&outcome)?);
+        return Ok(());
+    }
     if let Some(Command::GithubRepositories { source }) = cli.command.as_ref() {
         let repositories = github_oauth::list_repositories(&config, source).await?;
         println!("{}", serde_json::to_string(&repositories)?);
@@ -621,6 +631,11 @@ async fn main() -> Result<()> {
         };
         let models = provider_models::list_provider_models(&config, kind).await?;
         println!("{}", serde_json::to_string(&models)?);
+        return Ok(());
+    }
+    if let Some(Command::DiscordServers { source }) = cli.command.as_ref() {
+        let servers = discord_oauth::list_servers(&config, source).await?;
+        println!("{}", serde_json::to_string(&servers)?);
         return Ok(());
     }
     if let Some(Command::Sync {
@@ -1016,8 +1031,10 @@ async fn main() -> Result<()> {
             | Command::Eval { .. }
             | Command::AuthorizeGoogle { .. }
             | Command::AuthorizeGithub { .. }
+            | Command::AuthorizeDiscord { .. }
             | Command::GithubRepositories { .. }
             | Command::DiscordChannels { .. }
+            | Command::DiscordServers { .. }
             | Command::ValidateSource { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
@@ -1612,6 +1629,7 @@ fn ad_hoc_filesystem_source(
         root: Some(root),
         source: Some(source),
         channels: Vec::new(),
+        servers: Vec::new(),
         repositories: Vec::new(),
         token_env: None,
         token: None,
@@ -3380,6 +3398,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3428,6 +3447,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: Some("/tmp/google-token.json".into()),
@@ -3474,6 +3494,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: Some("/tmp/google-token.json".into()),
@@ -3527,6 +3548,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: vec!["acme/one".into(), "acme/two".into()],
             token_env: Some("GITHUB_TOKEN".into()),
             token: None,
@@ -3572,6 +3594,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3614,6 +3637,7 @@ mod tests {
             root: Some(directory.path().join("code")),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3650,6 +3674,7 @@ mod tests {
             root: Some(directory.path().join("code")),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3708,6 +3733,7 @@ mod tests {
             root: Some(std::env::temp_dir()),
             source: Some(name.into()),
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3894,6 +3920,7 @@ mod tests {
             root: Some(root),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -4093,6 +4120,7 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            servers: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
