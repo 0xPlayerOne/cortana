@@ -17,7 +17,7 @@ is not part of a visual/UI change.
 | Human-readable changelog                               | `SafeMarkdown` renders headings, lists, inline code, and safe links                                                                                                                                                          | Done                   | Add coverage for fenced/code-heavy release notes and malformed links.                                                       |
 | Workspace display name, generated ID, logo, and color  | `WorkspaceSection`, `WorkspaceLogo`, and `workspaceLogoStore.ts`                                                                                                                                                             | Done                   | Keep the internal ID out of the default form; retain it only under Advanced.                                                |
 | Workspace account label semantics                      | Label is explicitly optional metadata; OAuth credentials remain source-owned                                                                                                                                                 | Partial                | Replace the email-shaped placeholder with a neutral description or derive it from authorized provider identity.             |
-| Workspace-scoped source settings                       | Sources can be assigned to workspaces, but the settings page still renders every source card in one long list                                                                                                                | Missing                | Workspace-filter the list and show one compact workspace at a time. This is the current implementation slice.               |
+| Workspace-scoped source settings                       | `SourcesSection` now provides workspace tabs, per-workspace source counts, and a Needs assignment quarantine view; add-source targets the selected workspace                                                                 | Done                   | Keep the tab isolation and assignment warning covered by regression tests.                                                  |
 | Source logos and compact OAuth/enable actions          | `SourceIcon` and provider-specific actions exist; advanced fields are disclosed                                                                                                                                              | Partial                | Keep the default row compact; move validation/trial/initial-sync actions into the edit/operations disclosure.               |
 | OAuth-first source setup                               | Google and GitHub browser authorization are implemented; Slack/Discord still use token + channel IDs                                                                                                                         | Partial                | Add provider discovery/authorization for Discord servers and Slack workspaces.                                              |
 | Model selectors                                        | Embedding and query settings have local/cloud catalog selects with a Custom option                                                                                                                                           | Done                   | Add provider capability metadata so catalogs do not suggest unsupported models.                                             |
@@ -36,8 +36,8 @@ is not part of a visual/UI change.
 
 ## Production blockers before calling the Desktop complete
 
-1. Finish the workspace-scoped source settings slice and repair the current PR
-   formatting failure.
+1. Re-run the protected checks after the workspace-scoped settings and Python
+   formatting fixes, then merge the current PR through the required staging flow.
 2. Merge PR #406 through the required staging flow, re-align the staging → main
    promotion PR, and publish a release containing the GitHub authorization code.
 3. Run a bounded, real-source validation for each enabled connector. The audit
@@ -51,8 +51,9 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- Local checks previously passed for Rust, desktop Rust, Bun, TypeScript, web
-  build, Python connector tests, and Ruff; re-run them after this UX slice.
+- Local checks pass for the current slice: 208 Bun tests, the GitHub connector
+  Python tests, TypeScript, lint, web build, Prettier, Ruff, and Code Foundry
+  doctor. Remote PR checks still need to finish after the latest push.
 - The installed runtime reports 47,658 documents and 77,472 chunks, but that
   runtime is older than the current checkout. Treat it as operational evidence,
   not proof that the current branch is installed.
