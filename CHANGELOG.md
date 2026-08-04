@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.2](https://github.com/0xPlayerOne/cortana/compare/v0.27.1...v0.27.2) (2026-08-04)
+
+
+### Bug Fixes
+
+* **release:** skip stale main push runs ([6612d08](https://github.com/0xPlayerOne/cortana/commit/6612d08b2bddeff7501bc8ce8fd308caacfbfa44))
+
 ## [0.27.1](https://github.com/0xPlayerOne/cortana/compare/v0.27.0...v0.27.1) (2026-08-03)
 
 
