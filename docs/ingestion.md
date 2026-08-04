@@ -76,12 +76,15 @@ Google Drive and Gmail keep owner-only derived caches under
 `data_dir/connector-cache/<source>/`. Complete runs still list every item ID for correct deletion
 reconciliation, but Drive content is downloaded only when its modification timestamp changes and
 immutable Gmail message bodies are downloaded only once. The caches are disposable and can always
-be rebuilt from Google. First-time Drive content and Gmail detail retrieval use bounded
-eight-worker pools; cache writes and emitted documents remain ordered on the main connector
-thread. Drive downloads are processed in 32-file batches, text and export responses are consumed
-as bounded head/tail streams, and PDF responses are spooled to a temporary file with a 64 MiB cap
+be rebuilt from Google. First-time Drive content and Gmail detail retrieval use bounded eight-worker
+and four-worker pools respectively; cache writes and emitted documents remain ordered on the main
+connector thread. Drive downloads are processed in 32-file batches, text and export responses are
+consumed as bounded head/tail streams, and PDF responses are spooled to a temporary file with a 64 MiB cap
 before parsing. The cache preserves the original character count and truncation flag, so a later
 cache hit does not hide that a provider response was sampled. Drive installs pypdf's AES support.
+Idempotent Google GET/HEAD calls retry bounded transport failures and standard transient HTTP
+statuses; a 403 is retried only for Google's explicit rate-limit/backend reasons. Gmail detail
+requests also retry a small, bounded 400 window before strict runs fail closed.
 
 Complete, reconciling Google runs fail closed on unresolved listing, detail, or conversion data
 so a truncated snapshot can never reconcile as if it were whole. Drive rejects an

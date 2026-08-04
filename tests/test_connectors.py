@@ -930,6 +930,88 @@ def test_google_token_path_rejects_symlinked_parent(tmp_path: Path) -> None:
         validate_token_path(linked / "token.json")
 
 
+def test_google_gmail_detail_concurrency_is_four() -> None:
+    assert google.GMAIL_DETAIL_CONCURRENCY == 4
+
+
+def test_google_session_retries_transient_get_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise httpx.ReadTimeout("transient read timeout", request=request)
+        return response({"ok": True}, request=request)
+
+    monkeypatch.setattr(google.time, "sleep", lambda _seconds: None)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with GoogleSession(token, client) as session:
+        result = session.request("GET", "https://example.test/retry")
+
+    assert result.json() == {"ok": True}
+    assert attempts == 2
+
+
+def test_google_session_retries_transient_403_with_rate_limit_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    attempts = 0
+    delays: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            return response(
+                {"error": {"errors": [{"reason": "rateLimitExceeded"}]}, "code": 403},
+                status=403,
+                request=request,
+            )
+        return response({"ok": True}, request=request)
+
+    monkeypatch.setattr(google.time, "sleep", delays.append)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with GoogleSession(token, client) as session:
+        result = session.request("GET", "https://example.test/retry")
+
+    assert result.json() == {"ok": True}
+    assert attempts == 2
+    assert delays == [0.25]
+
+
+def test_google_session_does_not_retry_permanent_403(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    attempts = 0
+    delays: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return response(
+            {"error": {"errors": [{"reason": "forbidden"}]}, "code": 403},
+            status=403,
+            request=request,
+        )
+
+    monkeypatch.setattr(google.time, "sleep", delays.append)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with GoogleSession(token, client) as session, pytest.raises(httpx.HTTPStatusError):
+        session.request("GET", "https://example.test/retry")
+
+    assert attempts == 1
+    assert delays == []
+
+
 def test_google_private_cache_rejects_symlink(tmp_path: Path) -> None:
     target = tmp_path / "cache-target.sqlite3"
     target.touch()
@@ -2230,6 +2312,50 @@ def test_google_gmail_bounded_run_commits_new_cache_content(
 
     assert first[0].content.endswith("bounded cache body")
     assert second[0].content == first[0].content
+
+
+def test_google_gmail_retries_transient_bad_request_detail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    attempts = 0
+    delays: list[float] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        if request.url.path.endswith("/messages"):
+            return response(
+                {"messages": [{"id": "m1"}]},
+                request=request,
+            )
+        attempts += 1
+        if attempts <= 3:
+            return response({"error": "transient"}, status=400, request=request)
+        return response(
+            {
+                "id": "m1",
+                "threadId": "t1",
+                "internalDate": "1700000000000",
+                "payload": {
+                    "headers": [{"name": "Subject", "value": "Recovered"}],
+                    "mimeType": "text/plain",
+                    "body": {
+                        "data": base64.urlsafe_b64encode(b"Recovered body").decode(),
+                    },
+                },
+            },
+            request=request,
+        )
+
+    monkeypatch.setattr(google.time, "sleep", delays.append)
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    documents = list(fetch_gmail(token, "work", client=client, max_documents=1))
+
+    assert [document.source_id for document in documents] == ["m1"]
+    assert documents[0].title == "Recovered"
+    assert attempts == 4
+    assert delays == [0.25, 0.75, 1.5]
 
 
 def test_google_gmail_skips_isolated_inaccessible_message(
