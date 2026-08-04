@@ -109,7 +109,13 @@ Before uploading a binary archive, the release workflow runs
 `scripts/verify-release.sh`. It checks the SHA-256 sidecar, rejects absolute or
 path-traversal entries, requires the executable, web workspace, connector wheel,
 example config, and Cortana skill, and executes the packaged binary's version
-command. To verify a downloaded archive locally:
+command — asserting the reported version equals the release tag encoded in the
+archive name (`cortana-vX.Y.Z-<target>.tar.gz`). An archive whose name does not
+embed a plain semver version, or whose packaged `bin/cortana` reports a
+different version, fails the gate so a stale-checkout build or mislabeled
+upload can never ship as a release. The final published-asset gate
+(`scripts/verify-desktop-release.sh`) repeats the same assertion on the
+downloaded Linux core archive. To verify a downloaded archive locally:
 
 ```bash
 ./scripts/verify-release.sh \

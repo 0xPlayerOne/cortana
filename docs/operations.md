@@ -167,7 +167,9 @@ checksums, signed macOS/Linux/Windows desktop installers, and every updater plat
 present for the same tag before the release workflow succeeds. It also inspects the core archives
 and macOS app archive for safe paths, executable runtime files, the connector resource, the web
 bundle, the release installer scripts, and the published SHA-256 files against their downloaded
-archives. Re-run the read-only verifier for an existing release with:
+archives, then executes the published Linux core binary and asserts that its `--version` output
+matches the release tag (on non-Linux hosts the executable check is skipped because the verifier
+cannot run foreign-OS binaries). Re-run the read-only verifier for an existing release with:
 
 ```bash
 GH_REPO=0xPlayerOne/cortana scripts/verify-desktop-release.sh v0.23.1
