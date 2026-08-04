@@ -63,8 +63,8 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
 
 ## Evidence limits
 
-- Published release verification for v0.29.3 completed with 18 release assets verified; the
-  installed CLI reports `cortana 0.29.3`.
+- Published release verification for v0.29.4 completed with 18 release assets verified; the
+  installed CLI reports `cortana 0.29.4`.
 - The readiness hardening patch passes 19 focused Rust readiness/API tests and 11 focused Desktop
   readiness tests. Aggregate core, web, Python, and full Desktop counts remain a CI responsibility
   and are not represented as current evidence here until that matrix reruns.

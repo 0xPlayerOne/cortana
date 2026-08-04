@@ -184,8 +184,8 @@ installs Ubuntu's `minisign` package and sets `CORTANA_REQUIRE_MINISIGN=1`, so t
 if the verifier is unavailable. Local invocations keep the portable default and skip the
 cryptographic check on hosts without `minisign`.
 
-The published v0.29.3 release was verified with 18 release assets, and the installed CLI reports
-`cortana 0.29.3`.
+The published v0.29.4 release was verified with 18 release assets, and the installed CLI reports
+`cortana 0.29.4`.
 
 Re-run the read-only verifier for an existing release with:
 
