@@ -12,6 +12,9 @@ use crate::store::Store;
 
 const READINESS_EMBEDDING_TIMEOUT_MIN_SECONDS: u64 = 15;
 const READINESS_EMBEDDING_TIMEOUT_MAX_SECONDS: u64 = 300;
+const READINESS_STORAGE_TIMEOUT_MIN_SECONDS: u64 = 1;
+const READINESS_STORAGE_TIMEOUT_MAX_SECONDS: u64 = 300;
+pub const READINESS_STORAGE_TIMEOUT_DEFAULT_SECONDS: u64 = 240;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ReadinessReport {
@@ -40,19 +43,22 @@ pub async fn run(
     embedder: &dyn Embedder,
     api_url: &str,
     max_backup_age_hours: u64,
+    storage_timeout_seconds: u64,
     allow_sync_service: bool,
 ) -> ReadinessReport {
-    let database = database_check(store);
     let embedding_generation = embedding_generation_status(store, embedder);
     let embedding_index = embedding_index_check(store, embedder);
     let acl = public_acl_check(config, store);
-    let backup = backup_check(&config.data_dir.join("backups"), max_backup_age_hours);
     let sync = sync_check(allow_sync_service);
     let validation = source_validation_check(config, allow_sync_service);
     let embedding_timeout = embedding_probe_timeout(config);
+    let storage_timeout = storage_probe_timeout(storage_timeout_seconds);
+    let backup_directory = config.data_dir.join("backups");
     // These probes do not share mutable state. Run them together so readiness
     // is bounded by the slowest external dependency rather than their sum.
-    let (embedding, api, query) = tokio::join!(
+    let (database, backup, embedding, api, query) = tokio::join!(
+        database_check(store, storage_timeout),
+        backup_check(&backup_directory, max_backup_age_hours, storage_timeout),
         embedding_check(embedder, embedding_timeout),
         api_check(api_url),
         query_check(config),
@@ -155,7 +161,7 @@ fn public_acl_check(config: &Config, store: &Store) -> ReadinessCheck {
     }
 }
 
-fn database_check(store: &Store) -> ReadinessCheck {
+fn database_check_blocking(store: &Store) -> ReadinessCheck {
     match store.integrity_check() {
         Ok(()) => ReadinessCheck {
             name: "database-integrity".into(),
@@ -168,6 +174,14 @@ fn database_check(store: &Store) -> ReadinessCheck {
             detail: error.to_string(),
         },
     }
+}
+
+async fn database_check(store: &Store, timeout: Duration) -> ReadinessCheck {
+    let store = store.clone();
+    run_blocking_probe("database-integrity", timeout, move || {
+        database_check_blocking(&store)
+    })
+    .await
 }
 
 fn embedding_index_check(store: &Store, embedder: &dyn Embedder) -> ReadinessCheck {
@@ -219,6 +233,51 @@ fn embedding_probe_timeout(config: &Config) -> Duration {
         READINESS_EMBEDDING_TIMEOUT_MAX_SECONDS,
     );
     Duration::from_secs(timeout)
+}
+
+fn storage_probe_timeout(seconds: u64) -> Duration {
+    Duration::from_secs(seconds.clamp(
+        READINESS_STORAGE_TIMEOUT_MIN_SECONDS,
+        READINESS_STORAGE_TIMEOUT_MAX_SECONDS,
+    ))
+}
+
+async fn run_blocking_probe<F>(name: &'static str, timeout: Duration, check: F) -> ReadinessCheck
+where
+    F: FnOnce() -> ReadinessCheck + Send + 'static,
+{
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    if let Err(error) = std::thread::Builder::new()
+        .name(format!("cortana-readiness-{name}"))
+        .spawn(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(check));
+            let _ = sender.send(result.map_err(|_| ()));
+        })
+    {
+        return ReadinessCheck {
+            name: name.into(),
+            passed: false,
+            detail: format!("{name} probe thread failed to start: {error}"),
+        };
+    }
+    match tokio::time::timeout(timeout, receiver).await {
+        Ok(Ok(Ok(check))) => check,
+        Ok(Ok(Err(()))) => ReadinessCheck {
+            name: name.into(),
+            passed: false,
+            detail: format!("{name} probe worker panicked"),
+        },
+        Ok(Err(_)) => ReadinessCheck {
+            name: name.into(),
+            passed: false,
+            detail: format!("{name} probe worker ended before returning a result"),
+        },
+        Err(_) => ReadinessCheck {
+            name: name.into(),
+            passed: false,
+            detail: format!("{name} probe timed out after {timeout:?}"),
+        },
+    }
 }
 
 async fn embedding_check(embedder: &dyn Embedder, startup_timeout: Duration) -> ReadinessCheck {
@@ -279,7 +338,7 @@ async fn api_check(api_url: &str) -> ReadinessCheck {
     }
 }
 
-fn backup_check(directory: &Path, max_age_hours: u64) -> ReadinessCheck {
+fn backup_check_blocking(directory: &Path, max_age_hours: u64) -> ReadinessCheck {
     let mut candidates = std::fs::read_dir(directory)
         .ok()
         .into_iter()
@@ -344,6 +403,14 @@ fn backup_check(directory: &Path, max_age_hours: u64) -> ReadinessCheck {
             }
         ),
     }
+}
+
+async fn backup_check(directory: &Path, max_age_hours: u64, timeout: Duration) -> ReadinessCheck {
+    let directory = directory.to_path_buf();
+    run_blocking_probe("backup-freshness", timeout, move || {
+        backup_check_blocking(&directory, max_age_hours)
+    })
+    .await
 }
 
 fn sync_check(allow_sync_service: bool) -> ReadinessCheck {
@@ -512,16 +579,71 @@ mod tests {
     }
 
     #[test]
+    fn storage_probe_timeout_is_bounded_by_readiness_defaults() {
+        assert_eq!(
+            storage_probe_timeout(0),
+            Duration::from_secs(READINESS_STORAGE_TIMEOUT_MIN_SECONDS)
+        );
+        assert_eq!(storage_probe_timeout(30), Duration::from_secs(30));
+        assert_eq!(
+            storage_probe_timeout(u64::MAX),
+            Duration::from_secs(READINESS_STORAGE_TIMEOUT_MAX_SECONDS)
+        );
+    }
+
+    #[tokio::test]
+    async fn blocking_probe_timeout_fails_closed_with_degraded_detail() {
+        let check = run_blocking_probe("database-integrity", Duration::from_millis(1), || {
+            std::thread::sleep(Duration::from_millis(25));
+            ReadinessCheck {
+                name: "database-integrity".into(),
+                passed: true,
+                detail: "unexpected success".into(),
+            }
+        })
+        .await;
+
+        assert!(!check.passed);
+        assert_eq!(check.name, "database-integrity");
+        assert!(check.detail.contains("probe timed out"));
+    }
+
+    #[test]
+    fn blocking_probe_timeout_does_not_hold_runtime_shutdown() {
+        let started = std::time::Instant::now();
+        let runtime = tokio::runtime::Runtime::new().expect("runtime");
+        let check = runtime.block_on(run_blocking_probe(
+            "database-integrity",
+            Duration::from_millis(1),
+            || {
+                std::thread::sleep(Duration::from_millis(500));
+                ReadinessCheck {
+                    name: "database-integrity".into(),
+                    passed: true,
+                    detail: "unexpected success".into(),
+                }
+            },
+        ));
+        drop(runtime);
+
+        assert!(!check.passed);
+        assert!(
+            started.elapsed() < Duration::from_millis(250),
+            "timed-out readiness worker held runtime shutdown"
+        );
+    }
+
+    #[test]
     fn backup_freshness_requires_a_sqlite_snapshot() {
         let directory = tempdir().expect("temporary directory");
-        assert!(!backup_check(directory.path(), 48).passed);
+        assert!(!backup_check_blocking(directory.path(), 48).passed);
         File::create(directory.path().join("backup.sqlite3")).expect("invalid backup fixture");
-        assert!(!backup_check(directory.path(), 48).passed);
+        assert!(!backup_check_blocking(directory.path(), 48).passed);
         let store = Store::open(&directory.path().join("source.sqlite3")).expect("source store");
         store
             .backup(&directory.path().join("verified.sqlite3"))
             .expect("verified backup fixture");
-        assert!(backup_check(directory.path(), 48).passed);
+        assert!(backup_check_blocking(directory.path(), 48).passed);
     }
 
     #[test]
@@ -534,7 +656,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(5));
         File::create(directory.path().join("newest.sqlite3")).expect("invalid backup fixture");
 
-        let check = backup_check(directory.path(), 48);
+        let check = backup_check_blocking(directory.path(), 48);
         assert!(check.passed);
         assert!(check.detail.contains("verified backup"));
         assert!(check.detail.contains("ignored 1 invalid newer candidate"));
@@ -551,7 +673,7 @@ mod tests {
         File::create(&target).expect("external backup fixture");
         symlink(&target, directory.path().join("backup.sqlite3")).expect("backup symlink");
 
-        assert!(!backup_check(directory.path(), 48).passed);
+        assert!(!backup_check_blocking(directory.path(), 48).passed);
     }
 
     #[test]

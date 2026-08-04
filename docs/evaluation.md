@@ -87,7 +87,8 @@ model = "auto-efficient"
 ```bash
 cortana readiness \
   --api-url http://127.0.0.1:7331 \
-  --max-backup-age-hours 48
+  --max-backup-age-hours 48 \
+  --storage-timeout-seconds 240
 ```
 
 It checks the live API liveness endpoint, embedding probe, embedding/index generation compatibility,
@@ -98,7 +99,10 @@ and about 80 seconds for the backup scan. A mismatch is reported with the index 
 fingerprints instead of silently rebuilding or mixing vectors. The JSON also exposes `embedding_generation.stored` and
 `embedding_generation.configured` so Desktop can offer the same explicit, confirmation-gated
 adoption path. It never invokes a connector, starts a sync, or writes indexed content. The safe
-default fails when a recurring sync service is installed.
+default fails when a recurring sync service is installed. SQLite integrity and backup verification
+run on dedicated blocking threads so they do not stall the async runtime; each probe has the explicit
+`--storage-timeout-seconds` bound (1 to 300 seconds, 240 by default), and a timeout or worker error
+is reported as a failed check rather than treated as degraded success.
 After every source has been explicitly validated, `--allow-sync-service` records that operational
 acknowledgement for the check; it does not install or start the service. Validations must also be
 current: a record older than `[ingestion].validation_max_age_hours` (168 hours by default; `0`

@@ -53,7 +53,10 @@ cortana readiness --max-backup-age-hours 48
 
 `doctor` checks configuration and dependencies. `readiness` is read-only and confirms the database,
 embedding provider, API, backup freshness, and that recurring sync is not installed. A readiness
-failure is a stop sign; it never repairs the index implicitly.
+failure is a stop sign; it never repairs the index implicitly. SQLite integrity and backup
+verification run on dedicated blocking threads and are bounded to 240 seconds by default; use
+`--storage-timeout-seconds <seconds>` (1–300) to set an explicit bound. A timeout fails readiness
+closed.
 
 ### 3. Authorize and validate one source
 
