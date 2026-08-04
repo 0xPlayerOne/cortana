@@ -184,5 +184,11 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ env.RELEASE_TAG }}
+      - name: Install minisign
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes minisign
       - name: Verify cross-platform assets and updater manifest
+        env:
+          CORTANA_REQUIRE_MINISIGN: '1'
         run: scripts/verify-desktop-release.sh "$RELEASE_TAG"

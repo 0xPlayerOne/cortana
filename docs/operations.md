@@ -173,9 +173,10 @@ cannot run foreign-OS binaries).
 
 When `minisign` is installed, the verifier decodes Tauri's base64-encoded `.sig` payload and
 cryptographically verifies the downloaded macOS updater archive against the updater public key in
-`apps/desktop/src-tauri/tauri.conf.json`. Set `CORTANA_REQUIRE_MINISIGN=1` in a release gate to fail
-closed when the verifier is unavailable; the default keeps the check portable on hosts without
-`minisign`.
+`apps/desktop/src-tauri/tauri.conf.json`. The published-release workflow installs Ubuntu's
+`minisign` package and sets `CORTANA_REQUIRE_MINISIGN=1`, so that gate fails closed if the verifier
+is unavailable. Local invocations keep the portable default and skip the cryptographic check on
+hosts without `minisign`.
 
 Re-run the read-only verifier for an existing release with:
 
