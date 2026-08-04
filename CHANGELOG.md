@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.29.5](https://github.com/0xPlayerOne/cortana/compare/v0.29.4...v0.29.5) (2026-08-04)
+
+
+### Documentation
+
+* record desktop signing status ([edd4d2c](https://github.com/0xPlayerOne/cortana/commit/edd4d2cfab76e86e27cbb3ed8aea855d0b062f4f))
+* refresh v0.29.4 release evidence ([dd2536d](https://github.com/0xPlayerOne/cortana/commit/dd2536dc96133f8f76c18d5c0e5b52d84f367f65))
+
 ## [0.29.4](https://github.com/0xPlayerOne/cortana/compare/v0.29.3...v0.29.4) (2026-08-04)
 
 
