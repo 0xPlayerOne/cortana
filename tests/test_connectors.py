@@ -930,8 +930,8 @@ def test_google_token_path_rejects_symlinked_parent(tmp_path: Path) -> None:
         validate_token_path(linked / "token.json")
 
 
-def test_google_drive_content_concurrency_is_two() -> None:
-    assert google.DRIVE_CONTENT_CONCURRENCY == 2
+def test_google_drive_content_concurrency_is_one() -> None:
+    assert google.DRIVE_CONTENT_CONCURRENCY == 1
 
 
 def test_google_gmail_detail_concurrency_is_four() -> None:
