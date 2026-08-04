@@ -306,7 +306,7 @@ def _retry_after(response: httpx.Response, attempt: int) -> float:
             return min(30.0, max(0.1, float(header)))
     except ValueError:
         pass
-    return min(30.0, 0.5 * (2**attempt))
+    return min(30.0, 0.5 * float(2**attempt))
 
 
 def _decode_blob(payload: Any, repository: str, path: str) -> str:
