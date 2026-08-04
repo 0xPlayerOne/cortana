@@ -163,6 +163,16 @@ configured document cap and never reconcile deletions.
   in `team_names`); each Slack source belongs to exactly one workspace, so that is the
   per-workspace workspace assignment. Channel listing and message sync remain bot-token based
   via `SLACK_BOT_TOKEN`; a source with no OAuth setup keeps the plain token behavior unchanged.
+- `cortana buzz-communities SOURCE` lists the bounded communities recorded in the source's
+  read-only `agents/teams.json` identity file under the configured Buzz data directory. The
+  file must be a regular, non-symlink JSON array bounded at 512 KiB; each record must carry
+  stable string `id` and `name` fields, and missing, malformed, or duplicate entries fail
+  closed. The command never runs ingestion, never starts a sync, never touches the retention
+  database or agent logs, and never infers identity from persona event content. Community
+  selection is persisted per source in `communities` (with display names kept index-aligned
+  in `community_names`); each Buzz source belongs to exactly one workspace, so that is the
+  per-workspace community assignment. Identity is a local, read-only file: the connector's
+  read-only behavior is unchanged.
 - Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Desktop authorization uses a
   Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
   and the minimum read-only scopes required by the Google sources that share that token. Refresh
@@ -172,7 +182,8 @@ configured document cap and never reconcile deletions.
   an absolute OAuth token JSON path. The Desktop editor stores that path value write-only in its
   managed secret file; it does not accept inline token JSON.
 - Apple Notes uses the local macOS Notes automation permission and stores no credential.
-- Buzz opens the retention database read-only.
+- Buzz opens the retention database read-only. Community identity comes from the
+  read-only `agents/teams.json` file; see `cortana buzz-communities SOURCE` above.
 
 Never place secret values in `config.toml`, logs, or the repository. Use a secret manager,
 launchd/systemd environment file with restrictive permissions, or the host platform's secret

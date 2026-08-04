@@ -33,6 +33,8 @@ const slackSource: SourceSettings = {
   servers: [],
   teams: [],
   team_names: [],
+  communities: [],
+  community_names: [],
   token_env: 'SLACK_BOT_TOKEN',
   token_path: null,
   oauth_client_path: null,

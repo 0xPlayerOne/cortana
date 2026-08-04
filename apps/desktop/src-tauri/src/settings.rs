@@ -164,6 +164,16 @@ pub struct SourceSettings {
     /// workspaces stay identifiable without re-discovery.
     #[serde(default)]
     pub team_names: Vec<String>,
+    /// Buzz community ids assigned to this source's workspace from the
+    /// read-only `agents/teams.json` identity file. This is the generic Buzz
+    /// community representation and is separate from Slack's `teams` fields.
+    #[serde(default)]
+    pub communities: Vec<String>,
+    /// Buzz community display names kept index-aligned with `communities` so
+    /// assigned communities stay identifiable without re-reading the
+    /// identity file.
+    #[serde(default)]
+    pub community_names: Vec<String>,
     pub token_env: Option<String>,
     pub token_path: Option<String>,
     pub oauth_client_path: Option<String>,
@@ -1026,6 +1036,8 @@ fn configured_sources(root: &Table) -> Vec<SourceSettings> {
                         servers: table_string_array(item, "servers"),
                         teams: table_string_array(item, "teams"),
                         team_names: table_string_array(item, "team_names"),
+                        communities: table_string_array(item, "communities"),
+                        community_names: table_string_array(item, "community_names"),
                         token_env: table_optional_string(item, "token_env"),
                         token_path: table_optional_string(item, "token"),
                         oauth_client_path: table_optional_string(item, "oauth_client"),
@@ -1740,6 +1752,8 @@ fn apply_sources(root: &mut Table, sources: &[SourceSettings]) {
                 set_table_string_array(&mut table, "servers", &source.servers);
                 set_table_string_array(&mut table, "teams", &source.teams);
                 set_table_string_array(&mut table, "team_names", &source.team_names);
+                set_table_string_array(&mut table, "communities", &source.communities);
+                set_table_string_array(&mut table, "community_names", &source.community_names);
                 set_table_optional_string(&mut table, "token_env", &source.token_env);
                 set_table_optional_string(&mut table, "token", &source.token_path);
                 set_table_optional_string(&mut table, "oauth_client", &source.oauth_client_path);
@@ -1955,6 +1969,27 @@ fn validate_sources(
         if source.teams.len() != source.team_names.len() {
             return Err(format!(
                 "source `{}` must keep Slack team ids and names aligned",
+                source.name
+            ));
+        }
+        normalize_string_list("source community", &mut source.communities, 100, 128)?;
+        normalize_string_list(
+            "source community name",
+            &mut source.community_names,
+            100,
+            128,
+        )?;
+        if source.communities.len() != source.community_names.len() {
+            return Err(format!(
+                "source `{}` must keep Buzz community ids and names aligned",
+                source.name
+            ));
+        }
+        if (!source.communities.is_empty() || !source.community_names.is_empty())
+            && source.kind != "buzz"
+        {
+            return Err(format!(
+                "source `{}` may assign communities only for Buzz sources; Slack teams use the `teams` fields",
                 source.name
             ));
         }
@@ -2897,6 +2932,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -3583,6 +3620,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -3636,6 +3675,59 @@ mod tests {
         update.sources[0] = source.clone();
         let error = validate_update(&mut update).expect_err("oversized team id must fail");
         assert!(error.contains("must be between 1 and 12 bytes"));
+    }
+
+    #[test]
+    fn buzz_community_assignment_is_bounded_and_index_aligned() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let mut update = valid_update(temp.path());
+        let mut source = source_settings("agent-buzz", "buzz");
+        source.enabled = true;
+        update.sources.push(source.clone());
+
+        // Buzz community assignment is the generic `communities` contract
+        // (separate from Slack's `teams`), keeps ids and display names
+        // index-aligned, and persists bounded ids and names.
+        source.communities = vec!["builtin-team:welcome".into(), "team:research".into()];
+        source.community_names = vec!["Welcome Team".into(), "Research".into()];
+        update.sources[0] = source.clone();
+        validate_update(&mut update).expect("aligned Buzz assignment is valid");
+
+        source.communities = vec!["builtin-team:welcome".into()];
+        source.community_names = Vec::new();
+        update.sources[0] = source.clone();
+        let error = validate_update(&mut update).expect_err("misaligned names must fail");
+        assert!(error.contains("must keep Buzz community ids and names aligned"));
+
+        // The stored ids stay bounded; oversized community ids fail closed.
+        source.communities = vec!["builtin-team:welcome".into()];
+        source.community_names = vec!["Welcome Team".into()];
+        source.communities = vec!["x".repeat(129)];
+        update.sources[0] = source.clone();
+        let error = validate_update(&mut update).expect_err("oversized community id must fail");
+        assert!(error.contains("must be between 1 and 128 bytes"));
+
+        // Duplicate community ids fail closed.
+        source.communities = vec!["team:research".into(), "team:research".into()];
+        source.community_names = vec!["Research".into(), "Research Again".into()];
+        update.sources[0] = source.clone();
+        let error = validate_update(&mut update).expect_err("duplicate community id must fail");
+        assert!(error.contains("contains duplicate values"));
+
+        // The generic fields are reserved for Buzz: Slack sources keep using
+        // the `teams` fields, so community assignment on any other kind fails
+        // closed instead of being silently reinterpreted.
+        source.communities = vec!["team:research".into()];
+        source.community_names = vec!["Research".into()];
+        let mut slack = source_settings("team-slack", "slack");
+        slack.enabled = true;
+        slack.token_env = Some("SLACK_BOT_TOKEN".into());
+        slack.channels = vec!["C012345".into()];
+        slack.communities = source.communities.clone();
+        slack.community_names = source.community_names.clone();
+        update.sources[0] = slack;
+        let error = validate_update(&mut update).expect_err("communities on Slack must fail");
+        assert!(error.contains("may assign communities only for Buzz sources"));
     }
 
     #[test]

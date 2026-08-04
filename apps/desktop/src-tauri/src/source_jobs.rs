@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::Read,
     path::Path,
@@ -52,6 +52,14 @@ const MAX_SLACK_WORKSPACES_BYTES: usize = 512 * 1024;
 const MAX_SLACK_TEAMS: usize = 100;
 const MAX_SLACK_TEAM_ID_CHARS: usize = 12;
 const MAX_SLACK_TEAM_NAME_CHARS: usize = 80;
+// Buzz community discovery reads only the local agents/teams.json identity
+// file, which is bounded at 512 KiB by the CLI; the payload contract stays a
+// bounded list and the validator enforces the same id and name bounds.
+const BUZZ_COMMUNITIES_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_BUZZ_COMMUNITIES_BYTES: usize = 512 * 1024;
+const MAX_BUZZ_COMMUNITIES: usize = 100;
+const MAX_BUZZ_COMMUNITY_ID_CHARS: usize = 128;
+const MAX_BUZZ_COMMUNITY_NAME_CHARS: usize = 128;
 const MAX_JOBS: usize = 20;
 const VALIDATION_MAX_DOCUMENTS: &str = "25";
 const VALIDATION_MAX_BYTES: &str = "5242880";
@@ -434,6 +442,85 @@ pub async fn list_slack_workspaces<R: tauri::Runtime>(
     Ok(value)
 }
 
+/// Discover the Buzz communities recorded in the source's read-only
+/// `agents/teams.json` identity file through the bundled CLI. The renderer
+/// supplies only a configured source name; it cannot inject a command, URL,
+/// or identity data. Discovery is read-only: the CLI never runs ingestion,
+/// starts a sync, or touches the retention database or agent logs.
+pub async fn list_buzz_communities<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    source_name: &str,
+) -> Result<Value, String> {
+    let source = settings::configured_source(source_name)?;
+    if source.kind != "buzz" {
+        return Err("community discovery is available only for Buzz sources".into());
+    }
+    let command = app
+        .shell()
+        .sidecar("cortana")
+        .map_err(|error| format!("locate bundled Cortana runtime: {error}"))?
+        .args(["buzz-communities", source.name.as_str()])
+        .env("CORTANA_DESKTOP_PROCESS_GROUP", "1")
+        .set_raw_out(true);
+    let (mut receiver, child) = command
+        .spawn()
+        .map_err(|error| format!("start Buzz community discovery: {error}"))?;
+    let result = timeout(BUZZ_COMMUNITIES_TIMEOUT, async {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut success = false;
+        while let Some(event) = receiver.recv().await {
+            match event {
+                CommandEvent::Stdout(bytes) => {
+                    append_bounded_bytes(&mut stdout, &bytes, MAX_BUZZ_COMMUNITIES_BYTES)
+                }
+                CommandEvent::Stderr(bytes) => {
+                    append_bounded_bytes(&mut stderr, &bytes, MAX_LOG_BYTES)
+                }
+                CommandEvent::Error(error) => {
+                    return Err(format!("Buzz community discovery failed: {error}"));
+                }
+                CommandEvent::Terminated(payload) => {
+                    success = payload.code == Some(0);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        Ok((success, stdout, stderr))
+    })
+    .await;
+    let (success, stdout, stderr) = match result {
+        Ok(Ok(output)) => output,
+        Ok(Err(error)) => {
+            let _ = terminate_source_process(child);
+            return Err(error);
+        }
+        Err(_) => {
+            let _ = terminate_source_process(child);
+            return Err("Buzz community discovery timed out".into());
+        }
+    };
+    if !success {
+        let detail = sanitize_log(&String::from_utf8_lossy(&stderr));
+        let detail = detail.chars().take(2048).collect::<String>();
+        return Err(if detail.is_empty() {
+            "Buzz community discovery failed; check the configured Buzz data directory".into()
+        } else {
+            format!(
+                "Buzz community discovery failed; check the configured Buzz data directory: {detail}"
+            )
+        });
+    }
+    if stdout.len() >= MAX_BUZZ_COMMUNITIES_BYTES {
+        return Err("Buzz community discovery response exceeded 512 KiB".into());
+    }
+    let value: Value = serde_json::from_slice(&stdout)
+        .map_err(|_| "Buzz community discovery returned invalid JSON".to_string())?;
+    validate_buzz_communities_payload(&value)?;
+    Ok(value)
+}
+
 pub(crate) fn append_bounded_bytes(buffer: &mut Vec<u8>, bytes: &[u8], maximum: usize) {
     let remaining = maximum.saturating_sub(buffer.len());
     buffer.extend_from_slice(&bytes[..bytes.len().min(remaining)]);
@@ -611,14 +698,14 @@ fn validate_slack_workspaces_payload(value: &Value) -> Result<(), String> {
         let object = team
             .as_object()
             .ok_or_else(|| "Slack workspace discovery returned an invalid team".to_string())?;
-        validate_slack_team_id(object.get("id").and_then(Value::as_str).ok_or_else(|| {
-            "Slack workspace discovery returned an invalid team id".to_string()
-        })?)?;
-        validate_slack_team_name(
-            object.get("name").and_then(Value::as_str).ok_or_else(|| {
-                "Slack workspace discovery returned an invalid team name".to_string()
+        validate_slack_team_id(
+            object.get("id").and_then(Value::as_str).ok_or_else(|| {
+                "Slack workspace discovery returned an invalid team id".to_string()
             })?,
         )?;
+        validate_slack_team_name(object.get("name").and_then(Value::as_str).ok_or_else(|| {
+            "Slack workspace discovery returned an invalid team name".to_string()
+        })?)?;
     }
     Ok(())
 }
@@ -627,7 +714,10 @@ fn validate_slack_team_id(value: &str) -> Result<(), String> {
     if value.is_empty()
         || !(9..=MAX_SLACK_TEAM_ID_CHARS).contains(&value.len())
         || !value.starts_with('T')
-        || !value.bytes().skip(1).all(|byte| byte.is_ascii_alphanumeric())
+        || !value
+            .bytes()
+            .skip(1)
+            .all(|byte| byte.is_ascii_alphanumeric())
     {
         return Err("Slack workspace discovery returned an invalid team id".into());
     }
@@ -644,6 +734,59 @@ fn validate_slack_team_name(value: &str) -> Result<(), String> {
         || sanitized != value
     {
         return Err("Slack workspace discovery returned an unsafe team name".into());
+    }
+    Ok(())
+}
+
+/// Re-validate the sidecar's Buzz community payload before it crosses the
+/// IPC boundary. Community ids and names are bounded exactly like the CLI
+/// enforces them so a defective or compromised runtime cannot push unsafe
+/// identity metadata into the renderer.
+fn validate_buzz_communities_payload(value: &Value) -> Result<(), String> {
+    let communities = value
+        .get("communities")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "Buzz community discovery returned an invalid list".to_string())?;
+    if communities.len() > MAX_BUZZ_COMMUNITIES {
+        return Err("Buzz community discovery returned too many communities".into());
+    }
+    let mut seen = BTreeSet::new();
+    for community in communities {
+        let object = community
+            .as_object()
+            .ok_or_else(|| "Buzz community discovery returned an invalid community".to_string())?;
+        let id = object.get("id").and_then(Value::as_str).ok_or_else(|| {
+            "Buzz community discovery returned an invalid community id".to_string()
+        })?;
+        validate_buzz_community_id(id)?;
+        if !seen.insert(id) {
+            return Err("Buzz community discovery returned duplicate community ids".into());
+        }
+        validate_buzz_community_name(object.get("name").and_then(Value::as_str).ok_or_else(
+            || "Buzz community discovery returned an invalid community name".to_string(),
+        )?)?;
+    }
+    Ok(())
+}
+
+fn validate_buzz_community_id(value: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > MAX_BUZZ_COMMUNITY_ID_CHARS
+        || value != value.trim()
+        || value.chars().any(char::is_control)
+    {
+        return Err("Buzz community discovery returned an invalid community id".into());
+    }
+    Ok(())
+}
+
+fn validate_buzz_community_name(value: &str) -> Result<(), String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || trimmed.len() > MAX_BUZZ_COMMUNITY_NAME_CHARS
+        || trimmed.chars().any(char::is_control)
+    {
+        return Err("Buzz community discovery returned an unsafe community name".into());
     }
     Ok(())
 }
@@ -1972,6 +2115,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             token_env: None,
             token_path: None,
             oauth_client_path: None,
@@ -2537,7 +2682,10 @@ mod tests {
             ("id", serde_json::json!("T1234567")),
             ("name", serde_json::json!("\u{0}Acme")),
             ("name", serde_json::json!("   ")),
-            ("name", serde_json::json!("x".repeat(MAX_SLACK_TEAM_NAME_CHARS + 1))),
+            (
+                "name",
+                serde_json::json!("x".repeat(MAX_SLACK_TEAM_NAME_CHARS + 1)),
+            ),
         ] {
             let mut team = team();
             team[field] = value;
@@ -2554,6 +2702,74 @@ mod tests {
         assert!(
             validate_slack_workspaces_payload(&serde_json::json!({})).is_err(),
             "a missing team list must fail closed"
+        );
+    }
+
+    #[test]
+    fn buzz_community_payload_validation_enforces_identity_bounds() {
+        let community =
+            || serde_json::json!({ "id": "builtin-team:welcome", "name": "Welcome Team" });
+        assert!(
+            validate_buzz_communities_payload(&serde_json::json!({
+                "communities": [community()],
+                "truncated": false,
+            }))
+            .is_ok()
+        );
+
+        let mut communities = Vec::new();
+        for _ in 0..=MAX_BUZZ_COMMUNITIES {
+            communities.push(community());
+        }
+        assert!(
+            validate_buzz_communities_payload(&serde_json::json!({"communities": communities}))
+                .expect_err("too many communities must fail")
+                .contains("too many communities")
+        );
+
+        for (field, value) in [
+            ("id", serde_json::json!("")),
+            ("id", serde_json::json!(" padded-id")),
+            ("id", serde_json::json!("id\u{0}nul")),
+            (
+                "id",
+                serde_json::json!("x".repeat(MAX_BUZZ_COMMUNITY_ID_CHARS + 1)),
+            ),
+            ("name", serde_json::json!("")),
+            ("name", serde_json::json!("\u{0}Team")),
+            (
+                "name",
+                serde_json::json!("x".repeat(MAX_BUZZ_COMMUNITY_NAME_CHARS + 1)),
+            ),
+        ] {
+            let mut community = community();
+            community[field] = value;
+            assert!(
+                validate_buzz_communities_payload(&serde_json::json!({
+                    "communities": [community],
+                    "truncated": false,
+                }))
+                .is_err(),
+                "{field} community payload must be rejected"
+            );
+        }
+
+        let duplicate = serde_json::json!({
+            "communities": [
+                {"id": "team:research", "name": "Research"},
+                {"id": "team:research", "name": "Research Again"},
+            ],
+            "truncated": false,
+        });
+        assert!(
+            validate_buzz_communities_payload(&duplicate)
+                .expect_err("duplicate ids must fail")
+                .contains("duplicate community ids")
+        );
+
+        assert!(
+            validate_buzz_communities_payload(&serde_json::json!({})).is_err(),
+            "a missing community list must fail closed"
         );
     }
 

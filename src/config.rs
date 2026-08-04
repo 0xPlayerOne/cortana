@@ -5,6 +5,12 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 const MAX_CONFIGURED_SOURCES: usize = 128;
+// Buzz community assignment keeps bounded counts and lengths: the identity
+// file may hold more communities than any single workspace should index, and
+// ids/names are printable strings with a bounded length.
+const MAX_BUZZ_COMMUNITIES: usize = 100;
+const MAX_BUZZ_COMMUNITY_ID_CHARS: usize = 128;
+const MAX_BUZZ_COMMUNITY_NAME_CHARS: usize = 128;
 // `chrono::Duration::hours` accepts a signed hour count. Reject values that
 // cannot be represented before the freshness bound is converted at runtime.
 const MAX_VALIDATION_MAX_AGE_HOURS: u64 = (i64::MAX as u64) / 3_600;
@@ -200,6 +206,16 @@ pub struct SourceConfig {
     /// Display names of the Slack teams in `teams`, kept index-aligned.
     #[serde(default)]
     pub team_names: Vec<String>,
+    /// Buzz community (team) ids assigned to this source's workspace from the
+    /// read-only `agents/teams.json` identity file. This is the generic Buzz
+    /// community representation and is separate from Slack's `teams` fields.
+    #[serde(default)]
+    pub communities: Vec<String>,
+    /// Display names of the Buzz communities in `communities`, kept
+    /// index-aligned so assigned communities stay identifiable without
+    /// re-reading the identity file.
+    #[serde(default)]
+    pub community_names: Vec<String>,
     /// Explicit `owner/repository` allowlist for GitHub code sources.
     #[serde(default)]
     pub repositories: Vec<String>,
@@ -534,6 +550,48 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
                 source.project
             );
         }
+        if !source.communities.is_empty() || !source.community_names.is_empty() {
+            anyhow::ensure!(
+                source.kind == "buzz",
+                "source `{}` may assign communities only for kind `buzz`; Slack teams use the `teams` fields",
+                source.name
+            );
+        }
+        anyhow::ensure!(
+            source.communities.len() <= MAX_BUZZ_COMMUNITIES,
+            "source `{}` assigns more than {MAX_BUZZ_COMMUNITIES} Buzz communities",
+            source.name
+        );
+        anyhow::ensure!(
+            source.community_names.len() == source.communities.len(),
+            "source `{}` must keep Buzz community ids and names index-aligned",
+            source.name
+        );
+        let mut community_ids = HashSet::new();
+        for (index, community) in source.communities.iter().enumerate() {
+            anyhow::ensure!(
+                !community.is_empty()
+                    && community.len() <= MAX_BUZZ_COMMUNITY_ID_CHARS
+                    && community == community.trim()
+                    && !community.chars().any(char::is_control),
+                "source `{}` has an invalid Buzz community id at index {index}",
+                source.name
+            );
+            anyhow::ensure!(
+                community_ids.insert(community.as_str()),
+                "source `{}` assigns Buzz community `{}` more than once",
+                source.name,
+                community
+            );
+            let name = &source.community_names[index];
+            anyhow::ensure!(
+                !name.trim().is_empty()
+                    && name.len() <= MAX_BUZZ_COMMUNITY_NAME_CHARS
+                    && !name.chars().any(char::is_control),
+                "source `{}` has an invalid Buzz community name at index {index}",
+                source.name
+            );
+        }
     }
     Ok(())
 }
@@ -814,11 +872,19 @@ mod tests {
             teams = ["T0123456789"]
             team_names = ["Acme Engineering"]
             token_env = "SLACK_BOT_TOKEN"
+
+            [[sources]]
+            name = "agent-buzz"
+            kind = "buzz"
+            project = "agents"
+            root = "/Users/example/Library/Application Support/xyz.block.buzz.app"
+            communities = ["builtin-team:welcome", "team:research"]
+            community_names = ["Welcome Team", "Research"]
             "#,
         )
         .expect("valid source config");
 
-        assert_eq!(config.sources.len(), 5);
+        assert_eq!(config.sources.len(), 6);
         assert!(config.sources[0].enabled);
         assert_eq!(config.sources[0].max_content_chars, Some(12_345));
         assert_eq!(config.sources[0].max_documents, Some(100));
@@ -843,6 +909,16 @@ mod tests {
             "persisted Slack team names must round-trip"
         );
         assert_eq!(config.sources[4].channels, ["C0123456789"]);
+        assert_eq!(
+            config.sources[5].communities,
+            ["builtin-team:welcome", "team:research"],
+            "per-workspace Buzz community assignment must round-trip"
+        );
+        assert_eq!(
+            config.sources[5].community_names,
+            ["Welcome Team", "Research"],
+            "persisted Buzz community names must round-trip"
+        );
         assert_eq!(config.ingestion.max_documents_per_source, 2_000);
         assert_eq!(config.ingestion.max_bytes_per_source, 128 * 1024 * 1024);
         assert_eq!(config.ingestion.request_concurrency, 1);
@@ -865,6 +941,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: vec!["acme/project".into()],
             token_env: Some("GITHUB_TOKEN".into()),
             token: None,
@@ -953,6 +1031,45 @@ mod tests {
             project = "work"
             source = "line\nbreak"
             "#,
+            r#"
+            [[sources]]
+            name = "agent-buzz"
+            kind = "buzz"
+            project = "agents"
+            communities = ["team:research"]
+            "#,
+            r#"
+            [[sources]]
+            name = "agent-buzz"
+            kind = "buzz"
+            project = "agents"
+            communities = ["team:research"]
+            community_names = []
+            "#,
+            r#"
+            [[sources]]
+            name = "agent-buzz"
+            kind = "buzz"
+            project = "agents"
+            communities = ["team:research", "team:research"]
+            community_names = ["Research", "Research Again"]
+            "#,
+            r#"
+            [[sources]]
+            name = "agent-buzz"
+            kind = "buzz"
+            project = "agents"
+            communities = ["team:research"]
+            community_names = [""]
+            "#,
+            r#"
+            [[sources]]
+            name = "team-slack"
+            kind = "slack"
+            project = "work"
+            communities = ["team:research"]
+            community_names = ["Research"]
+            "#,
         ] {
             let config: Config = toml::from_str(source_block).expect("fixture config");
             assert!(validate_source_definitions(&config).is_err());
@@ -1025,6 +1142,74 @@ mod tests {
     }
 
     #[test]
+    fn buzz_community_assignment_is_bounded_and_aligned() {
+        let mut config = Config::default();
+        config.sources.push(SourceConfig {
+            name: "agent-buzz".into(),
+            kind: "buzz".into(),
+            enabled: true,
+            project: "agents".into(),
+            root: Some(PathBuf::from(
+                "/Users/example/Library/Application Support/xyz.block.buzz.app",
+            )),
+            source: None,
+            channels: Vec::new(),
+            servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
+            communities: vec!["builtin-team:welcome".into(), "team:research".into()],
+            community_names: vec!["Welcome Team".into(), "Research".into()],
+            repositories: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        });
+        validate_source_definitions(&config).expect("aligned Buzz assignment is valid");
+
+        config.sources[0].communities.push("x".repeat(129));
+        config.sources[0].community_names.push("Oversized".into());
+        let error = validate_source_definitions(&config).expect_err("oversized id must fail");
+        assert!(error.to_string().contains("invalid Buzz community id"));
+        config.sources[0].communities.pop();
+        config.sources[0].community_names.pop();
+
+        config.sources[0].community_names = Vec::new();
+        let error = validate_source_definitions(&config).expect_err("misaligned names must fail");
+        assert!(error.to_string().contains("index-aligned"));
+        config.sources[0].community_names = vec!["Welcome Team".into(), "Research".into()];
+
+        config.sources[0].communities[0] = "team:research".into();
+        let error = validate_source_definitions(&config).expect_err("duplicate id must fail");
+        assert!(error.to_string().contains("more than once"));
+        config.sources[0].communities[0] = "builtin-team:welcome".into();
+
+        config.sources[0].kind = "slack".into();
+        let error = validate_source_definitions(&config).expect_err("non-buzz kind must fail");
+        assert!(error.to_string().contains("only for kind `buzz`"));
+
+        config.sources[0].kind = "buzz".into();
+        config.sources[0].communities = (0..=MAX_BUZZ_COMMUNITIES)
+            .map(|index| format!("team-{index:03}"))
+            .collect();
+        config.sources[0].community_names = config.sources[0]
+            .communities
+            .iter()
+            .map(|id| format!("Team {id}"))
+            .collect();
+        let error = validate_source_definitions(&config).expect_err("count bound must fail");
+        assert!(error.to_string().contains("more than 100 Buzz communities"));
+    }
+
+    #[test]
     fn source_acl_defaults_to_its_workspace_and_preserves_explicit_labels() {
         let mut source = SourceConfig {
             name: "notes".into(),
@@ -1037,6 +1222,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
