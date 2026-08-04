@@ -444,13 +444,14 @@ async fn list_documents(
         .map(decode_document_cursor)
         .transpose()?;
     let started = Instant::now();
+    let acl = principal.visible_acl();
     let result = state.store.list_documents_scoped(
         params.project.as_deref(),
         params.source.as_deref(),
         params.query.as_deref(),
         cursor.as_ref(),
         params.limit.clamp(1, 100),
-        &principal.acl_labels(),
+        &acl,
     );
     match result {
         Ok(page) => {
@@ -506,9 +507,10 @@ async fn document(
         return Err((StatusCode::BAD_REQUEST, "invalid document id".into()));
     }
     let started = Instant::now();
+    let acl = principal.visible_acl();
     match state
         .store
-        .document_scoped(&id, &principal.acl_labels(), MAX_DOCUMENT_CONTENT_BYTES)
+        .document_scoped(&id, &acl, MAX_DOCUMENT_CONTENT_BYTES)
     {
         Ok(Some(document)) => {
             record_audit(
@@ -567,13 +569,14 @@ async fn graph(
         .map(decode_document_cursor)
         .transpose()?;
     let started = Instant::now();
+    let acl = principal.visible_acl();
     let result = state.store.list_documents_scoped(
         params.project.as_deref(),
         params.source.as_deref(),
         params.query.as_deref(),
         cursor.as_ref(),
         params.limit.clamp(1, 100),
-        &principal.acl_labels(),
+        &acl,
     );
     match result {
         Ok(page) => {
@@ -886,7 +889,7 @@ async fn answer(
     state.metrics.record(&principal, PrincipalMetric::Answer);
     let result = state
         .answer
-        .answer_scoped(request, &principal.acl_labels())
+        .answer_scoped(request, &principal.visible_acl())
         .await;
     let (outcome, count) = match &result {
         Ok(response) => {
@@ -931,6 +934,7 @@ async fn search(
     validate_query(&request.query)?;
     let started = Instant::now();
     state.metrics.record(&principal, PrincipalMetric::Search);
+    let acl = principal.visible_acl();
     match retrieval::retrieve_scoped_with_status(
         &state.store,
         &state.embedder,
@@ -938,7 +942,7 @@ async fn search(
         request.project.as_deref(),
         request.source.as_deref(),
         request.limit.min(50),
-        &principal.acl_labels(),
+        &acl,
     )
     .await
     {
@@ -1003,6 +1007,7 @@ async fn context(
     validate_query(&request.query)?;
     let started = Instant::now();
     state.metrics.record(&principal, PrincipalMetric::Context);
+    let acl = principal.visible_acl();
     let retrieval = match retrieval::retrieve_scoped_with_status(
         &state.store,
         &state.embedder,
@@ -1010,7 +1015,7 @@ async fn context(
         request.project.as_deref(),
         request.source.as_deref(),
         request.limit.min(50),
-        &principal.acl_labels(),
+        &acl,
     )
     .await
     {
@@ -3087,5 +3092,330 @@ mod tests {
                 .iter()
                 .all(|event| event.get("query").is_none())
         );
+    }
+
+    #[tokio::test]
+    async fn admin_with_acl_scoped_labels_can_read_documents_outside_acl_and_retrieval_scopes() {
+        let (_directory, state) = test_state(None);
+        state
+            .store
+            .upsert(
+                &Document {
+                    source: "notes".into(),
+                    source_id: "personal-note".into(),
+                    title: "Personal note".into(),
+                    content: "personal launch phrase".into(),
+                    uri: None,
+                    updated_at: chrono::Utc::now(),
+                    project: "demo".into(),
+                    acl: vec!["personal".into()],
+                    metadata: serde_json::json!({}),
+                },
+                &[("personal launch phrase".into(), vec![1.0; 16])],
+            )
+            .expect("personal document");
+        state
+            .store
+            .upsert(
+                &Document {
+                    source: "notes".into(),
+                    source_id: "work-note".into(),
+                    title: "Work note".into(),
+                    content: "work launch phrase".into(),
+                    uri: None,
+                    updated_at: chrono::Utc::now(),
+                    project: "demo".into(),
+                    acl: vec!["work".into()],
+                    metadata: serde_json::json!({}),
+                },
+                &[("work launch phrase".into(), vec![1.0; 16])],
+            )
+            .expect("work document");
+
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config
+            .environment
+            .insert("ADMIN_TOKEN".into(), "admin-secret".into());
+        config.auth.tokens = vec![
+            AuthTokenConfig {
+                principal: "work-agent".into(),
+                token_env: "WORK_TOKEN".into(),
+                scopes: vec![QUERY_SCOPE.into(), STATUS_SCOPE.into()],
+                acl: vec!["work".into()],
+            },
+            AuthTokenConfig {
+                principal: "admin-agent".into(),
+                token_env: "ADMIN_TOKEN".into(),
+                scopes: vec![QUERY_SCOPE.into(), ADMIN_SCOPE.into()],
+                acl: vec!["work".into()],
+            },
+        ];
+        let policy = AuthPolicy::from_config(&config, None).expect("auth policy");
+        let app = router(state.with_config(&config, false).with_auth_policy(policy));
+
+        let work_search = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"launch phrase","project":"demo","limit":10}"#,
+                    ))
+                    .expect("work search request"),
+            )
+            .await
+            .expect("work search response");
+        assert_eq!(work_search.status(), StatusCode::OK);
+        let work_rows: Vec<Evidence> = serde_json::from_slice(
+            &to_bytes(work_search.into_body(), 1024 * 1024)
+                .await
+                .expect("work search body"),
+        )
+        .expect("work evidence");
+        assert_eq!(work_rows.len(), 1);
+        assert_eq!(work_rows[0].source_id, "work-note");
+
+        let admin_search = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header(header::AUTHORIZATION, "Bearer admin-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"launch phrase","project":"demo","limit":10}"#,
+                    ))
+                    .expect("admin search request"),
+            )
+            .await
+            .expect("admin search response");
+        assert_eq!(admin_search.status(), StatusCode::OK);
+        let admin_rows: Vec<Evidence> = serde_json::from_slice(
+            &to_bytes(admin_search.into_body(), 1024 * 1024)
+                .await
+                .expect("admin search body"),
+        )
+        .expect("admin evidence");
+        assert_eq!(admin_rows.len(), 2);
+        let admin_source_ids = admin_rows
+            .iter()
+            .map(|row| row.source_id.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(admin_source_ids.contains("personal-note"));
+        assert!(admin_source_ids.contains("work-note"));
+
+        let work_graph = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/graph?project=demo&limit=20")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("work graph request"),
+            )
+            .await
+            .expect("work graph response");
+        let work_graph_value = serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(work_graph.into_body(), 1024 * 1024)
+                .await
+                .expect("work graph body"),
+        )
+        .expect("work graph JSON");
+        let work_graph_nodes = work_graph_value["nodes"]
+            .as_array()
+            .expect("work graph nodes")
+            .iter()
+            .filter(|node| node["kind"] == "document")
+            .collect::<Vec<_>>();
+        assert_eq!(work_graph_nodes.len(), 1);
+
+        let admin_graph = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/graph?project=demo&limit=20")
+                    .header(header::AUTHORIZATION, "Bearer admin-secret")
+                    .body(Body::empty())
+                    .expect("admin graph request"),
+            )
+            .await
+            .expect("admin graph response");
+        let admin_graph_value = serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(admin_graph.into_body(), 1024 * 1024)
+                .await
+                .expect("admin graph body"),
+        )
+        .expect("admin graph JSON");
+        let admin_graph_nodes = admin_graph_value["nodes"]
+            .as_array()
+            .expect("admin graph nodes")
+            .iter()
+            .filter(|node| node["kind"] == "document")
+            .collect::<Vec<_>>();
+        assert_eq!(admin_graph_nodes.len(), 2);
+
+        let work_context = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/context")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"launch phrase","project":"demo","limit":10}"#,
+                    ))
+                    .expect("work context request"),
+            )
+            .await
+            .expect("work context response");
+        assert_eq!(work_context.status(), StatusCode::OK);
+        let work_context_value = serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(work_context.into_body(), 1024 * 1024)
+                .await
+                .expect("work context body"),
+        )
+        .expect("work context JSON");
+        assert_eq!(
+            work_context_value["evidence"].as_array().map(Vec::len),
+            Some(1)
+        );
+
+        let admin_context = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/context")
+                    .header(header::AUTHORIZATION, "Bearer admin-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"launch phrase","project":"demo","limit":10}"#,
+                    ))
+                    .expect("admin context request"),
+            )
+            .await
+            .expect("admin context response");
+        assert_eq!(admin_context.status(), StatusCode::OK);
+        let admin_context_value = serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(admin_context.into_body(), 1024 * 1024)
+                .await
+                .expect("admin context body"),
+        )
+        .expect("admin context JSON");
+        assert_eq!(
+            admin_context_value["evidence"].as_array().map(Vec::len),
+            Some(2)
+        );
+
+        let work_answer = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/answer")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"query":"launch phrase","project":"demo"}"#))
+                    .expect("work answer request"),
+            )
+            .await
+            .expect("work answer response");
+        assert_eq!(work_answer.status(), StatusCode::OK);
+        let work_answer_value = serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(work_answer.into_body(), 1024 * 1024)
+                .await
+                .expect("work answer body"),
+        )
+        .expect("work answer JSON");
+        assert_eq!(
+            work_answer_value["evidence"].as_array().map(Vec::len),
+            Some(1)
+        );
+
+        let admin_answer = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/answer")
+                    .header(header::AUTHORIZATION, "Bearer admin-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"query":"launch phrase","project":"demo"}"#))
+                    .expect("admin answer request"),
+            )
+            .await
+            .expect("admin answer response");
+        assert_eq!(admin_answer.status(), StatusCode::OK);
+        let admin_answer_value = serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(admin_answer.into_body(), 1024 * 1024)
+                .await
+                .expect("admin answer body"),
+        )
+        .expect("admin answer JSON");
+        assert_eq!(
+            admin_answer_value["evidence"].as_array().map(Vec::len),
+            Some(2)
+        );
+
+        let admin_list = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/documents?project=demo&source=notes&limit=10")
+                    .header(header::AUTHORIZATION, "Bearer admin-secret")
+                    .body(Body::empty())
+                    .expect("admin documents request"),
+            )
+            .await
+            .expect("admin documents response");
+        assert_eq!(admin_list.status(), StatusCode::OK);
+        let admin_documents = serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(admin_list.into_body(), 1024 * 1024)
+                .await
+                .expect("admin documents body"),
+        )
+        .expect("admin documents JSON");
+        let personal_document = admin_documents["documents"]
+            .as_array()
+            .expect("admin documents list")
+            .iter()
+            .find(|document| document["source_id"] == "personal-note")
+            .expect("personal document from admin list");
+        let personal_id = personal_document["id"]
+            .as_str()
+            .expect("personal document id");
+
+        let work_personal_read = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/documents/{personal_id}"))
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("work personal read request"),
+            )
+            .await
+            .expect("work personal read response");
+        assert_eq!(work_personal_read.status(), StatusCode::NOT_FOUND);
+
+        let admin_personal_read = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/v1/documents/{personal_id}"))
+                    .header(header::AUTHORIZATION, "Bearer admin-secret")
+                    .body(Body::empty())
+                    .expect("admin personal read request"),
+            )
+            .await
+            .expect("admin personal read response");
+        assert_eq!(admin_personal_read.status(), StatusCode::OK);
     }
 }
