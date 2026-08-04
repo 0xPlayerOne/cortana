@@ -23,7 +23,8 @@ request_concurrency = 4
 # `cortana embedding-service` supervises this command. When omitted it derives a local
 # text-embeddings-router command from the model and base URL above.
 # command = ["/absolute/path/text-embeddings-router", "--model-id", "Qwen/Qwen3-Embedding-0.6B", "--dtype", "float16", "--hostname", "127.0.0.1", "--port", "6999", "--max-batch-tokens", "4096", "--max-batch-requests", "16", "--max-concurrent-requests", "128"]
-startup_timeout_seconds = 120
+# The first local Qwen/Metal model load can take several minutes.
+startup_timeout_seconds = 300
 memory_limit_mb = 4096
 
 [query]
