@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.29.0](https://github.com/0xPlayerOne/cortana/compare/v0.28.0...v0.29.0) (2026-08-04)
+
+
+### Features
+
+* **buzz:** add community discovery and per-workspace assignment ([2a17bba](https://github.com/0xPlayerOne/cortana/commit/2a17bbaf5e4b510bebcc742d2cac499b82acec46))
+* **discord:** add OAuth server assignment ([361ccb4](https://github.com/0xPlayerOne/cortana/commit/361ccb4263b0ef7670cf650ded2f33b11c934bb3))
+* **models:** discover provider model catalogs ([d3f4400](https://github.com/0xPlayerOne/cortana/commit/d3f4400b55bae1eb0e93876b4451e0ef34f19735))
+* **slack:** add OAuth workspace discovery and per-workspace assignment ([a94f0b3](https://github.com/0xPlayerOne/cortana/commit/a94f0b362b75599c99a8b8ab1a6688ebd18fc0d4))
+* **web:** finish Knowledge hierarchy and Sources-only enablement ([58a4ba7](https://github.com/0xPlayerOne/cortana/commit/58a4ba7f29d6635ddf750050107e4e450ec4fb19))
+
+
+### Bug Fixes
+
+* **auth:** fail closed for OAuth token readiness ([3aca512](https://github.com/0xPlayerOne/cortana/commit/3aca512b7308afef8c7b6e4ead4486b29c2ddcf9))
+* **connectors:** bound Drive validation memory ([520067e](https://github.com/0xPlayerOne/cortana/commit/520067eadd0e6152161e755c631f81b1fa4f125e))
+* **connectors:** cap Drive content concurrency ([82f54b4](https://github.com/0xPlayerOne/cortana/commit/82f54b486566ec83c4c1b6e6814d2c466365360d))
+* **connectors:** harden Google API retries ([20f72d1](https://github.com/0xPlayerOne/cortana/commit/20f72d1388ba5cc21ef8388fb3ee197abbcd798b))
+* **connectors:** preserve bounded Drive metadata during emission ([0b10c2f](https://github.com/0xPlayerOne/cortana/commit/0b10c2f4e9cd6100e1f39388829d33d24974f0f2))
+* **connectors:** serialize Drive content parsing ([763e044](https://github.com/0xPlayerOne/cortana/commit/763e044a131bcafc84da5cd9ff23e1a17a09d72c))
+* **desktop:** polish second-brain workspace UX ([1b7ca63](https://github.com/0xPlayerOne/cortana/commit/1b7ca6333b8f775280be57a017347fa5a2912d09))
+* **release:** assert packaged binary version matches the release tag ([09016fe](https://github.com/0xPlayerOne/cortana/commit/09016feface139911f5b22ffc8e742d7156140e9))
+
+
+### Documentation
+
+* record bounded Drive validation safeguards ([9ac7268](https://github.com/0xPlayerOne/cortana/commit/9ac72683c65564d1fe336797c4d0affaf2ef0116))
+* record scaled Drive validation evidence ([38e4c34](https://github.com/0xPlayerOne/cortana/commit/38e4c34cdb9c92cab3ee78918542fd8e5d3048b5))
+* record verified release build, model eval, and test evidence ([fbc7288](https://github.com/0xPlayerOne/cortana/commit/fbc7288323227261c8e3f94dcc118c11d020ce9d))
+* refresh desktop audit evidence ([dd7df9c](https://github.com/0xPlayerOne/cortana/commit/dd7df9c808ddecce6f7acdbe7addc17aaf8a358f))
+
 ## [0.28.0](https://github.com/0xPlayerOne/cortana/compare/v0.27.3...v0.28.0) (2026-08-04)
 
 
