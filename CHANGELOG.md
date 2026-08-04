@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.29.3](https://github.com/0xPlayerOne/cortana/compare/v0.29.2...v0.29.3) (2026-08-04)
+
+
+### Bug Fixes
+
+* **desktop:** satisfy updater clippy guards ([b2fc7a4](https://github.com/0xPlayerOne/cortana/commit/b2fc7a4efc804ba94b3b45845b22f2645af6c4a6))
+* **release:** verify every signed desktop updater asset ([bc5f2fa](https://github.com/0xPlayerOne/cortana/commit/bc5f2fa4072992acaa0d07a0fd8137e4ad1ae2dd))
+* **release:** verify Tauri updater signatures ([bf65ed0](https://github.com/0xPlayerOne/cortana/commit/bf65ed0fec004be3ac89f5de8b8f77b238123ed4))
+
+
+### Documentation
+
+* record optional memory provider decision ([d4ec153](https://github.com/0xPlayerOne/cortana/commit/d4ec153c302804f17f5b04a2e3ae41f02d7af5dd))
+* refresh desktop release audit evidence ([5be7343](https://github.com/0xPlayerOne/cortana/commit/5be7343e9fa6d3b96aad7510e3d1750f35b5613a))
+
+
+### Tests
+
+* **desktop:** cover scheduled services and updater guards ([5354344](https://github.com/0xPlayerOne/cortana/commit/535434432aa44ffe4a29328b301cf5fd79549ac6))
+* **release:** harden signed asset verification ([2741354](https://github.com/0xPlayerOne/cortana/commit/2741354af10ffd84cf1d81bf9f183d7b308f54c8))
+
+
+### CI
+
+* **release:** require updater signature verification ([3304eef](https://github.com/0xPlayerOne/cortana/commit/3304eefbbc234b35cb1ef6290ffa0830b9a5ccd4))
+
 ## [0.29.2](https://github.com/0xPlayerOne/cortana/compare/v0.29.1...v0.29.2) (2026-08-04)
 
 
