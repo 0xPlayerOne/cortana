@@ -78,7 +78,10 @@ reconciliation, but Drive content is downloaded only when its modification times
 immutable Gmail message bodies are downloaded only once. The caches are disposable and can always
 be rebuilt from Google. First-time Drive content and Gmail detail retrieval use bounded
 eight-worker pools; cache writes and emitted documents remain ordered on the main connector
-thread. Drive installs pypdf's AES support.
+thread. Drive downloads are processed in 32-file batches, text and export responses are consumed
+as bounded head/tail streams, and PDF responses are spooled to a temporary file with a 64 MiB cap
+before parsing. The cache preserves the original character count and truncation flag, so a later
+cache hit does not hide that a provider response was sampled. Drive installs pypdf's AES support.
 
 Complete, reconciling Google runs fail closed on unresolved listing, detail, or conversion data
 so a truncated snapshot can never reconcile as if it were whole. Drive rejects an
