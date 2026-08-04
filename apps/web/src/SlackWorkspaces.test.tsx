@@ -5,8 +5,7 @@ import { desktopSettings } from './test/fixtures'
 import type {
   DesktopSettings,
   DesktopSettingsUpdate,
-  DiscordChannelList,
-  DiscordServerList,
+  SlackWorkspaceList,
   SourceSettings,
 } from './types'
 
@@ -14,45 +13,27 @@ afterEach(cleanup)
 
 const realApi = await import('./api')
 
-const channels: DiscordChannelList = {
+const workspaces: SlackWorkspaceList = {
   truncated: false,
-  guilds: [
-    {
-      id: '175928847299117063',
-      name: 'Engineering',
-      truncated: false,
-      channels: [{ id: '175928847299117064', name: 'release', kind: 'text' }],
-    },
-    {
-      id: '175928847299117067',
-      name: 'Community',
-      truncated: false,
-      channels: [{ id: '175928847299117068', name: 'announcements', kind: 'announcement' }],
-    },
+  teams: [
+    { id: 'T0123456789', name: 'Acme Engineering' },
+    { id: 'T9876543210', name: 'Acme Community' },
   ],
 }
 
-const servers: DiscordServerList = {
-  truncated: false,
-  guilds: [
-    { id: '175928847299117063', name: 'Engineering' },
-    { id: '175928847299117067', name: 'Community' },
-  ],
-}
-
-const discordSource: SourceSettings = {
-  name: 'work-discord',
-  kind: 'discord',
+const slackSource: SourceSettings = {
+  name: 'work-slack',
+  kind: 'slack',
   enabled: true,
   project: 'work',
   root: null,
   source: null,
-  channels: ['175928847299117064'],
+  channels: ['C0123456789'],
   repositories: [],
   servers: [],
   teams: [],
   team_names: [],
-  token_env: 'DISCORD_BOT_TOKEN',
+  token_env: 'SLACK_BOT_TOKEN',
   token_path: null,
   oauth_client_path: null,
   query: null,
@@ -71,20 +52,20 @@ function settingsWith(source: SourceSettings): DesktopSettings {
 }
 
 const state = {
-  settings: settingsWith(discordSource),
+  settings: settingsWith(slackSource),
   discoverCalls: [] as string[],
-  serversResult: servers as DiscordServerList | null,
-  serversError: null as Error | null,
+  workspacesResult: workspaces as SlackWorkspaceList | null,
+  workspacesError: null as Error | null,
   authorizationCalls: [] as string[],
   savedUpdates: [] as DesktopSettingsUpdate[],
   saved: null as DesktopSettings | null,
 }
 
 beforeEach(() => {
-  state.settings = settingsWith(discordSource)
+  state.settings = settingsWith(slackSource)
   state.discoverCalls = []
-  state.serversResult = servers
-  state.serversError = null
+  state.workspacesResult = workspaces
+  state.workspacesError = null
   state.authorizationCalls = []
   state.savedUpdates = []
   state.saved = null
@@ -121,11 +102,10 @@ mock.module('./api', () => ({
   startDesktopSourceValidation: () => Promise.reject(new Error('validation unavailable')),
   getDesktopSourceValidation: () => Promise.reject(new Error('job missing')),
   cancelDesktopSourceValidation: () => Promise.reject(new Error('job missing')),
-  listDesktopDiscordChannels: () => Promise.resolve(channels),
-  listDesktopDiscordServers: (source: string) => {
+  listDesktopSlackWorkspaces: (source: string) => {
     state.discoverCalls.push(source)
-    if (state.serversError) return Promise.reject(state.serversError)
-    return Promise.resolve(state.serversResult)
+    if (state.workspacesError) return Promise.reject(state.workspacesError)
+    return Promise.resolve(state.workspacesResult)
   },
   startDesktopSourceAuthorization: (source: string) => {
     state.authorizationCalls.push(source)
@@ -153,7 +133,7 @@ mock.module('./api', () => ({
 
 const { SettingsView } = await import('./components/SettingsView')
 
-function renderDiscordSettings() {
+function renderSlackSettings() {
   render(
     <SettingsView
       initialSection="sources"
@@ -165,93 +145,75 @@ function renderDiscordSettings() {
   )
 }
 
-test('discord server chooser discovers guilds and persists per-workspace assignment', async () => {
-  renderDiscordSettings()
+test('slack workspace chooser discovers teams and persists per-workspace assignment', async () => {
+  renderSlackSettings()
 
-  fireEvent.click(screen.getByRole('button', { name: /Discover servers/ }))
-  await waitFor(() => expect(screen.getByText('Engineering')).toBeTruthy())
-  expect(state.discoverCalls).toEqual(['work-discord'])
-  expect(screen.getByText('Community')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: /Discover workspaces/ }))
+  await waitFor(() => expect(screen.getByText('Acme Engineering')).toBeTruthy())
+  expect(state.discoverCalls).toEqual(['work-slack'])
+  expect(screen.getByText('Acme Community')).toBeTruthy()
 
-  // Server selection lands in the `servers` field, which is persisted per
-  // source (each Discord source belongs to exactly one workspace).
-  fireEvent.click(screen.getByRole('checkbox', { name: /Engineering/ }))
-  fireEvent.click(screen.getByRole('checkbox', { name: /Community/ }))
+  // Team selection lands in the `teams` field with the display name kept
+  // index-aligned in `team_names`, persisted per source (each Slack source
+  // belongs to exactly one workspace). A Slack user token is scoped to
+  // exactly one workspace, so assigning a second team replaces the first.
+  fireEvent.click(screen.getByRole('checkbox', { name: /Acme Engineering/ }))
+  fireEvent.click(screen.getByRole('checkbox', { name: /Acme Community/ }))
 
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
-  expect(state.savedUpdates[0].sources[0].servers).toEqual([
-    '175928847299117063',
-    '175928847299117067',
-  ])
-  expect(state.saved?.sources[0].servers).toEqual(['175928847299117063', '175928847299117067'])
+  expect(state.savedUpdates[0].sources[0].teams).toEqual(['T9876543210'])
+  expect(state.savedUpdates[0].sources[0].team_names).toEqual(['Acme Community'])
+  expect(state.saved?.sources[0].teams).toEqual(['T9876543210'])
+  expect(state.saved?.sources[0].team_names).toEqual(['Acme Community'])
 })
 
-test('discord server chooser refuses to discover unsaved changes and surfaces failures', async () => {
-  renderDiscordSettings()
+test('slack workspace chooser refuses to discover unsaved changes and surfaces failures', async () => {
+  renderSlackSettings()
 
   // Editing the source makes the native command unsafe until it is saved, so
   // the discovery button is disabled and no IPC call can start.
   fireEvent.change(screen.getByLabelText(/^Source name/), {
-    target: { value: 'work-discord-renamed' },
+    target: { value: 'work-slack-renamed' },
   })
   const discoverButton = screen.getByRole('button', {
-    name: /Discover servers/,
+    name: /Discover workspaces/,
   }) as HTMLButtonElement
   expect(discoverButton.disabled).toBe(true)
   fireEvent.click(discoverButton)
   expect(state.discoverCalls).toEqual([])
 
   // After saving the edit, a native failure surfaces the bounded diagnostic.
-  state.serversError = new Error(
-    'Discord server discovery failed; check browser authorization: Discord server discovery requires browser authorization; run `cortana authorize-discord work-discord-renamed` first'
+  state.workspacesError = new Error(
+    'Slack workspace discovery failed; check browser authorization: Slack workspace discovery requires browser authorization; run `cortana authorize-slack work-slack-renamed` first'
   )
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
-  fireEvent.click(screen.getByRole('button', { name: /Discover servers/ }))
+  fireEvent.click(screen.getByRole('button', { name: /Discover workspaces/ }))
   await waitFor(() =>
     expect(screen.getByRole('alert').textContent).toContain('requires browser authorization')
   )
 })
 
-test('discord server chooser warns when discovery is truncated at 100 servers', async () => {
-  state.serversResult = { ...servers, truncated: true }
-  renderDiscordSettings()
+test('slack workspace chooser warns when discovery is truncated at 100 teams', async () => {
+  state.workspacesResult = { ...workspaces, truncated: true }
+  renderSlackSettings()
 
-  fireEvent.click(screen.getByRole('button', { name: /Discover servers/ }))
+  fireEvent.click(screen.getByRole('button', { name: /Discover workspaces/ }))
   await waitFor(() =>
     expect(screen.getByRole('alert').textContent).toContain(
-      'Discord returned more than 100 servers; select from the first 100.'
+      'Slack returned more than 100 teams; select from the first 100.'
     )
   )
 })
 
-test('discord channels outside assigned servers are marked when servers are assigned', async () => {
+test('slack authorize action names Slack and starts browser authorization', async () => {
   state.settings = settingsWith({
-    ...discordSource,
-    servers: ['175928847299117063'],
+    ...slackSource,
+    token_path: '/Users/you/.config/cortana/slack-user-token.json',
+    oauth_client_path: '/Users/you/.config/cortana/slack-oauth-client.json',
   })
-  renderDiscordSettings()
-
-  fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
-  await waitFor(() => expect(screen.getByText('release · text')).toBeTruthy())
-  // The unassigned guild is labeled; the assigned guild is not.
-  expect(screen.getByText(/not assigned to this workspace/)).toBeTruthy()
-  const engineering = screen.getByText('Engineering')
-  expect(engineering.closest('.discord-guild')?.className ?? '').not.toContain(
-    'discord-guild-unassigned'
-  )
-  const community = screen.getAllByText('Community')[0]
-  expect(community.closest('.discord-guild')?.className ?? '').toContain('discord-guild-unassigned')
-})
-
-test('discord authorize action names Discord and starts browser authorization', async () => {
-  state.settings = settingsWith({
-    ...discordSource,
-    token_path: '/Users/you/.config/cortana/discord-user-token.json',
-    oauth_client_path: '/Users/you/.config/cortana/discord-oauth-client.json',
-  })
-  renderDiscordSettings()
+  renderSlackSettings()
 
   const confirm = mock((message?: string) => {
     confirmMessage = message ?? ''
@@ -262,14 +224,14 @@ test('discord authorize action names Discord and starts browser authorization', 
   window.confirm = confirm
 
   fireEvent.click(screen.getByRole('button', { name: 'Authorize' }))
-  await waitFor(() => expect(state.authorizationCalls).toEqual(['work-discord']))
-  expect(confirmMessage).toContain('Authorize work-discord with Discord')
+  await waitFor(() => expect(state.authorizationCalls).toEqual(['work-slack']))
+  expect(confirmMessage).toContain('Authorize work-slack with Slack')
 
   window.confirm = originalConfirm
 })
 
-test('discord authorize action stays disabled until OAuth paths are saved', async () => {
-  renderDiscordSettings()
+test('slack authorize action stays disabled until OAuth paths are saved', async () => {
+  renderSlackSettings()
 
   const authorize = screen.getByRole('button', { name: 'Authorize' }) as HTMLButtonElement
   expect(authorize.disabled).toBe(true)
@@ -278,19 +240,19 @@ test('discord authorize action stays disabled until OAuth paths are saved', asyn
   // A token destination without a client JSON is still incomplete, and the
   // native runtime must not be invoked with unsaved edits anyway.
   fireEvent.change(
-    screen.getByPlaceholderText('/Users/you/.config/cortana/discord-user-token.json'),
-    { target: { value: '/Users/you/.config/cortana/discord-user-token.json' } }
+    screen.getByPlaceholderText('/Users/you/.config/cortana/slack-user-token.json'),
+    { target: { value: '/Users/you/.config/cortana/slack-user-token.json' } }
   )
   fireEvent.change(
-    screen.getByPlaceholderText('/Users/you/.config/cortana/discord-oauth-client.json'),
-    { target: { value: '/Users/you/.config/cortana/discord-oauth-client.json' } }
+    screen.getByPlaceholderText('/Users/you/.config/cortana/slack-oauth-client.json'),
+    { target: { value: '/Users/you/.config/cortana/slack-oauth-client.json' } }
   )
   expect((screen.getByRole('button', { name: 'Authorize' }) as HTMLButtonElement).disabled).toBe(
     true
   )
 
   // Once the paths are saved, the same source card offers browser
-  // authorization for Discord.
+  // authorization for Slack.
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
   await waitFor(() =>
@@ -299,9 +261,9 @@ test('discord authorize action stays disabled until OAuth paths are saved', asyn
     )
   )
   expect(state.saved?.sources[0].token_path).toBe(
-    '/Users/you/.config/cortana/discord-user-token.json'
+    '/Users/you/.config/cortana/slack-user-token.json'
   )
   expect(state.saved?.sources[0].oauth_client_path).toBe(
-    '/Users/you/.config/cortana/discord-oauth-client.json'
+    '/Users/you/.config/cortana/slack-oauth-client.json'
   )
 })

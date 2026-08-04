@@ -16,7 +16,7 @@ use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
 use cortana::{
     api, discord_oauth, github_oauth, google_oauth, mcp, migration, provider_models, service,
-    source_status, source_validation, supervisor,
+    slack_oauth, source_status, source_validation, supervisor,
 };
 use fs2::FileExt;
 use futures_util::{StreamExt, TryStreamExt, stream};
@@ -235,6 +235,8 @@ enum Command {
     AuthorizeGithub { source: String },
     /// Authorize a configured Discord source in the system browser without reading server or channel data.
     AuthorizeDiscord { source: String },
+    /// Authorize a configured Slack source in the system browser without reading workspace or message data.
+    AuthorizeSlack { source: String },
     /// List bounded GitHub repositories visible to a configured source for selection.
     GithubRepositories { source: String },
     /// List bounded Discord guilds and channels visible to a configured source for selection.
@@ -246,6 +248,8 @@ enum Command {
     },
     /// List bounded Discord servers (guilds) the authorized user belongs to for per-workspace assignment.
     DiscordServers { source: String },
+    /// List the bounded Slack workspace (team) a configured source's authorized user token is scoped to for per-workspace assignment.
+    SlackWorkspaces { source: String },
     /// Search indexed evidence with semantic and lexical rank fusion.
     Search {
         query: String,
@@ -613,6 +617,11 @@ async fn main() -> Result<()> {
         println!("{}", serde_json::to_string(&outcome)?);
         return Ok(());
     }
+    if let Some(Command::AuthorizeSlack { source }) = cli.command.as_ref() {
+        let outcome = slack_oauth::authorize(&config, source).await?;
+        println!("{}", serde_json::to_string(&outcome)?);
+        return Ok(());
+    }
     if let Some(Command::GithubRepositories { source }) = cli.command.as_ref() {
         let repositories = github_oauth::list_repositories(&config, source).await?;
         println!("{}", serde_json::to_string(&repositories)?);
@@ -635,6 +644,11 @@ async fn main() -> Result<()> {
     if let Some(Command::DiscordServers { source }) = cli.command.as_ref() {
         let servers = discord_oauth::list_servers(&config, source).await?;
         println!("{}", serde_json::to_string(&servers)?);
+        return Ok(());
+    }
+    if let Some(Command::SlackWorkspaces { source }) = cli.command.as_ref() {
+        let workspaces = slack_oauth::list_workspaces(&config, source).await?;
+        println!("{}", serde_json::to_string(&workspaces)?);
         return Ok(());
     }
     if let Some(Command::Sync {
@@ -1031,9 +1045,11 @@ async fn main() -> Result<()> {
             | Command::AuthorizeGoogle { .. }
             | Command::AuthorizeGithub { .. }
             | Command::AuthorizeDiscord { .. }
+            | Command::AuthorizeSlack { .. }
             | Command::GithubRepositories { .. }
             | Command::DiscordChannels { .. }
             | Command::DiscordServers { .. }
+            | Command::SlackWorkspaces { .. }
             | Command::ValidateSource { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
@@ -1629,6 +1645,8 @@ fn ad_hoc_filesystem_source(
         source: Some(source),
         channels: Vec::new(),
         servers: Vec::new(),
+        teams: Vec::new(),
+        team_names: Vec::new(),
         repositories: Vec::new(),
         token_env: None,
         token: None,
@@ -3398,6 +3416,8 @@ mod tests {
             source: None,
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3447,6 +3467,8 @@ mod tests {
             source: None,
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: Some("/tmp/google-token.json".into()),
@@ -3494,6 +3516,8 @@ mod tests {
             source: None,
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: Some("/tmp/google-token.json".into()),
@@ -3548,6 +3572,8 @@ mod tests {
             source: None,
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: vec!["acme/one".into(), "acme/two".into()],
             token_env: Some("GITHUB_TOKEN".into()),
             token: None,
@@ -3594,6 +3620,8 @@ mod tests {
             source: None,
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3637,6 +3665,8 @@ mod tests {
             source: Some("work-code".into()),
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3674,6 +3704,8 @@ mod tests {
             source: Some("work-code".into()),
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3733,6 +3765,8 @@ mod tests {
             source: Some(name.into()),
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -3920,6 +3954,8 @@ mod tests {
             source: Some("work-code".into()),
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,
@@ -4120,6 +4156,8 @@ mod tests {
             source: None,
             channels: Vec::new(),
             servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
             repositories: Vec::new(),
             token_env: None,
             token: None,

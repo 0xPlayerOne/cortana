@@ -121,6 +121,9 @@ configured document cap and never reconcile deletions.
 ## Credentials
 
 - Slack and Discord tokens are read only from the configured environment-variable name.
+  Slack and Discord browser OAuth adds a separate owner-only **user** token file; the
+  environment-variable bot token is a credential, never a path, and stays required for
+  message sync.
 - GitHub code sources read either a personal/GitHub App access token from the configured
   environment-variable name or a private OAuth token JSON file, and always require an explicit
   repository allowlist. `cortana authorize-github SOURCE` uses the configured GitHub OAuth client
@@ -148,6 +151,18 @@ configured document cap and never reconcile deletions.
   exactly one workspace, so that is the per-workspace server assignment. Channel listing and
   message sync remain bot-token based because Discord exposes them only to bots; a source with no
   OAuth setup keeps the plain bot-token discovery behavior unchanged.
+- `cortana authorize-slack SOURCE` runs Slack browser OAuth (Authorization Code + PKCE against
+  the fixed endpoints `https://slack.com/oauth/v2/authorize` and
+  `https://slack.com/api/oauth.v2.access`) with the source's OAuth client JSON and stores the
+  resulting user token in the source's private token file. `cortana slack-workspaces SOURCE`
+  lists the bounded workspace (team) that token is scoped to against `https://slack.com/api/team.info`,
+  refreshing the token once when it is expired or rejected. Slack validates redirect URIs
+  exactly, so the loopback callback uses the fixed port `47521`
+  (`http://127.0.0.1:47521/callback`) and the operator registers that exact URL in the Slack
+  app. Team selection is persisted per source in `teams` (with display names kept index-aligned
+  in `team_names`); each Slack source belongs to exactly one workspace, so that is the
+  per-workspace workspace assignment. Channel listing and message sync remain bot-token based
+  via `SLACK_BOT_TOKEN`; a source with no OAuth setup keeps the plain token behavior unchanged.
 - Google Drive, Gmail, and Calendar accept an OAuth token JSON path. Desktop authorization uses a
   Google **Desktop app** OAuth client JSON, Authorization Code + PKCE, a random loopback callback,
   and the minimum read-only scopes required by the Google sources that share that token. Refresh
@@ -244,6 +259,58 @@ oversized files, and the token destination must be outside every filesystem sour
 
 Authorization does not validate, sync, embed, index, or reconcile the source. Sources without an
 OAuth client or token file keep the original bot-token-only discovery flow unchanged.
+
+### Authorize Slack sources
+
+Slack browser authorization assigns **workspaces** (teams) to a workspace; it does not replace
+the bot token. The Python connector keeps reading the configured `SLACK_BOT_TOKEN` environment
+variable for channel selection and message sync, and that variable is a credential, never a
+path. The user token from browser OAuth carries the minimal `team:read` scope, which is what
+`team.info` needs to identify the workspace the token is scoped to (a Slack user token is always
+scoped to exactly one workspace). Create an OAuth app in the
+[Slack API app management](https://api.slack.com/apps) console, add the exact loopback redirect
+URL `http://127.0.0.1:47521/callback` under **OAuth & Permissions → Redirect URLs** (Slack does
+not accept wildcard ports, so the callback uses this one fixed port), and save a JSON file with
+the app's client id (plus the optional client secret for confidential apps):
+
+```json
+{ "client_id": "1234567890123.9876543210987", "client_secret": "optional-secret" }
+```
+
+Configure an absolute OAuth client path and an absolute private user-token destination on the
+source (the Desktop token file picker creates the destination before authorization):
+
+```toml
+[[sources]]
+name = "team-slack"
+kind = "slack"
+project = "work"
+channels = ["C0123456789"]
+teams = ["T0123456789"]
+team_names = ["Acme Engineering"]
+token_env = "SLACK_BOT_TOKEN"
+token = "/Users/example/.config/cortana/slack-user-token.json"
+oauth_client = "/Users/example/.config/cortana/slack-oauth-client.json"
+```
+
+Save the source before choosing **Authorize** in Desktop, or run:
+
+```bash
+cortana authorize-slack team-slack
+```
+
+Cortana opens Slack's authorization page in the system browser and waits up to five minutes for
+the loopback callback. It stores the user token in an owner-only file and never prints it.
+`cortana slack-workspaces SOURCE` then lists the single workspace that token is scoped to; the
+Desktop workspace chooser persists only explicitly checked team ids into `teams` with the
+display names kept index-aligned in `team_names` (per source, so per workspace). When the app
+enables token rotation, discovery refreshes the token once when it is expired or rejected and
+persists the refresh atomically; without rotation the token is long-lived. The OAuth client file
+is configuration, not a user token, but Cortana still rejects symlinks, broad permissions, and
+oversized files, and the token destination must be outside every filesystem source root.
+
+Authorization does not validate, sync, embed, index, or reconcile the source. Sources without an
+OAuth client or token file keep the original token-only behavior unchanged.
 
 ## Connector contract
 
