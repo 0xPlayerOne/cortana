@@ -26,16 +26,7 @@ pub async fn install_core(
         return services::install(app, approved).await;
     }
     let desktop_settings = settings::load()?;
-    let mut args = vec![
-        "service".to_string(),
-        "install".to_string(),
-        "--no-web".to_string(),
-        "--backup-seconds".to_string(),
-        schedule.backup_interval_seconds.to_string(),
-    ];
-    if desktop_settings.embedding.provider != "local" {
-        args.push("--no-embedding-service".into());
-    }
+    let args = install_args(&schedule, &desktop_settings.embedding.provider, false);
     let output = match sidecar_output(app, &args).await {
         Ok(output) => output,
         Err(error) => {
@@ -68,19 +59,7 @@ pub async fn install_sync(
         return services::install_sync(app, approved).await;
     }
     let desktop_settings = settings::load()?;
-    let mut args = vec![
-        "service".to_string(),
-        "install".to_string(),
-        "--no-web".to_string(),
-        "--enable-sync-service".to_string(),
-        "--sync-seconds".to_string(),
-        schedule.sync_interval_seconds.to_string(),
-        "--backup-seconds".to_string(),
-        schedule.backup_interval_seconds.to_string(),
-    ];
-    if desktop_settings.embedding.provider != "local" {
-        args.push("--no-embedding-service".into());
-    }
+    let args = install_args(&schedule, &desktop_settings.embedding.provider, true);
     let output = match sidecar_output(app, &args).await {
         Ok(output) => output,
         Err(error) => {
@@ -94,6 +73,36 @@ pub async fn install_sync(
     }
     audit("completed", &schedule);
     services::status(app).await
+}
+
+/// Build the argument vector for the bundled runtime's service install
+/// command from the Desktop-owned schedule and embedding provider.
+///
+/// Pure so the interval and embedding flag wiring can be unit tested without
+/// a sidecar or the settings store. The async installers above only build
+/// these args when the schedule differs from the CLI-compatible default and
+/// otherwise delegate to the existing service module.
+fn install_args(
+    schedule: &schedule::ScheduleSettings,
+    embedding_provider: &str,
+    enable_sync_service: bool,
+) -> Vec<String> {
+    let mut args = vec![
+        "service".to_string(),
+        "install".to_string(),
+        "--no-web".to_string(),
+    ];
+    if enable_sync_service {
+        args.push("--enable-sync-service".into());
+        args.push("--sync-seconds".into());
+        args.push(schedule.sync_interval_seconds.to_string());
+    }
+    args.push("--backup-seconds".into());
+    args.push(schedule.backup_interval_seconds.to_string());
+    if embedding_provider != "local" {
+        args.push("--no-embedding-service".into());
+    }
+    args
 }
 
 async fn sidecar_output(app: &AppHandle, args: &[String]) -> Result<SidecarOutput, String> {
@@ -202,4 +211,82 @@ fn audit_install(outcome: &str, schedule: &schedule::ScheduleSettings) {
         "secret_values_recorded": false,
     });
     let _ = settings::append_audit_event(&settings::default_config_path(), &event);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn schedule(
+        sync_interval_seconds: u64,
+        backup_interval_seconds: u64,
+    ) -> schedule::ScheduleSettings {
+        schedule::ScheduleSettings {
+            sync_interval_seconds,
+            backup_interval_seconds,
+        }
+    }
+
+    /// Value carried by the flag at `index` in the built argument vector.
+    fn flag_value<'a>(args: &'a [String], flag: &str) -> &'a str {
+        let index = args
+            .iter()
+            .position(|arg| arg == flag)
+            .unwrap_or_else(|| panic!("expected {flag} in {args:?}"));
+        &args[index + 1]
+    }
+
+    #[test]
+    fn install_args_use_default_intervals_without_sync() {
+        let args = install_args(&schedule::ScheduleSettings::default(), "local", false);
+        assert_eq!(
+            args,
+            vec![
+                "service".to_string(),
+                "install".to_string(),
+                "--no-web".to_string(),
+                "--backup-seconds".to_string(),
+                "86400".to_string(),
+            ]
+        );
+        assert!(!args.iter().any(|arg| arg == "--enable-sync-service"));
+        assert!(!args.iter().any(|arg| arg == "--sync-seconds"));
+        assert!(!args.iter().any(|arg| arg == "--no-embedding-service"));
+    }
+
+    #[test]
+    fn install_args_carry_custom_backup_interval() {
+        let args = install_args(&schedule(900, 3_600), "local", false);
+        assert_eq!(flag_value(&args, "--backup-seconds"), "3600");
+        assert!(!args.iter().any(|arg| arg == "--no-embedding-service"));
+    }
+
+    #[test]
+    fn install_args_carry_custom_sync_and_backup_intervals() {
+        let args = install_args(&schedule(1_800, 7_200), "local", true);
+        assert!(args.iter().any(|arg| arg == "--enable-sync-service"));
+        assert_eq!(flag_value(&args, "--sync-seconds"), "1800");
+        assert_eq!(flag_value(&args, "--backup-seconds"), "7200");
+    }
+
+    #[test]
+    fn install_args_keep_sync_flags_out_when_sync_disabled() {
+        let args = install_args(&schedule(1_800, 7_200), "local", false);
+        assert!(!args.iter().any(|arg| arg == "--enable-sync-service"));
+        assert!(!args.iter().any(|arg| arg == "--sync-seconds"));
+        assert_eq!(flag_value(&args, "--backup-seconds"), "7200");
+    }
+
+    #[test]
+    fn install_args_only_disable_embedding_for_non_local_providers() {
+        let args = install_args(&schedule::ScheduleSettings::default(), "local", false);
+        assert!(!args.iter().any(|arg| arg == "--no-embedding-service"));
+
+        let args = install_args(&schedule::ScheduleSettings::default(), "honcho", false);
+        assert!(args.iter().any(|arg| arg == "--no-embedding-service"));
+        assert_eq!(
+            args.last().map(String::as_str),
+            Some("--no-embedding-service")
+        );
+    }
 }
