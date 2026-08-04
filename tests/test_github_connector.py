@@ -86,6 +86,26 @@ def test_github_reads_owner_only_access_token_file(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize("token", ["secret\x7fvalue", "secret\u0085value"])
+def test_github_rejects_control_characters_in_environment_token(
+    monkeypatch: pytest.MonkeyPatch, token: str
+) -> None:
+    monkeypatch.setenv("GITHUB_TEST_TOKEN", token)
+
+    with pytest.raises(RuntimeError, match="environment value is invalid"):
+        github._access_token(None, "GITHUB_TEST_TOKEN")
+
+
+def test_github_rejects_nul_in_access_token_file(tmp_path: Path) -> None:
+    token_path = tmp_path / "github-token.json"
+    token_path.write_text(json.dumps({"access_token": "secret\x00value"}))
+    if os.name == "posix":
+        token_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+    with pytest.raises(RuntimeError, match="file contains an invalid access token"):
+        github._access_token(token_path, "GITHUB_TEST_TOKEN")
+
+
 def test_github_rejects_truncated_trees(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_TEST_TOKEN", "secret")
 
