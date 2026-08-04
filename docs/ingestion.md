@@ -289,11 +289,13 @@ External connectors must emit one JSON object per line:
 provenance, channel/account identifiers, participants, and source-specific fields in `metadata`;
 never place credentials there.
 
-Set `acl` on a source to apply a default access label to every document that connector emits
-without its own ACL. Empty document ACLs are public when the source also has no default. A
-document with one or more labels is returned only to a query principal with at least one matching
-label; the implicit loopback owner can access all labels. Use stable trust-domain labels such as
-`personal`, `work`, or `shared`, not user-controlled channel names.
+Set `acl` on a source to apply explicit access labels to every document that connector emits
+without its own ACL. When omitted, the source automatically inherits its `project` workspace label;
+new source records are therefore private to that workspace by default. A document with one or more
+labels is returned only to a query principal with at least one matching label; the implicit loopback
+owner can access all labels. Use stable trust-domain labels such as `personal`, `work`, or `shared`,
+not user-controlled channel names. Existing empty-ACL rows are legacy public data and must be
+reviewed with `cortana acl plan` before enabling shared principals.
 
 ## Pre-embedded import
 

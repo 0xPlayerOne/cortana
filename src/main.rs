@@ -33,6 +33,7 @@ const DEFAULT_CONTEXT_LIMIT: usize = 10;
 const VALIDATION_MAX_DOCUMENTS: usize = 25;
 const VALIDATION_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const VALIDATION_MAX_SECONDS: u64 = 60;
+const QUARANTINE_ACL_LABEL: &str = "__quarantine__";
 
 #[derive(Debug, Parser)]
 #[command(name = "cortana", version, about = "Agent-native second brain")]
@@ -367,11 +368,21 @@ enum AclAction {
     Plan {
         #[arg(long = "project", value_name = "PROJECT=LABEL[,LABEL]")]
         projects: Vec<String>,
+        #[arg(
+            long,
+            help = "Include every unmapped public project in the quarantine plan"
+        )]
+        quarantine_unmapped: bool,
     },
     /// Apply explicit project ACLs after source defaults agree.
     Apply {
         #[arg(long = "project", value_name = "PROJECT=LABEL[,LABEL]")]
         projects: Vec<String>,
+        #[arg(
+            long,
+            help = "Assign unmapped public projects to the reserved quarantine ACL"
+        )]
+        quarantine_unmapped: bool,
         #[arg(long, help = "Confirm mutation of legacy public ACL rows")]
         force: bool,
     },
@@ -1243,12 +1254,37 @@ fn plan_configured_sources(
 }
 
 fn manage_acl(config: &Config, store: &Store, action: &AclAction) -> Result<()> {
-    let (values, apply, force) = match action {
-        AclAction::Plan { projects } => (projects, false, false),
-        AclAction::Apply { projects, force } => (projects, true, *force),
+    let (values, apply, force, quarantine_unmapped) = match action {
+        AclAction::Plan {
+            projects,
+            quarantine_unmapped,
+        } => (projects, false, false, *quarantine_unmapped),
+        AclAction::Apply {
+            projects,
+            quarantine_unmapped,
+            force,
+        } => (projects, true, *force, *quarantine_unmapped),
     };
-    let mappings = parse_project_acl_mappings(values)?;
+    let explicit_mappings = parse_project_acl_mappings(values)?;
     let public = store.public_acl_summary()?;
+    let mut mappings = explicit_mappings.clone();
+    if quarantine_unmapped {
+        mappings.extend(
+            public
+                .iter()
+                .filter(|summary| {
+                    !explicit_mappings
+                        .iter()
+                        .any(|(project, _)| project == &summary.project)
+                })
+                .map(|summary| {
+                    (
+                        summary.project.clone(),
+                        vec![QUARANTINE_ACL_LABEL.to_string()],
+                    )
+                }),
+        );
+    }
     let alignment_errors = acl_alignment_errors(config, &mappings);
     if apply {
         anyhow::ensure!(force, "ACL apply requires --force");
@@ -1269,6 +1305,7 @@ fn manage_acl(config: &Config, store: &Store, action: &AclAction) -> Result<()> 
                 "documents_changed": changed,
                 "corpus_revision": store.corpus_revision()?,
                 "remaining_public": store.public_acl_summary()?,
+                "quarantine_unmapped": quarantine_unmapped,
             })
         );
         return Ok(());
@@ -1287,6 +1324,15 @@ fn manage_acl(config: &Config, store: &Store, action: &AclAction) -> Result<()> 
             })
         })
         .collect::<Vec<_>>();
+    let unmapped_public = public
+        .iter()
+        .filter(|summary| {
+            !explicit_mappings
+                .iter()
+                .any(|(project, _)| project == &summary.project)
+        })
+        .map(|summary| summary.project.clone())
+        .collect::<Vec<_>>();
     println!(
         "{}",
         serde_json::json!({
@@ -1294,6 +1340,8 @@ fn manage_acl(config: &Config, store: &Store, action: &AclAction) -> Result<()> 
             "public": public,
             "proposed": proposed,
             "source_alignment_errors": alignment_errors,
+            "quarantine_unmapped": quarantine_unmapped,
+            "unmapped_public": unmapped_public,
         })
     );
     Ok(())
@@ -1323,6 +1371,10 @@ fn parse_project_acl_mappings(values: &[String]) -> Result<Vec<(String, Vec<Stri
         anyhow::ensure!(
             !labels.iter().any(|label| label == "*"),
             "ACL migration cannot assign the reserved owner wildcard"
+        );
+        anyhow::ensure!(
+            !labels.iter().any(|label| label == QUARANTINE_ACL_LABEL),
+            "ACL migration cannot assign the reserved quarantine label"
         );
         mappings.push((project.to_string(), labels));
     }
@@ -3144,8 +3196,8 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits, SyncLock,
-        SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
+        AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits,
+        SyncLock, SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
         configured_connector_command, context_bundle, ensure_recurring_sync_validated,
         failure_status, ingest_documents, is_budget_exceeded, private_file,
         require_sync_validation, run_connector_to_spool, validate_configured_source,
@@ -3156,6 +3208,32 @@ mod tests {
     use cortana::model::Document;
     use cortana::source_validation::{SourceValidationStatus, configuration_fingerprint, record};
     use cortana::store::Store;
+
+    #[test]
+    fn acl_plan_can_include_unmapped_public_projects_in_quarantine() {
+        let cli = Cli::try_parse_from([
+            "cortana",
+            "acl",
+            "plan",
+            "--project",
+            "work=work",
+            "--quarantine-unmapped",
+        ])
+        .expect("ACL plan command");
+        match cli.command {
+            Some(Command::Acl {
+                action:
+                    AclAction::Plan {
+                        projects,
+                        quarantine_unmapped,
+                    },
+            }) => {
+                assert_eq!(projects, vec!["work=work"]);
+                assert!(quarantine_unmapped);
+            }
+            _ => panic!("expected the ACL plan subcommand"),
+        }
+    }
 
     #[test]
     fn validate_source_defaults_to_safe_read_only_bounds() {
