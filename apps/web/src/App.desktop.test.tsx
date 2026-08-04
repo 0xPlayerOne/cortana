@@ -1084,6 +1084,7 @@ test('settings add controls avoid reusing removed identifiers', async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
     fireEvent.click(screen.getByRole('button', { name: 'Remove source-1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add source' }))
+    fireEvent.click(screen.getByRole('tab', { name: /Two/ }))
     expect(
       (screen.getAllByLabelText(/Source name/) as HTMLInputElement[]).map((input) => input.value)
     ).toContain('source-1')
@@ -1340,7 +1341,13 @@ test('source settings opens the Sources section directly', async () => {
 
 test('source settings show a compact workspace-first row with collapsed advanced controls', async () => {
   const originalSettings = state.settings
-  state.settings = { ...desktopSettings, sources: [workSource] }
+  state.settings = {
+    ...desktopSettings,
+    sources: [
+      workSource,
+      { ...workSource, name: 'personal-notes', project: 'personal', enabled: false },
+    ],
+  }
   try {
     render(<App />)
     await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
@@ -1350,7 +1357,12 @@ test('source settings show a compact workspace-first row with collapsed advanced
 
     expect(screen.getByText('Files & code')).toBeTruthy()
     expect(screen.getByText('Work · Enabled')).toBeTruthy()
+    expect(screen.queryByText('Personal · Disabled')).toBeNull()
     expect(screen.getByRole('img', { name: 'Files and code connector' })).toBeTruthy()
+    fireEvent.click(screen.getByRole('tab', { name: /Personal/ }))
+    expect(screen.getByText('Personal · Disabled')).toBeTruthy()
+    expect(screen.queryByText('Work · Enabled')).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: /Work/ }))
     const summary = screen.getByText('Advanced source settings')
     const details = summary.closest('details') as HTMLDetailsElement
     expect(details.open).toBe(false)
@@ -1383,6 +1395,7 @@ test('source settings quarantine legacy scopes until they are assigned to a work
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
 
+    fireEvent.click(screen.getByRole('tab', { name: /Needs assignment/ }))
     expect(screen.getByRole('alert').textContent).toContain('uses the legacy community scope')
     expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: 'Validate' }) as HTMLButtonElement).disabled).toBe(

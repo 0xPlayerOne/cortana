@@ -330,7 +330,7 @@ export function SourcePanel({
                                 ? 'Open Google source settings'
                                 : auth?.method === 'github_oauth'
                                   ? 'Open GitHub source settings'
-                                : 'Open the provider setup page'
+                                  : 'Open the provider setup page'
                           }
                           disabled={
                             sourceToggleBusy !== null || sourceToggleDisabled || sourceJobActive
