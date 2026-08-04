@@ -155,7 +155,7 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationO
         token_type: "Bearer".into(),
         refresh_token: Some(refresh_token.to_string()),
         scope: token.scope,
-        expiry: expiry_rfc3339(token.expires_in),
+        expiry: expiry_rfc3339(token.expires_in)?,
     };
     persist_token(&token_path, &stored)?;
 
@@ -300,7 +300,7 @@ async fn refresh(
         token_type: "Bearer".into(),
         refresh_token: token.refresh_token.or_else(|| stored.refresh_token.clone()),
         scope: token.scope.or_else(|| stored.scope.clone()),
-        expiry: expiry_rfc3339(token.expires_in),
+        expiry: expiry_rfc3339(token.expires_in)?,
     };
     if let Some(refresh) = next.refresh_token.as_deref() {
         oauth_common::validate_credential("Discord refresh token", refresh, MAX_CREDENTIAL_BYTES)?;
@@ -308,8 +308,12 @@ async fn refresh(
     Ok(next)
 }
 
-fn expiry_rfc3339(seconds: u64) -> String {
-    (Utc::now() + ChronoDuration::seconds(i64::try_from(seconds).unwrap_or(3600))).to_rfc3339()
+fn expiry_rfc3339(seconds: u64) -> Result<String> {
+    let duration = ChronoDuration::seconds(
+        i64::try_from(seconds)
+            .context("Discord token expires_in does not fit token expiry horizon")?,
+    );
+    Ok((Utc::now() + duration).to_rfc3339())
 }
 
 fn persist_token(path: &Path, stored: &StoredToken) -> Result<()> {
@@ -579,7 +583,7 @@ mod tests {
             token_type: "Bearer".into(),
             refresh_token: Some("refresh-token".into()),
             scope: Some("identify guilds".into()),
-            expiry: expiry_rfc3339(3600),
+            expiry: expiry_rfc3339(3600).expect("valid expiry"),
         };
         persist_token(&token_path, &stored).expect("persist token");
         let loaded = read_token(&token_path, "community").expect("read token");
@@ -624,6 +628,12 @@ mod tests {
     }
 
     #[test]
+    fn expiry_rfc3339_overflow_is_rejected() {
+        let error = expiry_rfc3339(u64::MAX).expect_err("an overflow should fail closed");
+        assert!(error.to_string().contains("does not fit"));
+    }
+
+    #[test]
     fn refresh_keeps_the_existing_refresh_token_when_the_response_omits_it() {
         // The merge rule lives in `refresh`, which needs the network; the
         // response shape is asserted here through the serialized contract
@@ -636,7 +646,7 @@ mod tests {
             token_type: "Bearer".into(),
             refresh_token: Some("old-refresh".into()),
             scope: Some("identify guilds".into()),
-            expiry: expiry_rfc3339(3600),
+            expiry: expiry_rfc3339(3600).expect("valid expiry"),
         };
         persist_token(&token_path, &stored).expect("persist token");
         let loaded = read_token(&token_path, "community").expect("read token");

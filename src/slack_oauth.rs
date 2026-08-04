@@ -198,7 +198,7 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<SlackAuthoriza
         token_type: "Bearer".into(),
         refresh_token: refresh_token.map(str::to_string),
         scope: token.scope,
-        expiry: expiry_rfc3339(token.expires_in),
+        expiry: expiry_rfc3339(token.expires_in)?,
     };
     persist_token(&token_path, &stored)?;
 
@@ -376,7 +376,7 @@ async fn refresh(
         token_type: "Bearer".into(),
         refresh_token: token.refresh_token.or_else(|| stored.refresh_token.clone()),
         scope: token.scope.or_else(|| stored.scope.clone()),
-        expiry: expiry_rfc3339(token.expires_in),
+        expiry: expiry_rfc3339(token.expires_in)?,
     };
     if let Some(refresh) = next.refresh_token.as_deref() {
         oauth_common::validate_credential("Slack refresh token", refresh, MAX_CREDENTIAL_BYTES)?;
@@ -384,12 +384,15 @@ async fn refresh(
     Ok(next)
 }
 
-fn expiry_rfc3339(seconds: Option<u64>) -> String {
-    let duration = seconds
-        .and_then(|seconds| i64::try_from(seconds).ok())
-        .map(ChronoDuration::seconds)
-        .unwrap_or_else(|| ChronoDuration::days(LONG_LIVED_TOKEN_HORIZON_DAYS));
-    (Utc::now() + duration).to_rfc3339()
+fn expiry_rfc3339(seconds: Option<u64>) -> Result<String> {
+    let duration = match seconds {
+        Some(seconds) => ChronoDuration::seconds(
+            i64::try_from(seconds)
+                .context("Slack token expires_in does not fit token expiry horizon")?,
+        ),
+        None => ChronoDuration::days(LONG_LIVED_TOKEN_HORIZON_DAYS),
+    };
+    Ok((Utc::now() + duration).to_rfc3339())
 }
 
 fn persist_token(path: &Path, stored: &StoredToken) -> Result<()> {
@@ -747,7 +750,7 @@ mod tests {
             token_type: "Bearer".into(),
             refresh_token: Some("refresh-token".into()),
             scope: Some("team:read".into()),
-            expiry: expiry_rfc3339(Some(3600)),
+            expiry: expiry_rfc3339(Some(3600)).expect("valid expiry"),
         };
         persist_token(&token_path, &stored).expect("persist token");
         let loaded = read_token(&token_path, "community").expect("read token");
@@ -776,7 +779,7 @@ mod tests {
             token_type: "Bearer".into(),
             refresh_token: None,
             scope: Some("team:read".into()),
-            expiry: expiry_rfc3339(None),
+            expiry: expiry_rfc3339(None).expect("long lived default expiry"),
         };
         assert!(
             !token_expired(&stored),
@@ -807,6 +810,12 @@ mod tests {
     }
 
     #[test]
+    fn expiry_rfc3339_overflow_is_rejected_for_rotating_tokens() {
+        let error = expiry_rfc3339(Some(u64::MAX)).expect_err("an overflow should fail closed");
+        assert!(error.to_string().contains("does not fit"));
+    }
+
+    #[test]
     fn refresh_keeps_the_existing_refresh_token_when_the_response_omits_it() {
         // The merge rule lives in `refresh`, which needs the network; the
         // response shape is asserted here through the serialized contract
@@ -819,7 +828,7 @@ mod tests {
             token_type: "Bearer".into(),
             refresh_token: Some("old-refresh".into()),
             scope: Some("team:read".into()),
-            expiry: expiry_rfc3339(Some(3600)),
+            expiry: expiry_rfc3339(Some(3600)).expect("valid expiry"),
         };
         persist_token(&token_path, &stored).expect("persist token");
         let loaded = read_token(&token_path, "community").expect("read token");

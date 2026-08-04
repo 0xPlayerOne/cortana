@@ -536,13 +536,7 @@ pub fn source_authorization_summary(
             .token
             .as_ref()
             .is_some_and(|path| slack_token_file_ready(path.as_path()));
-        let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready)
-            || source
-                .token_env
-                .as_deref()
-                .and_then(|name| config.environment_value(name))
-                .as_deref()
-                .is_some_and(token_destination_value_ready);
+        let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready);
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::SlackOauth,
             setup_required: !(token_file_ready || (oauth_client_ready && token_destination_ready)),
@@ -562,13 +556,7 @@ pub fn source_authorization_summary(
             .token
             .as_ref()
             .is_some_and(|path| discord_token_file_ready(path.as_path()));
-        let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready)
-            || source
-                .token_env
-                .as_deref()
-                .and_then(|name| config.environment_value(name))
-                .as_deref()
-                .is_some_and(token_destination_value_ready);
+        let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready);
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::DiscordOauth,
             setup_required: !(token_file_ready || (oauth_client_ready && token_destination_ready)),
@@ -780,6 +768,68 @@ mod tests {
             json.get("method"),
             Some(&serde_json::Value::String("slack_oauth".into()))
         );
+    }
+
+    #[test]
+    fn discord_oauth_authorization_summary_does_not_use_bot_token_env_as_user_token_destination() {
+        use crate::source_status::SourceAuthorizationMethod;
+
+        let directory = tempfile::tempdir().unwrap();
+        let client_path = directory.path().join("discord-oauth-client.json");
+        let token_path = directory.path().join("fake-bot-token.json");
+
+        std::fs::write(&client_path, "{\"client_id\":\"client-id\"}").unwrap();
+        std::fs::write(&token_path, "not-a-token").unwrap();
+        #[cfg(unix)]
+        {
+            crate::oauth_common::set_owner_only(&client_path).unwrap();
+            crate::oauth_common::set_owner_only(&token_path).unwrap();
+        }
+
+        let mut config = crate::config::Config::default();
+        config.environment.insert(
+            "DISCORD_BOT_TOKEN".into(),
+            token_path.to_string_lossy().into(),
+        );
+        config
+            .sources
+            .push(source("discord", None, Some(client_path)));
+
+        let summary = super::source_authorization_summary(&config, &config.sources[0]);
+        assert_eq!(summary.method, SourceAuthorizationMethod::DiscordOauth);
+        assert!(!summary.authorized);
+        assert!(summary.setup_required);
+    }
+
+    #[test]
+    fn slack_oauth_authorization_summary_does_not_use_bot_token_env_as_user_token_destination() {
+        use crate::source_status::SourceAuthorizationMethod;
+
+        let directory = tempfile::tempdir().unwrap();
+        let client_path = directory.path().join("slack-oauth-client.json");
+        let token_path = directory.path().join("fake-bot-token.json");
+
+        std::fs::write(&client_path, "{\"client_id\":\"client-id\"}").unwrap();
+        std::fs::write(&token_path, "not-a-token").unwrap();
+        #[cfg(unix)]
+        {
+            crate::oauth_common::set_owner_only(&client_path).unwrap();
+            crate::oauth_common::set_owner_only(&token_path).unwrap();
+        }
+
+        let mut config = crate::config::Config::default();
+        config.environment.insert(
+            "DISCORD_BOT_TOKEN".into(),
+            token_path.to_string_lossy().into(),
+        );
+        config
+            .sources
+            .push(source("slack", None, Some(client_path)));
+
+        let summary = super::source_authorization_summary(&config, &config.sources[0]);
+        assert_eq!(summary.method, SourceAuthorizationMethod::SlackOauth);
+        assert!(!summary.authorized);
+        assert!(summary.setup_required);
     }
 
     fn validated_status(complete: Option<bool>) -> SourceValidationStatus {
