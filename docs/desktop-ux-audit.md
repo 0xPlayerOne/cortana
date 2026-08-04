@@ -69,9 +69,13 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
   reports `cortana 0.29.4` and passes `codesign --verify --deep --strict`, but the bundle is
   ad-hoc signed (`TeamIdentifier` is unset) and `spctl --assess` rejects it. Developer ID
   signing/notarization therefore remains a release blocker.
-- The readiness hardening patch passes 19 focused Rust readiness/API tests and 11 focused Desktop
-  readiness tests. Aggregate core, web, Python, and full Desktop counts remain a CI responsibility
-  and are not represented as current evidence here until that matrix reruns.
+- The 2026-08-04 promotion validation passed the reported per-target and per-suite counts: Rust
+  unit targets `257` and `32`, Bun web tests `250`, Python tests `146`, and integration suites
+  `35`, `11`, `2`, `3`, and `1`. These are per-target/per-suite figures, not a deduplicated
+  aggregate.
+- The full Desktop matrix was skipped because promotion change detection found no Desktop changes;
+  this run therefore adds no full Desktop build/test evidence. The readiness hardening patch still
+  passes 19 focused Rust readiness/API tests and 11 focused Desktop readiness tests.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
