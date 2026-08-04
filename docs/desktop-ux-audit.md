@@ -51,8 +51,8 @@ is not part of a visual/UI change.
    for channel listing and sync). Slack workspace discovery and per-workspace
    team assignment landed alongside it (the `SLACK_BOT_TOKEN` path for channel
    selection and message sync is preserved and never interpreted as a path).
-   Buzz community assignment landed in the following pass: `cortana
-buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
+   Buzz community assignment landed in the following pass: `cortana buzz-communities SOURCE`
+   reads the read-only `agents/teams.json` identity
    file with bounded, fail-closed validation, and the Desktop chooser persists
    per-workspace `communities`/`community_names`.
 5. The memory-provider decision is recorded: keep Hindsight and Honcho as
@@ -63,13 +63,14 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
 
 ## Evidence limits
 
-- Published release verification for v0.29.4 completed with 18 release assets verified; the
-  installed CLI reports `cortana 0.29.4`.
-- The verified v0.29.4 DMG is installed at `/Applications/Cortana.app`; its embedded binary
-  reports `cortana 0.29.4` and passes `codesign --verify --deep --strict`, but the bundle is
+- The v0.29.8 promotion is merged on both `main` and `staging`; its release-assets workflow is
+  still running, so the last fully verified/install-tested release remains v0.29.7 with 18
+  release assets.
+- The verified v0.29.7 DMG is installed at `/Applications/Cortana.app`; its embedded binary
+  reports `cortana 0.29.7` and passes `codesign --verify --deep --strict`, but the bundle is
   ad-hoc signed (`TeamIdentifier` is unset) and `spctl --assess` rejects it. Developer ID
   signing/notarization therefore remains a release blocker.
-- The 2026-08-04 promotion validation passed the reported per-target and per-suite counts: Rust
+- The 2026-08-04 v0.29.8 promotion validation passed the reported per-target and per-suite counts: Rust
   unit targets `257` and `32`, Bun web tests `250`, Python tests `146`, and integration suites
   `35`, `11`, `2`, `3`, and `1`. These are per-target/per-suite figures, not a deduplicated
   aggregate.
@@ -80,10 +81,10 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence.
-- A fixture-only model-backed evaluation was attempted against the configured provider without
-  opening a personal index or starting sync/connectors. Route discovery succeeded, but the
-  provider-backed run timed out before producing a model result; extractive mode remains the
-  safe production default.
+- A model-backed evaluation was attempted against the configured provider without opening a
+  personal index or starting sync/connectors. Route discovery succeeded, but the configured
+  endpoint was unavailable; the run reported `fallback_provider_unavailable` without a model
+  result. Extractive mode remains the safe production default.
 - Packaged-app GUI/browser OAuth, service/tray, updater, import/export, backup, and restore drills
   remain unverified because no computer-use tool was available.
 - Hindsight and Honcho remain disabled-by-default optional adapters; Cortana's canonical store
