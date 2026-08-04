@@ -192,6 +192,182 @@ fn slack_workspace_discovery_fails_closed_before_network_without_token() {
 }
 
 #[test]
+fn buzz_community_discovery_requires_a_buzz_connector() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [[sources]]\n\
+             name = \"community\"\n\
+             kind = \"discord\"\n\
+             project = \"community\"\n\
+             token_env = \"DISCORD_BOT_TOKEN\"\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["buzz-communities", "community"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not a Buzz connector"))
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn buzz_community_discovery_fails_closed_without_a_configured_root() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [[sources]]\n\
+             name = \"agent-buzz\"\n\
+             kind = \"buzz\"\n\
+             project = \"agents\"\n",
+            directory.path().join("data")
+        ),
+    )
+    .expect("write config");
+
+    // The source root is the Buzz data directory; without it there is no
+    // identity file to read, so the command fails closed with guidance
+    // instead of guessing a location.
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["buzz-communities", "agent-buzz"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("requires a data directory"))
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn buzz_community_discovery_rejects_missing_or_malformed_identity_files() {
+    let directory = tempdir().expect("temporary directory");
+    let root = directory.path().join("buzz-root");
+    fs::create_dir_all(root.join("agents")).expect("agents directory");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [[sources]]\n\
+             name = \"agent-buzz\"\n\
+             kind = \"buzz\"\n\
+             project = \"agents\"\n\
+             root = {:?}\n",
+            directory.path().join("data"),
+            root
+        ),
+    )
+    .expect("write config");
+
+    // Missing identity file: Buzz has not written agents/teams.json yet.
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["buzz-communities", "agent-buzz"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("found no identity file"))
+        .stdout(predicate::str::is_empty());
+
+    // Malformed entries fail closed with the entry index.
+    fs::write(
+        root.join("agents/teams.json"),
+        r#"[{"id": "builtin-team:welcome", "name": "Welcome Team"}, {"id": "broken"}]"#,
+    )
+    .expect("write malformed identity file");
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["buzz-communities", "agent-buzz"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "entry 1 must have a string `name`",
+        ))
+        .stdout(predicate::str::is_empty());
+
+    // Duplicate community ids fail closed.
+    fs::write(
+        root.join("agents/teams.json"),
+        r#"[{"id": "team:research", "name": "Research"}, {"id": "team:research", "name": "Research Again"}]"#,
+    )
+    .expect("write duplicate identity file");
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["buzz-communities", "agent-buzz"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "duplicates community id `team:research`",
+        ))
+        .stdout(predicate::str::is_empty());
+}
+
+#[test]
+fn buzz_community_discovery_lists_bounded_identity_entries() {
+    let directory = tempdir().expect("temporary directory");
+    let root = directory.path().join("buzz-root");
+    fs::create_dir_all(root.join("agents")).expect("agents directory");
+    fs::write(
+        root.join("agents/teams.json"),
+        r#"[
+            {"id": "builtin-team:welcome", "name": "Welcome Team", "persona_ids": ["builtin:fizz"]},
+            {"id": "team:research", "name": "Research"}
+        ]"#,
+    )
+    .expect("write identity file");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {:?}\n\
+             [[sources]]\n\
+             name = \"agent-buzz\"\n\
+             kind = \"buzz\"\n\
+             project = \"agents\"\n\
+             root = {:?}\n\
+             communities = [\"builtin-team:welcome\"]\n\
+             community_names = [\"Welcome Team\"]\n",
+            directory.path().join("data"),
+            root
+        ),
+    )
+    .expect("write config");
+
+    // The command is read-only and never runs ingestion; the persisted
+    // per-workspace assignment round-trips alongside the discovered list.
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["buzz-communities", "agent-buzz"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"builtin-team:welcome\""))
+        .stdout(predicate::str::contains("\"Welcome Team\""))
+        .stdout(predicate::str::contains("\"team:research\""))
+        .stdout(predicate::str::contains("\"truncated\":false"))
+        .stdout(predicate::str::contains("persona_ids").not());
+}
+
+#[test]
 fn guarded_sync_fails_before_opening_the_index_without_validation() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

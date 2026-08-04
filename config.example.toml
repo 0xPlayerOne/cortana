@@ -203,6 +203,14 @@ name = "buzz"
 kind = "buzz"
 project = "agents"
 root = "/Users/you/Library/Application Support/xyz.block.buzz.app"
+# Optional per-workspace community assignment, discovered with
+# `cortana buzz-communities SOURCE` from Buzz's read-only `agents/teams.json`
+# identity file (stable `id` + `name` records). `communities` holds the
+# community ids this source's workspace may index; `community_names` keeps
+# their display names index-aligned. The identity file is read-only: discovery
+# never runs ingestion or sync and never infers identity from persona content.
+# communities = ["builtin-team:welcome"]
+# community_names = ["Welcome Team"]
 
 # Any command that emits one normalized Document JSON object per line can plug in.
 # [[sources]]

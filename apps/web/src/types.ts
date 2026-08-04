@@ -142,6 +142,16 @@ export type SlackWorkspaceList = {
   truncated: boolean
 }
 
+export type BuzzCommunitySummary = {
+  id: string
+  name: string
+}
+
+export type BuzzCommunityList = {
+  communities: BuzzCommunitySummary[]
+  truncated: boolean
+}
+
 export type ConfiguredSourceSummary = {
   name: string
   source: string
@@ -228,6 +238,10 @@ export type SourceSettings = {
   teams: string[]
   /** Slack team display names kept index-aligned with `teams`. */
   team_names: string[]
+  /** Buzz community ids assigned to this source's workspace from the read-only agents/teams.json identity file. */
+  communities: string[]
+  /** Buzz community display names kept index-aligned with `communities`. */
+  community_names: string[]
   token_env: string | null
   token_path: string | null
   oauth_client_path: string | null

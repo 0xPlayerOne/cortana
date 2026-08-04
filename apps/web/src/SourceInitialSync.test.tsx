@@ -39,6 +39,8 @@ const workSource: SourceSettings = {
   servers: [],
   teams: [],
   team_names: [],
+  communities: [],
+  community_names: [],
   token_env: null,
   token_path: null,
   oauth_client_path: null,

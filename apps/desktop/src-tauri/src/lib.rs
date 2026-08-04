@@ -781,6 +781,14 @@ async fn desktop_slack_workspaces<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+async fn desktop_buzz_communities<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    source: String,
+) -> Result<Value, String> {
+    source_jobs::list_buzz_communities(&app, &source).await
+}
+
+#[tauri::command]
 fn desktop_source_initial_sync<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     jobs: State<'_, source_jobs::SourceJobState>,
@@ -1159,6 +1167,7 @@ pub fn run() {
             desktop_provider_models,
             desktop_discord_servers,
             desktop_slack_workspaces,
+            desktop_buzz_communities,
             desktop_source_initial_sync,
             desktop_source_validation_status,
             desktop_source_jobs_status,
@@ -1319,6 +1328,7 @@ mod tests {
                 desktop_provider_models,
                 desktop_discord_servers,
                 desktop_slack_workspaces,
+                desktop_buzz_communities,
                 desktop_source_jobs_status,
                 desktop_source_validation_cancel,
                 desktop_source_validation_start,
@@ -1767,6 +1777,79 @@ mod tests {
                     .unwrap_or_default()
                     .contains("only for Slack sources")
             );
+        });
+    }
+
+    #[test]
+    fn native_buzz_community_discovery_fails_closed_for_other_kinds() {
+        let fixture = filesystem_fixture("work-notes", true);
+        with_cortana_config_override(&fixture.config, || {
+            let app = ipc_test_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
+
+            let error = invoke_json_with(
+                &window,
+                "desktop_buzz_communities",
+                json!({ "source": "work-notes" }),
+            )
+            .expect_err("non-Buzz sources must fail closed before spawning the sidecar");
+            assert!(
+                error
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("only for Buzz sources")
+            );
+        });
+    }
+
+    #[test]
+    fn native_buzz_community_discovery_reads_the_real_identity_file() {
+        let temp = tempfile::tempdir().expect("temporary config directory");
+        let config_path = temp.path().join("cortana/config.toml");
+        let root = temp.path().join("buzz-root");
+        fs::create_dir_all(root.join("agents")).expect("agents directory");
+        fs::write(
+            root.join("agents/teams.json"),
+            r#"[{"id": "builtin-team:welcome", "name": "Welcome Team"}]"#,
+        )
+        .expect("write identity file");
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
+        fs::write(
+            &config_path,
+            format!(
+                "data_dir = {}\n\n[[sources]]\nname = \"agent-buzz\"\nkind = \"buzz\"\nenabled = true\nproject = \"agents\"\nroot = {}\n",
+                toml_string(&temp.path().join("cortana/data").display().to_string()),
+                toml_string(&root.display().to_string()),
+            ),
+        )
+        .expect("test config");
+
+        with_cortana_config_override(&config_path, || {
+            if !bundled_sidecar_available() {
+                eprintln!(
+                    "SKIP: bundled `cortana` sidecar is missing next to the test executable; \
+                     run `bun run desktop:test:native` to prepare it"
+                );
+                return;
+            }
+            let app = ipc_test_app();
+            let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+                .build()
+                .expect("build mock desktop window");
+
+            let response = invoke_json_with(
+                &window,
+                "desktop_buzz_communities",
+                json!({ "source": "agent-buzz" }),
+            )
+            .expect("discover communities");
+            assert_eq!(
+                response["communities"][0]["id"],
+                serde_json::json!("builtin-team:welcome")
+            );
+            assert_eq!(response["truncated"], serde_json::json!(false));
         });
     }
 

@@ -37,6 +37,7 @@ import {
   listDesktopGithubRepositories,
   listDesktopProviderModels,
   listDesktopSlackWorkspaces,
+  listDesktopBuzzCommunities,
   getDesktopHindsightStatus,
   getDesktopHonchoStatus,
   getDesktopSchedule,
@@ -93,6 +94,7 @@ import type {
   GithubRepositorySummary,
   InitialSyncBudget,
   SlackWorkspaceSummary,
+  BuzzCommunitySummary,
   SourceKind,
   SourceSettings,
   WorkspaceSettings,
@@ -2998,6 +3000,10 @@ function SourcesSection({
     Record<string, { teams: SlackWorkspaceSummary[]; truncated: boolean }>
   >({})
   const [slackWorkspacesLoading, setSlackWorkspacesLoading] = useState<string | null>(null)
+  const [buzzCommunities, setBuzzCommunities] = useState<
+    Record<string, { communities: BuzzCommunitySummary[]; truncated: boolean }>
+  >({})
+  const [buzzCommunitiesLoading, setBuzzCommunitiesLoading] = useState<string | null>(null)
   const [sourceWorkspace, setSourceWorkspace] = useState(() => initialSourceWorkspace(settings))
   const [initialSync, setInitialSync] = useState<{
     source: string
@@ -3395,6 +3401,54 @@ function SourcesSection({
     changeSource(index, {
       teams: assigned ? [] : [team.id],
       team_names: assigned ? [] : [team.name],
+    })
+  }
+
+  const discoverBuzzCommunities = async (index: number, source: SourceSettings) => {
+    if (!canValidate) {
+      setError('Save source changes before discovering communities.')
+      return
+    }
+    setError('')
+    setBuzzCommunitiesLoading(source.name)
+    try {
+      const result = await listDesktopBuzzCommunities(source.name)
+      setBuzzCommunities((current) => ({
+        ...current,
+        [source.name]: {
+          communities: result.communities,
+          truncated: result.truncated,
+        },
+      }))
+      if (result.truncated) {
+        setError('Buzz returned more than 100 communities; select from the first 100.')
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Buzz community discovery failed')
+    } finally {
+      setBuzzCommunitiesLoading(null)
+    }
+  }
+
+  const toggleBuzzCommunity = (
+    index: number,
+    source: SourceSettings,
+    community: BuzzCommunitySummary
+  ) => {
+    // Community assignment is per-workspace: the checked community ids land
+    // in the source's `communities` field with display names kept
+    // index-aligned in `community_names`. This source belongs to exactly one
+    // workspace, so the chooser is scoped to the selected workspace.
+    const assigned = source.communities.includes(community.id)
+    changeSource(index, {
+      communities: assigned
+        ? source.communities.filter((id) => id !== community.id)
+        : [...source.communities, community.id],
+      community_names: assigned
+        ? source.community_names.filter(
+            (_, position) => source.communities[position] !== community.id
+          )
+        : [...source.community_names, community.name],
     })
   }
 
@@ -3840,6 +3894,57 @@ function SourcesSection({
                         >
                           <FolderOpen size={14} />
                         </button>
+                      </div>
+                    </Field>
+                  )}
+                  {source.kind === 'buzz' && (
+                    <Field
+                      label="Community chooser"
+                      hint="assign the communities this workspace may index; the list comes from Buzz's read-only agents/teams.json identity file in the configured data directory, so make sure the Buzz app has written it first"
+                      wide
+                    >
+                      <div className="source-repository-chooser">
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          aria-label="Discover communities"
+                          disabled={
+                            !canValidate || sourceLocked || buzzCommunitiesLoading === source.name
+                          }
+                          onClick={() => void discoverBuzzCommunities(index, source)}
+                        >
+                          {buzzCommunitiesLoading === source.name ? (
+                            <LoaderCircle className="spin" size={14} />
+                          ) : (
+                            <RefreshCw size={14} />
+                          )}{' '}
+                          Discover communities
+                        </button>
+                        {buzzCommunities[source.name] && (
+                          <div className="source-repository-options">
+                            {buzzCommunities[source.name].communities.length === 0 ? (
+                              <small>No communities recorded in the identity file.</small>
+                            ) : (
+                              buzzCommunities[source.name].communities.map((community) => (
+                                <label key={community.id}>
+                                  <input
+                                    type="checkbox"
+                                    checked={source.communities.includes(community.id)}
+                                    disabled={sourceLocked || !source.editable}
+                                    onChange={() => toggleBuzzCommunity(index, source, community)}
+                                  />
+                                  <span>{community.name}</span>
+                                </label>
+                              ))
+                            )}
+                            {buzzCommunities[source.name].truncated && (
+                              <small>
+                                Buzz returned more than 100 communities; only the first 100 are
+                                shown.
+                              </small>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </Field>
                   )}
@@ -4821,6 +4926,8 @@ function newSource(settings: DesktopSettings, project?: string): SourceSettings 
     servers: [],
     teams: [],
     team_names: [],
+    communities: [],
+    community_names: [],
     token_env: null,
     token_path: null,
     oauth_client_path: null,

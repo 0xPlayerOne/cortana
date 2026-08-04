@@ -527,6 +527,8 @@ mod tests {
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
             repositories: Vec::new(),
             token_env: token_env.map(str::to_string),
             token,
