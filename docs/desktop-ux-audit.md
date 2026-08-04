@@ -56,8 +56,11 @@ is not part of a visual/UI change.
 buzz-communities SOURCE` reads the read-only `agents/teams.json` identity
    file with bounded, fail-closed validation, and the Desktop chooser persists
    per-workspace `communities`/`community_names`.
-5. Decide whether Hindsight/Honcho should remain optional adapters or receive a production
-   memory-provider rollout after the core retrieval and audit path is proven.
+5. The memory-provider decision is recorded: keep Hindsight and Honcho as
+   disabled-by-default optional adapters. Cortana's canonical store remains the
+   source of truth; Hindsight is the replacement-capable sidecar and Honcho is
+   an append-only experimental sink. Neither is enabled for personal data until
+   provider ACL, deletion, export, and packaged-UI gates are explicitly proven.
 
 ## Evidence limits
 
