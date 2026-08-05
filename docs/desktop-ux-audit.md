@@ -64,27 +64,27 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The v0.29.13 promotion (`2eb1f45`) is merged on both `main` and `staging` and tagged
-  `v0.29.13`. Release-assets run `30967558201` completed successfully and the local verifier passed:
-  all 18 assets, core
+- The v0.29.13 promotion (`cd5c1ef`) is merged on `main` and tagged `v0.29.13`. Release-assets
+  run `30967558201` completed successfully and the local verifier passed: all 18 assets, core
   checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the updater
-  manifest, and the Linux runner `--version` check against the release tag are verified.
+  manifest, and the Linux runner `--version` check against the release tag are verified. `staging`
+  now carries the verified backup-control-plane and test-fixture cleanup commits; promotion PR
+  #470 is the required path for the next release.
 - The installed CLI `/Users/amf/.local/bin/cortana` and the installed packaged Desktop app
   `/Applications/Cortana.app` both report `cortana 0.29.13`; the CLI passes `cortana doctor`, the
   offline evaluation checks, and the disposable desktop control-plane drill. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess`. Developer ID signing/notarization therefore remains
   a release blocker.
-- The prepared-sidecar v0.29.12 Desktop native suite passed 123 tests. The previously confirmed
-  v0.29.11-line figures remain: `cargo test --lib` 260 passed; `bun test --max-concurrency=1`
-  250 passed; `uv run pytest -q` 149 passed; and `bun run typecheck` passed. These are prior
-  per-suite figures, not a deduplicated aggregate or a fresh claim about this checkout's full
-  Web suite; the refreshed `uv.lock` itself passes `uv lock --check`.
-- The v0.29.12 line includes Desktop changes, so the v0.29.8 "no Desktop changes, matrix skipped"
-  note does not apply. The 123-test native suite is a headless Tauri IPC check after preparing the
-  release sidecar; it does not claim packaged GUI, browser, OS-service, or signed-updater behavior.
-  The 19/11 focused readiness figures were specific to the v0.29.8 readiness-hardening patch and
-  are not re-asserted.
+- The current promoted staging line's prepared-sidecar Desktop native suite passed 126 tests and
+  its focused Desktop web suite passed 79 tests. The full web suite currently passes 252 tests,
+  the Python suite baseline remains 149 tests, and `bun run typecheck` passed; these are per-suite
+  figures, not a deduplicated aggregate. The refreshed `uv.lock` itself passes `uv lock --check`.
+- The current staging line includes Desktop changes, so the v0.29.8 "no Desktop changes, matrix
+  skipped" note does not apply. The 126-test native suite is a headless Tauri IPC check after
+  preparing the release sidecar; it does not claim packaged GUI, browser, OS-service, or
+  signed-updater behavior. The 19/11 focused readiness figures were specific to the v0.29.8
+  readiness-hardening patch and are not re-asserted.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
@@ -93,6 +93,11 @@ is not part of a visual/UI change.
   personal index or starting sync/connectors. Route discovery succeeded, but the configured
   endpoint was unavailable; the run reported `fallback_provider_unavailable` without a model
   result. Extractive mode remains the safe production default.
+- A bounded source validation sweep (one document, 64 KiB, 15 seconds per source) passed every
+  enabled source. Matching non-reconciling trial syncs also passed for every enabled source;
+  `work-drive` required a 120-second cap for first-embedding warm-up. These are deliberately
+  bounded samples and do not authorize a full-corpus recurring service, so recurring sync remains
+  disabled until complete source coverage is explicitly approved.
 - Packaged-app GUI/browser OAuth, service/tray, updater, import/export, backup, and restore drills
   remain unverified because no computer-use tool was available.
 - Hindsight and Honcho remain disabled-by-default optional adapters; Cortana's canonical store
