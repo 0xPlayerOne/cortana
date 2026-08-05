@@ -1,5 +1,5 @@
 use std::cmp::{Ordering, Reverse};
-use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -1442,48 +1442,63 @@ impl Store {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
 
-        let mut documents = 0_i64;
-        let mut chunks = 0_i64;
-        let mut sources = BTreeMap::<(String, String), SourceStats>::new();
-        let mut document_statement = connection.prepare(
-            "SELECT d.source,d.project,d.acl_json,COUNT(c.id),MAX(d.updated_at)
-             FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
-             GROUP BY d.id,d.source,d.project,d.acl_json",
+        // Keep ACL filtering in SQLite so status does one grouped read rather
+        // than materializing and parsing every document's ACL in Rust while
+        // holding the store mutex. The JSON shape checks mirror
+        // `serde_json::from_str::<Vec<String>>`: malformed/non-array/mixed-type
+        // ACL values remain hidden instead of becoming public documents.
+        let principal_acl_json = serde_json::to_string(principal_acl)?;
+        let mut source_statement = connection.prepare(
+            "WITH visible_documents AS (
+               SELECT d.id,d.source,d.project,d.updated_at
+               FROM documents d
+               WHERE json_valid(d.acl_json)
+                 AND json_type(d.acl_json)='array'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM json_each(d.acl_json) AS document_acl
+                   WHERE document_acl.type<>'text'
+                 )
+                 AND (
+                   json_array_length(d.acl_json)=0
+                   OR EXISTS (
+                     SELECT 1 FROM json_each(?1) AS principal_acl
+                     WHERE principal_acl.type='text'
+                       AND (
+                         principal_acl.value='*'
+                         OR EXISTS (
+                           SELECT 1 FROM json_each(d.acl_json) AS document_acl
+                           WHERE document_acl.type='text'
+                             AND document_acl.value=principal_acl.value
+                         )
+                       )
+                   )
+                 )
+             )
+             SELECT visible_documents.source,visible_documents.project,
+                    COUNT(DISTINCT visible_documents.id),COUNT(c.id),
+                    MAX(visible_documents.updated_at)
+             FROM visible_documents
+             LEFT JOIN chunks c ON c.document_id=visible_documents.id
+             GROUP BY visible_documents.source,visible_documents.project
+             ORDER BY visible_documents.source,visible_documents.project",
         )?;
-        for row in document_statement.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, Option<String>>(4)?,
-            ))
-        })? {
-            let (source, project, acl_json, document_chunks, latest_updated_at) = row?;
-            let Ok(acl) = serde_json::from_str::<Vec<String>>(&acl_json) else {
-                continue;
-            };
-            if !acl_allows(&acl, principal_acl) {
-                continue;
-            }
-            documents += 1;
-            chunks += document_chunks;
-            let entry = sources
-                .entry((source.clone(), project.clone()))
-                .or_insert_with(|| SourceStats {
-                    source,
-                    project,
-                    documents: 0,
-                    chunks: 0,
-                    latest_updated_at: None,
-                });
-            entry.documents += 1;
-            entry.chunks += document_chunks;
-            if latest_updated_at.as_deref() > entry.latest_updated_at.as_deref() {
-                entry.latest_updated_at = latest_updated_at;
-            }
-        }
-        let allowed_sources = sources.keys().cloned().collect::<HashSet<_>>();
+        let sources = source_statement
+            .query_map([principal_acl_json], |row| {
+                Ok(SourceStats {
+                    source: row.get(0)?,
+                    project: row.get(1)?,
+                    documents: row.get(2)?,
+                    chunks: row.get(3)?,
+                    latest_updated_at: row.get(4)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let documents = sources.iter().map(|source| source.documents).sum();
+        let chunks = sources.iter().map(|source| source.chunks).sum();
+        let allowed_sources = sources
+            .iter()
+            .map(|source| (source.source.clone(), source.project.clone()))
+            .collect::<HashSet<_>>();
         let mut sync_statement = connection.prepare(
             "SELECT source,project,status,started_at,completed_at,documents,bytes,deleted,
                     budget_documents,budget_bytes,budget_seconds
@@ -1534,7 +1549,7 @@ impl Store {
             embedding_cache_hits,
             query_cache_entries,
             query_cache_hits,
-            sources: sources.into_values().collect(),
+            sources,
             sync_runs,
         })
     }
@@ -2586,14 +2601,45 @@ mod tests {
                 .upsert(item, &[(item.content.clone(), vec![1.0])])
                 .expect("insert document");
         }
+        let mut chunked = document("chunked", "chunked content");
+        chunked.acl = vec!["work".into()];
+        store
+            .upsert(
+                &chunked,
+                &[
+                    ("first chunk".into(), vec![1.0]),
+                    ("second chunk".into(), vec![1.0]),
+                ],
+            )
+            .expect("insert multi-chunk document");
+        {
+            let connection = store.connection.lock().expect("store lock");
+            for (source_id, acl_json) in [
+                ("malformed", "not-json"),
+                ("mixed", "[\"work\",1]"),
+                ("object", "{\"label\":\"work\"}"),
+            ] {
+                connection
+                    .execute(
+                        "INSERT INTO documents(
+                           id,source,source_id,title,uri,content_hash,updated_at,project,
+                           acl_json,metadata_json,content
+                         ) VALUES(?1,'test',?2,?2,NULL,'hash','2026-01-04T00:00:00Z',
+                                  'demo',?3,'{}','')",
+                        rusqlite::params![stable_id("test", source_id), source_id, acl_json],
+                    )
+                    .expect("insert malformed ACL fixture");
+            }
+        }
 
         let stats = store
             .stats_scoped(&["work".into()], &HashSet::new())
             .expect("scoped stats");
-        assert_eq!(stats.documents, 2);
-        assert_eq!(stats.chunks, 2);
+        assert_eq!(stats.documents, 3);
+        assert_eq!(stats.chunks, 4);
         assert_eq!(stats.sources.len(), 1);
-        assert_eq!(stats.sources[0].documents, 2);
+        assert_eq!(stats.sources[0].documents, 3);
+        assert_eq!(stats.sources[0].chunks, 4);
         assert_eq!(stats.sources[0].project, "demo");
     }
 
