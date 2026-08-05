@@ -22,6 +22,13 @@ import type {
   SourceSettings,
 } from './types'
 
+// The footer label tracks the installed desktop version; the fixture derives
+// it from package.json so this matcher cannot drift from the release.
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')
+const updatesButtonName = new RegExp(
+  `Cortana ${escapeRegExp(desktopInfo.desktop_version)} · Updates`
+)
+
 afterEach(cleanup)
 afterEach(() => {
   window.localStorage.removeItem('cortana.workspace-selection.v1')
@@ -606,9 +613,7 @@ test('desktop settings navigation opens the audit trail and renders both event s
   render(<App />)
 
   // Desktop chrome: version and updates shortcut live in the footer.
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
 
   // Rail navigation into the settings view.
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
@@ -662,7 +667,7 @@ test('audit trail export downloads exactly the loaded redacted events as JSON', 
   try {
     render(<App />)
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() =>
@@ -705,9 +710,7 @@ test('audit trail export downloads exactly the loaded redacted events as JSON', 
 
 test('advanced settings export is blocked while draft is dirty', async () => {
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
@@ -736,9 +739,7 @@ test('advanced settings export shows redacted notice and calls the export bridge
     omitted_external_sources: ['s3-uploader'],
   }
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
@@ -772,7 +773,7 @@ test('advanced import preview cancellation keeps draft values unchanged', async 
   try {
     render(<App />)
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() =>
@@ -809,7 +810,7 @@ test('advanced settings import preview applies as unsaved draft and requires exp
   try {
     render(<App />)
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() =>
@@ -1271,11 +1272,9 @@ test('late desktop bootstrap settings cannot overwrite a shell-reconciled snapsh
 
 test('the footer updates shortcut opens the updates section directly', async () => {
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
 
-  fireEvent.click(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ }))
+  fireEvent.click(screen.getByRole('button', { name: updatesButtonName }))
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
   )
@@ -1325,7 +1324,7 @@ test('the footer updates shortcut respects unsaved settings changes', async () =
     fireEvent.change(screen.getAllByLabelText('Display name')[0], {
       target: { value: 'Unsaved workspace' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ }))
+    fireEvent.click(screen.getByRole('button', { name: updatesButtonName }))
     expect(screen.getByRole('heading', { name: 'Workspaces' })).toBeTruthy()
     expect(screen.queryByText('Installed version')).toBeNull()
   } finally {
@@ -2523,7 +2522,7 @@ test('running source jobs stay visible in the shell after leaving the settings v
     state.settings = { ...desktopSettings, sources: [workSource] }
     render(<App />)
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy()
     )
 
     // No jobs have started yet, so no shell indicator is shown.
@@ -2603,9 +2602,7 @@ test('completed source jobs refresh source health without waiting for the status
 
 test('hindsight status section remains explicit about being optional', async () => {
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
 
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() =>
@@ -2633,9 +2630,7 @@ test('hindsight status section remains explicit about being optional', async () 
 
 test('honcho settings section exposes a disabled-by-default session sidecar', async () => {
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
 
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() =>
@@ -2655,9 +2650,7 @@ test('honcho settings section exposes a disabled-by-default session sidecar', as
 
 test('local runtime section opens active secret file path in desktop', async () => {
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
 
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() =>
