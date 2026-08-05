@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.13](https://github.com/0xPlayerOne/cortana/compare/v0.29.12...v0.29.13) (2026-08-05)
+
+
+### Performance
+
+* optimize scoped status stats ([64e5d79](https://github.com/0xPlayerOne/cortana/commit/64e5d791795d20169442c0c77a21e87f2595b95b))
+
 ## [0.29.12](https://github.com/0xPlayerOne/cortana/compare/v0.29.11...v0.29.12) (2026-08-05)
 
 
