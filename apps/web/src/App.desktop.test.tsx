@@ -12,6 +12,7 @@ import {
 import type {
   AuditEvent,
   DesktopServiceReport,
+  DesktopDatabaseActionResult,
   DesktopSettings,
   DesktopPortableSettings,
   DesktopSettingsExport,
@@ -41,6 +42,20 @@ afterEach(() => {
   state.lastSettingsUpdate = null
   state.exportDesktopSettingsCalls = 0
   state.importDesktopSettingsCalls = 0
+  state.databaseBackupCalls = 0
+  state.databaseRestoreCalls = 0
+  state.databaseBackupResult = {
+    action: 'backup',
+    path: '/tmp/cortana-backup.sqlite3',
+    bytes: 4096,
+    detail: 'backup verified',
+  }
+  state.databaseRestoreResult = {
+    action: 'restore',
+    path: '/tmp/cortana-backup.sqlite3',
+    bytes: 4096,
+    detail: 'database restored',
+  }
   state.exportDesktopSettingsResult = {
     path: '/tmp/cortana-settings.toml',
     format_version: 2,
@@ -167,6 +182,20 @@ const state = {
     preserved_external_sources: [],
     settings: buildImportedSettings('/tmp/imported-runtime-dir'),
   } as DesktopSettingsImport,
+  databaseBackupCalls: 0,
+  databaseRestoreCalls: 0,
+  databaseBackupResult: {
+    action: 'backup',
+    path: '/tmp/cortana-backup.sqlite3',
+    bytes: 4096,
+    detail: 'backup verified',
+  } as DesktopDatabaseActionResult,
+  databaseRestoreResult: {
+    action: 'restore',
+    path: '/tmp/cortana-backup.sqlite3',
+    bytes: 4096,
+    detail: 'database restored',
+  } as DesktopDatabaseActionResult,
   serviceInstallCalls: 0,
   serviceSyncInstallCalls: 0,
   schedule: { sync_interval_seconds: 900, backup_interval_seconds: 86400 },
@@ -359,6 +388,14 @@ mock.module('./api', () => ({
   importDesktopSettings: () => {
     state.importDesktopSettingsCalls += 1
     return Promise.resolve(state.importDesktopSettingsResult)
+  },
+  backupDesktopDatabase: () => {
+    state.databaseBackupCalls += 1
+    return Promise.resolve(state.databaseBackupResult)
+  },
+  restoreDesktopDatabase: () => {
+    state.databaseRestoreCalls += 1
+    return Promise.resolve(state.databaseRestoreResult)
   },
   scanDesktopReadiness: () =>
     state.readinessScan
@@ -1777,6 +1814,74 @@ test('services settings reuses the shell service snapshot without a duplicate po
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
 
   expect(state.getDesktopServicesCalls).toBe(1)
+})
+
+test('services settings exports a verified database backup with explicit confirmation', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.databaseBackupCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Backup database' }))
+    await waitFor(() => expect(state.databaseBackupCalls).toBe(1))
+    expect(
+      screen.getByText(/Verified backup exported to \/tmp\/cortana-backup\.sqlite3/)
+    ).toBeTruthy()
+    expect(screen.getByText(/4096 bytes/)).toBeTruthy()
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
+test('services settings permits restore with an installed but idle backup job and blocks running core services', async () => {
+  const originalConfirm = window.confirm
+  const originalServices = serviceReport.services.map((service) => ({ ...service }))
+  window.confirm = () => true
+  state.databaseRestoreCalls = 0
+  serviceReport.services[3] = {
+    ...serviceReport.services[3],
+    installed: true,
+    loaded: true,
+    state: 'not running',
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+
+    const restore = screen.getByRole('button', { name: 'Restore database' })
+    expect(restore.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(restore)
+    await waitFor(() => expect(state.databaseRestoreCalls).toBe(1))
+    expect(screen.getByText(/Database restored to \/tmp\/cortana-backup\.sqlite3/)).toBeTruthy()
+
+    serviceReport.services[1] = {
+      ...serviceReport.services[1],
+      installed: true,
+      loaded: true,
+      state: 'running',
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Readiness' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Restore database' }).hasAttribute('disabled')
+      ).toBe(true)
+    )
+    expect(state.databaseRestoreCalls).toBe(1)
+  } finally {
+    serviceReport.services.splice(0, serviceReport.services.length, ...originalServices)
+    window.confirm = originalConfirm
+  }
 })
 
 test('settings view reuses the shell settings snapshot without a duplicate read', async () => {

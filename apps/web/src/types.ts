@@ -537,6 +537,13 @@ export type DesktopServiceReport = {
   }>
 }
 
+export type DesktopDatabaseActionResult = {
+  action: 'backup' | 'restore'
+  path: string
+  bytes: number
+  detail: string
+}
+
 export type DesktopSchedule = {
   sync_interval_seconds: number
   backup_interval_seconds: number
