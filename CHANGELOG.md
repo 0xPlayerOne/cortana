@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.11](https://github.com/0xPlayerOne/cortana/compare/v0.29.10...v0.29.11) (2026-08-05)
+
+
+### Maintenance
+
+* remove stale forward-only orphans ([f2678c6](https://github.com/0xPlayerOne/cortana/commit/f2678c62861687787ef739aa074f0d81abb86fb5))
+
 ## [0.29.10](https://github.com/0xPlayerOne/cortana/compare/v0.29.9...v0.29.10) (2026-08-05)
 
 
