@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.14](https://github.com/0xPlayerOne/cortana/compare/v0.29.13...v0.29.14) (2026-08-05)
+
+
+### Bug Fixes
+
+* **release:** promote current staging evidence ([d1f475e](https://github.com/0xPlayerOne/cortana/commit/d1f475e29cbc1922009b7d15c052121594bc3a3f))
+
 ## [0.29.13](https://github.com/0xPlayerOne/cortana/compare/v0.29.12...v0.29.13) (2026-08-05)
 
 
