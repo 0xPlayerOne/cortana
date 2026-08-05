@@ -64,12 +64,13 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The v0.29.11 promotion (`4ed035e`) is merged on both `main` and `staging` and tagged
-  `v0.29.11`. Release-assets run `30962970089` completed successfully: all 18 assets, core
+- The v0.29.12 promotion (`3836df7`) is merged on both `main` and `staging` and tagged
+  `v0.29.12`. Release-assets run `30965178674` completed successfully and the local verifier passed:
+  all 18 assets, core
   checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the updater
   manifest, and the Linux runner `--version` check against the release tag are verified.
 - The installed CLI `/Users/amf/.local/bin/cortana` and the installed packaged Desktop app
-  `/Applications/Cortana.app` both report `cortana 0.29.11`; the CLI passes `cortana doctor`, the
+  `/Applications/Cortana.app` both report `cortana 0.29.12`; the CLI passes `cortana doctor`, the
   offline evaluation checks, and the disposable desktop control-plane drill. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess`. Developer ID signing/notarization therefore remains
