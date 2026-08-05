@@ -64,21 +64,24 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The v0.29.8 promotion is merged on both `main` and `staging`; release-assets run `30956324623`
-  completed successfully with all 18 assets, core checksums, updater signatures/manifest, and
-  the published Linux binary version verified.
-- The verified v0.29.8 DMG is installed at `/Applications/Cortana.app`; its embedded binary
-  reports `cortana 0.29.8` and passes `codesign --verify --deep --strict`, but the bundle is
-  ad-hoc signed (`TeamIdentifier` is unset) and `spctl --assess` rejects it. Developer ID
-  signing/notarization therefore remains a release blocker.
-- The 2026-08-04 v0.29.8 staging-to-main promotion validation passed the reported per-target and
-  per-suite counts: Rust unit targets `259` and `32`, Bun web tests `250`, Python tests `146`,
-  and integration suites `36`, `11`, `2`, `3`, and `1`. These are per-target/per-suite figures,
-  not a deduplicated
-  aggregate.
-- The full Desktop matrix was skipped because promotion change detection found no Desktop changes;
-  this run therefore adds no full Desktop build/test evidence. The readiness hardening patch still
-  passes 19 focused Rust readiness/API tests and 11 focused Desktop readiness tests.
+- The v0.29.11 promotion (`4ed035e`) is merged on both `main` and `staging` and tagged
+  `v0.29.11`. Release-assets run `30962970089` completed successfully: all 18 assets, core
+  checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the updater
+  manifest, and the Linux runner `--version` check against the release tag are verified.
+- The installed CLI `/Users/amf/.local/bin/cortana` and the installed packaged Desktop app
+  `/Applications/Cortana.app` both report `cortana 0.29.11`; the CLI passes `cortana doctor`, the
+  offline evaluation checks, and the disposable desktop control-plane drill. The packaged app
+  passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
+  unset) and is rejected by `spctl --assess`. Developer ID signing/notarization therefore remains
+  a release blocker.
+- The v0.29.11-line local validation passed the confirmed counts: `cargo test --lib` 260 passed;
+  `bun test --max-concurrency=1` 250 passed; `uv run pytest -q` 149 passed; `bun run typecheck`
+  passed. These are per-suite local figures on the v0.29.11 line, not a deduplicated aggregate and
+  not the promotion-run tallies previously reported for v0.29.8.
+- The v0.29.11 line includes Desktop changes, so the v0.29.8 "no Desktop changes, matrix skipped"
+  note does not apply. No packaged Desktop build/test matrix results are claimed for v0.29.11
+  beyond the control-plane drill evidence above; the 19/11 focused readiness figures were
+  specific to the v0.29.8 readiness-hardening patch and are not re-asserted.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an

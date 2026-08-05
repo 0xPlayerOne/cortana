@@ -208,14 +208,22 @@ installs Ubuntu's `minisign` package and sets `CORTANA_REQUIRE_MINISIGN=1`, so t
 if the verifier is unavailable. Local invocations keep the portable default and skip the
 cryptographic check on hosts without `minisign`.
 
-Published v0.29.8 has 18 release assets; release-assets run `30956324623` completed successfully
-with core checksums, updater signatures/manifest, and the published Linux binary version verified.
-The installed CLI reports `cortana 0.29.8`.
+Published v0.29.11 has 18 release assets; release-assets run `30962970089` completed successfully
+with core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
+updater manifest, and the published Linux binary version verified. The Linux binary `--version`
+match is asserted by the run's Linux runner; the verifier does not execute foreign-OS binaries, so
+it is not re-checked on this macOS host. The installed aarch64 macOS core archive, extracted from
+the published v0.29.11 release, reports `cortana 0.29.11`, and the installed packaged Desktop app
+at `/Applications/Cortana.app` also reports v0.29.11.
+
+minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
+macOS Desktop app remains ad-hoc signed (no Developer ID notarization), so `spctl --assess` still
+rejects it and notarization remains a release blocker.
 
 Re-run the read-only verifier for an existing release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.8
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.11
 ```
 
 ## macOS launchd
