@@ -60,6 +60,19 @@ pub async fn pick(app: AppHandle, kind: &str) -> Result<Option<String>, String> 
             .pick_file(move |path| {
                 let _ = sender.send(path);
             }),
+        "backup-export" => dialog
+            .set_title("Export a verified Cortana database backup")
+            .set_file_name("cortana-backup.sqlite3")
+            .add_filter("Cortana database backup", &["sqlite3"])
+            .save_file(move |path| {
+                let _ = sender.send(path);
+            }),
+        "backup-import" => dialog
+            .set_title("Restore a Cortana database backup")
+            .add_filter("Cortana database backup", &["sqlite3"])
+            .pick_file(move |path| {
+                let _ = sender.send(path);
+            }),
         _ => return Err("unsupported native path picker".into()),
     }
     let selected = receiver

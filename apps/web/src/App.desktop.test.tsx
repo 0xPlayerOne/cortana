@@ -12,6 +12,7 @@ import {
 import type {
   AuditEvent,
   DesktopServiceReport,
+  DesktopDatabaseActionResult,
   DesktopSettings,
   DesktopPortableSettings,
   DesktopSettingsExport,
@@ -21,6 +22,13 @@ import type {
   DesktopInstallJob,
   SourceSettings,
 } from './types'
+
+// The footer label tracks the installed desktop version; the fixture derives
+// it from package.json so this matcher cannot drift from the release.
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')
+const updatesButtonName = new RegExp(
+  `Cortana ${escapeRegExp(desktopInfo.desktop_version)} · Updates`
+)
 
 afterEach(cleanup)
 afterEach(() => {
@@ -34,6 +42,20 @@ afterEach(() => {
   state.lastSettingsUpdate = null
   state.exportDesktopSettingsCalls = 0
   state.importDesktopSettingsCalls = 0
+  state.databaseBackupCalls = 0
+  state.databaseRestoreCalls = 0
+  state.databaseBackupResult = {
+    action: 'backup',
+    path: '/tmp/cortana-backup.sqlite3',
+    bytes: 4096,
+    detail: 'backup verified',
+  }
+  state.databaseRestoreResult = {
+    action: 'restore',
+    path: '/tmp/cortana-backup.sqlite3',
+    bytes: 4096,
+    detail: 'database restored',
+  }
   state.exportDesktopSettingsResult = {
     path: '/tmp/cortana-settings.toml',
     format_version: 2,
@@ -160,6 +182,20 @@ const state = {
     preserved_external_sources: [],
     settings: buildImportedSettings('/tmp/imported-runtime-dir'),
   } as DesktopSettingsImport,
+  databaseBackupCalls: 0,
+  databaseRestoreCalls: 0,
+  databaseBackupResult: {
+    action: 'backup',
+    path: '/tmp/cortana-backup.sqlite3',
+    bytes: 4096,
+    detail: 'backup verified',
+  } as DesktopDatabaseActionResult,
+  databaseRestoreResult: {
+    action: 'restore',
+    path: '/tmp/cortana-backup.sqlite3',
+    bytes: 4096,
+    detail: 'database restored',
+  } as DesktopDatabaseActionResult,
   serviceInstallCalls: 0,
   serviceSyncInstallCalls: 0,
   schedule: { sync_interval_seconds: 900, backup_interval_seconds: 86400 },
@@ -352,6 +388,14 @@ mock.module('./api', () => ({
   importDesktopSettings: () => {
     state.importDesktopSettingsCalls += 1
     return Promise.resolve(state.importDesktopSettingsResult)
+  },
+  backupDesktopDatabase: () => {
+    state.databaseBackupCalls += 1
+    return Promise.resolve(state.databaseBackupResult)
+  },
+  restoreDesktopDatabase: () => {
+    state.databaseRestoreCalls += 1
+    return Promise.resolve(state.databaseRestoreResult)
   },
   scanDesktopReadiness: () =>
     state.readinessScan
@@ -606,9 +650,7 @@ test('desktop settings navigation opens the audit trail and renders both event s
   render(<App />)
 
   // Desktop chrome: version and updates shortcut live in the footer.
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
 
   // Rail navigation into the settings view.
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
@@ -662,7 +704,7 @@ test('audit trail export downloads exactly the loaded redacted events as JSON', 
   try {
     render(<App />)
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() =>
@@ -705,9 +747,7 @@ test('audit trail export downloads exactly the loaded redacted events as JSON', 
 
 test('advanced settings export is blocked while draft is dirty', async () => {
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
@@ -736,9 +776,7 @@ test('advanced settings export shows redacted notice and calls the export bridge
     omitted_external_sources: ['s3-uploader'],
   }
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
@@ -772,7 +810,7 @@ test('advanced import preview cancellation keeps draft values unchanged', async 
   try {
     render(<App />)
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() =>
@@ -809,7 +847,7 @@ test('advanced settings import preview applies as unsaved draft and requires exp
   try {
     render(<App />)
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() =>
@@ -1271,11 +1309,9 @@ test('late desktop bootstrap settings cannot overwrite a shell-reconciled snapsh
 
 test('the footer updates shortcut opens the updates section directly', async () => {
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
 
-  fireEvent.click(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ }))
+  fireEvent.click(screen.getByRole('button', { name: updatesButtonName }))
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
   )
@@ -1325,7 +1361,7 @@ test('the footer updates shortcut respects unsaved settings changes', async () =
     fireEvent.change(screen.getAllByLabelText('Display name')[0], {
       target: { value: 'Unsaved workspace' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ }))
+    fireEvent.click(screen.getByRole('button', { name: updatesButtonName }))
     expect(screen.getByRole('heading', { name: 'Workspaces' })).toBeTruthy()
     expect(screen.queryByText('Installed version')).toBeNull()
   } finally {
@@ -1778,6 +1814,74 @@ test('services settings reuses the shell service snapshot without a duplicate po
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
 
   expect(state.getDesktopServicesCalls).toBe(1)
+})
+
+test('services settings exports a verified database backup with explicit confirmation', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.databaseBackupCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Backup database' }))
+    await waitFor(() => expect(state.databaseBackupCalls).toBe(1))
+    expect(
+      screen.getByText(/Verified backup exported to \/tmp\/cortana-backup\.sqlite3/)
+    ).toBeTruthy()
+    expect(screen.getByText(/4096 bytes/)).toBeTruthy()
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
+test('services settings permits restore with an installed but idle backup job and blocks running core services', async () => {
+  const originalConfirm = window.confirm
+  const originalServices = serviceReport.services.map((service) => ({ ...service }))
+  window.confirm = () => true
+  state.databaseRestoreCalls = 0
+  serviceReport.services[3] = {
+    ...serviceReport.services[3],
+    installed: true,
+    loaded: true,
+    state: 'not running',
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+
+    const restore = screen.getByRole('button', { name: 'Restore database' })
+    expect(restore.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(restore)
+    await waitFor(() => expect(state.databaseRestoreCalls).toBe(1))
+    expect(screen.getByText(/Database restored to \/tmp\/cortana-backup\.sqlite3/)).toBeTruthy()
+
+    serviceReport.services[1] = {
+      ...serviceReport.services[1],
+      installed: true,
+      loaded: true,
+      state: 'running',
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Readiness' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Services' }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'Restore database' }).hasAttribute('disabled')
+      ).toBe(true)
+    )
+    expect(state.databaseRestoreCalls).toBe(1)
+  } finally {
+    serviceReport.services.splice(0, serviceReport.services.length, ...originalServices)
+    window.confirm = originalConfirm
+  }
 })
 
 test('settings view reuses the shell settings snapshot without a duplicate read', async () => {
@@ -2523,7 +2627,7 @@ test('running source jobs stay visible in the shell after leaving the settings v
     state.settings = { ...desktopSettings, sources: [workSource] }
     render(<App />)
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy()
     )
 
     // No jobs have started yet, so no shell indicator is shown.
@@ -2603,9 +2707,7 @@ test('completed source jobs refresh source health without waiting for the status
 
 test('hindsight status section remains explicit about being optional', async () => {
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
 
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() =>
@@ -2633,9 +2735,7 @@ test('hindsight status section remains explicit about being optional', async () 
 
 test('honcho settings section exposes a disabled-by-default session sidecar', async () => {
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
 
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() =>
@@ -2655,9 +2755,7 @@ test('honcho settings section exposes a disabled-by-default session sidecar', as
 
 test('local runtime section opens active secret file path in desktop', async () => {
   render(<App />)
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: /Cortana 0\.11\.2 · Updates/ })).toBeTruthy()
-  )
+  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
 
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() =>

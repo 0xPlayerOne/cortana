@@ -18,6 +18,7 @@ import type {
   DesktopHonchoStatus,
   DesktopReadiness,
   DesktopServiceReport,
+  DesktopDatabaseActionResult,
   DesktopSchedule,
   DesktopSettings,
   DesktopSettingsExport,
@@ -136,6 +137,20 @@ export async function runDesktopServicesActionAll(
   if (!isDesktopApp) throw new Error('Service control is available in Cortana Desktop')
   return invokeDesktop<DesktopServiceReport>('desktop_services_action_all', {
     action,
+    approved: true,
+  })
+}
+
+export async function backupDesktopDatabase(): Promise<DesktopDatabaseActionResult | null> {
+  if (!isDesktopApp) throw new Error('Database backup is available in Cortana Desktop')
+  return invokeDesktop<DesktopDatabaseActionResult | null>('desktop_database_backup', {
+    approved: true,
+  })
+}
+
+export async function restoreDesktopDatabase(): Promise<DesktopDatabaseActionResult | null> {
+  if (!isDesktopApp) throw new Error('Database restore is available in Cortana Desktop')
+  return invokeDesktop<DesktopDatabaseActionResult | null>('desktop_database_restore', {
     approved: true,
   })
 }

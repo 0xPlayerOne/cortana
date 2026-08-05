@@ -68,6 +68,8 @@ import {
   startDesktopSourceValidation,
   runDesktopServiceAction,
   runDesktopServicesActionAll,
+  backupDesktopDatabase,
+  restoreDesktopDatabase,
 } from '../api'
 import { buildSetupSteps } from '../setup'
 import { INITIAL_SYNC_BUDGETS, type ProviderModelKind, type ProviderModelEntry } from '../types'
@@ -82,6 +84,7 @@ import type {
   DesktopReadinessActivity,
   DesktopServiceActivity,
   DesktopServiceReport,
+  DesktopDatabaseActionResult,
   DesktopSchedule,
   DesktopSettings,
   DesktopSettingsUpdate,
@@ -999,6 +1002,9 @@ function ServicesSection({
   const [scheduleError, setScheduleError] = useState('')
   const [scheduleSaving, setScheduleSaving] = useState(false)
   const [scheduleApplyPending, setScheduleApplyPending] = useState(false)
+  const [databaseBusy, setDatabaseBusy] = useState<'backup' | 'restore' | ''>('')
+  const [databaseResult, setDatabaseResult] = useState<DesktopDatabaseActionResult | null>(null)
+  const [databaseError, setDatabaseError] = useState('')
   const error = localError || externalServicesError || ''
   const refreshInFlightRef = useRef(false)
   const actionInFlightRef = useRef(false)
@@ -1094,6 +1100,9 @@ function ServicesSection({
       setScheduleSaving(false)
     }
   }
+
+  const serviceIsRunning = (service: DesktopServiceReport['services'][number]) =>
+    service.state === 'running' || (service.loaded && service.state === null)
 
   const serviceAction = async (
     service: DesktopServiceReport['services'][number],
@@ -1197,6 +1206,35 @@ function ServicesSection({
     } finally {
       actionInFlightRef.current = false
       if (mountedRef.current) setBusy('')
+    }
+  }
+
+  const databaseAction = async (action: 'backup' | 'restore') => {
+    if (dirty) {
+      setDatabaseError('Save or discard draft changes before using database recovery.')
+      return
+    }
+    const activeServices = report?.services.filter((service) => serviceIsRunning(service)) ?? []
+    if (action === 'restore' && (report?.supported !== true || activeServices.length > 0)) {
+      setDatabaseError('Stop all Cortana services before restoring a database snapshot.')
+      return
+    }
+    const confirmation =
+      action === 'backup'
+        ? 'Export a verified Cortana database snapshot?\n\nThe native picker will choose a new .sqlite3 file. No sync or service is started.'
+        : 'Restore this Cortana database snapshot?\n\nThis replaces the active index and keeps a pre-restore recovery copy. All Cortana services must already be stopped. No sync is run.'
+    if (!window.confirm(confirmation)) return
+    setDatabaseBusy(action)
+    setDatabaseResult(null)
+    setDatabaseError('')
+    try {
+      const result =
+        action === 'backup' ? await backupDesktopDatabase() : await restoreDesktopDatabase()
+      if (result) setDatabaseResult(result)
+    } catch (caught) {
+      setDatabaseError(caught instanceof Error ? caught.message : `Database ${action} failed`)
+    } finally {
+      setDatabaseBusy('')
     }
   }
 
@@ -1330,7 +1368,8 @@ function ServicesSection({
     report?.supported === true &&
     report.services.some((service) => service.name === 'sync' && !service.installed)
   const syncScheduleNeedsApply = needsSyncInstall || scheduleApplyPending
-  const actionInFlight = Boolean(busy) || serviceActivity?.status === 'running'
+  const actionInFlight =
+    Boolean(busy) || Boolean(databaseBusy) || serviceActivity?.status === 'running'
   const actionMessage = serviceActivity
     ? `${serviceActivity.action === 'install' ? 'Install' : serviceActivity.action[0].toUpperCase() + serviceActivity.action.slice(1)} ${serviceActivity.target}${serviceActivity.status === 'running' ? ' in progress…' : serviceActivity.status === 'succeeded' ? ' completed.' : ` failed: ${serviceActivity.detail || 'unknown error'}`}`
     : ''
@@ -1485,6 +1524,66 @@ function ServicesSection({
               Save schedule
             </button>
           </div>
+        </div>
+      )}
+      <div className="portable-settings">
+        <div>
+          <strong>Database recovery</strong>
+          <p>
+            Export a verified SQLite snapshot or restore one into the active index. Restore is
+            blocked while any Cortana service is running and never starts recurring sync.
+          </p>
+        </div>
+        <div className="service-actions">
+          <button
+            type="button"
+            disabled={actionInFlight || dirty}
+            onClick={() => void databaseAction('backup')}
+            title={dirty ? 'Save or discard draft changes first' : 'Export database backup'}
+          >
+            {databaseBusy === 'backup' ? (
+              <LoaderCircle className="spin" size={14} />
+            ) : (
+              <Download size={14} />
+            )}{' '}
+            Backup database
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={
+              actionInFlight ||
+              dirty ||
+              report?.supported !== true ||
+              report.services.some((service) => serviceIsRunning(service))
+            }
+            onClick={() => void databaseAction('restore')}
+            title={
+              dirty
+                ? 'Save or discard draft changes first'
+                : report?.supported !== true
+                  ? 'Service status is required before restore'
+                  : report.services.some((service) => serviceIsRunning(service))
+                    ? 'Stop all Cortana services before restore'
+                    : 'Restore database backup'
+            }
+          >
+            {databaseBusy === 'restore' ? (
+              <LoaderCircle className="spin" size={14} />
+            ) : (
+              <Upload size={14} />
+            )}{' '}
+            Restore database
+          </button>
+        </div>
+      </div>
+      {(databaseResult || databaseError) && (
+        <div className={`safety-note ${databaseError ? 'error' : ''}`} role="status">
+          {databaseError ? <AlertTriangle size={16} /> : <Check size={16} />}
+          <span>
+            {databaseError ||
+              `${databaseResult?.action === 'backup' ? 'Verified backup exported' : 'Database restored'} to ${databaseResult?.path} (${databaseResult?.bytes} bytes).`}
+          </span>
         </div>
       )}
       <div className="service-grid">

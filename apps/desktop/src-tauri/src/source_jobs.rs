@@ -1664,21 +1664,27 @@ fn terminal_summary(operation: &str, status: &str, disconnected: bool, kind: &st
             "github" => {
                 "GitHub authorization completed and the token was stored privately.".into()
             }
+            "slack" => {
+                "Slack authorization completed and the user token was stored privately.".into()
+            }
             _ => "Google authorization completed and the token was stored privately.".into(),
         },
         ("authorization", "cancelled", _) => match kind {
             "discord" => "Discord authorization was cancelled.".into(),
             "github" => "GitHub authorization was cancelled.".into(),
+            "slack" => "Slack authorization was cancelled.".into(),
             _ => "Google authorization was cancelled.".into(),
         },
         ("authorization", _, true) => match kind {
             "discord" => "Discord authorization ended without a process result.".into(),
             "github" => "GitHub authorization ended without a process result.".into(),
+            "slack" => "Slack authorization ended without a process result.".into(),
             _ => "Google authorization ended without a process result.".into(),
         },
         ("authorization", _, false) => match kind {
             "discord" => "Discord authorization failed.".into(),
             "github" => "GitHub authorization failed.".into(),
+            "slack" => "Slack authorization failed.".into(),
             _ => "Google authorization failed.".into(),
         },
         (_, "succeeded", _) => "Source validation passed. No documents were indexed.".into(),
@@ -2784,6 +2790,10 @@ mod tests {
                 .contains("GitHub authorization completed")
         );
         assert!(
+            terminal_summary("authorization", "succeeded", false, "slack")
+                .contains("Slack authorization completed")
+        );
+        assert!(
             terminal_summary("authorization", "succeeded", false, "gmail")
                 .contains("Google authorization completed")
         );
@@ -2792,12 +2802,24 @@ mod tests {
                 .contains("Discord authorization was cancelled")
         );
         assert!(
+            terminal_summary("authorization", "cancelled", false, "slack")
+                .contains("Slack authorization was cancelled")
+        );
+        assert!(
             terminal_summary("authorization", "failed", true, "discord")
                 .contains("Discord authorization ended without a process result")
         );
         assert!(
+            terminal_summary("authorization", "failed", true, "slack")
+                .contains("Slack authorization ended without a process result")
+        );
+        assert!(
             terminal_summary("authorization", "failed", false, "discord")
                 .contains("Discord authorization failed")
+        );
+        assert!(
+            terminal_summary("authorization", "failed", false, "slack")
+                .contains("Slack authorization failed")
         );
     }
 

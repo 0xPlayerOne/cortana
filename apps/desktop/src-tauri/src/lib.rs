@@ -16,6 +16,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 
+mod backups;
 mod hindsight;
 mod honcho;
 mod installer;
@@ -631,6 +632,22 @@ async fn desktop_services_action_all(
 }
 
 #[tauri::command]
+async fn desktop_database_backup(
+    app: AppHandle,
+    approved: bool,
+) -> Result<Option<backups::DatabaseActionResult>, String> {
+    backups::backup(&app, approved).await
+}
+
+#[tauri::command]
+async fn desktop_database_restore(
+    app: AppHandle,
+    approved: bool,
+) -> Result<Option<backups::DatabaseActionResult>, String> {
+    backups::restore(&app, approved).await
+}
+
+#[tauri::command]
 fn desktop_update_status(updater: State<'_, updater::UpdaterState>) -> updater::UpdateSnapshot {
     updater.status()
 }
@@ -1145,6 +1162,8 @@ pub fn run() {
             desktop_honcho_status,
             desktop_service_action,
             desktop_services_action_all,
+            desktop_database_backup,
+            desktop_database_restore,
             desktop_update_status,
             desktop_update_check,
             desktop_update_install,
