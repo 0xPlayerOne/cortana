@@ -75,14 +75,16 @@ is not part of a visual/UI change.
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess`. Developer ID signing/notarization therefore remains
   a release blocker.
-- The v0.29.11-line local validation passed the confirmed counts: `cargo test --lib` 260 passed;
-  `bun test --max-concurrency=1` 250 passed; `uv run pytest -q` 149 passed; `bun run typecheck`
-  passed. These are per-suite local figures on the v0.29.11 line, not a deduplicated aggregate and
-  not the promotion-run tallies previously reported for v0.29.8.
-- The v0.29.11 line includes Desktop changes, so the v0.29.8 "no Desktop changes, matrix skipped"
-  note does not apply. No packaged Desktop build/test matrix results are claimed for v0.29.11
-  beyond the control-plane drill evidence above; the 19/11 focused readiness figures were
-  specific to the v0.29.8 readiness-hardening patch and are not re-asserted.
+- The prepared-sidecar v0.29.12 Desktop native suite passed 123 tests. The previously confirmed
+  v0.29.11-line figures remain: `cargo test --lib` 260 passed; `bun test --max-concurrency=1`
+  250 passed; `uv run pytest -q` 149 passed; and `bun run typecheck` passed. These are prior
+  per-suite figures, not a deduplicated aggregate or a fresh claim about this checkout's full
+  Web suite; the refreshed `uv.lock` itself passes `uv lock --check`.
+- The v0.29.12 line includes Desktop changes, so the v0.29.8 "no Desktop changes, matrix skipped"
+  note does not apply. The 123-test native suite is a headless Tauri IPC check after preparing the
+  release sidecar; it does not claim packaged GUI, browser, OS-service, or signed-updater behavior.
+  The 19/11 focused readiness figures were specific to the v0.29.8 readiness-hardening patch and
+  are not re-asserted.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an

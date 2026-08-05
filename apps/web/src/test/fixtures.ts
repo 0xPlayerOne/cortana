@@ -1,4 +1,5 @@
 import { demoEvidence } from '../demo'
+import webPackage from '../../package.json'
 import type {
   AnswerResponse,
   AuditEvent,
@@ -161,7 +162,7 @@ export const desktopSettings: DesktopSettings = {
 }
 
 export const desktopInfo: DesktopInfo = {
-  desktop_version: '0.11.2',
+  desktop_version: webPackage.version,
   backend_origin: 'http://127.0.0.1:7331',
   autostart_enabled: false,
   platform: 'macos',
@@ -177,11 +178,11 @@ export const desktopAuditEvents: AuditEvent[] = [
 ]
 
 export const desktopUpdate: DesktopUpdate = {
-  current_version: '0.11.2',
+  current_version: webPackage.version,
   available_version: '9.9.9',
   release_date: '2026-07-30T00:00:00Z',
   release_notes: 'Fixes and improvements.',
-  changelog: '0.11.2 release notes.',
+  changelog: `${webPackage.version} release notes.`,
   github_url: 'https://github.com/0xPlayerOne/cortana',
   phase: 'available',
   downloaded_bytes: 0,
