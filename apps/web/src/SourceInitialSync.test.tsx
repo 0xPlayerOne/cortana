@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
-import { desktopSettings } from './test/fixtures'
+import { desktopInfo, desktopSettings } from './test/fixtures'
 import type {
   DesktopInitialSyncPlan,
   DesktopServiceReport,
@@ -154,13 +154,7 @@ mock.module('./api', () => ({
     state.settingsLoadError
       ? Promise.reject(state.settingsLoadError)
       : Promise.resolve(state.settings),
-  getDesktopInfo: () =>
-    Promise.resolve({
-      desktop_version: '0.11.4',
-      backend_origin: 'http://127.0.0.1:7331',
-      autostart_enabled: false,
-      platform: 'macos',
-    }),
+  getDesktopInfo: () => Promise.resolve(desktopInfo),
   getDesktopSchedule: () =>
     Promise.resolve({ sync_interval_seconds: 900, backup_interval_seconds: 86400 }),
   saveDesktopSchedule: (schedule: {
