@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.29.10](https://github.com/0xPlayerOne/cortana/compare/v0.29.9...v0.29.10) (2026-08-05)
+
+
+### Documentation
+
+* list optional agent and memory tokens ([4d3309f](https://github.com/0xPlayerOne/cortana/commit/4d3309fb2735695bdf270d6dcf4a14d57fd9899f))
+
+
+### Tests
+
+* add disposable desktop control plane drill ([5e924a6](https://github.com/0xPlayerOne/cortana/commit/5e924a62bdeea462b25bacc2aa9fa26e8161ff83))
+
+
+### Maintenance
+
+* remove legacy single-token auth ([cd44133](https://github.com/0xPlayerOne/cortana/commit/cd4413365b4fff2b9225114a551f74314a3fb137))
+* remove orphaned desktop styles ([8ba4356](https://github.com/0xPlayerOne/cortana/commit/8ba435618c6b0b2fa553dcc2bd54b41ce0bc6a92))
+
 ## [0.29.9](https://github.com/0xPlayerOne/cortana/compare/v0.29.8...v0.29.9) (2026-08-04)
 
 
