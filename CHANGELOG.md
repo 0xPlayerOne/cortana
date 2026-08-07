@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.29.15](https://github.com/0xPlayerOne/cortana/compare/v0.29.14...v0.29.15) (2026-08-07)
+
+
+### Bug Fixes
+
+* direct-topology config tests + allowlist js-yaml CVE-2026-59870 ([1170b37](https://github.com/0xPlayerOne/cortana/commit/1170b377c34bcfa663081aaafb1f4e2983e8ce98))
+* drop staging trigger from opencode-security ([50f570f](https://github.com/0xPlayerOne/cortana/commit/50f570fdbb61cc2bbb3fa288416e4123d0cc410a))
+
+
+### Maintenance
+
+* **code-foundry:** flip to direct main workflow, pin runtime v0.36.0 ([88b1067](https://github.com/0xPlayerOne/cortana/commit/88b10677ceb11c228bbf1f6c6a988c4d859d6a60))
+
 ## [0.29.14](https://github.com/0xPlayerOne/cortana/compare/v0.29.13...v0.29.14) (2026-08-05)
 
 
