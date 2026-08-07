@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.18](https://github.com/0xPlayerOne/cortana/compare/v0.29.17...v0.29.18) (2026-08-07)
+
+
+### Maintenance
+
+* **code-foundry:** pin runtime v0.37.0 ([2477479](https://github.com/0xPlayerOne/cortana/commit/247747948ffc62080160f1e5c5f63ef704e32a02))
+
 ## [0.29.17](https://github.com/0xPlayerOne/cortana/compare/v0.29.16...v0.29.17) (2026-08-07)
 
 
