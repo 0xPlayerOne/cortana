@@ -6,14 +6,11 @@
 //! standalone Cargo manifests (root package, desktop Tauri app, vendored
 //! glib) with a bounded parallelism cap.
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
-
 /// Runtime tag every generated workflow and config line must pin.
-const RUNTIME_REF: &str = "v0.34.14";
+const RUNTIME_REF: &str = "v0.36.0";
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -488,123 +485,64 @@ fn desktop_audit_caches_cargo_audit_binary() {
 }
 
 #[test]
-fn release_callers_cancel_superseded_reconciliation_runs() {
+fn no_staging_promotion_caller_in_direct_topology() {
     let release = read(".github/workflows/release.yml");
+    // The caller triggers only on pushes to main.
     assert!(
-        release.contains("group: cortana-release-${{ github.ref }}"),
-        "main release caller must coalesce runs by ref:\n{release}"
-    );
-    assert!(
-        release.contains("cancel-in-progress: true"),
-        "a newer main push must cancel an obsolete release reconciliation:\n{release}"
+        release.contains("on:") && release.contains("branches: [main]"),
+        "direct release caller must trigger on push to main:\n{release}"
     );
 
-    let release_pr = read(".github/workflows/release-pr.yml");
+    // The direct topology has no staging integration branch, so no
+    // staging promotion caller exists and nothing coalesces staging pushes.
     assert!(
-        release_pr.contains("group: cortana-release-pr-${{ github.ref }}"),
-        "staging release-PR caller must coalesce runs by ref:\n{release_pr}"
-    );
-    assert!(
-        release_pr.contains("cancel-in-progress: true"),
-        "a newer staging push must cancel an obsolete release-PR reconciliation:\n{release_pr}"
+        !Path::new(&repo_root())
+            .join(".github/workflows/release-pr.yml")
+            .exists(),
+        "direct topology must not keep a staging promotion caller"
     );
 }
 
-/// The main release caller gates Release Please on the staging promotion
-/// state. A release must never run while staging still contains source code
-/// that has not been promoted to main: Release Please would merge a version PR
-/// over unpromoted work and the reusable Release / Reconcile step would then
-/// fail. The read-only `preflight` job fetches origin/main and origin/staging,
-/// classifies the direct tree diff against the approved Release Please
-/// metadata set, and exposes `ready` without ever failing the workflow; an
-/// unready staging skips the release job with an explicit notice and summary.
+/// The direct-topology main release caller targets main only and delegates
+/// the entire release (Release Please manifest handling, guarded auto-merge,
+/// release creation) to the pinned reusable workflow. No staging promotion
+/// preflight exists: there is no staging branch to gate against.
 #[test]
-fn release_caller_preflights_staging_promotion_before_release() {
+fn release_caller_targets_main_without_staging_preflight() {
     let release = read(".github/workflows/release.yml");
 
-    // The guard exists as a job declared before the reusable release job.
-    let preflight = job_block(&release, "preflight");
+    // The caller triggers on pushes to main and nothing else.
+    assert!(
+        release.contains("on:") && release.contains("branches: [main]"),
+        "direct release caller must trigger on push to main:\n{release}"
+    );
+    assert!(
+        !release.contains("staging"),
+        "direct release caller must not reference staging:\n{release}"
+    );
+
+    // No staging promotion preflight job exists in the direct topology.
+    assert!(
+        !release.contains("\n  preflight:"),
+        "direct release caller must not declare a staging preflight job:\n{release}"
+    );
+    assert!(
+        !release.contains("git fetch --no-tags origin main staging"),
+        "direct release caller must not fetch staging:\n{release}"
+    );
+
+    // The release job pins the reusable workflow and its inputs.
     let release_job = job_block(&release, "release");
-    let preflight_pos = release
-        .find("\n  preflight:")
-        .expect("release caller must declare the preflight job");
-    let release_pos = release
-        .find("\n  release:")
-        .expect("release caller must declare the release job");
     assert!(
-        preflight_pos < release_pos,
-        "preflight must run before the release job"
-    );
-    assert!(
-        preflight.contains("name: Release preflight"),
-        "preflight job must be named `Release preflight`:\n{preflight}"
-    );
-    assert!(
-        release_job.contains("needs: preflight"),
-        "release job must depend on the preflight guard:\n{release_job}"
-    );
-    assert!(
-        release_job.contains("if: needs.preflight.outputs.ready == 'true'"),
-        "release job must be skipped (never failed) when preflight reports ready=false:\n{release_job}"
-    );
-
-    // The guard is read-only: job-scoped contents: read, no secrets, and no
-    // push or source sync.
-    let header = job_header(preflight);
-    assert!(
-        header.contains("permissions:") && header.contains("contents: read"),
-        "preflight must be read-only with job-scoped contents: read:\n{header}"
-    );
-    assert!(
-        !preflight.contains("secrets:"),
-        "preflight must not consume secrets:\n{preflight}"
-    );
-    assert!(
-        !preflight.contains("git push"),
-        "preflight must never push or run a source sync:\n{preflight}"
-    );
-
-    // The guard fetches origin/main and origin/staging and classifies the
-    // direct tree diff between them.
-    assert!(
-        preflight.contains("git fetch --no-tags origin main staging"),
-        "preflight must fetch origin/main and origin/staging:\n{preflight}"
-    );
-    assert!(
-        preflight.contains("git diff --quiet origin/main origin/staging")
-            && preflight.contains("git diff --name-only origin/main origin/staging"),
-        "preflight must classify the direct origin/main..origin/staging tree diff:\n{preflight}"
-    );
-
-    // The guard exposes ready=true/ready=false without failing the workflow
-    // and makes an unready release explicit with a notice and job summary.
-    assert!(
-        preflight.contains("ready: ${{ steps.gate.outputs.ready }}"),
-        "preflight must expose the ready output:\n{preflight}"
-    );
-    for token in [
-        "ready=true",
-        "ready=false",
-        "::notice",
-        "GITHUB_STEP_SUMMARY",
-    ] {
-        assert!(
-            preflight.contains(token),
-            "preflight must emit `{token}`:\n{preflight}"
-        );
-    }
-
-    // The release job keeps its pinned reusable workflow, inputs, and secrets
-    // unchanged; the workflow keeps its permissions and concurrency blocks.
-    assert!(
-        release_job
-            .contains("uses: 0xPlayerOne/code-foundry/.github/workflows/release.yml@v0.34.14"),
+        release_job.contains(&format!(
+            "uses: 0xPlayerOne/code-foundry/.github/workflows/release.yml@{RUNTIME_REF}"
+        )),
         "release job must keep the pinned reusable workflow:\n{release_job}"
     );
     for input in [
         "runner: ubuntu-slim",
         "runtime-repository: 0xPlayerOne/code-foundry",
-        "runtime-ref: v0.34.14",
+        &format!("runtime-ref: {RUNTIME_REF}"),
     ] {
         assert!(
             release_job.contains(input),
@@ -634,97 +572,21 @@ fn release_caller_preflights_staging_promotion_before_release() {
             "release caller must keep the `{permission}` permission"
         );
     }
-    assert!(
-        release.contains("group: cortana-release-${{ github.ref }}")
-            && release.contains("cancel-in-progress: true"),
-        "release caller must keep its concurrency coalescing:\n{release}"
-    );
 }
 
-/// The preflight approved-metadata set is exactly the Release Please contract:
-/// the runtime default release files plus every extra-file declared in
-/// release-please-config.json for the single root package. Ordinary source
-/// paths must never be approved, or the gate would let a release run over
-/// unpromoted code.
+/// The Release Please contract is enforced by the pinned reusable release
+/// workflow, not by a caller-level preflight. The direct caller keeps the
+/// stable concurrency group and never adds staging promotion gating.
 #[test]
-fn release_preflight_approved_metadata_matches_release_please_contract() {
+fn release_preflight_metadata_contract_stays_in_runtime() {
     let release = read(".github/workflows/release.yml");
-    let preflight = job_block(&release, "preflight");
-    let marker = "RELEASE_FILES: |";
-    let start = preflight.find(marker).unwrap_or_else(|| {
-        panic!("preflight must declare the RELEASE_FILES metadata list:\n{preflight}")
-    });
-    let tail = &preflight[start + marker.len()..];
-    let end = tail.find("\n        run: |").unwrap_or_else(|| {
-        panic!("RELEASE_FILES list must be followed by the gate run step:\n{preflight}")
-    });
-    let approved: BTreeSet<String> = tail[..end]
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect();
-
-    // Expected set: the runtime default release files plus the config
-    // extra-files. The manifest declares a single root package, so no
-    // per-package directory prefixes apply.
-    let config: Value = serde_json::from_str(&read("release-please-config.json"))
-        .expect("release-please-config.json must parse");
-    let packages = config.get("packages").and_then(Value::as_object);
-    if let Some(packages) = packages {
-        assert!(
-            packages.len() == 1 && packages.contains_key("."),
-            "test assumes a single root package in release-please-config.json"
-        );
-    }
-    let mut expected: BTreeSet<String> = [
-        ".release-please-manifest.json",
-        "CHANGELOG.md",
-        "Cargo.lock",
-        "Cargo.toml",
-        "bun.lock",
-        "bun.lockb",
-        "package-lock.json",
-        "package.json",
-        "pnpm-lock.yaml",
-        "pyproject.toml",
-        "uv.lock",
-        "version.txt",
-        "yarn.lock",
-    ]
-    .into_iter()
-    .map(str::to_string)
-    .collect();
-    for extra in config
-        .get("extra-files")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        let path = extra
-            .get("path")
-            .and_then(Value::as_str)
-            .unwrap_or_else(|| panic!("extra-file entry without a path: {extra}"));
-        expected.insert(path.to_string());
-    }
-    assert_eq!(
-        approved, expected,
-        "preflight RELEASE_FILES must exactly match the approved Release Please metadata contract"
+    assert!(
+        !release.contains("RELEASE_FILES:"),
+        "direct release caller must not duplicate the Release Please metadata contract:\n{release}"
     );
-
-    // Source paths must never be approved by the gate.
-    for source in [
-        "src/api.rs",
-        "src/config.rs",
-        "src/cortana/connectors/google.py",
-        "docs/releases.md",
-        ".github/workflows/release.yml",
-        "tests/test_connectors.py",
-        "apps/desktop/src-tauri/src/main.rs",
-    ] {
-        assert!(
-            !approved.contains(source),
-            "`{source}` is not Release Please metadata and must not be approved"
-        );
-    }
+    assert!(
+        release.contains("uses: 0xPlayerOne/code-foundry/.github/workflows/release.yml@"),
+        "release caller must delegate the release contract to the pinned runtime:\n{release}"
+    );
 }
+

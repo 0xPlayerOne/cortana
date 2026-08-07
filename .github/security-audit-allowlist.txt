@@ -1,0 +1,3 @@
+# js-yaml 3.x/4.x advisory (CVE-2026-59870, GHSA-5p4m-2wfm-xmqj): fix only lands in 5.x and is not backported.
+# Transitive via eslint/@eslintrc; not exploitable in CI. Revisit when eslint moves off js-yaml 4.x.
+GHSA-5p4m-2wfm-xmqj
