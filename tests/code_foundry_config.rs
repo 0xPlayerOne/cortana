@@ -589,4 +589,3 @@ fn release_preflight_metadata_contract_stays_in_runtime() {
         "release caller must delegate the release contract to the pinned runtime:\n{release}"
     );
 }
-
