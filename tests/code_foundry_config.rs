@@ -9,8 +9,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Runtime tag every generated workflow and config line must pin.
-const RUNTIME_REF: &str = "v0.36.0";
+/// Runtime tag every generated workflow and config line must pin. Read from
+/// the adopted config so a runtime bump does not require editing this test.
+fn runtime_ref() -> String {
+    config_value("runtime_ref")
+}
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -57,7 +60,7 @@ fn config_value(key: &str) -> String {
 /// The generated config pins the adopted runtime everywhere.
 #[test]
 fn config_pins_runtime_ref() {
-    assert_eq!(config_value("runtime_ref"), RUNTIME_REF);
+    assert_eq!(config_value("runtime_ref"), runtime_ref());
     assert_eq!(
         config_value("runtime_repository"),
         "0xPlayerOne/code-foundry"
@@ -110,7 +113,8 @@ fn single_canonical_validation_caller() {
     let caller = read(".github/workflows/validation.yml");
     assert!(
         caller.contains(&format!(
-            "uses: 0xPlayerOne/code-foundry/.github/workflows/validation.yml@{RUNTIME_REF}"
+            "uses: 0xPlayerOne/code-foundry/.github/workflows/validation.yml@{}",
+            runtime_ref()
         )),
         "validation caller must reference the configured orchestrator:\n{caller}"
     );
@@ -125,14 +129,16 @@ fn validation_caller_pins_runtime_and_has_no_push_trigger() {
     assert_eq!(
         caller
             .lines()
-            .filter(|line| line.trim().starts_with("ref:") && line.contains(RUNTIME_REF))
+            .filter(|line| line.trim().starts_with("ref:") && line.contains(&runtime_ref()))
             .count(),
         1,
-        "mode checkout must pin {RUNTIME_REF}"
+        "mode checkout must pin {}",
+        runtime_ref()
     );
     assert!(
-        caller.contains(&format!("runtime-ref: {RUNTIME_REF}")),
-        "orchestrator input must pin {RUNTIME_REF}"
+        caller.contains(&format!("runtime-ref: {}", runtime_ref())),
+        "orchestrator input must pin {}",
+        runtime_ref()
     );
     assert!(
         !caller.lines().any(|line| line.trim() == "push:"),
@@ -535,14 +541,15 @@ fn release_caller_targets_main_without_staging_preflight() {
     let release_job = job_block(&release, "release");
     assert!(
         release_job.contains(&format!(
-            "uses: 0xPlayerOne/code-foundry/.github/workflows/release.yml@{RUNTIME_REF}"
+            "uses: 0xPlayerOne/code-foundry/.github/workflows/release.yml@{}",
+            runtime_ref()
         )),
         "release job must keep the pinned reusable workflow:\n{release_job}"
     );
     for input in [
         "runner: ubuntu-slim",
         "runtime-repository: 0xPlayerOne/code-foundry",
-        &format!("runtime-ref: {RUNTIME_REF}"),
+        &format!("runtime-ref: {}", runtime_ref()),
     ] {
         assert!(
             release_job.contains(input),
