@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.17](https://github.com/0xPlayerOne/cortana/compare/v0.29.16...v0.29.17) (2026-08-07)
+
+
+### Maintenance
+
+* **deps:** bump the github-actions group across 1 directory with 4 updates ([6c50d1c](https://github.com/0xPlayerOne/cortana/commit/6c50d1c913eb1b85149caa29f5216bffd9c1427b))
+
 ## [0.29.16](https://github.com/0xPlayerOne/cortana/compare/v0.29.15...v0.29.16) (2026-08-07)
 
 
