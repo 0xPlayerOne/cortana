@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.29.16](https://github.com/0xPlayerOne/cortana/compare/v0.29.15...v0.29.16) (2026-08-07)
+
+
+### Tests
+
+* derive runtime_ref from code-foundry.yml in config tests ([721dbf9](https://github.com/0xPlayerOne/cortana/commit/721dbf9783a56667f830caa51f2b2598b066f0cf))
+
+
+### Maintenance
+
+* **code-foundry:** pin runtime v0.36.1 ([f5bad52](https://github.com/0xPlayerOne/cortana/commit/f5bad52dcc30d272423f164661dc66e98c295eaf))
+* **code-foundry:** pin runtime v0.36.2 ([8fb8f2c](https://github.com/0xPlayerOne/cortana/commit/8fb8f2c281b03b3a22860173dfa9726e664e8c0b))
+
 ## [0.29.15](https://github.com/0xPlayerOne/cortana/compare/v0.29.14...v0.29.15) (2026-08-07)
 
 
