@@ -151,14 +151,13 @@ Keep pull requests focused and reviewable. Include screenshots or recordings for
 
 ## Workflow and check behavior
 
-| Event                                              | Expected automation                                                                   |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Pull request targeting `main`                      | Audit validation: CI, full tests, Security, and CodeQL, ending in `Validation / Gate` |
-| Exact Release Please pull request targeting `main` | Release-policy validation only, ending in `Validation / Gate`                         |
-| Scheduled or manual validation                     | Full audit tier                                                                       |
-| Push to a working branch                           | Draft PR workflow                                                                     |
-| Push to `main`                                     | Release workflow; canonical validation already ran on the merged PR                   |
-
+| Event | Expected automation |
+|------------------------------------------------------------------------------------------------------------------------------------------------|
+| Pull request targeting `main` | Audit validation: CI, full tests, Security, and CodeQL, ending in `Validation / Gate` |
+| Exact Release Please pull request targeting `main` | Release-policy validation only, ending in `Validation / Gate` |
+| Scheduled or manual validation | Full audit tier |
+| Push to a working branch | Draft PR workflow |
+| Push to `main` | Release workflow; canonical validation already ran on the merged PR |
 The single validation caller keys concurrency by event and pull-request head. A newer update to the same pull request cancels its superseded validation run; scheduled and manual audits remain independent. The mode-aware orchestrator fans out only the jobs required by that event and always concludes with the stable aggregate gate.
 
 Required checks are enforced by branch protection rulesets/branch protection. Do not duplicate their checklists in the pull request description; document validation commands and results instead.
@@ -171,11 +170,10 @@ Security checks can be skipped when repository visibility or the GitHub plan doe
 
 ## Review and merge protocol
 
-| Change                    | Target | Merge method                                    | Merge gate                              |
-| ------------------------- | ------ | ----------------------------------------------- | --------------------------------------- |
-| Working branch            | `main` | Squash                                          | All applicable required checks pass     |
+| Change | Target | Merge method | Merge gate |
+|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Working branch | `main` | Squash | All applicable required checks pass |
 | Release Please version PR | `main` | Rebase (`release_merge_strategy`, fails closed) | Validation gate and release policy pass |
-
 Reviewers focus on correctness, security, maintainability, test coverage, operational impact, and compatibility. Authors remain responsible for responding to feedback and verifying the final commit.
 
 ## Security and emergencies
