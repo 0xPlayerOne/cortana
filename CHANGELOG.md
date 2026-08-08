@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.29.19](https://github.com/0xPlayerOne/cortana/compare/v0.29.18...v0.29.19) (2026-08-08)
+
+
+### Bug Fixes
+
+* allowlist nanoid GHSA-2v37-7h3g-55p8 transitive via postcss/Tailwind ([a59c84f](https://github.com/0xPlayerOne/cortana/commit/a59c84f5d65a4886e97186fce3c9032a1e882293))
+
+
+### Maintenance
+
+* **code-foundry:** sync protected docs to v0.37.1 ([ae578e5](https://github.com/0xPlayerOne/cortana/commit/ae578e556277ebdebd642e58cca6f8bd60475356))
+
 ## [0.29.18](https://github.com/0xPlayerOne/cortana/compare/v0.29.17...v0.29.18) (2026-08-07)
 
 
