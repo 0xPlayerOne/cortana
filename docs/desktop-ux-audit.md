@@ -93,9 +93,9 @@ is not part of a visual/UI change.
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence.
 - A model-backed evaluation was attempted against the configured provider without opening a
-  personal index or starting sync/connectors. Route discovery succeeded, but the configured
-  endpoint was unavailable; the run reported `fallback_provider_unavailable` without a model
-  result. Extractive mode remains the safe production default and the provider-backed gate is
+  personal index or starting sync/connectors. The provider model catalog responded, but the
+  synthetic completion produced no result within the 90-second bound. This is not model-backed
+  proof; extractive mode remains the safe production default and the provider-backed gate is
   still open.
 - A bounded source validation sweep (one document, 64 KiB, 15 seconds per source) passed every
   enabled source. Matching non-reconciling trial syncs also passed for every enabled source;

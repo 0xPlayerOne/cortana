@@ -69,9 +69,10 @@ with provider-backed metrics:
 
 The command exits nonzero when model quality thresholds fail.
 
-The current configured-provider attempt discovered the route successfully, but the endpoint was
-unavailable and returned `fallback_provider_unavailable` without a model result. Treat that
-outcome as pending model-backed proof rather than as a successful planner or synthesis evaluation.
+The current configured-provider attempt discovered the route and model catalog successfully, but
+the synthetic completion produced no result within the bounded evaluation window. Treat that
+timeout as pending model-backed proof rather than as a successful planner or synthesis evaluation;
+the extractive fallback remains the safe production mode.
 
 ```toml
 [query]
