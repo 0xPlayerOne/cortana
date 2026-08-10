@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.27](https://github.com/0xPlayerOne/cortana/compare/v0.29.26...v0.29.27) (2026-08-10)
+
+
+### Documentation
+
+* refresh desktop production evidence ([#507](https://github.com/0xPlayerOne/cortana/issues/507)) ([4ddec45](https://github.com/0xPlayerOne/cortana/commit/4ddec454a822c2f9d15af0ccb38434318ed2378f))
+
 ## [0.29.26](https://github.com/0xPlayerOne/cortana/compare/v0.29.25...v0.29.26) (2026-08-10)
 
 
