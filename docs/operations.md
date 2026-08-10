@@ -117,6 +117,19 @@ Credential failures are reported as `authorization denied` without exposing conn
 this includes Google OAuth refresh failures such as `invalid_grant` and a `400` response from the
 Google token endpoint. Re-authorize that source before enabling a recurring schedule.
 
+### Derived-memory sidecars
+
+Hindsight and Honcho are optional, disabled-by-default adapters. They are not wired into normal
+ingestion or query retrieval, and no source content is queued automatically. A drain is an explicit
+operator action through `cortana-memory-sync` with a selected provider, outbox, and token; the
+canonical Cortana store remains the source of truth.
+
+Before enabling either sidecar for personal data, record a passing versioned evaluation and prove
+provider ACL enforcement, deletion propagation, export behavior, and the packaged Desktop path.
+Honcho also requires the append-only/idempotence review described in `docs/memory-honcho.md`.
+Until those gates are reviewed and approved, use Cortana's native `context` MCP tool for agent
+memory and leave both sidecars disabled.
+
 Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
 queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
 evidence; returned rows have no `semantic_rank`. The HTTP search response keeps its evidence-array
