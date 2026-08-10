@@ -83,7 +83,7 @@ is not part of a visual/UI change.
   for recovery (the older v0.29.14 backup remains available as well).
 - The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
   tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
-  Python suite passes 149 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
+  Python suite passes 150 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
   passes. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with `--isolate` so file-local API mocks cannot leak between OAuth suites.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
