@@ -43,14 +43,14 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   installed v0.29.54 core:** an earlier source `339240e` run passed in 20,176 ms and a packaged
+   installed v0.29.56 core:** an earlier source `339240e` run passed in 20,176 ms and a packaged
    v0.29.31 rerun passed in 13,477 ms, but the installed v0.29.33 evaluator failed closed twice with
    invalid model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
-   planner+synthesis citation validation in 22,866 ms. The installed v0.29.54 binary passed the
-   bounded rerun in 12,603 ms with planner and synthesis model use, valid citations, cache reuse,
-   and revision invalidation. Keep extractive mode as the safe production default because model
+   planner+synthesis citation validation in 22,866 ms. The latest installed v0.29.56 binary run
+   passed in 17,728 ms with planner and synthesis model use, valid citations, cache reuse, and
+   revision invalidation. Keep extractive mode as the safe production default because model
    synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
@@ -70,28 +70,42 @@ is not part of a visual/UI change.
    an append-only experimental sink. Neither is enabled for personal data until
    provider ACL, deletion, export, and packaged-UI gates are explicitly proven.
 6. Re-authorize `personal-calendar`: the existing owner-only Google token was migrated into
-   Cortana's configured token location, but the latest bounded validation still failed closed with
-   `authorization denied`. Recurring sync must remain disabled until browser authorization succeeds
-   and the source is revalidated.
+   Cortana's configured token location, but its current refresh token record expired on
+   2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
+   PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d` and release `v0.29.56`
+   is published. The locally installed CLI now uses v0.29.56 and emits reauthorization guidance;
+   the packaged Desktop app remains v0.29.55 because it was not launched or replaced.
+   Recurring sync must remain disabled until browser authorization succeeds and the source is
+   revalidated.
 
 ## Evidence limits
 
-- The audited functional snapshot is v0.29.54 at release commit `6e90d4d`; the latest fully verified
-  release is v0.29.54 with release-assets workflow `31424368047`; the local fail-closed verifier
-  passed all 18 assets,
-  core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
-  updater manifest, the Windows installers, and the published Linux binary check (skipped on
-  this macOS host).
-- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.54`; the packaged Desktop
-  app `/Applications/Cortana.app` remains `cortana 0.29.50` because the signed Desktop bundle has
-  not been installed locally. The installed core passes `cortana doctor`, the v0.29.54 disposable
+### Stale/provider audit (2026-08-10)
+
+- A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
+  remaining `Spark` matches are Lucide `Sparkles` icons used by the Query navigation surface.
+- Rust `clippy --all-targets --all-features -- -D warnings`, Python Ruff/format/mypy, the web
+  type-check, and ESLint all pass on this tree. No generated build/cache directory is tracked.
+- Remaining `legacy` references are active migration, ACL-quarantine, and embedding-generation
+  safety paths. They are not dead Spark-era code; deleting them before existing configurations are
+  migrated would orphan source scopes or weaken the fail-closed migration boundary.
+
+- The audited functional snapshot is v0.29.56 at main commit `b920424`. Release v0.29.56 is
+  published and release-assets workflow `31437673791` completed successfully. The local
+  fail-closed verifier passed the published cross-platform archives, checksums, signatures, and
+  updater manifest; the release contains all 18 expected assets.
+- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.56`; the packaged Desktop
+  app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or replaced.
+  The installed core passes `cortana doctor`, the v0.29.56 disposable
   control-plane drill, and the bounded model-backed gate.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
-  The current-source native Desktop suite passes all 126 tests. The packaged app
+  The current-source native Desktop suite at main commit `b920424` passes all 126 tests. The
+  packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.48`
+  a release blocker; the previous v0.29.50 bundle is retained at
+  `/Users/amf/.Trash/Cortana.app.backup-v0.29.50-20260810-2205`
   for recovery (older v0.29.38, v0.29.37, v0.29.33, v0.29.31, v0.29.29, v0.29.28, v0.29.27,
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
@@ -100,7 +114,10 @@ is not part of a visual/UI change.
   `uv lock --check` pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
-  all 126 tests; the focused `native_` subset passes 24 tests.
+  all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
+  refreshed against the v0.29.56 source tree without launching the Desktop app.
+- The current Rust library suite on the v0.29.56 source tree passes 266 tests with no failures;
+  this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
   headless CI evidence; they do not claim packaged GUI, browser, OS-service, or signed-updater
@@ -108,9 +125,10 @@ is not part of a visual/UI change.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
-  unauthenticated process-liveness check and must not be treated as full readiness evidence. A
-  current run against the installed v0.29.54 configuration passed database integrity, embedding
-  generation/provider, ACL, query API, verified-backup freshness (24 hours within a 48-hour bound),
+  unauthenticated process-liveness check and must not be treated as full readiness evidence. The
+  previous comprehensive readiness run against the installed v0.29.54 configuration passed
+  database integrity, embedding generation/provider, ACL, query API, verified-backup freshness
+  (24 hours within a 48-hour bound),
   query mode, and the safe query-only state with recurring sync not installed; it did not invoke
   source validation because `--allow-sync-service` was not supplied.
 - A separate `cortana readiness --allow-sync-service` run failed closed without contacting any
@@ -118,7 +136,11 @@ is not part of a visual/UI change.
   full-corpus budget, and `personal-calendar` had no successful validation. This is the expected
   safety result; recurring sync remains uninstalled until complete validation and the missing Google
   token are repaired.
-- Release v0.29.54 also carries the fail-closed recurring-sync freshness guard across every
+- The latest headless `scripts/source-smoke.sh` validation-only pass used one document, 65,536
+  bytes, and a 30-second per-source cap: 11 of 12 enabled sources passed. `personal-calendar`
+  failed closed as `authorization denied` because its Google refresh token is expired; no sync was
+  requested and recurring sync remains uninstalled.
+- Release v0.29.56 also carries the fail-closed recurring-sync freshness guard across every
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
@@ -127,9 +149,9 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The installed v0.29.54 core binary also passed the
-  current planner+synthesis citation validation with cache reuse and revision invalidation in 12,603
-  ms. Extractive mode remains the safe production default because
+  output cap was raised for gateway reasoning. The latest installed v0.29.56 core binary also
+  passed the current planner+synthesis citation validation with cache reuse and revision
+  invalidation in 17,728 ms. Extractive mode remains the safe production default because
   synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source; recorded
   before the v0.29.54 core install)
@@ -141,11 +163,17 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A current disposable backup/restore drill against the installed v0.29.54 CLI passed: the live
+- A previous disposable backup/restore drill against the installed v0.29.54 CLI passed: the live
   database backup was verified, restored into a temporary data directory, and SQLite integrity
-  verification passed. The packaged control-plane drill also passed offline init, bounded fixture
+  verification passed. The installed v0.29.56 rerun of the packaged control-plane drill also passed offline init, bounded fixture
   ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
-  Neither drill touched indexed personal data.
+  A separate live v0.29.56 backup/restore drill also passed against the configured database and
+  verified the restored SQLite file; neither drill touched indexed personal data.
+- The source-native headless acceptance probes also passed without starting Tauri: two portable
+  settings export/import redaction and preview tests, plus the backup-path and stopped-service
+  restore guards, all passed against the v0.29.56 source test binary. These checks complement the
+  24-test `native_` OAuth/tray/updater/source-validation subset; they do not substitute for the
+  still-unverified interactive packaged GUI flows.
 - Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
   interactions remain unverified because no callable Computer Use session was available. Native
   handler tests, packaged CLI control-plane, and packaged backup/restore evidence are recorded
