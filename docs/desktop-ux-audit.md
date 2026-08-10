@@ -69,9 +69,10 @@ is not part of a visual/UI change.
    source of truth; Hindsight is the replacement-capable sidecar and Honcho is
    an append-only experimental sink. Neither is enabled for personal data until
    provider ACL, deletion, export, and packaged-UI gates are explicitly proven.
-6. Re-authorize `personal-calendar`: the latest bounded validation failed closed with
-   `credential or path missing` because the personal Google token file is absent. Recurring sync
-   must remain disabled until that credential is repaired and the source is revalidated.
+6. Re-authorize `personal-calendar`: the existing owner-only Google token was migrated into
+   Cortana's configured token location, but the latest bounded validation still failed closed with
+   `authorization denied`. Recurring sync must remain disabled until browser authorization succeeds
+   and the source is revalidated.
 
 ## Evidence limits
 
@@ -130,8 +131,8 @@ is not part of a visual/UI change.
   ms. Extractive mode remains the safe production default because
   synthesis is still an explicit opt-in.
 - The latest bounded v0.29.50 source validation sweep (25 documents, 5 MiB, 60 seconds per source)
-  passed 11 of 12 enabled sources; `personal-calendar`
-  failed closed with `credential or path missing` because the personal Google token file is absent.
+  passed 11 of 12 enabled sources; `personal-calendar` failed closed with `authorization denied`
+  after the existing owner-only token was migrated from Hermes into Cortana's configured location.
   No trial sync was
   run in that sweep. Earlier matching non-reconciling trial syncs passed the then-authorized
   sources, with `work-drive` requiring a 120-second cap for first-embedding warm-up. These are
