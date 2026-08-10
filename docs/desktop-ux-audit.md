@@ -48,9 +48,9 @@ is not part of a visual/UI change.
    invalid model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
-   planner+synthesis citation validation in 22,866 ms. The installed v0.29.54 binary passed the
-   bounded rerun in 12,603 ms with planner and synthesis model use, valid citations, cache reuse,
-   and revision invalidation. Keep extractive mode as the safe production default because model
+   planner+synthesis citation validation in 22,866 ms. The latest installed v0.29.54 binary run
+   passed in 17,468 ms with planner and synthesis model use, valid citations, cache reuse, and
+   revision invalidation. Keep extractive mode as the safe production default because model
    synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
@@ -128,9 +128,9 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The installed v0.29.54 core binary also passed the
-  current planner+synthesis citation validation with cache reuse and revision invalidation in 12,603
-  ms. Extractive mode remains the safe production default because
+  output cap was raised for gateway reasoning. The latest installed v0.29.54 core binary also
+  passed the current planner+synthesis citation validation with cache reuse and revision
+  invalidation in 17,468 ms. Extractive mode remains the safe production default because
   synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source; recorded
   before the v0.29.54 core install)
