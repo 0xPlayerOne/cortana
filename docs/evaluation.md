@@ -90,7 +90,7 @@ v0.29.33 evaluator failed closed twice (8,313 ms and 13,398 ms) after the planne
 configured provider appended an uncited attribution line to the synthesis response. The earlier
 passes are historical evidence, not proof that the current provider is citation-safe. The latest
 source run on the current tree reached the planner but failed closed at synthesis with the stable
-`provider_unavailable` reason after 10,530 ms. Extractive mode remains the safe production default
+`invalid_citations` reason after 9,120 ms. Extractive mode remains the safe production default
 until a current-release model-backed run passes again.
 
 ```toml

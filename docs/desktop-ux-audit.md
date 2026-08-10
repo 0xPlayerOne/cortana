@@ -46,10 +46,10 @@ is not part of a visual/UI change.
    earlier source `339240e` run passed in 20,176 ms and a packaged v0.29.31 rerun passed in
    13,477 ms, but the current packaged v0.29.33 run failed closed twice with invalid model
    citations (8,313 ms and 13,398 ms). The current source now strips only the model-gateway
-   attribution footer when its explicit provider header and exact footer shape agree; the live
-   route still returned `provider_unavailable` at synthesis after 10,530 ms in the latest bounded
-   run, so this gate remains open. Keep extractive mode as the safe production default until the
-   current provider route produces citation-valid synthesis.
+   attribution footer when its explicit provider header and exact footer shape agree; the latest
+   bounded source run reached the planner but failed closed at synthesis with `invalid_citations`
+   after 9,120 ms, so this gate remains open. Keep extractive mode as the safe production default
+   until the current provider route produces citation-valid synthesis.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -73,7 +73,8 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest source is v0.29.35 at `adbb3ff`; the latest fully verified release is v0.29.35
+- The audited `main` snapshot is v0.29.35 at `140511f`; the latest fully verified release at that
+  snapshot is v0.29.35
   with release-assets workflow `31375651449`; the local fail-closed verifier passed all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
@@ -103,9 +104,9 @@ is not part of a visual/UI change.
   starting sync/connectors. The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
-  The latest source run then failed closed with the stable `provider_unavailable` reason after
-  10,530 ms. This is not current-release model-backed proof; extractive mode remains the safe
-  production default and the provider gate is still open.
+  The latest source run reached the planner but failed closed with the stable `invalid_citations`
+  reason after 9,120 ms. This is not current-release model-backed proof; extractive mode remains
+  the safe production default and the provider gate is still open.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
   failed closed with an authorization error from the Google token endpoint. No trial sync was
