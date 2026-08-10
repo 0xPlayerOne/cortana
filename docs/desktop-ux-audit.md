@@ -168,7 +168,8 @@ is not part of a visual/UI change.
   database backup was verified, restored into a temporary data directory, and SQLite integrity
   verification passed. The installed v0.29.56 rerun of the packaged control-plane drill also passed offline init, bounded fixture
   ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
-  Neither drill touched indexed personal data.
+  A separate live v0.29.56 backup/restore drill also passed against the configured database and
+  verified the restored SQLite file; neither drill touched indexed personal data.
 - The source-native headless acceptance probes also passed without starting Tauri: two portable
   settings export/import redaction and preview tests, plus the backup-path and stopped-service
   restore guards, all passed against the v0.29.56 source test binary. These checks complement the
