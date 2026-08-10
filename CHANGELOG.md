@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.52](https://github.com/0xPlayerOne/cortana/compare/v0.29.51...v0.29.52) (2026-08-10)
+
+
+### Tests
+
+* **web:** serialize isolated Bun files ([#560](https://github.com/0xPlayerOne/cortana/issues/560)) ([4b9bab4](https://github.com/0xPlayerOne/cortana/commit/4b9bab49f12dee9311f96640a9f5386d2667fb15))
+
 ## [0.29.51](https://github.com/0xPlayerOne/cortana/compare/v0.29.50...v0.29.51) (2026-08-10)
 
 

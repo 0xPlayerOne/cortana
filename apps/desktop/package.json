@@ -1,6 +1,6 @@
 {
   "name": "@cortana/desktop",
-  "version": "0.29.51",
+  "version": "0.29.52",
   "private": true,
   "type": "module",
   "scripts": {
