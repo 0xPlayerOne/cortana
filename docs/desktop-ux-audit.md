@@ -64,23 +64,20 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest published release is v0.29.20 at `7ebe419`; its release-assets workflow
-  `31357773397` was still in progress when this audit was written, and the fail-closed verifier
-  currently reports the four expected Windows installer assets as missing while that job uploads
-  them. The preceding v0.29.19 run
-  `31232341097` failed only because the verifier expected an obsolete Tauri archive name and
-  rejected the API URLs emitted by `latest.json`; the corrected verifier is now on `main` and
-  passes locally against the published v0.29.19 release: all 18 assets, core checksums, the macOS
-  sidecar/resources bundle, all six minisign updater signatures, the updater manifest, and the
-  published Linux binary check (on Linux) are covered. Record the v0.29.20 workflow result here
-  after it completes; do not infer release health from an in-progress run.
+- The latest published release is v0.29.20 at `7ebe419`; release-assets workflow
+  `31357773397` completed successfully, including the published-release verifier. The local
+  fail-closed verifier also passes: all 18 assets, core checksums, the macOS sidecar/resources
+  bundle, all six minisign updater signatures, the updater manifest, the Windows installers, and
+  the published Linux binary check (on Linux) are covered. The preceding v0.29.19 run
+  `31232341097` failed only because the old verifier expected an obsolete Tauri archive name and
+  rejected the API URLs emitted by `latest.json`; that verifier bug is now fixed on `main`.
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` still report `cortana 0.29.19` (the locally verified build); the CLI passes `cortana doctor`, the
+  `/Applications/Cortana.app` now report `cortana 0.29.20`; the CLI passes `cortana doctor`, the
   offline evaluation checks, and the disposable desktop control-plane drill. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.14`
-  for recovery.
+  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.19`
+  for recovery (the older v0.29.14 backup remains available as well).
 - The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
   tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
   Python suite passes 149 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
