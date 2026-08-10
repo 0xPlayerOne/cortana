@@ -91,10 +91,9 @@ is not part of a visual/UI change.
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
 - The audited functional snapshot is v0.29.56 at main commit `b920424`. Release v0.29.56 is
-  published, but its release-assets workflow `31437673791` is still in progress with 8 of 18
-  assets available. The local fail-closed verifier passed the published aarch64 macOS core
-  archive's checksum and structure; full cross-platform asset, signature, and manifest verification
-  remains open until the workflow completes.
+  published and release-assets workflow `31437673791` completed successfully. The local
+  fail-closed verifier passed the published cross-platform archives, checksums, signatures, and
+  updater manifest; the release contains all 18 expected assets.
 - The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.56`; the packaged Desktop
   app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or replaced.
   The installed core passes `cortana doctor`, the v0.29.56 disposable
@@ -116,7 +115,7 @@ is not part of a visual/UI change.
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
-  refreshed against the v0.29.55 source tree without launching the Desktop app.
+  refreshed against the v0.29.56 source tree without launching the Desktop app.
 - The current Rust library suite on the v0.29.56 source tree passes 266 tests with no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its

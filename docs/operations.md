@@ -234,12 +234,12 @@ the attempt budget is capped at five and the retry delay at 60 seconds. Set
 `CORTANA_DOWNLOAD_RETRY_DELAY=0` for fast offline tests. Exhausting the budget still fails the
 release gate, so missing or invalid assets are never hidden.
 
-Published v0.29.56 is the current release, but its release-assets run `31437673791` remains in
-progress with 8 of 18 assets available. The local verifier passed the published aarch64 macOS core
-archive's checksum and structure, and the installed CLI reports `cortana 0.29.56`; full
-cross-platform asset, signature, and updater-manifest verification remains open until the run
-completes. The packaged Desktop app at `/Applications/Cortana.app` remains v0.29.55; its bounded
-control-plane, recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
+Published v0.29.56 is the current release, and its release-assets run `31437673791` completed
+successfully with all 18 expected assets. The local verifier passed the published cross-platform
+archives, checksums, signatures, and updater manifest, and the installed CLI reports
+`cortana 0.29.56`. The packaged Desktop app at `/Applications/Cortana.app` remains v0.29.55;
+its bounded control-plane, recovery, and model-backed checks are recorded in
+`docs/desktop-ux-audit.md`.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
