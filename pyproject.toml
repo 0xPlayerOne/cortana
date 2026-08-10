@@ -17,7 +17,7 @@ cortana-memory-sync = "cortana.memory.cli:entrypoint"
 
 [project.optional-dependencies]
 ingestion = [
-  "pypdf[crypto]>=6.14.2,<7",
+  "pypdf[crypto]>=6.15.0,<7",
 ]
 hindsight = ["hindsight-api>=0.8.5,<0.9"]
 

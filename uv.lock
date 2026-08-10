@@ -680,7 +680,7 @@ dev = [
 requires-dist = [
     { name = "hindsight-api", marker = "extra == 'hindsight'", specifier = ">=0.8.5,<0.9" },
     { name = "httpx", specifier = ">=0.28,<1" },
-    { name = "pypdf", extras = ["crypto"], marker = "extra == 'ingestion'", specifier = ">=6.14.2,<7" },
+    { name = "pypdf", extras = ["crypto"], marker = "extra == 'ingestion'", specifier = ">=6.15.0,<7" },
 ]
 provides-extras = ["ingestion", "hindsight"]
 
