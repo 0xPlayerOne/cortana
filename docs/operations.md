@@ -215,6 +215,11 @@ installs Ubuntu's `minisign` package and sets `CORTANA_REQUIRE_MINISIGN=1`, so t
 if the verifier is unavailable. Local invocations keep the portable default and skip the
 cryptographic check on hosts without `minisign`.
 
+Each release-asset download uses a bounded three-attempt retry for transient transport failures;
+the attempt budget is capped at five and the retry delay at 60 seconds. Set
+`CORTANA_DOWNLOAD_RETRY_DELAY=0` for fast offline tests. Exhausting the budget still fails the
+release gate, so missing or invalid assets are never hidden.
+
 Published v0.29.38 has 18 release assets; release-assets run `31385685250` completed successfully
 with core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
 updater manifest, and the published Linux binary version verified. The Linux binary `--version`
