@@ -87,11 +87,19 @@ signed_archives=(
 download_attempts="${CORTANA_DOWNLOAD_ATTEMPTS:-3}"
 download_retry_delay="${CORTANA_DOWNLOAD_RETRY_DELAY:-2}"
 if ! [[ "$download_attempts" =~ ^[1-9][0-9]*$ ]]; then
-    echo "CORTANA_DOWNLOAD_ATTEMPTS must be a positive integer" >&2
+    echo "CORTANA_DOWNLOAD_ATTEMPTS must be a positive integer no greater than 5" >&2
+    exit 2
+fi
+if ((download_attempts > 5)); then
+    echo "CORTANA_DOWNLOAD_ATTEMPTS must be a positive integer no greater than 5" >&2
     exit 2
 fi
 if ! [[ "$download_retry_delay" =~ ^[0-9]+$ ]]; then
-    echo "CORTANA_DOWNLOAD_RETRY_DELAY must be a non-negative integer" >&2
+    echo "CORTANA_DOWNLOAD_RETRY_DELAY must be a non-negative integer no greater than 60" >&2
+    exit 2
+fi
+if ((download_retry_delay > 60)); then
+    echo "CORTANA_DOWNLOAD_RETRY_DELAY must be a non-negative integer no greater than 60" >&2
     exit 2
 fi
 

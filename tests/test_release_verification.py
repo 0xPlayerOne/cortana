@@ -316,6 +316,7 @@ def run_desktop_verify(
     invalid_archive: str | None = None,
     fail_downloads: int = 0,
     always_fail_download: bool = False,
+    download_attempts: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     fake_gh(bin_dir, assets)
@@ -343,6 +344,8 @@ def run_desktop_verify(
         env["FAKE_GH_FAIL_DOWNLOADS"] = str(fail_downloads)
     if always_fail_download:
         env["FAKE_GH_ALWAYS_FAIL_DOWNLOAD"] = "1"
+    if download_attempts is not None:
+        env["CORTANA_DOWNLOAD_ATTEMPTS"] = download_attempts
     if minisign_mode is None:
         env["CORTANA_MINISIGN_BIN"] = "missing-test-minisign"
     if require_minisign:
@@ -434,6 +437,16 @@ def test_desktop_verify_fails_after_bounded_release_download_retries(
 
     assert result.returncode == 1
     assert "failed after 3 attempts" in result.stderr
+
+
+@requires_shell
+def test_desktop_verify_rejects_unbounded_retry_budget(tmp_path: Path) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+
+    result = run_desktop_verify(tmp_path, assets, download_attempts="6")
+
+    assert result.returncode == 2
+    assert "no greater than 5" in result.stderr
 
 
 @requires_shell
