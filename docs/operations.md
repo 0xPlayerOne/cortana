@@ -143,8 +143,10 @@ cortana --config ~/.config/cortana/config.toml backup
 cortana --config ~/.config/cortana/config.toml verify /path/to/snapshot.sqlite3
 ```
 
-Stop the server before recovery. Restore requires explicit confirmation and automatically preserves
-the previous database as a verified `pre-restore-*.sqlite3` snapshot:
+Stop the server before recovery. `restore` refuses to run while a Cortana sync holds the index
+lock (the same `sync.lock` that guards backups), so a scheduled sync job cannot race the
+replacement. Restore requires explicit confirmation and automatically preserves the previous
+database as a verified `pre-restore-*.sqlite3` snapshot:
 
 ```bash
 cortana service uninstall
