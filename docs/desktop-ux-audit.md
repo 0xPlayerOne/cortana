@@ -149,6 +149,11 @@ is not part of a visual/UI change.
   verification passed. The packaged control-plane drill also passed offline init, bounded fixture
   ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
   Neither drill touched indexed personal data.
+- The source-native headless acceptance probes also passed without starting Tauri: two portable
+  settings export/import redaction and preview tests, plus the backup-path and stopped-service
+  restore guards, all passed against the v0.29.55 source test binary. These checks complement the
+  24-test `native_` OAuth/tray/updater/source-validation subset; they do not substitute for the
+  still-unverified interactive packaged GUI flows.
 - Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
   interactions remain unverified because no callable Computer Use session was available. Native
   handler tests, packaged CLI control-plane, and packaged backup/restore evidence are recorded
