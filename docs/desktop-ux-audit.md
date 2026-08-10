@@ -69,21 +69,21 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest source is v0.29.30 at `f65669c` (docs-only; its release assets may still be
-  building). The latest fully verified release is v0.29.29 at `4d1f9d3` with release-assets
-  workflow `31367727689`; the local fail-closed verifier passed all 18 assets, core checksums, the
-  macOS sidecar/resources bundle, all six minisign updater signatures, the updater manifest, the
-  Windows installers, and the published Linux binary check (on Linux).
+- The latest source is v0.29.31 at `87e0cdd`. The latest fully verified release is v0.29.31
+  with release-assets workflow `31370112236`; the local fail-closed verifier passed all 18 assets,
+  core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
+  updater manifest, the Windows installers, and the published Linux binary check (skipped on
+  this macOS host).
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.29`; both pass `cortana doctor` and full
-  `cortana readiness`, and the v0.29.29 packaged control-plane and backup/restore drills.
+  `/Applications/Cortana.app` now report `cortana 0.29.31`; both pass `cortana doctor` and full
+  `cortana readiness`, and the v0.29.31 packaged control-plane and backup/restore drills.
   The current-source native acceptance subset passes 24 tests (126 native tests are listed
   in the full suite). The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.27`
-  for recovery (older v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
-  available as well).
+  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.29`
+  for recovery (older v0.29.28, v0.29.27, v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20,
+  v0.29.19, and v0.29.14 backups remain available as well).
 - The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
   tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
   Python suite passes 153 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
@@ -98,11 +98,11 @@ is not part of a visual/UI change.
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence.
 - A model-backed evaluation was attempted against the configured provider without opening a
-  personal index or starting sync/connectors. The provider model catalog responded, but the
-  bounded synthetic evaluation and a direct 18-second completion probe received no response. The
-  current main/v0.29.29 evaluator emitted `fallback_provider_unavailable` at 30,005 ms and exited
-  nonzero without repeating provider calls. This is not model-backed proof; extractive mode
-  remains the safe production default and the provider-backed gate is still open.
+  personal index or starting sync/connectors. The provider model catalog and planner responded,
+  but synthesis failed closed through the configured `auto-free` route in 10,985 ms. The bounded
+  evaluator emitted `fallback_provider_unavailable` and exited nonzero without repeating provider
+  calls. This is not model-backed proof; extractive mode remains the safe production default and
+  the provider-backed gate is still open.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
   failed closed with an authorization error from the Google token endpoint. No trial sync was
@@ -111,7 +111,7 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A disposable backup/restore drill passed against the installed v0.29.29 packaged CLI: the verified
+- A disposable backup/restore drill passed against the installed v0.29.31 packaged CLI: the verified
   backup restored into a temporary data directory and SQLite integrity verification passed. The
   drill did not touch indexed personal data.
 - Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
