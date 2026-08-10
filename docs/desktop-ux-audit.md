@@ -70,7 +70,7 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest source is v0.29.31 at `87e0cdd`. The latest fully verified release is v0.29.31
+- The latest source is v0.29.33 at `ba4ae78`. The latest fully verified release is still v0.29.31
   with release-assets workflow `31370112236`; the local fail-closed verifier passed all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
