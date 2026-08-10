@@ -69,14 +69,14 @@ is not part of a visual/UI change.
    source of truth; Hindsight is the replacement-capable sidecar and Honcho is
    an append-only experimental sink. Neither is enabled for personal data until
    provider ACL, deletion, export, and packaged-UI gates are explicitly proven.
-6. Re-authorize `personal-calendar`: the latest bounded validation received an
-   authorization failure from Google's token endpoint, so recurring sync must remain disabled
-   until that credential is repaired and the source is revalidated.
+6. Re-authorize `personal-calendar`: the latest bounded validation failed closed with
+   `credential or path missing` because the personal Google token file is absent. Recurring sync
+   must remain disabled until that credential is repaired and the source is revalidated.
 
 ## Evidence limits
 
 - The audited functional snapshot is v0.29.43 at release commit `1ef07dd`; the latest fully verified
-  release is v0.29.45 at release commit `aec151a` with release-assets workflow `31394028819`; the
+  release is v0.29.47 at release commit `6728b4c` with release-assets workflow `31397369311`; the
   local fail-closed verifier
   passed all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
@@ -105,7 +105,16 @@ is not part of a visual/UI change.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
-  unauthenticated process-liveness check and must not be treated as full readiness evidence.
+  unauthenticated process-liveness check and must not be treated as full readiness evidence. A
+  current run against the installed v0.29.43 configuration passed database integrity, embedding
+  generation/provider, ACL, query API, verified-backup freshness (18 hours within a 48-hour bound),
+  query mode, and the safe query-only state with recurring sync not installed; it did not invoke
+  source validation because `--allow-sync-service` was not supplied.
+- A separate `cortana readiness --allow-sync-service` run failed closed without contacting any
+  connector: every legacy/filesystem/code validation was a bounded sample or below the configured
+  full-corpus budget, and `personal-calendar` had no successful validation. This is the expected
+  safety result; recurring sync remains uninstalled until complete validation and the missing Google
+  token are repaired.
 - A model-backed evaluation ran against the configured provider without opening a personal index or
   starting sync/connectors. The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
