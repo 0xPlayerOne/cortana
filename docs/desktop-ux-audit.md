@@ -89,7 +89,8 @@ is not part of a visual/UI change.
   control-plane drill, and the bounded model-backed gate.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
-  The current-source native Desktop suite passes all 126 tests. The packaged app
+  The current-source native Desktop suite at main commit `984e676` passes all 126 tests. The
+  packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
   a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.48`
@@ -101,7 +102,8 @@ is not part of a visual/UI change.
   `uv lock --check` pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
-  all 126 tests; the focused `native_` subset passes 24 tests.
+  all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
+  refreshed against the v0.29.55 source tree without launching the Desktop app.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
   headless CI evidence; they do not claim packaged GUI, browser, OS-service, or signed-updater
