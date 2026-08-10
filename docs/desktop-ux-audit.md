@@ -42,10 +42,11 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Prove the persistent configured query provider with a model-backed evaluation. Route
-   discovery succeeds, but the configured endpoint is unavailable. The evaluator now returns a
-   bounded `fallback_provider_unavailable` report within its 30-second audit ceiling, without a
-   model result, so extractive mode remains the safe production default.
+2. Prove the persistent configured query provider with a model-backed evaluation. **Done (bounded):**
+   the source at `339240e` passed the synthetic planner+synthesis gate in 20,176 ms, with valid
+   citations, expected evidence, no forbidden citations, a cache hit, and cache invalidation after
+   an update. A packaged v0.29.31 rerun also passed in 13,477 ms. Extractive mode remains the safe
+   production default unless model synthesis is explicitly enabled.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -97,12 +98,12 @@ is not part of a visual/UI change.
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence.
-- A model-backed evaluation was attempted against the configured provider without opening a
-  personal index or starting sync/connectors. The provider model catalog and planner responded,
-  but synthesis failed closed through the configured `auto-free` route in 10,985 ms. The bounded
-  evaluator emitted `fallback_provider_unavailable` and exited nonzero without repeating provider
-  calls. This is not model-backed proof; extractive mode remains the safe production default and
-  the provider-backed gate is still open.
+- A model-backed evaluation ran against the configured provider without opening a personal index or
+  starting sync/connectors. The source at `339240e` passed in 20,176 ms: planner and synthesis ran,
+  citations were valid, expected evidence was present, forbidden citations were absent, and cache
+  hit/invalidation checks passed. The packaged v0.29.31 rerun passed in 13,477 ms. These are
+  synthetic-fixture checks rather than a claim that every future provider request will succeed;
+  extractive mode remains the safe production default and the provider gate is now evidenced.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
   failed closed with an authorization error from the Google token endpoint. No trial sync was

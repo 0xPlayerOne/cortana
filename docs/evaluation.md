@@ -76,11 +76,12 @@ provider outage for cache and post-update checks.
 
 The command exits nonzero when model quality thresholds fail.
 
-The latest configured-provider attempt discovered the route and model catalog and completed the
-synthetic planner call, but synthesis failed closed through the local `auto-free` route in 10,985
-ms. The bounded evaluator returned a `fallback_provider_unavailable` report without repeating the
-outage. Treat that failure as pending model-backed proof rather than as a successful planner or
-synthesis evaluation; the extractive fallback remains the safe production mode.
+The latest configured-provider attempt at source commit `339240e` passed the bounded model gate in
+20,176 ms. Both planner and synthesis used the configured model, citations were valid, expected
+evidence was present, forbidden citations were absent, and the evaluator verified both a cache hit
+and invalidation after an update without entering fallback mode. A packaged v0.29.31 rerun also
+passed in 13,477 ms. These are synthetic-fixture checks only; extractive mode remains the safe
+production default when model synthesis is not explicitly enabled.
 
 ```toml
 [query]
