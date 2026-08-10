@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.37](https://github.com/0xPlayerOne/cortana/compare/v0.29.36...v0.29.37) (2026-08-10)
+
+
+### Bug Fixes
+
+* **scripts:** guard recovery drill cleanup ([#528](https://github.com/0xPlayerOne/cortana/issues/528)) ([a19fc3b](https://github.com/0xPlayerOne/cortana/commit/a19fc3be4c698cb721435bfc1a71adef52d1f944))
+
 ## [0.29.36](https://github.com/0xPlayerOne/cortana/compare/v0.29.35...v0.29.36) (2026-08-10)
 
 
