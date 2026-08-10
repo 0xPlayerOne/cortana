@@ -67,13 +67,14 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest published release is v0.29.22 at `cde02f3`; release-assets workflow
-  `31359846781` was still running at this audit, so downloaded v0.29.22 verification and
-  installation are not claimed. v0.29.21's release-assets workflow `31359181623` completed
-  successfully and the local fail-closed verifier passed all 18 assets, core checksums, the
-  macOS sidecar/resources bundle, all six minisign updater signatures, the updater manifest,
-  the Windows installers, and the published Linux binary check (on Linux). v0.29.20 remains
-  the installed build; its release-assets workflow `31357773397` also completed successfully.
+- The latest published release is v0.29.23 at `91cb97b`; release-assets workflow
+  `31360589480` was still running at this audit (the preceding v0.29.22 run `31359846781`
+  was also still running), so downloaded v0.29.23 verification and installation are not
+  claimed. v0.29.21's release-assets workflow `31359181623` completed successfully and the
+  local fail-closed verifier passed all 18 assets, core checksums, the macOS sidecar/resources
+  bundle, all six minisign updater signatures, the updater manifest, the Windows installers,
+  and the published Linux binary check (on Linux). v0.29.20 remains the installed build; its
+  release-assets workflow `31357773397` also completed successfully.
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
   `/Applications/Cortana.app` now report `cortana 0.29.20`; the CLI passes `cortana doctor`, the
   offline evaluation checks, and the disposable desktop control-plane drill. The packaged app
