@@ -43,13 +43,13 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   installed v0.29.55 core:** an earlier source `339240e` run passed in 20,176 ms and a packaged
+   installed v0.29.56 core:** an earlier source `339240e` run passed in 20,176 ms and a packaged
    v0.29.31 rerun passed in 13,477 ms, but the installed v0.29.33 evaluator failed closed twice with
    invalid model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
-   planner+synthesis citation validation in 22,866 ms. The latest installed v0.29.55 binary run
-   passed in 18,190 ms with planner and synthesis model use, valid citations, cache reuse, and
+   planner+synthesis citation validation in 22,866 ms. The latest installed v0.29.56 binary run
+   passed in 17,728 ms with planner and synthesis model use, valid citations, cache reuse, and
    revision invalidation. Keep extractive mode as the safe production default because model
    synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
@@ -73,8 +73,8 @@ is not part of a visual/UI change.
    Cortana's configured token location, but its current refresh token record expired on
    2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
    PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d` and release `v0.29.56`
-   is published; the locally installed `v0.29.55` binary still needs that release before its
-   connector output changes.
+   is published. The locally installed CLI now uses v0.29.56 and emits reauthorization guidance;
+   the packaged Desktop app remains v0.29.55 because it was not launched or replaced.
    Recurring sync must remain disabled until browser authorization succeeds and the source is
    revalidated.
 
@@ -90,19 +90,18 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The audited functional snapshot is v0.29.55 at main commit `984e676`. The latest fully verified
-  release is v0.29.55;
-  release-assets workflow `31435056623` passed all 18 assets. The local fail-closed verifier passed
-  core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
-  updater manifest, the Windows installers, and the published Linux binary check (skipped on
-  this macOS host).
-- The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` both report `cortana 0.29.55`. The installed core passes
-  `cortana doctor`, the v0.29.55 disposable
+- The audited functional snapshot is v0.29.56 at main commit `b920424`. Release v0.29.56 is
+  published, but its release-assets workflow `31437673791` is still in progress with 8 of 18
+  assets available. The local fail-closed verifier passed the published aarch64 macOS core
+  archive's checksum and structure; full cross-platform asset, signature, and manifest verification
+  remains open until the workflow completes.
+- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.56`; the packaged Desktop
+  app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or replaced.
+  The installed core passes `cortana doctor`, the v0.29.56 disposable
   control-plane drill, and the bounded model-backed gate.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
-  The current-source native Desktop suite at main commit `984e676` passes all 126 tests. The
+  The current-source native Desktop suite at main commit `b920424` passes all 126 tests. The
   packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
@@ -151,9 +150,9 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The latest installed v0.29.55 core binary also
+  output cap was raised for gateway reasoning. The latest installed v0.29.56 core binary also
   passed the current planner+synthesis citation validation with cache reuse and revision
-  invalidation in 18,190 ms. Extractive mode remains the safe production default because
+  invalidation in 17,728 ms. Extractive mode remains the safe production default because
   synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source; recorded
   before the v0.29.54 core install)
@@ -167,12 +166,12 @@ is not part of a visual/UI change.
   explicitly approved.
 - A previous disposable backup/restore drill against the installed v0.29.54 CLI passed: the live
   database backup was verified, restored into a temporary data directory, and SQLite integrity
-  verification passed. The installed v0.29.55 rerun of the packaged control-plane drill also passed offline init, bounded fixture
+  verification passed. The installed v0.29.56 rerun of the packaged control-plane drill also passed offline init, bounded fixture
   ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
   Neither drill touched indexed personal data.
 - The source-native headless acceptance probes also passed without starting Tauri: two portable
   settings export/import redaction and preview tests, plus the backup-path and stopped-service
-  restore guards, all passed against the v0.29.55 source test binary. These checks complement the
+  restore guards, all passed against the v0.29.56 source test binary. These checks complement the
   24-test `native_` OAuth/tray/updater/source-validation subset; they do not substitute for the
   still-unverified interactive packaged GUI flows.
 - Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
