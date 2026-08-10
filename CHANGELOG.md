@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.56](https://github.com/0xPlayerOne/cortana/compare/v0.29.55...v0.29.56) (2026-08-10)
+
+
+### Bug Fixes
+
+* **google:** explain expired authorization failures ([#571](https://github.com/0xPlayerOne/cortana/issues/571)) ([4f7f32d](https://github.com/0xPlayerOne/cortana/commit/4f7f32dc7bc325a125d9f443999bae91578d3dd4))
+
 ## [0.29.55](https://github.com/0xPlayerOne/cortana/compare/v0.29.54...v0.29.55) (2026-08-10)
 
 
