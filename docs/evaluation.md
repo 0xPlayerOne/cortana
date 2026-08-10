@@ -68,9 +68,11 @@ with provider-backed metrics:
 - `latency_ms`, `deadline_ms`
 
 The opt-in model gate applies a 30-second in-memory ceiling to the answer and provider request
-timeouts, independent of the interactive query budget. When the first planner or synthesis call
-fails closed, the evaluator emits the failure report without repeating the same provider outage
-for cache and post-update checks.
+timeouts, independent of the interactive query budget. It also caps the synthetic prompt context
+at 2,048 tokens and the generated answer at 128 tokens, so a large personal query configuration
+cannot turn this fixture-only check into a production load test. When the first planner or
+synthesis call fails closed, the evaluator emits the failure report without repeating the same
+provider outage for cache and post-update checks.
 
 The command exits nonzero when model quality thresholds fail.
 
