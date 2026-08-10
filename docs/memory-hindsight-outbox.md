@@ -30,6 +30,10 @@ that is intentionally disabled by default:
 - `HindsightHttpProvider` uses documented retain/delete endpoints with bank scope and
   preserves a configured HTTP base URL.
 
+The adapter uses Cortana's existing `httpx` dependency directly. The project does not install the
+heavy Hindsight server SDK as an optional extra; the sidecar remains a bounded, explicitly invoked
+HTTP integration.
+
 ## Hindsight contract notes
 
 - retain: `POST /v1/default/banks/{bank}/memories/retain`

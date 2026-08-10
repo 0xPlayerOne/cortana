@@ -294,6 +294,8 @@ Honcho now has a bounded session adapter behind the same durable outbox. Neither
 record: source evidence, provenance, permissions, and retrieval remain native to Cortana. Both
 remain disabled until the versioned evaluation, replacement, and deletion/ACL gates pass; see the [Hindsight
 outbox guide](docs/memory-hindsight-outbox.md) and [Honcho adapter contract](docs/memory-honcho.md).
+The adapters use Cortana's bounded HTTP clients directly; no heavyweight provider SDK is installed
+by the default or ingestion dependency sets.
 
 ## Development
 
