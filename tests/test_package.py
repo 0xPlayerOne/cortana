@@ -57,3 +57,14 @@ def test_release_manifest_has_one_shared_application_version() -> None:
         f'name = "cortana-desktop"\nversion = "{manifest["."]}" # x-release-please-version'
         in desktop_lock_text
     )
+    for script_name in (
+        "build",
+        "build:release",
+        "bundle:mac",
+        "check",
+        "clippy",
+        "dev",
+        "test",
+        "test:native",
+    ):
+        assert "../../scripts/run-desktop-command.mjs" in desktop["scripts"][script_name]
