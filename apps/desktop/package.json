@@ -4,17 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tauri build --no-bundle",
-    "build:release": "tauri build",
-    "bundle:mac": "tauri build --bundles app --no-sign --config '{\"bundle\":{\"createUpdaterArtifacts\":false}}'",
+    "build": "node ../../scripts/run-desktop-command.mjs bun tauri build --no-bundle",
+    "build:release": "node ../../scripts/run-desktop-command.mjs bun tauri build",
+    "bundle:mac": "node ../../scripts/run-desktop-command.mjs bun tauri build --bundles app --no-sign --config '{\"bundle\":{\"createUpdaterArtifacts\":false}}'",
     "prepare:resources": "node ../../scripts/prepare-desktop-resources.mjs",
     "prepare:sidecar": "bun ../../scripts/prepare-desktop-sidecar.mjs",
-    "check": "bun run prepare:resources && bun run prepare:sidecar && cargo check --manifest-path src-tauri/Cargo.toml",
-    "clippy": "bun run prepare:resources && bun run prepare:sidecar && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
-    "dev": "tauri dev",
+    "check": "bun run prepare:resources && bun run prepare:sidecar && node ../../scripts/run-desktop-command.mjs cargo check --manifest-path src-tauri/Cargo.toml",
+    "clippy": "bun run prepare:resources && bun run prepare:sidecar && node ../../scripts/run-desktop-command.mjs cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
+    "dev": "node ../../scripts/run-desktop-command.mjs bun tauri dev",
     "info": "tauri info",
-    "test": "bun run prepare:resources && bun run prepare:sidecar && cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features",
-    "test:native": "bun run prepare:resources && bun run prepare:sidecar && cargo test --manifest-path src-tauri/Cargo.toml native_"
+    "test": "bun run prepare:resources && bun run prepare:sidecar && node ../../scripts/run-desktop-command.mjs cargo test --manifest-path src-tauri/Cargo.toml --all-targets --all-features",
+    "test:native": "bun run prepare:resources && bun run prepare:sidecar && node ../../scripts/run-desktop-command.mjs cargo test --manifest-path src-tauri/Cargo.toml native_"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4"

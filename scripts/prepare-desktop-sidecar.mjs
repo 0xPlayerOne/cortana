@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
-import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+
+import { hasReleasePleaseAnnotation, restoreReleasePleaseAnnotation } from './desktop-lockfile.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const release = process.argv.includes('--release')
@@ -48,23 +50,4 @@ function capture(command, args) {
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: root, stdio: 'inherit' })
   if (result.status !== 0) throw new Error(`${command} failed with status ${result.status}`)
-}
-
-function hasReleasePleaseAnnotation(path) {
-  try {
-    return /name = "cortana-desktop"\nversion = "[^"]+" # x-release-please-version\n/.test(
-      readFileSync(path, 'utf8')
-    )
-  } catch {
-    return false
-  }
-}
-
-function restoreReleasePleaseAnnotation(path) {
-  const source = readFileSync(path, 'utf8')
-  const restored = source.replace(
-    /(name = "cortana-desktop"\nversion = "[^"]+")(?! # x-release-please-version)\n/,
-    '$1 # x-release-please-version\n'
-  )
-  if (restored !== source) writeFileSync(path, restored)
 }
