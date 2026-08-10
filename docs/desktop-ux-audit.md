@@ -77,6 +77,16 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
+### Stale/provider audit (2026-08-10)
+
+- A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
+  remaining `Spark` matches are Lucide `Sparkles` icons used by the Query navigation surface.
+- Rust `clippy --all-targets --all-features -- -D warnings`, Python Ruff/format/mypy, the web
+  type-check, and ESLint all pass on this tree. No generated build/cache directory is tracked.
+- Remaining `legacy` references are active migration, ACL-quarantine, and embedding-generation
+  safety paths. They are not dead Spark-era code; deleting them before existing configurations are
+  migrated would orphan source scopes or weaken the fail-closed migration boundary.
+
 - The audited functional snapshot is v0.29.55 at main commit `984e676`. The latest fully verified
   release is v0.29.55;
   release-assets workflow `31435056623` passed all 18 assets. The local fail-closed verifier passed
