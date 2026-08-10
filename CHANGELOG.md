@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.29.54](https://github.com/0xPlayerOne/cortana/compare/v0.29.53...v0.29.54) (2026-08-10)
+
+
+### Bug Fixes
+
+* bound control-plane health checks ([512fb5f](https://github.com/0xPlayerOne/cortana/commit/512fb5f6be71ad576bfd497db5d556c1cf0effab))
+* keep the control-plane read connection stable ([01d551a](https://github.com/0xPlayerOne/cortana/commit/01d551aa41b8585da6662a5c781fa0a7c98cba10))
+
+
+### Tests
+
+* cover bounded readiness response ([e2b65ab](https://github.com/0xPlayerOne/cortana/commit/e2b65abc0da3f91d36c8efee9a8036f60ae55953))
+
 ## [0.29.53](https://github.com/0xPlayerOne/cortana/compare/v0.29.52...v0.29.53) (2026-08-10)
 
 
