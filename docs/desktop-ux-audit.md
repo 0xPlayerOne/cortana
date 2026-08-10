@@ -37,9 +37,11 @@ is not part of a visual/UI change.
 
 ## Production blockers before calling the Desktop complete
 
-1. Complete packaged GUI/browser OAuth, service/tray, updater, import/export, backup and
-   restore drills on a supported signed Desktop build. These packaged-app manual drills remain
-   unverified because no computer-use tool was available for the required GUI checks.
+1. Complete packaged GUI/browser OAuth, tray/menu, native file-dialog import/export, and
+   signed-updater drills on a supported Developer ID/notarized Desktop build. The packaged CLI
+   control-plane and backup/restore paths are now verified, and the native acceptance suite covers
+   the command handlers; the GUI-only portions remain unverified because no callable Computer Use
+   session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. Route
    discovery succeeded, but the configured endpoint was unavailable and the evaluation reported
    `fallback_provider_unavailable` without a model result, so extractive mode remains the safe
@@ -68,19 +70,19 @@ is not part of a visual/UI change.
 ## Evidence limits
 
 - The latest published release is v0.29.23 at `91cb97b`; release-assets workflow
-  `31360589480` was still running at this audit, so downloaded v0.29.23 verification and
-  installation are not claimed. The preceding v0.29.22 run `31359846781` completed
-  successfully and its local fail-closed verifier passed all 18 assets, core checksums, the
-  macOS sidecar/resources bundle, all six minisign updater signatures, the updater manifest,
-  the Windows installers, and the published Linux binary check (on Linux). v0.29.20's
-  release-assets workflow `31357773397` also completed successfully.
+  `31360589480` completed successfully. Its local fail-closed verifier passed all 18 assets,
+  core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
+  updater manifest, the Windows installers, and the published Linux binary check (on Linux).
+  Earlier v0.29.22 and v0.29.20 release workflows also completed successfully.
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.22`; the CLI passes `cortana doctor`, the
-  offline evaluation checks, and the disposable desktop control-plane drill. The packaged app
+  `/Applications/Cortana.app` now report `cortana 0.29.23`; the CLI passes `cortana doctor`, the
+  offline evaluation checks, and the packaged-CLI disposable desktop control-plane drill. The
+  native packaged-sidecar acceptance subset passes 24 tests (126 native tests are listed in the
+  full suite). The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.20`
-  for recovery (older v0.29.19 and v0.29.14 backups remain available as well).
+  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.22`
+  for recovery (older v0.29.20, v0.29.19, and v0.29.14 backups remain available as well).
 - The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
   tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
   Python suite passes 150 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
@@ -95,10 +97,10 @@ is not part of a visual/UI change.
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence.
 - A model-backed evaluation was attempted against the configured provider without opening a
-  personal index or starting sync/connectors. The provider model catalog responded, but the
-  synthetic completion produced no result within the 90-second bound. This is not model-backed
-  proof; extractive mode remains the safe production default and the provider-backed gate is
-  still open.
+  personal index or starting sync/connectors. The provider model catalog responded, but both the
+  bounded synthetic evaluation and a direct 18-second completion probe received no response. This
+  is not model-backed proof; extractive mode remains the safe production default and the
+  provider-backed gate is still open.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
   failed closed with an authorization error from the Google token endpoint. No trial sync was
@@ -107,11 +109,13 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A disposable backup/restore drill passed against the installed v0.29.22 CLI: the verified
+- A disposable backup/restore drill passed against the installed v0.29.23 packaged CLI: the verified
   backup restored into a temporary data directory and SQLite integrity verification passed. The
   drill did not touch indexed personal data.
-- Packaged-app GUI/browser OAuth, service/tray, updater, import/export, backup, and restore drills
-  remain unverified because no computer-use tool was available.
+- Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
+  interactions remain unverified because no callable Computer Use session was available. Native
+  handler tests, packaged CLI control-plane, and packaged backup/restore evidence are recorded
+  separately above.
 - Hindsight and Honcho remain disabled-by-default optional adapters; Cortana's canonical store
   remains the source of truth until provider ACL, deletion, export, and packaged-UI gates are
   explicitly proven.
