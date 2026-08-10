@@ -84,10 +84,10 @@ is not part of a visual/UI change.
   a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.31`
   for recovery (older v0.29.29, v0.29.28, v0.29.27, v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20,
   v0.29.19, and v0.29.14 backups remain available as well).
-- The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
-  tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
-  Python suite passes 153 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
-  passes. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
+- The focused Desktop web gate passes 160 tests across 9 files, and the isolated full web suite
+  passes 252 tests across 21 files. The Python suite passes 153 tests, `bun run --cwd apps/web
+  typecheck` passes, and `uv lock --check` passes. These are per-suite figures, not a deduplicated
+  aggregate. The root `test` script now
   runs Bun with `--isolate` so file-local API mocks cannot leak between OAuth suites.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
