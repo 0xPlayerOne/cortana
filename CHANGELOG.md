@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.34](https://github.com/0xPlayerOne/cortana/compare/v0.29.33...v0.29.34) (2026-08-10)
+
+
+### Documentation
+
+* record passing model evaluation gate ([#521](https://github.com/0xPlayerOne/cortana/issues/521)) ([1c44aba](https://github.com/0xPlayerOne/cortana/commit/1c44aba170f9f30e9adf8a582f74c57604e69799))
+
 ## [0.29.33](https://github.com/0xPlayerOne/cortana/compare/v0.29.32...v0.29.33) (2026-08-10)
 
 
