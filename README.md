@@ -307,7 +307,7 @@ cargo test
 bun install --frozen-lockfile
 bun run format
 bun run lint
-bun run typecheck
+bun run type-check
 bun test
 bun run build
 
