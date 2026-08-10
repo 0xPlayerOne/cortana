@@ -3823,8 +3823,33 @@ mod tests {
                 );
             }
         }
+        let config_before_import =
+            fs::read(&config_path).expect("read config before import preview");
+        let audit_before_import = temp.path().join("config/desktop-audit.jsonl");
+        let audit_lines_before_import = fs::read_to_string(&audit_before_import)
+            .map(|body| body.lines().count())
+            .unwrap_or_default();
         let imported =
             import_portable_at(&config_path, &portable_path).expect("import portable settings");
+        assert_eq!(
+            fs::read(&config_path).expect("read config after import preview"),
+            config_before_import,
+            "import must return a preview without mutating live settings"
+        );
+        let audit_after_import =
+            fs::read_to_string(&audit_before_import).expect("read import preview audit");
+        assert_eq!(
+            audit_after_import.lines().count(),
+            audit_lines_before_import + 1,
+            "import preview must append exactly one metadata-only audit event"
+        );
+        assert!(
+            audit_after_import
+                .lines()
+                .last()
+                .expect("import audit line")
+                .contains("settings.import.previewed")
+        );
         assert_eq!(imported.preserved_external_sources, vec!["custom"]);
         assert!(
             imported
