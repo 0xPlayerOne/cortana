@@ -83,9 +83,9 @@ is not part of a visual/UI change.
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
   this macOS host).
-- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.55`; the packaged Desktop
-  app `/Applications/Cortana.app` remains `cortana 0.29.50` because the signed Desktop bundle has
-  not been installed locally. The installed core passes `cortana doctor`, the v0.29.55 disposable
+- The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
+  `/Applications/Cortana.app` both report `cortana 0.29.55`. The installed core passes
+  `cortana doctor`, the v0.29.55 disposable
   control-plane drill, and the bounded model-backed gate.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
@@ -93,7 +93,8 @@ is not part of a visual/UI change.
   packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.48`
+  a release blocker; the previous v0.29.50 bundle is retained at
+  `/Users/amf/.Trash/Cortana.app.backup-v0.29.50-20260810-2205`
   for recovery (older v0.29.38, v0.29.37, v0.29.33, v0.29.31, v0.29.29, v0.29.28, v0.29.27,
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).

@@ -93,7 +93,7 @@ synthetic output cap to leave room for gateway reasoning, the source run passed 
 synthesis model use, valid citations, cache reuse, and revision invalidation in 22,866 ms. The
 latest installed v0.29.55 core binary rerun passed the same fixture-only evaluator in 17,304 ms
 with planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
-Desktop app remains on v0.29.50 locally because Developer ID signing/notarization is not available
+Desktop app is also installed locally at v0.29.55; Developer ID signing/notarization is not available
 in this environment. Extractive mode remains the safe production default because synthesis is still
 an explicit opt-in in the production configuration.
 

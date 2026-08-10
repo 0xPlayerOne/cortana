@@ -240,7 +240,7 @@ signatures, the updater manifest, and the published Linux binary version check. 
 `--version` match is asserted by the run's Linux runner; the verifier does not execute foreign-OS
 binaries, so it is not re-checked on this macOS host. The local verifier also confirms the aarch64
 macOS core archive extracted from the published v0.29.55 release reports `cortana 0.29.55`.
-The current installed packaged Desktop app at `/Applications/Cortana.app` reports v0.29.50; its
+The current installed packaged Desktop app at `/Applications/Cortana.app` reports v0.29.55; its
 bounded control-plane, recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
