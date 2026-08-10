@@ -23,11 +23,6 @@ class MemorySyncWorker:
         self._worker_id = worker_id
 
     def run(self, *, limit: int = 64, lease_seconds: float = 60.0) -> int:
-        if limit <= 0:
-            raise MemoryArgumentError("limit must be a positive integer")
-        if not isinstance(lease_seconds, (int, float)) or lease_seconds <= 0:
-            raise MemoryArgumentError("lease_seconds must be a positive number")
-
         processed = 0
         while True:
             entries = self._outbox.claim_due(

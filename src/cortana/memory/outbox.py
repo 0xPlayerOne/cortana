@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 import stat
@@ -18,6 +19,9 @@ from .models import (
     stable_document_id,
     workspace_acl_tags,
 )
+
+MAX_BATCH_SIZE = 1024
+MAX_LEASE_SECONDS = 3600.0
 
 
 class OutboxError(RuntimeError):
@@ -204,8 +208,7 @@ class Outbox:
         if operation not in (MemoryOperation.RETAIN, MemoryOperation.DELETE):
             raise OutboxError(f"unsupported operation: {operation}")
         attempts = self.MAX_ATTEMPTS if max_attempts is None else max_attempts
-        if not isinstance(attempts, int) or attempts <= 0:
-            raise MemoryArgumentError("max_attempts must be a positive integer")
+        _validate_positive_int(attempts, "max_attempts", MAX_BATCH_SIZE)
 
         if operation == MemoryOperation.RETAIN:
             # Enforce full envelope validation through canonical record.
@@ -282,10 +285,8 @@ class Outbox:
         lease_seconds: float = 60.0,
         worker: str = "worker",
     ) -> list[OutboxEntry]:
-        if limit <= 0:
-            raise MemoryArgumentError("limit must be a positive integer")
-        if not isinstance(lease_seconds, (int, float)) or lease_seconds <= 0:
-            raise MemoryArgumentError("lease_seconds must be a positive number")
+        _validate_positive_int(limit, "limit", MAX_BATCH_SIZE)
+        _validate_lease_seconds(lease_seconds, MAX_LEASE_SECONDS)
 
         now = time.time()
         self._release_expired_leases(now)
@@ -390,8 +391,7 @@ class Outbox:
         *,
         limit: int = 100,
     ) -> list[OutboxEntry]:
-        if limit <= 0:
-            raise MemoryArgumentError("limit must be a positive integer")
+        _validate_positive_int(limit, "limit", MAX_BATCH_SIZE)
         query = "SELECT * FROM memory_outbox"
         params: list[Any] = []
         if states:
@@ -408,8 +408,10 @@ class Outbox:
     ) -> None:
         """Public helper useful for deterministic retry/transition tests."""
 
-        if not isinstance(available_after, (int, float)):
-            raise MemoryArgumentError("available_after must be a numeric value")
+        if isinstance(available_after, bool) or not isinstance(available_after, (int, float)):
+            raise MemoryArgumentError("available_after must be a finite numeric value")
+        if not math.isfinite(float(available_after)):
+            raise MemoryArgumentError("available_after must be a finite numeric value")
         if operation not in (MemoryOperation.RETAIN, MemoryOperation.DELETE):
             raise MemoryArgumentError(f"unsupported operation: {operation}")
         self._connection.execute(
@@ -597,3 +599,15 @@ def _validate_sqlite_artifact(path: Path) -> None:
     getuid = getattr(os, "getuid", None)
     if getuid is not None and metadata.st_uid != getuid():
         raise OutboxError(f"outbox artifact is not owned by the current user: {path}")
+
+
+def _validate_positive_int(value: object, name: str, maximum: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 < value <= maximum:
+        raise MemoryArgumentError(f"{name} must be an integer between 1 and {maximum}")
+
+
+def _validate_lease_seconds(value: object, maximum: float) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise MemoryArgumentError("lease_seconds must be a finite number")
+    if not math.isfinite(float(value)) or not 0 < float(value) <= maximum:
+        raise MemoryArgumentError(f"lease_seconds must be greater than 0 and at most {maximum:g}")

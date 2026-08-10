@@ -445,6 +445,28 @@ def test_outbox_validation_for_limits_and_leases(tmp_path) -> None:
                 ),
                 max_attempts=0,
             )
+        for invalid in (True, 1.5, float("nan"), float("inf")):
+            with pytest.raises(MemoryArgumentError):
+                outbox.claim_due(limit=invalid)
+            with pytest.raises(MemoryArgumentError):
+                outbox.export_rows(limit=invalid)
+        for invalid in (True, float("nan"), float("inf")):
+            with pytest.raises(MemoryArgumentError):
+                outbox.claim_due(lease_seconds=invalid)
+        for invalid in (True, float("nan"), float("inf")):
+            with pytest.raises(MemoryArgumentError):
+                outbox.set_available(
+                    document_id="missing",
+                    operation="retain",
+                    available_after=invalid,
+                )
+        with pytest.raises(MemoryArgumentError):
+            outbox.enqueue_retain(
+                MemoryDocument(
+                    project="work", source="gmail", source_id="bool", title="t", content="c"
+                ),
+                max_attempts=True,
+            )
 
 
 def test_outbox_rejects_symlinked_paths_and_keeps_sqlite_private(tmp_path) -> None:
