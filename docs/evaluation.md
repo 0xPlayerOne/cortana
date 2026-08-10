@@ -85,14 +85,16 @@ suffix). Ordinary bullets, uncited text, and responses without that header remai
 continue through citation validation fail-closed.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
-20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the current packaged
-v0.29.33 evaluator failed closed twice (8,313 ms and 13,398 ms) after the planner call because the
-configured provider appended an uncited attribution line to the synthesis response. The earlier
-passes are historical evidence, not proof that the current provider is citation-safe. After raising
-the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
-with planner and synthesis model use, valid citations, cache reuse, and revision invalidation in
-22,866 ms. The packaged current-release gate still requires installing and rerunning this check;
-extractive mode remains the safe production default until that packaged proof is recorded.
+20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33
+evaluator failed closed twice (8,313 ms and 13,398 ms) after the planner call because the configured
+provider appended an uncited attribution line to the synthesis response. The earlier passes are
+historical evidence, not proof that the current provider is citation-safe. After raising the bounded
+synthetic output cap to leave room for gateway reasoning, the source run passed with planner and
+synthesis model use, valid citations, cache reuse, and revision invalidation in 22,866 ms. The
+packaged v0.29.37 aarch64 core archive and Desktop app then passed the same fixture-only evaluator;
+the app archive completed planner+synthesis citation validation, cache reuse, and revision
+invalidation in 14,425 ms. Extractive mode remains the safe production default because synthesis is
+still an explicit opt-in in the production configuration.
 
 ```toml
 [query]
