@@ -233,13 +233,13 @@ the attempt budget is capped at five and the retry delay at 60 seconds. Set
 `CORTANA_DOWNLOAD_RETRY_DELAY=0` for fast offline tests. Exhausting the budget still fails the
 release gate, so missing or invalid assets are never hidden.
 
-Published v0.29.47 has 18 release assets; release-assets run `31397369311` completed successfully
+Published v0.29.48 has 18 release assets; release-assets run `31400277964` completed successfully
 with core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
 updater manifest, and the published Linux binary version verified. The Linux binary `--version`
 match is asserted by the run's Linux runner; the verifier does not execute foreign-OS binaries, so
 it is not re-checked on this macOS host. The local verifier pass also confirms the aarch64 macOS
-core archive extracted from the published v0.29.47 release reports `cortana 0.29.47`.
-The current installed packaged Desktop app at `/Applications/Cortana.app` reports v0.29.43; its
+core archive extracted from the published v0.29.48 release reports `cortana 0.29.48`.
+The current installed packaged Desktop app at `/Applications/Cortana.app` reports v0.29.48; its
 bounded control-plane, recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
@@ -249,7 +249,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 Re-run the read-only verifier for an existing release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.47
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.48
 ```
 
 ## macOS launchd

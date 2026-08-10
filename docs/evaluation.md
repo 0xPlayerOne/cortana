@@ -91,9 +91,9 @@ provider appended an uncited attribution line to the synthesis response. The ear
 historical evidence, not proof that the current provider is citation-safe. After raising the bounded
 synthetic output cap to leave room for gateway reasoning, the source run passed with planner and
 synthesis model use, valid citations, cache reuse, and revision invalidation in 22,866 ms. The
-installed v0.29.43 core binary and packaged Desktop app then passed the same fixture-only evaluator;
-the CLI completed planner+synthesis citation validation in 18,143 ms and the packaged app in
-16,581 ms, with cache reuse and revision invalidation. Extractive mode remains the safe production
+installed v0.29.48 core binary and packaged Desktop app then passed the same fixture-only evaluator;
+the CLI completed planner+synthesis citation validation in 18,771 ms and the packaged app in
+15,186 ms, with cache reuse and revision invalidation. Extractive mode remains the safe production
 default because synthesis is still an explicit opt-in in the production configuration.
 
 ```toml

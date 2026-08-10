@@ -43,13 +43,13 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   installed v0.29.43 core/app:** an earlier source `339240e` run passed in 20,176 ms and a packaged
+   installed v0.29.48 core/app:** an earlier source `339240e` run passed in 20,176 ms and a packaged
    v0.29.31 rerun passed in 13,477 ms, but the installed v0.29.33 evaluator failed closed twice with
    invalid model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
-   planner+synthesis citation validation in 22,866 ms. The installed v0.29.43 CLI passed the same
-   bounded evaluator in 18,143 ms, and the packaged app binary passed it in 16,581 ms, with valid
+   planner+synthesis citation validation in 22,866 ms. The installed v0.29.48 CLI passed the same
+   bounded evaluator in 18,771 ms, and the packaged app binary passed it in 15,186 ms, with valid
    citations, cache reuse, and revision invalidation. Keep extractive mode as the safe production
    default because model synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
@@ -76,26 +76,26 @@ is not part of a visual/UI change.
 ## Evidence limits
 
 - The audited functional snapshot is v0.29.43 at release commit `1ef07dd`; the latest fully verified
-  release is v0.29.47 at release commit `6728b4c` with release-assets workflow `31397369311`; the
+  release is v0.29.48 at release commit `fbb46fb` with release-assets workflow `31400277964`; the
   local fail-closed verifier
   passed all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
   this macOS host).
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.43`; the installed app passes `cortana doctor`,
-  the packaged v0.29.43 control-plane and backup/restore drills, and the bounded model-backed gate.
+  `/Applications/Cortana.app` now report `cortana 0.29.48`; the installed app passes `cortana doctor`,
+  the packaged v0.29.48 control-plane and backup/restore drills, and the bounded model-backed gate.
   The full `cortana readiness` scan remains a separate read-only operational check because it
   includes roughly 1 GB of SQLite integrity and backup scanning.
   The current-source native Desktop suite passes all 126 tests. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.41`
+  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.43`
   for recovery (older v0.29.38, v0.29.37, v0.29.33, v0.29.31, v0.29.29, v0.29.28, v0.29.27,
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full web suite
-  passes 252 tests across 21 files. The Python suite passes 156 tests, `bun run type-check` and
+  passes 252 tests across 21 files (latest run: 43.51 seconds, 1,254 assertions). The Python suite passes 156 tests, `bun run type-check` and
   `uv lock --check` pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with `--isolate` so file-local API mocks cannot leak between OAuth suites.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
@@ -106,7 +106,7 @@ is not part of a visual/UI change.
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence. A
-  current run against the installed v0.29.43 configuration passed database integrity, embedding
+  current run against the installed v0.29.48 configuration passed database integrity, embedding
   generation/provider, ACL, query API, verified-backup freshness (18 hours within a 48-hour bound),
   query mode, and the safe query-only state with recurring sync not installed; it did not invoke
   source validation because `--allow-sync-service` was not supplied.
@@ -120,12 +120,12 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The installed v0.29.43 core binary and packaged app
+  output cap was raised for gateway reasoning. The installed v0.29.48 core binary and packaged app
   also passed planner+synthesis citation validation with cache reuse and revision invalidation; the
-  CLI completed in 18,143 ms and the packaged app in 16,581 ms. Extractive mode remains the safe
+  CLI completed in 18,771 ms and the packaged app in 15,186 ms. Extractive mode remains the safe
   production default because
   synthesis is still an explicit opt-in.
-- The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
+- The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
   failed closed with `credential or path missing` because the personal Google token file is absent.
   No trial sync was
@@ -134,7 +134,7 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A disposable backup/restore drill passed against the v0.29.43 core archive and aarch64 Desktop
+- A disposable backup/restore drill passed against the v0.29.48 core archive and aarch64 Desktop
   app: the verified backup restored into a temporary data directory, SQLite integrity verification
   passed, and the restored fixture remained searchable. The drill did not touch indexed personal
   data.
