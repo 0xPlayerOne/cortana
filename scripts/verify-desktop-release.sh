@@ -82,10 +82,13 @@ signed_archives=(
 # v0.29.39 incident: all 18 assets were present and healthy, but one download
 # hit a connection reset. The attempt budget is small and configurable, and
 # CORTANA_DOWNLOAD_RETRY_DELAY=0 lets tests exercise retries without sleeping.
+# Every attempt also has a hard timeout so a wedged GitHub CLI cannot stall the
+# release gate indefinitely.
 # Failures still exit nonzero once the budget is exhausted, so missing or
 # invalid assets are never hidden by the retry.
 download_attempts="${CORTANA_DOWNLOAD_ATTEMPTS:-3}"
 download_retry_delay="${CORTANA_DOWNLOAD_RETRY_DELAY:-2}"
+download_timeout="${CORTANA_DOWNLOAD_TIMEOUT_SECONDS:-120}"
 if ! [[ "$download_attempts" =~ ^[1-9][0-9]*$ ]]; then
     echo "CORTANA_DOWNLOAD_ATTEMPTS must be a positive integer no greater than 5" >&2
     exit 2
@@ -102,11 +105,43 @@ if ((download_retry_delay > 60)); then
     echo "CORTANA_DOWNLOAD_RETRY_DELAY must be a non-negative integer no greater than 60" >&2
     exit 2
 fi
+if ! [[ "$download_timeout" =~ ^[1-9][0-9]*$ ]]; then
+    echo "CORTANA_DOWNLOAD_TIMEOUT_SECONDS must be a positive integer no greater than 600" >&2
+    exit 2
+fi
+if ((download_timeout > 600)); then
+    echo "CORTANA_DOWNLOAD_TIMEOUT_SECONDS must be a positive integer no greater than 600" >&2
+    exit 2
+fi
+
+run_gh_download() {
+    local timeout_seconds="$1"
+    shift
+    python3 - "$timeout_seconds" "$@" <<'PY'
+import subprocess
+import sys
+
+timeout = float(sys.argv[1])
+command = ["gh", *sys.argv[2:]]
+try:
+    result = subprocess.run(command, stdout=subprocess.DEVNULL, check=False, timeout=timeout)
+except FileNotFoundError:
+    print("gh release download failed: gh is not installed", file=sys.stderr)
+    raise SystemExit(127)
+except subprocess.TimeoutExpired:
+    print(
+        f"gh release download timed out after {sys.argv[1]}s: {' '.join(command)}",
+        file=sys.stderr,
+    )
+    raise SystemExit(124)
+raise SystemExit(result.returncode)
+PY
+}
 
 gh_download() {
     local attempt
     for ((attempt = 1; attempt <= download_attempts; attempt++)); do
-        if gh release download "$@" >/dev/null; then
+        if run_gh_download "$download_timeout" release download "$@"; then
             return 0
         fi
         if ((attempt < download_attempts)); then

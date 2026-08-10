@@ -240,6 +240,9 @@ if [[ "${{1:-}}" == "release" && "${{2:-}}" == "download" ]]; then
   fi
   attempts=$((attempts + 1))
   printf '%s\n' "$attempts" > "$attempts_file"
+  if [[ -n "${{FAKE_GH_SLEEP_DOWNLOAD:-}}" ]]; then
+    sleep "$FAKE_GH_SLEEP_DOWNLOAD"
+  fi
   if [[ "${{FAKE_GH_ALWAYS_FAIL_DOWNLOAD:-0}}" == "1" ||
         "$attempts" -le "${{FAKE_GH_FAIL_DOWNLOADS:-0}}" ]]; then
     echo "synthetic release download failure for $pattern" >&2
@@ -317,6 +320,8 @@ def run_desktop_verify(
     fail_downloads: int = 0,
     always_fail_download: bool = False,
     download_attempts: str | None = None,
+    download_timeout: str | None = None,
+    download_sleep: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     fake_gh(bin_dir, assets)
@@ -339,6 +344,7 @@ def run_desktop_verify(
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "GH_REPO": "test/repo",
         "CORTANA_DOWNLOAD_RETRY_DELAY": "0",
+        "CORTANA_DOWNLOAD_TIMEOUT_SECONDS": "10",
     }
     if fail_downloads:
         env["FAKE_GH_FAIL_DOWNLOADS"] = str(fail_downloads)
@@ -346,6 +352,10 @@ def run_desktop_verify(
         env["FAKE_GH_ALWAYS_FAIL_DOWNLOAD"] = "1"
     if download_attempts is not None:
         env["CORTANA_DOWNLOAD_ATTEMPTS"] = download_attempts
+    if download_timeout is not None:
+        env["CORTANA_DOWNLOAD_TIMEOUT_SECONDS"] = download_timeout
+    if download_sleep is not None:
+        env["FAKE_GH_SLEEP_DOWNLOAD"] = download_sleep
     if minisign_mode is None:
         env["CORTANA_MINISIGN_BIN"] = "missing-test-minisign"
     if require_minisign:
@@ -447,6 +457,31 @@ def test_desktop_verify_rejects_unbounded_retry_budget(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "no greater than 5" in result.stderr
+
+
+@requires_shell
+def test_desktop_verify_rejects_unbounded_download_timeout(tmp_path: Path) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+
+    result = run_desktop_verify(tmp_path, assets, download_timeout="601")
+
+    assert result.returncode == 2
+    assert "no greater than 600" in result.stderr
+
+
+@requires_shell
+def test_desktop_verify_times_out_a_wedged_download(tmp_path: Path) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+
+    result = run_desktop_verify(
+        tmp_path,
+        assets,
+        download_timeout="1",
+        download_sleep="2",
+    )
+
+    assert result.returncode == 1
+    assert "timed out after 1s" in result.stderr
 
 
 @requires_shell
