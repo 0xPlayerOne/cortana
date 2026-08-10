@@ -233,6 +233,18 @@ if [[ "${{1:-}}" == "release" && "${{2:-}}" == "download" ]]; then
       *) shift ;;
     esac
   done
+  attempts_file="$ROOT/.download-attempts"
+  attempts=0
+  if [[ -f "$attempts_file" ]]; then
+    attempts="$(cat "$attempts_file")"
+  fi
+  attempts=$((attempts + 1))
+  printf '%s\n' "$attempts" > "$attempts_file"
+  if [[ "${{FAKE_GH_ALWAYS_FAIL_DOWNLOAD:-0}}" == "1" ||
+        "$attempts" -le "${{FAKE_GH_FAIL_DOWNLOADS:-0}}" ]]; then
+    echo "synthetic release download failure for $pattern" >&2
+    exit 75
+  fi
   mkdir -p "$dir"
   if [[ -f "$ROOT/$pattern" ]]; then
     cp "$ROOT/$pattern" "$dir/$pattern"
@@ -302,6 +314,9 @@ def run_desktop_verify(
     minisign_mode: str | None = "valid",
     require_minisign: bool = False,
     invalid_archive: str | None = None,
+    fail_downloads: int = 0,
+    always_fail_download: bool = False,
+    download_attempts: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     bin_dir = tmp_path / "bin"
     fake_gh(bin_dir, assets)
@@ -323,7 +338,14 @@ def run_desktop_verify(
     env = {
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "GH_REPO": "test/repo",
+        "CORTANA_DOWNLOAD_RETRY_DELAY": "0",
     }
+    if fail_downloads:
+        env["FAKE_GH_FAIL_DOWNLOADS"] = str(fail_downloads)
+    if always_fail_download:
+        env["FAKE_GH_ALWAYS_FAIL_DOWNLOAD"] = "1"
+    if download_attempts is not None:
+        env["CORTANA_DOWNLOAD_ATTEMPTS"] = download_attempts
     if minisign_mode is None:
         env["CORTANA_MINISIGN_BIN"] = "missing-test-minisign"
     if require_minisign:
@@ -393,6 +415,38 @@ def test_desktop_verify_accepts_matching_published_binary(tmp_path: Path) -> Non
         assert "verified published Linux binary version matches v9.9.9" in result.stdout
     else:
         assert "skipped published binary execution on non-Linux host" in result.stdout
+
+
+@requires_shell
+def test_desktop_verify_retries_transient_release_download(tmp_path: Path) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+
+    result = run_desktop_verify(tmp_path, assets, fail_downloads=1)
+
+    assert result.returncode == 0, result.stderr
+    assert "retrying in 0s" in result.stderr
+
+
+@requires_shell
+def test_desktop_verify_fails_after_bounded_release_download_retries(
+    tmp_path: Path,
+) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+
+    result = run_desktop_verify(tmp_path, assets, always_fail_download=True)
+
+    assert result.returncode == 1
+    assert "failed after 3 attempts" in result.stderr
+
+
+@requires_shell
+def test_desktop_verify_rejects_unbounded_retry_budget(tmp_path: Path) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+
+    result = run_desktop_verify(tmp_path, assets, download_attempts="6")
+
+    assert result.returncode == 2
+    assert "no greater than 5" in result.stderr
 
 
 @requires_shell

@@ -77,18 +77,59 @@ signed_archives=(
     "Cortana_${tag#v}_x64_en-US.msi"
 )
 
+# Bounded retry wrapper around `gh release download`: a single transient
+# network failure must not fail the whole verification run. This is the real
+# v0.29.39 incident: all 18 assets were present and healthy, but one download
+# hit a connection reset. The attempt budget is small and configurable, and
+# CORTANA_DOWNLOAD_RETRY_DELAY=0 lets tests exercise retries without sleeping.
+# Failures still exit nonzero once the budget is exhausted, so missing or
+# invalid assets are never hidden by the retry.
+download_attempts="${CORTANA_DOWNLOAD_ATTEMPTS:-3}"
+download_retry_delay="${CORTANA_DOWNLOAD_RETRY_DELAY:-2}"
+if ! [[ "$download_attempts" =~ ^[1-9][0-9]*$ ]]; then
+    echo "CORTANA_DOWNLOAD_ATTEMPTS must be a positive integer no greater than 5" >&2
+    exit 2
+fi
+if ((download_attempts > 5)); then
+    echo "CORTANA_DOWNLOAD_ATTEMPTS must be a positive integer no greater than 5" >&2
+    exit 2
+fi
+if ! [[ "$download_retry_delay" =~ ^[0-9]+$ ]]; then
+    echo "CORTANA_DOWNLOAD_RETRY_DELAY must be a non-negative integer no greater than 60" >&2
+    exit 2
+fi
+if ((download_retry_delay > 60)); then
+    echo "CORTANA_DOWNLOAD_RETRY_DELAY must be a non-negative integer no greater than 60" >&2
+    exit 2
+fi
+
+gh_download() {
+    local attempt
+    for ((attempt = 1; attempt <= download_attempts; attempt++)); do
+        if gh release download "$@" >/dev/null; then
+            return 0
+        fi
+        if ((attempt < download_attempts)); then
+            echo "gh release download failed (attempt ${attempt}/${download_attempts}); retrying in ${download_retry_delay}s" >&2
+            sleep "$download_retry_delay"
+        fi
+    done
+    echo "gh release download failed after ${download_attempts} attempts: $*" >&2
+    return 1
+}
+
 core_archives=(
     "cortana-${tag}-aarch64-apple-darwin.tar.gz"
     "cortana-${tag}-x86_64-unknown-linux-gnu.tar.gz"
 )
 for asset in "${core_archives[@]}" "${signed_archives[@]}"; do
-    gh release download "$tag" --repo "$repo" --pattern "$asset" --dir "$staging" --clobber >/dev/null
+    gh_download "$tag" --repo "$repo" --pattern "$asset" --dir "$staging" --clobber
 done
 for archive in "${signed_archives[@]}"; do
-    gh release download "$tag" --repo "$repo" --pattern "${archive}.sig" --dir "$staging" --clobber >/dev/null
+    gh_download "$tag" --repo "$repo" --pattern "${archive}.sig" --dir "$staging" --clobber
 done
 for archive in "${core_archives[@]}"; do
-    gh release download "$tag" --repo "$repo" --pattern "${archive}.sha256" --dir "$staging" --clobber >/dev/null
+    gh_download "$tag" --repo "$repo" --pattern "${archive}.sha256" --dir "$staging" --clobber
 done
 
 for archive in "${core_archives[@]}"; do
@@ -227,7 +268,7 @@ else
     echo "skipped Tauri updater signature verification: minisign verifier unavailable"
 fi
 
-gh release download "$tag" --repo "$repo" --pattern latest.json --dir "$staging" --clobber >/dev/null
+gh_download "$tag" --repo "$repo" --pattern latest.json --dir "$staging" --clobber
 python3 - "$staging/latest.json" "$tag" "$assets_json" <<'PY'
 import json
 import sys
