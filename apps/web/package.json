@@ -1,7 +1,7 @@
 {
   "name": "@cortana/web",
   "private": true,
-  "version": "0.29.57",
+  "version": "0.29.58",
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build",
