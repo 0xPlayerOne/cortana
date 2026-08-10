@@ -8,6 +8,7 @@ if [[ -z "$tag" || -z "$repo" ]]; then
   exit 2
 fi
 version="${tag#v}"
+app_archive="Cortana_${version}_aarch64.app.tar.gz"
 
 assets_json="$(gh release view "$tag" --repo "$repo" --json assets)"
 python3 - "$assets_json" "$tag" <<'PY'
@@ -29,8 +30,8 @@ required = {
     f"cortana-{tag}-x86_64-unknown-linux-gnu.tar.gz",
     f"cortana-{tag}-x86_64-unknown-linux-gnu.tar.gz.sha256",
     f"Cortana_{version}_aarch64.dmg",
-    "Cortana_aarch64.app.tar.gz",
-    "Cortana_aarch64.app.tar.gz.sig",
+    f"Cortana_{version}_aarch64.app.tar.gz",
+    f"Cortana_{version}_aarch64.app.tar.gz.sig",
     f"Cortana_{version}_amd64.AppImage",
     f"Cortana_{version}_amd64.AppImage.sig",
     f"Cortana_{version}_amd64.deb",
@@ -68,7 +69,7 @@ case "$require_minisign" in
 esac
 
 signed_archives=(
-    "Cortana_aarch64.app.tar.gz"
+    "$app_archive"
     "Cortana_${tag#v}_amd64.AppImage"
     "Cortana_${tag#v}_amd64.deb"
     "Cortana-${tag#v}-1.x86_64.rpm"
@@ -227,13 +228,14 @@ else
 fi
 
 gh release download "$tag" --repo "$repo" --pattern latest.json --dir "$staging" --clobber >/dev/null
-python3 - "$staging/latest.json" "$tag" <<'PY'
+python3 - "$staging/latest.json" "$tag" "$assets_json" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 manifest = json.loads(Path(sys.argv[1]).read_text())
 tag = sys.argv[2]
+release_assets = json.loads(sys.argv[3]).get("assets", [])
 version = tag[1:] if tag.startswith("v") else tag
 if manifest.get("version") != version:
     raise SystemExit(
@@ -254,11 +256,19 @@ required = {
 if not isinstance(platforms, dict) or not required.issubset(platforms):
     missing = sorted(required.difference(platforms or {}))
     raise SystemExit("updater manifest is missing platforms: " + ", ".join(missing))
+known_asset_urls = {
+    url
+    for asset in release_assets
+    if isinstance(asset, dict)
+    for url in (asset.get("url"), asset.get("apiUrl"))
+    if isinstance(url, str) and url
+}
 for platform in required:
     entry = platforms[platform]
     if not isinstance(entry, dict) or not entry.get("url") or not entry.get("signature"):
         raise SystemExit(f"updater manifest entry is incomplete: {platform}")
-    if f"/download/{tag}/" not in entry["url"]:
+    url = entry["url"]
+    if f"/download/{tag}/" not in url and url not in known_asset_urls:
         raise SystemExit(f"updater URL points at the wrong release: {platform}")
 print(f"verified updater manifest for {tag}")
 PY
