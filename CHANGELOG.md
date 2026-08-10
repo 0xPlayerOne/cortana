@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.29.20](https://github.com/0xPlayerOne/cortana/compare/v0.29.19...v0.29.20) (2026-08-10)
+
+
+### Bug Fixes
+
+* **ci:** isolate javascript tests and refresh uv lock ([5b8e6c8](https://github.com/0xPlayerOne/cortana/commit/5b8e6c879c60fbee04b394583732a2d31de1f666))
+* **release:** verify versioned Tauri app assets ([64e3cd6](https://github.com/0xPlayerOne/cortana/commit/64e3cd61f00d7852d8cc3012710c271a1bbbbcd5))
+
 ## [0.29.19](https://github.com/0xPlayerOne/cortana/compare/v0.29.18...v0.29.19) (2026-08-08)
 
 
