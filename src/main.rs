@@ -1885,6 +1885,12 @@ fn require_enabled_sources_validated(
     overrides: SyncOverrides,
     reconcile: bool,
 ) -> Result<()> {
+    if reconcile {
+        anyhow::ensure!(
+            config.ingestion.validation_max_age_hours > 0,
+            "recurring sync requires a positive ingestion.validation_max_age_hours; set it to at least 1 hour"
+        );
+    }
     let mut checked = 0usize;
     for source in config.sources.iter().filter(|source| source.enabled) {
         checked += 1;
@@ -3720,6 +3726,20 @@ mod tests {
             .expect_err("missing source validation must block recurring sync");
         assert!(error.to_string().contains("work-code"));
         assert!(error.to_string().contains("current successful validation"));
+    }
+
+    #[test]
+    fn recurring_sync_rejects_unbounded_validation_freshness() {
+        let mut config = Config::default();
+        config.ingestion.validation_max_age_hours = 0;
+
+        let error = ensure_recurring_sync_validated(&config)
+            .expect_err("recurring sync must reject an unbounded validation age");
+        assert!(
+            error
+                .to_string()
+                .contains("requires a positive ingestion.validation_max_age_hours")
+        );
     }
 
     #[test]
