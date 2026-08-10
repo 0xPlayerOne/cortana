@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.39](https://github.com/0xPlayerOne/cortana/compare/v0.29.38...v0.29.39) (2026-08-10)
+
+
+### Tests
+
+* **desktop:** prove settings import is preview-only ([#533](https://github.com/0xPlayerOne/cortana/issues/533)) ([47cc5af](https://github.com/0xPlayerOne/cortana/commit/47cc5af0126f663a9a7ca9ea4ed63c7d5e698e28))
+
 ## [0.29.38](https://github.com/0xPlayerOne/cortana/compare/v0.29.37...v0.29.38) (2026-08-10)
 
 
