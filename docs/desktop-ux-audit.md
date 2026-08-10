@@ -48,10 +48,10 @@ is not part of a visual/UI change.
    invalid model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
-   planner+synthesis citation validation in 22,866 ms. The installed v0.29.43 CLI and packaged app
-   passed the same bounded evaluator in 18,143 ms with valid citations, cache reuse, and revision
-   invalidation. Keep extractive mode as the safe production default because model synthesis remains
-   opt-in.
+   planner+synthesis citation validation in 22,866 ms. The installed v0.29.43 CLI passed the same
+   bounded evaluator in 18,143 ms, and the packaged app binary passed it in 16,581 ms, with valid
+   citations, cache reuse, and revision invalidation. Keep extractive mode as the safe production
+   default because model synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -113,7 +113,8 @@ is not part of a visual/UI change.
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
   output cap was raised for gateway reasoning. The installed v0.29.43 core binary and packaged app
   also passed planner+synthesis citation validation with cache reuse and revision invalidation; the
-  packaged app completed in 18,143 ms. Extractive mode remains the safe production default because
+  CLI completed in 18,143 ms and the packaged app in 16,581 ms. Extractive mode remains the safe
+  production default because
   synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
