@@ -49,9 +49,10 @@ is not part of a visual/UI change.
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
    planner+synthesis citation validation in 22,866 ms. The latest installed v0.29.56 binary run
-   passed in 17,728 ms with planner and synthesis model use, valid citations, cache reuse, and
-   revision invalidation. Keep extractive mode as the safe production default because model
-   synthesis remains opt-in.
+   passed in 17,728 ms, and the published v0.29.57 core archive passed headlessly in 15,438 ms,
+   both with planner and synthesis model use, valid citations, cache reuse, and revision
+   invalidation. Keep extractive mode as the safe production default because model synthesis
+   remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -72,8 +73,8 @@ is not part of a visual/UI change.
 6. Re-authorize `personal-calendar`: the existing owner-only Google token was migrated into
    Cortana's configured token location, but its current refresh token record expired on
    2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
-   PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d` and release `v0.29.56`
-   is published. The locally installed CLI now uses v0.29.56 and emits reauthorization guidance;
+   PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; releases `v0.29.56` and
+   `v0.29.57` are published. The locally installed CLI now uses v0.29.56 and emits reauthorization guidance;
    the packaged Desktop app remains v0.29.55 because it was not launched or replaced.
    Recurring sync must remain disabled until browser authorization succeeds and the source is
    revalidated.
@@ -90,17 +91,19 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The audited functional snapshot is v0.29.56 at main commit `b920424`. Release v0.29.56 is
-  published and release-assets workflow `31437673791` completed successfully. The local
+- The audited functional snapshot is v0.29.57 at main commit `d707626`. Release v0.29.57 is
+  published and release-assets workflow `31440018929` completed successfully. The local
   fail-closed verifier passed the published cross-platform archives, checksums, signatures, and
   updater manifest; the release contains all 18 expected assets.
 - The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.56`; the packaged Desktop
   app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or replaced.
   The installed core passes `cortana doctor`, the v0.29.56 disposable
-  control-plane drill, and the bounded model-backed gate.
+  control-plane drill, and the bounded model-backed gate. A temporary v0.29.57 core archive also
+  passed `--version`, `cortana doctor`, and the model-backed gate in 15,438 ms. The current release
+  is newer than the installed CLI because the Desktop app was deliberately not launched or replaced.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
-  The current-source native Desktop suite at main commit `b920424` passes all 126 tests. The
+  The current-source native Desktop suite at main commit `d707626` passes all 126 tests. The
   packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
@@ -115,8 +118,9 @@ is not part of a visual/UI change.
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
-  refreshed against the v0.29.56 source tree without launching the Desktop app.
-- The current Rust library suite on the v0.29.56 source tree passes 266 tests with no failures;
+  refreshed against the v0.29.57 source tree without launching the Desktop app; the release-only
+  version bump added no runtime source changes after the v0.29.56 run.
+- The current Rust library suite on the v0.29.57 source tree passes 266 tests with no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
@@ -140,7 +144,7 @@ is not part of a visual/UI change.
   bytes, and a 30-second per-source cap: 11 of 12 enabled sources passed. `personal-calendar`
   failed closed as `authorization denied` because its Google refresh token is expired; no sync was
   requested and recurring sync remains uninstalled.
-- Release v0.29.56 also carries the fail-closed recurring-sync freshness guard across every
+- Release v0.29.57 also carries the fail-closed recurring-sync freshness guard across every
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
@@ -149,10 +153,10 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The latest installed v0.29.56 core binary also
-  passed the current planner+synthesis citation validation with cache reuse and revision
-  invalidation in 17,728 ms. Extractive mode remains the safe production default because
-  synthesis is still an explicit opt-in.
+  output cap was raised for gateway reasoning. The latest installed v0.29.56 core binary passed
+  the current planner+synthesis citation validation with cache reuse and revision invalidation in
+  17,728 ms; the published v0.29.57 core archive passed the same gate in 15,438 ms. Extractive
+  mode remains the safe production default because synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source; recorded
   before the v0.29.54 core install)
   passed 11 of 12 enabled sources; `personal-calendar` failed closed with `authorization denied`
