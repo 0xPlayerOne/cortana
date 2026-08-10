@@ -212,7 +212,7 @@ recovery snapshot and only swaps the live vectors after the entire corpus succee
 See [the ingestion guide](docs/ingestion.md) and
 [`config.example.toml`](config.example.toml) for Google Drive, Gmail, Calendar, Apple Notes,
 GitHub code, Slack, Discord, Buzz, filesystem/code, and external adapters.
-See [the query guide](docs/query.md) for planned retrieval, cited synthesis, local model-gateway
+See [the query guide](docs/query.md) for hybrid retrieval, cited synthesis, local model-gateway
 configuration, cloud providers, cache invalidation, and degraded operation.
 See the [agent integration guide](docs/integrations.md) for Codex, Hermes, Buzz, MCP, HTTP, and
 CLI setup with scoped principals and cache-aware context retrieval.
