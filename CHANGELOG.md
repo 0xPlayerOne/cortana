@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.55](https://github.com/0xPlayerOne/cortana/compare/v0.29.54...v0.29.55) (2026-08-10)
+
+
+### Bug Fixes
+
+* **desktop:** fail closed when pending update disappears ([#568](https://github.com/0xPlayerOne/cortana/issues/568)) ([68b9fd2](https://github.com/0xPlayerOne/cortana/commit/68b9fd281381d673e481a21e2e4c47bb9729dc35))
+
 ## [0.29.54](https://github.com/0xPlayerOne/cortana/compare/v0.29.53...v0.29.54) (2026-08-10)
 
 
