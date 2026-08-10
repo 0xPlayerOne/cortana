@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.53](https://github.com/0xPlayerOne/cortana/compare/v0.29.52...v0.29.53) (2026-08-10)
+
+
+### Documentation
+
+* refresh-desktop-evidence-v0-29-52 ([#562](https://github.com/0xPlayerOne/cortana/issues/562)) ([7db53b8](https://github.com/0xPlayerOne/cortana/commit/7db53b805c2152180ddc836ea9cec33b1b02e7f1))
+
 ## [0.29.52](https://github.com/0xPlayerOne/cortana/compare/v0.29.51...v0.29.52) (2026-08-10)
 
 
