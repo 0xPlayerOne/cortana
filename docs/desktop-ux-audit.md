@@ -64,27 +64,29 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The v0.29.13 promotion (`cd5c1ef`) is merged on `main` and tagged `v0.29.13`. Release-assets
-  run `30967558201` completed successfully and the local verifier passed: all 18 assets, core
-  checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the updater
-  manifest, and the Linux runner `--version` check against the release tag are verified. `staging`
-  now carries the verified backup-control-plane and test-fixture cleanup commits; promotion PR
-  #470 is the required path for the next release.
-- The installed CLI `/Users/amf/.local/bin/cortana` and the installed packaged Desktop app
-  `/Applications/Cortana.app` both report `cortana 0.29.13`; the CLI passes `cortana doctor`, the
+- The v0.29.19 release is merged on `main` at commit `c4dff74`. The historical release-assets run
+  `31232341097` failed only because the verifier expected an obsolete Tauri archive name and
+  rejected the API URLs emitted by `latest.json`; the corrected verifier now passes locally
+  against the published release: all 18 assets, core checksums, the macOS sidecar/resources
+  bundle, all six minisign updater signatures, the updater manifest, and the published Linux
+  binary check (on Linux) are covered. Re-dispatch the release-assets workflow after this fix
+  merges so GitHub records the corrected run as green.
+- The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
+  `/Applications/Cortana.app` now report `cortana 0.29.19`; the CLI passes `cortana doctor`, the
   offline evaluation checks, and the disposable desktop control-plane drill. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
-  unset) and is rejected by `spctl --assess`. Developer ID signing/notarization therefore remains
-  a release blocker.
-- The current promoted staging line's prepared-sidecar Desktop native suite passed 126 tests and
-  its focused Desktop web suite passed 79 tests. The full web suite currently passes 252 tests,
-  the Python suite baseline remains 149 tests, and `bun run typecheck` passed; these are per-suite
-  figures, not a deduplicated aggregate. The refreshed `uv.lock` itself passes `uv lock --check`.
-- The current staging line includes Desktop changes, so the v0.29.8 "no Desktop changes, matrix
-  skipped" note does not apply. The 126-test native suite is a headless Tauri IPC check after
-  preparing the release sidecar; it does not claim packaged GUI, browser, OS-service, or
-  signed-updater behavior. The 19/11 focused readiness figures were specific to the v0.29.8
-  readiness-hardening patch and are not re-asserted.
+  unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
+  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.14`
+  for recovery.
+- The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
+  tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
+  Python suite passes 149 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
+  passes. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
+  runs Bun with `--isolate` so file-local API mocks cannot leak between OAuth suites.
+- The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
+  promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
+  headless CI evidence; they do not claim packaged GUI, browser, OS-service, or signed-updater
+  behavior. The older v0.29.8 readiness figures are historical and are not re-asserted.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
@@ -92,7 +94,8 @@ is not part of a visual/UI change.
 - A model-backed evaluation was attempted against the configured provider without opening a
   personal index or starting sync/connectors. Route discovery succeeded, but the configured
   endpoint was unavailable; the run reported `fallback_provider_unavailable` without a model
-  result. Extractive mode remains the safe production default.
+  result. Extractive mode remains the safe production default and the provider-backed gate is
+  still open.
 - A bounded source validation sweep (one document, 64 KiB, 15 seconds per source) passed every
   enabled source. Matching non-reconciling trial syncs also passed for every enabled source;
   `work-drive` required a 120-second cap for first-embedding warm-up. These are deliberately
