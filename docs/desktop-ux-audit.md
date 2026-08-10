@@ -49,9 +49,10 @@ is not part of a visual/UI change.
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
    planner+synthesis citation validation in 22,866 ms. The latest installed v0.29.56 binary run
-   passed in 17,728 ms with planner and synthesis model use, valid citations, cache reuse, and
-   revision invalidation. Keep extractive mode as the safe production default because model
-   synthesis remains opt-in.
+   passed in 17,728 ms, and the published v0.29.57 core archive passed headlessly in 15,438 ms,
+   both with planner and synthesis model use, valid citations, cache reuse, and revision
+   invalidation. Keep extractive mode as the safe production default because model synthesis
+   remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -97,8 +98,9 @@ is not part of a visual/UI change.
 - The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.56`; the packaged Desktop
   app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or replaced.
   The installed core passes `cortana doctor`, the v0.29.56 disposable
-  control-plane drill, and the bounded model-backed gate. The current release is newer than the
-  installed CLI because the Desktop app was deliberately not launched or replaced.
+  control-plane drill, and the bounded model-backed gate. A temporary v0.29.57 core archive also
+  passed `--version`, `cortana doctor`, and the model-backed gate in 15,438 ms. The current release
+  is newer than the installed CLI because the Desktop app was deliberately not launched or replaced.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
   The current-source native Desktop suite at main commit `d707626` passes all 126 tests. The
@@ -151,10 +153,10 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The latest installed v0.29.56 core binary also
-  passed the current planner+synthesis citation validation with cache reuse and revision
-  invalidation in 17,728 ms. Extractive mode remains the safe production default because
-  synthesis is still an explicit opt-in.
+  output cap was raised for gateway reasoning. The latest installed v0.29.56 core binary passed
+  the current planner+synthesis citation validation with cache reuse and revision invalidation in
+  17,728 ms; the published v0.29.57 core archive passed the same gate in 15,438 ms. Extractive
+  mode remains the safe production default because synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source; recorded
   before the v0.29.54 core install)
   passed 11 of 12 enabled sources; `personal-calendar` failed closed with `authorization denied`

@@ -239,7 +239,8 @@ successfully with all 18 expected assets. The local verifier passed the publishe
 archives, checksums, signatures, and updater manifest. The installed CLI remains
 `cortana 0.29.56` and the packaged Desktop app at `/Applications/Cortana.app` remains v0.29.55;
 neither was launched or replaced. Their bounded control-plane, recovery, and model-backed checks
-are recorded in `docs/desktop-ux-audit.md`.
+are recorded in `docs/desktop-ux-audit.md`; the temporary v0.29.57 core archive also passed
+`cortana doctor` and the model-backed gate headlessly.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
