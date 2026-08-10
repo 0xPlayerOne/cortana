@@ -7,7 +7,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use rusqlite::types::Type;
-use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, params, params_from_iter};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -30,6 +30,7 @@ fn bump_corpus_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
 #[derive(Clone)]
 pub struct Store {
     connection: Arc<Mutex<Connection>>,
+    database_path: Arc<PathBuf>,
 }
 
 #[derive(Debug, Serialize)]
@@ -223,7 +224,17 @@ impl Store {
         secure_database_files(path)?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
+            database_path: Arc::new(path.to_path_buf()),
         })
+    }
+
+    fn read_connection(&self) -> Result<Connection> {
+        let connection = Connection::open_with_flags(
+            self.database_path.as_ref(),
+            OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        connection.busy_timeout(DATABASE_BUSY_TIMEOUT)?;
+        Ok(connection)
     }
 
     pub fn ensure_fingerprint(&self, fingerprint: &str) -> Result<()> {
@@ -1332,7 +1343,11 @@ impl Store {
     }
 
     pub fn stats(&self) -> Result<StoreStats> {
-        let connection = self.connection.lock().expect("store lock poisoned");
+        // Status and readiness are control-plane endpoints. Use a dedicated
+        // read-only connection so a long-running ingestion/retrieval query
+        // cannot hold the process-wide writer connection mutex and make
+        // health checks wait behind it.
+        let connection = self.read_connection()?;
         let documents =
             connection.query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))?;
         let chunks = connection.query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
@@ -1423,7 +1438,7 @@ impl Store {
         principal_acl: &[String],
         allowed_sync_sources: &HashSet<(String, String)>,
     ) -> Result<StoreStats> {
-        let connection = self.connection.lock().expect("store lock poisoned");
+        let connection = self.read_connection()?;
         let embedding_fingerprint = connection
             .query_row(
                 "SELECT value FROM meta WHERE key='embedding_fingerprint'",
@@ -3411,6 +3426,19 @@ mod tests {
                 .cache_embedding_if_available("model", "new text", &[0.5, 0.5])
                 .expect("cache write after lock")
         );
+    }
+
+    #[test]
+    fn stats_uses_a_read_connection_when_the_primary_connection_is_busy() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let _primary_connection_guard = store.connection.lock().expect("store lock");
+
+        let stats = store
+            .stats()
+            .expect("stats must not wait on the primary mutex");
+        assert_eq!(stats.documents, 0);
+        assert_eq!(stats.chunks, 0);
     }
 
     #[test]

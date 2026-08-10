@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Extension, Path as AxumPath, Query as AxumQuery, State},
@@ -39,6 +39,7 @@ const MAX_DOCUMENT_CONTENT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DOCUMENT_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_QUERY_LENGTH: usize = 256;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
+const READY_EMBEDDING_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub struct AppState {
@@ -736,7 +737,7 @@ fn default_document_limit() -> usize {
 
 async fn ready(State(state): State<AppState>) -> impl IntoResponse {
     let result = match state.store.stats() {
-        Ok(_) => state.embedder.probe().await,
+        Ok(_) => probe_with_timeout(state.embedder.as_ref(), READY_EMBEDDING_PROBE_TIMEOUT).await,
         Err(error) => Err(error),
     };
     match result {
@@ -750,6 +751,15 @@ async fn ready(State(state): State<AppState>) -> impl IntoResponse {
                 }),
             )
         }
+    }
+}
+
+async fn probe_with_timeout(embedder: &dyn Embedder, timeout: Duration) -> Result<()> {
+    match tokio::time::timeout(timeout, embedder.probe()).await {
+        Ok(result) => result,
+        Err(_) => Err(anyhow!(
+            "embedding provider probe timed out after {timeout:?}"
+        )),
     }
 }
 
@@ -1333,6 +1343,10 @@ mod tests {
 
     struct UnavailableEmbedder;
 
+    struct DelayedEmbedder {
+        delay: Duration,
+    }
+
     #[async_trait]
     impl Embedder for UnavailableEmbedder {
         async fn embed(&self, _input: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
@@ -1341,6 +1355,18 @@ mod tests {
 
         fn fingerprint(&self) -> String {
             "unavailable:test".into()
+        }
+    }
+
+    #[async_trait]
+    impl Embedder for DelayedEmbedder {
+        async fn embed(&self, _input: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+            tokio::time::sleep(self.delay).await;
+            Ok(vec![vec![1.0]])
+        }
+
+        fn fingerprint(&self) -> String {
+            "delayed:test".into()
         }
     }
 
@@ -1702,6 +1728,20 @@ mod tests {
             .await
             .expect("metrics response");
         assert_eq!(authorized.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn readiness_probe_fails_closed_when_embedding_provider_stalls() {
+        let embedder = DelayedEmbedder {
+            delay: Duration::from_secs(60),
+        };
+        let started = Instant::now();
+        let error = probe_with_timeout(&embedder, Duration::from_millis(10))
+            .await
+            .expect_err("a stalled embedding probe must time out");
+
+        assert!(error.to_string().contains("probe timed out"));
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[tokio::test]
