@@ -68,17 +68,19 @@ with provider-backed metrics:
 - `latency_ms`, `deadline_ms`
 
 The opt-in model gate applies a 30-second in-memory ceiling to the answer and provider request
-timeouts, independent of the interactive query budget. When the first planner or synthesis call
-fails closed, the evaluator emits the failure report without repeating the same provider outage
-for cache and post-update checks.
+timeouts, independent of the interactive query budget. It also caps the synthetic prompt context
+at 2,048 tokens and the generated answer at 128 tokens, so a large personal query configuration
+cannot turn this fixture-only check into a production load test. When the first planner or
+synthesis call fails closed, the evaluator emits the failure report without repeating the same
+provider outage for cache and post-update checks.
 
 The command exits nonzero when model quality thresholds fail.
 
-The current configured-provider attempt discovered the route and model catalog successfully, but
-the synthetic completion produced no result. The bounded evaluator returned a
-`fallback_provider_unavailable` report at its 30-second ceiling rather than repeating the outage.
-Treat that failure as pending model-backed proof rather than as a successful planner or synthesis
-evaluation; the extractive fallback remains the safe production mode.
+The latest configured-provider attempt discovered the route and model catalog and completed the
+synthetic planner call, but synthesis failed closed through the local `auto-free` route in 10,985
+ms. The bounded evaluator returned a `fallback_provider_unavailable` report without repeating the
+outage. Treat that failure as pending model-backed proof rather than as a successful planner or
+synthesis evaluation; the extractive fallback remains the safe production mode.
 
 ```toml
 [query]

@@ -22,6 +22,12 @@ use crate::answer::configured_model;
 /// full production request budget on every synthetic pass.
 pub const MODEL_EVALUATION_MAX_SECONDS: u64 = 30;
 
+// The fixture is deliberately tiny. Keep its prompts bounded independently
+// from a user's production context/output settings so a large personal
+// context budget cannot turn a synthetic release check into a load test.
+const MODEL_EVALUATION_MAX_CONTEXT_TOKENS: usize = 2_048;
+const MODEL_EVALUATION_MAX_OUTPUT_TOKENS: usize = 128;
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct EvaluationFixture {
     pub version: u32,
@@ -157,6 +163,12 @@ pub async fn run_with_model_default(
 
 fn bounded_model_config(query: &QueryConfig) -> QueryConfig {
     let mut bounded = query.clone();
+    bounded.context_tokens = bounded
+        .context_tokens
+        .min(MODEL_EVALUATION_MAX_CONTEXT_TOKENS);
+    bounded.output_tokens = bounded
+        .output_tokens
+        .min(MODEL_EVALUATION_MAX_OUTPUT_TOKENS);
     bounded.answer_timeout_seconds = bounded
         .answer_timeout_seconds
         .min(MODEL_EVALUATION_MAX_SECONDS);
@@ -789,6 +801,8 @@ mod tests {
             bounded.request_timeout_seconds,
             MODEL_EVALUATION_MAX_SECONDS
         );
+        assert_eq!(bounded.context_tokens, MODEL_EVALUATION_MAX_CONTEXT_TOKENS);
+        assert_eq!(bounded.output_tokens, MODEL_EVALUATION_MAX_OUTPUT_TOKENS);
 
         let already_bounded = QueryConfig {
             answer_timeout_seconds: 5,
@@ -798,5 +812,17 @@ mod tests {
         let unchanged = bounded_model_config(&already_bounded);
         assert_eq!(unchanged.answer_timeout_seconds, 5);
         assert_eq!(unchanged.request_timeout_seconds, 7);
+        assert_eq!(
+            unchanged.context_tokens,
+            QueryConfig::default()
+                .context_tokens
+                .min(MODEL_EVALUATION_MAX_CONTEXT_TOKENS)
+        );
+        assert_eq!(
+            unchanged.output_tokens,
+            QueryConfig::default()
+                .output_tokens
+                .min(MODEL_EVALUATION_MAX_OUTPUT_TOKENS)
+        );
     }
 }
