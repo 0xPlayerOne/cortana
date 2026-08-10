@@ -122,8 +122,8 @@ is not part of a visual/UI change.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
-  unauthenticated process-liveness check and must not be treated as full readiness evidence. A
-  the previous comprehensive readiness run against the installed v0.29.54 configuration passed
+  unauthenticated process-liveness check and must not be treated as full readiness evidence. The
+  previous comprehensive readiness run against the installed v0.29.54 configuration passed
   database integrity, embedding generation/provider, ACL, query API, verified-backup freshness
   (24 hours within a 48-hour bound),
   query mode, and the safe query-only state with recurring sync not installed; it did not invoke
