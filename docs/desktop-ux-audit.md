@@ -49,7 +49,7 @@ is not part of a visual/UI change.
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
    planner+synthesis citation validation in 22,866 ms. The latest installed v0.29.55 binary run
-   passed in 17,304 ms with planner and synthesis model use, valid citations, cache reuse, and
+   passed in 18,190 ms with planner and synthesis model use, valid citations, cache reuse, and
    revision invalidation. Keep extractive mode as the safe production default because model
    synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
@@ -148,7 +148,7 @@ is not part of a visual/UI change.
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
   output cap was raised for gateway reasoning. The latest installed v0.29.55 core binary also
   passed the current planner+synthesis citation validation with cache reuse and revision
-  invalidation in 17,304 ms. Extractive mode remains the safe production default because
+  invalidation in 18,190 ms. Extractive mode remains the safe production default because
   synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source; recorded
   before the v0.29.54 core install)

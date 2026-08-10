@@ -91,7 +91,7 @@ provider appended an uncited attribution line to the synthesis response. The ear
 historical evidence, not proof that the current provider is citation-safe. After raising the bounded
 synthetic output cap to leave room for gateway reasoning, the source run passed with planner and
 synthesis model use, valid citations, cache reuse, and revision invalidation in 22,866 ms. The
-latest installed v0.29.55 core binary rerun passed the same fixture-only evaluator in 17,304 ms
+latest installed v0.29.55 core binary rerun passed the same fixture-only evaluator in 18,190 ms
 with planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
 Desktop app is also installed locally at v0.29.55; Developer ID signing/notarization is not available
 in this environment. Extractive mode remains the safe production default because synthesis is still
