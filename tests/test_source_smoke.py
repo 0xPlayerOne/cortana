@@ -196,4 +196,7 @@ def test_google_token_refresh_failure_is_classified_as_authorization(
         error="Client error '400 Bad Request' for url 'https://oauth2.googleapis.com/token'",
     )
     assert result.returncode == 1
-    assert "drive\tgoogle-drive\ttrue\tfailed\tnot-requested\tvalidation: authorization denied" in result.stdout
+    assert (
+        "drive\tgoogle-drive\ttrue\tfailed\tnot-requested\tvalidation: authorization denied"
+        in result.stdout
+    )
