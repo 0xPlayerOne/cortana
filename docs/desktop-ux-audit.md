@@ -69,11 +69,11 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest published release is v0.29.24 at `34d123f`; release-assets workflow `31362202216`
-  completed successfully. Its local fail-closed verifier passed all 18 assets, core checksums,
-  the macOS sidecar/resources bundle, all six minisign updater signatures, the updater manifest,
-  the Windows installers, and the published Linux binary check (on Linux). The v0.29.25 release
-  run `31363159629` remains in progress.
+- The latest published release is v0.29.26 at `bd601b7`; release-assets workflow `31364290128`
+  was still in progress when this audit snapshot was captured. The last fully verified release is
+  v0.29.25 at `5089938`: its local fail-closed verifier passed all 18 assets, core checksums, the
+  macOS sidecar/resources bundle, all six minisign updater signatures, the updater manifest, the
+  Windows installers, and the published Linux binary check (on Linux).
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
   `/Applications/Cortana.app` now report `cortana 0.29.24`; the CLI passes `cortana doctor`, the
   offline evaluation checks, and the v0.29.24 packaged-CLI disposable desktop control-plane
@@ -100,9 +100,9 @@ is not part of a visual/UI change.
 - A model-backed evaluation was attempted against the configured provider without opening a
   personal index or starting sync/connectors. The provider model catalog responded, but the
   bounded synthetic evaluation and a direct 18-second completion probe received no response. The
-  evaluator now emits this failure at the 30-second ceiling instead of repeating provider calls.
-  This is not model-backed proof; extractive mode remains the safe production default and the
-  provider-backed gate is still open.
+  current main/v0.29.26 evaluator emitted `fallback_provider_unavailable` at 30,009 ms and exited
+  nonzero without repeating provider calls. This is not model-backed proof; extractive mode
+  remains the safe production default and the provider-backed gate is still open.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
   failed closed with an authorization error from the Google token endpoint. No trial sync was
