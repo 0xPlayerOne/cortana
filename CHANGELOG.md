@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.45](https://github.com/0xPlayerOne/cortana/compare/v0.29.44...v0.29.45) (2026-08-10)
+
+
+### Documentation
+
+* document optional memory sidecars ([#545](https://github.com/0xPlayerOne/cortana/issues/545)) ([e228ace](https://github.com/0xPlayerOne/cortana/commit/e228acecb5d5f7d67d700bebecfa620c0589cc39))
+
 ## [0.29.44](https://github.com/0xPlayerOne/cortana/compare/v0.29.43...v0.29.44) (2026-08-10)
 
 
