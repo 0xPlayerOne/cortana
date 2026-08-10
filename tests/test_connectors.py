@@ -2770,6 +2770,8 @@ def test_google_session_reports_sanitized_refresh_error_code(tmp_path: Path, cod
     assert "refresh-token-secret" not in message
     assert "client-id-secret" not in message
     assert "do not expose" not in message
+    if code == "invalid_grant":
+        assert "reauthorize the Google source" in message
 
 
 def test_google_session_keeps_unknown_refresh_error_generic(tmp_path: Path) -> None:
