@@ -35,8 +35,9 @@ UPDATER_PUBLIC_KEY = base64.b64decode(
 
 TAG = "v9.9.9"
 VERSION = "9.9.9"
+APP_ARCHIVE = f"Cortana_{VERSION}_aarch64.app.tar.gz"
 SIGNED_ARCHIVES = (
-    "Cortana_aarch64.app.tar.gz",
+    APP_ARCHIVE,
     f"Cortana_{VERSION}_amd64.AppImage",
     f"Cortana_{VERSION}_amd64.deb",
     f"Cortana-{VERSION}-1.x86_64.rpm",
@@ -124,7 +125,7 @@ def build_app_archive(directory: Path) -> Path:
     write_executable(app / "Contents/MacOS/cortana", fake_binary(VERSION))
     write_executable(app / "Contents/MacOS/cortana-desktop", b"#!/bin/sh\n")
     (app / "Contents/Resources/resources/cortana-connectors/__init__.py").write_text("")
-    archive = directory / "Cortana_aarch64.app.tar.gz"
+    archive = directory / APP_ARCHIVE
     with tarfile.open(archive, "w:gz") as handle:
         handle.add(app, arcname=app.name)
     return archive
@@ -133,7 +134,7 @@ def build_app_archive(directory: Path) -> Path:
 def latest_manifest() -> bytes:
     platform_assets = {
         "darwin-aarch64": f"Cortana_{VERSION}_aarch64.dmg",
-        "darwin-aarch64-app": "Cortana_aarch64.app.tar.gz",
+        "darwin-aarch64-app": APP_ARCHIVE,
         "linux-x86_64": f"cortana-{TAG}-x86_64-unknown-linux-gnu.tar.gz",
         "linux-x86_64-appimage": f"Cortana_{VERSION}_amd64.AppImage",
         "linux-x86_64-deb": f"Cortana_{VERSION}_amd64.deb",
@@ -162,8 +163,8 @@ def required_asset_names() -> list[str]:
         f"cortana-{TAG}-x86_64-unknown-linux-gnu.tar.gz",
         f"cortana-{TAG}-x86_64-unknown-linux-gnu.tar.gz.sha256",
         f"Cortana_{VERSION}_aarch64.dmg",
-        "Cortana_aarch64.app.tar.gz",
-        "Cortana_aarch64.app.tar.gz.sig",
+        APP_ARCHIVE,
+        f"{APP_ARCHIVE}.sig",
         f"Cortana_{VERSION}_amd64.AppImage",
         f"Cortana_{VERSION}_amd64.AppImage.sig",
         f"Cortana_{VERSION}_amd64.deb",
@@ -445,7 +446,7 @@ def test_desktop_verify_rejects_invalid_non_first_signed_archive(tmp_path: Path)
     )
 
     assert result.returncode == 1
-    assert "verified Tauri updater signature: Cortana_aarch64.app.tar.gz" in result.stdout
+    assert f"verified Tauri updater signature: {APP_ARCHIVE}" in result.stdout
     assert f"Tauri updater signature verification failed: {invalid_archive}" in result.stderr
 
 
