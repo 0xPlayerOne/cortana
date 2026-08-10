@@ -89,7 +89,7 @@ is not part of a visual/UI change.
   v0.29.19, and v0.29.14 backups remain available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full web suite
   passes 252 tests across 21 files. The Python suite passes 153 tests, `bun run --cwd apps/web
-  typecheck` passes, and `uv lock --check` passes. These are per-suite figures, not a deduplicated
+typecheck` passes, and `uv lock --check` passes. These are per-suite figures, not a deduplicated
   aggregate. The root `test` script now
   runs Bun with `--isolate` so file-local API mocks cannot leak between OAuth suites.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
