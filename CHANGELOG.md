@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.60](https://github.com/0xPlayerOne/cortana/compare/v0.29.59...v0.29.60) (2026-08-10)
+
+
+### Bug Fixes
+
+* **release:** bound GitHub asset downloads ([#577](https://github.com/0xPlayerOne/cortana/issues/577)) ([047960e](https://github.com/0xPlayerOne/cortana/commit/047960e4d57cf67f960b3ea67381f44f8bad0de5))
+
 ## [0.29.59](https://github.com/0xPlayerOne/cortana/compare/v0.29.58...v0.29.59) (2026-08-10)
 
 
