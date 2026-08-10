@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.33](https://github.com/0xPlayerOne/cortana/compare/v0.29.32...v0.29.33) (2026-08-10)
+
+
+### Bug Fixes
+
+* bound synthetic model evaluation prompts ([#517](https://github.com/0xPlayerOne/cortana/issues/517)) ([339240e](https://github.com/0xPlayerOne/cortana/commit/339240e64544c6a2e3d3588d4ccf1970ec81026a))
+
 ## [0.29.32](https://github.com/0xPlayerOne/cortana/compare/v0.29.31...v0.29.32) (2026-08-10)
 
 
