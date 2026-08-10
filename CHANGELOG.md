@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.58](https://github.com/0xPlayerOne/cortana/compare/v0.29.57...v0.29.58) (2026-08-10)
+
+
+### Bug Fixes
+
+* **memory:** validate outbox bounds centrally ([#574](https://github.com/0xPlayerOne/cortana/issues/574)) ([664e768](https://github.com/0xPlayerOne/cortana/commit/664e768d56d64fd7ee66a4caf76343a4299bc245))
+
 ## [0.29.57](https://github.com/0xPlayerOne/cortana/compare/v0.29.56...v0.29.57) (2026-08-10)
 
 
