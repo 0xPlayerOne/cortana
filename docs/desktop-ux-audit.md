@@ -70,9 +70,10 @@ is not part of a visual/UI change.
    an append-only experimental sink. Neither is enabled for personal data until
    provider ACL, deletion, export, and packaged-UI gates are explicitly proven.
 6. Re-authorize `personal-calendar`: the existing owner-only Google token was migrated into
-   Cortana's configured token location, but the latest bounded validation still failed closed with
-   `authorization denied`. Recurring sync must remain disabled until browser authorization succeeds
-   and the source is revalidated.
+   Cortana's configured token location, but its current refresh token record expired on
+   2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
+   Recurring sync must remain disabled until browser authorization succeeds and the source is
+   revalidated.
 
 ## Evidence limits
 
