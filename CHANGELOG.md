@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.24](https://github.com/0xPlayerOne/cortana/compare/v0.29.23...v0.29.24) (2026-08-10)
+
+
+### Bug Fixes
+
+* clean stale release guidance and auth diagnostics ([#497](https://github.com/0xPlayerOne/cortana/issues/497)) ([e2c312e](https://github.com/0xPlayerOne/cortana/commit/e2c312e7764c9c4024c1b2a1c0d4065d93e91e33))
+
 ## [0.29.23](https://github.com/0xPlayerOne/cortana/compare/v0.29.22...v0.29.23) (2026-08-10)
 
 
