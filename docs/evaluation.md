@@ -75,9 +75,10 @@ for cache and post-update checks.
 The command exits nonzero when model quality thresholds fail.
 
 The current configured-provider attempt discovered the route and model catalog successfully, but
-the synthetic completion produced no result within the bounded evaluation window. Treat that
-timeout as pending model-backed proof rather than as a successful planner or synthesis evaluation;
-the extractive fallback remains the safe production mode.
+the synthetic completion produced no result. The bounded evaluator returned a
+`fallback_provider_unavailable` report at its 30-second ceiling rather than repeating the outage.
+Treat that failure as pending model-backed proof rather than as a successful planner or synthesis
+evaluation; the extractive fallback remains the safe production mode.
 
 ```toml
 [query]
