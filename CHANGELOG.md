@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.26](https://github.com/0xPlayerOne/cortana/compare/v0.29.25...v0.29.26) (2026-08-10)
+
+
+### Bug Fixes
+
+* bound model evaluation provider failures ([#505](https://github.com/0xPlayerOne/cortana/issues/505)) ([5beb3cc](https://github.com/0xPlayerOne/cortana/commit/5beb3ccf160a913219b12d645c8f10e60be77046))
+
 ## [0.29.25](https://github.com/0xPlayerOne/cortana/compare/v0.29.24...v0.29.25) (2026-08-10)
 
 
