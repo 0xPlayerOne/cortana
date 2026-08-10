@@ -49,9 +49,9 @@ is not part of a visual/UI change.
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
    planner+synthesis citation validation in 22,866 ms. A current rerun of the installed v0.29.50
-   binary passed in 8,598 ms with planner and synthesis model use, valid citations, cache reuse, and
-   revision invalidation. Keep extractive mode as the safe production default because model synthesis
-   remains opt-in.
+   binary passed in the latest bounded rerun in 15,221 ms with planner and synthesis model use,
+   valid citations, cache reuse, and revision invalidation (the prior run measured 8,598 ms). Keep
+   extractive mode as the safe production default because model synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -127,8 +127,8 @@ is not part of a visual/UI change.
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
   output cap was raised for gateway reasoning. The installed v0.29.50 core binary also passed the
-  current planner+synthesis citation validation with cache reuse and revision invalidation in 8,598
-  ms. Extractive mode remains the safe production default because
+  current planner+synthesis citation validation with cache reuse and revision invalidation in 15,221
+  ms (the prior run measured 8,598 ms). Extractive mode remains the safe production default because
   synthesis is still an explicit opt-in.
 - The latest bounded v0.29.50 source validation sweep (25 documents, 5 MiB, 60 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar` failed closed with `authorization denied`
