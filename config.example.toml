@@ -99,7 +99,7 @@ request_concurrency = 1
 # installation, `sync --require-validation`, and readiness
 # (`--allow-sync-service`) refuse a validation older than the bound so a
 # revoked credential or changed scope cannot keep a stale record blessing the
-# schedule; set 0 to accept any age.
+# schedule. Set 0 only for read-only/manual checks; recurring sync rejects it.
 validation_max_age_hours = 168
 # A successful sync older than this is shown as stale in operational source health.
 # Set 0 to disable the stale-sync warning (it does not disable validation freshness).

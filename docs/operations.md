@@ -56,7 +56,8 @@ safety budgets, every ACL-visible configured source including disabled or not-ye
 its configured ACL labels, a non-secret authorization summary, and the latest persisted validation
 and sync outcomes for each source. Each per-source validation summary reports a `fresh` flag and a
 bounded `age_seconds` computed against the configured
-`[ingestion].validation_max_age_hours` bound (168 hours by default; `0` accepts any age), so a
+`[ingestion].validation_max_age_hours` bound (168 hours by default; `0` accepts any age only for
+read-only/manual checks), so a
 succeeded validation that has lapsed is reported as expired rather than healthy. The local owner
 sees the complete inventory; scoped principals
 see only matching source/project counters, workspaces, validation state, and sync outcomes; an
@@ -311,7 +312,8 @@ install the job unless each source has a current successful validation covering 
 document, byte, and duration budgets. Because the recurring job reconciles the full corpus, a
 bounded sample recorded by `validate-source --sample` never satisfies this gate; only a complete
 validation qualifies. A validation stays current for
-`[ingestion].validation_max_age_hours` (168 hours by default; `0` accepts any age): re-run
+`[ingestion].validation_max_age_hours` (168 hours by default; `0` is rejected for recurring sync):
+re-run
 `validate-source` (or the Desktop validation flow) after changing a source or its budgets, and
 re-validate periodically so a revoked credential or changed scope cannot keep a stale record
 blessing the schedule. The installed job runs `sync --require-validation` without `--source`, so
@@ -323,14 +325,6 @@ instead of ingesting against a stale validation. The same freshness bound gates
 `sync --require-validation` and the readiness `source-validation` check, and both require a
 complete validation for reconciling runs; a non-reconciling run (`--no-reconcile`) may rely on a
 matching successful sample instead. Re-run `validate-source`
-(or the Desktop validation flow) after changing a source or its budgets; the next scheduled run
-picks up the new validation record automatically.
-blessing the schedule. The installed job runs `sync --require-validation` without `--source`, so
-every scheduled run re-applies the same gate before any connector is contacted: a source whose
-validation lapsed or failed, whose configuration changed since validation, or whose resolved
-budgets grew past the validated ones fails the run fast (nonzero exit, visible in the job log)
-instead of ingesting against a stale validation. The same freshness bound gates
-`sync --require-validation` and the readiness `source-validation` check. Re-run `validate-source`
 (or the Desktop validation flow) after changing a source or its budgets; the next scheduled run
 picks up the new validation record automatically. `/v1/status` marks a lapsed validation expired
 so the workspace flags the source for re-validation instead of showing it as healthy.
@@ -446,9 +440,9 @@ contacts a connector: it fails when a source was never validated, its last valid
 configuration changed since validation (the validation record stores a configuration fingerprint),
 its resolved budgets grew past the validated ones — for example after raising `[ingestion]`
 defaults behind an override-less source — or its validation lapsed past
-`[ingestion].validation_max_age_hours` (168 hours by default; `0` disables the bound). This mirrors
-the install-time recurring-sync gate, and because the installed recurring job re-checks the same
-gate on every scheduled run, an operator who changed a source after installing the sync schedule
+`[ingestion].validation_max_age_hours` (168 hours by default; `0` disables the bound for
+read-only/manual checks). Recurring sync rejects `0`. The installed recurring job re-checks the
+same gate on every scheduled run, so an operator who changed a source after installing the sync schedule
 sees the mismatch in `cortana readiness` before the next scheduled run fails fast with the same
 reason. Without the flag, source validation is not required for query-only readiness; per-source
 validation state remains visible in `/v1/status` at any time.

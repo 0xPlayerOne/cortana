@@ -788,7 +788,8 @@ fn default_ingestion_max_duration() -> u64 {
 /// gate for recurring sync, `sync --require-validation`, and the readiness
 /// `source-validation` check all refuse a validation older than the bound so a
 /// revoked credential or changed scope cannot keep a stale record blessing the
-/// schedule. `0` disables the freshness bound (fail-open opt-out).
+/// schedule. `0` disables the freshness bound for read-only/manual checks;
+/// recurring sync rejects it before installation or reconciliation.
 fn default_validation_max_age_hours() -> u64 {
     168
 }

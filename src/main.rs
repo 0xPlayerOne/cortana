@@ -1609,6 +1609,7 @@ fn require_sync_validation(
     overrides: SyncOverrides,
     reconcile: bool,
 ) -> Result<()> {
+    ensure_reconcile_validation_freshness(config, reconcile)?;
     let Some(selected) = selected else {
         return require_enabled_sources_validated(config, overrides, reconcile);
     };
@@ -1868,6 +1869,16 @@ fn ensure_recurring_sync_validated(config: &Config) -> Result<()> {
     require_enabled_sources_validated(config, SyncOverrides::default(), true)
 }
 
+fn ensure_reconcile_validation_freshness(config: &Config, reconcile: bool) -> Result<()> {
+    if reconcile {
+        anyhow::ensure!(
+            config.ingestion.validation_max_age_hours > 0,
+            "reconciling sync requires a positive ingestion.validation_max_age_hours; set it to at least 1 hour"
+        );
+    }
+    Ok(())
+}
+
 /// Re-check that every enabled source has a current successful validation at
 /// equal or larger budgets than its resolved run limits.
 ///
@@ -1885,6 +1896,7 @@ fn require_enabled_sources_validated(
     overrides: SyncOverrides,
     reconcile: bool,
 ) -> Result<()> {
+    ensure_reconcile_validation_freshness(config, reconcile)?;
     let mut checked = 0usize;
     for source in config.sources.iter().filter(|source| source.enabled) {
         checked += 1;
@@ -3720,6 +3732,38 @@ mod tests {
             .expect_err("missing source validation must block recurring sync");
         assert!(error.to_string().contains("work-code"));
         assert!(error.to_string().contains("current successful validation"));
+    }
+
+    #[test]
+    fn recurring_sync_rejects_unbounded_validation_freshness() {
+        let mut config = Config::default();
+        config.ingestion.validation_max_age_hours = 0;
+
+        let error = ensure_recurring_sync_validated(&config)
+            .expect_err("recurring sync must reject an unbounded validation age");
+        assert!(
+            error
+                .to_string()
+                .contains("requires a positive ingestion.validation_max_age_hours")
+        );
+    }
+
+    #[test]
+    fn selected_reconciling_sync_rejects_unbounded_validation_freshness() {
+        let mut config = Config::default();
+        config.sources.push(filesystem_source("work-code"));
+        config.ingestion.validation_max_age_hours = 0;
+
+        let error =
+            require_sync_validation(&config, Some("work-code"), SyncOverrides::default(), true)
+                .expect_err(
+                    "single-source reconciling sync must reject an unbounded validation age",
+                );
+        assert!(
+            error
+                .to_string()
+                .contains("requires a positive ingestion.validation_max_age_hours")
+        );
     }
 
     #[test]
