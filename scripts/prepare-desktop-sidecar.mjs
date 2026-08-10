@@ -5,6 +5,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
+import { hasReleasePleaseAnnotation, restoreReleasePleaseAnnotation } from './desktop-lockfile.mjs'
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const release = process.argv.includes('--release')
 const target = process.env.CORTANA_DESKTOP_TARGET || capture('rustc', ['--print', 'host-tuple'])
@@ -16,7 +18,17 @@ const extension = windows ? '.exe' : ''
 const profile = release ? 'release' : 'debug'
 const args = ['build', '--locked', '--target', target]
 if (release) args.push('--release')
-run('cargo', args)
+const desktopLockfile = resolve(root, 'apps/desktop/src-tauri/Cargo.lock')
+const preservesReleasePleaseAnnotation = hasReleasePleaseAnnotation(desktopLockfile)
+try {
+  run('cargo', args)
+} finally {
+  // Cargo may rewrite a lockfile while preserving its semantic contents but
+  // dropping the Release Please marker comment. Keep the generated lockfile
+  // authoritative while restoring that repository-owned release annotation so
+  // local desktop tests and builds do not leave a false dirty diff.
+  if (preservesReleasePleaseAnnotation) restoreReleasePleaseAnnotation(desktopLockfile)
+}
 
 const source = resolve(root, 'target', target, profile, `cortana${extension}`)
 const destination = resolve(

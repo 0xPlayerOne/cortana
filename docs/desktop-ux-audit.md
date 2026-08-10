@@ -48,10 +48,10 @@ is not part of a visual/UI change.
    invalid model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
-   planner+synthesis citation validation in 22,866 ms. The installed v0.29.50 CLI passed the same
-   bounded evaluator in 10,289 ms, and the packaged app binary passed it in 14,241 ms, with valid
-   citations, cache reuse, and revision invalidation. Keep extractive mode as the safe production
-   default because model synthesis remains opt-in.
+   planner+synthesis citation validation in 22,866 ms. A current rerun of the installed v0.29.50
+   binary passed in the latest bounded rerun in 15,221 ms with planner and synthesis model use,
+   valid citations, cache reuse, and revision invalidation (the prior run measured 8,598 ms). Keep
+   extractive mode as the safe production default because model synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -69,21 +69,21 @@ is not part of a visual/UI change.
    source of truth; Hindsight is the replacement-capable sidecar and Honcho is
    an append-only experimental sink. Neither is enabled for personal data until
    provider ACL, deletion, export, and packaged-UI gates are explicitly proven.
-6. Re-authorize `personal-calendar`: the latest bounded validation failed closed with
-   `credential or path missing` because the personal Google token file is absent. Recurring sync
-   must remain disabled until that credential is repaired and the source is revalidated.
+6. Re-authorize `personal-calendar`: the existing owner-only Google token was migrated into
+   Cortana's configured token location, but the latest bounded validation still failed closed with
+   `authorization denied`. Recurring sync must remain disabled until browser authorization succeeds
+   and the source is revalidated.
 
 ## Evidence limits
 
-- The audited functional snapshot is v0.29.43 at release commit `1ef07dd`; the latest fully verified
-  release is v0.29.50 at release commit `189337a` with release-assets workflow `31408479199`; the
-  local fail-closed verifier
+- The audited functional snapshot is v0.29.52 at release commit `eaf7357`; the latest fully verified
+  release is v0.29.52 with release-assets workflow `31415473780`; the local fail-closed verifier
   passed all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
   this macOS host).
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.50`; the installed app passes `cortana doctor`,
+  `/Applications/Cortana.app` report `cortana 0.29.50`; the installed app passes `cortana doctor`,
   the packaged v0.29.50 control-plane and backup/restore drills, and the bounded model-backed gate.
   The full `cortana readiness` scan remains a separate read-only operational check because it
   includes roughly 1 GB of SQLite integrity and backup scanning.
@@ -95,10 +95,11 @@ is not part of a visual/UI change.
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full web suite
-  passes 252 tests across 21 files (latest run: 37.56 seconds, 1,263 assertions). The Python suite passes 156 tests, `bun run type-check` and
+  passes 252 tests across 21 files (latest run: 30.06 seconds, 1,264 assertions). The Python suite passes 156 tests, `bun run type-check` and
   `uv lock --check` pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
-  OAuth suites or race the desktop pagination tests.
+  OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
+  all 126 tests; the focused `native_` subset passes 24 tests.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
   headless CI evidence; they do not claim packaged GUI, browser, OS-service, or signed-updater
@@ -125,24 +126,24 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The installed v0.29.50 core binary and packaged app
-  also passed planner+synthesis citation validation with cache reuse and revision invalidation; the
-  CLI completed in 10,289 ms and the packaged app in 14,241 ms. Extractive mode remains the safe
-  production default because
+  output cap was raised for gateway reasoning. The installed v0.29.50 core binary also passed the
+  current planner+synthesis citation validation with cache reuse and revision invalidation in 15,221
+  ms (the prior run measured 8,598 ms). Extractive mode remains the safe production default because
   synthesis is still an explicit opt-in.
 - The latest bounded v0.29.50 source validation sweep (25 documents, 5 MiB, 60 seconds per source)
-  passed 11 of 12 enabled sources; `personal-calendar`
-  failed closed with `credential or path missing` because the personal Google token file is absent.
+  passed 11 of 12 enabled sources; `personal-calendar` failed closed with `authorization denied`
+  after the existing owner-only token was migrated from Hermes into Cortana's configured location.
   No trial sync was
   run in that sweep. Earlier matching non-reconciling trial syncs passed the then-authorized
   sources, with `work-drive` requiring a 120-second cap for first-embedding warm-up. These are
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A disposable backup/restore drill passed against the v0.29.50 core archive and aarch64 Desktop
-  app: the verified backup restored into a temporary data directory, SQLite integrity verification
-  passed, and the restored fixture remained searchable. The drill did not touch indexed personal
-  data.
+- A current disposable backup/restore drill against the installed v0.29.50 CLI passed: the live
+  database backup was verified, restored into a temporary data directory, and SQLite integrity
+  verification passed. The packaged control-plane drill also passed offline init, bounded fixture
+  ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
+  Neither drill touched indexed personal data.
 - Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
   interactions remain unverified because no callable Computer Use session was available. Native
   handler tests, packaged CLI control-plane, and packaged backup/restore evidence are recorded
