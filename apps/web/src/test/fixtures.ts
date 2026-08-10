@@ -41,8 +41,8 @@ export const secondDocumentsPage: BrainDocumentPage = {
 export const canonicalDocument: BrainDocument = {
   ...summaryOf(demoEvidence[1], 'work'),
   content:
-    'Promote staging only after unit, integration, end-to-end, and security checks pass.\n\nObserve the deployment before closing the release.',
-  metadata: { owner: 'release-eng', review: ['staging', 'prod'] },
+    'Merge into main only after unit, integration, end-to-end, and security checks pass.\n\nObserve the release before closing it.',
+  metadata: { owner: 'release-eng', review: ['main', 'production'] },
   acl: ['work'],
   backlinks: [
     {
@@ -72,8 +72,7 @@ export const canonicalDocument: BrainDocument = {
 /** Successful answer for the search error/retry flow. */
 export const answerResponse: AnswerResponse = {
   query: 'release cadence',
-  answer:
-    'Promote short-lived changes through staging after the full test and security suite passes [1].',
+  answer: 'Merge short-lived changes into main after the full test and security suite passes [1].',
   evidence: demoEvidence,
   plan: { queries: ['release cadence'], model_generated: true },
   mode: 'synthesized',

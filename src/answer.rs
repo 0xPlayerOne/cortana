@@ -1056,7 +1056,7 @@ mod tests {
             row(
                 "release-playbook",
                 "Release playbook",
-                "Promote staging only after release checks pass.",
+                "Merge only after release checks pass.",
                 0.8,
             ),
             row(
@@ -1245,7 +1245,7 @@ mod tests {
             &store,
             &embedder,
             "release",
-            "Promote staging only after release checks pass.",
+            "Merge only after release checks pass.",
         )
         .await;
         let model = Arc::new(MockModel {
@@ -1306,7 +1306,7 @@ mod tests {
             &store,
             &embedder,
             "release",
-            "Promote staging only after release checks pass.",
+            "Merge only after release checks pass.",
         )
         .await;
         let engine = AnswerEngine::new(
@@ -1336,7 +1336,11 @@ mod tests {
 
         let response = engine.answer(request).await.expect("recomputed answer");
         assert!(!response.cached);
-        assert!(response.answer.contains("Promote staging"));
+        assert!(
+            response
+                .answer
+                .contains("Merge only after release checks pass")
+        );
         let cached = store
             .cached_query(&cache_key, 3600)
             .expect("repaired cache")
@@ -1353,7 +1357,7 @@ mod tests {
             &store,
             &embedder,
             "release",
-            "Promote staging only after release checks pass.",
+            "Merge only after release checks pass.",
         )
         .await;
         let model = Arc::new(MockModel {
