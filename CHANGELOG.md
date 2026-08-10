@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.28](https://github.com/0xPlayerOne/cortana/compare/v0.29.27...v0.29.28) (2026-08-10)
+
+
+### Bug Fixes
+
+* report sanitized Google OAuth refresh errors ([#508](https://github.com/0xPlayerOne/cortana/issues/508)) ([8b7071b](https://github.com/0xPlayerOne/cortana/commit/8b7071b1f551a721b0b4a21dbb47f44e687f716c))
+
 ## [0.29.27](https://github.com/0xPlayerOne/cortana/compare/v0.29.26...v0.29.27) (2026-08-10)
 
 
