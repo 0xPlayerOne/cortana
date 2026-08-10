@@ -12,13 +12,11 @@ from typing import Any
 from .hindsight import HindsightConfig, HindsightHttpProvider
 from .honcho import HonchoConfig, HonchoHttpProvider
 from .models import MemoryArgumentError
-from .outbox import Outbox, OutboxError
+from .outbox import MAX_BATCH_SIZE, MAX_LEASE_SECONDS, Outbox, OutboxError
 from .provider import MemoryProvider
 from .worker import MemorySyncWorker
 
 _ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,63}$")
-_MAX_BATCH_SIZE = 1024
-_MAX_LEASE_SECONDS = 3600.0
 
 
 def parser() -> argparse.ArgumentParser:
@@ -47,13 +45,13 @@ def parser() -> argparse.ArgumentParser:
         "--limit",
         type=_bounded_limit,
         default=64,
-        help=f"number of rows claimed per batch (1-{_MAX_BATCH_SIZE})",
+        help=f"number of rows claimed per batch (1-{MAX_BATCH_SIZE})",
     )
     root.add_argument(
         "--lease-seconds",
         type=_bounded_lease_seconds,
         default=60.0,
-        help=f"lease duration in seconds (0-{_MAX_LEASE_SECONDS:g}]",
+        help=f"lease duration in seconds (0-{MAX_LEASE_SECONDS:g}]",
     )
     root.add_argument("--worker-id", default="memory-sync")
     return root
@@ -141,8 +139,8 @@ def _bounded_limit(value: str) -> int:
         limit = int(value)
     except ValueError as error:
         raise argparse.ArgumentTypeError("limit must be an integer") from error
-    if not 1 <= limit <= _MAX_BATCH_SIZE:
-        raise argparse.ArgumentTypeError(f"limit must be between 1 and {_MAX_BATCH_SIZE}")
+    if not 1 <= limit <= MAX_BATCH_SIZE:
+        raise argparse.ArgumentTypeError(f"limit must be between 1 and {MAX_BATCH_SIZE}")
     return limit
 
 
@@ -151,9 +149,9 @@ def _bounded_lease_seconds(value: str) -> float:
         lease_seconds = float(value)
     except ValueError as error:
         raise argparse.ArgumentTypeError("lease-seconds must be a number") from error
-    if not math.isfinite(lease_seconds) or not 0 < lease_seconds <= _MAX_LEASE_SECONDS:
+    if not math.isfinite(lease_seconds) or not 0 < lease_seconds <= MAX_LEASE_SECONDS:
         raise argparse.ArgumentTypeError(
-            f"lease-seconds must be greater than 0 and at most {_MAX_LEASE_SECONDS:g}"
+            f"lease-seconds must be greater than 0 and at most {MAX_LEASE_SECONDS:g}"
         )
     return lease_seconds
 
