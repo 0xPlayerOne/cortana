@@ -911,6 +911,13 @@ mod tests {
             strip_model_gateway_footer(no_gateway_metadata, None),
             no_gateway_metadata
         );
+        assert_eq!(
+            strip_model_gateway_footer(
+                "Answer [1]\n- NORTH: Mini Code Free Default, Kilo Code Gateway",
+                Some("other-provider")
+            ),
+            no_gateway_metadata
+        );
     }
 
     #[test]
