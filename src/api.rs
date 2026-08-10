@@ -736,8 +736,12 @@ fn default_document_limit() -> usize {
 }
 
 async fn ready(State(state): State<AppState>) -> impl IntoResponse {
+    ready_with_probe_timeout(state, READY_EMBEDDING_PROBE_TIMEOUT).await
+}
+
+async fn ready_with_probe_timeout(state: AppState, probe_timeout: Duration) -> impl IntoResponse {
     let result = match state.store.stats() {
-        Ok(_) => probe_with_timeout(state.embedder.as_ref(), READY_EMBEDDING_PROBE_TIMEOUT).await,
+        Ok(_) => probe_with_timeout(state.embedder.as_ref(), probe_timeout).await,
         Err(error) => Err(error),
     };
     match result {
@@ -1732,15 +1736,20 @@ mod tests {
 
     #[tokio::test]
     async fn readiness_probe_fails_closed_when_embedding_provider_stalls() {
-        let embedder = DelayedEmbedder {
-            delay: Duration::from_secs(60),
-        };
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let state = AppState::new(
+            store,
+            Arc::new(DelayedEmbedder {
+                delay: Duration::from_secs(60),
+            }),
+        );
         let started = Instant::now();
-        let error = probe_with_timeout(&embedder, Duration::from_millis(10))
+        let response = ready_with_probe_timeout(state, Duration::from_millis(10))
             .await
-            .expect_err("a stalled embedding probe must time out");
+            .into_response();
 
-        assert!(error.to_string().contains("probe timed out"));
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         assert!(started.elapsed() < Duration::from_secs(1));
     }
 
