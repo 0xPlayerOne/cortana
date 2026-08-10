@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.35](https://github.com/0xPlayerOne/cortana/compare/v0.29.34...v0.29.35) (2026-08-10)
+
+
+### Documentation
+
+* correct current provider evidence ([#523](https://github.com/0xPlayerOne/cortana/issues/523)) ([e8ec180](https://github.com/0xPlayerOne/cortana/commit/e8ec180ee80441903b6b9697c07ad58f6a82a3c4))
+
 ## [0.29.34](https://github.com/0xPlayerOne/cortana/compare/v0.29.33...v0.29.34) (2026-08-10)
 
 
