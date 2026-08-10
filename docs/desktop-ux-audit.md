@@ -70,9 +70,8 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest source is v0.29.35 at `adbb3ff`; the latest fully verified release is v0.29.33
-  at `ba4ae78`, with release-assets workflow `31373203451`; the local fail-closed verifier passed
-  all 18 assets,
+- The latest source is v0.29.35 at `adbb3ff`; the latest fully verified release is v0.29.35
+  with release-assets workflow `31375651449`; the local fail-closed verifier passed all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
   this macOS host).
