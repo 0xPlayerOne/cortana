@@ -88,10 +88,10 @@ An earlier configured-provider attempt at source commit `339240e` passed the bou
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the current packaged
 v0.29.33 evaluator failed closed twice (8,313 ms and 13,398 ms) after the planner call because the
 configured provider appended an uncited attribution line to the synthesis response. The earlier
-passes are historical evidence, not proof that the current provider is citation-safe; a current
-source run also failed closed with the stable `provider_unavailable` reason after 13,625 ms.
-Extractive mode remains the safe production default until a current-release model-backed run passes
-again.
+passes are historical evidence, not proof that the current provider is citation-safe. The latest
+source run on the current tree reached the planner but failed closed at synthesis with the stable
+`provider_unavailable` reason after 10,530 ms. Extractive mode remains the safe production default
+until a current-release model-backed run passes again.
 
 ```toml
 [query]

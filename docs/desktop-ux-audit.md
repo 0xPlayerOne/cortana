@@ -47,9 +47,9 @@ is not part of a visual/UI change.
    13,477 ms, but the current packaged v0.29.33 run failed closed twice with invalid model
    citations (8,313 ms and 13,398 ms). The current source now strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree; the live
-   route still returned `provider_unavailable` in the latest bounded run, so this gate remains
-   open. Keep extractive mode as the safe production default until the current provider route
-   produces citation-valid synthesis.
+   route still returned `provider_unavailable` at synthesis after 10,530 ms in the latest bounded
+   run, so this gate remains open. Keep extractive mode as the safe production default until the
+   current provider route produces citation-valid synthesis.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -104,8 +104,8 @@ typecheck` passes, and `uv lock --check` passes. These are per-suite figures, no
   starting sync/connectors. The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
-  A current source run then failed closed with the stable `provider_unavailable` reason after
-  13,625 ms. This is not current-release model-backed proof; extractive mode remains the safe
+  The latest source run then failed closed with the stable `provider_unavailable` reason after
+  10,530 ms. This is not current-release model-backed proof; extractive mode remains the safe
   production default and the provider gate is still open.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
