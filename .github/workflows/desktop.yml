@@ -256,8 +256,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-rust-
-      # Web typecheck/build is owned by Code Foundry Validation / CI, which
-      # already runs `bun run typecheck` and `bun run build` on the same
+      # Repository type-check/build is owned by Code Foundry Validation / CI,
+      # which already runs the root Python, Rust, and web checks on the same
       # main-targeting PR SHA. This job keeps only desktop tests.
       - name: Test desktop
         run: bun run desktop:test
@@ -305,8 +305,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-rust-
-      # Web typecheck/build is owned by Code Foundry Validation / CI, which
-      # already runs `bun run typecheck` and `bun run build` on the same
+      # Repository type-check/build is owned by Code Foundry Validation / CI,
+      # which already runs the root Python, Rust, and web checks on the same
       # main-targeting PR SHA. This job keeps only desktop clippy.
       - name: Lint desktop
         run: bun run --cwd apps/desktop clippy
