@@ -44,9 +44,12 @@ is not part of a visual/UI change.
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Open:** an
    earlier source `339240e` run passed in 20,176 ms and a packaged v0.29.31 rerun passed in
-   13,477 ms, but the current packaged v0.29.33 run failed closed twice (`fallback_provider_unavailable`
-   in 9,836 ms and 6,807 ms). Keep extractive mode as the safe production default until the
-   current provider route passes again.
+   13,477 ms, but the current packaged v0.29.33 run failed closed twice with invalid model
+   citations (8,313 ms and 13,398 ms). The current source now strips only the model-gateway
+   attribution footer when its explicit provider header and exact footer shape agree; the live
+   route still returned `provider_unavailable` at synthesis after 10,530 ms in the latest bounded
+   run, so this gate remains open. Keep extractive mode as the safe production default until the
+   current provider route produces citation-valid synthesis.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -70,26 +73,23 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest source is v0.29.34 at `89fa7fc`; the latest fully verified release is v0.29.33
-  at `ba4ae78`, with release-assets workflow `31373203451`; the local fail-closed verifier passed
-  all 18 assets,
+- The latest source is v0.29.35 at `adbb3ff`; the latest fully verified release is v0.29.35
+  with release-assets workflow `31375651449`; the local fail-closed verifier passed all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
   this macOS host).
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
   `/Applications/Cortana.app` now report `cortana 0.29.33`; both pass `cortana doctor` and full
   `cortana readiness`, and the v0.29.33 packaged control-plane and backup/restore drills.
-  The current-source native acceptance subset passes 24 tests (126 native tests are listed
-  in the full suite). The packaged app
+  The current-source native Desktop suite passes all 126 tests. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
   a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.31`
   for recovery (older v0.29.29, v0.29.28, v0.29.27, v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20,
   v0.29.19, and v0.29.14 backups remain available as well).
-- The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
-  tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
-  Python suite passes 153 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
-  passes. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
+- The focused Desktop web gate passes 160 tests across 9 files, and the isolated full web suite
+  passes 252 tests across 21 files. The Python suite passes 153 tests, `bun run type-check` and
+  `uv lock --check` pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with `--isolate` so file-local API mocks cannot leak between OAuth suites.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
@@ -101,9 +101,11 @@ is not part of a visual/UI change.
   unauthenticated process-liveness check and must not be treated as full readiness evidence.
 - A model-backed evaluation ran against the configured provider without opening a personal index or
   starting sync/connectors. The source at `339240e` and packaged v0.29.31 passed historical runs,
-  but the installed v0.29.33 evaluator failed closed twice (`fallback_provider_unavailable` in
-  9,836 ms and 6,807 ms) after the planner call. This is not current-release model-backed proof;
-  extractive mode remains the safe production default and the provider gate is still open.
+  but the installed v0.29.33 evaluator failed closed twice after the planner call because the
+  provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
+  The latest source run then failed closed with the stable `provider_unavailable` reason after
+  10,530 ms. This is not current-release model-backed proof; extractive mode remains the safe
+  production default and the provider gate is still open.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
   failed closed with an authorization error from the Google token endpoint. No trial sync was

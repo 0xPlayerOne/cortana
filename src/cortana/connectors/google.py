@@ -16,11 +16,11 @@ import sys
 import tempfile
 import time
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, SupportsIndex
 from urllib.parse import quote
 
 import httpx
@@ -92,7 +92,7 @@ class _DriveContent(str):
         result.truncated = truncated
         return result
 
-    def __reduce_ex__(self, _protocol: int) -> tuple[Any, tuple[str, int, bool]]:
+    def __reduce_ex__(self, _protocol: SupportsIndex) -> tuple[Any, tuple[str, int, bool]]:
         # dataclasses.asdict deep-copies Document.content before emitting JSON.
         # A plain str subclass would call __new__ without the metadata args and
         # fail closed during a real connector run.
@@ -295,7 +295,7 @@ class GoogleSession:
         return False
 
     @contextmanager
-    def stream(self, method: str, url: str, **kwargs: Any) -> Iterable[httpx.Response]:
+    def stream(self, method: str, url: str, **kwargs: Any) -> Iterator[httpx.Response]:
         """Open an authenticated streaming response, refreshing once on 401."""
         token = self._access_token()
         headers = dict(kwargs.pop("headers", {}))

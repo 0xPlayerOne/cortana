@@ -349,8 +349,8 @@ fn desktop_linux_release_compile_is_gated() {
         );
     }
 
-    // Web typecheck/build is owned by Code Foundry Validation / CI, which
-    // already runs `bun run typecheck` and `bun run build` on the same
+    // The root type-check/build tasks are owned by Code Foundry Validation / CI,
+    // which runs the repository's Python, Rust, and web checks on the same
     // main-targeting PR SHA. The desktop tests and clippy jobs must each keep
     // only their own desktop-specific check after setup.
     let desktop_test = job_block(&desktop, "desktop_test");

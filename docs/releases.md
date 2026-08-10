@@ -64,10 +64,11 @@ The desktop pipeline follows a staged audit policy:
   `Tauri 2 / Linux` aggregate depends on all six and must pass before merge.
   Provenance, the iterator test, dependency auditing, desktop tests, and
   clippy run concurrently so no independent check waits behind another.
-- **Web quality is owned by Code Foundry Validation / CI.** The `desktop_test`
-  and `desktop_clippy` jobs do not rerun `bun run typecheck` or `bun run build`:
-  Code Foundry Validation / CI already runs both on the same main-targeting PR
-  SHA, so the desktop pipeline only runs desktop-specific fast checks.
+- **Repository quality is owned by Code Foundry Validation / CI.** The
+  `desktop_test` and `desktop_clippy` jobs do not rerun the root `type-check` or
+  `build` scripts: Code Foundry Validation / CI already runs the Python, Rust,
+  and web checks on the same main-targeting PR SHA, so the desktop pipeline only
+  runs desktop-specific fast checks.
 - **Version-only release PRs are intentionally lightweight.** Release Please
   pull requests (`release-please--branches--main` head refs) skip all six long
   desktop jobs entirely at job level. The `Tauri 2 / Linux` aggregate still

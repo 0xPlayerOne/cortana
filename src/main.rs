@@ -1923,6 +1923,11 @@ fn init_tracing() {
 }
 
 fn backup_database(config: &Config, output: Option<&std::path::Path>, keep: usize) -> Result<()> {
+    // Backups must serialize with ingestion and other index mutations. The
+    // SQLite backup API produces a consistent database snapshot, but without
+    // the process-wide lock a concurrent sync could still race with backup
+    // pruning and the operational metadata captured around the snapshot.
+    let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
     let directory = config.data_dir.join("backups");
     let destination = output.map(PathBuf::from).unwrap_or_else(|| {
         directory.join(format!(
