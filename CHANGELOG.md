@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.29.22](https://github.com/0xPlayerOne/cortana/compare/v0.29.21...v0.29.22) (2026-08-10)
+
+
+### Documentation
+
+* clarify model evaluation timeout ([c6f3e5d](https://github.com/0xPlayerOne/cortana/commit/c6f3e5dc7b8cde6ecf915a868a563e10aaa45115))
+* record pending Windows release assets ([be5081e](https://github.com/0xPlayerOne/cortana/commit/be5081e46bdac9ab2d9d12de79fa98b09a99a64c))
+* record v0.29.20 release audit state ([5ffe6c9](https://github.com/0xPlayerOne/cortana/commit/5ffe6c97eadcebc0495efa28384403aa8117ca09))
+* record verified v0.29.20 release ([cd446c9](https://github.com/0xPlayerOne/cortana/commit/cd446c9c6c6715510c7cf35a1afe3198292b1f7d))
+* refresh v0.29.19 production evidence ([c0d5ffa](https://github.com/0xPlayerOne/cortana/commit/c0d5ffa7a6f6086641b8fa837909edbf0cca2474))
+
 ## [0.29.21](https://github.com/0xPlayerOne/cortana/compare/v0.29.20...v0.29.21) (2026-08-10)
 
 
