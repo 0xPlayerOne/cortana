@@ -615,7 +615,7 @@ test('Conversations shows the session state and offers search focus', async () =
   )
   fireEvent.click(railButton('Conversations'))
   await waitFor(() => expect(screen.getByText('4 cited passages')).toBeTruthy())
-  expect(screen.getByText(/Promote short-lived changes through staging/)).toBeTruthy()
+  expect(screen.getByText(/Merge short-lived changes into main/)).toBeTruthy()
   expect(screen.getByText('How do releases work?')).toBeTruthy()
 })
 

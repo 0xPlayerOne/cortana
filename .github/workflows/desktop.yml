@@ -356,11 +356,11 @@ jobs:
             ${{ runner.os }}-rust-
       # Linux release compilation is reserved for PRs targeting main and explicit
       # manual final audits (workflow_dispatch). It is intentionally skipped on
-      # staging PRs, ordinary feature PRs, and Release Please version-only PRs.
+      # ordinary feature PRs and Release Please version-only PRs.
       - name: Compile release desktop
         # Final gate: run only for PRs targeting main and manual dispatch,
         # excluding release-please version PRs. This skips final audit steps
-        # for staging and feature PRs while preserving manual audits.
+        # for feature PRs while preserving manual audits.
         if: >-
           github.event_name == 'workflow_dispatch' ||
           (github.event_name == 'pull_request' &&

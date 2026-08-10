@@ -117,6 +117,10 @@ pub fn validation_error_category(error: &str) -> Option<&'static str> {
         Some("timeout")
     } else if normalized.contains("403 forbidden")
         || normalized.contains("401 unauthorized")
+        || (normalized.contains("400 bad request")
+            && normalized.contains("oauth2.googleapis.com/token"))
+        || normalized.contains("invalid_grant")
+        || normalized.contains("invalid_client")
         || normalized.contains("authorization denied")
         || normalized.contains("permission denied")
     {
@@ -627,7 +631,7 @@ fn token_destination_ready(path: &Path) -> bool {
 mod tests {
     use chrono::Utc;
 
-    use super::validation_summary;
+    use super::{validation_error_category, validation_summary};
     use crate::config::SourceConfig;
     use crate::source_validation::SourceValidationStatus;
 
@@ -856,6 +860,21 @@ mod tests {
         assert_eq!(summary.complete, Some(false));
         let json = serde_json::to_value(&summary).expect("summary serializes");
         assert_eq!(json.get("complete"), Some(&serde_json::Value::Bool(false)));
+    }
+
+    #[test]
+    fn oauth_token_refresh_failures_are_authorization_categories() {
+        for error in [
+            "Client error '400 Bad Request' for url 'https://oauth2.googleapis.com/token'",
+            "Google token exchange failed: invalid_grant",
+            "provider returned invalid_client",
+        ] {
+            assert_eq!(
+                validation_error_category(error),
+                Some("authorization"),
+                "OAuth failure should be actionable: {error}"
+            );
+        }
     }
 
     #[test]

@@ -26,6 +26,10 @@ delegates the Release Please contract to the pinned Code Foundry runtime. Its
 concurrency group cancels an obsolete reconciliation run when a newer main
 commit arrives, so a stale push cannot publish over a newer release.
 
+The `uv.lock` project entry carries a Release Please version annotation and is
+covered by the package-version regression test, keeping Python lock metadata
+aligned with the shared release manifest after an automated release.
+
 The former staging preflight remains documented only in the historical release
 commits; it is no longer an active workflow or required branch.
 

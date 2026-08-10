@@ -8,7 +8,7 @@ export const demoEvidence: Evidence[] = [
     title: 'How do releases work?',
     uri: 'https://example.test/releases',
     content:
-      'Our releases follow trunk-based development with short-lived feature branches and automated delivery to staging.\n\nPlan against the roadmap, build behind feature flags, validate in staging, then cut and monitor the release. Roll back to the previous stable tag if health checks regress.',
+      'Our releases follow trunk-based development with short-lived feature branches and automated delivery from main.\n\nPlan against the roadmap, build behind feature flags, validate the pull request, then cut and monitor the release. Roll back to the previous stable tag if health checks regress.',
     score: 0.98,
     semantic_rank: 1,
     lexical_rank: 1,
@@ -21,7 +21,7 @@ export const demoEvidence: Evidence[] = [
     title: 'Deployment playbook',
     uri: 'https://example.test/playbook',
     content:
-      'Promote staging only after unit, integration, end-to-end, and security checks pass. Observe the deployment before closing the release.',
+      'Merge into main only after unit, integration, end-to-end, and security checks pass. Observe the release before closing it.',
     score: 0.91,
     semantic_rank: 2,
     lexical_rank: 3,

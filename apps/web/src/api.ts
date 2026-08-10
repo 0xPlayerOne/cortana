@@ -573,10 +573,10 @@ export async function getAnswer(
     return {
       query,
       answer:
-        'Promote short-lived changes through staging after the full test and security suite passes, then monitor the release and roll back if health regresses [1]. Keep an explicit rollback owner in the checklist [2].',
+        'Merge short-lived changes into main after the full test and security suite passes, then monitor the release and roll back if health regresses [1]. Keep an explicit rollback owner in the checklist [2].',
       evidence,
       plan: {
-        queries: [query, 'release promotion staging checks', 'rollback owner health regression'],
+        queries: [query, 'release promotion main checks', 'rollback owner health regression'],
         model_generated: true,
       },
       mode: 'synthesized',

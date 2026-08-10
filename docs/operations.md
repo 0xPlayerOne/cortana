@@ -113,6 +113,10 @@ or requested trial fails:
 scripts/source-smoke.sh --sync --max-documents 25 --max-bytes 5242880 --max-seconds 60
 ```
 
+Credential failures are reported as `authorization denied` without exposing connector details;
+this includes Google OAuth refresh failures such as `invalid_grant` and a `400` response from the
+Google token endpoint. Re-authorize that source before enabling a recurring schedule.
+
 Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
 queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
 evidence; returned rows have no `semantic_rank`. The HTTP search response keeps its evidence-array

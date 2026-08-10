@@ -61,26 +61,29 @@ is not part of a visual/UI change.
    source of truth; Hindsight is the replacement-capable sidecar and Honcho is
    an append-only experimental sink. Neither is enabled for personal data until
    provider ACL, deletion, export, and packaged-UI gates are explicitly proven.
+6. Re-authorize `personal-calendar`: the latest bounded validation received an
+   authorization failure from Google's token endpoint, so recurring sync must remain disabled
+   until that credential is repaired and the source is revalidated.
 
 ## Evidence limits
 
-- The latest published release is v0.29.20 at `7ebe419`; release-assets workflow
-  `31357773397` completed successfully, including the published-release verifier. The local
-  fail-closed verifier also passes: all 18 assets, core checksums, the macOS sidecar/resources
-  bundle, all six minisign updater signatures, the updater manifest, the Windows installers, and
-  the published Linux binary check (on Linux) are covered. The preceding v0.29.19 run
-  `31232341097` failed only because the old verifier expected an obsolete Tauri archive name and
-  rejected the API URLs emitted by `latest.json`; that verifier bug is now fixed on `main`.
+- The latest published release is v0.29.23 at `91cb97b`; release-assets workflow
+  `31360589480` was still running at this audit, so downloaded v0.29.23 verification and
+  installation are not claimed. The preceding v0.29.22 run `31359846781` completed
+  successfully and its local fail-closed verifier passed all 18 assets, core checksums, the
+  macOS sidecar/resources bundle, all six minisign updater signatures, the updater manifest,
+  the Windows installers, and the published Linux binary check (on Linux). v0.29.20's
+  release-assets workflow `31357773397` also completed successfully.
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.20`; the CLI passes `cortana doctor`, the
+  `/Applications/Cortana.app` now report `cortana 0.29.22`; the CLI passes `cortana doctor`, the
   offline evaluation checks, and the disposable desktop control-plane drill. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.19`
-  for recovery (the older v0.29.14 backup remains available as well).
+  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.20`
+  for recovery (older v0.29.19 and v0.29.14 backups remain available as well).
 - The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
   tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
-  Python suite passes 149 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
+  Python suite passes 150 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
   passes. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with `--isolate` so file-local API mocks cannot leak between OAuth suites.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
@@ -96,11 +99,17 @@ is not part of a visual/UI change.
   synthetic completion produced no result within the 90-second bound. This is not model-backed
   proof; extractive mode remains the safe production default and the provider-backed gate is
   still open.
-- A bounded source validation sweep (one document, 64 KiB, 15 seconds per source) passed every
-  enabled source. Matching non-reconciling trial syncs also passed for every enabled source;
-  `work-drive` required a 120-second cap for first-embedding warm-up. These are deliberately
-  bounded samples and do not authorize a full-corpus recurring service, so recurring sync remains
-  disabled until complete source coverage is explicitly approved.
+- The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
+  passed 11 of 12 enabled sources; `personal-calendar`
+  failed closed with an authorization error from the Google token endpoint. No trial sync was
+  run in that sweep. Earlier matching non-reconciling trial syncs passed the then-authorized
+  sources, with `work-drive` requiring a 120-second cap for first-embedding warm-up. These are
+  deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
+  sync remains disabled until the failed credential is repaired and complete source coverage is
+  explicitly approved.
+- A disposable backup/restore drill passed against the installed v0.29.22 CLI: the verified
+  backup restored into a temporary data directory and SQLite integrity verification passed. The
+  drill did not touch indexed personal data.
 - Packaged-app GUI/browser OAuth, service/tray, updater, import/export, backup, and restore drills
   remain unverified because no computer-use tool was available.
 - Hindsight and Honcho remain disabled-by-default optional adapters; Cortana's canonical store
