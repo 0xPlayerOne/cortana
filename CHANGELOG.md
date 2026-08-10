@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.49](https://github.com/0xPlayerOne/cortana/compare/v0.29.48...v0.29.49) (2026-08-10)
+
+
+### Documentation
+
+* refresh v0.29.48 readiness evidence ([#554](https://github.com/0xPlayerOne/cortana/issues/554)) ([1699456](https://github.com/0xPlayerOne/cortana/commit/16994565b3b806761278f48b76dbfd9933cf6e2c))
+
 ## [0.29.48](https://github.com/0xPlayerOne/cortana/compare/v0.29.47...v0.29.48) (2026-08-10)
 
 
