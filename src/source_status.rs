@@ -141,7 +141,9 @@ pub fn validation_error_category(error: &str) -> Option<&'static str> {
 
 fn summarize_google_validation_error(error: &str) -> &'static str {
     let normalized = error.to_ascii_lowercase();
-    if normalized.contains("refusing partial snapshot")
+    if normalized.contains("invalid_grant") || normalized.contains("authorization denied") {
+        "Google authorization expired or was denied; reauthorize this source"
+    } else if normalized.contains("refusing partial snapshot")
         || normalized.contains("incomplete search")
         || normalized.contains("incomplete")
     {
@@ -875,6 +877,21 @@ mod tests {
                 "OAuth failure should be actionable: {error}"
             );
         }
+    }
+
+    #[test]
+    fn google_oauth_summary_requests_reauthorization_without_provider_detail() {
+        let mut status = validated_status(None);
+        status.kind = "google-calendar".into();
+        status.status = "failed".into();
+        status.error = Some("Google OAuth refresh failed (400: invalid_grant)".into());
+
+        let summary = validation_summary(&status, 168);
+        assert_eq!(
+            summary.error.as_deref(),
+            Some("Google authorization expired or was denied; reauthorize this source")
+        );
+        assert_eq!(summary.error_category, Some("authorization"));
     }
 
     #[test]
