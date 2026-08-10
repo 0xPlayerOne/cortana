@@ -64,15 +64,16 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The v0.29.19 release is merged on `main` at commit `c4dff74`. The historical release-assets run
+- The latest published release is v0.29.20 at `7ebe419`; its release-assets workflow
+  `31357773397` was still in progress when this audit was written. The preceding v0.29.19 run
   `31232341097` failed only because the verifier expected an obsolete Tauri archive name and
-  rejected the API URLs emitted by `latest.json`; the corrected verifier now passes locally
-  against the published release: all 18 assets, core checksums, the macOS sidecar/resources
-  bundle, all six minisign updater signatures, the updater manifest, and the published Linux
-  binary check (on Linux) are covered. Re-dispatch the release-assets workflow after this fix
-  merges so GitHub records the corrected run as green.
+  rejected the API URLs emitted by `latest.json`; the corrected verifier is now on `main` and
+  passes locally against the published v0.29.19 release: all 18 assets, core checksums, the macOS
+  sidecar/resources bundle, all six minisign updater signatures, the updater manifest, and the
+  published Linux binary check (on Linux) are covered. Record the v0.29.20 workflow result here
+  after it completes; do not infer release health from an in-progress run.
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.19`; the CLI passes `cortana doctor`, the
+  `/Applications/Cortana.app` still report `cortana 0.29.19` (the locally verified build); the CLI passes `cortana doctor`, the
   offline evaluation checks, and the disposable desktop control-plane drill. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
