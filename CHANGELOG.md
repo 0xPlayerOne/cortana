@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.36](https://github.com/0xPlayerOne/cortana/compare/v0.29.35...v0.29.36) (2026-08-10)
+
+
+### Bug Fixes
+
+* **evaluation:** allow reasoning models enough output budget ([#527](https://github.com/0xPlayerOne/cortana/issues/527)) ([37dc952](https://github.com/0xPlayerOne/cortana/commit/37dc9526ce7c001857880a5b78b6367d498bb6d4))
+
 ## [0.29.35](https://github.com/0xPlayerOne/cortana/compare/v0.29.34...v0.29.35) (2026-08-10)
 
 
