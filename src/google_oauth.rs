@@ -255,7 +255,9 @@ fn ensure_outside_filesystem_roots(config: &Config, path: &Path, label: &str) ->
     for source in config.sources.iter().filter(|source| {
         source.kind == "filesystem" && source.root.as_deref().is_some_and(Path::is_absolute)
     }) {
-        let root = source.root.as_deref().expect("filtered filesystem root");
+        let Some(root) = source.root.as_deref() else {
+            continue;
+        };
         anyhow::ensure!(
             !path.starts_with(root),
             "Google {label} path must be outside filesystem source {}",

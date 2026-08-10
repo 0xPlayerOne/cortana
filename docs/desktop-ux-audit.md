@@ -1,7 +1,7 @@
 # Cortana Desktop UX audit
 
-This audit maps the current Desktop implementation to the UI/UX objective in
-`goal-objective.md`. It is intentionally separate from runtime migration work:
+This audit maps the current Desktop implementation to the UI/UX objective. It is
+intentionally separate from runtime migration work:
 legacy scope quarantine remains in place, so changing or deleting indexed data
 is not part of a visual/UI change.
 
