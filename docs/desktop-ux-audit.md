@@ -69,21 +69,21 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest published release is v0.29.24 at `34d123f`; its release-assets workflow
-  `31362202216` was still running at this audit, so v0.29.24 verification and installation are
-  not claimed. The preceding v0.29.23 run `31360589480` completed successfully; its local
-  fail-closed verifier passed all 18 assets, core checksums, the macOS sidecar/resources bundle,
-  all six minisign updater signatures, the updater manifest, the Windows installers, and the
-  published Linux binary check (on Linux). The v0.29.25 release run `31363159629` was queued.
+- The latest published release is v0.29.24 at `34d123f`; release-assets workflow `31362202216`
+  completed successfully. Its local fail-closed verifier passed all 18 assets, core checksums,
+  the macOS sidecar/resources bundle, all six minisign updater signatures, the updater manifest,
+  the Windows installers, and the published Linux binary check (on Linux). The v0.29.25 release
+  run `31363159629` remains in progress.
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.23`; the CLI passes `cortana doctor`, the
-  offline evaluation checks, and the packaged-CLI disposable desktop control-plane drill. The
-  native packaged-sidecar acceptance subset passes 24 tests (126 native tests are listed in the
-  full suite). The packaged app
+  `/Applications/Cortana.app` now report `cortana 0.29.24`; the CLI passes `cortana doctor`, the
+  offline evaluation checks, and the v0.29.24 packaged-CLI disposable desktop control-plane
+  drill. The current-source native acceptance subset passes 24 tests (126 native tests are listed
+  in the full suite). The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.22`
-  for recovery (older v0.29.20, v0.29.19, and v0.29.14 backups remain available as well).
+  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.23`
+  for recovery (older v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain available as
+  well).
 - The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
   tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
   Python suite passes 150 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
@@ -111,7 +111,7 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A disposable backup/restore drill passed against the installed v0.29.23 packaged CLI: the verified
+- A disposable backup/restore drill passed against the installed v0.29.24 packaged CLI: the verified
   backup restored into a temporary data directory and SQLite integrity verification passed. The
   drill did not touch indexed personal data.
 - Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
