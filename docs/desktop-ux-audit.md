@@ -76,7 +76,7 @@ is not part of a visual/UI change.
 ## Evidence limits
 
 - The audited functional snapshot is v0.29.43 at release commit `1ef07dd`; the latest fully verified
-  release is v0.29.44 at release commit `d4a3f29` with release-assets workflow `31392960117`; the
+  release is v0.29.45 at release commit `aec151a` with release-assets workflow `31394028819`; the
   local fail-closed verifier
   passed all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
