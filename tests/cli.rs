@@ -1914,6 +1914,55 @@ fn backup_refuses_to_run_while_sync_lock_is_held() {
 }
 
 #[test]
+fn restore_refuses_to_run_while_sync_lock_is_held() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n\
+             base_url = \"http://127.0.0.1:6999/v1\"\nmodel = \"Qwen/Qwen3-Embedding-0.6B\"\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["init"])
+        .assert()
+        .success();
+
+    fs::create_dir_all(&data).expect("create data directory");
+    let lock_path = data.join("sync.lock");
+    let lock_file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .expect("open sync lock");
+    fs2::FileExt::lock_exclusive(&lock_file).expect("hold sync lock");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .arg("restore")
+        .arg(directory.path().join("snapshot.sqlite3"))
+        .arg("--force")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "another Cortana sync is already active",
+        ));
+
+    fs2::FileExt::unlock(&lock_file).expect("release sync lock");
+}
+
+#[test]
 fn provider_model_discovery_rejects_remote_http_before_network() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

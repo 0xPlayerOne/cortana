@@ -2122,6 +2122,12 @@ fn verify_database(path: &std::path::Path) -> Result<()> {
 }
 
 fn restore_database(config: &Config, input: &std::path::Path, force: bool) -> Result<()> {
+    // Restores must serialize with ingestion and other index mutations. The
+    // SQLite online-backup API keeps the file consistent, but replacing the
+    // index while a sync job holds the process-wide lock would mix restored
+    // content with live sync cursors and revision state. Fail closed instead
+    // of racing, exactly like `backup_database`.
+    let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
     let database = config.database_path();
     anyhow::ensure!(
         force || !database.exists(),
