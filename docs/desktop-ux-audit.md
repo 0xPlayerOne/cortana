@@ -65,7 +65,9 @@ is not part of a visual/UI change.
 ## Evidence limits
 
 - The latest published release is v0.29.20 at `7ebe419`; its release-assets workflow
-  `31357773397` was still in progress when this audit was written. The preceding v0.29.19 run
+  `31357773397` was still in progress when this audit was written, and the fail-closed verifier
+  currently reports the four expected Windows installer assets as missing while that job uploads
+  them. The preceding v0.29.19 run
   `31232341097` failed only because the verifier expected an obsolete Tauri archive name and
   rejected the API URLs emitted by `latest.json`; the corrected verifier is now on `main` and
   passes locally against the published v0.29.19 release: all 18 assets, core checksums, the macOS
