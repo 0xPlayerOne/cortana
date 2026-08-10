@@ -11,38 +11,23 @@ under the automated manifest flow.
 
 Generated version pull requests are restricted to changelog and configured
 version files, then merged automatically without running the code-change test
-matrix. Topic and staging-to-main promotion pull requests still run the complete
-CI, test, security, and CodeQL gates.
+matrix. Topic pull requests target the protected `main` branch directly and run
+the complete CI, test, security, and CodeQL gates before merge.
 
-## Promotion-before-release invariant
+## Direct-main release invariant
 
-A release must never run while staging still contains source code that has not
-been promoted to main. Releasing over unpromoted work publishes version
-metadata that does not describe the promoted code, and the subsequent
-`Release / Reconcile` step fails when it tries to reconcile the new release
-metadata onto a staging branch that carries unpromoted commits.
+The repository now uses the direct-main workflow. `main` is the only integration
+and release branch; `staging` and staging-to-main promotion worktrees were
+retired after the v0.29.14 migration. A release therefore runs only after the
+validated pull request that changed `main` has merged.
 
-The main release caller (`release.yml`) enforces this invariant with a read-only
-preflight job that runs before the reusable Release job. It fetches
-`origin/main` and `origin/staging` and classifies the direct tree diff:
+The main release caller (`release.yml`) triggers only on pushes to `main` and
+delegates the Release Please contract to the pinned Code Foundry runtime. Its
+concurrency group cancels an obsolete reconciliation run when a newer main
+commit arrives, so a stale push cannot publish over a newer release.
 
-- **Ready** when the two trees are identical, or when the only differing paths
-  are approved Release Please metadata: `.release-please-manifest.json`,
-  `CHANGELOG.md`, the configured version files, and lockfiles
-  (`release-please-config.json` extra-files plus the runtime default release
-  files).
-- **Not ready** when the diff contains any other path — staging carries source
-  code that has not been promoted to main.
-
-An unready preflight never fails the workflow: it exposes `ready=false`, emits a
-`::notice` annotation and a job summary, and the Release job is skipped, so
-Release Please cannot create or merge a version PR over unpromoted work. The
-preflight job is strictly read-only — it consumes no secrets, holds only
-`contents: read`, and only fetches; it never pushes or runs a source sync.
-Promote staging to main first, then rerun the workflow.
-
-This invariant was added after Release Please v0.24.1 merged while staging
-still contained unpromoted source code, failing `Release / Reconcile`.
+The former staging preflight remains documented only in the historical release
+commits; it is no longer an active workflow or required branch.
 
 ## 0.19.0 release-history recovery
 
@@ -65,9 +50,9 @@ does not alter runtime behavior, credentials, or trigger a corpus sync.
 
 The desktop pipeline follows a staged audit policy:
 
-- **Staging stays fast.** `desktop.yml` triggers only on pull requests
-  targeting `main` and on manual dispatch, so staging integration never waits
-  on the desktop build.
+- **Main pull requests own the desktop gate.** `desktop.yml` triggers only on
+  pull requests targeting `main` and on manual dispatch; there is no staging
+  integration branch to run a duplicate desktop matrix.
 - **Main code PRs require the desktop aggregate.** Ordinary main-targeted pull
   requests run six independent jobs: `gtk_provenance`, `gtk_iterator`,
   `security_audit` (pinned Rust dependency audit), `desktop_test`,
