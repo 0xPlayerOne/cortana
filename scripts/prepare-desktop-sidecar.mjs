@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { chmodSync, copyFileSync, mkdirSync } from 'node:fs'
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -16,7 +16,17 @@ const extension = windows ? '.exe' : ''
 const profile = release ? 'release' : 'debug'
 const args = ['build', '--locked', '--target', target]
 if (release) args.push('--release')
-run('cargo', args)
+const desktopLockfile = resolve(root, 'apps/desktop/src-tauri/Cargo.lock')
+const preservesReleasePleaseAnnotation = hasReleasePleaseAnnotation(desktopLockfile)
+try {
+  run('cargo', args)
+} finally {
+  // Cargo may rewrite a lockfile while preserving its semantic contents but
+  // dropping the Release Please marker comment. Keep the generated lockfile
+  // authoritative while restoring that repository-owned release annotation so
+  // local desktop tests and builds do not leave a false dirty diff.
+  if (preservesReleasePleaseAnnotation) restoreReleasePleaseAnnotation(desktopLockfile)
+}
 
 const source = resolve(root, 'target', target, profile, `cortana${extension}`)
 const destination = resolve(
@@ -38,4 +48,23 @@ function capture(command, args) {
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: root, stdio: 'inherit' })
   if (result.status !== 0) throw new Error(`${command} failed with status ${result.status}`)
+}
+
+function hasReleasePleaseAnnotation(path) {
+  try {
+    return /name = "cortana-desktop"\nversion = "[^"]+" # x-release-please-version\n/.test(
+      readFileSync(path, 'utf8')
+    )
+  } catch {
+    return false
+  }
+}
+
+function restoreReleasePleaseAnnotation(path) {
+  const source = readFileSync(path, 'utf8')
+  const restored = source.replace(
+    /(name = "cortana-desktop"\nversion = "[^"]+")(?! # x-release-please-version)\n/,
+    '$1 # x-release-please-version\n'
+  )
+  if (restored !== source) writeFileSync(path, restored)
 }

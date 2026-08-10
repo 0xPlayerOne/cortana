@@ -23,7 +23,8 @@ def test_release_manifest_has_one_shared_application_version() -> None:
     web = json.loads((ROOT / "apps/web/package.json").read_text())
     desktop = json.loads((ROOT / "apps/desktop/package.json").read_text())
     desktop_cargo = tomllib.loads((ROOT / "apps/desktop/src-tauri/Cargo.toml").read_text())
-    desktop_lock = tomllib.loads((ROOT / "apps/desktop/src-tauri/Cargo.lock").read_text())
+    desktop_lock_text = (ROOT / "apps/desktop/src-tauri/Cargo.lock").read_text()
+    desktop_lock = tomllib.loads(desktop_lock_text)
     desktop_config = json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text())
     desktop_lock_version = next(
         package["version"]
@@ -51,4 +52,8 @@ def test_release_manifest_has_one_shared_application_version() -> None:
     assert (
         f'name = "cortana-brain"\nversion = "{manifest["."]}" # x-release-please-version'
         in uv_lock_text
+    )
+    assert (
+        f'name = "cortana-desktop"\nversion = "{manifest["."]}" # x-release-please-version'
+        in desktop_lock_text
     )
