@@ -78,9 +78,8 @@ is not part of a visual/UI change.
 ## Evidence limits
 
 - The audited functional snapshot remains v0.29.54 at release commit `6e90d4d` because that is the
-  installed CLI evidence. The latest published release is v0.29.55 at main commit `984e676`; its
-  release-assets workflow `31435056623` is still running. v0.29.54 remains the latest fully verified
-  release, and the local fail-closed verifier passed all 18 assets,
+  installed CLI evidence. The latest fully verified release is v0.29.55 at main commit `984e676`;
+  release-assets workflow `31435056623` passed all 18 assets. The local fail-closed verifier passed
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
   this macOS host).
