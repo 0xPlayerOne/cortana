@@ -142,12 +142,21 @@ impl UpdaterState {
             expected_version,
             pending.as_ref().map(|update| update.version.as_str()),
         ) {
-            Ok(()) => pending.expect("a validated pending update is present"),
+            Ok(()) => match pending {
+                Some(update) => update,
+                None => {
+                    // Keep this path explicit even though validation currently
+                    // requires a pending version. The pending slot is shared
+                    // state; a future refactor must not turn an invariant
+                    // violation into a desktop-process panic.
+                    return Err(InstallGuardError::NoPendingUpdate.message());
+                }
+            },
             Err(guard) => {
                 // Preserve an available update on every rejection so a
                 // failed install attempt never silently drops it.
-                if pending.is_some() {
-                    *self.pending.lock().await = pending;
+                if let Some(update) = pending {
+                    *self.pending.lock().await = Some(update);
                 }
                 return Err(guard.message());
             }
