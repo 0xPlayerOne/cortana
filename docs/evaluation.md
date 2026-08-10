@@ -91,9 +91,9 @@ provider appended an uncited attribution line to the synthesis response. The ear
 historical evidence, not proof that the current provider is citation-safe. After raising the bounded
 synthetic output cap to leave room for gateway reasoning, the source run passed with planner and
 synthesis model use, valid citations, cache reuse, and revision invalidation in 22,866 ms. The
-packaged v0.29.38 aarch64 core archive and Desktop app then passed the same fixture-only evaluator;
+packaged v0.29.41 aarch64 core archive and Desktop app then passed the same fixture-only evaluator;
 the app archive completed planner+synthesis citation validation, cache reuse, and revision
-invalidation in 17,469 ms. Extractive mode remains the safe production default because synthesis is
+invalidation in 14,930 ms. Extractive mode remains the safe production default because synthesis is
 still an explicit opt-in in the production configuration.
 
 ```toml

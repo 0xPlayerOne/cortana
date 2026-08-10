@@ -43,13 +43,13 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   v0.29.38 packaged core/app:** an earlier source `339240e` run passed in 20,176 ms and a packaged
+   v0.29.41 packaged core/app:** an earlier source `339240e` run passed in 20,176 ms and a packaged
    v0.29.31 rerun passed in 13,477 ms, but the installed v0.29.33 evaluator failed closed twice with
    invalid model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
-   planner+synthesis citation validation in 22,866 ms. The v0.29.38 aarch64 app archive passed the
-   same bounded evaluator in 17,469 ms with valid citations, cache reuse, and revision invalidation.
+   planner+synthesis citation validation in 22,866 ms. The v0.29.41 aarch64 app archive passed the
+   same bounded evaluator in 14,930 ms with valid citations, cache reuse, and revision invalidation.
    Keep extractive mode as the safe production default because model synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
@@ -74,26 +74,27 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The audited functional snapshot is v0.29.38 at `5324324`; the subsequent v0.29.39 version-only
-  release carries the import-preview regression test. The latest fully verified release at this
-  snapshot is v0.29.38 with release-assets workflow `31385685250`; the local fail-closed verifier
+- The audited functional snapshot is v0.29.41 at release commit `eae755e` (restore-lock fix merged
+  as `bae24ad`). The latest fully verified release is v0.29.41 with release-assets workflow
+  `31389608234`; the local fail-closed verifier
   passed all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
   this macOS host).
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.38`; the installed app passes `cortana doctor`,
-  the packaged v0.29.38 control-plane and backup/restore drills, and the bounded model-backed gate.
+  `/Applications/Cortana.app` now report `cortana 0.29.41`; the installed app passes `cortana doctor`,
+  the packaged v0.29.41 control-plane and backup/restore drills, and the bounded model-backed gate.
   The full `cortana readiness` scan remains a separate read-only operational check because it
   includes roughly 1 GB of SQLite integrity and backup scanning.
   The current-source native Desktop suite passes all 126 tests. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.37`
-  for recovery (older v0.29.33, v0.29.31, v0.29.29, v0.29.28, v0.29.27, v0.29.26, v0.29.24,
-  v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain available as well).
+  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.39`
+  for recovery (older v0.29.38, v0.29.37, v0.29.33, v0.29.31, v0.29.29, v0.29.28, v0.29.27,
+  v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
+  available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full web suite
-  passes 252 tests across 21 files. The Python suite passes 153 tests, `bun run type-check` and
+  passes 252 tests across 21 files. The Python suite passes 156 tests, `bun run type-check` and
   `uv lock --check` pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with `--isolate` so file-local API mocks cannot leak between OAuth suites.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
@@ -109,9 +110,9 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The v0.29.38 core archive and aarch64 app archive
+  output cap was raised for gateway reasoning. The v0.29.41 core archive and aarch64 app archive
   also passed planner+synthesis citation validation with cache reuse and revision invalidation; the
-  packaged app completed in 17,469 ms. Extractive mode remains the safe production default because
+  packaged app completed in 14,930 ms. Extractive mode remains the safe production default because
   synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
@@ -121,7 +122,7 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A disposable backup/restore drill passed against the v0.29.38 core archive and aarch64 Desktop
+- A disposable backup/restore drill passed against the v0.29.41 core archive and aarch64 Desktop
   app: the verified backup restored into a temporary data directory, SQLite integrity verification
   passed, and the restored fixture remained searchable. The drill did not touch indexed personal
   data.
