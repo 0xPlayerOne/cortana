@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.50](https://github.com/0xPlayerOne/cortana/compare/v0.29.49...v0.29.50) (2026-08-10)
+
+
+### Bug Fixes
+
+* require bounded freshness for recurring sync ([#546](https://github.com/0xPlayerOne/cortana/issues/546)) ([002aa7f](https://github.com/0xPlayerOne/cortana/commit/002aa7f9265792007aaab515c9e2ac5fb2da94cc))
+
 ## [0.29.49](https://github.com/0xPlayerOne/cortana/compare/v0.29.48...v0.29.49) (2026-08-10)
 
 
