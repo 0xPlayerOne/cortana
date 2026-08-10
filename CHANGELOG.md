@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.41](https://github.com/0xPlayerOne/cortana/compare/v0.29.40...v0.29.41) (2026-08-10)
+
+
+### Bug Fixes
+
+* serialize restore with sync lock ([#537](https://github.com/0xPlayerOne/cortana/issues/537)) ([bae24ad](https://github.com/0xPlayerOne/cortana/commit/bae24ade146aefb0b11a7bf9cb998bf98918723b))
+
 ## [0.29.40](https://github.com/0xPlayerOne/cortana/compare/v0.29.39...v0.29.40) (2026-08-10)
 
 
