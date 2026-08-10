@@ -135,7 +135,8 @@ hours of low-value embedding work for multi-megabyte CSVs. Set `max_content_char
 ## Backup and recovery
 
 `cortana backup` creates a consistent online SQLite snapshot with `VACUUM INTO`, runs a full
-integrity check, and retains the newest 14 scheduled snapshots by default:
+integrity check, takes the global sync lock so ingestion cannot race the snapshot, and retains the
+newest 14 scheduled snapshots by default:
 
 ```bash
 cortana --config ~/.config/cortana/config.toml backup
