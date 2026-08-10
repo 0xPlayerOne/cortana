@@ -43,9 +43,9 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. Route
-   discovery succeeded, but the configured endpoint was unavailable and the evaluation reported
-   `fallback_provider_unavailable` without a model result, so extractive mode remains the safe
-   production default.
+   discovery succeeds, but the configured endpoint is unavailable. The evaluator now returns a
+   bounded `fallback_provider_unavailable` report within its 30-second audit ceiling, without a
+   model result, so extractive mode remains the safe production default.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -69,11 +69,12 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest published release is v0.29.23 at `91cb97b`; release-assets workflow
-  `31360589480` completed successfully. Its local fail-closed verifier passed all 18 assets,
-  core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
-  updater manifest, the Windows installers, and the published Linux binary check (on Linux).
-  Earlier v0.29.22 and v0.29.20 release workflows also completed successfully.
+- The latest published release is v0.29.24 at `34d123f`; its release-assets workflow
+  `31362202216` was still running at this audit, so v0.29.24 verification and installation are
+  not claimed. The preceding v0.29.23 run `31360589480` completed successfully; its local
+  fail-closed verifier passed all 18 assets, core checksums, the macOS sidecar/resources bundle,
+  all six minisign updater signatures, the updater manifest, the Windows installers, and the
+  published Linux binary check (on Linux). The v0.29.25 release run `31363159629` was queued.
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
   `/Applications/Cortana.app` now report `cortana 0.29.23`; the CLI passes `cortana doctor`, the
   offline evaluation checks, and the packaged-CLI disposable desktop control-plane drill. The
@@ -97,9 +98,10 @@ is not part of a visual/UI change.
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence.
 - A model-backed evaluation was attempted against the configured provider without opening a
-  personal index or starting sync/connectors. The provider model catalog responded, but both the
-  bounded synthetic evaluation and a direct 18-second completion probe received no response. This
-  is not model-backed proof; extractive mode remains the safe production default and the
+  personal index or starting sync/connectors. The provider model catalog responded, but the
+  bounded synthetic evaluation and a direct 18-second completion probe received no response. The
+  evaluator now emits this failure at the 30-second ceiling instead of repeating provider calls.
+  This is not model-backed proof; extractive mode remains the safe production default and the
   provider-backed gate is still open.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
