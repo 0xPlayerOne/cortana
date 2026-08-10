@@ -76,12 +76,12 @@ provider outage for cache and post-update checks.
 
 The command exits nonzero when model quality thresholds fail.
 
-The latest configured-provider attempt at source commit `339240e` passed the bounded model gate in
-20,176 ms. Both planner and synthesis used the configured model, citations were valid, expected
-evidence was present, forbidden citations were absent, and the evaluator verified both a cache hit
-and invalidation after an update without entering fallback mode. A packaged v0.29.31 rerun also
-passed in 13,477 ms. These are synthetic-fixture checks only; extractive mode remains the safe
-production default when model synthesis is not explicitly enabled.
+An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
+20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the current packaged
+v0.29.33 evaluator failed closed twice (9,836 ms and 6,807 ms) after the planner call because the
+configured synthesis route was unavailable. The earlier passes are historical evidence, not proof
+that the current provider is healthy; extractive mode remains the safe production default until a
+current-release model-backed run passes again.
 
 ```toml
 [query]

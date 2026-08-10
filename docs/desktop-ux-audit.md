@@ -42,11 +42,11 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Prove the persistent configured query provider with a model-backed evaluation. **Done (bounded):**
-   the source at `339240e` passed the synthetic planner+synthesis gate in 20,176 ms, with valid
-   citations, expected evidence, no forbidden citations, a cache hit, and cache invalidation after
-   an update. A packaged v0.29.31 rerun also passed in 13,477 ms. Extractive mode remains the safe
-   production default unless model synthesis is explicitly enabled.
+2. Prove the persistent configured query provider with a model-backed evaluation. **Open:** an
+   earlier source `339240e` run passed in 20,176 ms and a packaged v0.29.31 rerun passed in
+   13,477 ms, but the current packaged v0.29.33 run failed closed twice (`fallback_provider_unavailable`
+   in 9,836 ms and 6,807 ms). Keep extractive mode as the safe production default until the
+   current provider route passes again.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -70,20 +70,21 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest source is v0.29.33 at `ba4ae78`. The latest fully verified release is still v0.29.31
-  with release-assets workflow `31370112236`; the local fail-closed verifier passed all 18 assets,
+- The latest source is v0.29.34 at `89fa7fc`; the latest fully verified release is v0.29.33
+  at `ba4ae78`, with release-assets workflow `31373203451`; the local fail-closed verifier passed
+  all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
   this macOS host).
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.31`; both pass `cortana doctor` and full
-  `cortana readiness`, and the v0.29.31 packaged control-plane and backup/restore drills.
+  `/Applications/Cortana.app` now report `cortana 0.29.33`; both pass `cortana doctor` and full
+  `cortana readiness`, and the v0.29.33 packaged control-plane and backup/restore drills.
   The current-source native acceptance subset passes 24 tests (126 native tests are listed
   in the full suite). The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.29`
-  for recovery (older v0.29.28, v0.29.27, v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20,
+  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.31`
+  for recovery (older v0.29.29, v0.29.28, v0.29.27, v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20,
   v0.29.19, and v0.29.14 backups remain available as well).
 - The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
   tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
@@ -99,11 +100,10 @@ is not part of a visual/UI change.
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence.
 - A model-backed evaluation ran against the configured provider without opening a personal index or
-  starting sync/connectors. The source at `339240e` passed in 20,176 ms: planner and synthesis ran,
-  citations were valid, expected evidence was present, forbidden citations were absent, and cache
-  hit/invalidation checks passed. The packaged v0.29.31 rerun passed in 13,477 ms. These are
-  synthetic-fixture checks rather than a claim that every future provider request will succeed;
-  extractive mode remains the safe production default and the provider gate is now evidenced.
+  starting sync/connectors. The source at `339240e` and packaged v0.29.31 passed historical runs,
+  but the installed v0.29.33 evaluator failed closed twice (`fallback_provider_unavailable` in
+  9,836 ms and 6,807 ms) after the planner call. This is not current-release model-backed proof;
+  extractive mode remains the safe production default and the provider gate is still open.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
   failed closed with an authorization error from the Google token endpoint. No trial sync was
@@ -112,7 +112,7 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A disposable backup/restore drill passed against the installed v0.29.31 packaged CLI: the verified
+- A disposable backup/restore drill passed against the installed v0.29.33 packaged CLI: the verified
   backup restored into a temporary data directory and SQLite integrity verification passed. The
   drill did not touch indexed personal data.
 - Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
