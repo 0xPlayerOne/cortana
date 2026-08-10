@@ -43,15 +43,15 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   installed v0.29.50 core/app:** an earlier source `339240e` run passed in 20,176 ms and a packaged
+   installed v0.29.54 core:** an earlier source `339240e` run passed in 20,176 ms and a packaged
    v0.29.31 rerun passed in 13,477 ms, but the installed v0.29.33 evaluator failed closed twice with
    invalid model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
-   planner+synthesis citation validation in 22,866 ms. A current rerun of the installed v0.29.50
-   binary passed in the latest bounded rerun in 15,221 ms with planner and synthesis model use,
-   valid citations, cache reuse, and revision invalidation (the prior run measured 8,598 ms). Keep
-   extractive mode as the safe production default because model synthesis remains opt-in.
+   planner+synthesis citation validation in 22,866 ms. The installed v0.29.54 binary passed the
+   bounded rerun in 12,603 ms with planner and synthesis model use, valid citations, cache reuse,
+   and revision invalidation. Keep extractive mode as the safe production default because model
+   synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -76,17 +76,18 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The audited functional snapshot is v0.29.52 at release commit `eaf7357`; the latest fully verified
-  release is v0.29.52 with release-assets workflow `31415473780`; the local fail-closed verifier
+- The audited functional snapshot is v0.29.54 at release commit `6e90d4d`; the latest fully verified
+  release is v0.29.54 with release-assets workflow `31424368047`; the local fail-closed verifier
   passed all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
   this macOS host).
-- The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` report `cortana 0.29.50`; the installed app passes `cortana doctor`,
-  the packaged v0.29.50 control-plane and backup/restore drills, and the bounded model-backed gate.
-  The full `cortana readiness` scan remains a separate read-only operational check because it
-  includes roughly 1 GB of SQLite integrity and backup scanning.
+- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.54`; the packaged Desktop
+  app `/Applications/Cortana.app` remains `cortana 0.29.50` because the signed Desktop bundle has
+  not been installed locally. The installed core passes `cortana doctor`, the v0.29.54 disposable
+  control-plane drill, and the bounded model-backed gate.
+  The full `cortana readiness` scan is a read-only operational check because it includes roughly
+  1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
   The current-source native Desktop suite passes all 126 tests. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
@@ -95,7 +96,7 @@ is not part of a visual/UI change.
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full web suite
-  passes 252 tests across 21 files (latest run: 30.06 seconds, 1,264 assertions). The Python suite passes 156 tests, `bun run type-check` and
+  passes 252 tests across 21 files (latest run: 64.57 seconds, 1,251 assertions). The Python suite passes 156 tests, `bun run type-check` and
   `uv lock --check` pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
@@ -108,8 +109,8 @@ is not part of a visual/UI change.
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence. A
-  current run against the installed v0.29.50 configuration passed database integrity, embedding
-  generation/provider, ACL, query API, verified-backup freshness (20 hours within a 48-hour bound),
+  current run against the installed v0.29.54 configuration passed database integrity, embedding
+  generation/provider, ACL, query API, verified-backup freshness (24 hours within a 48-hour bound),
   query mode, and the safe query-only state with recurring sync not installed; it did not invoke
   source validation because `--allow-sync-service` was not supplied.
 - A separate `cortana readiness --allow-sync-service` run failed closed without contacting any
@@ -117,7 +118,7 @@ is not part of a visual/UI change.
   full-corpus budget, and `personal-calendar` had no successful validation. This is the expected
   safety result; recurring sync remains uninstalled until complete validation and the missing Google
   token are repaired.
-- Release v0.29.50 also carries the fail-closed recurring-sync freshness guard across every
+- Release v0.29.54 also carries the fail-closed recurring-sync freshness guard across every
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
@@ -126,11 +127,12 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The installed v0.29.50 core binary also passed the
-  current planner+synthesis citation validation with cache reuse and revision invalidation in 15,221
-  ms (the prior run measured 8,598 ms). Extractive mode remains the safe production default because
+  output cap was raised for gateway reasoning. The installed v0.29.54 core binary also passed the
+  current planner+synthesis citation validation with cache reuse and revision invalidation in 12,603
+  ms. Extractive mode remains the safe production default because
   synthesis is still an explicit opt-in.
-- The latest bounded v0.29.50 source validation sweep (25 documents, 5 MiB, 60 seconds per source)
+- The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source; recorded
+  before the v0.29.54 core install)
   passed 11 of 12 enabled sources; `personal-calendar` failed closed with `authorization denied`
   after the existing owner-only token was migrated from Hermes into Cortana's configured location.
   No trial sync was
@@ -139,7 +141,7 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A current disposable backup/restore drill against the installed v0.29.50 CLI passed: the live
+- A current disposable backup/restore drill against the installed v0.29.54 CLI passed: the live
   database backup was verified, restored into a temporary data directory, and SQLite integrity
   verification passed. The packaged control-plane drill also passed offline init, bounded fixture
   ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
