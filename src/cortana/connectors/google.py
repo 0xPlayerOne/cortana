@@ -340,6 +340,11 @@ class GoogleSession:
         )
         if response.is_error:
             code = _google_oauth_error_code(response)
+            if code == "invalid_grant":
+                raise RuntimeError(
+                    f"Google OAuth refresh failed ({response.status_code}: invalid_grant); "
+                    "reauthorize the Google source"
+                )
             detail = f": {code}" if code else ""
             raise RuntimeError(f"Google OAuth refresh failed ({response.status_code}{detail})")
         refreshed = json_payload(response)
