@@ -28,6 +28,8 @@ import sys
 
 with open(os.environ["SMOKE_BINARY_LOG"], "a", encoding="utf-8") as log:
     log.write(json.dumps(sys.argv[1:]) + "\\n")
+if os.environ.get("SMOKE_BINARY_ERROR"):
+    print(os.environ["SMOKE_BINARY_ERROR"], file=sys.stderr)
 sys.exit(int(os.environ.get("SMOKE_BINARY_EXIT", "0")))
 """
 
@@ -63,11 +65,13 @@ def _run_smoke(
     tmp_path: Path,
     *extra: str,
     exit_code: str = "0",
+    error: str = "",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     log = tmp_path / "invocations.jsonl"
     env = os.environ.copy()
     env["SMOKE_BINARY_LOG"] = str(log)
     env["SMOKE_BINARY_EXIT"] = exit_code
+    env["SMOKE_BINARY_ERROR"] = error
     result = subprocess.run(
         [
             "bash",
@@ -180,3 +184,16 @@ def test_failed_validation_fails_closed_and_blocks_trials(tmp_path: Path) -> Non
     assert "work-code\tfilesystem\ttrue\tfailed\tskipped-validation" in result.stdout
     assert "drive\tgoogle-drive\ttrue\tfailed\tskipped-validation" in result.stdout
     assert all("sync" not in invocation for invocation in _invocations(log))
+
+
+def test_google_token_refresh_failure_is_classified_as_authorization(
+    tmp_path: Path,
+) -> None:
+    _require_bash()
+    result, _ = _run_smoke(
+        tmp_path,
+        exit_code="1",
+        error="Client error '400 Bad Request' for url 'https://oauth2.googleapis.com/token'",
+    )
+    assert result.returncode == 1
+    assert "drive\tgoogle-drive\ttrue\tfailed\tnot-requested\tvalidation: authorization denied" in result.stdout

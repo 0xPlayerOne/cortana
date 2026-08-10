@@ -172,7 +172,7 @@ classify_failure() {
   local log_path="$1"
   if grep -Eqi 'timed out|timeout' "$log_path"; then
     printf 'timeout'
-  elif grep -Eqi '403 forbidden|401 unauthorized|authorization denied|permission denied' "$log_path"; then
+  elif grep -Eqi '403 forbidden|401 unauthorized|400 bad request.*oauth2\.googleapis\.com/token|invalid_grant|invalid_client|authorization denied|permission denied' "$log_path"; then
     printf 'authorization denied'
   elif grep -Eqi 'no such file or directory|does not exist|not found' "$log_path"; then
     printf 'credential or path missing'
