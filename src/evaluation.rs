@@ -118,6 +118,10 @@ pub struct AnswerEvaluation {
     pub forbidden_citations_absent: bool,
     pub fallback_mode: bool,
     pub fallback_provider_unavailable: bool,
+    /// Stable, non-secret reason for an extractive fallback. This keeps a
+    /// provider outage distinguishable from an invalid model response or a
+    /// deadline without exposing raw provider errors in evaluation artifacts.
+    pub fallback_reason: Option<String>,
     pub cache_hit: bool,
     pub cache_invalidated_after_update: bool,
     pub latency_ms: u64,
@@ -349,6 +353,7 @@ async fn evaluate_answer(
         && first.warnings.iter().any(|warning| {
             warning.contains("planner unavailable") || warning.contains("synthesis unavailable")
         });
+    let fallback_reason = classify_fallback_reason(&first.warnings, fallback_mode);
 
     // A provider outage must produce a bounded, actionable report. Do not
     // repeat the same network failure for the cache and post-update checks:
@@ -366,6 +371,7 @@ async fn evaluate_answer(
             forbidden_citations_absent,
             fallback_mode,
             fallback_provider_unavailable: true,
+            fallback_reason,
             cache_hit: false,
             cache_invalidated_after_update: false,
             latency_ms: first.latency_ms,
@@ -424,11 +430,36 @@ async fn evaluate_answer(
         forbidden_citations_absent,
         fallback_mode,
         fallback_provider_unavailable,
+        fallback_reason,
         cache_hit,
         cache_invalidated_after_update,
         latency_ms: first.latency_ms,
         deadline_ms,
     })
+}
+
+fn classify_fallback_reason(warnings: &[String], fallback_mode: bool) -> Option<String> {
+    if !fallback_mode {
+        return None;
+    }
+    if warnings.iter().any(|warning| {
+        warning.contains("planner unavailable") || warning.contains("synthesis unavailable")
+    }) {
+        return Some("provider_unavailable".into());
+    }
+    if warnings
+        .iter()
+        .any(|warning| warning.contains("invalid or missing citations"))
+    {
+        return Some("invalid_citations".into());
+    }
+    if warnings
+        .iter()
+        .any(|warning| warning.contains("answer deadline reached"))
+    {
+        return Some("deadline".into());
+    }
+    Some("extractive_fallback".into())
 }
 
 fn validate_fixture(fixture: &EvaluationFixture) -> Result<()> {
@@ -686,6 +717,7 @@ mod tests {
         assert!(report.answer.forbidden_citations_absent);
         assert!(!report.answer.fallback_mode);
         assert!(!report.answer.fallback_provider_unavailable);
+        assert!(report.answer.fallback_reason.is_none());
         assert!(report.answer.latency_ms <= report.answer.deadline_ms);
     }
 
@@ -717,6 +749,10 @@ mod tests {
         assert!(report.answer.fallback_mode);
         assert!(!report.answer.cache_hit);
         assert!(!report.answer.fallback_provider_unavailable);
+        assert_eq!(
+            report.answer.fallback_reason.as_deref(),
+            Some("invalid_citations")
+        );
     }
 
     #[tokio::test]
@@ -745,6 +781,10 @@ mod tests {
         assert!(!report.answer.synthesis_model_used);
         assert!(report.answer.fallback_mode);
         assert!(report.answer.fallback_provider_unavailable);
+        assert_eq!(
+            report.answer.fallback_reason.as_deref(),
+            Some("provider_unavailable")
+        );
         assert!(!report.answer.passed);
         assert_eq!(
             calls.load(Ordering::SeqCst),

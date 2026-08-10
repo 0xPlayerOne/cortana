@@ -44,9 +44,9 @@ is not part of a visual/UI change.
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Open:** an
    earlier source `339240e` run passed in 20,176 ms and a packaged v0.29.31 rerun passed in
-   13,477 ms, but the current packaged v0.29.33 run failed closed twice (`fallback_provider_unavailable`
-   in 9,836 ms and 6,807 ms). Keep extractive mode as the safe production default until the
-   current provider route passes again.
+   13,477 ms, but the current packaged v0.29.33 run failed closed twice with invalid model
+   citations (8,313 ms and 13,398 ms). Keep extractive mode as the safe production default
+   until the current provider route produces citation-valid synthesis.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -70,7 +70,7 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest source is v0.29.34 at `89fa7fc`; the latest fully verified release is v0.29.33
+- The latest source is v0.29.35 at `adbb3ff`; the latest fully verified release is v0.29.33
   at `ba4ae78`, with release-assets workflow `31373203451`; the local fail-closed verifier passed
   all 18 assets,
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
@@ -101,9 +101,11 @@ is not part of a visual/UI change.
   unauthenticated process-liveness check and must not be treated as full readiness evidence.
 - A model-backed evaluation ran against the configured provider without opening a personal index or
   starting sync/connectors. The source at `339240e` and packaged v0.29.31 passed historical runs,
-  but the installed v0.29.33 evaluator failed closed twice (`fallback_provider_unavailable` in
-  9,836 ms and 6,807 ms) after the planner call. This is not current-release model-backed proof;
-  extractive mode remains the safe production default and the provider gate is still open.
+  but the installed v0.29.33 evaluator failed closed twice after the planner call because the
+  provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
+  A current source run then failed closed with the stable `provider_unavailable` reason after
+  13,625 ms. This is not current-release model-backed proof; extractive mode remains the safe
+  production default and the provider gate is still open.
 - The latest bounded source validation sweep (one document, 64 KiB, 15 seconds per source)
   passed 11 of 12 enabled sources; `personal-calendar`
   failed closed with an authorization error from the Google token endpoint. No trial sync was

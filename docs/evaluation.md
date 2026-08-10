@@ -64,7 +64,9 @@ with provider-backed metrics:
 - `attempted` / `passed`
 - `planner_model_used` / `synthesis_model_used`
 - `citations_valid`, `expected_evidence_present`, `forbidden_citations_absent`
-- `fallback_mode`, `fallback_provider_unavailable`
+- `fallback_mode`, `fallback_provider_unavailable`, and the stable non-secret
+  `fallback_reason` (`provider_unavailable`, `invalid_citations`, `deadline`, or
+  `extractive_fallback`)
 - `latency_ms`, `deadline_ms`
 
 The opt-in model gate applies a 30-second in-memory ceiling to the answer and provider request
@@ -78,10 +80,12 @@ The command exits nonzero when model quality thresholds fail.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the current packaged
-v0.29.33 evaluator failed closed twice (9,836 ms and 6,807 ms) after the planner call because the
-configured synthesis route was unavailable. The earlier passes are historical evidence, not proof
-that the current provider is healthy; extractive mode remains the safe production default until a
-current-release model-backed run passes again.
+v0.29.33 evaluator failed closed twice (8,313 ms and 13,398 ms) after the planner call because the
+configured provider appended an uncited attribution line to the synthesis response. The earlier
+passes are historical evidence, not proof that the current provider is citation-safe; a current
+source run also failed closed with the stable `provider_unavailable` reason after 13,625 ms.
+Extractive mode remains the safe production default until a current-release model-backed run passes
+again.
 
 ```toml
 [query]
