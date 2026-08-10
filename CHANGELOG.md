@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.29.23](https://github.com/0xPlayerOne/cortana/compare/v0.29.22...v0.29.23) (2026-08-10)
+
+
+### Bug Fixes
+
+* **security:** require patched pypdf minimum ([09bc711](https://github.com/0xPlayerOne/cortana/commit/09bc711bacc1eabf390bc9d35233a528c068ba69))
+* **security:** update pypdf to patched release ([4532110](https://github.com/0xPlayerOne/cortana/commit/4532110699f8f1befa1f9d01dfc554f281e24bf0))
+
 ## [0.29.22](https://github.com/0xPlayerOne/cortana/compare/v0.29.21...v0.29.22) (2026-08-10)
 
 
