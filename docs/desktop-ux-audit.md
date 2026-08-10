@@ -72,15 +72,15 @@ is not part of a visual/UI change.
   installation are not claimed. The preceding v0.29.22 run `31359846781` completed
   successfully and its local fail-closed verifier passed all 18 assets, core checksums, the
   macOS sidecar/resources bundle, all six minisign updater signatures, the updater manifest,
-  the Windows installers, and the published Linux binary check (on Linux). v0.29.20 remains
-  the installed build; its release-assets workflow `31357773397` also completed successfully.
+  the Windows installers, and the published Linux binary check (on Linux). v0.29.20's
+  release-assets workflow `31357773397` also completed successfully.
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.20`; the CLI passes `cortana doctor`, the
+  `/Applications/Cortana.app` now report `cortana 0.29.22`; the CLI passes `cortana doctor`, the
   offline evaluation checks, and the disposable desktop control-plane drill. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.19`
-  for recovery (the older v0.29.14 backup remains available as well).
+  a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.20`
+  for recovery (older v0.29.19 and v0.29.14 backups remain available as well).
 - The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
   tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
   Python suite passes 150 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
@@ -107,7 +107,7 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A disposable backup/restore drill passed against the installed v0.29.20 CLI: the verified
+- A disposable backup/restore drill passed against the installed v0.29.22 CLI: the verified
   backup restored into a temporary data directory and SQLite integrity verification passed. The
   drill did not touch indexed personal data.
 - Packaged-app GUI/browser OAuth, service/tray, updater, import/export, backup, and restore drills
