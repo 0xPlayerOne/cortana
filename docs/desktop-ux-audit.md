@@ -69,14 +69,14 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The latest published release is v0.29.29 at `4d1f9d3`; release-assets workflow `31367727689`
-  was still in progress when this audit snapshot was captured. The last fully verified release is
-  v0.29.28 at `21835ce`; its local fail-closed verifier passed all 18 assets, core checksums, the
+- The latest source is v0.29.30 at `f65669c` (docs-only; its release assets may still be
+  building). The latest fully verified release is v0.29.29 at `4d1f9d3` with release-assets
+  workflow `31367727689`; the local fail-closed verifier passed all 18 assets, core checksums, the
   macOS sidecar/resources bundle, all six minisign updater signatures, the updater manifest, the
   Windows installers, and the published Linux binary check (on Linux).
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
-  `/Applications/Cortana.app` now report `cortana 0.29.28`; both pass `cortana doctor`, the
-  offline evaluation checks, and the v0.29.28 packaged control-plane and backup/restore drills.
+  `/Applications/Cortana.app` now report `cortana 0.29.29`; both pass `cortana doctor` and full
+  `cortana readiness`, and the v0.29.29 packaged control-plane and backup/restore drills.
   The current-source native acceptance subset passes 24 tests (126 native tests are listed
   in the full suite). The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
@@ -86,7 +86,7 @@ is not part of a visual/UI change.
   available as well).
 - The current native Desktop suite passes 126 tests; the focused Desktop web gate passes 160
   tests across 9 files, and the isolated full web suite passes 252 tests across 21 files. The
-  Python suite passes 150 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
+  Python suite passes 153 tests, `bun run --cwd apps/web typecheck` passes, and `uv lock --check`
   passes. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with `--isolate` so file-local API mocks cannot leak between OAuth suites.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
@@ -111,7 +111,7 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A disposable backup/restore drill passed against the installed v0.29.28 packaged CLI: the verified
+- A disposable backup/restore drill passed against the installed v0.29.29 packaged CLI: the verified
   backup restored into a temporary data directory and SQLite integrity verification passed. The
   drill did not touch indexed personal data.
 - Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
