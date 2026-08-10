@@ -18,6 +18,8 @@ def test_release_manifest_has_one_shared_application_version() -> None:
     release_config = json.loads((ROOT / "release-please-config.json").read_text())
     cargo = tomllib.loads((ROOT / "Cargo.toml").read_text())
     python = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    uv_lock_text = (ROOT / "uv.lock").read_text()
+    uv_lock = tomllib.loads(uv_lock_text)
     web = json.loads((ROOT / "apps/web/package.json").read_text())
     desktop = json.loads((ROOT / "apps/desktop/package.json").read_text())
     desktop_cargo = tomllib.loads((ROOT / "apps/desktop/src-tauri/Cargo.toml").read_text())
@@ -27,6 +29,9 @@ def test_release_manifest_has_one_shared_application_version() -> None:
         package["version"]
         for package in desktop_lock["package"]
         if package["name"] == "cortana-desktop"
+    )
+    uv_lock_version = next(
+        package["version"] for package in uv_lock["package"] if package["name"] == "cortana-brain"
     )
 
     assert list(manifest) == ["."]
@@ -39,6 +44,11 @@ def test_release_manifest_has_one_shared_application_version() -> None:
         desktop["version"],
         desktop_cargo["package"]["version"],
         desktop_lock_version,
+        uv_lock_version,
         desktop_config["version"],
         __version__,
     } == {manifest["."]}
+    assert (
+        f'name = "cortana-brain"\nversion = "{manifest["."]}" # x-release-please-version'
+        in uv_lock_text
+    )

@@ -652,7 +652,7 @@ wheels = [
 
 [[package]]
 name = "cortana-brain"
-version = "0.29.23"
+version = "0.29.23" # x-release-please-version
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
