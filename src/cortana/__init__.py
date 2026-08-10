@@ -1,3 +1,3 @@
 """Cortana second-brain platform."""
 
-__version__ = "0.29.41"  # x-release-please-version
+__version__ = "0.29.42"  # x-release-please-version

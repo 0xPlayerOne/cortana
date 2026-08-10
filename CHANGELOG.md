@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.42](https://github.com/0xPlayerOne/cortana/compare/v0.29.41...v0.29.42) (2026-08-10)
+
+
+### Bug Fixes
+
+* retry transient release downloads ([#539](https://github.com/0xPlayerOne/cortana/issues/539)) ([3c79156](https://github.com/0xPlayerOne/cortana/commit/3c791567be1aa195792c1083311c2e7fd083a64e))
+
 ## [0.29.41](https://github.com/0xPlayerOne/cortana/compare/v0.29.40...v0.29.41) (2026-08-10)
 
 
