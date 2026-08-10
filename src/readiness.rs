@@ -451,6 +451,14 @@ fn source_validation_check(config: &Config, allow_sync_service: bool) -> Readine
                 .into(),
         };
     }
+    if config.ingestion.validation_max_age_hours == 0 {
+        return ReadinessCheck {
+            name: "source-validation".into(),
+            passed: false,
+            detail: "reconciling sync requires a positive ingestion.validation_max_age_hours; set it to at least 1 hour"
+                .into(),
+        };
+    }
     let mut problems = Vec::new();
     for source in config.sources.iter().filter(|source| source.enabled) {
         // Mirror SourceLimits::resolve in main.rs so readiness blesses the same
@@ -898,7 +906,7 @@ mod tests {
     }
 
     #[test]
-    fn source_validation_accepts_any_age_when_the_freshness_bound_is_disabled() {
+    fn source_validation_rejects_unbounded_freshness_for_recurring_sync() {
         let (directory, mut config) = config_with_source(configured_source(true));
         config.ingestion.validation_max_age_hours = 0;
         let source = &config.sources[0];
@@ -907,8 +915,12 @@ mod tests {
         source_validation::record(directory.path(), lapsed).expect("lapsed validation");
 
         let check = source_validation_check(&config, true);
-        assert!(check.passed);
-        assert!(check.detail.contains("every enabled source"));
+        assert!(!check.passed);
+        assert!(
+            check
+                .detail
+                .contains("requires a positive ingestion.validation_max_age_hours")
+        );
     }
 
     #[test]
