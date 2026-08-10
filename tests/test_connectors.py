@@ -2737,6 +2737,62 @@ def test_google_session_refresh_allows_desktop_client_without_secret(tmp_path: P
         assert session._access_token() == "fresh"
 
 
+@pytest.mark.parametrize("code", ["invalid_grant", "invalid_client"])
+def test_google_session_reports_sanitized_refresh_error_code(tmp_path: Path, code: str) -> None:
+    token = tmp_path / "token.json"
+    write_token(
+        token,
+        json.dumps(
+            {
+                "refresh_token": "refresh-token-secret",
+                "client_id": "client-id-secret",
+            }
+        ),
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return response(
+            {
+                "error": code,
+                "error_description": "do not expose this provider detail or token",
+            },
+            status=400,
+            request=request,
+        )
+
+    with (
+        GoogleSession(token, httpx.Client(transport=httpx.MockTransport(handler))) as session,
+        pytest.raises(RuntimeError, match=rf"Google OAuth refresh failed \(400: {code}\)") as error,
+    ):
+        session._access_token()
+
+    message = str(error.value)
+    assert "refresh-token-secret" not in message
+    assert "client-id-secret" not in message
+    assert "do not expose" not in message
+
+
+def test_google_session_keeps_unknown_refresh_error_generic(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, json.dumps({"refresh_token": "refresh", "client_id": "client"}))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            400,
+            content=b'{"error":"provider-specific-secret","error_description":"private"}',
+            request=request,
+        )
+
+    with (
+        GoogleSession(token, httpx.Client(transport=httpx.MockTransport(handler))) as session,
+        pytest.raises(RuntimeError, match=r"Google OAuth refresh failed \(400\)$") as error,
+    ):
+        session._access_token()
+
+    assert "provider-specific-secret" not in str(error.value)
+    assert "private" not in str(error.value)
+
+
 def test_google_helpers_normalize_html_dates_and_snippets() -> None:
     assert _plain_text("<style>x{}</style><p>Hello &amp; world</p>", "text/html") == "Hello & world"
     assert _timestamp("Tue, 29 Jul 2026 12:00:00 +0000").year == 2026
