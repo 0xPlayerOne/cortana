@@ -44,7 +44,18 @@ cleanup() {
   if [[ "$keep" == "1" ]]; then
     echo "Recovery drill retained: $drill_dir" >&2
   else
-    rm -rf -- "$drill_dir"
+    # Only remove the exact fresh mktemp directory. Refuse cleanup if the
+    # path contract is ever changed or corrupted so a failed drill cannot
+    # broaden deletion beyond its disposable recovery fixture.
+    case "$drill_dir" in
+      "${TMPDIR:-/tmp}"/cortana-recovery-drill.*)
+        rm -rf -- "$drill_dir"
+        ;;
+      *)
+        echo "Refusing to remove unexpected drill directory: $drill_dir" >&2
+        status=1
+        ;;
+    esac
   fi
   return "$status"
 }
