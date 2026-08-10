@@ -72,6 +72,9 @@ is not part of a visual/UI change.
 6. Re-authorize `personal-calendar`: the existing owner-only Google token was migrated into
    Cortana's configured token location, but its current refresh token record expired on
    2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
+   PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d` and release `v0.29.56`
+   is published; the locally installed `v0.29.55` binary still needs that release before its
+   connector output changes.
    Recurring sync must remain disabled until browser authorization succeeds and the source is
    revalidated.
 
