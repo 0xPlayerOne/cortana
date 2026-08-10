@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.21](https://github.com/0xPlayerOne/cortana/compare/v0.29.20...v0.29.21) (2026-08-10)
+
+
+### Maintenance
+
+* **deps:** bump astral-sh/setup-uv in the github-actions group ([4e25f66](https://github.com/0xPlayerOne/cortana/commit/4e25f66e06c1caa4c19a4c10d9d7221eba0e040e))
+
 ## [0.29.20](https://github.com/0xPlayerOne/cortana/compare/v0.29.19...v0.29.20) (2026-08-10)
 
 
