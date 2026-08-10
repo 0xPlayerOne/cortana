@@ -17,6 +17,11 @@ use crate::store::Store;
 
 use crate::answer::configured_model;
 
+/// Keep the opt-in model quality gate bounded independently from the interactive
+/// query deadline. A provider outage must not make a release audit wait for the
+/// full production request budget on every synthetic pass.
+pub const MODEL_EVALUATION_MAX_SECONDS: u64 = 30;
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct EvaluationFixture {
     pub version: u32,
@@ -138,7 +143,7 @@ pub async fn run_with_config(
             .with_context(|| format!("failed to read evaluation fixture {}", path.display()))?,
     )
     .with_context(|| format!("invalid evaluation fixture {}", path.display()))?;
-    run_fixture(fixture, Some((query.clone(), api_key))).await
+    run_fixture(fixture, Some((bounded_model_config(query), api_key))).await
 }
 
 pub async fn run_with_model_default(
@@ -147,7 +152,18 @@ pub async fn run_with_model_default(
 ) -> Result<EvaluationReport> {
     let fixture: EvaluationFixture = serde_json::from_str(include_str!("../eval/fixtures.json"))
         .context("invalid built-in evaluation fixture")?;
-    run_fixture(fixture, Some((query.clone(), api_key))).await
+    run_fixture(fixture, Some((bounded_model_config(query), api_key))).await
+}
+
+fn bounded_model_config(query: &QueryConfig) -> QueryConfig {
+    let mut bounded = query.clone();
+    bounded.answer_timeout_seconds = bounded
+        .answer_timeout_seconds
+        .min(MODEL_EVALUATION_MAX_SECONDS);
+    bounded.request_timeout_seconds = bounded
+        .request_timeout_seconds
+        .min(MODEL_EVALUATION_MAX_SECONDS);
+    bounded
 }
 
 async fn run_fixture(
@@ -292,7 +308,6 @@ async fn evaluate_answer(
     };
     let acl = effective_acl(&fixture.answer_case.acl);
     let first = engine.answer_scoped(request.clone(), &acl).await?;
-    let second = engine.answer_scoped(request.clone(), &acl).await?;
     let expected_evidence_present = first
         .evidence
         .iter()
@@ -308,6 +323,45 @@ async fn evaluate_answer(
                 .contains(&item.source_id)
         })
         .all(|(index, _)| !first.answer.contains(&format!("[{}]", index + 1)));
+    let planner_model_used = first.plan.model_generated;
+    let synthesis_model_used = first.mode == "synthesized";
+    let fallback_mode = first.mode == "extractive";
+    let planner_bounded =
+        !first.plan.queries.is_empty() && first.plan.queries.len() <= config.max_planned_queries;
+    let citations_valid = citations_are_valid(&first.answer, first.evidence.len());
+    let deadline_ms = config
+        .answer_timeout_seconds
+        .clamp(1, 55)
+        .saturating_mul(1000);
+    let fallback_provider_unavailable = model_available
+        && first.warnings.iter().any(|warning| {
+            warning.contains("planner unavailable") || warning.contains("synthesis unavailable")
+        });
+
+    // A provider outage must produce a bounded, actionable report. Do not
+    // repeat the same network failure for the cache and post-update checks:
+    // fallback responses are deliberately not cached, so retries would only
+    // multiply the provider timeout without adding evidence.
+    if fallback_provider_unavailable {
+        return Ok(AnswerEvaluation {
+            attempted: true,
+            passed: false,
+            planner_model_used,
+            synthesis_model_used,
+            planner_bounded,
+            citations_valid,
+            expected_evidence_present,
+            forbidden_citations_absent,
+            fallback_mode,
+            fallback_provider_unavailable: true,
+            cache_hit: false,
+            cache_invalidated_after_update: false,
+            latency_ms: first.latency_ms,
+            deadline_ms,
+        });
+    }
+
+    let second = engine.answer_scoped(request.clone(), &acl).await?;
 
     let mut updated = fixture
         .documents
@@ -326,21 +380,8 @@ async fn evaluate_answer(
     store.upsert(&updated, &[(updated.content.clone(), embedding)])?;
     let third = engine.answer_scoped(request, &acl).await?;
 
-    let planner_model_used = first.plan.model_generated;
-    let synthesis_model_used = first.mode == "synthesized";
-    let fallback_mode = first.mode == "extractive";
-    let planner_bounded =
-        !first.plan.queries.is_empty() && first.plan.queries.len() <= config.max_planned_queries;
-    let citations_valid = citations_are_valid(&first.answer, first.evidence.len());
     let cache_hit = second.cached;
     let cache_invalidated_after_update = !third.cached;
-    let deadline_ms = config
-        .answer_timeout_seconds
-        .clamp(1, 55)
-        .saturating_mul(1000);
-    let fallback_provider_unavailable = first.warnings.iter().any(|warning| {
-        warning.contains("planner unavailable") || warning.contains("synthesis unavailable")
-    });
     let passed = if model_available {
         synthesis_model_used
             && planner_model_used
@@ -541,7 +582,7 @@ mod tests {
     async fn start_mock_model_server(
         responses: Vec<ResponseTemplate>,
         latency_ms: Option<u64>,
-    ) -> (SocketAddr, tokio::task::JoinHandle<()>) {
+    ) -> (SocketAddr, Arc<AtomicU32>, tokio::task::JoinHandle<()>) {
         let state = MockModelServer {
             responses: Arc::new(responses),
             calls: Arc::new(AtomicU32::new(0)),
@@ -576,7 +617,7 @@ mod tests {
             tokio::spawn(
                 async move { axum::serve(listener, app).await.expect("serve mock model") },
             );
-        (address, handle)
+        (address, state.calls, handle)
     }
 
     fn fixture_path() -> (tempfile::TempDir, std::path::PathBuf) {
@@ -612,7 +653,7 @@ mod tests {
                 "The release process is bounded by safe checks. [1]".into(),
             ),
         ];
-        let (address, server) = start_mock_model_server(responses, None).await;
+        let (address, _calls, server) = start_mock_model_server(responses, None).await;
         let (directory, fixture_path) = fixture_path();
         let report = run_with_config(
             &fixture_path,
@@ -646,7 +687,7 @@ mod tests {
             ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
             ResponseTemplate::Synthesis("The release process cannot be verified.".into()),
         ];
-        let (address, server) = start_mock_model_server(responses, None).await;
+        let (address, _calls, server) = start_mock_model_server(responses, None).await;
         let (directory, fixture_path) = fixture_path();
         let report = run_with_config(
             &fixture_path,
@@ -676,7 +717,7 @@ mod tests {
             ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
             ResponseTemplate::Failure("provider failed".into()),
         ];
-        let (address, server) = start_mock_model_server(responses, None).await;
+        let (address, calls, server) = start_mock_model_server(responses, None).await;
         let (directory, fixture_path) = fixture_path();
         let report = run_with_config(
             &fixture_path,
@@ -693,6 +734,11 @@ mod tests {
         assert!(report.answer.fallback_mode);
         assert!(report.answer.fallback_provider_unavailable);
         assert!(!report.answer.passed);
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "a provider outage must not repeat network failures for cache checks"
+        );
     }
 
     #[tokio::test]
@@ -705,7 +751,7 @@ mod tests {
             ResponseTemplate::Planner(r#"{"queries":["release"]}"#.into()),
             ResponseTemplate::Failure("provider failed".into()),
         ];
-        let (address, server) = start_mock_model_server(responses, Some(2_000)).await;
+        let (address, _calls, server) = start_mock_model_server(responses, Some(2_000)).await;
         let (directory, fixture_path) = fixture_path();
         let mut config = model_query_config(&format!("http://{address}/v1"));
         config.answer_timeout_seconds = 1;
@@ -728,5 +774,29 @@ mod tests {
         assert!(!citations_are_valid("Unsupported.", 1));
         assert!(!citations_are_valid("Unknown [2].", 1));
         assert!(!citations_are_valid("Invalid [0].", 1));
+    }
+
+    #[test]
+    fn model_evaluation_caps_provider_and_answer_deadlines() {
+        let config = QueryConfig {
+            answer_timeout_seconds: 55,
+            request_timeout_seconds: 40,
+            ..QueryConfig::default()
+        };
+        let bounded = bounded_model_config(&config);
+        assert_eq!(bounded.answer_timeout_seconds, MODEL_EVALUATION_MAX_SECONDS);
+        assert_eq!(
+            bounded.request_timeout_seconds,
+            MODEL_EVALUATION_MAX_SECONDS
+        );
+
+        let already_bounded = QueryConfig {
+            answer_timeout_seconds: 5,
+            request_timeout_seconds: 7,
+            ..QueryConfig::default()
+        };
+        let unchanged = bounded_model_config(&already_bounded);
+        assert_eq!(unchanged.answer_timeout_seconds, 5);
+        assert_eq!(unchanged.request_timeout_seconds, 7);
     }
 }
