@@ -30,7 +30,7 @@ fn bump_corpus_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
 #[derive(Clone)]
 pub struct Store {
     connection: Arc<Mutex<Connection>>,
-    database_path: Arc<PathBuf>,
+    read_connection: Arc<Mutex<Connection>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -222,19 +222,12 @@ impl Store {
         backfill_document_links(&mut connection)?;
         migrate_embedding_blobs(&mut connection)?;
         secure_database_files(path)?;
+        let read_connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        read_connection.busy_timeout(DATABASE_BUSY_TIMEOUT)?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
-            database_path: Arc::new(path.to_path_buf()),
+            read_connection: Arc::new(Mutex::new(read_connection)),
         })
-    }
-
-    fn read_connection(&self) -> Result<Connection> {
-        let connection = Connection::open_with_flags(
-            self.database_path.as_ref(),
-            OpenFlags::SQLITE_OPEN_READ_ONLY,
-        )?;
-        connection.busy_timeout(DATABASE_BUSY_TIMEOUT)?;
-        Ok(connection)
     }
 
     pub fn ensure_fingerprint(&self, fingerprint: &str) -> Result<()> {
@@ -1347,7 +1340,10 @@ impl Store {
         // read-only connection so a long-running ingestion/retrieval query
         // cannot hold the process-wide writer connection mutex and make
         // health checks wait behind it.
-        let connection = self.read_connection()?;
+        let connection = self
+            .read_connection
+            .lock()
+            .expect("read connection lock poisoned");
         let documents =
             connection.query_row("SELECT COUNT(*) FROM documents", [], |row| row.get(0))?;
         let chunks = connection.query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))?;
@@ -1438,7 +1434,10 @@ impl Store {
         principal_acl: &[String],
         allowed_sync_sources: &HashSet<(String, String)>,
     ) -> Result<StoreStats> {
-        let connection = self.read_connection()?;
+        let connection = self
+            .read_connection
+            .lock()
+            .expect("read connection lock poisoned");
         let embedding_fingerprint = connection
             .query_row(
                 "SELECT value FROM meta WHERE key='embedding_fingerprint'",
