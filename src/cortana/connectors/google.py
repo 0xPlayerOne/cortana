@@ -62,6 +62,13 @@ MAX_TOKEN_FILE_BYTES = 64 * 1024
 GOOGLE_REQUEST_RETRIES = 2
 GOOGLE_RETRY_BACKOFF_SECONDS = (0.25, 0.75)
 GOOGLE_RETRY_STATUSES = {408, 429, 500, 502, 503, 504}
+GOOGLE_OAUTH_ERROR_CODES = {
+    "invalid_client",
+    "invalid_grant",
+    "invalid_request",
+    "unauthorized_client",
+    "unsupported_grant_type",
+}
 GOOGLE_TRANSIENT_403_REASONS = {
     "rateLimitExceeded",
     "userRateLimitExceeded",
@@ -331,7 +338,10 @@ class GoogleSession:
             token_uri,
             data=data,
         )
-        response.raise_for_status()
+        if response.is_error:
+            code = _google_oauth_error_code(response)
+            detail = f": {code}" if code else ""
+            raise RuntimeError(f"Google OAuth refresh failed ({response.status_code}{detail})")
         refreshed = json_payload(response)
         if not isinstance(refreshed, dict):
             raise RuntimeError("Google OAuth provider returned an invalid response")
@@ -353,6 +363,21 @@ class GoogleSession:
             os.replace(temporary, self.token_path)
         finally:
             Path(temporary).unlink(missing_ok=True)
+
+
+def _google_oauth_error_code(response: httpx.Response) -> str | None:
+    """Return only a small allowlisted OAuth error code from a failed refresh."""
+
+    try:
+        payload = json_payload(response, max_bytes=8 * 1024)
+    except RuntimeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    code = payload.get("error")
+    if isinstance(code, str) and code in GOOGLE_OAUTH_ERROR_CODES:
+        return code
+    return None
 
 
 def _validate_token_uri(value: str) -> None:
