@@ -118,6 +118,8 @@ is not part of a visual/UI change.
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
   refreshed against the v0.29.55 source tree without launching the Desktop app.
+- The current Rust library suite on the v0.29.56 source tree passes 266 tests with no failures;
+  this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
   headless CI evidence; they do not claim packaged GUI, browser, OS-service, or signed-updater
