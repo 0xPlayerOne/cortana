@@ -52,9 +52,9 @@ The Git workflow is `direct`: topic branches **squash** directly into `main`, an
 
 ### Toolchain
 
-1. Run `npx code-foundry init` to detect the repository and enable hooks.
+1. Run `bunx code-foundry init` to detect the repository and enable hooks.
 2. Follow `toolchain: auto` in `.github/code-foundry.yml`; install mise only if the repository already uses it or explicitly selects it.
-3. Use `npx code-foundry doctor` when setup, lockfiles, or hooks appear out of sync.
+3. Use `bunx code-foundry doctor` when setup, lockfiles, or hooks appear out of sync.
 4. Use the repository's existing package manager and lockfile. Do not introduce a second package manager.
 5. Copy `.env.example` to the appropriate local environment file when provided. Never commit the copy.
 
@@ -75,11 +75,11 @@ If the worktree is dirty, stop and understand the existing changes before switch
 The repository runtime detects supported tools and skips checks that do not apply:
 
 ```sh
-npx code-foundry doctor
-npm run format:check   # or the package manager's equivalent
-npm run lint
-npm run type-check
-npm test
+bunx code-foundry doctor
+bun run format
+bun run lint
+bun run type-check
+bun test
 Security and dependency audits run through the GitHub Security workflow.
 ```
 

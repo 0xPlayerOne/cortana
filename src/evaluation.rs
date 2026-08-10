@@ -26,7 +26,11 @@ pub const MODEL_EVALUATION_MAX_SECONDS: u64 = 30;
 // from a user's production context/output settings so a large personal
 // context budget cannot turn a synthetic release check into a load test.
 const MODEL_EVALUATION_MAX_CONTEXT_TOKENS: usize = 2_048;
-const MODEL_EVALUATION_MAX_OUTPUT_TOKENS: usize = 128;
+// Reasoning-capable gateways may spend part of the provider token budget on
+// hidden reasoning before emitting the cited answer. Keep the synthetic gate
+// bounded, but leave enough room for a short grounded response instead of
+// treating an exhausted content budget as a citation failure.
+const MODEL_EVALUATION_MAX_OUTPUT_TOKENS: usize = 512;
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct EvaluationFixture {
