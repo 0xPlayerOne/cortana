@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.43](https://github.com/0xPlayerOne/cortana/compare/v0.29.42...v0.29.43) (2026-08-10)
+
+
+### Bug Fixes
+
+* preserve saved settings during shell refresh ([#541](https://github.com/0xPlayerOne/cortana/issues/541)) ([4de221d](https://github.com/0xPlayerOne/cortana/commit/4de221d7d245f1359c9d0bb54609f3d4cccd5585))
+
 ## [0.29.42](https://github.com/0xPlayerOne/cortana/compare/v0.29.41...v0.29.42) (2026-08-10)
 
 
