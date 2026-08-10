@@ -71,7 +71,7 @@ with provider-backed metrics:
 
 The opt-in model gate applies a 30-second in-memory ceiling to the answer and provider request
 timeouts, independent of the interactive query budget. It also caps the synthetic prompt context
-at 2,048 tokens and the generated answer at 128 tokens, so a large personal query configuration
+at 2,048 tokens and the generated answer at 512 tokens, so a large personal query configuration
 cannot turn this fixture-only check into a production load test. When the first planner or
 synthesis call fails closed, the evaluator emits the failure report without repeating the same
 provider outage for cache and post-update checks.
@@ -88,10 +88,11 @@ An earlier configured-provider attempt at source commit `339240e` passed the bou
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the current packaged
 v0.29.33 evaluator failed closed twice (8,313 ms and 13,398 ms) after the planner call because the
 configured provider appended an uncited attribution line to the synthesis response. The earlier
-passes are historical evidence, not proof that the current provider is citation-safe. The latest
-source run on the current tree reached the planner but failed closed at synthesis with the stable
-`provider_unavailable` reason after 10,530 ms. Extractive mode remains the safe production default
-until a current-release model-backed run passes again.
+passes are historical evidence, not proof that the current provider is citation-safe. After raising
+the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
+with planner and synthesis model use, valid citations, cache reuse, and revision invalidation in
+22,866 ms. The packaged current-release gate still requires installing and rerunning this check;
+extractive mode remains the safe production default until that packaged proof is recorded.
 
 ```toml
 [query]
