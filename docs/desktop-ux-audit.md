@@ -43,13 +43,13 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   installed v0.29.54 core:** an earlier source `339240e` run passed in 20,176 ms and a packaged
+   installed v0.29.55 core:** an earlier source `339240e` run passed in 20,176 ms and a packaged
    v0.29.31 rerun passed in 13,477 ms, but the installed v0.29.33 evaluator failed closed twice with
    invalid model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree; after raising
    the bounded synthetic output cap to leave room for gateway reasoning, the latest source run passed
-   planner+synthesis citation validation in 22,866 ms. The latest installed v0.29.54 binary run
-   passed in 17,468 ms with planner and synthesis model use, valid citations, cache reuse, and
+   planner+synthesis citation validation in 22,866 ms. The latest installed v0.29.55 binary run
+   passed in 17,304 ms with planner and synthesis model use, valid citations, cache reuse, and
    revision invalidation. Keep extractive mode as the safe production default because model
    synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
@@ -77,15 +77,15 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-- The audited functional snapshot remains v0.29.54 at release commit `6e90d4d` because that is the
-  installed CLI evidence. The latest fully verified release is v0.29.55 at main commit `984e676`;
+- The audited functional snapshot is v0.29.55 at main commit `984e676`. The latest fully verified
+  release is v0.29.55;
   release-assets workflow `31435056623` passed all 18 assets. The local fail-closed verifier passed
   core checksums, the macOS sidecar/resources bundle, all six minisign updater signatures, the
   updater manifest, the Windows installers, and the published Linux binary check (skipped on
   this macOS host).
-- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.54`; the packaged Desktop
+- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.55`; the packaged Desktop
   app `/Applications/Cortana.app` remains `cortana 0.29.50` because the signed Desktop bundle has
-  not been installed locally. The installed core passes `cortana doctor`, the v0.29.54 disposable
+  not been installed locally. The installed core passes `cortana doctor`, the v0.29.55 disposable
   control-plane drill, and the bounded model-backed gate.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
@@ -112,8 +112,9 @@ is not part of a visual/UI change.
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence. A
-  current run against the installed v0.29.54 configuration passed database integrity, embedding
-  generation/provider, ACL, query API, verified-backup freshness (24 hours within a 48-hour bound),
+  the previous comprehensive readiness run against the installed v0.29.54 configuration passed
+  database integrity, embedding generation/provider, ACL, query API, verified-backup freshness
+  (24 hours within a 48-hour bound),
   query mode, and the safe query-only state with recurring sync not installed; it did not invoke
   source validation because `--allow-sync-service` was not supplied.
 - A separate `cortana readiness --allow-sync-service` run failed closed without contacting any
@@ -121,7 +122,7 @@ is not part of a visual/UI change.
   full-corpus budget, and `personal-calendar` had no successful validation. This is the expected
   safety result; recurring sync remains uninstalled until complete validation and the missing Google
   token are repaired.
-- Release v0.29.54 also carries the fail-closed recurring-sync freshness guard across every
+- Release v0.29.55 also carries the fail-closed recurring-sync freshness guard across every
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
@@ -130,9 +131,9 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The latest installed v0.29.54 core binary also
+  output cap was raised for gateway reasoning. The latest installed v0.29.55 core binary also
   passed the current planner+synthesis citation validation with cache reuse and revision
-  invalidation in 17,468 ms. Extractive mode remains the safe production default because
+  invalidation in 17,304 ms. Extractive mode remains the safe production default because
   synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source; recorded
   before the v0.29.54 core install)
@@ -144,9 +145,9 @@ is not part of a visual/UI change.
   deliberately bounded samples and do not authorize a full-corpus recurring service, so recurring
   sync remains disabled until the failed credential is repaired and complete source coverage is
   explicitly approved.
-- A current disposable backup/restore drill against the installed v0.29.54 CLI passed: the live
+- A previous disposable backup/restore drill against the installed v0.29.54 CLI passed: the live
   database backup was verified, restored into a temporary data directory, and SQLite integrity
-  verification passed. The packaged control-plane drill also passed offline init, bounded fixture
+  verification passed. The installed v0.29.55 rerun of the packaged control-plane drill also passed offline init, bounded fixture
   ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
   Neither drill touched indexed personal data.
 - The source-native headless acceptance probes also passed without starting Tauri: two portable
