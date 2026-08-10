@@ -78,8 +78,7 @@ is not part of a visual/UI change.
 - The installed CLI `/Users/amf/.local/bin/cortana` and packaged Desktop app
   `/Applications/Cortana.app` now report `cortana 0.29.33`; both pass `cortana doctor` and full
   `cortana readiness`, and the v0.29.33 packaged control-plane and backup/restore drills.
-  The current-source native acceptance subset passes 24 tests (126 native tests are listed
-  in the full suite). The packaged app
+  The current-source native Desktop suite passes all 126 tests. The packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
   a release blocker; the previous app is retained at `/Applications/Cortana.app.backup-v0.29.31`
