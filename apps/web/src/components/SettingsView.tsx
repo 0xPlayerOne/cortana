@@ -297,6 +297,12 @@ export function SettingsView({
   const setInstallerJob = onInstallerJob ?? setLocalInstallerJob
   const componentMounted = useRef(true)
   const settingsRef = useRef(settings)
+  // Track the last shell snapshot actually adopted by this draft. The shell
+  // can deliver the same prop again while a save is settling; re-applying it
+  // whenever `dirty` changes would overwrite a just-saved draft with that
+  // stale snapshot. Defer newer snapshots while dirty and adopt them once the
+  // draft is clean.
+  const appliedExternalSettingsRef = useRef(externalSettings)
 
   const [providerModels, setProviderModels] = useState<ProviderModelsState[]>([])
   const [modelsLoading, setModelsLoading] = useState<ProviderModelKind | null>(null)
@@ -396,10 +402,15 @@ export function SettingsView({
     if (!isDesktopApp) return
     if (externalSettings) {
       // The shell owns the saved snapshot. Do not replace an in-progress local
-      // draft when a parent status update re-renders this view.
-      if (!dirty) setSettings(externalSettings)
+      // draft, or re-apply the same stale object when a save clears `dirty`.
+      // A new object is adopted once the draft is clean; this preserves parent
+      // updates that arrived while the operator was editing.
+      if (dirty || appliedExternalSettingsRef.current === externalSettings) return
+      appliedExternalSettingsRef.current = externalSettings
+      setSettings(externalSettings)
       return
     }
+    appliedExternalSettingsRef.current = undefined
     void getDesktopSettings()
       .then(applyLoadedSettings)
       .catch((caught: unknown) =>
