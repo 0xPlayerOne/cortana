@@ -24,7 +24,7 @@
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "lint": "eslint apps/web/src",
-    "test": "bun test --isolate --max-concurrency=1",
+    "test": "bun test --isolate --parallel=1 --max-concurrency=1",
     "type-check": "uv run mypy src/cortana && cargo check --all-targets && bun run --cwd apps/web typecheck",
     "typecheck": "bun run --cwd apps/web typecheck"
   },
