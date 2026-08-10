@@ -110,6 +110,11 @@ is not part of a visual/UI change.
   generation/provider, ACL, query API, verified-backup freshness (18 hours within a 48-hour bound),
   query mode, and the safe query-only state with recurring sync not installed; it did not invoke
   source validation because `--allow-sync-service` was not supplied.
+- A separate `cortana readiness --allow-sync-service` run failed closed without contacting any
+  connector: every legacy/filesystem/code validation was a bounded sample or below the configured
+  full-corpus budget, and `personal-calendar` had no successful validation. This is the expected
+  safety result; recurring sync remains uninstalled until complete validation and the missing Google
+  token are repaired.
 - A model-backed evaluation ran against the configured provider without opening a personal index or
   starting sync/connectors. The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
