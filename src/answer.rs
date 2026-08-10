@@ -148,6 +148,11 @@ impl LanguageModel for OpenAiLanguageModel {
             request = request.bearer_auth(api_key);
         }
         let mut response = request.send().await?.error_for_status()?;
+        let gateway_provider = response
+            .headers()
+            .get("x-model-gateway-provider")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
         if response
             .content_length()
             .is_some_and(|length| length > MAX_MODEL_RESPONSE_BYTES as u64)
@@ -171,6 +176,7 @@ impl LanguageModel for OpenAiLanguageModel {
             .into_iter()
             .next()
             .and_then(|choice| choice.message.content)
+            .map(|content| strip_model_gateway_footer(&content, gateway_provider.as_deref()))
             .filter(|content| !content.trim().is_empty())
             .context("language model returned no content")
     }
@@ -469,6 +475,54 @@ impl AnswerEngine {
 
 fn normalize_query_for_cache(query: &str) -> String {
     query.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Remove only the attribution line deliberately appended by model-gateway.
+///
+/// The gateway identifies these responses with `x-model-gateway-provider` and
+/// appends a strict `- family: details, provider` line to the content. Treating
+/// that metadata as answer text makes Cortana reject otherwise valid cited
+/// synthesis. The header gate, exact shape, and provider-token match keep
+/// ordinary model bullets and uncited content fail-closed.
+fn strip_model_gateway_footer(content: &str, provider: Option<&str>) -> String {
+    let Some(provider) = provider.map(str::trim).filter(|value| !value.is_empty()) else {
+        return content.to_owned();
+    };
+    let trimmed = content.trim_end();
+    let Some((answer, footer)) = trimmed.rsplit_once('\n') else {
+        return content.to_owned();
+    };
+    let footer = footer.trim();
+    let Some(detail) = footer.strip_prefix("- ") else {
+        return content.to_owned();
+    };
+    let Some((family, detail)) = detail.split_once(": ") else {
+        return content.to_owned();
+    };
+    if family.trim().is_empty() || detail.matches(',').count() != 1 || detail.contains('[') {
+        return content.to_owned();
+    }
+    let Some((_, footer_provider)) = detail.rsplit_once(", ") else {
+        return content.to_owned();
+    };
+    let normalized_provider = gateway_provider_token(provider);
+    let normalized_footer_provider = gateway_provider_token(footer_provider);
+    if normalized_provider.is_empty()
+        || normalized_footer_provider.is_empty()
+        || normalized_footer_provider != normalized_provider
+    {
+        return content.to_owned();
+    }
+    answer.trim_end().to_owned()
+}
+
+fn gateway_provider_token(value: &str) -> String {
+    let token: String = value
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|character| character.to_ascii_lowercase())
+        .collect();
+    token.strip_suffix("gateway").unwrap_or(&token).to_owned()
 }
 
 #[derive(Deserialize)]
@@ -836,6 +890,27 @@ mod tests {
         .expect("plan");
         assert_eq!(queries[0], "Who owns deploys?");
         assert_eq!(queries.len(), 3);
+    }
+
+    #[test]
+    fn model_gateway_footer_is_removed_only_with_matching_metadata() {
+        assert_eq!(
+            strip_model_gateway_footer(
+                "Answer from evidence [1]\n- NORTH: Mini Code Free Default, Kilo Code Gateway",
+                Some("kilocode")
+            ),
+            "Answer from evidence [1]"
+        );
+        let ordinary_bullet = "Answer [1]\n- Owner: Alice, due Friday";
+        assert_eq!(
+            strip_model_gateway_footer(ordinary_bullet, Some("kilocode")),
+            ordinary_bullet
+        );
+        let no_gateway_metadata = "Answer [1]\n- NORTH: Mini Code Free Default, Kilo Code Gateway";
+        assert_eq!(
+            strip_model_gateway_footer(no_gateway_metadata, None),
+            no_gateway_metadata
+        );
     }
 
     #[test]

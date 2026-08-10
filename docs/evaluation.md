@@ -78,6 +78,12 @@ provider outage for cache and post-update checks.
 
 The command exits nonzero when model quality thresholds fail.
 
+When the configured endpoint is the model-gateway adapter, Cortana removes an attribution
+footer only when the response carries the gateway's explicit provider header and the footer
+matches the gateway's exact shape and provider token (including its documented `Gateway` display
+suffix). Ordinary bullets, uncited text, and responses without that header remain unchanged and
+continue through citation validation fail-closed.
+
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the current packaged
 v0.29.33 evaluator failed closed twice (8,313 ms and 13,398 ms) after the planner call because the

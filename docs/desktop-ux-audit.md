@@ -45,8 +45,11 @@ is not part of a visual/UI change.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Open:** an
    earlier source `339240e` run passed in 20,176 ms and a packaged v0.29.31 rerun passed in
    13,477 ms, but the current packaged v0.29.33 run failed closed twice with invalid model
-   citations (8,313 ms and 13,398 ms). Keep extractive mode as the safe production default
-   until the current provider route produces citation-valid synthesis.
+   citations (8,313 ms and 13,398 ms). The current source now strips only the model-gateway
+   attribution footer when its explicit provider header and exact footer shape agree; the live
+   route still returned `provider_unavailable` in the latest bounded run, so this gate remains
+   open. Keep extractive mode as the safe production default until the current provider route
+   produces citation-valid synthesis.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
