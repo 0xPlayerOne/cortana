@@ -95,9 +95,10 @@ is not part of a visual/UI change.
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full web suite
-  passes 252 tests across 21 files (latest run: 43.51 seconds, 1,254 assertions). The Python suite passes 156 tests, `bun run type-check` and
+  passes 252 tests across 21 files (latest run: 37.56 seconds, 1,263 assertions). The Python suite passes 156 tests, `bun run type-check` and
   `uv lock --check` pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
-  runs Bun with `--isolate` so file-local API mocks cannot leak between OAuth suites.
+  runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
+  OAuth suites or race the desktop pagination tests.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
   headless CI evidence; they do not claim packaged GUI, browser, OS-service, or signed-updater
