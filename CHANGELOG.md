@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.2](https://github.com/0xPlayerOne/cortana/compare/v0.30.1...v0.30.2) (2026-08-11)
+
+
+### Documentation
+
+* promote v0.30.1 release evidence ([8b00885](https://github.com/0xPlayerOne/cortana/commit/8b00885642a68550f6b4ec5ee729520adca29167))
+
 ## [0.30.1](https://github.com/0xPlayerOne/cortana/compare/v0.30.0...v0.30.1) (2026-08-11)
 
 
