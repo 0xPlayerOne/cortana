@@ -217,7 +217,7 @@ is not part of a visual/UI change.
   post-restore search; neither drill touched indexed personal data.
 - The current source-native headless acceptance suite passes without starting Tauri: the 129 native
   tests cover OAuth guards, tray/background lifecycle, updater guards, settings import/export,
-  backup/restore, and source validation. They complement the 252 web tests and do not substitute for
+  backup/restore, and source validation. They complement the 255 Bun tests and do not substitute for
   the still-unverified interactive packaged GUI flows.
 - Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
   interactions remain unverified because no callable Computer Use session was available. Native
