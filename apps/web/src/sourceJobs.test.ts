@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, fireEvent, renderHook } from '@testing-library/react'
 
 import type { DesktopSourceJob } from './types'
 
@@ -304,17 +304,17 @@ test('the hook pauses renderer polling in the background and recovers on focus',
 
   state.statusCalls = []
   act(() => {
-    window.dispatchEvent(new Event('blur'))
+    fireEvent(window, new Event('blur'))
     // A webview can become visible again before it receives native focus. A
     // visibility event must not resume background polling on its own.
-    document.dispatchEvent(new Event('visibilitychange'))
+    fireEvent(document, new Event('visibilitychange'))
   })
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 1_100))
   })
   expect(state.statusCalls).toEqual([])
 
-  act(() => window.dispatchEvent(new Event('focus')))
+  act(() => fireEvent(window, new Event('focus')))
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 1_100))
   })
@@ -342,8 +342,8 @@ test('an in-flight poll cannot update the renderer after the window backgrounds'
   expect(state.statusCalls).toEqual(['background-race'])
 
   act(() => {
-    window.dispatchEvent(new Event('blur'))
-    document.dispatchEvent(new Event('visibilitychange'))
+    fireEvent(window, new Event('blur'))
+    fireEvent(document, new Event('visibilitychange'))
   })
   resolvePending?.(completed)
   await act(async () => {

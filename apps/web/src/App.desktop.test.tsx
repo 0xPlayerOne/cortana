@@ -546,6 +546,7 @@ test('global command shortcuts do not hijack editable fields', async () => {
 
   act(() => fireEvent.keyDown(search, { key: 'Escape' }))
   expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull()
+  await flushDesktopBootstrap()
 })
 
 test('desktop shell restores workspace and source scope and clears stale selections', async () => {
@@ -644,13 +645,9 @@ test('desktop shell pauses passive health polling while hidden and refreshes on 
       configurable: true,
       value,
     })
-    document.dispatchEvent(new Event('visibilitychange'))
+    fireEvent(document, new Event('visibilitychange'))
   }
   try {
-    await act(async () => {
-      setVisibility('visible')
-      await Promise.resolve()
-    })
     render(<App />)
     await flushDesktopBootstrap()
     await waitFor(() => expect(state.getDesktopServicesCalls).toBeGreaterThan(0))
@@ -670,7 +667,7 @@ test('desktop shell pauses passive health polling while hidden and refreshes on 
     // The webview may become visible before native focus is restored. That
     // event alone must not restart passive polling in the background.
     await act(async () => {
-      window.dispatchEvent(new Event('blur'))
+      fireEvent(window, new Event('blur'))
       setVisibility('visible')
       await Promise.resolve()
     })
@@ -681,7 +678,7 @@ test('desktop shell pauses passive health polling while hidden and refreshes on 
     expect(state.statusCalls).toBe(statusBeforeHidden)
 
     await act(async () => {
-      window.dispatchEvent(new Event('focus'))
+      fireEvent(window, new Event('focus'))
       await Promise.resolve()
     })
     await waitFor(() => expect(state.getDesktopServicesCalls).toBeGreaterThan(servicesBeforeHidden))
