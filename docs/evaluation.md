@@ -94,10 +94,10 @@ synthesis model use, valid citations, cache reuse, and revision invalidation in 
 latest successful installed v0.29.60 aarch64 core binary rerun passed the same fixture-only evaluator in
 17,928 ms; a prior cache-warm run passed in 10,323 ms. Both runs had
 planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
-Desktop app was not launched; the installed v0.30.7 core now lives at
-`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 through v0.30.7
+Desktop app was not launched; the installed v0.30.8 core now lives at
+`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 through v0.30.8
 are release/version and cross-platform compatibility fixes over the same query behavior.
-The latest successful installed v0.30.7 run is the current provider-backed pass at 19,585 ms with
+The latest successful installed v0.30.8 run is the current provider-backed pass at 19,585 ms with
 planner and synthesis model use, valid citations, cache reuse, and revision invalidation; retrieval
 recall, MRR, case pass rate, and citation validity were all 1.0 within the 30,000 ms deadline. The
 earlier 9,105 ms run and older source-tree runs remain historical evidence. An earlier 2026-08-11
