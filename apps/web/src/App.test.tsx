@@ -445,6 +445,9 @@ test('stale document responses do not overwrite the currently selected document'
   expect(screen.queryByText('Stale document result')).toBeNull()
 })
 
+// This deliberately holds two context requests open while the shell changes
+// workspace scope. Under the full isolated suite, renderer scheduling can
+// exceed Bun's 5-second default even though the race itself is bounded.
 test('scope-changed context request does not overwrite newer state', async () => {
   const oldContext = deferred<ContextBundle>()
   const newContext = deferred<ContextBundle>()
@@ -525,4 +528,4 @@ test('scope-changed context request does not overwrite newer state', async () =>
 
   await waitFor(() => expect(screen.getByText('Fresh context evidence')).toBeTruthy())
   expect(screen.queryByText('Stale context evidence')).toBeNull()
-})
+}, 10_000)
