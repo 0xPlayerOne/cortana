@@ -511,8 +511,7 @@ mock.module('./api', () => ({
   },
   startDesktopSourceTrialSync: () => Promise.reject(new Error('trial sync unavailable')),
   openDesktopSourceSetup: () => Promise.reject(new Error('source setup unavailable')),
-  listDesktopGithubRepositories: () =>
-    Promise.resolve({ truncated: false, repositories: [] }),
+  listDesktopGithubRepositories: () => Promise.resolve({ truncated: false, repositories: [] }),
   listDesktopDiscordChannels: () => Promise.reject(new Error('Discord channels unavailable')),
   listDesktopDiscordServers: () => Promise.reject(new Error('Discord servers unavailable')),
   listDesktopSlackWorkspaces: () => Promise.reject(new Error('Slack workspaces unavailable')),
