@@ -128,11 +128,9 @@ is not part of a visual/UI change.
   129 tests. The
   local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
   verification fails as expected and no `TeamIdentifier` is present. Developer ID
-  signing/notarization remains a release blocker; the previous v0.29.50 bundle is retained at
-  `/Users/amf/.Trash/Cortana.app.backup-v0.29.50-20260810-2205`
-  for recovery (older v0.29.38, v0.29.37, v0.29.33, v0.29.31, v0.29.29, v0.29.28, v0.29.27,
-  v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
-  available as well).
+  signing/notarization remains a release blocker. No unsigned historical developer bundle is
+  treated as current recovery evidence; the verified v0.30.10 release assets and installed CLI are
+  authoritative.
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
   passes 256 tests across 22 files (latest run: 42.27 seconds, 1,267 assertions, including the
   desktop lockfile helper regression). The Python suite
