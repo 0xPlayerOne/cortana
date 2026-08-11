@@ -236,16 +236,17 @@ controlled by `CORTANA_DOWNLOAD_TIMEOUT_SECONDS` (1-600 seconds, 120 by default)
 GitHub CLI cannot stall the release gate indefinitely. Exhausting the budget still fails the
 release gate, so missing or invalid assets are never hidden.
 
-The v0.29.66 core archive passed its checksum, packaged-version, `cortana doctor`, and disposable
-control-plane checks. v0.29.67 through v0.29.69 are release-only version/changelog/lockfile bumps
-over v0.29.65; no functional source files changed. The installed v0.29.67 CLI is headless and
-passes `doctor`, the disposable control-plane drill, and the configured-provider model evaluation.
-The current v0.29.69 source also passed the bounded model evaluation in 18,345 ms with planner and
-synthesis model use, bounded planning, valid citations, cache reuse, and revision invalidation.
-Synthesis remains disabled by default in the production configuration. The packaged Desktop app
-was not launched or replaced. Release-assets workflow `31458199113` published all 18 v0.29.69
-assets, and the fail-closed verifier passed their checksums, sidecars, macOS resources, six Tauri
-updater signatures, and manifest.
+Historical v0.29.66–v0.29.69 evidence remains useful for archive and updater checks, but it is not
+current-release proof. Those releases were version/changelog/lockfile updates over v0.29.65; the
+installed v0.29.67 CLI was headless and passed its then-current doctor, disposable control-plane,
+and configured-provider evaluation checks. Synthesis remains disabled by default in production.
+
+The current v0.30.0 release-assets workflow `31470374229` published 14 of the expected 18 assets:
+macOS ARM64, Linux desktop, and both core archives completed, while the Windows build failed on a
+Discord RPC non-Unix compile defect. `scripts/verify-desktop-release.sh v0.30.0` therefore fails
+closed on the four missing Windows assets. The Windows stub fix is now merged into staging; a
+follow-up patch release must regenerate and verify the complete asset set. The packaged Desktop
+app has not been launched or replaced on this host.
 The bounded control-plane, recovery, and model-backed checks are recorded in
 `docs/desktop-ux-audit.md`.
 

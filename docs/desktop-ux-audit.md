@@ -43,10 +43,11 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   current source:** v0.29.69 passed the fixture-only gate in 18,762 ms with planner and synthesis
-   model use, valid citations, cache reuse, and revision invalidation. Keep extractive mode as the
-   safe production default because model synthesis remains opt-in; the older installed v0.29.67
-   result remains historical evidence only.
+   current functional tree carried into v0.30.0:** a fresh source run passed the fixture-only gate
+   in 12,671 ms with planner and synthesis model use, valid citations, cache reuse, and revision
+   invalidation. This remains fixture-only evidence, not packaged-app proof. Keep extractive mode
+   as the safe production default because model synthesis remains opt-in; installed 0.29.68 results
+   remain historical evidence only.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
