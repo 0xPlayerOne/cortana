@@ -97,17 +97,15 @@ planner+synthesis model use, valid citations, cache reuse, and revision invalida
 Desktop app was not launched; the installed v0.30.10 core now lives at
 `/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 through v0.30.10
 are release/version and cross-platform compatibility fixes over the same query behavior.
-The latest successful installed v0.30.10 run is the current provider-backed pass at 10,544 ms with
-planner and synthesis model use, valid citations, cache reuse, and revision invalidation; retrieval
-recall, MRR, case pass rate, and citation validity were all 1.0 within the 30,000 ms deadline. The
-earlier 13,117 ms and 9,105 ms runs and older source-tree runs remain historical evidence. An earlier 2026-08-11
-attempt failed closed with
-`fallback_provider_unavailable=true` during a transient configured-gateway outage. The successful
-rerun re-established provider availability. A subsequent bounded repeat on 2026-08-11 again failed
-closed at the 30,000 ms deadline with `fallback_provider_unavailable=true` because the configured
-query gateway did not answer. This proves the fail-closed behavior, but not continuous provider
-availability; extractive mode remains the safe production default until a fresh provider-backed pass
-is available.
+An installed v0.30.10 run previously passed in 10,544 ms with planner and synthesis model use,
+valid citations, cache reuse, and revision invalidation; retrieval recall, MRR, case pass rate, and
+citation validity were all 1.0 within the 30,000 ms deadline. The earlier 13,117 ms and 9,105 ms
+runs and older source-tree runs remain historical evidence. Earlier 2026-08-11 attempts failed
+closed with `fallback_provider_unavailable=true` during transient configured-gateway outages. A
+fresh bounded run on 2026-08-11 re-established provider availability: installed v0.30.10 passed
+in 13,472 ms with planner and synthesis model use, valid citations, cache reuse, and revision
+invalidation. This is still fixture-only evidence, not packaged-app proof; provider outages must
+continue to fail closed, and extractive mode remains the safe production default.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
 
