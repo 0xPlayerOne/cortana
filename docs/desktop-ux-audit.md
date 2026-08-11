@@ -43,7 +43,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   current source:** v0.29.69 passed the fixture-only gate in 18,345 ms with planner and synthesis
+   current source:** v0.29.69 passed the fixture-only gate in 18,762 ms with planner and synthesis
    model use, valid citations, cache reuse, and revision invalidation. Keep extractive mode as the
    safe production default because model synthesis remains opt-in; the older installed v0.29.67
    result remains historical evidence only.
@@ -191,7 +191,7 @@ is not part of a visual/UI change.
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
 - A current-source v0.29.69 model-backed evaluation ran against the configured provider without opening a personal index or
-  starting sync/connectors and passed in 18,345 ms with planner and synthesis model use, bounded
+  starting sync/connectors and passed in 18,762 ms with planner and synthesis model use, bounded
   planning, valid citations, cache reuse, and revision invalidation. The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
