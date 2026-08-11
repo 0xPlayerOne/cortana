@@ -3685,7 +3685,7 @@ mod tests {
         });
         validate_update(&mut update).expect("Desktop RPC Discord source is valid");
 
-        update.sources[0].token_env = Some("DISCORD_LEGACY_TOKEN_ENV".into());
+        update.sources[0].token_env = Some("DISCORD_TOKEN_ENV_SHOULD_FAIL".into());
         let error = validate_update(&mut update).expect_err("Discord token env must be rejected");
         assert!(error.contains("token environment names are not supported"));
     }

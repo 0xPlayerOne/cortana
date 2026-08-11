@@ -1003,7 +1003,7 @@ mod tests {
             communities: Vec::new(),
             community_names: Vec::new(),
             repositories: Vec::new(),
-            token_env: Some("DISCORD_LEGACY_TOKEN_ENV".into()),
+            token_env: Some("DISCORD_TOKEN_ENV_SHOULD_FAIL".into()),
             token: Some(PathBuf::from(
                 "/Users/example/.config/cortana/discord-token.json",
             )),
@@ -1022,7 +1022,7 @@ mod tests {
         });
         assert!(
             validate_source_definitions(&config)
-                .expect_err("legacy Discord token configuration must be rejected")
+                .expect_err("Discord token environment configuration must be rejected")
                 .to_string()
                 .contains("cannot use token_env")
         );
