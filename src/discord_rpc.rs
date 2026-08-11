@@ -509,23 +509,22 @@ struct RpcClient {
 impl RpcClient {
     async fn connect(client_id: &str) -> Result<Self> {
         for path in socket_paths() {
-            match tokio::time::timeout(RPC_TIMEOUT, tokio::net::UnixStream::connect(&path)).await {
-                Ok(Ok(stream)) => {
-                    let mut client = Self { stream };
-                    client
-                        .send(
-                            OP_HANDSHAKE,
-                            serde_json::json!({"v": RPC_VERSION, "client_id": client_id}),
-                        )
-                        .await?;
-                    let ready = client.read_response().await?;
-                    anyhow::ensure!(
-                        ready.evt.as_deref() == Some("READY"),
-                        "Discord RPC handshake failed"
-                    );
-                    return Ok(client);
-                }
-                Ok(Err(_)) | Err(_) => {}
+            if let Ok(Ok(stream)) =
+                tokio::time::timeout(RPC_TIMEOUT, tokio::net::UnixStream::connect(&path)).await
+            {
+                let mut client = Self { stream };
+                client
+                    .send(
+                        OP_HANDSHAKE,
+                        serde_json::json!({"v": RPC_VERSION, "client_id": client_id}),
+                    )
+                    .await?;
+                let ready = client.read_response().await?;
+                anyhow::ensure!(
+                    ready.evt.as_deref() == Some("READY"),
+                    "Discord RPC handshake failed"
+                );
+                return Ok(client);
             }
         }
         bail!("Discord Desktop RPC is unavailable; start Discord and authorize Cortana");
@@ -556,7 +555,7 @@ impl RpcClient {
             let response = self.read_response().await?;
             if response.nonce.as_deref() == Some(nonce.as_str()) {
                 if response.evt.as_deref() == Some("ERROR") {
-                    bail!("Discord RPC {} failed", cmd);
+                    bail!("Discord RPC {cmd} failed");
                 }
                 return Ok(response);
             }

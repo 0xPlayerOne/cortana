@@ -211,9 +211,7 @@ test('discord chooser refuses to discover unsaved changes and surfaces failures'
   expect(state.savedUpdates[0].sources[0].name).toBe('work-discord-renamed')
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Discord Desktop RPC is unavailable'
-    )
+    expect(screen.getByRole('alert').textContent).toContain('Discord Desktop RPC is unavailable')
   )
   expect(state.saved?.sources[0].channels).toEqual(['175928847299117064'])
 })

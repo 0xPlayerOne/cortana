@@ -4461,56 +4461,59 @@ function SourcesSection({
                           }}
                         />
                       </Field>
-                      {source.kind !== 'discord' && <Field
-                        label="Token variable"
-                        hint={
-                          secret?.configured && !clearedSecrets.has(secret.name)
-                            ? `Configured via ${secret.source}`
-                            : 'stored in Cortana owner-only secret file'
-                        }
-                      >
-                        <input
-                          value={source.token_env || ''}
-                          disabled={sourceLocked || !source.editable}
-                          required={
-                            source.enabled &&
-                            (source.kind !== 'github' && !source.token_path)
+                      {source.kind !== 'discord' && (
+                        <Field
+                          label="Token variable"
+                          hint={
+                            secret?.configured && !clearedSecrets.has(secret.name)
+                              ? `Configured via ${secret.source}`
+                              : 'stored in Cortana owner-only secret file'
                           }
-                          pattern="[A-Z_][A-Z0-9_]*"
-                          onChange={(event) =>
-                            changeSource(index, { token_env: event.target.value || null })
-                          }
-                        />
-                      </Field>}
-                      {source.kind !== 'discord' && <Field label="New token" hint="write-only; leave blank to keep existing">
-                        <div className="secret-input">
+                        >
                           <input
-                            type="password"
-                            autoComplete="new-password"
-                            disabled={sourceLocked || !source.editable || !source.token_env}
-                            value={source.token_env ? secretValues[source.token_env] || '' : ''}
-                            onChange={(event) => {
-                              if (source.token_env) {
-                                onSecret({
-                                  ...secretValues,
-                                  [source.token_env]: event.target.value,
-                                })
-                              }
-                            }}
+                            value={source.token_env || ''}
+                            disabled={sourceLocked || !source.editable}
+                            required={
+                              source.enabled && source.kind !== 'github' && !source.token_path
+                            }
+                            pattern="[A-Z_][A-Z0-9_]*"
+                            onChange={(event) =>
+                              changeSource(index, { token_env: event.target.value || null })
+                            }
                           />
-                          {source.token_env &&
-                            secret?.configured &&
-                            !clearedSecrets.has(secret.name) && (
-                              <button
-                                type="button"
-                                disabled={sourceLocked}
-                                onClick={() => onClearSecret(source.token_env!)}
-                              >
-                                Clear
-                              </button>
-                            )}
-                        </div>
-                      </Field>}
+                        </Field>
+                      )}
+                      {source.kind !== 'discord' && (
+                        <Field label="New token" hint="write-only; leave blank to keep existing">
+                          <div className="secret-input">
+                            <input
+                              type="password"
+                              autoComplete="new-password"
+                              disabled={sourceLocked || !source.editable || !source.token_env}
+                              value={source.token_env ? secretValues[source.token_env] || '' : ''}
+                              onChange={(event) => {
+                                if (source.token_env) {
+                                  onSecret({
+                                    ...secretValues,
+                                    [source.token_env]: event.target.value,
+                                  })
+                                }
+                              }}
+                            />
+                            {source.token_env &&
+                              secret?.configured &&
+                              !clearedSecrets.has(secret.name) && (
+                                <button
+                                  type="button"
+                                  disabled={sourceLocked}
+                                  onClick={() => onClearSecret(source.token_env!)}
+                                >
+                                  Clear
+                                </button>
+                              )}
+                          </div>
+                        </Field>
+                      )}
                       {source.kind === 'discord' && (
                         <>
                           <Field

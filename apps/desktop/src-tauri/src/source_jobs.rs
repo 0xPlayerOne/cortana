@@ -2783,7 +2783,7 @@ mod tests {
     fn authorization_terminal_summaries_name_the_provider() {
         assert!(
             terminal_summary("authorization", "succeeded", false, "discord")
-                .contains("Discord authorization completed")
+                .contains("Discord Desktop RPC authorization completed")
         );
         assert!(
             terminal_summary("authorization", "succeeded", false, "github")
