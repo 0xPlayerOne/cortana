@@ -47,7 +47,7 @@ is not part of a visual/UI change.
    rerun passed in 13,477 ms, but the installed v0.29.33 evaluator failed closed twice with invalid
    model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree. The installed
-   v0.29.60 aarch64 core binary passed the current fixture-only gate in 10,323 ms; the prior
+   v0.29.66 aarch64 core binary passed the current fixture-only gate in 12,149 ms; the prior
    installed v0.29.59 run passed in 20,940 ms. Both current runs used planner+synthesis,
    valid citations, cache reuse, and revision invalidation. Keep extractive mode as the safe
    production default because model synthesis remains opt-in.
@@ -72,7 +72,7 @@ is not part of a visual/UI change.
    Cortana's configured token location, but its current refresh token record expired on
    2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
    PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; the current main line is
-   v0.29.64. The locally installed CLI now uses v0.29.64 and emits reauthorization guidance;
+   v0.29.66. The locally installed CLI now uses v0.29.66 and emits reauthorization guidance;
    the packaged Desktop app remains v0.29.55 because it was not launched or replaced.
    Recurring sync must remain disabled until browser authorization succeeds and the source is
    revalidated.
@@ -89,18 +89,19 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line and latest fully verified release are v0.29.65 at commit
-  `f8cc798`. This is a release-only version/changelog/lockfile bump over v0.29.64; no functional
-  source files changed. Release-assets workflow `31451927246` published all 18 expected assets,
-  and the local fail-closed verifier passed the cross-platform archives, checksums, minisign
-  signatures, and updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports
-  `cortana 0.29.65`;
+- The current main line and latest verified core release are v0.29.66 at commit
+  `15c7631`. This is a release-only version/changelog/lockfile bump over v0.29.65; no functional
+  source files changed. The aarch64 core archive from release-assets workflow `31455540401`
+  passed its checksum, safe-path, packaged-version, and structure checks. The remaining desktop
+  assets are still building, so the last fully verified desktop release remains v0.29.65 from
+  workflow `31451927246`. The installed CLI `/Users/amf/.local/bin/cortana` now reports
+  `cortana 0.29.66`;
   the packaged
   Desktop app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or
-  replaced. The installed v0.29.65 core passes `--version`, `cortana doctor`, and the disposable
+  replaced. The installed v0.29.66 core passes `--version`, `cortana doctor`, and the disposable
   control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
-  restore, and post-restore search). A fresh v0.29.65 model-backed evaluation against the
-  persistent `auto-free` query provider passed in 19,619 ms with planner and synthesis model use,
+  restore, and post-restore search). A fresh v0.29.66 model-backed evaluation against the
+  persistent `auto-free` query provider passed in 12,149 ms with planner and synthesis model use,
   bounded planning, valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
   `provider_unavailable` after 30,018 ms while the gateway was degraded; the successful rerun
   re-established provider-backed evaluation without changing the safe extractive runtime default.
@@ -109,12 +110,19 @@ is not part of a visual/UI change.
 --strict` passed. This proves archive integrity and local signature structure only: the app was
   not launched, notarization was not assessed, and tray, native dialogs, OAuth, and updater UI
   remain manual gates.
+- A headless v0.29.66 macOS ARM packaged-app drill verified the published app archive's minisign
+  signature, safe tar members, `Cortana.app` bundle, `Info.plist` version `0.29.66`, and
+  `codesign --verify --deep --strict`. `spctl --assess` rejects the ad-hoc bundle (exit 3) because
+  Developer ID signing/notarization is not configured. The partial v0.29.66 `latest.json` currently
+  contains only the two Darwin entries while the remaining desktop assets build, so the full updater
+  manifest gate remains open; the app was not launched.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite at v0.29.64 passes all 126 tests. The
+  The current-source native Desktop suite on the functionally equivalent v0.29.66 release-only
+  source tree passes all 126 tests. The
   packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
@@ -130,8 +138,9 @@ is not part of a visual/UI change.
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
-  refreshed against the v0.29.64 source tree without launching the Desktop app.
-- The current Rust library suite on the v0.29.64 source tree passes 266 tests with no failures;
+  refreshed against the v0.29.66 release-only source tree without launching the Desktop app.
+- The current Rust library suite on the functionally equivalent v0.29.66 release-only source tree
+  passes 266 tests with no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
@@ -184,7 +193,7 @@ is not part of a visual/UI change.
   explicitly approved.
 - A previous disposable backup/restore drill against the installed v0.29.54 CLI passed: the live
   database backup was verified, restored into a temporary data directory, and SQLite integrity
-  verification passed. A fresh v0.29.64 live backup/restore drill likewise passed backup
+  verification passed. A fresh v0.29.66 live backup/restore drill likewise passed backup
   verification, disposable restore, and SQLite integrity. The installed v0.29.60 rerun of the
   disposable control-plane drill also passed offline init, bounded fixture
   ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
