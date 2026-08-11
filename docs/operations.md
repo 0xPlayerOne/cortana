@@ -256,13 +256,14 @@ minisign verification covers the Tauri updater archives only and fails closed in
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
 ID notarization), so `spctl --assess` still rejects it and notarization remains a release blocker.
 
-Re-run the read-only verifier for an existing release with:
+Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.69
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.30.6
 ```
 
-The v0.29.69 core archive can also be verified independently:
+For historical incident investigation, the v0.29.69 release can still be verified
+independently:
 
 ```bash
 scripts/verify-release.sh cortana-v0.29.69-aarch64-apple-darwin.tar.gz
