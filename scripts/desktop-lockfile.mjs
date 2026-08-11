@@ -12,7 +12,16 @@ export function hasReleasePleaseAnnotation(path) {
 }
 
 export function restoreReleasePleaseAnnotation(path) {
-  const source = readFileSync(path, 'utf8')
+  let source
+  try {
+    source = readFileSync(path, 'utf8')
+  } catch (error) {
+    // A fresh checkout may not have generated the desktop lockfile yet. The
+    // wrapper must preserve that pre-Cargo behavior while still surfacing
+    // permission, encoding, and other real filesystem failures.
+    if (error?.code === 'ENOENT') return
+    throw error
+  }
   const restored = source.replace(versionLine, '$1 # x-release-please-version\n')
   if (restored !== source) writeFileSync(path, restored)
 }

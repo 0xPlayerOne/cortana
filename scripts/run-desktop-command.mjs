@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
-import { hasReleasePleaseAnnotation, restoreReleasePleaseAnnotation } from './desktop-lockfile.mjs'
+import { restoreReleasePleaseAnnotation } from './desktop-lockfile.mjs'
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const desktopRoot = resolve(root, 'apps/desktop')
@@ -15,7 +15,6 @@ if (!command) {
   throw new Error('usage: run-desktop-command.mjs COMMAND [ARGUMENT ...]')
 }
 
-const preservesReleasePleaseAnnotation = hasReleasePleaseAnnotation(lockfile)
 let result
 try {
   result = spawnSync(command, args, { cwd: desktopRoot, stdio: 'inherit' })
@@ -24,7 +23,7 @@ try {
   // dropping the Release Please marker comment. Restore that repository-owned
   // annotation after every desktop command that can invoke Cargo, including
   // Tauri builds, so local commands never leave a false dirty diff.
-  if (preservesReleasePleaseAnnotation) restoreReleasePleaseAnnotation(lockfile)
+  restoreReleasePleaseAnnotation(lockfile)
 }
 
 if (result.error) throw result.error
