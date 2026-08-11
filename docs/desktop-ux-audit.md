@@ -209,14 +209,18 @@ is not part of a visual/UI change.
   provider-unavailable attempt remains historical fail-closed evidence, and extractive mode
   remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
-  sync service is not installed, and the configured inventory has 22 enabled sources. Eleven have
-  fresh succeeded `complete=true` validation, seven filesystem/code sources are bounded samples
-  (`complete=false`), and all four Discord RPC sources fail closed until their owner-only OAuth
-  client/token files exist. Neither sampled nor failed state authorizes a full-corpus or recurring
-  run without a fresh explicit `complete=true` validation for every enabled source.
-- A current `readiness --allow-sync-service` probe correctly failed closed without installing or
-  starting sync: connector validations were below configured budgets, filesystem/code validations
-  were sampled, and every Discord validation was unsuccessful. Query-only readiness still passes.
+  sync service is not installed, and the configured inventory has 22 sources (21 enabled; the
+  personal AMF Discord source is disabled). Fourteen enabled sources currently report successful
+  bounded validation, including all three authorized Discord sources; seven filesystem/code
+  sources remain bounded samples (`complete=false`). These bounded records do not cover the
+  configured recurring-sync budgets, so neither sampled nor under-budget state authorizes a
+  full-corpus or recurring run without fresh validation at the configured limits.
+- A current query-only readiness probe passes database integrity, embedding/index/provider health,
+  ACL, API liveness, fresh verified backup, extractive mode, and confirms sync is not installed.
+  The matching `readiness --allow-sync-service` probe fails closed because every enabled connector
+  is below its configured full-sync budget and filesystem/code records are bounded samples; no
+  sync service was installed or started. Recurring mode must stay fail-closed until every enabled
+  source covers its configured full-sync budget.
 - A current v0.30.10 packaged control-plane drill passed verified backup creation, disposable restore,
   SQLite verification, and cleanup. It also passed offline
   init, bounded fixture ingestion, search/context, metadata-only audit export, backup, restore, and
