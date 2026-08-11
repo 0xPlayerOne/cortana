@@ -94,14 +94,18 @@ synthesis model use, valid citations, cache reuse, and revision invalidation in 
 latest successful installed v0.29.60 aarch64 core binary rerun passed the same fixture-only evaluator in
 17,928 ms; a prior cache-warm run passed in 10,323 ms. Both runs had
 planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
-Desktop app was not launched; the installed v0.29.68 core remains at
-`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 through v0.30.0
-are release-only version/changelog/lockfile bumps over v0.29.65 with no functional source changes.
-A current-source evaluation of the functional tree carried into v0.30.0 passed in 18,762 ms
+Desktop app was not launched; the installed v0.30.1 core now lives at
+`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 through v0.30.1
+are release/version and cross-platform compatibility fixes over the same query behavior.
+A current-source evaluation of the functional tree carried into v0.30.1 passed in 18,762 ms
 with planner and synthesis model use, bounded planning, valid citations, cache reuse, and revision
 invalidation. An
 earlier bounded provider-unavailable attempt remains historical evidence of the fail-closed path;
 the successful rerun re-established the provider gate without changing the safe extractive default.
+A fresh post-install v0.30.1 rerun was also attempted without touching the personal index or
+starting sync; the configured provider remained silent within the local diagnostic window and the
+process was stopped. No new installed-provider pass is claimed from that attempt, so extractive
+mode remains the safe production default until provider availability is re-established.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
 
