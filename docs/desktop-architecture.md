@@ -171,8 +171,9 @@ discovery; the Desktop chooser consumes that typed, allowlisted boundary and per
 selected `owner/repository` values. It can retain, disable,
 or remove an existing external command connector, but cannot create or modify command arrays.
 Google token files and OAuth client files and local roots must be absolute non-root paths. Slack
-requires explicit channels and a validated bot-token environment name. Discord requires explicit
-channels plus private Desktop RPC token and OAuth-client paths (never an environment variable).
+requires explicit channels and a validated bot-token environment name.
+Discord requires explicit channels plus private Desktop RPC token and OAuth-client paths (never an
+environment variable).
 Canonical source
 labels are unique within each workspace, must not be padded with whitespace or contain control
 characters, and cannot merge connectors' indexed scope or health history. Saving or authorizing source
