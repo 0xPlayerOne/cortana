@@ -83,6 +83,8 @@ is not part of a visual/UI change.
   remaining `Spark` matches are Lucide `Sparkles` icons used by the Query navigation surface.
 - Rust `clippy --all-targets --all-features -- -D warnings`, Python Ruff/format/mypy, the web
   type-check, and ESLint all pass on this tree. No generated build/cache directory is tracked.
+- Desktop Cargo helpers now restore the Release Please lockfile marker even when Cargo rewrites the
+  lockfile; `scripts/desktop-lockfile.test.mjs` covers missing and already-present annotations.
 - Remaining `legacy` references are active migration, ACL-quarantine, and embedding-generation
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
