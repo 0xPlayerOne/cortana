@@ -236,13 +236,14 @@ controlled by `CORTANA_DOWNLOAD_TIMEOUT_SECONDS` (1-600 seconds, 120 by default)
 GitHub CLI cannot stall the release gate indefinitely. Exhausting the budget still fails the
 release gate, so missing or invalid assets are never hidden.
 
-The v0.29.65 core archive passed its checksum, packaged-version, `cortana doctor`, and disposable
-control-plane checks. This release is a release-only version/changelog/lockfile bump over v0.29.64;
-no functional source files changed. Release-assets run `31451927246` completed successfully with all
-18 expected assets, and the local verifier passed its cross-platform archives, checksums, minisign
-signatures, and updater manifest. The verified v0.29.65 CLI is installed headlessly and passes
+The v0.29.66 core archive passed its checksum, packaged-version, `cortana doctor`, and disposable
+control-plane checks. This release is a release-only version/changelog/lockfile bump over v0.29.65;
+no functional source files changed. Release-assets run `31455540401` published the aarch64 core
+archive and checksum, and the local verifier passed their safe-path, checksum, and packaged-version
+checks. The remaining desktop assets are still building; the last fully verified desktop release is
+v0.29.65 from run `31451927246`. The verified v0.29.66 CLI is installed headlessly and passes
 `doctor` and the disposable control-plane drill; the configured `auto-free` provider-backed
-evaluation passed in 19,619 ms with planner and synthesis model use, bounded planning, valid
+evaluation passed in 12,149 ms with planner and synthesis model use, bounded planning, valid
 citations, cache reuse, and revision invalidation. Synthesis remains disabled by default in the
 production configuration. The packaged Desktop app at `/Applications/Cortana.app` remains v0.29.55;
 it was not launched or replaced.
@@ -257,6 +258,12 @@ Re-run the read-only verifier for an existing release with:
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.65
+```
+
+The v0.29.66 core archive can be verified independently while the remaining desktop assets build:
+
+```bash
+scripts/verify-release.sh cortana-v0.29.66-aarch64-apple-darwin.tar.gz
 ```
 
 ## macOS launchd
