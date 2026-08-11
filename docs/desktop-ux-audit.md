@@ -221,6 +221,11 @@ is not part of a visual/UI change.
   is below its configured full-sync budget and filesystem/code records are bounded samples; no
   sync service was installed or started. Recurring mode must stay fail-closed until every enabled
   source covers its configured full-sync budget.
+- A current validation-only `scripts/source-smoke.sh` run on 2026-08-11 passed all 21 enabled
+  sources at the bounded one-document/65,536-byte/30-second budget, including the three Discord
+  sources, with no trial sync, embeddings, or reconciliation. This confirms authorization and
+  connector reachability only; the seven filesystem/code sources remain sampled and every source
+  is below the configured recurring-sync budget.
 - A current v0.30.10 packaged control-plane drill passed verified backup creation, disposable restore,
   SQLite verification, and cleanup. It also passed offline
   init, bounded fixture ingestion, search/context, metadata-only audit export, backup, restore, and
