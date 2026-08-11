@@ -36,6 +36,11 @@ const MAX_GUILDS: usize = 100;
 const MAX_CHANNELS_PER_GUILD: usize = 100;
 const RPC_TIMEOUT: Duration = Duration::from_secs(30);
 const TOKEN_ENDPOINT: &str = "https://discord.com/api/oauth2/token";
+/// Discord requires the redirect URI used by the token exchange to match one
+/// registered on the application. The desktop RPC flow returns the code over
+/// the local socket, so no listener is needed for this loopback placeholder.
+/// Register this exact URI in the application's OAuth2 settings.
+const REDIRECT_URI: &str = "http://127.0.0.1/callback";
 const IDENTIFY_SCOPE: &str = "identify";
 const RPC_SCOPE: &str = "rpc";
 const MESSAGES_READ_SCOPE: &str = "messages.read";
@@ -289,14 +294,16 @@ async fn exchange_code(client: &ClientFile, code: &str) -> Result<StoredToken> {
         .redirect(Policy::none())
         .build()
         .context("build Discord OAuth client")?;
-    let mut form = vec![
+    let client_secret = client.client_secret.as_deref().context(
+        "Discord OAuth client JSON must include client_secret for the authorization-code exchange",
+    )?;
+    let form = vec![
         ("client_id", client.client_id.as_str()),
         ("code", code),
         ("grant_type", "authorization_code"),
+        ("redirect_uri", REDIRECT_URI),
+        ("client_secret", client_secret),
     ];
-    if let Some(secret) = client.client_secret.as_deref() {
-        form.push(("client_secret", secret));
-    }
     let response = http
         .post(TOKEN_ENDPOINT)
         .form(&form)
