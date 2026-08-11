@@ -91,16 +91,16 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line includes the final protected staging promotion; the latest release is v0.30.6
-  at immutable tag commit `ea2dbba`, published from release-assets workflow `31490251675`. The workflow completed
+- The current main line includes the final protected staging promotion; the latest release is v0.30.7
+  at immutable tag commit `97e9690`, published from release-assets workflow `31504888587`. The workflow completed
   all five platform jobs, and the
   strict verifier passed all 18 required core, desktop, signature, checksum, and updater assets,
   including the repaired Windows installers. The installed CLI `/Users/amf/.local/bin/cortana`
-  reports `cortana 0.30.6`; the packaged Desktop app was not launched. The current
+  reports `cortana 0.30.7`; the packaged Desktop app was not launched. The current
   model/evaluation evidence remains fixture-only evidence, while GUI/browser OAuth, tray, native
   dialogs, and notarization remain manual gates.
 - Historical v0.30.0 and v0.30.2 evidence remains useful for release investigations, but it must not
-  be read as current-release proof; v0.30.6 is the verified cross-platform release.
+  be read as current-release proof; v0.30.7 is the verified cross-platform release.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was
