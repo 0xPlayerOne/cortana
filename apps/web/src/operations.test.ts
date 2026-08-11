@@ -142,6 +142,7 @@ describe('operational source visibility', () => {
       max_documents: 3_000,
       max_bytes: 268_435_456,
       max_seconds: 900,
+      complete: true,
       error: null,
     }
 
@@ -176,11 +177,11 @@ describe('operational source visibility', () => {
     expect(health.label.toLowerCase()).toContain('re-validate')
   })
 
-  test('treats a validation without freshness metadata as current', () => {
+  test('treats a complete validation without freshness metadata as current', () => {
     const status = structuredClone(demoStatus)
     const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!
     // A server predating the freshness fields never reports `fresh`; the
-    // workspace must not invent an expiry for a record it cannot judge.
+    // workspace must not invent an expiry for a complete record it cannot age.
     const legacy = {
       source: 'buzz',
       project: 'agents',
@@ -192,12 +193,39 @@ describe('operational source visibility', () => {
       max_documents: 3_000,
       max_bytes: 268_435_456,
       max_seconds: 900,
+      complete: true,
       error: null,
     }
     buzz.validation = legacy
 
     const source = operationalSources(status).find((item) => item.name === 'buzz')
     expect(sourceHealth(source!).state).toBe('healthy')
+  })
+
+  test('fails closed when validation completeness is unknown', () => {
+    const status = structuredClone(demoStatus)
+    const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!
+    buzz.validation = {
+      source: 'buzz',
+      project: 'agents',
+      kind: 'buzz',
+      status: 'succeeded',
+      validated_at: '2026-07-30T06:00:00Z',
+      fresh: true,
+      documents: 45,
+      bytes: 4096,
+      max_documents: 3_000,
+      max_bytes: 268_435_456,
+      max_seconds: 900,
+      error: null,
+    }
+
+    const source = operationalSources(status).find((item) => item.name === 'buzz')
+    expect(validationCoversConfiguredBudget(source!)).toBe(false)
+    const health = sourceHealth(source!)
+    expect(health.state).toBe('warning')
+    expect(health.label).toContain('completeness is unknown')
+    expect(health.label).toContain('re-validate')
   })
 
   test('fails closed when the succeeded validation was a bounded sample', () => {
@@ -303,6 +331,7 @@ describe('operational source visibility', () => {
       max_documents: 100,
       max_bytes: 1000,
       max_seconds: 30,
+      complete: true,
       error: null,
     }
 
@@ -344,6 +373,7 @@ describe('operational source visibility', () => {
       max_documents: 100,
       max_bytes: 1_000,
       max_seconds: 30,
+      complete: true,
       error: null,
     }
 

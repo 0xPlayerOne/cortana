@@ -70,9 +70,10 @@ is not part of a visual/UI change.
 6. Complete source authorization and full validation coverage before recurring sync: the bounded
    `personal-calendar` validation now succeeds and refreshes its owner-only Google token, but the
    four enabled Discord sources still fail closed because the configured Desktop RPC OAuth client
-   and token files are absent. Filesystem/code sources are also only sampled (`complete=false`).
-   Recurring sync must remain uninstalled until Discord authorization is completed and every
-   enabled source has a current complete validation at its configured budget.
+   and token files are absent. Filesystem/code sources are either bounded samples
+   (`complete=false`) or legacy records without an explicit completeness marker. Both states
+   fail closed; recurring sync must remain uninstalled until Discord authorization is completed
+   and every enabled source has a current `complete=true` validation at its configured budget.
 
 ## Evidence limits
 
@@ -202,7 +203,8 @@ is not part of a visual/UI change.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
   sync service is not installed, and all four enabled Discord sources fail closed until their
   owner-only RPC OAuth client/token files exist. Filesystem and code sources remain bounded samples
-  (`complete=false`), so no sampled validation authorizes a full-corpus or recurring run.
+  (`complete=false`) or legacy records with unknown completeness; neither state authorizes a
+  full-corpus or recurring run without a fresh explicit `complete=true` validation.
 - A current `readiness --allow-sync-service` probe correctly failed closed without installing or
   starting sync: connector validations were below configured budgets, filesystem/code validations
   were sampled, and every Discord validation was unsuccessful. Query-only readiness still passes.
