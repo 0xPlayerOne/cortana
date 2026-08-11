@@ -89,7 +89,7 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main HEAD is release commit `ea2dbba`; the latest release is v0.30.6 at tag
+- The current main HEAD is promotion commit `41f521e`; the latest release is v0.30.6 at tag
   commit `ea2dbba`, published from release-assets workflow `31490251675`. The workflow completed
   all five platform jobs, and the
   strict verifier passed all 18 required core, desktop, signature, checksum, and updater assets,
