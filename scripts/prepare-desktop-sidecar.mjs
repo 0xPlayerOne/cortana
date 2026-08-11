@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
-import { hasReleasePleaseAnnotation, restoreReleasePleaseAnnotation } from './desktop-lockfile.mjs'
+import { restoreReleasePleaseAnnotation } from './desktop-lockfile.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const release = process.argv.includes('--release')
@@ -19,7 +19,6 @@ const profile = release ? 'release' : 'debug'
 const args = ['build', '--locked', '--target', target]
 if (release) args.push('--release')
 const desktopLockfile = resolve(root, 'apps/desktop/src-tauri/Cargo.lock')
-const preservesReleasePleaseAnnotation = hasReleasePleaseAnnotation(desktopLockfile)
 try {
   run('cargo', args)
 } finally {
@@ -27,7 +26,7 @@ try {
   // dropping the Release Please marker comment. Keep the generated lockfile
   // authoritative while restoring that repository-owned release annotation so
   // local desktop tests and builds do not leave a false dirty diff.
-  if (preservesReleasePleaseAnnotation) restoreReleasePleaseAnnotation(desktopLockfile)
+  restoreReleasePleaseAnnotation(desktopLockfile)
 }
 
 const source = resolve(root, 'target', target, profile, `cortana${extension}`)
