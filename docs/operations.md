@@ -236,14 +236,16 @@ controlled by `CORTANA_DOWNLOAD_TIMEOUT_SECONDS` (1-600 seconds, 120 by default)
 GitHub CLI cannot stall the release gate indefinitely. Exhausting the budget still fails the
 release gate, so missing or invalid assets are never hidden.
 
-The v0.29.64 core archive passed its checksum, packaged-version, `cortana doctor`, and disposable
-control-plane checks. Release-assets run `31448821264` completed successfully with all 18 expected
-assets, and the local verifier passed its cross-platform archives, checksums, minisign signatures,
-and updater manifest. The verified v0.29.64 CLI is installed headlessly and passes `doctor` and the
-disposable control-plane drill; the configured `auto-free` provider-backed evaluation passed in
-12,947 ms with planner and synthesis model use, valid citations, cache reuse, and revision
-invalidation. Synthesis remains disabled by default in the production configuration. The packaged Desktop app
-at `/Applications/Cortana.app` remains v0.29.55; it was not launched or replaced.
+The v0.29.65 core archive passed its checksum, packaged-version, `cortana doctor`, and disposable
+control-plane checks. This release is a release-only version/changelog/lockfile bump over v0.29.64;
+no functional source files changed. Release-assets run `31451927246` completed successfully with all
+18 expected assets, and the local verifier passed its cross-platform archives, checksums, minisign
+signatures, and updater manifest. The verified v0.29.65 CLI is installed headlessly and passes
+`doctor` and the disposable control-plane drill; the configured `auto-free` provider-backed
+evaluation passed in 19,619 ms with planner and synthesis model use, bounded planning, valid
+citations, cache reuse, and revision invalidation. Synthesis remains disabled by default in the
+production configuration. The packaged Desktop app at `/Applications/Cortana.app` remains v0.29.55;
+it was not launched or replaced.
 The bounded control-plane, recovery, and model-backed checks are recorded in
 `docs/desktop-ux-audit.md`.
 
@@ -254,7 +256,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 Re-run the read-only verifier for an existing release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.64
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.65
 ```
 
 ## macOS launchd
