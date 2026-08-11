@@ -119,12 +119,12 @@ is not part of a visual/UI change.
   Developer ID signing/notarization is not configured. The v0.29.66 `latest.json` contains all
   required platform entries and passed the full updater-manifest and signature gate; the app was
   not launched.
-  The full `cortana readiness` scan is a read-only operational check because it includes roughly
+- The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed v0.30.6 run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite on v0.30.6 passes all
+- The current-source native Desktop suite on v0.30.6 passes all
   129 tests. The
   local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
   verification fails as expected and no `TeamIdentifier` is present. Developer ID
@@ -134,7 +134,7 @@ is not part of a visual/UI change.
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
-  passes 256 tests across 22 files (latest run: 58.41 seconds, 1,266 assertions, including the
+  passes 256 tests across 22 files (latest run: 61.23 seconds, 1,263 assertions, including the
   desktop lockfile helper regression). The Python suite
   passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
@@ -194,16 +194,17 @@ is not part of a visual/UI change.
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
 - The latest successful installed-core model-backed evaluation ran against the configured provider
-  without opening a personal index or starting sync/connectors and passed in 19,954 ms with
+  without opening a personal index or starting sync/connectors and passed in 9,105 ms with
   planner and synthesis model use, bounded planning, valid citations, cache reuse, and revision
-  invalidation.
+  invalidation. The report recorded recall, MRR, case pass rate, and citation validity at 1.0,
+  within the 30,000 ms answer deadline.
   The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
   output cap was raised for gateway reasoning. The latest installed v0.29.60 core binary passed
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
-  17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The latest installed v0.30.6
+  17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The prior installed v0.30.6
   rerun passed in 19,954 ms with the same planner, synthesis, citation, cache, and revision
   checks. The earlier provider-unavailable attempt remains historical fail-closed evidence, and
   extractive mode remains the safe production default because synthesis is still an explicit opt-in.
