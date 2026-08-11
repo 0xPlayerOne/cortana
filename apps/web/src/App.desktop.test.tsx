@@ -285,8 +285,8 @@ const syncInstalledServiceReport: DesktopServiceReport = {
 }
 
 mock.module('./api', () => ({
-  ...realApi,
   isDesktopApp: true,
+  isDemoMode: false,
   getStatus: () => {
     state.statusCalls += 1
     return Promise.resolve(demoStatus)
@@ -325,6 +325,8 @@ mock.module('./api', () => ({
     return Promise.resolve(state.settings)
   },
   getDesktopInfo: () => Promise.resolve(desktopInfo),
+  setDesktopAutostart: (enabled: boolean) =>
+    Promise.resolve({ ...desktopInfo, autostart_enabled: enabled }),
   getDesktopSchedule: () => {
     state.scheduleGetCalls += 1
     return Promise.resolve(state.schedule)
@@ -363,6 +365,9 @@ mock.module('./api', () => ({
     if (action === 'restart') state.serviceRestartCalls += 1
     return state.serviceAction ? state.serviceAction() : Promise.resolve(installedServiceReport)
   },
+  runDesktopServiceAction: () => Promise.resolve(installedServiceReport),
+  installDesktopUpdate: () => Promise.resolve(desktopUpdate),
+  checkDesktopUpdate: () => Promise.resolve(desktopUpdate),
   getDesktopHindsightStatus: () =>
     Promise.resolve({
       enabled: false,
@@ -504,6 +509,19 @@ mock.module('./api', () => ({
     state.sourceJob = job
     return Promise.resolve(job)
   },
+  startDesktopSourceTrialSync: () => Promise.reject(new Error('trial sync unavailable')),
+  openDesktopSourceSetup: () => Promise.reject(new Error('source setup unavailable')),
+  listDesktopGithubRepositories: () =>
+    Promise.resolve({ truncated: false, repositories: [] }),
+  listDesktopDiscordChannels: () => Promise.reject(new Error('Discord channels unavailable')),
+  listDesktopDiscordServers: () => Promise.reject(new Error('Discord servers unavailable')),
+  listDesktopSlackWorkspaces: () => Promise.reject(new Error('Slack workspaces unavailable')),
+  listDesktopBuzzCommunities: () => Promise.reject(new Error('Buzz communities unavailable')),
+  listDesktopProviderModels: (kind: 'embedding' | 'query') =>
+    Promise.resolve({ kind, provider: 'local', models: [], truncated: false }),
+  pickDesktopPath: () => Promise.resolve(null),
+  planDesktopInitialSync: () => Promise.reject(new Error('initial sync unavailable')),
+  startDesktopInitialSync: () => Promise.reject(new Error('initial sync unavailable')),
   getDesktopSourceValidation: (id: string) => {
     if (!state.sourceJob || state.sourceJob.id !== id) {
       return Promise.reject(new Error('source job was not found'))
