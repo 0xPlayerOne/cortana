@@ -59,6 +59,7 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
         embedding_runtime_status(),
     );
     let cortana = bundled_runtime_status(bundled_version.as_ref());
+    let connector = enforce_connector_version_match(connector, cortana.version.as_deref());
     let python = python_status(uv.available).await;
     let tools = vec![
         cortana.clone(),
@@ -348,6 +349,48 @@ async fn connector_status(app: &AppHandle) -> ToolStatus {
             |path| format!("Found {}", path.display()),
         ),
     }
+}
+
+/// The connector virtualenv is installed outside the application bundle and
+/// can therefore survive a Desktop upgrade. Treat a version mismatch as an
+/// unavailable required tool so the UI offers a reinstall before any source
+/// job reaches a stale CLI/parser.
+fn enforce_connector_version_match(
+    mut connector: ToolStatus,
+    bundled_version: Option<&str>,
+) -> ToolStatus {
+    if !connector.available {
+        return connector;
+    }
+    let Some(bundled_version) = bundled_version.and_then(release_version) else {
+        return connector;
+    };
+    let Some(connector_version) = connector.version.as_deref().and_then(release_version) else {
+        connector.available = false;
+        connector.detail =
+            "Connector version could not be read; reinstall the bundled connector workspace."
+                .into();
+        return connector;
+    };
+    if connector_version != bundled_version {
+        connector.available = false;
+        connector.detail = format!(
+            "Connector version {connector_version} does not match bundled Cortana {bundled_version}; reinstall the bundled connector workspace."
+        );
+    }
+    connector
+}
+
+fn release_version(value: &str) -> Option<&str> {
+    value.split_whitespace().find(|candidate| {
+        let mut parts = candidate.split('.');
+        let valid = (0..3).all(|_| {
+            parts.next().is_some_and(|part| {
+                !part.is_empty() && part.chars().all(|character| character.is_ascii_digit())
+            })
+        });
+        valid && parts.next().is_none()
+    })
 }
 
 async fn embedding_runtime_status() -> ToolStatus {
@@ -715,6 +758,43 @@ mod tests {
     #[test]
     fn configured_embedding_runtime_does_not_fall_back_to_a_different_binary() {
         assert!(embedding_runtime_path(Some("cortana-tool-that-does-not-exist")).is_none());
+    }
+
+    #[test]
+    fn connector_version_must_match_the_bundled_runtime() {
+        let connector = ToolStatus {
+            id: "connectors",
+            label: "Connector environment",
+            required: true,
+            available: true,
+            path: Some("/tmp/cortana-connectors".into()),
+            version: Some("0.29.68".into()),
+            install_supported: true,
+            detail: "Found connector".into(),
+        };
+        let status = enforce_connector_version_match(connector, Some("cortana 0.29.69"));
+        assert!(!status.available);
+        assert!(status.detail.contains("does not match"));
+
+        let connector = ToolStatus {
+            id: "connectors",
+            label: "Connector environment",
+            required: true,
+            available: true,
+            path: Some("/tmp/cortana-connectors".into()),
+            version: Some("0.29.69".into()),
+            install_supported: true,
+            detail: "Found connector".into(),
+        };
+        assert!(enforce_connector_version_match(connector, Some("cortana 0.29.69")).available);
+    }
+
+    #[test]
+    fn release_version_parser_ignores_command_labels() {
+        assert_eq!(release_version("cortana 0.29.69"), Some("0.29.69"));
+        assert_eq!(release_version("0.29.69"), Some("0.29.69"));
+        assert_eq!(release_version("unknown"), None);
+        assert_eq!(release_version("0.29"), None);
     }
 
     #[test]

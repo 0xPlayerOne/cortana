@@ -2099,10 +2099,21 @@ fn validate_source_paths_and_credentials(source: &SourceSettings) -> Result<(), 
         "filesystem" if source.root.is_none() => {
             Err(format!("filesystem source `{}` needs a root", source.name))
         }
-        "slack" | "discord" if source.channels.is_empty() || source.token_env.is_none() => {
+        "slack" if source.channels.is_empty() || source.token_env.is_none() => {
             Err(format!(
-                "{} source `{}` needs channels and a token environment name",
-                source.kind, source.name
+                "Slack source `{}` needs channels and a token environment name",
+                source.name
+            ))
+        }
+        "discord"
+            if source.channels.is_empty()
+                || source.token_path.is_none()
+                || source.oauth_client_path.is_none()
+                || source.token_env.is_some() =>
+        {
+            Err(format!(
+                "Discord source `{}` needs channels, a token destination, and an OAuth client path; token environment names are not supported",
+                source.name
             ))
         }
         "github"
@@ -3637,6 +3648,46 @@ mod tests {
         });
         let error = validate_update(&mut update).expect_err("enabled Slack needs credentials");
         assert!(error.contains("token environment"));
+    }
+
+    #[test]
+    fn discord_settings_use_desktop_rpc_paths_instead_of_token_environment() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let token_path = temp.path().join("discord-rpc-token.json");
+        let client_path = temp.path().join("discord-rpc-client.json");
+        let mut update = valid_update(temp.path());
+        update.sources.push(SourceSettings {
+            name: "community-discord".into(),
+            kind: "discord".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: vec!["123456789012345678".into()],
+            repositories: Vec::new(),
+            servers: vec!["987654321098765432".into()],
+            teams: Vec::new(),
+            team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
+            token_env: None,
+            token_path: Some(token_path.display().to_string()),
+            oauth_client_path: Some(client_path.display().to_string()),
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            acl: vec!["work".into()],
+            editable: true,
+        });
+        validate_update(&mut update).expect("Desktop RPC Discord source is valid");
+
+        update.sources[0].token_env = Some("DISCORD_TOKEN_ENV_SHOULD_FAIL".into());
+        let error = validate_update(&mut update).expect_err("Discord token env must be rejected");
+        assert!(error.contains("token environment names are not supported"));
     }
 
     #[test]

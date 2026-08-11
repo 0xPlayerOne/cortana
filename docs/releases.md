@@ -11,27 +11,34 @@ under the automated manifest flow.
 
 Generated version pull requests are restricted to changelog and configured
 version files, then merged automatically without running the code-change test
-matrix. Topic pull requests target the protected `main` branch directly and run
-the complete CI, test, security, and CodeQL gates before merge.
+matrix. Topic pull requests target the protected `staging` branch and run the
+fast validation tier before merge. A separate protected promotion PR carries
+the validated `staging` tree to `main`, where final audit and release gates run.
 
-## Direct-main release invariant
+## Staging-release invariant
 
-The repository now uses the direct-main workflow. `main` is the only integration
-and release branch; `staging` and staging-to-main promotion worktrees were
-retired after the v0.29.14 migration. A release therefore runs only after the
-validated pull request that changed `main` has merged.
+The repository uses Code Foundry's `staging-release` workflow. Topic branches
+start from `staging` and merge there with squash after the fast validation tier.
+Code Foundry opens or maintains a separate `staging` → `main` promotion PR;
+that PR rebases into the protected release branch after the final audit and
+release review pass. Release Please version PRs also target `main` and rebase
+through the same protected flow.
 
-The main release caller (`release.yml`) triggers only on pushes to `main` and
-delegates the Release Please contract to the pinned Code Foundry runtime. Its
-concurrency group cancels an obsolete reconciliation run when a newer main
-commit arrives, so a stale push cannot publish over a newer release.
+The release caller (`release.yml`) triggers only on pushes to `main` and
+delegates the Release Please contract to the pinned Code Foundry runtime. The
+staging promotion caller triggers from `staging` and creates the protected
+promotion PR; it does not publish a release or bypass branch protection.
+After a release, Code Foundry reconciles `staging` with the new `main` tree
+through its protected reconciliation path.
 
 The `uv.lock` project entry carries a Release Please version annotation and is
 covered by the package-version regression test, keeping Python lock metadata
 aligned with the shared release manifest after an automated release.
 
-The former staging preflight remains documented only in the historical release
-commits; it is no longer an active workflow or required branch.
+The merge methods are intentionally distinct: topic PRs squash into `staging`,
+while both the staging promotion PR and Release Please PR rebase into `main`.
+This keeps `main` linear and makes post-release staging reconciliation
+deterministic.
 
 ## 0.19.0 release-history recovery
 
@@ -54,9 +61,10 @@ does not alter runtime behavior, credentials, or trigger a corpus sync.
 
 The desktop pipeline follows a staged audit policy:
 
-- **Main pull requests own the desktop gate.** `desktop.yml` triggers only on
-  pull requests targeting `main` and on manual dispatch; there is no staging
-  integration branch to run a duplicate desktop matrix.
+- **Staging PRs keep desktop feedback fast.** `desktop.yml` exposes the stable
+  `Tauri 2 / Linux` aggregate for both `staging` and `main`, but its six
+  expensive jobs are final-audit jobs and stay skipped on staging PRs. Code
+  Foundry's fast staging tier remains the single quick validation path.
 - **Main code PRs require the desktop aggregate.** Ordinary main-targeted pull
   requests run six independent jobs: `gtk_provenance`, `gtk_iterator`,
   `security_audit` (pinned Rust dependency audit), `desktop_test`,
@@ -67,7 +75,7 @@ The desktop pipeline follows a staged audit policy:
 - **Repository quality is owned by Code Foundry Validation / CI.** The
   `desktop_test` and `desktop_clippy` jobs do not rerun the root `type-check` or
   `build` scripts: Code Foundry Validation / CI already runs the Python, Rust,
-  and web checks on the same main-targeting PR SHA, so the desktop pipeline only
+  and web checks on the same PR SHA, so the desktop pipeline only
   runs desktop-specific fast checks.
 - **Version-only release PRs are intentionally lightweight.** Release Please
   pull requests (`release-please--branches--main` head refs) skip all six long

@@ -30,7 +30,7 @@ const MAX_GITHUB_REPOSITORIES_BYTES: usize = 512 * 1024;
 const DISCORD_CHANNELS_TIMEOUT: Duration = Duration::from_secs(30);
 const DISCORD_SERVERS_TIMEOUT: Duration = Duration::from_secs(30);
 const SLACK_WORKSPACES_TIMEOUT: Duration = Duration::from_secs(30);
-// The CLI bounds every Discord HTTP response at 512 KiB but the serialized
+// The CLI bounds every Discord RPC response at 512 KiB but the serialized
 // discovery payload can legitimately reach 100 guilds x 100 channels with
 // 100-character names (~1.7 MiB worst case). Bound the Desktop stdout at
 // 2 MiB; the payload validator still caps guilds, channels, names, and ids
@@ -214,7 +214,7 @@ pub async fn list_github_repositories<R: tauri::Runtime>(
 /// already-saved source configuration. The renderer supplies only a configured
 /// source name; it cannot inject a command, URL, token, guild, or channel.
 /// Discovery is read-only: the CLI never reads message content, starts a sync,
-/// or prints the bot token.
+/// or prints a Discord credential.
 pub async fn list_discord_channels<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     source_name: &str,
@@ -273,9 +273,11 @@ pub async fn list_discord_channels<R: tauri::Runtime>(
         let detail = sanitize_log(&String::from_utf8_lossy(&stderr));
         let detail = detail.chars().take(2048).collect::<String>();
         return Err(if detail.is_empty() {
-            "Discord channel discovery failed; check the configured bot token".into()
+            "Discord channel discovery failed; check Discord Desktop is running and the RPC authorization is complete".into()
         } else {
-            format!("Discord channel discovery failed; check the configured bot token: {detail}")
+            format!(
+                "Discord channel discovery failed; check Discord Desktop RPC authorization: {detail}"
+            )
         });
     }
     if stdout.len() >= MAX_DISCORD_CHANNELS_BYTES {
@@ -350,9 +352,11 @@ pub async fn list_discord_servers<R: tauri::Runtime>(
         let detail = sanitize_log(&String::from_utf8_lossy(&stderr));
         let detail = detail.chars().take(2048).collect::<String>();
         return Err(if detail.is_empty() {
-            "Discord server discovery failed; check browser authorization".into()
+            "Discord server discovery failed; check Discord Desktop is running and RPC authorization is complete".into()
         } else {
-            format!("Discord server discovery failed; check browser authorization: {detail}")
+            format!(
+                "Discord server discovery failed; check Discord Desktop RPC authorization: {detail}"
+            )
         });
     }
     if stdout.len() >= MAX_DISCORD_SERVERS_BYTES {
@@ -368,8 +372,8 @@ pub async fn list_discord_servers<R: tauri::Runtime>(
 /// token is scoped to through the bundled CLI. The renderer supplies only a
 /// configured source name; it cannot inject a command, URL, or token.
 /// Discovery is read-only and the user token never crosses the IPC boundary
-/// or appears in logs. Message sync stays bot-token based via the Python
-/// connector, which keeps reading the configured `SLACK_BOT_TOKEN` variable.
+/// or appears in logs. Discord message sync uses the same Desktop RPC token
+/// and does not require a bot account.
 pub async fn list_slack_workspaces<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     source_name: &str,
@@ -1068,7 +1072,7 @@ impl SourceJobState {
             && (source.token_path.is_none() || source.oauth_client_path.is_none())
         {
             return Err(if is_discord {
-                "save a Discord user token destination file and OAuth client JSON path first".into()
+                "save a Discord RPC token destination file and OAuth client JSON path first".into()
             } else if is_slack {
                 "save a Slack user token destination file and OAuth client JSON path first".into()
             } else {
@@ -1083,7 +1087,7 @@ impl SourceJobState {
         } else if is_discord {
             (
                 authorization_args("discord", source_name),
-                "Waiting for Discord authorization in the system browser. No server or channel data is being read.".into(),
+                "Waiting for approval in the running Discord Desktop client. No server or channel data is being read.".into(),
             )
         } else if is_slack {
             (
@@ -1659,7 +1663,7 @@ fn terminal_summary(operation: &str, status: &str, disconnected: bool, kind: &st
         }
         ("authorization", "succeeded", _) => match kind {
             "discord" => {
-                "Discord authorization completed and the user token was stored privately.".into()
+                "Discord Desktop RPC authorization completed and the access token was stored privately.".into()
             }
             "github" => {
                 "GitHub authorization completed and the token was stored privately.".into()
@@ -2783,7 +2787,7 @@ mod tests {
     fn authorization_terminal_summaries_name_the_provider() {
         assert!(
             terminal_summary("authorization", "succeeded", false, "discord")
-                .contains("Discord authorization completed")
+                .contains("Discord Desktop RPC authorization completed")
         );
         assert!(
             terminal_summary("authorization", "succeeded", false, "github")

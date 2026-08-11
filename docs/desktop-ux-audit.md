@@ -19,14 +19,14 @@ is not part of a visual/UI change.
 | Workspace account label semantics                      | Label is explicitly optional metadata; OAuth credentials remain source-owned and the field uses a neutral example                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Done              | Derive a provider identity only when authorization metadata is available and explicitly approved.                                                              |
 | Workspace-scoped source settings                       | `SourcesSection` now provides workspace tabs, per-workspace source counts, and a Needs assignment quarantine view; add-source targets the selected workspace                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Done              | Keep the tab isolation and assignment warning covered by regression tests.                                                                                     |
 | Source logos and compact OAuth/enable actions          | `SourceIcon` and provider-specific actions exist; advanced fields are disclosed and source-card operations use icon-only controls with accessible labels and fast tooltips                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Done              | Add provider-specific discovery actions as OAuth integrations land.                                                                                            |
-| OAuth-first source setup                               | Google, GitHub, Discord, and Slack browser authorization are implemented; every provider uses fixed allowlisted endpoints, loopback state/PKCE, bounded responses, and owner-only token files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | Done              | Keep provider discovery/authorization covered by regression tests.                                                                                             |
+| OAuth-first source setup                               | Google, GitHub, and Slack use fixed browser OAuth flows; Discord uses the signed-in Desktop RPC client. Every provider has bounded responses and owner-only token files                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Done              | Keep provider discovery/authorization covered by regression tests.                                                                                             |
 | Model selectors                                        | Embedding and query settings have local/cloud catalog selects with a Custom option, plus an opt-in refresh that lists the models the configured provider advertises via `cortana provider-models`; local Qwen presets and a saved custom model are preserved whenever discovery is unavailable, and capabilities are echoed only when the provider explicitly advertises them (never inferred from names)                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Done              | Keep the staleness guard (catalog is discarded when the endpoint, mode, or key variable changes) and the custom-model fallback covered by regression tests.    |
 | Plugins grouping                                       | Hindsight and Honcho are grouped under Plugins                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Done              | Keep both disabled by default and add live opt-in evaluation before enabling.                                                                                  |
 | Settings ordering                                      | Services, Workspaces, Sources, and Readiness are the primary group above the divider                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Done              | Preserve this order as sections grow.                                                                                                                          |
 | Knowledge workspace selector                           | Uses workspace logo + display name; no “All workspaces” option                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Done              | Add a compact tab/pill selector when more than one workspace exists.                                                                                           |
 | Strict workspace segregation                           | UI requests are scoped to the active workspace; backend/config reject unknown configured source projects. Legacy rows are quarantined and legacy public-ACL rows are now zero (stale corpus remains quarantined).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Done (quarantine) | Keep owner-scoped checks enforced across retrieval/document/search/context/answer/MCP and preserve the quarantine label until an explicit mapping is approved. |
 | GitHub repository selection                            | OAuth device flow and bounded repository chooser are implemented and included in release v0.27.2; auth-owner behavior is now released in v0.27.3.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Done              | Keep end-to-end repository selection coverage and release-note alignment for future connector updates.                                                         |
-| Discord server/community assignment                    | `cortana discord-channels SOURCE` and the Desktop channel chooser implement bounded, read-only server/channel discovery using the configured bot token. `cortana authorize-discord SOURCE` (Authorization Code + PKCE against the fixed Discord OAuth endpoints) and `cortana discord-servers SOURCE` (bounded guild list from the stored user token with one-shot refresh) add browser OAuth server authorization; the Desktop server chooser persists the checked guilds into the per-source `servers` field, which is per-workspace because each Discord source belongs to exactly one workspace. Bot-token-only setups keep the original discovery and sync behavior unchanged.                                                                                                                                                                          | Done (this pass)  | Keep OAuth server discovery covered by regression tests; channel listing and message sync intentionally stay bot-token based.                                  |
+| Discord server/community assignment                    | `cortana authorize-discord SOURCE`, `discord-servers`, and `discord-channels` use the signed-in Discord Desktop client's local RPC socket with bounded, read-only guild/channel discovery. The Desktop chooser persists checked guilds and channels into the per-source `servers`/`channels` fields, which are per-workspace because each Discord source belongs to exactly one workspace. No credential-scraping path is retained.                                                                                                                                                                                                                                                                                                                                                                                                                          | Done (this pass)  | Keep RPC authorization, bounded discovery, and snapshot-based message capture covered by regression tests.                                                     |
 | Slack workspace assignment                             | `cortana authorize-slack SOURCE` (Authorization Code + PKCE against the fixed endpoints `https://slack.com/oauth/v2/authorize` and `https://slack.com/api/oauth.v2.access`, with the exact loopback redirect `http://127.0.0.1:47521/callback` registered in the Slack app) and `cortana slack-workspaces SOURCE` (bounded `team.info` result from the stored user token with one-shot refresh when token rotation is enabled) add browser OAuth workspace authorization; the Desktop workspace chooser persists the checked team ids into the per-source `teams` field with display names index-aligned in `team_names`, which is per-workspace because each Slack source belongs to exactly one workspace. `SLACK_BOT_TOKEN` stays the message-sync credential and is never interpreted as a path; token-only setups keep the original behavior unchanged. | Done (this pass)  | Keep OAuth workspace discovery covered by regression tests; channel selection and message sync intentionally stay bot-token based.                             |
 | Buzz community assignment                              | `cortana buzz-communities SOURCE` lists the bounded communities recorded in the source's read-only `agents/teams.json` identity file (stable `id` + `name` records; the file must be a regular, non-symlink JSON array bounded at 512 KiB and missing, malformed, or duplicate entries fail closed). The Desktop community chooser persists the checked community ids into the per-source `communities` field with display names index-aligned in `community_names`, which is per-workspace because each Buzz source belongs to exactly one workspace. Discovery is read-only: it never runs ingestion or sync and never infers identity from persona event content; the read-only connector behavior is unchanged.                                                                                                                                          | Done (this pass)  | Keep identity-file validation and per-workspace community assignment covered by regression tests.                                                              |
 | Workflow folder removal and tree indentation           | Knowledge uses the workspace-scoped source tree only; the document explorer heading is a `Workspace / Source` breadcrumb (with `Workspace / All sources` while browsing a workspace with no source selected) and virtualized document rows carry the `document-node` indentation class that the stylesheet nests under the source level; no workflow/folder labels exist anywhere in Knowledge display data, all asserted by regression tests in `SourcePanel.test.tsx`                                                                                                                                                                                                                                                                                                                                                                                      | Done              | Re-verify breadcrumb ellipsis and row indentation on the packaged GUI.                                                                                         |
@@ -43,20 +43,15 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   current provider:** an earlier source `339240e` run passed in 20,176 ms and a packaged v0.29.31
-   rerun passed in 13,477 ms, but the installed v0.29.33 evaluator failed closed twice with invalid
-   model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
-   attribution footer when its explicit provider header and exact footer shape agree. The installed
-   v0.29.67 aarch64 core binary passed the current fixture-only gate in 21,648 ms; the prior
-   installed v0.29.66 run passed in 12,149 ms. Both current runs used planner+synthesis,
-   valid citations, cache reuse, and revision invalidation. Keep extractive mode as the safe
-   production default because model synthesis remains opt-in.
+   current source:** v0.29.69 passed the fixture-only gate in 18,345 ms with planner and synthesis
+   model use, valid citations, cache reuse, and revision invalidation. Keep extractive mode as the
+   safe production default because model synthesis remains opt-in; the older installed v0.29.67
+   result remains historical evidence only.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
-4. Discord browser OAuth/server authorization and per-workspace server/channel
-   persistence landed in this pass (bot-token discovery remains the fallback
-   for channel listing and sync). Slack workspace discovery and per-workspace
+4. Discord Desktop RPC authorization/server discovery and per-workspace server/channel
+   persistence landed in this pass. Slack workspace discovery and per-workspace
    team assignment landed alongside it (the `SLACK_BOT_TOKEN` path for channel
    selection and message sync is preserved and never interpreted as a path).
    Buzz community assignment landed in the following pass: `cortana buzz-communities SOURCE`
@@ -68,14 +63,12 @@ is not part of a visual/UI change.
    source of truth; Hindsight is the replacement-capable sidecar and Honcho is
    an append-only experimental sink. Neither is enabled for personal data until
    provider ACL, deletion, export, and packaged-UI gates are explicitly proven.
-6. Re-authorize `personal-calendar`: the existing owner-only Google token was migrated into
-   Cortana's configured token location, but its current refresh token record expired on
-   2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
-   PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; the current main line is
-   v0.29.68. The locally installed CLI remains v0.29.67 and emits reauthorization guidance;
-   the packaged Desktop app was not launched or replaced.
-   Recurring sync must remain disabled until browser authorization succeeds and the source is
-   revalidated.
+6. Complete source authorization and full validation coverage before recurring sync: the bounded
+   `personal-calendar` validation now succeeds and refreshes its owner-only Google token, but the
+   four enabled Discord sources still fail closed because the configured Desktop RPC OAuth client
+   and token files are absent. Filesystem/code sources are also only sampled (`complete=false`).
+   Recurring sync must remain uninstalled until Discord authorization is completed and every
+   enabled source has a current complete validation at its configured budget.
 
 ## Evidence limits
 
@@ -89,28 +82,37 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line is v0.29.68 at commit `e67b02e`; the latest fully verified cross-platform
-  release is v0.29.67 at commit `f482ba2`. These are release-only version/changelog/lockfile bumps
-  over v0.29.65; no functional source files changed. Release-assets workflow `31456659553`
-  published all 18 expected assets,
-  and the local fail-closed verifier passed the cross-platform archives, checksums, minisign
-  signatures, and updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports
-  `cortana 0.29.67`; the packaged Desktop app was not launched or replaced. The installed v0.29.67
-  core passes `--version`, `cortana doctor`, and the disposable
+- The current main line is v0.29.69 at commit `a6e739f`, which is also the latest fully verified
+  cross-platform release. The published release-assets workflow `31458199113` contains all 18
+  expected assets, and the local fail-closed verifier passed the core archive checksums, macOS
+  bundle/resources, six Tauri updater signatures, and updater manifest. The installed CLI
+  `/Users/amf/.local/bin/cortana` still reports `cortana 0.29.67`; the packaged Desktop app was
+  not launched or replaced. The installed v0.29.67 core passes `--version`, `cortana doctor`, and the disposable
   control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
   restore, and post-restore search). A fresh v0.29.67 model-backed evaluation against the
   persistent configured query provider passed in 21,648 ms with planner and synthesis model use,
   bounded planning, valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
   `provider_unavailable` after 30,018 ms while the gateway was degraded; the successful rerun
   re-established provider-backed evaluation without changing the safe extractive runtime default.
-  The local fail-closed verifier passed all 18 v0.29.67 assets, core checksums, macOS
-  bundle/resources, six Tauri updater signatures, and the updater manifest. The v0.29.68
-  workflow `31457202736` remains incomplete and is not treated as a verified desktop release.
+  The published v0.29.69 binaries were not executed on this macOS host; the local verifier recorded
+  that platform-specific execution was skipped. The current v0.29.69 feature work is verified below
+  at source level.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was
   not launched, notarization was not assessed, and tray, native dialogs, OAuth, and updater UI
   remain manual gates.
+- A fresh local source build regenerated `target/release/bundle/macos/Cortana.app` at version
+  `0.29.69`, with both executable sidecars and the bundled connector resources present; the
+  embedded core reports `cortana 0.29.69`. The developer `bundle:mac` command intentionally uses
+  `--no-sign`, so strict bundle signature validation is not claimed for this local artifact. The
+  signed release asset remains the authoritative package gate.
+- A fresh current-source `desktop:bundle:mac` run produced the arm64 `Cortana.app` bundle at
+  `apps/desktop/src-tauri/target/release/bundle/macos/Cortana.app`.
+  Static checks confirmed `CFBundleShortVersionString=0.29.69`, the embedded CLI reports
+  `cortana 0.29.69`, and both native executables are present. The bundle is ad-hoc (`TeamIdentifier`
+  is absent); `codesign --verify --deep --strict` and `spctl --assess` fail as expected for the
+  deliberate `--no-sign` developer build. The app was not launched.
 - A headless v0.29.66 macOS ARM packaged-app drill verified the published app archive's minisign
   signature, safe tar members, `Cortana.app` bundle, `Info.plist` version `0.29.66`, and
   `codesign --verify --deep --strict`. `spctl --assess` rejects the ad-hoc bundle (exit 3) because
@@ -122,60 +124,75 @@ is not part of a visual/UI change.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite on the functionally equivalent v0.29.66 release-only
-  source tree passes all 126 tests. The
-  packaged app
-  passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
-  unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous v0.29.50 bundle is retained at
+  The current-source native Desktop suite on the v0.29.69 source tree passes all 129 tests. The
+  local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
+  verification fails as expected and no `TeamIdentifier` is present. Developer ID
+  signing/notarization remains a release blocker; the previous v0.29.50 bundle is retained at
   `/Users/amf/.Trash/Cortana.app.backup-v0.29.50-20260810-2205`
   for recovery (older v0.29.38, v0.29.37, v0.29.33, v0.29.31, v0.29.29, v0.29.28, v0.29.27,
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full web suite
-  passes 252 tests across 21 files (latest run: 35.10 seconds, 1,259 assertions). The Python suite
-  passes 158 tests, `bun run type-check` and
-  `uv lock --check` pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
+  passes 252 tests across 21 files (latest run: 52.15 seconds, 1,260 assertions). The Python suite
+  passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
+  gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
-  all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
-  refreshed against the v0.29.66 release-only source tree (the v0.29.67 and v0.29.68 changes are
-  release-only bumps) without launching the Desktop app.
-- The current Rust library suite on the functionally equivalent v0.29.66 release-only source tree
-  passes 266 tests with no failures;
+  all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
+  refreshed against the v0.29.69 source tree without launching the Desktop app.
+- The current Rust library suite on the v0.29.69 source tree passes 253 tests with no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
-- The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
-  promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
+- The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
+  separate staging-to-main promotion produces the release on `main`. Desktop checks remain
   headless CI evidence; they do not claim packaged GUI, browser, OS-service, or signed-updater
   behavior. The older v0.29.8 readiness figures are historical and are not re-asserted.
+- The remote branch policy now matches that staging-release flow: the active `code-foundry-main`
+  and `code-foundry-staging` rulesets block deletion and non-fast-forward updates, require
+  `Validation / Gate`, and require `Tauri 2 / Linux` for protected promotion; staging permits
+  only squash feature merges. PR #600 is the sole staging input for this Discord change after
+  the superseded direct-main duplicate was closed. This is repository-policy evidence, not a
+  packaged GUI or manual-drill result.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence. The
   previous comprehensive readiness run against the installed v0.29.54 configuration passed
-  database integrity, embedding generation/provider, ACL, query API, verified-backup freshness
+  database integrity, embedding generation/provider, ACL, query API, and verified-backup freshness
   (24 hours within a 48-hour bound),
   query mode, and the safe query-only state with recurring sync not installed; it did not invoke
   source validation because `--allow-sync-service` was not supplied.
-- A separate `cortana readiness --allow-sync-service` run failed closed without contacting any
+- A historical `cortana readiness --allow-sync-service` run failed closed without contacting any
   connector: every legacy/filesystem/code validation was a bounded sample or below the configured
   full-corpus budget, and `personal-calendar` had no successful validation. This is the expected
   safety result; recurring sync remains uninstalled until complete validation and the missing Google
   token are repaired.
-- A fresh v0.29.64 headless `scripts/source-smoke.sh` validation-only pass used one document,
+- A historical v0.29.64 headless `scripts/source-smoke.sh` validation-only pass used one document,
   65,536 bytes, and a 30-second per-source cap: 11 of 12 enabled sources passed. `personal-calendar`
   failed closed as `authorization denied` because its Google refresh token is expired; no sync was
   requested and recurring sync remains uninstalled.
 - The matching v0.29.64 `--sync --include-filesystem` trial passed the same bounded,
   `--no-reconcile --require-validation` operation for all 11 authorized sources. The calendar trial
   was skipped after its failed validation, and the command did not install or enable recurring sync.
-- A tracked-history `gitleaks detect --redact` scan covered 967 commits and found no secrets.
+- A current v0.29.69 bounded validation of `personal-calendar` (1 document, 65,536 bytes, 30
+  seconds) succeeded without writing documents, embeddings, or reconciliations and refreshed the
+  owner-only Google token through its configured refresh path. Discord Desktop RPC tokens now
+  refresh atomically from their owner-only refresh token before expiry; an expired token without a
+  refresh token still fails closed and requests reauthorization. The local connector environment
+  was updated from v0.29.68 to v0.29.69; all four enabled Discord sources now reach the expected
+  missing OAuth-client-file guard instead of the stale CLI parser. Discord authorization and
+  recurring sync therefore remain uninstalled and disabled until the owner supplies the Desktop
+  RPC client/token files and every enabled source has current complete validation coverage.
+- The current Desktop readiness source now compares the installed connector version with the
+  bundled Cortana sidecar and marks a stale or unreadable connector unavailable before source jobs
+  start. The regression suite covers matching and mismatching release versions.
+- A tracked-history `gitleaks detect --redact` scan covered 970 commits and found no secrets.
 - Release v0.29.61 also carries the fail-closed recurring-sync freshness guard across every
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
-- A model-backed evaluation ran against the configured provider without opening a personal index or
-  starting sync/connectors. The source at `339240e` and packaged v0.29.31 passed historical runs,
+- A current-source v0.29.69 model-backed evaluation ran against the configured provider without opening a personal index or
+  starting sync/connectors and passed in 18,345 ms with planner and synthesis model use, bounded
+  planning, valid citations, cache reuse, and revision invalidation. The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded

@@ -200,3 +200,19 @@ def test_google_token_refresh_failure_is_classified_as_authorization(
         "drive\tgoogle-drive\ttrue\tfailed\tnot-requested\tvalidation: authorization denied"
         in result.stdout
     )
+
+
+def test_missing_private_oauth_file_is_classified_as_credential_path(
+    tmp_path: Path,
+) -> None:
+    _require_bash()
+    result, _ = _run_smoke(
+        tmp_path,
+        exit_code="1",
+        error="Discord OAuth client must be a regular, non-symlink file",
+    )
+    assert result.returncode == 1
+    assert (
+        "drive\tgoogle-drive\ttrue\tfailed\tnot-requested\tvalidation: credential or path missing"
+        in result.stdout
+    )

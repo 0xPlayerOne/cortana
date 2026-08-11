@@ -328,28 +328,29 @@ class FakeSlackClient:
         )
 
 
-class FakeDiscordClient:
-    def __init__(self, *_args: object, **_kwargs: object) -> None:
-        pass
+class FakeDiscordRpc:
+    messages = [
+        {
+            "id": "99",
+            "content": "Status",
+            "attachments": [{"url": "https://files.test/report.pdf"}],
+            "timestamp": "2026-07-29T12:00:00Z",
+            "author": {"id": "u1", "username": "Ada"},
+        }
+    ]
 
-    def __enter__(self) -> FakeDiscordClient:
-        return self
+    def __init__(self) -> None:
+        self.closed = False
 
-    def __exit__(self, *_args: object) -> None:
-        pass
+    @classmethod
+    def connect(cls, _client_id: str, _access_token: str) -> FakeDiscordRpc:
+        return cls()
 
-    def get(self, _path: str, **_kwargs: object) -> httpx.Response:
-        return response(
-            [
-                {
-                    "id": "99",
-                    "content": "Status",
-                    "attachments": [{"url": "https://files.test/report.pdf"}],
-                    "timestamp": "2026-07-29T12:00:00Z",
-                    "author": {"id": "u1", "username": "Ada"},
-                }
-            ]
-        )
+    def get_channel(self, _channel_id: str) -> dict[str, Any]:
+        return {"messages": list(self.messages)}
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def test_chat_retries_server_directed_rate_limits(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -437,6 +438,7 @@ def test_chat_returns_final_retryable_response_after_bound() -> None:
 
 
 def test_chat_connectors_reassemble_slack_and_normalize_discord(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SLACK_TEST_TOKEN", "secret")
@@ -445,59 +447,105 @@ def test_chat_connectors_reassemble_slack_and_normalize_discord(
     assert slack_documents[0].content == "U1: Launch?\nU2: Yes"
     assert slack_documents[0].metadata["participants"] == ["U1", "U2"]
 
-    monkeypatch.setenv("DISCORD_TEST_TOKEN", "secret")
-    monkeypatch.setattr(chat.httpx, "Client", FakeDiscordClient)
-    discord_documents = list(
-        chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN", max_documents=1)
-    )
+    token = tmp_path / "discord-rpc-token.json"
+    client = tmp_path / "discord-rpc-client.json"
+    write_token(token, '{"access_token":"secret","expiry":"2099-01-01T00:00:00Z"}')
+    write_token(client, '{"client_id":"client"}')
+    monkeypatch.setattr(chat, "_DiscordRpc", FakeDiscordRpc)
+    discord_documents = list(chat.fetch_discord(["D1"], "work", token, client, max_documents=1))
     assert "https://files.test/report.pdf" in discord_documents[0].content
     assert discord_documents[0].metadata["author_id"] == "u1"
 
 
-def test_discord_cached_connector_honors_document_cap(
+def test_discord_connector_honors_document_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("DISCORD_TEST_TOKEN", "secret")
-    real_client = httpx.Client
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path.endswith("/messages"):
-            return response(
-                [
-                    {
-                        "id": "100",
-                        "content": "First",
-                        "attachments": [],
-                        "timestamp": "2026-07-29T12:00:00Z",
-                        "author": {"id": "u1", "username": "Ada"},
-                    },
-                    {
-                        "id": "99",
-                        "content": "Second",
-                        "attachments": [],
-                        "timestamp": "2026-07-29T11:00:00Z",
-                        "author": {"id": "u2", "username": "Grace"},
-                    },
-                ],
-                request=request,
-            )
-        raise AssertionError(f"unexpected Discord request: {request.url}")
-
-    monkeypatch.setattr(
-        chat.httpx,
-        "Client",
-        lambda **_kwargs: real_client(
-            base_url="https://discord.test",
-            transport=httpx.MockTransport(handler),
-        ),
-    )
+    token = tmp_path / "discord-rpc-token.json"
+    client = tmp_path / "discord-rpc-client.json"
+    write_token(token, '{"access_token":"secret","expiry":"2099-01-01T00:00:00Z"}')
+    write_token(client, '{"client_id":"client"}')
+    FakeDiscordRpc.messages = [
+        {
+            "id": "100",
+            "content": "First",
+            "attachments": [],
+            "timestamp": "2026-07-29T12:00:00Z",
+            "author": {"id": "u1", "username": "Ada"},
+        },
+        {
+            "id": "99",
+            "content": "Second",
+            "attachments": [],
+            "timestamp": "2026-07-29T11:00:00Z",
+            "author": {"id": "u2", "username": "Grace"},
+        },
+    ]
+    monkeypatch.setattr(chat, "_DiscordRpc", FakeDiscordRpc)
     cache = tmp_path / "cache"
     documents = list(
-        chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN", cache_dir=cache, max_documents=1)
+        chat.fetch_discord(["D1"], "work", token, client, cache_dir=cache, max_documents=1)
     )
 
     assert [document.source_id for document in documents] == ["100"]
     assert not (cache / "discord.sqlite3").exists()
+
+
+def test_discord_connector_refreshes_expired_desktop_rpc_tokens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "discord-rpc-token.json"
+    client = tmp_path / "discord-rpc-client.json"
+    write_token(
+        token,
+        json.dumps(
+            {
+                "access_token": "expired-access",
+                "refresh_token": "refresh-token",
+                "token_type": "Bearer",
+                "expiry": "2000-01-01T00:00:00Z",
+            }
+        ),
+    )
+    write_token(client, '{"client_id":"client","client_secret":"secret"}')
+    calls: list[dict[str, str]] = []
+
+    class RefreshClient:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> RefreshClient:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+        def post(self, _url: str, *, data: dict[str, str]) -> httpx.Response:
+            calls.append(data)
+            return response(
+                {
+                    "access_token": "fresh-access",
+                    "refresh_token": "fresh-refresh",
+                    "expires_in": 3600,
+                    "token_type": "Bearer",
+                }
+            )
+
+    monkeypatch.setattr(chat.httpx, "Client", RefreshClient)
+    monkeypatch.setattr(chat, "_DiscordRpc", FakeDiscordRpc)
+    list(chat.fetch_discord(["D1"], "work", token, client, max_documents=1))
+
+    assert calls == [
+        {
+            "client_id": "client",
+            "client_secret": "secret",
+            "refresh_token": "refresh-token",
+            "grant_type": "refresh_token",
+        }
+    ]
+    refreshed = json.loads(token.read_text(encoding="utf-8"))
+    assert refreshed["access_token"] == "fresh-access"
+    assert refreshed["refresh_token"] == "fresh-refresh"
+    assert token.stat().st_mode & 0o777 == 0o600
 
 
 def test_slack_message_pages_fail_closed_on_invalid_shapes() -> None:
@@ -536,45 +584,39 @@ def test_discord_skips_malformed_messages_without_aborting_the_batch() -> None:
         chat._discord_page([None, {"id": "bad"}])
 
 
-def test_discord_cache_uses_incremental_after_cursor(
+def test_discord_cache_upserts_rpc_snapshots_without_pruning_history(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("DISCORD_TEST_TOKEN", "secret")
-    real_client = httpx.Client
-    cursors: list[str | None] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        after = request.url.params.get("after")
-        cursors.append(after)
-        messages = (
-            [
-                {
-                    "id": "99",
-                    "content": "Status",
-                    "attachments": [],
-                    "timestamp": "2026-07-29T12:00:00Z",
-                    "author": {"id": "u1", "username": "Ada"},
-                }
-            ]
-            if after is None
-            else []
-        )
-        return response(messages, request=request)
-
-    monkeypatch.setattr(
-        chat.httpx,
-        "Client",
-        lambda **_kwargs: real_client(
-            base_url="https://discord.test",
-            transport=httpx.MockTransport(handler),
-        ),
-    )
+    token = tmp_path / "discord-rpc-token.json"
+    client = tmp_path / "discord-rpc-client.json"
+    write_token(token, '{"access_token":"secret","expiry":"2099-01-01T00:00:00Z"}')
+    write_token(client, '{"client_id":"client"}')
+    FakeDiscordRpc.messages = [
+        {
+            "id": "99",
+            "content": "Status",
+            "attachments": [],
+            "timestamp": "2026-07-29T12:00:00Z",
+            "author": {"id": "u1", "username": "Ada"},
+        }
+    ]
+    monkeypatch.setattr(chat, "_DiscordRpc", FakeDiscordRpc)
     cache = tmp_path / "cache"
-    first = list(chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN", cache_dir=cache))
-    second = list(chat.fetch_discord(["D1"], "work", "DISCORD_TEST_TOKEN", cache_dir=cache))
+    first = list(chat.fetch_discord(["D1"], "work", token, client, cache_dir=cache))
+    FakeDiscordRpc.messages = [
+        *FakeDiscordRpc.messages,
+        {
+            "id": "100",
+            "content": "Follow-up",
+            "attachments": [],
+            "timestamp": "2026-07-29T13:00:00Z",
+            "author": {"id": "u2", "username": "Grace"},
+        },
+    ]
+    second = list(chat.fetch_discord(["D1"], "work", token, client, cache_dir=cache))
 
-    assert first == second
-    assert cursors == [None, "99"]
+    assert [document.source_id for document in first] == ["99"]
+    assert [document.source_id for document in second] == ["99", "100"]
     assert (cache / "discord.sqlite3").stat().st_mode & 0o777 == 0o600
     assert cache.stat().st_mode & 0o777 == 0o700
 
@@ -2898,7 +2940,17 @@ def test_connector_cli_dispatches_chat_sources(monkeypatch: pytest.MonkeyPatch) 
         ["--project", "work", "slack", "--channel", "C1"]
     )
     discord_args = connector_cli.parser().parse_args(
-        ["--project", "work", "discord", "--channel", "D1"]
+        [
+            "--project",
+            "work",
+            "discord",
+            "--channel",
+            "D1",
+            "--token",
+            "/tmp/discord-token.json",
+            "--oauth-client",
+            "/tmp/discord-client.json",
+        ]
     )
     assert list(connector_cli._documents(slack_args)) == expected
     assert list(connector_cli._documents(discord_args)) == expected

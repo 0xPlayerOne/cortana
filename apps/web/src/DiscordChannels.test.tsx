@@ -49,9 +49,9 @@ const discordSource: SourceSettings = {
   team_names: [],
   communities: [],
   community_names: [],
-  token_env: 'DISCORD_BOT_TOKEN',
-  token_path: null,
-  oauth_client_path: null,
+  token_env: null,
+  token_path: '/Users/test/.config/cortana/discord-rpc-token.json',
+  oauth_client_path: '/Users/test/.config/cortana/discord-rpc-client.json',
   query: null,
   labels: [],
   max_content_chars: null,
@@ -204,16 +204,14 @@ test('discord chooser refuses to discover unsaved changes and surfaces failures'
   // After saving the edit, a native failure surfaces the CLI's bounded,
   // token-free diagnostic.
   state.discoveryError = new Error(
-    'Discord channel discovery failed; check the configured bot token: Discord bot token environment variable DISCORD_BOT_TOKEN is not configured'
+    'Discord channel discovery failed; check Discord Desktop RPC authorization: Discord Desktop RPC is unavailable'
   )
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
   expect(state.savedUpdates[0].sources[0].name).toBe('work-discord-renamed')
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Discord bot token environment variable DISCORD_BOT_TOKEN is not configured'
-    )
+    expect(screen.getByRole('alert').textContent).toContain('Discord Desktop RPC is unavailable')
   )
   expect(state.saved?.sources[0].channels).toEqual(['175928847299117064'])
 })

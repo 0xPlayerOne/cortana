@@ -54,9 +54,9 @@ const discordSource: SourceSettings = {
   team_names: [],
   communities: [],
   community_names: [],
-  token_env: 'DISCORD_BOT_TOKEN',
-  token_path: null,
-  oauth_client_path: null,
+  token_env: null,
+  token_path: '/Users/test/.config/cortana/discord-rpc-token.json',
+  oauth_client_path: '/Users/test/.config/cortana/discord-rpc-client.json',
   query: null,
   labels: [],
   max_content_chars: null,
@@ -200,13 +200,13 @@ test('discord server chooser refuses to discover unsaved changes and surfaces fa
 
   // After saving the edit, a native failure surfaces the bounded diagnostic.
   state.serversError = new Error(
-    'Discord server discovery failed; check browser authorization: Discord server discovery requires browser authorization; run `cortana authorize-discord work-discord-renamed` first'
+    'Discord server discovery failed; check Discord Desktop RPC authorization: Discord Desktop RPC is unavailable; run `cortana authorize-discord work-discord-renamed` while Discord is running'
   )
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
   fireEvent.click(screen.getByRole('button', { name: /Discover servers/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain('requires browser authorization')
+    expect(screen.getByRole('alert').textContent).toContain('Discord Desktop RPC is unavailable')
   )
 })
 
@@ -241,11 +241,11 @@ test('discord channels outside assigned servers are marked when servers are assi
   expect(community.closest('.discord-guild')?.className ?? '').toContain('discord-guild-unassigned')
 })
 
-test('discord authorize action names Discord and starts browser authorization', async () => {
+test('discord authorize action names Discord and starts Desktop authorization', async () => {
   state.settings = settingsWith({
     ...discordSource,
-    token_path: '/Users/you/.config/cortana/discord-user-token.json',
-    oauth_client_path: '/Users/you/.config/cortana/discord-oauth-client.json',
+    token_path: '/Users/you/.config/cortana/discord-rpc-token.json',
+    oauth_client_path: '/Users/you/.config/cortana/discord-rpc-client.json',
   })
   renderDiscordSettings()
 
@@ -265,6 +265,11 @@ test('discord authorize action names Discord and starts browser authorization', 
 })
 
 test('discord authorize action stays disabled until OAuth paths are saved', async () => {
+  state.settings = settingsWith({
+    ...discordSource,
+    token_path: null,
+    oauth_client_path: null,
+  })
   renderDiscordSettings()
 
   const authorize = screen.getByRole('button', { name: 'Authorize' }) as HTMLButtonElement
@@ -274,18 +279,18 @@ test('discord authorize action stays disabled until OAuth paths are saved', asyn
   // A token destination without a client JSON is still incomplete, and the
   // native runtime must not be invoked with unsaved edits anyway.
   fireEvent.change(
-    screen.getByPlaceholderText('/Users/you/.config/cortana/discord-user-token.json'),
-    { target: { value: '/Users/you/.config/cortana/discord-user-token.json' } }
+    screen.getByPlaceholderText('/Users/you/.config/cortana/discord-rpc-token.json'),
+    { target: { value: '/Users/you/.config/cortana/discord-rpc-token.json' } }
   )
   fireEvent.change(
-    screen.getByPlaceholderText('/Users/you/.config/cortana/discord-oauth-client.json'),
-    { target: { value: '/Users/you/.config/cortana/discord-oauth-client.json' } }
+    screen.getByPlaceholderText('/Users/you/.config/cortana/discord-rpc-client.json'),
+    { target: { value: '/Users/you/.config/cortana/discord-rpc-client.json' } }
   )
   expect((screen.getByRole('button', { name: 'Authorize' }) as HTMLButtonElement).disabled).toBe(
     true
   )
 
-  // Once the paths are saved, the same source card offers browser
+  // Once the paths are saved, the same source card offers Desktop RPC
   // authorization for Discord.
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
@@ -295,9 +300,9 @@ test('discord authorize action stays disabled until OAuth paths are saved', asyn
     )
   )
   expect(state.saved?.sources[0].token_path).toBe(
-    '/Users/you/.config/cortana/discord-user-token.json'
+    '/Users/you/.config/cortana/discord-rpc-token.json'
   )
   expect(state.saved?.sources[0].oauth_client_path).toBe(
-    '/Users/you/.config/cortana/discord-oauth-client.json'
+    '/Users/you/.config/cortana/discord-rpc-client.json'
   )
 })

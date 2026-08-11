@@ -2,7 +2,7 @@ name: Code Foundry
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, staging]
     types:
       - opened
       - synchronize
@@ -12,9 +12,10 @@ on:
     - cron: '31 6 * * 1'
   workflow_dispatch:
 
-# Default every caller job to no repository permissions. Individual jobs grant
-# only the scopes their own validation path consumes.
-permissions: {}
+# Default every caller job to read-only repository contents. Individual jobs
+# grant only the additional scopes their own validation path consumes.
+permissions:
+  contents: read
 
 # Superseded PR updates cancel the previous run; schedule and dispatch runs
 # are keyed by event so periodic audits and manual runs stay independent.
