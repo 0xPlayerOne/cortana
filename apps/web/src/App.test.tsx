@@ -18,11 +18,15 @@ import type {
 
 afterEach(async () => {
   await act(async () => {
+    // Unmount before draining pending shell work so a late promise cannot
+    // update the renderer after this test has finished.
+    cleanup()
     await new Promise((resolve) => setTimeout(resolve, 0))
     await Promise.resolve()
     await Promise.resolve()
+    await Promise.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 0))
   })
-  cleanup()
 })
 
 // Capture the real api module, then register a mock that delegates every export
