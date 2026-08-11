@@ -70,9 +70,9 @@ is not part of a visual/UI change.
    comparative fixture (`uv run cortana-memory-eval`) reports `material_gain=true`, with recall and
    MRR gains of `0.375`; that is useful evidence for a future opt-in review, not live-provider proof.
 6. Complete source authorization and full validation coverage before recurring sync: the three
-   enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh bounded
-   validation (25 documents each, no writes); the personal AMF Discord source is disabled. The
-   bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
+   enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh validation-only
+   smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source; the personal AMF
+   Discord source is disabled. The bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
    either bounded samples (`complete=false`) or legacy records without an explicit completeness
    marker. Both states fail closed; recurring sync must remain uninstalled until every enabled
    source has a current `complete=true` validation at its configured budget.
