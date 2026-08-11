@@ -72,7 +72,7 @@ is not part of a visual/UI change.
    Cortana's configured token location, but its current refresh token record expired on
    2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
    PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; the current main line is
-   v0.29.63. The locally installed CLI now uses v0.29.63 and emits reauthorization guidance;
+   v0.29.64. The locally installed CLI now uses v0.29.64 and emits reauthorization guidance;
    the packaged Desktop app remains v0.29.55 because it was not launched or replaced.
    Recurring sync must remain disabled until browser authorization succeeds and the source is
    revalidated.
@@ -129,8 +129,8 @@ is not part of a visual/UI change.
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
-  refreshed against the v0.29.61 source tree without launching the Desktop app.
-- The current Rust library suite on the v0.29.61 source tree passes 266 tests with no failures;
+  refreshed against the v0.29.64 source tree without launching the Desktop app.
+- The current Rust library suite on the v0.29.64 source tree passes 266 tests with no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
