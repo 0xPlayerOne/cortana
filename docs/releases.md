@@ -74,13 +74,18 @@ The desktop pipeline follows a staged audit policy:
   `Tauri 2 / Linux` aggregate for both `staging` and `main`, but its six
   expensive jobs are final-audit jobs and stay skipped on staging PRs. Code
   Foundry's fast staging tier remains the single quick validation path.
-- **Main code PRs require the desktop aggregate.** Ordinary main-targeted pull
-  requests run six independent jobs: `gtk_provenance`, `gtk_iterator`,
+- **Main code PRs require the desktop aggregate.** Ordinary main-targeted code
+  pull requests run six independent jobs: `gtk_provenance`, `gtk_iterator`,
   `security_audit` (pinned Rust dependency audit), `desktop_test`,
   `desktop_clippy`, and `release` (Linux release compilation). The stable
   `Tauri 2 / Linux` aggregate depends on all six and must pass before merge.
   Provenance, the iterator test, dependency auditing, desktop tests, and
   clippy run concurrently so no independent check waits behind another.
+- **Staging-to-main promotion defers only release compilation.** The protected
+  promotion PR keeps the five desktop checks above that validate the staged
+  tree, while the expensive `release` job is reserved for an ordinary main
+  code PR, an explicit workflow dispatch, or the release-assets workflow. This
+  prevents compiling the same desktop release twice for one staged change.
 - **Repository quality is owned by Code Foundry Validation / CI.** The
   `desktop_test` and `desktop_clippy` jobs do not rerun the root `type-check` or
   `build` scripts: Code Foundry Validation / CI already runs the Python, Rust,
