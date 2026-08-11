@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, test } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { demoEvidence, demoStatus } from './demo'
 import {
@@ -16,7 +16,14 @@ import type {
   ContextBundle,
 } from './types'
 
-afterEach(cleanup)
+afterEach(async () => {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+  cleanup()
+})
 
 // Capture the real api module, then register a mock that delegates every export
 // to a mutable state object so each test controls the network boundary.
@@ -102,9 +109,17 @@ mock.module('./api', () => ({
 
 const { App } = await import('./App')
 
+async function flushAppBootstrap() {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
 test('workspace and source selection scopes the source tree and document requests', async () => {
   state.documentsCalls = []
   render(<App />)
+  await flushAppBootstrap()
 
   // Sources are scoped to the primary workspace by default.
   fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
@@ -528,4 +543,5 @@ test('scope-changed context request does not overwrite newer state', async () =>
 
   await waitFor(() => expect(screen.getByText('Fresh context evidence')).toBeTruthy())
   expect(screen.queryByText('Stale context evidence')).toBeNull()
+  await flushAppBootstrap()
 }, 10_000)

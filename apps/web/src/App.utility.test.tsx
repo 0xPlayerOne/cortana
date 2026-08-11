@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, test } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 import { demoEvidence, demoStatus } from './demo'
 import { answerResponse } from './test/fixtures'
@@ -12,7 +12,14 @@ import type {
   DesktopSourceJob,
 } from './types'
 
-afterEach(cleanup)
+afterEach(async () => {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+  cleanup()
+})
 
 // Capture the real api module, then register a mock that delegates every export
 // to a mutable state object so each test controls the network boundary.
@@ -127,11 +134,15 @@ test('titlebar controls perform real navigation actions', async () => {
   await renderApp()
 
   fireEvent.click(screen.getByRole('button', { name: 'Filter documents' }))
-  await new Promise((resolve) => setTimeout(resolve, 10))
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  })
   expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Filter documents' }))
 
   fireEvent.click(screen.getByRole('button', { name: 'Open conversations' }))
-  expect(screen.getByRole('heading', { level: 1, name: 'Conversations' })).toBeTruthy()
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { level: 1, name: 'Conversations' })).toBeTruthy()
+  )
 })
 
 test('Graph is a full-screen rail view and Timeline is result-only', async () => {
