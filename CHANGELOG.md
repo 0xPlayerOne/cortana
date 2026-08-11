@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.62](https://github.com/0xPlayerOne/cortana/compare/v0.29.61...v0.29.62) (2026-08-11)
+
+
+### Bug Fixes
+
+* hindsight-delete-boundary ([#582](https://github.com/0xPlayerOne/cortana/issues/582)) ([621f57d](https://github.com/0xPlayerOne/cortana/commit/621f57d89a3e942227fef3edaeb44b74f5028947))
+
 ## [0.29.61](https://github.com/0xPlayerOne/cortana/compare/v0.29.60...v0.29.61) (2026-08-11)
 
 
