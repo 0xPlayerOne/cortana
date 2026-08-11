@@ -315,13 +315,16 @@ jobs:
     name: Release Compilation
     needs: changes
     # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
-    # staging tier; keep these jobs for main PRs and explicit dispatches only.
+    # staging tier; keep this release compilation for explicit dispatches and
+    # release-please's main promotion PR only. Ordinary staging->main
+    # promotions already passed the desktop checks on staging and must not
+    # pay the full Linux release-build cost a second time.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
+       startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
