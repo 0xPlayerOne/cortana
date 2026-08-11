@@ -57,6 +57,15 @@ capabilities to Release Please's conventional-commit history after the
 promotion was merged as one squash commit. It changes documentation only; it
 does not alter runtime behavior, credentials, or trigger a corpus sync.
 
+## 0.30.7 release-history recovery
+
+The planner headroom fix and current provider-backed evaluation evidence landed
+in the 2026-08-11 staging promotion. This metadata-only marker restores those
+already-published staging capabilities to Release Please's conventional-commit
+history after the promotion was flattened into a single tree commit. It changes
+documentation only; it does not alter runtime behavior, credentials, or trigger
+a corpus sync.
+
 ## Desktop release gates
 
 The desktop pipeline follows a staged audit policy:
