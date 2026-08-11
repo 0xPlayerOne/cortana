@@ -95,11 +95,15 @@ is not part of a visual/UI change.
   published cross-platform archives, checksums, minisign signatures, and updater manifest. The
   v0.29.62 and v0.29.63 asset workflows were still in progress at the time of this audit, so they
   are not treated as packaged-release evidence until all expected assets and signatures verify.
-- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.60`; the packaged Desktop
-  app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or replaced.
-  The installed v0.29.60 core passes `--version`, `cortana doctor`, the disposable control-plane
-  drill, and the bounded model-backed gate in 17,928 ms (a prior cache-warm run completed in
-  10,323 ms).
+- The installed CLI `/Users/amf/.local/bin/cortana` now reports `cortana 0.29.61`; the packaged
+  Desktop app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or
+  replaced. The installed v0.29.61 core passes `--version`, `cortana doctor`, and the disposable
+  control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
+  restore, and post-restore search). The latest successful model-backed run remains the v0.29.60
+  result at 17,928 ms (a prior cache-warm run completed in 10,323 ms); a fresh v0.29.61 attempt
+  against the persistent `auto-free` query provider did not return a bounded planner response and
+  was stopped by an external watchdog. Provider-backed synthesis therefore remains unverified on
+  this run.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
