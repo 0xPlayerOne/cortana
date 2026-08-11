@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.70](https://github.com/0xPlayerOne/cortana/compare/v0.29.69...v0.29.70) (2026-08-11)
+
+
+### Features
+
+* publish the signed-in Discord Desktop RPC connector from the verified staging promotion ([8e28616](https://github.com/0xPlayerOne/cortana/commit/8e2861622b5e7a81aa722fe6d9212d72bfb717a5))
+
 ## [0.29.69](https://github.com/0xPlayerOne/cortana/compare/v0.29.68...v0.29.69) (2026-08-11)
 
 
