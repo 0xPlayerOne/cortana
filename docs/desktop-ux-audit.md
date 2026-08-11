@@ -43,7 +43,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. The latest
-   installed v0.30.10 run passed the fixture-only gate on 2026-08-11 in 21,656 ms with planner and
+   installed v0.30.10 run passed the fixture-only gate on 2026-08-11 in 18,425 ms with planner and
    synthesis model use, 1.0 retrieval/citation metrics, cache reuse, and revision invalidation.
    An earlier attempt correctly failed closed with `fallback_provider_unavailable=true` during a
    transient gateway outage; the successful rerun re-established the provider gate. This remains
@@ -203,7 +203,7 @@ is not part of a visual/UI change.
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
   17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The prior installed v0.30.6
   rerun passed in 19,954 ms with the same planner, synthesis, citation, cache, and revision
-  checks. The latest installed v0.30.10 run passed in 21,656 ms with planner and synthesis model
+  checks. The latest installed v0.30.10 run passed in 18,425 ms with planner and synthesis model
   use, valid citations, cache reuse, and revision invalidation; retrieval recall, MRR, case pass
   rate, and citation validity were all 1.0 within the 30,000 ms answer deadline. The earlier
   provider-unavailable attempt remains historical fail-closed evidence, and extractive mode
