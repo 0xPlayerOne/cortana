@@ -47,8 +47,8 @@ is not part of a visual/UI change.
    rerun passed in 13,477 ms, but the installed v0.29.33 evaluator failed closed twice with invalid
    model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
    attribution footer when its explicit provider header and exact footer shape agree. The installed
-   v0.29.59 binary passed the current fixture-only gate in 20,940 ms, and the published v0.29.59
-   aarch64 core archive passed headlessly in 12,477 ms. Both current runs used planner+synthesis,
+   v0.29.60 aarch64 core binary passed the current fixture-only gate in 10,323 ms; the prior
+   installed v0.29.59 run passed in 20,940 ms. Both current runs used planner+synthesis,
    valid citations, cache reuse, and revision invalidation. Keep extractive mode as the safe
    production default because model synthesis remains opt-in.
 3. Provider-advertised model metadata is implemented and bounded by
@@ -72,7 +72,7 @@ is not part of a visual/UI change.
    Cortana's configured token location, but its current refresh token record expired on
    2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
    PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; releases through `v0.29.60`
-   are published. The locally installed CLI now uses v0.29.59 and emits reauthorization guidance;
+   are published. The locally installed CLI now uses v0.29.60 and emits reauthorization guidance;
    the packaged Desktop app remains v0.29.55 because it was not launched or replaced.
    Recurring sync must remain disabled until browser authorization succeeds and the source is
    revalidated.
@@ -90,17 +90,14 @@ is not part of a visual/UI change.
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
 - The audited functional snapshot is v0.29.59 at main commit `047960e`; v0.29.60 is a subsequent
-  version-only release. Release-assets workflow `31443472210` completed successfully with all 18
+  version-only release. Release-assets workflow `31444139917` completed successfully with all 18
   expected assets. The local fail-closed verifier passed the published cross-platform archives,
   checksums, minisign signatures, and updater manifest. The published aarch64 core archive also
   passed its packaged-version, `doctor`, model-evaluation, and offline control-plane checks.
-- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.59`; the packaged Desktop
+- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.60`; the packaged Desktop
   app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or replaced.
-  The installed core passes `cortana doctor`, the v0.29.59 disposable control-plane drill, and the
-  bounded model-backed gate. A temporary v0.29.59 aarch64 core archive also passed `--version`,
-  `cortana doctor`, the model-backed gate in 12,477 ms, and the disposable control-plane drill.
-  The current release is newer than the installed CLI because the Desktop app was deliberately not
-  launched or replaced.
+  The installed v0.29.60 core passes `--version`, `cortana doctor`, the disposable control-plane
+  drill, and the bounded model-backed gate in 10,323 ms.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
@@ -156,9 +153,9 @@ is not part of a visual/UI change.
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
-  output cap was raised for gateway reasoning. The latest installed v0.29.59 core binary passed
+  output cap was raised for gateway reasoning. The latest installed v0.29.60 core binary passed
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
-  20,940 ms; the published v0.29.59 aarch64 core archive passed the same gate in 12,477 ms.
+  10,323 ms; the prior v0.29.59 run passed in 20,940 ms.
   Extractive mode remains the safe production default because synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source; recorded
   before the v0.29.54 core install)

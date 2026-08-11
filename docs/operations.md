@@ -238,12 +238,13 @@ release gate, so missing or invalid assets are never hidden.
 
 The v0.29.59 core archive passed its checksum, packaged-version, `cortana doctor`, model-backed,
 and disposable control-plane checks. Release-assets run `31443472210` completed successfully with
-all 18 expected assets, and the local verifier passed the cross-platform archives, checksums,
-minisign signatures, and updater manifest. The latest version-only v0.29.60 release-assets run
-`31444139917` is still publishing its artifacts. The installed CLI remains
-`cortana 0.29.59` and the packaged Desktop app at `/Applications/Cortana.app` remains v0.29.55;
-neither was launched or replaced. The bounded control-plane, recovery, and model-backed checks
-are recorded in `docs/desktop-ux-audit.md`.
+all 18 expected assets. The subsequent version-only v0.29.60 release-assets run `31444139917`
+also completed with all 18 assets, and the local verifier passed its cross-platform archives,
+checksums, minisign signatures, and updater manifest. The installed CLI is now `cortana 0.29.60`
+and passes `doctor`, the disposable control-plane drill, and the model-backed gate. The packaged
+Desktop app at `/Applications/Cortana.app` remains v0.29.55; it was not launched or replaced.
+The bounded control-plane, recovery, and model-backed checks are recorded in
+`docs/desktop-ux-audit.md`.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
