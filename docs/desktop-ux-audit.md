@@ -44,7 +44,7 @@ is not part of a visual/UI change.
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
    current installed core:** the configured `auto-free` provider passed the fixture-only gate in
-   12,391 ms with planner and synthesis model use, valid citations, cache reuse, and revision
+   14,937 ms with planner and synthesis model use, valid citations, cache reuse, and revision
    invalidation. This remains fixture-only evidence, not packaged-app proof. Keep extractive mode
    as the safe production default because model synthesis remains opt-in; the installed v0.30.6
    core also passed `doctor`, readiness, and the disposable packaged control-plane and recovery
@@ -132,15 +132,15 @@ is not part of a visual/UI change.
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
-  passes 256 tests across 22 files (latest run: 55.81 seconds, 1,266 assertions, including the
+  passes 256 tests across 22 files (latest run: 58.41 seconds, 1,266 assertions, including the
   desktop lockfile helper regression). The Python suite
   passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
-  refreshed against the v0.30.3 functional tree without launching the Desktop app.
-- The current Rust library suite on v0.30.3 passes 253 tests with
+  refreshed against the v0.30.6 functional tree without launching the Desktop app.
+- The current Rust library suite on v0.30.6 passes 253 tests with
   no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
@@ -150,9 +150,8 @@ is not part of a visual/UI change.
 - The remote branch policy now matches that staging-release flow: the active `code-foundry-main`
   and `code-foundry-staging` rulesets block deletion and non-fast-forward updates, require
   `Validation / Gate`, and require `Tauri 2 / Linux` for protected promotion; staging permits
-  only squash feature merges. PR #600 is the sole staging input for this Discord change after
-  the superseded direct-main duplicate was closed. This is repository-policy evidence, not a
-  packaged GUI or manual-drill result.
+  only squash feature merges. This is repository-policy evidence, not a packaged GUI or
+  manual-drill result.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
@@ -193,7 +192,7 @@ is not part of a visual/UI change.
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
 - A current installed-core model-backed evaluation ran against the configured provider without
-  opening a personal index or starting sync/connectors and passed in 12,391 ms with planner and
+  opening a personal index or starting sync/connectors and passed in 14,937 ms with planner and
   synthesis model use, bounded planning, valid citations, cache reuse, and revision invalidation.
   The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
@@ -202,7 +201,7 @@ is not part of a visual/UI change.
   output cap was raised for gateway reasoning. The latest installed v0.29.60 core binary passed
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
   17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The fresh installed v0.30.6
-  rerun passed in 12,391 ms with the same planner, synthesis, citation, cache, and revision checks.
+  rerun passed in 14,937 ms with the same planner, synthesis, citation, cache, and revision checks.
   Extractive mode remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
   sync service is not installed, and all four enabled Discord sources fail closed until their

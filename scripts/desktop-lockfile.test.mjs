@@ -8,7 +8,7 @@ import { hasReleasePleaseAnnotation, restoreReleasePleaseAnnotation } from './de
 
 const lockfile = `[[package]]
 name = "cortana-desktop"
-version = "0.30.3"
+version = "1.2.3"
 dependencies = []
 `
 
@@ -23,7 +23,7 @@ test('restores a missing Release Please lockfile marker', () => {
 
     const restored = readFileSync(path, 'utf8')
     expect(hasReleasePleaseAnnotation(path)).toBe(true)
-    expect(restored).toContain('version = "0.30.3" # x-release-please-version')
+    expect(restored).toContain('version = "1.2.3" # x-release-please-version')
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -33,8 +33,8 @@ test('does not duplicate an existing Release Please marker', () => {
   const directory = mkdtempSync(join(tmpdir(), 'cortana-lockfile-test-'))
   const path = join(directory, 'Cargo.lock')
   const annotated = lockfile.replace(
-    'version = "0.30.3"',
-    'version = "0.30.3" # x-release-please-version'
+    'version = "1.2.3"',
+    'version = "1.2.3" # x-release-please-version'
   )
   try {
     writeFileSync(path, annotated)
