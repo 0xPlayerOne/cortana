@@ -44,7 +44,7 @@ is not part of a visual/UI change.
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
    current installed core:** the configured `auto-free` provider passed the fixture-only gate in
-   16,638 ms with planner and synthesis model use, valid citations, cache reuse, and revision
+   12,391 ms with planner and synthesis model use, valid citations, cache reuse, and revision
    invalidation. This remains fixture-only evidence, not packaged-app proof. Keep extractive mode
    as the safe production default because model synthesis remains opt-in; the installed v0.30.6
    core also passed `doctor`, readiness, and the disposable packaged control-plane and recovery
@@ -193,7 +193,7 @@ is not part of a visual/UI change.
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
 - A current installed-core model-backed evaluation ran against the configured provider without
-  opening a personal index or starting sync/connectors and passed in 16,638 ms with planner and
+  opening a personal index or starting sync/connectors and passed in 12,391 ms with planner and
   synthesis model use, bounded planning, valid citations, cache reuse, and revision invalidation.
   The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
@@ -202,7 +202,7 @@ is not part of a visual/UI change.
   output cap was raised for gateway reasoning. The latest installed v0.29.60 core binary passed
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
   17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The fresh installed v0.30.6
-  rerun passed in 16,638 ms with the same planner, synthesis, citation, cache, and revision checks.
+  rerun passed in 12,391 ms with the same planner, synthesis, citation, cache, and revision checks.
   Extractive mode remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
   sync service is not installed, and all four enabled Discord sources fail closed until their
