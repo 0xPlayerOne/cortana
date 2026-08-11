@@ -97,10 +97,10 @@ planner+synthesis model use, valid citations, cache reuse, and revision invalida
 Desktop app was not launched; the installed v0.30.10 core now lives at
 `/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 through v0.30.10
 are release/version and cross-platform compatibility fixes over the same query behavior.
-The latest successful installed v0.30.10 run is the current provider-backed pass at 18,425 ms with
+The latest successful installed v0.30.10 run is the current provider-backed pass at 10,544 ms with
 planner and synthesis model use, valid citations, cache reuse, and revision invalidation; retrieval
 recall, MRR, case pass rate, and citation validity were all 1.0 within the 30,000 ms deadline. The
-earlier 9,105 ms run and older source-tree runs remain historical evidence. An earlier 2026-08-11
+earlier 13,117 ms and 9,105 ms runs and older source-tree runs remain historical evidence. An earlier 2026-08-11
 attempt failed closed with
 `fallback_provider_unavailable=true` during a transient configured-gateway outage. The successful
 rerun re-established provider availability, and extractive mode remains the safe production

@@ -43,7 +43,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. The latest
-   installed v0.30.10 run passed the fixture-only gate on 2026-08-11 in 18,425 ms with planner and
+   installed v0.30.10 run passed the fixture-only gate on 2026-08-11 in 10,544 ms with planner and
    synthesis model use, 1.0 retrieval/citation metrics, cache reuse, and revision invalidation.
    An earlier attempt correctly failed closed with `fallback_provider_unavailable=true` during a
    transient gateway outage; the successful rerun re-established the provider gate. This remains
@@ -69,13 +69,13 @@ is not part of a visual/UI change.
    provider ACL, deletion, export, and packaged-UI gates are explicitly proven. The fresh offline
    comparative fixture (`uv run cortana-memory-eval`) reports `material_gain=true`, with recall and
    MRR gains of `0.375`; that is useful evidence for a future opt-in review, not live-provider proof.
-6. Complete source authorization and full validation coverage before recurring sync: the bounded
-   `personal-calendar` validation now succeeds and refreshes its owner-only Google token, but the
-   four enabled Discord sources still fail closed because the configured Desktop RPC OAuth client
-   and token files are absent. Filesystem/code sources are either bounded samples
-   (`complete=false`) or legacy records without an explicit completeness marker. Both states
-   fail closed; recurring sync must remain uninstalled until Discord authorization is completed
-   and every enabled source has a current `complete=true` validation at its configured budget.
+6. Complete source authorization and full validation coverage before recurring sync: the three
+   enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh validation-only
+   smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source; the personal AMF
+   Discord source is disabled. The bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
+   either bounded samples (`complete=false`) or legacy records without an explicit completeness
+   marker. Both states fail closed; recurring sync must remain uninstalled until every enabled
+   source has a current `complete=true` validation at its configured budget.
 
 ## Evidence limits
 
@@ -132,7 +132,7 @@ is not part of a visual/UI change.
   treated as current recovery evidence; the verified v0.30.10 release assets and installed CLI are
   authoritative.
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
-  passes 256 tests across 22 files (latest run: 61.27 seconds, 1,265 assertions, including the
+  passes 256 tests across 22 files (latest run: 37.32 seconds, 1,266 assertions, including the
   desktop lockfile helper regression). The Python suite
   passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
@@ -180,11 +180,11 @@ is not part of a visual/UI change.
   seconds) succeeded without writing documents, embeddings, or reconciliations and refreshed the
   owner-only Google token through its configured refresh path. Discord Desktop RPC tokens now
   refresh atomically from their owner-only refresh token before expiry; an expired token without a
-  refresh token still fails closed and requests reauthorization. The local connector environment
-  was updated from v0.29.68 to v0.29.69; all four enabled Discord sources reached the expected
-  missing OAuth-client-file guard instead of the stale CLI parser. Discord authorization and
-  recurring sync therefore remain uninstalled and disabled until the owner supplies the Desktop
-  RPC client/token files and every enabled source has current complete validation coverage.
+  refresh token still fails closed and requests reauthorization. On 2026-08-11, Discord
+  authorization succeeded for the Nifty League Team, Nifty League, and The Pink Binder sources;
+  the current validation-only smoke used a one-document cap per enabled source without writes. The
+  personal AMF source remains disabled, and recurring sync remains uninstalled until full
+  complete validation coverage exists for every enabled source.
 - The current Desktop readiness source now compares the installed connector version with the
   bundled Cortana sidecar and marks a stale or unreadable connector unavailable before source jobs
   start. The regression suite covers matching and mismatching release versions.
@@ -203,20 +203,29 @@ is not part of a visual/UI change.
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
   17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The prior installed v0.30.6
   rerun passed in 19,954 ms with the same planner, synthesis, citation, cache, and revision
-  checks. The latest installed v0.30.10 run passed in 18,425 ms with planner and synthesis model
+  checks. The latest installed v0.30.10 run passed in 10,544 ms with planner and synthesis model
   use, valid citations, cache reuse, and revision invalidation; retrieval recall, MRR, case pass
   rate, and citation validity were all 1.0 within the 30,000 ms answer deadline. The earlier
   provider-unavailable attempt remains historical fail-closed evidence, and extractive mode
   remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
-  sync service is not installed, and the configured inventory has 22 enabled sources. Eleven have
-  fresh succeeded `complete=true` validation, seven filesystem/code sources are bounded samples
-  (`complete=false`), and all four Discord RPC sources fail closed until their owner-only OAuth
-  client/token files exist. Neither sampled nor failed state authorizes a full-corpus or recurring
-  run without a fresh explicit `complete=true` validation for every enabled source.
-- A current `readiness --allow-sync-service` probe correctly failed closed without installing or
-  starting sync: connector validations were below configured budgets, filesystem/code validations
-  were sampled, and every Discord validation was unsuccessful. Query-only readiness still passes.
+  sync service is not installed, and the configured inventory has 22 sources (21 enabled; the
+  personal AMF Discord source is disabled). Fourteen enabled sources currently report successful
+  bounded validation, including all three authorized Discord sources; seven filesystem/code
+  sources remain bounded samples (`complete=false`). These bounded records do not cover the
+  configured recurring-sync budgets, so neither sampled nor under-budget state authorizes a
+  full-corpus or recurring run without fresh validation at the configured limits.
+- A current query-only readiness probe passes database integrity, embedding/index/provider health,
+  ACL, API liveness, fresh verified backup, extractive mode, and confirms sync is not installed.
+  The matching `readiness --allow-sync-service` probe fails closed because every enabled connector
+  is below its configured full-sync budget and filesystem/code records are bounded samples; no
+  sync service was installed or started. Recurring mode must stay fail-closed until every enabled
+  source covers its configured full-sync budget.
+- A current validation-only `scripts/source-smoke.sh` run on 2026-08-11 passed all 21 enabled
+  sources at the bounded one-document/65,536-byte/30-second budget, including the three Discord
+  sources, with no trial sync, embeddings, or reconciliation. This confirms authorization and
+  connector reachability only; the seven filesystem/code sources remain sampled and every source
+  is below the configured recurring-sync budget.
 - A current v0.30.10 packaged control-plane drill passed verified backup creation, disposable restore,
   SQLite verification, and cleanup. It also passed offline
   init, bounded fixture ingestion, search/context, metadata-only audit export, backup, restore, and
