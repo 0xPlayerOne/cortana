@@ -43,10 +43,11 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   current source:** v0.29.69 passed the fixture-only gate in 18,345 ms with planner and synthesis
-   model use, valid citations, cache reuse, and revision invalidation. Keep extractive mode as the
-   safe production default because model synthesis remains opt-in; the older installed v0.29.67
-   result remains historical evidence only.
+   current functional tree carried into v0.30.0:** a fresh source run passed the fixture-only gate
+   in 12,671 ms with planner and synthesis model use, valid citations, cache reuse, and revision
+   invalidation. This remains fixture-only evidence, not packaged-app proof. Keep extractive mode
+   as the safe production default because model synthesis remains opt-in; installed 0.29.68 results
+   remain historical evidence only.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -82,21 +83,17 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line is v0.29.69 at commit `a6e739f`, which is also the latest fully verified
-  cross-platform release. The published release-assets workflow `31458199113` contains all 18
-  expected assets, and the local fail-closed verifier passed the core archive checksums, macOS
-  bundle/resources, six Tauri updater signatures, and updater manifest. The installed CLI
-  `/Users/amf/.local/bin/cortana` still reports `cortana 0.29.67`; the packaged Desktop app was
-  not launched or replaced. The installed v0.29.67 core passes `--version`, `cortana doctor`, and the disposable
-  control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
-  restore, and post-restore search). A fresh v0.29.67 model-backed evaluation against the
-  persistent configured query provider passed in 21,648 ms with planner and synthesis model use,
-  bounded planning, valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
-  `provider_unavailable` after 30,018 ms while the gateway was degraded; the successful rerun
-  re-established provider-backed evaluation without changing the safe extractive runtime default.
-  The published v0.29.69 binaries were not executed on this macOS host; the local verifier recorded
-  that platform-specific execution was skipped. The current v0.29.69 feature work is verified below
-  at source level.
+- The current main line is v0.30.0 at commit `0ab5b59` (`v0.30.0`), published from release-assets
+  workflow `31470374229`. The workflow produced 14 of the 18 expected assets; the Windows desktop
+  job failed because the Windows build exposed missing non-Unix Discord RPC stubs, so the release
+  is not yet fully verified and the Windows assets are absent. macOS ARM64, Linux desktop, and both
+  core archives completed successfully. The installed CLI `/Users/amf/.local/bin/cortana` still
+  reports `cortana 0.29.68`; the packaged Desktop app was not launched or replaced. The source
+  tree's current release metadata is v0.30.0, while the functional model/evaluation evidence below
+  was captured immediately before the metadata-only release bump.
+- Historical v0.29.69 evidence remains useful for the signed macOS/updater gates, but it must not be
+  read as proof that v0.30.0 is a complete cross-platform release until the Windows build is repaired
+  and the release assets are regenerated.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was
@@ -124,7 +121,8 @@ is not part of a visual/UI change.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite on the v0.29.69 source tree passes all 129 tests. The
+  The current-source native Desktop suite on the functional tree carried into v0.30.0 passes all
+  129 tests. The
   local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
   verification fails as expected and no `TeamIdentifier` is present. Developer ID
   signing/notarization remains a release blocker; the previous v0.29.50 bundle is retained at
@@ -139,8 +137,9 @@ is not part of a visual/UI change.
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
-  refreshed against the v0.29.69 source tree without launching the Desktop app.
-- The current Rust library suite on the v0.29.69 source tree passes 253 tests with no failures;
+  refreshed against the functional tree carried into v0.30.0 without launching the Desktop app.
+- The current Rust library suite on the functional tree carried into v0.30.0 passes 253 tests with
+  no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
   separate staging-to-main promotion produces the release on `main`. Desktop checks remain
@@ -173,12 +172,13 @@ is not part of a visual/UI change.
 - The matching v0.29.64 `--sync --include-filesystem` trial passed the same bounded,
   `--no-reconcile --require-validation` operation for all 11 authorized sources. The calendar trial
   was skipped after its failed validation, and the command did not install or enable recurring sync.
-- A current v0.29.69 bounded validation of `personal-calendar` (1 document, 65,536 bytes, 30
+- A bounded validation of `personal-calendar` on the functional tree carried into v0.30.0 (1
+  document, 65,536 bytes, 30
   seconds) succeeded without writing documents, embeddings, or reconciliations and refreshed the
   owner-only Google token through its configured refresh path. Discord Desktop RPC tokens now
   refresh atomically from their owner-only refresh token before expiry; an expired token without a
   refresh token still fails closed and requests reauthorization. The local connector environment
-  was updated from v0.29.68 to v0.29.69; all four enabled Discord sources now reach the expected
+  was updated from v0.29.68 to v0.29.69; all four enabled Discord sources reached the expected
   missing OAuth-client-file guard instead of the stale CLI parser. Discord authorization and
   recurring sync therefore remain uninstalled and disabled until the owner supplies the Desktop
   RPC client/token files and every enabled source has current complete validation coverage.
@@ -190,8 +190,9 @@ is not part of a visual/UI change.
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
-- A current-source v0.29.69 model-backed evaluation ran against the configured provider without opening a personal index or
-  starting sync/connectors and passed in 18,345 ms with planner and synthesis model use, bounded
+- A current-source model-backed evaluation of the functional tree carried into v0.30.0 ran against
+  the configured provider without opening a personal index or
+  starting sync/connectors and passed in 18,762 ms with planner and synthesis model use, bounded
   planning, valid citations, cache reuse, and revision invalidation. The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
