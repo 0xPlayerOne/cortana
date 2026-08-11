@@ -105,7 +105,7 @@ is not part of a visual/UI change.
   synthesis therefore remains unverified on this run.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
-  --strict` passed. This proves archive integrity and local signature structure only: the app was
+--strict` passed. This proves archive integrity and local signature structure only: the app was
   not launched, notarization was not assessed, and tray, native dialogs, OAuth, and updater UI
   remain manual gates.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
