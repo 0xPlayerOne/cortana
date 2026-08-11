@@ -120,11 +120,10 @@ export function validationCoversConfiguredBudget(
   if (!source.validation) return false
   if (source.validation.status !== 'succeeded') return false
   if (source.validation.fresh === false) return false
-  // A bounded sample may authorize only equally bounded non-reconciling runs,
-  // never a recurring or full-corpus sync. Failing closed here keeps even a
-  // sample whose numeric budgets match the configured limits from blessing
-  // recurrence; omitted/`null`/`true` keep their legacy full-corpus authority.
-  if (source.validation.complete === false) return false
+  // Only an explicit complete validation can authorize recurring or
+  // full-corpus sync. Bounded samples and legacy records whose completeness is
+  // unknown must be revalidated, even when their numeric budgets match.
+  if (source.validation.complete !== true) return false
 
   const hasSufficientDocuments = source.validation.max_documents >= source.max_documents
   const hasSufficientBytes = source.validation.max_bytes >= source.max_bytes
@@ -142,6 +141,14 @@ function boundedSampleWarning(
   lead: string
 ): string {
   return `${lead} validation was a bounded sample (${new Date(validation.validated_at).toLocaleString()}) and cannot authorize recurring sync; re-validate the complete source`
+}
+
+function validationCompletenessWarning(
+  validation: NonNullable<OperationalSource['validation']>,
+  lead: string
+): string {
+  if (validation.complete === false) return boundedSampleWarning(validation, lead)
+  return `${lead} validation completeness is unknown (${new Date(validation.validated_at).toLocaleString()}) and cannot authorize recurring sync; re-validate the complete source`
 }
 
 export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.now()) {
@@ -188,10 +195,10 @@ export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.n
           label: `Connector validation expired ${new Date(source.validation.validated_at).toLocaleString()}; re-validate before recurring sync`,
         }
       }
-      if (source.validation.complete === false) {
+      if (source.validation.complete !== true) {
         return {
           state: 'warning',
-          label: boundedSampleWarning(source.validation, 'Connector'),
+          label: validationCompletenessWarning(source.validation, 'Connector'),
         }
       }
       if (!validationCoversConfiguredBudget(source)) {
@@ -234,10 +241,13 @@ export function sourceHealth(source: OperationalSource, nowMilliseconds = Date.n
         label: `Last sync succeeded ${completed}; stale after ${formatDuration(freshnessHours * 3_600)} (age ${formatDuration(ageSeconds)}); run sync`,
       }
     }
-    if (source.validation?.complete === false) {
+    if (source.validation && source.validation.complete !== true) {
       return {
         state: 'warning',
-        label: boundedSampleWarning(source.validation, `Last sync succeeded ${completed} but its`),
+        label: validationCompletenessWarning(
+          source.validation,
+          `Last sync succeeded ${completed} but its`
+        ),
       }
     }
     if (!validationCoversConfiguredBudget(source)) {
