@@ -44,3 +44,13 @@ test('does not duplicate an existing Release Please marker', () => {
     rmSync(directory, { recursive: true, force: true })
   }
 })
+
+test('ignores an absent lockfile without hiding other filesystem errors', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cortana-lockfile-test-'))
+  const path = join(directory, 'missing', 'Cargo.lock')
+  try {
+    expect(() => restoreReleasePleaseAnnotation(path)).not.toThrow()
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
