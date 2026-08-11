@@ -72,7 +72,7 @@ is not part of a visual/UI change.
    Cortana's configured token location, but its current refresh token record expired on
    2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
    PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; the current main line is
-   v0.29.63. The locally installed CLI still uses v0.29.60 and emits reauthorization guidance;
+   v0.29.63. The locally installed CLI now uses v0.29.63 and emits reauthorization guidance;
    the packaged Desktop app remains v0.29.55 because it was not launched or replaced.
    Recurring sync must remain disabled until browser authorization succeeds and the source is
    revalidated.
@@ -89,18 +89,16 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line is v0.29.63 at commit `85e116c`. The latest fully verified functional
-  release remains v0.29.61 at commit `b31cbe2`: release-assets workflow `31445913201` completed
-  successfully with all 18 expected assets, and the local fail-closed verifier passed the
-  published cross-platform archives, checksums, minisign signatures, and updater manifest. The
-  v0.29.62 and v0.29.63 asset workflows were still in progress at the time of this audit, so they
-  are not treated as packaged-release evidence until all expected assets and signatures verify.
-- The installed CLI `/Users/amf/.local/bin/cortana` now reports `cortana 0.29.61`; the packaged
+- The current main line and latest fully verified functional release are v0.29.63 at commit
+  `85e116c`. Release-assets workflow `31447984697` published all 18 expected assets, and the local
+  fail-closed verifier passed the cross-platform archives, checksums, minisign signatures, and
+  updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports `cortana 0.29.63`;
+  the packaged
   Desktop app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or
-  replaced. The installed v0.29.61 core passes `--version`, `cortana doctor`, and the disposable
+  replaced. The installed v0.29.63 core passes `--version`, `cortana doctor`, and the disposable
   control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
   restore, and post-restore search). The latest successful model-backed run remains the v0.29.60
-  result at 17,928 ms (a prior cache-warm run completed in 10,323 ms); a fresh v0.29.61 attempt
+  result at 17,928 ms (a prior cache-warm run completed in 10,323 ms); a fresh v0.29.63 attempt
   against the persistent `auto-free` query provider did not return a bounded planner response and
   was stopped by an external watchdog. Provider-backed synthesis therefore remains unverified on
   this run.
