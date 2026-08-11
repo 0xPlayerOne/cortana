@@ -47,8 +47,8 @@ pub struct SourceValidationSummary {
     pub age_seconds: u64,
     /// Whether the validation covered the entire source within its limits.
     /// `false` marks a bounded sample that may authorize only equally bounded
-    /// non-reconciling runs; `None` (records persisted before sampling
-    /// existed) keeps its legacy full-corpus authority.
+    /// non-reconciling runs; `None` means the record's completeness is unknown
+    /// and cannot authorize recurring or full-corpus sync.
     pub complete: Option<bool>,
     pub documents: Option<usize>,
     pub bytes: Option<u64>,
@@ -863,8 +863,8 @@ mod tests {
         let summary = validation_summary(&validated_status(None), 168);
         assert_eq!(summary.complete, None);
         let json = serde_json::to_value(&summary).expect("summary serializes");
-        // A legacy record keeps a null completeness marker; consumers treat it
-        // exactly like the pre-sampling era.
+        // A legacy record keeps a null completeness marker so consumers can
+        // require an explicit re-validation before recurring sync.
         assert_eq!(json.get("complete"), Some(&serde_json::Value::Null));
 
         // The persisted record round-trips without a completeness key, so

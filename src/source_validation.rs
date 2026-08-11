@@ -33,8 +33,8 @@ pub struct SourceValidationStatus {
     pub configuration_fingerprint: Option<String>,
     /// Whether the validation covered the entire source within its limits.
     /// `Some(false)` marks a bounded sample that may authorize only equally
-    /// bounded non-reconciling runs; `None` (records persisted before
-    /// sampling existed) is treated as complete.
+    /// bounded non-reconciling runs; `None` means the record's completeness is
+    /// unknown and can never authorize a full-corpus or recurring run.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub complete: Option<bool>,
     pub error: Option<String>,
@@ -119,11 +119,19 @@ pub fn require_success(
         "source {} latest validation did not succeed",
         source.name
     );
-    anyhow::ensure!(
-        !reconcile || validation.complete != Some(false),
-        "source {} latest validation was a bounded sample and cannot authorize a full-corpus sync; re-run validate-source without --sample for the complete source",
-        source.name
-    );
+    if reconcile {
+        match validation.complete {
+            Some(true) => {}
+            Some(false) => anyhow::bail!(
+                "source {} latest validation was a bounded sample and cannot authorize a full-corpus sync; re-run validate-source without --sample for the complete source",
+                source.name
+            ),
+            None => anyhow::bail!(
+                "source {} latest validation has unknown completeness and cannot authorize a full-corpus sync; re-run validate-source without --sample for an explicit complete validation",
+                source.name
+            ),
+        }
+    }
     anyhow::ensure!(
         validation.project == source.project && validation.kind == source.kind,
         "source {} configuration changed since validation",
@@ -518,9 +526,9 @@ mod tests {
         .expect("a complete validation authorizes a full-corpus sync");
 
         // Records persisted before sampling existed carry no completeness
-        // marker and keep their legacy full-corpus authority.
+        // marker. Unknown scope must fail closed until explicitly revalidated.
         record(directory.path(), status_for(None)).unwrap();
-        require_success(
+        let unknown = require_success(
             directory.path(),
             &source,
             25,
@@ -529,7 +537,8 @@ mod tests {
             chrono::Duration::hours(168),
             true,
         )
-        .expect("a legacy record without a completeness marker stays complete");
+        .expect_err("an unknown completeness record must not authorize a full-corpus sync");
+        assert!(format!("{unknown:#}").contains("unknown completeness"));
     }
 
     #[test]

@@ -353,8 +353,10 @@ cortana validate-source CODE_ROOT --sample \
 
 A sampled validation walks at most the requested document, byte, and wall-clock limits and
 records the outcome in `source-validations.json` with `complete: false`; if the sample happens to
-cover the whole root, it records `complete: true` and keeps full-corpus authority. A sampled
-record satisfies an explicitly equal-or-smaller non-reconciling trial or initial sync
+cover the whole root, it records `complete: true` and keeps full-corpus authority. Only an explicit
+`complete: true` validation authorizes a recurring or full-corpus sync. Records written before the
+completeness marker existed have unknown scope and must be revalidated; they never inherit
+full-corpus authority. A sampled record satisfies an explicitly equal-or-smaller non-reconciling trial or initial sync
 (`sync --require-validation --no-reconcile` with matching limits), but it can never authorize a
 reconciling sync, the recurring-sync job, or the `--allow-sync-service` readiness gate, which all
 require a complete validation at equal or larger limits. `--sample` applies only to filesystem
