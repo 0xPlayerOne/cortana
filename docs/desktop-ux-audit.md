@@ -43,7 +43,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. The latest
-   installed v0.30.7 run passed the fixture-only gate on 2026-08-11 in 17,976 ms with planner and
+   installed v0.30.7 run passed the fixture-only gate on 2026-08-11 in 19,585 ms with planner and
    synthesis model use, 1.0 retrieval/citation metrics, cache reuse, and revision invalidation.
    An earlier attempt correctly failed closed with `fallback_provider_unavailable=true` during a
    transient gateway outage; the successful rerun re-established the provider gate. This remains
@@ -134,14 +134,16 @@ is not part of a visual/UI change.
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
-  passes 256 tests across 22 files (latest run: 60.43 seconds, 1,268 assertions, including the
+  passes 256 tests across 22 files (latest run: 65.02 seconds, 1,266 assertions, including the
   desktop lockfile helper regression). The Python suite
   passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
-  refreshed against the v0.30.7 functional tree without launching the Desktop app.
+  refreshed against the v0.30.7 functional tree without launching the Desktop app. React's test
+  harness still emits non-fatal `act(...)` warnings in a few asynchronous cases; all assertions
+  pass and no warning is treated as a successful production-GUI drill.
 - The current Rust library suite on v0.30.7 passes 253 tests with
   no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
@@ -193,12 +195,9 @@ is not part of a visual/UI change.
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
-- The latest successful installed-core model-backed evaluation ran against the configured provider
-  without opening a personal index or starting sync/connectors and passed in 9,105 ms with
-  planner and synthesis model use, bounded planning, valid citations, cache reuse, and revision
-  invalidation. The report recorded recall, MRR, case pass rate, and citation validity at 1.0,
-  within the 30,000 ms answer deadline.
-  The source at `339240e` and packaged v0.29.31 passed historical runs,
+- Historical installed-core model-backed evaluations ran against the configured provider without
+  opening a personal index or starting sync/connectors. The source at `339240e` and packaged
+  v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
   provider appended an uncited attribution line to the synthesis response (8,313 ms and 13,398 ms).
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
@@ -206,8 +205,11 @@ is not part of a visual/UI change.
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
   17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The prior installed v0.30.6
   rerun passed in 19,954 ms with the same planner, synthesis, citation, cache, and revision
-  checks. The earlier provider-unavailable attempt remains historical fail-closed evidence, and
-  extractive mode remains the safe production default because synthesis is still an explicit opt-in.
+  checks. The latest installed v0.30.7 run passed in 19,585 ms with planner and synthesis model
+  use, valid citations, cache reuse, and revision invalidation; retrieval recall, MRR, case pass
+  rate, and citation validity were all 1.0 within the 30,000 ms answer deadline. The earlier
+  provider-unavailable attempt remains historical fail-closed evidence, and extractive mode
+  remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
   sync service is not installed, and the configured inventory has 22 enabled sources. Eleven have
   fresh succeeded `complete=true` validation, seven filesystem/code sources are bounded samples
