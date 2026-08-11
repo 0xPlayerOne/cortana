@@ -163,7 +163,7 @@ is not part of a visual/UI change.
 - The matching v0.29.64 `--sync --include-filesystem` trial passed the same bounded,
   `--no-reconcile --require-validation` operation for all 11 authorized sources. The calendar trial
   was skipped after its failed validation, and the command did not install or enable recurring sync.
-- A tracked-history `gitleaks detect --redact` scan covered 967 commits and found no secrets.
+- A tracked-history `gitleaks detect --redact` scan covered 970 commits and found no secrets.
 - Release v0.29.61 also carries the fail-closed recurring-sync freshness guard across every
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
