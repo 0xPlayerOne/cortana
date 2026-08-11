@@ -315,16 +315,16 @@ jobs:
     name: Release Compilation
     needs: changes
     # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
-    # staging tier; keep this release compilation for explicit dispatches and
-    # release-please's main promotion PR only. Ordinary staging->main
-    # promotions already passed the desktop checks on staging and must not
-    # pay the full Linux release-build cost a second time.
+    # staging tier; defer only the expensive release compilation for the
+    # staging->main promotion branch because desktop checks already passed on
+    # staging. Ordinary main code PRs still receive the complete final audit.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
+       !startsWith(github.event.pull_request.head.ref, 'promote/')))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -357,18 +357,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-rust-
-      # Linux release compilation is reserved for PRs targeting main and explicit
-      # manual final audits (workflow_dispatch). It is intentionally skipped on
-      # staging feature PRs and Release Please version-only PRs.
+      # Linux release compilation is reserved for ordinary main code PRs and
+      # explicit manual final audits. It is intentionally skipped on staging
+      # feature PRs, Release Please version-only PRs, and staging->main
+      # promotion PRs whose desktop checks already passed on staging.
       - name: Compile release desktop
-        # Final gate: run only for PRs targeting main and manual dispatch,
-        # excluding release-please version PRs. This skips final audit steps
-        # for feature PRs while preserving manual audits.
+        # Final gate: run for ordinary main code PRs and manual dispatch, not
+        # release-please version PRs or staging->main promotion PRs.
         if: >-
           github.event_name == 'workflow_dispatch' ||
           (github.event_name == 'pull_request' &&
            github.event.pull_request.base.ref == 'main' &&
-           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
+           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
+           !startsWith(github.event.pull_request.head.ref, 'promote/'))
         env:
           CORTANA_DESKTOP_TARGET: x86_64-unknown-linux-gnu
         run: bun run desktop:build
@@ -376,7 +377,8 @@ jobs:
   # Fast aggregate carrying the stable required check name. It always runs
   # after its dependencies so the check turns red on failure or cancellation
   # instead of silently skipping. Skipped dependencies (staging fast-tier PRs
-  # and release-please version-only PRs) are acceptable and leave the check green.
+  # and release-please version-only PRs; the promotion's release compilation
+  # is also intentionally deferred) are acceptable and leave the check green.
   aggregate:
     name: Tauri 2 / Linux
     needs:
