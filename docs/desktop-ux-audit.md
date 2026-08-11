@@ -72,7 +72,7 @@ is not part of a visual/UI change.
    Cortana's configured token location, but its current refresh token record expired on
    2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
    PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; the current main line is
-   v0.29.63. The locally installed CLI still uses v0.29.60 and emits reauthorization guidance;
+   v0.29.64. The locally installed CLI now uses v0.29.64 and emits reauthorization guidance;
    the packaged Desktop app remains v0.29.55 because it was not launched or replaced.
    Recurring sync must remain disabled until browser authorization succeeds and the source is
    revalidated.
@@ -89,23 +89,30 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line is v0.29.63 at commit `85e116c`. The latest fully verified functional
-  release remains v0.29.61 at commit `b31cbe2`: release-assets workflow `31445913201` completed
-  successfully with all 18 expected assets, and the local fail-closed verifier passed the
-  published cross-platform archives, checksums, minisign signatures, and updater manifest. The
-  v0.29.62 and v0.29.63 asset workflows were still in progress at the time of this audit, so they
-  are not treated as packaged-release evidence until all expected assets and signatures verify.
-- The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.60`; the packaged Desktop
-  app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or replaced.
-  The installed v0.29.60 core passes `--version`, `cortana doctor`, the disposable control-plane
-  drill, and the bounded model-backed gate in 17,928 ms (a prior cache-warm run completed in
-  10,323 ms).
+- The current main line and latest fully verified functional release are v0.29.64 at commit
+  `d732fa6`. Release-assets workflow `31448821264` published all 18 expected assets, and the local
+  fail-closed verifier passed the cross-platform archives, checksums, minisign signatures, and
+  updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports `cortana 0.29.64`;
+  the packaged
+  Desktop app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or
+  replaced. The installed v0.29.64 core passes `--version`, `cortana doctor`, and the disposable
+  control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
+  restore, and post-restore search). A fresh v0.29.64 model-backed evaluation against the
+  persistent `auto-free` query provider passed in 12,947 ms with planner and synthesis model use,
+  valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
+  `provider_unavailable` after 30,018 ms while the gateway was degraded; the successful rerun
+  re-established provider-backed evaluation without changing the safe extractive runtime default.
+- A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
+  `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
+--strict` passed. This proves archive integrity and local signature structure only: the app was
+  not launched, notarization was not assessed, and tray, native dialogs, OAuth, and updater UI
+  remain manual gates.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite based on main commit `b31cbe2` passes all 126 tests. The
+  The current-source native Desktop suite at v0.29.64 passes all 126 tests. The
   packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
@@ -121,8 +128,8 @@ is not part of a visual/UI change.
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
-  refreshed against the v0.29.61 source tree without launching the Desktop app.
-- The current Rust library suite on the v0.29.61 source tree passes 266 tests with no failures;
+  refreshed against the v0.29.64 source tree without launching the Desktop app.
+- The current Rust library suite on the v0.29.64 source tree passes 266 tests with no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
@@ -142,10 +149,14 @@ is not part of a visual/UI change.
   full-corpus budget, and `personal-calendar` had no successful validation. This is the expected
   safety result; recurring sync remains uninstalled until complete validation and the missing Google
   token are repaired.
-- The latest headless `scripts/source-smoke.sh` validation-only pass used one document, 65,536
-  bytes, and a 30-second per-source cap: 11 of 12 enabled sources passed. `personal-calendar`
+- A fresh v0.29.64 headless `scripts/source-smoke.sh` validation-only pass used one document,
+  65,536 bytes, and a 30-second per-source cap: 11 of 12 enabled sources passed. `personal-calendar`
   failed closed as `authorization denied` because its Google refresh token is expired; no sync was
   requested and recurring sync remains uninstalled.
+- The matching v0.29.64 `--sync --include-filesystem` trial passed the same bounded,
+  `--no-reconcile --require-validation` operation for all 11 authorized sources. The calendar trial
+  was skipped after its failed validation, and the command did not install or enable recurring sync.
+- A tracked-history `gitleaks detect --redact` scan covered 967 commits and found no secrets.
 - Release v0.29.61 also carries the fail-closed recurring-sync freshness guard across every
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
@@ -171,8 +182,9 @@ is not part of a visual/UI change.
   explicitly approved.
 - A previous disposable backup/restore drill against the installed v0.29.54 CLI passed: the live
   database backup was verified, restored into a temporary data directory, and SQLite integrity
-  verification passed. The installed v0.29.60 rerun of the disposable control-plane drill also
-  passed offline init, bounded fixture
+  verification passed. A fresh v0.29.64 live backup/restore drill likewise passed backup
+  verification, disposable restore, and SQLite integrity. The installed v0.29.60 rerun of the
+  disposable control-plane drill also passed offline init, bounded fixture
   ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
   A separate live v0.29.56 backup/restore drill also passed against the configured database and
   verified the restored SQLite file; neither drill touched indexed personal data.
