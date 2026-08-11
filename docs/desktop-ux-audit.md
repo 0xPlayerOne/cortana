@@ -90,8 +90,8 @@ is not part of a visual/UI change.
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
 - The current main line is v0.29.68 at commit `e67b02e`; the latest fully verified cross-platform
-  release remains v0.29.66 at commit `15c7631`. These are release-only version/changelog/lockfile
-  bumps over v0.29.65; no functional source files changed. Release-assets workflow `31455540401`
+  release is v0.29.67 at commit `f482ba2`. These are release-only version/changelog/lockfile bumps
+  over v0.29.65; no functional source files changed. Release-assets workflow `31456659553`
   published all 18 expected assets,
   and the local fail-closed verifier passed the cross-platform archives, checksums, minisign
   signatures, and updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports
@@ -103,9 +103,9 @@ is not part of a visual/UI change.
   bounded planning, valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
   `provider_unavailable` after 30,018 ms while the gateway was degraded; the successful rerun
   re-established provider-backed evaluation without changing the safe extractive runtime default.
-  The v0.29.67 release-assets workflow `31456659553` is still completing its Windows and Linux
-  desktop jobs, and v0.29.68 workflow `31457202736` has not published assets yet; neither is treated
-  as a fully verified desktop release until the 18-asset verifier passes.
+  The local fail-closed verifier passed all 18 v0.29.67 assets, core checksums, macOS
+  bundle/resources, six Tauri updater signatures, and the updater manifest. The v0.29.68
+  workflow `31457202736` remains incomplete and is not treated as a verified desktop release.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was

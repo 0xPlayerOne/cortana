@@ -242,9 +242,10 @@ v0.29.65; no functional source files changed. The installed v0.29.67 CLI is head
 `doctor`, the disposable control-plane drill, and the configured-provider model evaluation in
 21,648 ms with planner and synthesis model use, bounded planning, valid citations, cache reuse, and
 revision invalidation. Synthesis remains disabled by default in the production configuration. The
-packaged Desktop app was not launched or replaced. The v0.29.67 release-assets workflow
-`31456659553` and v0.29.68 workflow `31457202736` remain incomplete; run the fail-closed 18-asset
-verifier before describing either release as a fully verified desktop release.
+packaged Desktop app was not launched or replaced. Release-assets workflow `31456659553` published
+all 18 v0.29.67 assets, and the fail-closed verifier passed their checksums, sidecars, macOS
+resources, six Tauri updater signatures, and manifest. The v0.29.68 workflow `31457202736` remains
+incomplete.
 The bounded control-plane, recovery, and model-backed checks are recorded in
 `docs/desktop-ux-audit.md`.
 
