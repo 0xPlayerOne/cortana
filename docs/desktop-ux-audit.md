@@ -120,7 +120,8 @@ is not part of a visual/UI change.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite on the v0.29.69 source tree passes all 129 tests. The
+  The current-source native Desktop suite on the functional tree carried into v0.30.0 passes all
+  129 tests. The
   local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
   verification fails as expected and no `TeamIdentifier` is present. Developer ID
   signing/notarization remains a release blocker; the previous v0.29.50 bundle is retained at
@@ -135,8 +136,9 @@ is not part of a visual/UI change.
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
-  refreshed against the v0.29.69 source tree without launching the Desktop app.
-- The current Rust library suite on the v0.29.69 source tree passes 253 tests with no failures;
+  refreshed against the functional tree carried into v0.30.0 without launching the Desktop app.
+- The current Rust library suite on the functional tree carried into v0.30.0 passes 253 tests with
+  no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
   separate staging-to-main promotion produces the release on `main`. Desktop checks remain
@@ -169,12 +171,13 @@ is not part of a visual/UI change.
 - The matching v0.29.64 `--sync --include-filesystem` trial passed the same bounded,
   `--no-reconcile --require-validation` operation for all 11 authorized sources. The calendar trial
   was skipped after its failed validation, and the command did not install or enable recurring sync.
-- A current v0.29.69 bounded validation of `personal-calendar` (1 document, 65,536 bytes, 30
+- A bounded validation of `personal-calendar` on the functional tree carried into v0.30.0 (1
+  document, 65,536 bytes, 30
   seconds) succeeded without writing documents, embeddings, or reconciliations and refreshed the
   owner-only Google token through its configured refresh path. Discord Desktop RPC tokens now
   refresh atomically from their owner-only refresh token before expiry; an expired token without a
   refresh token still fails closed and requests reauthorization. The local connector environment
-  was updated from v0.29.68 to v0.29.69; all four enabled Discord sources now reach the expected
+  was updated from v0.29.68 to v0.29.69; all four enabled Discord sources reached the expected
   missing OAuth-client-file guard instead of the stale CLI parser. Discord authorization and
   recurring sync therefore remain uninstalled and disabled until the owner supplies the Desktop
   RPC client/token files and every enabled source has current complete validation coverage.
@@ -186,7 +189,8 @@ is not part of a visual/UI change.
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
-- A current-source v0.29.69 model-backed evaluation ran against the configured provider without opening a personal index or
+- A current-source model-backed evaluation of the functional tree carried into v0.30.0 ran against
+  the configured provider without opening a personal index or
   starting sync/connectors and passed in 18,762 ms with planner and synthesis model use, bounded
   planning, valid citations, cache reuse, and revision invalidation. The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
