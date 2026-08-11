@@ -243,11 +243,12 @@ and configured-provider evaluation checks. Synthesis remains disabled by default
 
 The v0.30.0 release-assets workflow `31470374229` is historical evidence only: it published 14 of
 18 assets because the Windows build exposed the missing non-Unix Discord RPC methods. The v0.30.1
-release-assets workflow `31474156961` completed all five platform jobs, and
-`GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.30.1`
-passed all 18 assets, signatures, checksums, and updater-manifest checks. The installed core now
-reports v0.30.1; the packaged Desktop GUI has not been launched or replaced on this host.
-The bounded control-plane, recovery, and model-backed checks are recorded in
+release-assets workflow `31474156961` completed all five platform jobs. The v0.30.2 release-assets
+workflow `31476791815` also completed all five platform jobs; the strict
+`GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.30.2`
+check passed all 18 assets, signatures, checksums, and updater-manifest checks. The installed core
+now reports v0.30.2; the packaged Desktop GUI has not been launched or replaced on this host. The
+bounded control-plane, recovery, and model-backed checks are recorded in
 `docs/desktop-ux-audit.md`.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged

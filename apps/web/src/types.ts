@@ -175,10 +175,9 @@ export type ConfiguredSourceSummary = {
     fresh?: boolean
     age_seconds?: number
     // `complete` is false when the succeeded validation was a bounded sample
-    // that may authorize only equally bounded non-reconciling runs. `null` is
-    // exposed for records persisted before sampling existed, and older
-    // servers omit the field entirely — both keep their legacy full-corpus
-    // authority.
+    // that may authorize only equally bounded non-reconciling runs. `null` or
+    // an omitted field means completeness is unknown and cannot authorize
+    // recurring or full-corpus sync.
     complete?: boolean | null
     documents: number | null
     bytes: number | null
