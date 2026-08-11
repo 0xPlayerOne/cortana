@@ -198,7 +198,7 @@ fn desktop_linux_release_compile_is_gated() {
 
     // Workflow topology assertions.
     assert!(desktop.contains("pull_request:"));
-    assert!(desktop.contains("branches: [main]"));
+    assert!(desktop.contains("branches: [main, staging]"));
     assert!(!desktop.contains("\n  push:"));
     assert!(desktop.contains("workflow_dispatch:"));
 
@@ -491,21 +491,28 @@ fn desktop_audit_caches_cargo_audit_binary() {
 }
 
 #[test]
-fn no_staging_promotion_caller_in_direct_topology() {
-    let release = read(".github/workflows/release.yml");
-    // The caller triggers only on pushes to main.
+fn staging_promotion_caller_matches_staging_release_topology() {
+    let release_pr = read(".github/workflows/release-pr.yml");
     assert!(
-        release.contains("on:") && release.contains("branches: [main]"),
-        "direct release caller must trigger on push to main:\n{release}"
+        release_pr.contains("branches: [staging]"),
+        "staging promotion caller must trigger only on staging pushes:\n{release_pr}"
     );
-
-    // The direct topology has no staging integration branch, so no
-    // staging promotion caller exists and nothing coalesces staging pushes.
     assert!(
-        !Path::new(&repo_root())
-            .join(".github/workflows/release-pr.yml")
-            .exists(),
-        "direct topology must not keep a staging promotion caller"
+        release_pr.contains(&format!(
+            "uses: 0xPlayerOne/code-foundry/.github/workflows/release-pr.yml@{}",
+            runtime_ref()
+        )),
+        "staging promotion caller must pin the configured reusable workflow:\n{release_pr}"
+    );
+    for secret in ["CODE_FOUNDRY_TOKEN", "RELEASE_PLEASE_TOKEN"] {
+        assert!(
+            release_pr.contains(&format!("{secret}: ${{{{ secrets.{secret} }}}}")),
+            "staging promotion caller must pass `{secret}`:\n{release_pr}"
+        );
+    }
+    assert!(
+        release_pr.contains("pull-requests: write"),
+        "staging promotion caller must be allowed to create/update its PR:\n{release_pr}"
     );
 }
 

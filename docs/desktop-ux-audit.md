@@ -107,6 +107,12 @@ is not part of a visual/UI change.
   embedded core reports `cortana 0.29.69`. The developer `bundle:mac` command intentionally uses
   `--no-sign`, so strict bundle signature validation is not claimed for this local artifact. The
   signed release asset remains the authoritative package gate.
+- A fresh current-source `desktop:bundle:mac` run produced the arm64 `Cortana.app` bundle at
+  `apps/desktop/src-tauri/target/release/bundle/macos/Cortana.app`.
+  Static checks confirmed `CFBundleShortVersionString=0.29.69`, the embedded CLI reports
+  `cortana 0.29.69`, and both native executables are present. The bundle is ad-hoc (`TeamIdentifier`
+  is absent); `codesign --verify --deep --strict` and `spctl --assess` fail as expected for the
+  deliberate `--no-sign` developer build. The app was not launched.
 - A headless v0.29.66 macOS ARM packaged-app drill verified the published app archive's minisign
   signature, safe tar members, `Cortana.app` bundle, `Info.plist` version `0.29.66`, and
   `codesign --verify --deep --strict`. `spctl --assess` rejects the ad-hoc bundle (exit 3) because
