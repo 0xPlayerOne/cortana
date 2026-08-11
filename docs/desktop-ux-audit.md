@@ -182,7 +182,7 @@ is not part of a visual/UI change.
   refresh atomically from their owner-only refresh token before expiry; an expired token without a
   refresh token still fails closed and requests reauthorization. On 2026-08-11, Discord
   authorization succeeded for the Nifty League Team, Nifty League, and The Pink Binder sources;
-  bounded connector snapshots validated 25 documents per enabled source without writes. The
+  the current validation-only smoke used a one-document cap per enabled source without writes. The
   personal AMF source remains disabled, and recurring sync remains uninstalled until full
   complete validation coverage exists for every enabled source.
 - The current Desktop readiness source now compares the installed connector version with the
