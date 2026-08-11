@@ -43,11 +43,12 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   current functional tree carried into v0.30.0:** a fresh source run passed the fixture-only gate
+   current functional tree carried into v0.30.1:** the source run passed the fixture-only gate
    in 12,671 ms with planner and synthesis model use, valid citations, cache reuse, and revision
    invalidation. This remains fixture-only evidence, not packaged-app proof. Keep extractive mode
-   as the safe production default because model synthesis remains opt-in; installed 0.29.68 results
-   remain historical evidence only.
+   as the safe production default because model synthesis remains opt-in; the installed v0.30.1
+   core passed `doctor` and the disposable packaged control-plane drill, while the GUI remains
+   unlaunched.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -83,17 +84,15 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line is v0.30.0 at commit `0ab5b59` (`v0.30.0`), published from release-assets
-  workflow `31470374229`. The workflow produced 14 of the 18 expected assets; the Windows desktop
-  job failed because the Windows build exposed missing non-Unix Discord RPC stubs, so the release
-  is not yet fully verified and the Windows assets are absent. macOS ARM64, Linux desktop, and both
-  core archives completed successfully. The installed CLI `/Users/amf/.local/bin/cortana` still
-  reports `cortana 0.29.68`; the packaged Desktop app was not launched or replaced. The source
-  tree's current release metadata is v0.30.0, while the functional model/evaluation evidence below
-  was captured immediately before the metadata-only release bump.
-- Historical v0.29.69 evidence remains useful for the signed macOS/updater gates, but it must not be
-  read as proof that v0.30.0 is a complete cross-platform release until the Windows build is repaired
-  and the release assets are regenerated.
+- The current main line is v0.30.1 at commit `142ddde` (`v0.30.1`), published from release-assets
+  workflow `31474156961`. The workflow completed all five platform jobs, and the strict verifier
+  passed all 18 required core, desktop, signature, checksum, and updater assets, including the
+  repaired Windows installers. The installed CLI `/Users/amf/.local/bin/cortana` now reports
+  `cortana 0.30.1`; the packaged Desktop app was not launched. The functional model/evaluation
+  evidence below remains fixture-only evidence, while GUI/browser OAuth, tray, native dialogs, and
+  notarization remain manual gates.
+- Historical v0.30.0 evidence remains useful for the original Windows failure investigation, but it
+  must not be read as current-release proof; v0.30.1 is the verified cross-platform release.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was
@@ -121,7 +120,7 @@ is not part of a visual/UI change.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite on the functional tree carried into v0.30.0 passes all
+  The current-source native Desktop suite on the functional tree carried into v0.30.1 passes all
   129 tests. The
   local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
   verification fails as expected and no `TeamIdentifier` is present. Developer ID
@@ -137,8 +136,8 @@ is not part of a visual/UI change.
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
-  refreshed against the functional tree carried into v0.30.0 without launching the Desktop app.
-- The current Rust library suite on the functional tree carried into v0.30.0 passes 253 tests with
+  refreshed against the functional tree carried into v0.30.1 without launching the Desktop app.
+- The current Rust library suite on the functional tree carried into v0.30.1 passes 253 tests with
   no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
@@ -190,7 +189,7 @@ is not part of a visual/UI change.
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
-- A current-source model-backed evaluation of the functional tree carried into v0.30.0 ran against
+- A current-source model-backed evaluation of the functional tree carried into v0.30.1 ran against
   the configured provider without opening a personal index or
   starting sync/connectors and passed in 18,762 ms with planner and synthesis model use, bounded
   planning, valid citations, cache reuse, and revision invalidation. The source at `339240e` and packaged v0.29.31 passed historical runs,
