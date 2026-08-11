@@ -231,16 +231,20 @@ cryptographic check on hosts without `minisign`.
 
 Each release-asset download uses a bounded three-attempt retry for transient transport failures;
 the attempt budget is capped at five and the retry delay at 60 seconds. Set
-`CORTANA_DOWNLOAD_RETRY_DELAY=0` for fast offline tests. Exhausting the budget still fails the
+`CORTANA_DOWNLOAD_RETRY_DELAY=0` for fast offline tests. Every attempt also has a hard timeout,
+controlled by `CORTANA_DOWNLOAD_TIMEOUT_SECONDS` (1-600 seconds, 120 by default), so a wedged
+GitHub CLI cannot stall the release gate indefinitely. Exhausting the budget still fails the
 release gate, so missing or invalid assets are never hidden.
 
-Published v0.29.57 is the current release, and its release-assets run `31440018929` completed
-successfully with all 18 expected assets. The local verifier passed the published cross-platform
-archives, checksums, signatures, and updater manifest. The installed CLI remains
-`cortana 0.29.56` and the packaged Desktop app at `/Applications/Cortana.app` remains v0.29.55;
-neither was launched or replaced. Their bounded control-plane, recovery, and model-backed checks
-are recorded in `docs/desktop-ux-audit.md`; the temporary v0.29.57 core archive also passed
-`cortana doctor` and the model-backed gate headlessly.
+The v0.29.59 core archive passed its checksum, packaged-version, `cortana doctor`, model-backed,
+and disposable control-plane checks. Release-assets run `31443472210` completed successfully with
+all 18 expected assets. The subsequent version-only v0.29.60 release-assets run `31444139917`
+also completed with all 18 assets, and the local verifier passed its cross-platform archives,
+checksums, minisign signatures, and updater manifest. The installed CLI is now `cortana 0.29.60`
+and passes `doctor`, the disposable control-plane drill, and the model-backed gate. The packaged
+Desktop app at `/Applications/Cortana.app` remains v0.29.55; it was not launched or replaced.
+The bounded control-plane, recovery, and model-backed checks are recorded in
+`docs/desktop-ux-audit.md`.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
@@ -249,7 +253,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 Re-run the read-only verifier for an existing release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.57
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.59
 ```
 
 ## macOS launchd
