@@ -240,7 +240,7 @@ The v0.29.66 core archive passed its checksum, packaged-version, `cortana doctor
 control-plane checks. v0.29.67 through v0.29.69 are release-only version/changelog/lockfile bumps
 over v0.29.65; no functional source files changed. The installed v0.29.67 CLI is headless and
 passes `doctor`, the disposable control-plane drill, and the configured-provider model evaluation.
-The current v0.29.69 source also passed the bounded model evaluation in 18,674 ms with planner and
+The current v0.29.69 source also passed the bounded model evaluation in 18,345 ms with planner and
 synthesis model use, bounded planning, valid citations, cache reuse, and revision invalidation.
 Synthesis remains disabled by default in the production configuration. The packaged Desktop app
 was not launched or replaced. Release-assets workflow `31458199113` published all 18 v0.29.69
