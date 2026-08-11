@@ -94,8 +94,8 @@ synthesis model use, valid citations, cache reuse, and revision invalidation in 
 latest successful installed v0.29.60 aarch64 core binary rerun passed the same fixture-only evaluator in
 17,928 ms; a prior cache-warm run passed in 10,323 ms. Both runs had
 planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
-Desktop app remains installed locally at v0.29.55; the verified v0.29.63 core is installed at
-`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. A fresh v0.29.63
+Desktop app remains installed locally at v0.29.55; the verified v0.29.64 core is installed at
+`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. A fresh v0.29.64
 model-backed attempt against the configured `auto-free` provider returned a structured
 `provider_unavailable` fallback after 30,018 ms, with planner and synthesis unused, and failed the
 model-backed threshold. The provider gate is not re-asserted here.

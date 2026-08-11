@@ -89,16 +89,16 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line and latest fully verified functional release are v0.29.63 at commit
-  `85e116c`. Release-assets workflow `31447984697` published all 18 expected assets, and the local
+- The current main line and latest fully verified functional release are v0.29.64 at commit
+  `d732fa6`. Release-assets workflow `31448821264` published all 18 expected assets, and the local
   fail-closed verifier passed the cross-platform archives, checksums, minisign signatures, and
-  updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports `cortana 0.29.63`;
+  updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports `cortana 0.29.64`;
   the packaged
   Desktop app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or
-  replaced. The installed v0.29.63 core passes `--version`, `cortana doctor`, and the disposable
+  replaced. The installed v0.29.64 core passes `--version`, `cortana doctor`, and the disposable
   control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
   restore, and post-restore search). The latest successful model-backed run remains the v0.29.60
-  result at 17,928 ms (a prior cache-warm run completed in 10,323 ms); a fresh v0.29.63 attempt
+  result at 17,928 ms (a prior cache-warm run completed in 10,323 ms); a fresh v0.29.64 attempt
   against the persistent `auto-free` query provider returned a structured `provider_unavailable`
   fallback after 30,018 ms, with planner and synthesis unused, and failed the model-backed
   threshold. The runtime remained bounded and extractive retrieval stayed valid; provider-backed
