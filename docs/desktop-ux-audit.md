@@ -43,12 +43,12 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. The latest
-   installed v0.30.6 run passed the fixture-only gate on 2026-08-11 in 9,105 ms with planner and
+   installed v0.30.7 run passed the fixture-only gate on 2026-08-11 in 17,976 ms with planner and
    synthesis model use, 1.0 retrieval/citation metrics, cache reuse, and revision invalidation.
    An earlier attempt correctly failed closed with `fallback_provider_unavailable=true` during a
    transient gateway outage; the successful rerun re-established the provider gate. This remains
    fixture-only evidence, not packaged-app proof. Keep extractive mode as the safe production
-   default because model synthesis remains opt-in; the installed v0.30.6 core still passes
+   default because model synthesis remains opt-in; the installed v0.30.7 core still passes
    `doctor`, readiness, and the disposable packaged control-plane and recovery drills, while the
    GUI remains unlaunched.
 3. Provider-advertised model metadata is implemented and bounded by
@@ -109,7 +109,7 @@ is not part of a visual/UI change.
 - Historical local developer-bundle checks at v0.29.69 regenerated the expected arm64 app and
   connector sidecars, but used the deliberate `bundle:mac --no-sign` path. They are retained only
   as historical evidence; strict signature validation is not claimed for that artifact and the
-  v0.30.6 release asset is authoritative.
+  v0.30.7 release asset is authoritative.
 - A static check of the published v0.30.3 macOS ARM app archive reports
   `CFBundleShortVersionString=0.30.3` and passes `codesign --verify --deep --strict`. `spctl --assess`
   exits 3 because Developer ID signing/notarization is not configured; the app was not launched.
@@ -120,11 +120,11 @@ is not part of a visual/UI change.
   required platform entries and passed the full updater-manifest and signature gate; the app was
   not launched.
 - The full `cortana readiness` scan is a read-only operational check because it includes roughly
-  1 GB of SQLite integrity and backup scanning; the latest installed v0.30.6 run completed successfully.
+  1 GB of SQLite integrity and backup scanning; the latest installed v0.30.7 run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-- The current-source native Desktop suite on v0.30.6 passes all
+- The current-source native Desktop suite on v0.30.7 passes all
   129 tests. The
   local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
   verification fails as expected and no `TeamIdentifier` is present. Developer ID
@@ -134,15 +134,15 @@ is not part of a visual/UI change.
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
-  passes 256 tests across 22 files (latest run: 61.23 seconds, 1,263 assertions, including the
+  passes 256 tests across 22 files (latest run: 60.43 seconds, 1,268 assertions, including the
   desktop lockfile helper regression). The Python suite
   passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
-  refreshed against the v0.30.6 functional tree without launching the Desktop app.
-- The current Rust library suite on v0.30.6 passes 253 tests with
+  refreshed against the v0.30.7 functional tree without launching the Desktop app.
+- The current Rust library suite on v0.30.7 passes 253 tests with
   no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
@@ -209,14 +209,15 @@ is not part of a visual/UI change.
   checks. The earlier provider-unavailable attempt remains historical fail-closed evidence, and
   extractive mode remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
-  sync service is not installed, and all four enabled Discord sources fail closed until their
-  owner-only RPC OAuth client/token files exist. Filesystem and code sources remain bounded samples
-  (`complete=false`) or legacy records with unknown completeness; neither state authorizes a
-  full-corpus or recurring run without a fresh explicit `complete=true` validation.
+  sync service is not installed, and the configured inventory has 22 enabled sources. Eleven have
+  fresh succeeded `complete=true` validation, seven filesystem/code sources are bounded samples
+  (`complete=false`), and all four Discord RPC sources fail closed until their owner-only OAuth
+  client/token files exist. Neither sampled nor failed state authorizes a full-corpus or recurring
+  run without a fresh explicit `complete=true` validation for every enabled source.
 - A current `readiness --allow-sync-service` probe correctly failed closed without installing or
   starting sync: connector validations were below configured budgets, filesystem/code validations
   were sampled, and every Discord validation was unsuccessful. Query-only readiness still passes.
-- A current v0.30.6 packaged control-plane drill passed verified backup creation, disposable restore,
+- A current v0.30.7 packaged control-plane drill passed verified backup creation, disposable restore,
   SQLite verification, and cleanup. It also passed offline
   init, bounded fixture ingestion, search/context, metadata-only audit export, backup, restore, and
   post-restore search; neither drill touched indexed personal data.
