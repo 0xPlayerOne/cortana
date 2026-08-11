@@ -88,11 +88,10 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line is v0.29.69 at commit `a6e739f`; the latest fully verified cross-platform
-  release is v0.29.67 at commit `f482ba2`. These are release-only version/changelog/lockfile bumps
-  over v0.29.65; no functional source files changed in those release-only bumps. The published
-  v0.29.69 GitHub release contains all 18 expected assets; the latest release with a completed
-  local fail-closed archive/signature verification remains v0.29.67. The installed CLI
+- The current main line is v0.29.69 at commit `a6e739f`, which is also the latest fully verified
+  cross-platform release. The published release-assets workflow `31458199113` contains all 18
+  expected assets, and the local fail-closed verifier passed the core archive checksums, macOS
+  bundle/resources, six Tauri updater signatures, and updater manifest. The installed CLI
   `/Users/amf/.local/bin/cortana` still reports `cortana 0.29.67`; the packaged Desktop app was
   not launched or replaced. The installed v0.29.67 core passes `--version`, `cortana doctor`, and the disposable
   control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
@@ -101,10 +100,9 @@ is not part of a visual/UI change.
   bounded planning, valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
   `provider_unavailable` after 30,018 ms while the gateway was degraded; the successful rerun
   re-established provider-backed evaluation without changing the safe extractive runtime default.
-  The local fail-closed verifier passed all 18 v0.29.67 assets, core checksums, macOS
-  bundle/resources, six Tauri updater signatures, and the updater manifest. The v0.29.68 workflow
-  `31457202736` remains historical and is not treated as a verified desktop release; the current
-  v0.29.69 feature work is verified below at source level.
+  The published v0.29.69 binaries were not executed on this macOS host; the local verifier recorded
+  that platform-specific execution was skipped. The current v0.29.69 feature work is verified below
+  at source level.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was
