@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.30.7](https://github.com/0xPlayerOne/cortana/compare/v0.30.6...v0.30.7) (2026-08-11)
+
+
+### Bug Fixes
+
+* **query:** recover planner headroom release history ([49b1277](https://github.com/0xPlayerOne/cortana/commit/49b12779cb82ac61b1a756c6791338a26247526f))
+
+
+### Documentation
+
+* correct current evaluation summary ([cb0a940](https://github.com/0xPlayerOne/cortana/commit/cb0a9407f4e8d3bd223584ff98fab4fd131941b6))
+
 ## [0.30.6](https://github.com/0xPlayerOne/cortana/compare/v0.30.5...v0.30.6) (2026-08-11)
 
 
