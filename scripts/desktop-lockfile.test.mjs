@@ -4,10 +4,7 @@ import { join } from 'node:path'
 
 import { expect, test } from 'bun:test'
 
-import {
-  hasReleasePleaseAnnotation,
-  restoreReleasePleaseAnnotation,
-} from './desktop-lockfile.mjs'
+import { hasReleasePleaseAnnotation, restoreReleasePleaseAnnotation } from './desktop-lockfile.mjs'
 
 const lockfile = `[[package]]
 name = "cortana-desktop"
