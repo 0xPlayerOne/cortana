@@ -182,8 +182,9 @@ is not part of a visual/UI change.
   explicitly approved.
 - A previous disposable backup/restore drill against the installed v0.29.54 CLI passed: the live
   database backup was verified, restored into a temporary data directory, and SQLite integrity
-  verification passed. The installed v0.29.60 rerun of the disposable control-plane drill also
-  passed offline init, bounded fixture
+  verification passed. A fresh v0.29.64 live backup/restore drill likewise passed backup
+  verification, disposable restore, and SQLite integrity. The installed v0.29.60 rerun of the
+  disposable control-plane drill also passed offline init, bounded fixture
   ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
   A separate live v0.29.56 backup/restore drill also passed against the configured database and
   verified the restored SQLite file; neither drill touched indexed personal data.
