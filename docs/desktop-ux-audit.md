@@ -128,7 +128,7 @@ is not part of a visual/UI change.
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full web suite
   passes 252 tests across 21 files (latest run: 52.15 seconds, 1,260 assertions). The Python suite
-  passes 158 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
+  passes 159 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
