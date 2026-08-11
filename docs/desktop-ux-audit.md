@@ -72,7 +72,7 @@ is not part of a visual/UI change.
    Cortana's configured token location, but its current refresh token record expired on
    2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
    PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; the current main line is
-   v0.29.68. The locally installed CLI remains v0.29.67 and emits reauthorization guidance;
+   v0.29.68. The locally installed CLI now uses v0.29.68 and emits reauthorization guidance;
    the packaged Desktop app was not launched or replaced.
    Recurring sync must remain disabled until browser authorization succeeds and the source is
    revalidated.
@@ -89,13 +89,13 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line is v0.29.68 at commit `e67b02e`; the latest fully verified cross-platform
-  release is v0.29.67 at commit `f482ba2`. These are release-only version/changelog/lockfile bumps
-  over v0.29.65; no functional source files changed. Release-assets workflow `31456659553`
+- The current main line and latest fully verified cross-platform release are v0.29.68 at commit
+  `e67b02e`. This is a release-only version/changelog/lockfile bump over v0.29.65; no functional
+  source files changed. Release-assets workflow `31457202736`
   published all 18 expected assets,
   and the local fail-closed verifier passed the cross-platform archives, checksums, minisign
   signatures, and updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports
-  `cortana 0.29.67`; the packaged Desktop app was not launched or replaced. The installed v0.29.67
+  `cortana 0.29.68`; the packaged Desktop app was not launched or replaced. The installed v0.29.68
   core passes `--version`, `cortana doctor`, and the disposable
   control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
   restore, and post-restore search). A fresh v0.29.67 model-backed evaluation against the
@@ -103,9 +103,8 @@ is not part of a visual/UI change.
   bounded planning, valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
   `provider_unavailable` after 30,018 ms while the gateway was degraded; the successful rerun
   re-established provider-backed evaluation without changing the safe extractive runtime default.
-  The local fail-closed verifier passed all 18 v0.29.67 assets, core checksums, macOS
-  bundle/resources, six Tauri updater signatures, and the updater manifest. The v0.29.68
-  workflow `31457202736` remains incomplete and is not treated as a verified desktop release.
+  The local fail-closed verifier passed all 18 v0.29.68 assets, core checksums, macOS
+  bundle/resources, six Tauri updater signatures, and the updater manifest.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was
