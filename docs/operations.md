@@ -237,15 +237,15 @@ GitHub CLI cannot stall the release gate indefinitely. Exhausting the budget sti
 release gate, so missing or invalid assets are never hidden.
 
 The v0.29.66 core archive passed its checksum, packaged-version, `cortana doctor`, and disposable
-control-plane checks. v0.29.67 and v0.29.68 are release-only version/changelog/lockfile bumps over
-v0.29.65; no functional source files changed. The installed v0.29.67 CLI is headless and passes
-`doctor`, the disposable control-plane drill, and the configured-provider model evaluation in
-21,648 ms with planner and synthesis model use, bounded planning, valid citations, cache reuse, and
-revision invalidation. Synthesis remains disabled by default in the production configuration. The
-packaged Desktop app was not launched or replaced. Release-assets workflow `31456659553` published
-all 18 v0.29.67 assets, and the fail-closed verifier passed their checksums, sidecars, macOS
-resources, six Tauri updater signatures, and manifest. The v0.29.68 workflow `31457202736` remains
-incomplete.
+control-plane checks. v0.29.67 through v0.29.69 are release-only version/changelog/lockfile bumps
+over v0.29.65; no functional source files changed. The installed v0.29.67 CLI is headless and
+passes `doctor`, the disposable control-plane drill, and the configured-provider model evaluation.
+The current v0.29.69 source also passed the bounded model evaluation in 18,674 ms with planner and
+synthesis model use, bounded planning, valid citations, cache reuse, and revision invalidation.
+Synthesis remains disabled by default in the production configuration. The packaged Desktop app
+was not launched or replaced. Release-assets workflow `31458199113` published all 18 v0.29.69
+assets, and the fail-closed verifier passed their checksums, sidecars, macOS resources, six Tauri
+updater signatures, and manifest.
 The bounded control-plane, recovery, and model-backed checks are recorded in
 `docs/desktop-ux-audit.md`.
 
@@ -256,13 +256,13 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 Re-run the read-only verifier for an existing release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.66
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.69
 ```
 
-The v0.29.67 core archive can also be verified independently:
+The v0.29.69 core archive can also be verified independently:
 
 ```bash
-scripts/verify-release.sh cortana-v0.29.67-aarch64-apple-darwin.tar.gz
+scripts/verify-release.sh cortana-v0.29.69-aarch64-apple-darwin.tar.gz
 ```
 
 ## macOS launchd

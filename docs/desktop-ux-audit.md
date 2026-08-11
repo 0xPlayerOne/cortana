@@ -108,6 +108,11 @@ is not part of a visual/UI change.
 --strict` passed. This proves archive integrity and local signature structure only: the app was
   not launched, notarization was not assessed, and tray, native dialogs, OAuth, and updater UI
   remain manual gates.
+- A fresh local source build regenerated `target/release/bundle/macos/Cortana.app` at version
+  `0.29.69`, with both executable sidecars and the bundled connector resources present; the
+  embedded core reports `cortana 0.29.69`. The developer `bundle:mac` command intentionally uses
+  `--no-sign`, so strict bundle signature validation is not claimed for this local artifact. The
+  signed release asset remains the authoritative package gate.
 - A headless v0.29.66 macOS ARM packaged-app drill verified the published app archive's minisign
   signature, safe tar members, `Cortana.app` bundle, `Info.plist` version `0.29.66`, and
   `codesign --verify --deep --strict`. `spctl --assess` rejects the ad-hoc bundle (exit 3) because
