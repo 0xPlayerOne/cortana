@@ -235,10 +235,10 @@ Discord authorization uses the signed-in **Discord Desktop** client and assigns 
 workspace without adding a bot to any server. Create an OAuth application in the
 [Discord developer portal](https://discord.com/developers/applications), register the exact
 desktop redirect URI `http://127.0.0.1/callback` under OAuth2, and save a JSON file with the
-application's client id (plus the optional client secret for confidential apps):
+application's client id and client secret:
 
 ```json
-{ "client_id": "123456789012345678", "client_secret": "optional-secret" }
+{ "client_id": "123456789012345678", "client_secret": "application-secret" }
 ```
 
 Configure an absolute OAuth client path and an absolute private user-token destination on the
