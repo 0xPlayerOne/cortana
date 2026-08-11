@@ -9,7 +9,7 @@ use serde::Serialize;
 use crate::config::{Config, SourceConfig};
 
 const DEFAULT_GOOGLE_ACCOUNTS: &[&str] = &["work", "personal", "special"];
-const SECRET_NAMES: &[&str] = &["DISCORD_BOT_TOKEN", "SLACK_BOT_TOKEN"];
+const SECRET_NAMES: &[&str] = &["SLACK_BOT_TOKEN"];
 
 #[derive(Debug)]
 pub struct HermesMigrationOptions {
@@ -19,7 +19,6 @@ pub struct HermesMigrationOptions {
     pub data_dir: Option<PathBuf>,
     pub connector_command: Option<PathBuf>,
     pub google_accounts: Vec<String>,
-    pub discord_channels: Vec<String>,
     pub slack_channels: Vec<String>,
     pub force: bool,
 }
@@ -206,21 +205,6 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
         );
         calendar.token = Some(token);
         config.sources.push(calendar);
-    }
-    if !options.discord_channels.is_empty() {
-        let mut discord = source(
-            "community-discord",
-            "discord",
-            "community",
-            None,
-            Some("community-discord"),
-        );
-        discord.channels.clone_from(&options.discord_channels);
-        discord.token_env = Some("DISCORD_BOT_TOKEN".into());
-        discord.enabled = secrets
-            .iter()
-            .any(|entry| entry.starts_with("DISCORD_BOT_TOKEN="));
-        config.sources.push(discord);
     }
     if !options.slack_channels.is_empty() {
         let mut slack = source("team-slack", "slack", "work", None, Some("team-slack"));
@@ -446,7 +430,6 @@ mod tests {
             data_dir: Some(root.join("data")),
             connector_command: Some(root.join("venv/bin/cortana-connectors")),
             google_accounts: Vec::new(),
-            discord_channels: vec!["123456789".into()],
             slack_channels: Vec::new(),
             force: false,
         }
@@ -464,7 +447,7 @@ mod tests {
         .expect("token");
         fs::write(
             options.hermes_home.join(".env"),
-            "DISCORD_BOT_TOKEN=discord-private\nUNRELATED_SECRET=do-not-copy\n",
+            "SLACK_BOT_TOKEN=slack-private\nUNRELATED_SECRET=do-not-copy\n",
         )
         .expect("environment");
 
@@ -494,7 +477,7 @@ mod tests {
                 .join("secrets.env"),
         )
         .expect("secrets");
-        assert_eq!(secrets, "DISCORD_BOT_TOKEN=discord-private\n");
+        assert_eq!(secrets, "SLACK_BOT_TOKEN=slack-private\n");
         assert!(!secrets.contains("UNRELATED_SECRET"));
     }
 
@@ -525,7 +508,7 @@ mod tests {
         .expect("token");
         fs::write(
             options.hermes_home.join(".env"),
-            "DISCORD_BOT_TOKEN=private\n",
+            "SLACK_BOT_TOKEN=private\n",
         )
         .expect("environment");
 

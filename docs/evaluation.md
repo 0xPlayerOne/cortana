@@ -94,11 +94,11 @@ synthesis model use, valid citations, cache reuse, and revision invalidation in 
 latest successful installed v0.29.60 aarch64 core binary rerun passed the same fixture-only evaluator in
 17,928 ms; a prior cache-warm run passed in 10,323 ms. Both runs had
 planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
-Desktop app was not launched; the verified v0.29.67 core is installed at
-`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 and v0.29.68
+Desktop app was not launched; the verified v0.29.67 core remains installed at
+`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 through v0.29.69
 are release-only version/changelog/lockfile bumps over v0.29.65 with no functional source changes.
-A fresh v0.29.67 model-backed evaluation against the configured provider passed in 21,648 ms with
-planner and synthesis model use, bounded planning, valid citations, cache reuse, and revision
+A current-source v0.29.69 model-backed evaluation against the configured provider passed in 18,345 ms
+with planner and synthesis model use, bounded planning, valid citations, cache reuse, and revision
 invalidation. An
 earlier bounded provider-unavailable attempt remains historical evidence of the fail-closed path;
 the successful rerun re-established the provider gate without changing the safe extractive default.

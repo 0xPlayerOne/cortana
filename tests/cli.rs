@@ -95,7 +95,7 @@ fn discord_channel_discovery_requires_a_discord_connector() {
 }
 
 #[test]
-fn discord_channel_discovery_fails_closed_before_network_without_token() {
+fn discord_channel_discovery_requires_explicit_rpc_paths() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");
     fs::write(
@@ -105,8 +105,7 @@ fn discord_channel_discovery_fails_closed_before_network_without_token() {
              [[sources]]\n\
              name = \"community\"\n\
              kind = \"discord\"\n\
-             project = \"work\"\n\
-             token_env = \"CORTANA_TEST_DISCORD_BOT_TOKEN\"\n",
+             project = \"work\"\n",
             directory.path().join("data")
         ),
     )
@@ -120,7 +119,7 @@ fn discord_channel_discovery_fails_closed_before_network_without_token() {
         .assert()
         .failure()
         .stderr(predicate::str::contains(
-            "Discord bot token environment variable CORTANA_TEST_DISCORD_BOT_TOKEN is not configured",
+            "requires a Discord RPC token file and OAuth client path",
         ))
         .stdout(predicate::str::is_empty());
 }
@@ -137,8 +136,11 @@ fn slack_workspace_discovery_requires_a_slack_connector() {
              name = \"community\"\n\
              kind = \"discord\"\n\
              project = \"community\"\n\
-             token_env = \"DISCORD_BOT_TOKEN\"\n",
-            directory.path().join("data")
+             token = {:?}\n\
+             oauth_client = {:?}\n",
+            directory.path().join("data"),
+            directory.path().join("discord-token.json"),
+            directory.path().join("discord-client.json")
         ),
     )
     .expect("write config");
@@ -203,8 +205,11 @@ fn buzz_community_discovery_requires_a_buzz_connector() {
              name = \"community\"\n\
              kind = \"discord\"\n\
              project = \"community\"\n\
-             token_env = \"DISCORD_BOT_TOKEN\"\n",
-            directory.path().join("data")
+             token = {:?}\n\
+             oauth_client = {:?}\n",
+            directory.path().join("data"),
+            directory.path().join("discord-token.json"),
+            directory.path().join("discord-client.json")
         ),
     )
     .expect("write config");

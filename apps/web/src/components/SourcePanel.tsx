@@ -279,7 +279,7 @@ export function SourcePanel({
                 const needsBrowserAuthorization =
                   (auth?.method === 'google_oauth' ||
                     auth?.method === 'github_oauth' ||
-                    auth?.method === 'discord_oauth') &&
+                    auth?.method === 'discord_rpc') &&
                   !auth.authorized &&
                   !needsProviderSetup
                 const sourceJobActive = active.some(
@@ -333,7 +333,7 @@ export function SourcePanel({
                                 ? 'Open Google source settings'
                                 : auth?.method === 'github_oauth'
                                   ? 'Open GitHub source settings'
-                                  : auth?.method === 'discord_oauth'
+                                  : auth?.method === 'discord_rpc'
                                     ? 'Open Discord source settings'
                                     : 'Open the provider setup page'
                           }
@@ -344,7 +344,7 @@ export function SourcePanel({
                                 ? 'Open Google source settings'
                                 : auth?.method === 'github_oauth'
                                   ? 'Open GitHub source settings'
-                                  : auth?.method === 'discord_oauth'
+                                  : auth?.method === 'discord_rpc'
                                     ? 'Open Discord source settings'
                                     : 'Open the provider setup page'
                           }
@@ -369,8 +369,8 @@ export function SourcePanel({
                               ? 'Wait for the active source job to finish'
                               : auth?.method === 'github_oauth'
                                 ? 'Authorize this GitHub source in your browser'
-                                : auth?.method === 'discord_oauth'
-                                  ? 'Authorize this Discord source in your browser'
+                                : auth?.method === 'discord_rpc'
+                                  ? 'Approve this Discord source in the running Discord Desktop client'
                                   : 'Authorize this Google source in your browser'
                           }
                           data-tooltip={
@@ -378,8 +378,8 @@ export function SourcePanel({
                               ? 'Wait for the active source job to finish'
                               : auth?.method === 'github_oauth'
                                 ? 'Authorize this GitHub source in your browser'
-                                : auth?.method === 'discord_oauth'
-                                  ? 'Authorize this Discord source in your browser'
+                                : auth?.method === 'discord_rpc'
+                                  ? 'Approve this Discord source in the running Discord Desktop client'
                                   : 'Authorize this Google source in your browser'
                           }
                           disabled={

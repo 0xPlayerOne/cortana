@@ -3,13 +3,16 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import socket
 import sqlite3
 import stat
+import struct
 import sys
+import tempfile
 import time
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -316,24 +319,22 @@ def _slack_cache(cache_dir: Path) -> sqlite3.Connection:
 def fetch_discord(
     channel_ids: list[str],
     project: str,
-    token_env: str = "DISCORD_BOT_TOKEN",
+    token_path: Path,
+    oauth_client_path: Path,
     cache_dir: Path | None = None,
     max_documents: int | None = None,
 ) -> Iterable[Document]:
-    token = _required_env(token_env)
-    headers = {"Authorization": f"Bot {token}"}
-    with httpx.Client(
-        base_url="https://discord.com/api/v10",
-        headers=headers,
-        timeout=30,
-        follow_redirects=False,
-    ) as client:
-        # A bounded run is intentionally read-only with respect to the
-        # persistent cursor cache. A partial snapshot must not advance a
-        # cursor past records that were never enumerated.
+    client_id = _read_discord_client_id(oauth_client_path)
+    access_token = _read_discord_access_token(token_path, oauth_client_path)
+    rpc = _DiscordRpc.connect(client_id, access_token)
+    try:
+        # Bounded validation is read-only. A full run records the messages
+        # currently available through Discord Desktop RPC without deleting
+        # older rows: RPC has no paginated history endpoint, so a snapshot is
+        # not proof that older cached messages disappeared.
         if cache_dir is not None and max_documents is None:
             yield from _fetch_discord_cached(
-                client,
+                rpc,
                 channel_ids,
                 project,
                 cache_dir,
@@ -342,32 +343,20 @@ def fetch_discord(
             return
         emitted = 0
         for channel_id in channel_ids:
-            before: str | None = None
-            while True:
-                params: dict[str, Any] = {"limit": min(100, max_documents or 100)}
-                if before:
-                    params["before"] = before
-                response = _get_with_backoff(
-                    client, f"/channels/{channel_id}/messages", params=params
-                )
-                response.raise_for_status()
-                messages = _discord_page(json_payload(response))
-                if not messages:
-                    break
-                for message in messages:
-                    document = _discord_document(message, channel_id, project)
-                    if document is not None:
-                        yield document
-                        emitted += 1
-                        if max_documents is not None and emitted >= max_documents:
-                            return
-                before = str(messages[-1]["id"])
-                if len(messages) < 100:
-                    break
+            messages = _discord_page(rpc.get_channel(channel_id).get("messages", []))
+            for message in messages:
+                document = _discord_document(message, channel_id, project)
+                if document is not None:
+                    yield document
+                    emitted += 1
+                    if max_documents is not None and emitted >= max_documents:
+                        return
+    finally:
+        rpc.close()
 
 
 def _fetch_discord_cached(
-    client: httpx.Client,
+    client: _DiscordRpc,
     channel_ids: list[str],
     project: str,
     cache_dir: Path,
@@ -376,66 +365,22 @@ def _fetch_discord_cached(
     cache = _discord_cache(cache_dir)
     try:
         for channel_id in channel_ids:
-            row = cache.execute(
-                "SELECT latest_id,last_full FROM channels WHERE channel_id=?",
-                (channel_id,),
-            ).fetchone()
-            full = row is None or _full_refresh_due(str(row[1]))
-            latest_id = None if row is None else str(row[0] or "")
-            before: str | None = None
-            after = None if full else latest_id
-            while True:
-                params: dict[str, Any] = {"limit": 100}
-                if full and before:
-                    params["before"] = before
-                elif not full and after:
-                    params["after"] = after
-                response = _get_with_backoff(
-                    client, f"/channels/{channel_id}/messages", params=params
-                )
-                response.raise_for_status()
-                messages = _discord_page(json_payload(response))
-                if not messages:
-                    break
-                for message in messages:
-                    message_id = str(message["id"])
-                    cache.execute(
-                        "INSERT OR REPLACE INTO discord_messages(id,channel_id,body) VALUES(?,?,?)",
-                        (
-                            message_id,
-                            channel_id,
-                            json.dumps(message, separators=(",", ":")),
-                        ),
-                    )
-                    if full:
-                        cache.execute(
-                            "INSERT OR IGNORE INTO seen(channel_id,id) VALUES(?,?)",
-                            (channel_id, message_id),
-                        )
-                    if not latest_id or int(message_id) > int(latest_id):
-                        latest_id = message_id
-                cache.commit()
-                if len(messages) < 100:
-                    break
-                if full:
-                    before = str(messages[-1]["id"])
-                else:
-                    next_after = max((str(message["id"]) for message in messages), key=int)
-                    if next_after == after:
-                        break
-                    after = next_after
-            if full:
+            messages = _discord_page(client.get_channel(channel_id).get("messages", []))
+            latest_id = None
+            for message in messages:
+                message_id = str(message["id"])
                 cache.execute(
-                    "DELETE FROM discord_messages WHERE channel_id=? "
-                    "AND id NOT IN (SELECT id FROM seen WHERE channel_id=?)",
-                    (channel_id, channel_id),
+                    "INSERT OR REPLACE INTO discord_messages(id,channel_id,body) VALUES(?,?,?)",
+                    (message_id, channel_id, json.dumps(message, separators=(",", ":"))),
                 )
+                if not latest_id or int(message_id) > int(latest_id):
+                    latest_id = message_id
             cache.execute(
                 "INSERT OR REPLACE INTO channels(channel_id,latest_id,last_full) VALUES(?,?,?)",
                 (
                     channel_id,
                     latest_id,
-                    dt.datetime.now(dt.UTC).isoformat() if full else str(row[1]),
+                    dt.datetime.now(dt.UTC).isoformat(),
                 ),
             )
             cache.commit()
@@ -496,11 +441,257 @@ def _discord_cache(cache_dir: Path) -> sqlite3.Connection:
         "CREATE TABLE IF NOT EXISTS channels("
         "channel_id TEXT PRIMARY KEY,latest_id TEXT,last_full TEXT NOT NULL)"
     )
-    connection.execute(
-        "CREATE TEMP TABLE seen(channel_id TEXT NOT NULL,id TEXT NOT NULL,"
-        "PRIMARY KEY(channel_id,id))"
-    )
     return connection
+
+
+class _DiscordRpc:
+    _OP_FRAME = 1
+    _MAX_FRAME_BYTES = 4 * 1024 * 1024
+
+    def __init__(self, connection: socket.socket):
+        self._socket = connection
+
+    @classmethod
+    def connect(cls, client_id: str, access_token: str) -> _DiscordRpc:
+        last_error: str | None = None
+        for path in _discord_socket_paths():
+            connection: socket.socket | None = None
+            try:
+                connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                connection.settimeout(30)
+                connection.connect(path)
+                rpc = cls(connection)
+                rpc._send(0, {"v": 1, "client_id": client_id})
+                ready = rpc._read()
+                if ready.get("evt") != "READY":
+                    raise RuntimeError("Discord RPC handshake failed")
+                rpc._request("AUTHENTICATE", {"access_token": access_token})
+                return rpc
+            except (OSError, RuntimeError) as error:
+                if connection is not None:
+                    connection.close()
+                last_error = str(error)
+        detail = f": {last_error}" if last_error else ""
+        raise RuntimeError(
+            "Discord Desktop RPC is unavailable; start Discord and authorize Cortana" + detail
+        )
+
+    def get_channel(self, channel_id: str) -> dict[str, Any]:
+        response = self._request("GET_CHANNEL", {"channel_id": channel_id})
+        data = response.get("data")
+        if not isinstance(data, dict):
+            raise RuntimeError("Discord RPC returned invalid channel data")
+        return cast(dict[str, Any], data)
+
+    def close(self) -> None:
+        self._socket.close()
+
+    def _request(self, command: str, args: dict[str, Any]) -> dict[str, Any]:
+        nonce = f"cortana-{os.urandom(12).hex()}"
+        self._send(self._OP_FRAME, {"cmd": command, "args": args, "nonce": nonce})
+        while True:
+            response = self._read()
+            if response.get("nonce") != nonce:
+                continue
+            if response.get("evt") == "ERROR":
+                raise RuntimeError(f"Discord RPC {command} failed")
+            return response
+
+    def _send(self, opcode: int, payload: dict[str, Any]) -> None:
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        if len(body) > self._MAX_FRAME_BYTES:
+            raise RuntimeError("Discord RPC request exceeded the safety limit")
+        self._socket.sendall(struct.pack("<II", opcode, len(body)) + body)
+
+    def _read(self) -> dict[str, Any]:
+        header = _read_exact(self._socket, 8)
+        opcode, length = struct.unpack("<II", header)
+        if opcode != self._OP_FRAME:
+            raise RuntimeError("Discord RPC returned an unsupported opcode")
+        if length > self._MAX_FRAME_BYTES:
+            raise RuntimeError("Discord RPC response exceeded the safety limit")
+        value = json.loads(_read_exact(self._socket, length).decode("utf-8"))
+        if not isinstance(value, dict):
+            raise RuntimeError("Discord RPC returned invalid JSON")
+        return value
+
+
+def _read_exact(connection: socket.socket, length: int) -> bytes:
+    body = bytearray()
+    while len(body) < length:
+        chunk = connection.recv(length - len(body))
+        if not chunk:
+            raise RuntimeError("Discord RPC connection closed unexpectedly")
+        body.extend(chunk)
+    return bytes(body)
+
+
+def _discord_socket_paths() -> list[str]:
+    roots: list[str] = []
+    for variable in ("XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"):
+        value = os.environ.get(variable, "").strip()
+        if value and value not in roots:
+            roots.append(value)
+    if "/tmp" not in roots:
+        roots.append("/tmp")
+    return [os.path.join(root, f"discord-ipc-{index}") for root in roots for index in range(10)]
+
+
+def _read_discord_client_id(path: Path) -> str:
+    data = _read_private_json(path, "Discord OAuth client")
+    client_id = str(data.get("client_id") or "").strip()
+    if (
+        not client_id
+        or len(client_id) > 2048
+        or any(character.isspace() for character in client_id)
+    ):
+        raise RuntimeError("Discord OAuth client has an invalid client_id")
+    return client_id
+
+
+def _read_discord_access_token(path: Path, oauth_client_path: Path) -> str:
+    data = _read_private_json(path, "Discord RPC token")
+    token = str(data.get("access_token") or "").strip()
+    if not token or len(token) > 16 * 1024 or any(character.isspace() for character in token):
+        raise RuntimeError("Discord RPC token is invalid; authorize Discord again")
+    if not _discord_token_expired(data):
+        return token
+    refresh_token = str(data.get("refresh_token") or "").strip()
+    if (
+        not refresh_token
+        or len(refresh_token) > 16 * 1024
+        or any(character.isspace() for character in refresh_token)
+    ):
+        raise RuntimeError("Discord authorization cannot be refreshed; authorize Discord again")
+    client = _read_private_json(oauth_client_path, "Discord OAuth client")
+    client_id = str(client.get("client_id") or "").strip()
+    if (
+        not client_id
+        or len(client_id) > 2048
+        or any(character.isspace() for character in client_id)
+    ):
+        raise RuntimeError("Discord OAuth client has an invalid client_id")
+    form: dict[str, str] = {
+        "client_id": client_id,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+    secret = str(client.get("client_secret") or "").strip()
+    if secret:
+        form["client_secret"] = secret
+    try:
+        with httpx.Client(timeout=30, follow_redirects=False) as http:
+            response = http.post("https://discord.com/api/oauth2/token", data=form)
+    except httpx.HTTPError as error:
+        raise RuntimeError("Discord authorization refresh request failed") from error
+    if response.status_code < 200 or response.status_code >= 300:
+        raise RuntimeError(f"Discord token refresh failed with status {response.status_code}")
+    if len(response.content) > 64 * 1024:
+        raise RuntimeError("Discord token refresh response exceeds 64 KiB")
+    try:
+        refreshed = response.json()
+    except (ValueError, json.JSONDecodeError) as error:
+        raise RuntimeError("Discord token refresh response is invalid JSON") from error
+    if not isinstance(refreshed, dict):
+        raise RuntimeError("Discord token refresh response must be an object")
+    next_access = str(refreshed.get("access_token") or "").strip()
+    if (
+        not next_access
+        or len(next_access) > 16 * 1024
+        or any(character.isspace() for character in next_access)
+    ):
+        raise RuntimeError("Discord token refresh returned an invalid access token")
+    next_refresh = str(refreshed.get("refresh_token") or "").strip() or refresh_token
+    if len(next_refresh) > 16 * 1024 or any(character.isspace() for character in next_refresh):
+        raise RuntimeError("Discord token refresh returned an invalid refresh token")
+    expires_in = refreshed.get("expires_in", 604800)
+    try:
+        expires_seconds = max(0, int(expires_in))
+    except (TypeError, ValueError) as error:
+        raise RuntimeError("Discord token refresh returned an invalid expiry") from error
+    next_data = dict(data)
+    next_data.update(
+        {
+            "access_token": next_access,
+            "token_type": str(refreshed.get("token_type") or data.get("token_type") or "Bearer"),
+            "refresh_token": next_refresh,
+            "scope": refreshed.get("scope") or data.get("scope"),
+            "expiry": (dt.datetime.now(dt.UTC) + dt.timedelta(seconds=expires_seconds)).isoformat(),
+        }
+    )
+    _write_private_json(path, next_data, "Discord RPC token")
+    return next_access
+
+
+def _discord_token_expired(data: dict[str, Any]) -> bool:
+    value = data.get("expiry")
+    if not isinstance(value, str) or not value.strip():
+        return True
+    try:
+        expiry = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=dt.UTC)
+    return expiry <= dt.datetime.now(dt.UTC) + dt.timedelta(seconds=60)
+
+
+def _write_private_json(path: Path, data: dict[str, Any], label: str) -> None:
+    if not path.is_absolute():
+        raise RuntimeError(f"{label} path must be absolute")
+    _reject_symlink_components(path)
+    parent = path.parent
+    parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    parent.chmod(0o700)
+    if path.exists() and path.is_symlink():
+        raise RuntimeError(f"{label} must not be a symlink")
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=parent, prefix=".cortana-discord-", delete=False
+        ) as file:
+            temporary = Path(file.name)
+            file.write(json.dumps(data, indent=2, sort_keys=True))
+            file.write("\n")
+            file.flush()
+            os.fchmod(file.fileno(), 0o600)
+            os.fsync(file.fileno())
+        os.replace(temporary, path)
+        path.chmod(0o600)
+    except OSError as error:
+        raise RuntimeError(f"could not persist {label}") from error
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink(missing_ok=True)
+
+
+def _read_private_json(path: Path, label: str) -> dict[str, Any]:
+    if not path.is_absolute():
+        raise RuntimeError(f"{label} path must be absolute")
+    current = path
+    while True:
+        try:
+            metadata = current.lstat()
+        except FileNotFoundError:
+            metadata = None
+        if metadata is not None and stat.S_ISLNK(metadata.st_mode):
+            raise RuntimeError(f"{label} must not contain a symlink")
+        if current == current.parent:
+            break
+        current = current.parent
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError(f"{label} must be a regular, non-symlink file")
+    if path.stat().st_mode & 0o077:
+        raise RuntimeError(f"{label} must be owner-only")
+    if path.stat().st_size > 64 * 1024:
+        raise RuntimeError(f"{label} exceeds 64 KiB")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError(f"{label} JSON is invalid") from error
+    if not isinstance(value, dict):
+        raise RuntimeError(f"{label} JSON must be an object")
+    return value
 
 
 def _prepare_private_cache_directory(path: Path) -> None:

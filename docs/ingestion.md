@@ -126,37 +126,37 @@ configured document cap and never reconcile deletions.
 
 ## Credentials
 
-- Slack and Discord tokens are read only from the configured environment-variable name.
-  Slack and Discord browser OAuth adds a separate owner-only **user** token file; the
-  environment-variable bot token is a credential, never a path, and stays required for
-  message sync.
+- Slack tokens are read from the configured environment-variable name. Slack browser OAuth
+  adds a separate owner-only user-token file for workspace assignment; the Slack bot token
+  remains the operational message-sync credential.
+- Discord uses the signed-in Discord Desktop client through its local RPC socket. Cortana stores
+  the resulting owner-only RPC access token in the configured `token` file and never accepts a
+  pasted Discord credential or an environment-variable token.
 - GitHub code sources read either a personal/GitHub App access token from the configured
   environment-variable name or a private OAuth token JSON file, and always require an explicit
   repository allowlist. `cortana authorize-github SOURCE` uses the configured GitHub OAuth client
   id JSON and device flow, while `cortana github-repositories SOURCE` returns a bounded safe
   repository list for Desktop selection. The Desktop chooser persists only explicitly checked
   `owner/repository` entries. Neither command reads repository content.
-- `cortana discord-channels SOURCE` returns a bounded, read-only guild and channel list for
-  Desktop selection using Discord REST v10 and the configured bot token environment variable. It
-  never reads message content, never starts a sync, and never prints the token. The Desktop
-  chooser persists only explicitly checked channel snowflake IDs; the renderer can send only the
-  source name and selected channel IDs.
+- `cortana discord-channels SOURCE` returns a bounded, read-only guild and channel list through
+  the running Discord Desktop RPC client. It never accepts a pasted credential, starts ingestion, or
+  prints the RPC token. The Desktop chooser persists only explicitly checked channel snowflake
+  IDs; the renderer can send only the source name and selected channel IDs.
 - `cortana provider-models --kind embedding|query` returns the bounded model catalog the
   configured OpenAI-compatible provider advertises through `/models` (sanitized ids plus explicit
   capability metadata only when the provider publishes it). The Desktop model selectors use it
   when available and fall back to the local Qwen presets or the saved custom model otherwise. The
   call is read-only, never follows redirects, uses a strict timeout, and never prints the provider
   API key.
-- `cortana authorize-discord SOURCE` runs Discord browser OAuth (Authorization Code + PKCE against
-  the fixed endpoints `https://discord.com/oauth2/authorize` and
-  `https://discord.com/api/oauth2/token`) with the source's OAuth client JSON and stores the
-  resulting user token in the source's private token file. `cortana discord-servers SOURCE` lists
-  the bounded servers (guilds) the authorized user belongs to using the stored user token against
-  `https://discord.com/api/v10/users/@me/guilds`, refreshing the token once when it is expired or
-  rejected. Server selection is persisted per source in `servers`; each Discord source belongs to
-  exactly one workspace, so that is the per-workspace server assignment. Channel listing and
-  message sync remain bot-token based because Discord exposes them only to bots; a source with no
-  OAuth setup keeps the plain bot-token discovery behavior unchanged.
+- `cortana authorize-discord SOURCE` asks the running Discord Desktop client to authorize the
+  configured application with the `rpc`, `identify`, and `messages.read` scopes, exchanges the
+  returned code at Discord's token endpoint, and stores the resulting token in the private source
+  token file. `cortana discord-servers SOURCE` lists the bounded guilds visible to that authorized
+  desktop client through RPC, and `cortana discord-channels SOURCE` lists their channels. Server
+  selection is persisted per source in `servers`; each Discord source belongs to exactly one
+  workspace. RPC does not expose a paginated historical-message command, so ingestion captures
+  the bounded messages returned by channel reads and upserts later snapshots without
+  pruning records it could not enumerate.
 - `cortana authorize-slack SOURCE` runs Slack browser OAuth (Authorization Code + PKCE against
   the fixed endpoints `https://slack.com/oauth/v2/authorize` and
   `https://slack.com/api/oauth.v2.access`) with the source's OAuth client JSON and stores the
@@ -231,14 +231,11 @@ grant; Cortana preserves the existing refresh token in that case.
 
 ### Authorize Discord sources
 
-Discord browser authorization assigns **servers** to a workspace; it does not replace the bot
-token. Discord's API only lets a bot list channels inside a guild and read messages, so the
-configured bot token environment variable remains required for channel discovery and sync. The
-user token from browser OAuth carries the `identify` and `guilds` scopes, which is what can list
-the servers a user belongs to. Create an OAuth application in the
+Discord authorization uses the signed-in **Discord Desktop** client and assigns servers to a
+workspace without adding a bot to any server. Create an OAuth application in the
 [Discord developer portal](https://discord.com/developers/applications), add a loopback redirect
-(`http://127.0.0.1`), and save a JSON file with the application's client id (plus the optional
-client secret for confidential apps):
+only if the application configuration requires one, and save a JSON file with the application's
+client id (plus the optional client secret for confidential apps):
 
 ```json
 { "client_id": "123456789012345678", "client_secret": "optional-secret" }
@@ -254,9 +251,8 @@ kind = "discord"
 project = "community"
 channels = ["123456789012345678"]
 servers = ["987654321098765432"]
-token_env = "DISCORD_BOT_TOKEN"
-token = "/Users/example/.config/cortana/discord-user-token.json"
-oauth_client = "/Users/example/.config/cortana/discord-oauth-client.json"
+token = "/Users/example/.config/cortana/discord-rpc-token.json"
+oauth_client = "/Users/example/.config/cortana/discord-rpc-client.json"
 ```
 
 Save the source before choosing **Authorize** in Desktop, or run:
@@ -265,17 +261,16 @@ Save the source before choosing **Authorize** in Desktop, or run:
 cortana authorize-discord community-discord
 ```
 
-Cortana opens Discord's authorization page in the system browser and waits up to five minutes
-for the loopback callback. It stores the user token in an owner-only file and never prints it.
-`cortana discord-servers SOURCE` then lists the user's servers; the Desktop server chooser
-persists only explicitly checked guild snowflake IDs into `servers` (per source, so per
-workspace). Access tokens expire after roughly a week; server discovery refreshes the token once
-when it is expired or rejected and persists the refresh atomically. The OAuth client file is
-configuration, not a user token, but Cortana still rejects symlinks, broad permissions, and
-oversized files, and the token destination must be outside every filesystem source root.
+Cortana asks the running Discord Desktop client to show its consent prompt, exchanges the returned
+code, and stores the access token in an owner-only file; it never prints the token. The Desktop
+server chooser then persists only explicitly checked guild snowflake IDs into `servers` (per
+source, so per workspace). The OAuth client file is configuration, not a user token, but Cortana
+still rejects symlinks, broad permissions, and oversized files, and the token destination must be
+outside every filesystem source root. Discord must remain running whenever discovery or message
+ingestion reads the local RPC socket.
 
-Authorization does not validate, sync, embed, index, or reconcile the source. Sources without an
-OAuth client or token file keep the original bot-token-only discovery flow unchanged.
+Authorization does not validate, sync, embed, index, or reconcile the source. A Discord source
+without both explicit RPC paths fails closed and cannot fall back to a bot or personal token.
 
 ### Authorize Slack sources
 

@@ -170,8 +170,11 @@ file. The bundled runtime now supports OAuth device-flow authorization and bound
 discovery; the Desktop chooser consumes that typed, allowlisted boundary and persists only the
 selected `owner/repository` values. It can retain, disable,
 or remove an existing external command connector, but cannot create or modify command arrays.
-Google token files and OAuth client files and local roots must be absolute non-root paths; Slack
-and Discord require explicit channels and a validated environment-variable name. Canonical source
+Google token files and OAuth client files and local roots must be absolute non-root paths. Slack
+requires explicit channels and a validated bot-token environment name.
+Discord requires explicit channels plus private Desktop RPC token and OAuth-client paths (never an
+environment variable).
+Canonical source
 labels are unique within each workspace, must not be padded with whitespace or contain control
 characters, and cannot merge connectors' indexed scope or health history. Saving or authorizing source
 settings never starts ingestion. The knowledge sidebar also exposes a confirmation-gated

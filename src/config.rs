@@ -542,6 +542,18 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
                 );
             }
         }
+        if source.kind == "discord" && source.enabled {
+            anyhow::ensure!(
+                source.token.is_some() && source.oauth_client.is_some(),
+                "source `{}` requires a Discord RPC token file and OAuth client path",
+                source.name
+            );
+            anyhow::ensure!(
+                source.token_env.is_none(),
+                "source `{}` cannot use token_env; Discord requires Desktop RPC paths",
+                source.name
+            );
+        }
         if !workspace_ids.is_empty() {
             anyhow::ensure!(
                 workspace_ids.contains(source.project.as_str()),
@@ -864,7 +876,8 @@ mod tests {
             project = "community"
             channels = ["175928847299117064"]
             servers = ["175928847299117063"]
-            token_env = "DISCORD_BOT_TOKEN"
+            token = "/tmp/cortana/discord-rpc-token.json"
+            oauth_client = "/tmp/cortana/discord-rpc-client.json"
 
             [[sources]]
             name = "team-slack"
@@ -971,6 +984,50 @@ mod tests {
         ));
         validate_source_definitions(&config)
             .expect("GitHub token file is an accepted credential path");
+    }
+
+    #[test]
+    fn enabled_discord_sources_require_desktop_rpc_paths_without_token_env() {
+        let mut config = Config::default();
+        config.sources.push(SourceConfig {
+            name: "community".into(),
+            kind: "discord".into(),
+            enabled: true,
+            project: "community".into(),
+            root: None,
+            source: None,
+            channels: vec!["123456789".into()],
+            servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
+            repositories: Vec::new(),
+            token_env: Some("DISCORD_TOKEN_ENV_SHOULD_FAIL".into()),
+            token: Some(PathBuf::from(
+                "/Users/example/.config/cortana/discord-token.json",
+            )),
+            oauth_client: Some(PathBuf::from(
+                "/Users/example/.config/cortana/discord-client.json",
+            )),
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        });
+        assert!(
+            validate_source_definitions(&config)
+                .expect_err("Discord token environment configuration must be rejected")
+                .to_string()
+                .contains("cannot use token_env")
+        );
+        config.sources[0].token_env = None;
+        validate_source_definitions(&config).expect("Desktop RPC paths are valid");
     }
 
     #[test]
