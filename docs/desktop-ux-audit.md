@@ -71,8 +71,8 @@ is not part of a visual/UI change.
 6. Re-authorize `personal-calendar`: the existing owner-only Google token was migrated into
    Cortana's configured token location, but its current refresh token record expired on
    2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
-   PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; releases through `v0.29.60`
-   are published. The locally installed CLI now uses v0.29.60 and emits reauthorization guidance;
+   PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; the current main line is
+   v0.29.63. The locally installed CLI still uses v0.29.60 and emits reauthorization guidance;
    the packaged Desktop app remains v0.29.55 because it was not launched or replaced.
    Recurring sync must remain disabled until browser authorization succeeds and the source is
    revalidated.
@@ -89,11 +89,12 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The latest published functional snapshot is v0.29.61 at main commit `b31cbe2`. Release-assets
-  workflow `31445913201` completed successfully with all 18 expected assets. The local fail-closed
-  verifier passed the published cross-platform archives, checksums, minisign signatures, and
-  updater manifest. The published aarch64 core archive also passed its packaged-version,
-  `doctor`, model-evaluation, and offline control-plane checks.
+- The current main line is v0.29.63 at commit `85e116c`. The latest fully verified functional
+  release remains v0.29.61 at commit `b31cbe2`: release-assets workflow `31445913201` completed
+  successfully with all 18 expected assets, and the local fail-closed verifier passed the
+  published cross-platform archives, checksums, minisign signatures, and updater manifest. The
+  v0.29.62 and v0.29.63 asset workflows were still in progress at the time of this audit, so they
+  are not treated as packaged-release evidence until all expected assets and signatures verify.
 - The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.60`; the packaged Desktop
   app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or replaced.
   The installed v0.29.60 core passes `--version`, `cortana doctor`, the disposable control-plane
