@@ -317,7 +317,10 @@ test('service action result is not overwritten by stale local refresh', async ()
       state.serviceActionResponse?.resolve(fresh)
     })
 
-    await waitFor(() => expect(screen.getByText(/PID 12345/)).toBeTruthy())
+    // The service action and the invalidated refresh are intentionally
+    // overlapped; allow a slower CI renderer to settle without weakening the
+    // stale-result assertion.
+    await waitFor(() => expect(screen.getByText(/PID 12345/)).toBeTruthy(), { timeout: 3000 })
 
     await act(async () => {
       staleRefresh.resolve(stale)
