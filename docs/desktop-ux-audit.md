@@ -44,9 +44,9 @@ is not part of a visual/UI change.
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
    current installed core:** the configured `auto-free` provider passed the fixture-only gate in
-   16,644 ms with planner and synthesis model use, valid citations, cache reuse, and revision
+   14,722 ms with planner and synthesis model use, valid citations, cache reuse, and revision
    invalidation. This remains fixture-only evidence, not packaged-app proof. Keep extractive mode
-   as the safe production default because model synthesis remains opt-in; the installed v0.30.3
+   as the safe production default because model synthesis remains opt-in; the installed v0.30.4
    core also passed `doctor`, readiness, and the disposable packaged control-plane and recovery
    drills, while the GUI remains unlaunched.
 3. Provider-advertised model metadata is implemented and bounded by
@@ -89,16 +89,16 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main HEAD is promotion commit `511d279`; the latest release remains v0.30.3 at tag
-  commit `0c793c6`, published from release-assets workflow `31481537396`. The workflow completed
+- The current main HEAD is promotion commit `cbf657d`; the latest release is v0.30.4 at tag
+  commit `a503e99`, published from release-assets workflow `31487214445`. The workflow completed
   all five platform jobs, and the
   strict verifier passed all 18 required core, desktop, signature, checksum, and updater assets,
   including the repaired Windows installers. The installed CLI `/Users/amf/.local/bin/cortana`
-  reports `cortana 0.30.3`; the packaged Desktop app was not launched. The current
+  reports `cortana 0.30.4`; the packaged Desktop app was not launched. The current
   model/evaluation evidence remains fixture-only evidence, while GUI/browser OAuth, tray, native
   dialogs, and notarization remain manual gates.
 - Historical v0.30.0 and v0.30.2 evidence remains useful for release investigations, but it must not
-  be read as current-release proof; v0.30.3 is the verified cross-platform release.
+  be read as current-release proof; v0.30.4 is the verified cross-platform release.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was
@@ -107,7 +107,7 @@ is not part of a visual/UI change.
 - Historical local developer-bundle checks at v0.29.69 regenerated the expected arm64 app and
   connector sidecars, but used the deliberate `bundle:mac --no-sign` path. They are retained only
   as historical evidence; strict signature validation is not claimed for that artifact and the
-  v0.30.3 release asset is authoritative.
+  v0.30.4 release asset is authoritative.
 - A static check of the published v0.30.3 macOS ARM app archive reports
   `CFBundleShortVersionString=0.30.3` and passes `codesign --verify --deep --strict`. `spctl --assess`
   exits 3 because Developer ID signing/notarization is not configured; the app was not launched.
@@ -118,11 +118,11 @@ is not part of a visual/UI change.
   required platform entries and passed the full updater-manifest and signature gate; the app was
   not launched.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
-  1 GB of SQLite integrity and backup scanning; the latest installed v0.30.3 run completed successfully.
+  1 GB of SQLite integrity and backup scanning; the latest installed v0.30.4 run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite on v0.30.3 passes all
+  The current-source native Desktop suite on v0.30.4 passes all
   129 tests. The
   local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
   verification fails as expected and no `TeamIdentifier` is present. Developer ID
@@ -193,7 +193,7 @@ is not part of a visual/UI change.
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
 - A current installed-core model-backed evaluation ran against the configured provider without
-  opening a personal index or starting sync/connectors and passed in 16,644 ms with planner and
+  opening a personal index or starting sync/connectors and passed in 14,722 ms with planner and
   synthesis model use, bounded planning, valid citations, cache reuse, and revision invalidation.
   The source at `339240e` and packaged v0.29.31 passed historical runs,
   but the installed v0.29.33 evaluator failed closed twice after the planner call because the
@@ -201,8 +201,8 @@ is not part of a visual/UI change.
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
   output cap was raised for gateway reasoning. The latest installed v0.29.60 core binary passed
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
-  17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The fresh installed v0.30.3
-  rerun passed in 16,644 ms with the same planner, synthesis, citation, cache, and revision checks.
+  17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The fresh installed v0.30.4
+  rerun passed in 14,722 ms with the same planner, synthesis, citation, cache, and revision checks.
   Extractive mode remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
   sync service is not installed, and all four enabled Discord sources fail closed until their
@@ -212,7 +212,7 @@ is not part of a visual/UI change.
 - A current `readiness --allow-sync-service` probe correctly failed closed without installing or
   starting sync: connector validations were below configured budgets, filesystem/code validations
   were sampled, and every Discord validation was unsuccessful. Query-only readiness still passes.
-- A current v0.30.3 packaged control-plane drill passed verified backup creation, disposable restore,
+- A current v0.30.4 packaged control-plane drill passed verified backup creation, disposable restore,
   SQLite verification, and cleanup. It also passed offline
   init, bounded fixture ingestion, search/context, metadata-only audit export, backup, restore, and
   post-restore search; neither drill touched indexed personal data.
