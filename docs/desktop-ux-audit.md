@@ -200,6 +200,9 @@ is not part of a visual/UI change.
   sync service is not installed, and all four enabled Discord sources fail closed until their
   owner-only RPC OAuth client/token files exist. Filesystem and code sources remain bounded samples
   (`complete=false`), so no sampled validation authorizes a full-corpus or recurring run.
+- A current `readiness --allow-sync-service` probe correctly failed closed without installing or
+  starting sync: connector validations were below configured budgets, filesystem/code validations
+  were sampled, and every Discord validation was unsuccessful. Query-only readiness still passes.
 - A fresh v0.30.1 live backup/restore drill passed verified backup creation, disposable restore,
   SQLite verification, and cleanup. The disposable packaged control-plane drill also passed offline
   init, bounded fixture ingestion, search/context, metadata-only audit export, backup, restore, and
