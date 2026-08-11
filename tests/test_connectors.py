@@ -438,7 +438,8 @@ def test_chat_returns_final_retryable_response_after_bound() -> None:
 
 
 def test_chat_connectors_reassemble_slack_and_normalize_discord(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("SLACK_TEST_TOKEN", "secret")
     monkeypatch.setattr(chat.httpx, "Client", FakeSlackClient)
@@ -448,12 +449,10 @@ def test_chat_connectors_reassemble_slack_and_normalize_discord(
 
     token = tmp_path / "discord-rpc-token.json"
     client = tmp_path / "discord-rpc-client.json"
-    write_token(token, '{"access_token":"secret"}')
+    write_token(token, '{"access_token":"secret","expiry":"2099-01-01T00:00:00Z"}')
     write_token(client, '{"client_id":"client"}')
     monkeypatch.setattr(chat, "_DiscordRpc", FakeDiscordRpc)
-    discord_documents = list(
-        chat.fetch_discord(["D1"], "work", token, client, max_documents=1)
-    )
+    discord_documents = list(chat.fetch_discord(["D1"], "work", token, client, max_documents=1))
     assert "https://files.test/report.pdf" in discord_documents[0].content
     assert discord_documents[0].metadata["author_id"] == "u1"
 
@@ -463,7 +462,7 @@ def test_discord_connector_honors_document_cap(
 ) -> None:
     token = tmp_path / "discord-rpc-token.json"
     client = tmp_path / "discord-rpc-client.json"
-    write_token(token, '{"access_token":"secret"}')
+    write_token(token, '{"access_token":"secret","expiry":"2099-01-01T00:00:00Z"}')
     write_token(client, '{"client_id":"client"}')
     FakeDiscordRpc.messages = [
         {
@@ -489,6 +488,64 @@ def test_discord_connector_honors_document_cap(
 
     assert [document.source_id for document in documents] == ["100"]
     assert not (cache / "discord.sqlite3").exists()
+
+
+def test_discord_connector_refreshes_expired_desktop_rpc_tokens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "discord-rpc-token.json"
+    client = tmp_path / "discord-rpc-client.json"
+    write_token(
+        token,
+        json.dumps(
+            {
+                "access_token": "expired-access",
+                "refresh_token": "refresh-token",
+                "token_type": "Bearer",
+                "expiry": "2000-01-01T00:00:00Z",
+            }
+        ),
+    )
+    write_token(client, '{"client_id":"client","client_secret":"secret"}')
+    calls: list[dict[str, str]] = []
+
+    class RefreshClient:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> RefreshClient:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+        def post(self, _url: str, *, data: dict[str, str]) -> httpx.Response:
+            calls.append(data)
+            return response(
+                {
+                    "access_token": "fresh-access",
+                    "refresh_token": "fresh-refresh",
+                    "expires_in": 3600,
+                    "token_type": "Bearer",
+                }
+            )
+
+    monkeypatch.setattr(chat.httpx, "Client", RefreshClient)
+    monkeypatch.setattr(chat, "_DiscordRpc", FakeDiscordRpc)
+    list(chat.fetch_discord(["D1"], "work", token, client, max_documents=1))
+
+    assert calls == [
+        {
+            "client_id": "client",
+            "client_secret": "secret",
+            "refresh_token": "refresh-token",
+            "grant_type": "refresh_token",
+        }
+    ]
+    refreshed = json.loads(token.read_text(encoding="utf-8"))
+    assert refreshed["access_token"] == "fresh-access"
+    assert refreshed["refresh_token"] == "fresh-refresh"
+    assert token.stat().st_mode & 0o777 == 0o600
 
 
 def test_slack_message_pages_fail_closed_on_invalid_shapes() -> None:
@@ -532,7 +589,7 @@ def test_discord_cache_upserts_rpc_snapshots_without_pruning_history(
 ) -> None:
     token = tmp_path / "discord-rpc-token.json"
     client = tmp_path / "discord-rpc-client.json"
-    write_token(token, '{"access_token":"secret"}')
+    write_token(token, '{"access_token":"secret","expiry":"2099-01-01T00:00:00Z"}')
     write_token(client, '{"client_id":"client"}')
     FakeDiscordRpc.messages = [
         {

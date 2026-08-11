@@ -134,7 +134,7 @@ is not part of a visual/UI change.
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 128 tests; the focused `native_` subset passes 24 tests (104 filtered). These counts were
   refreshed against the v0.29.69 source tree without launching the Desktop app.
-- The current Rust library suite on the v0.29.69 source tree passes 252 tests with no failures;
+- The current Rust library suite on the v0.29.69 source tree passes 253 tests with no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
   separate staging-to-main promotion produces the release on `main`. Desktop checks remain
@@ -163,11 +163,13 @@ is not part of a visual/UI change.
   was skipped after its failed validation, and the command did not install or enable recurring sync.
 - A current v0.29.69 bounded validation of `personal-calendar` (1 document, 65,536 bytes, 30
   seconds) succeeded without writing documents, embeddings, or reconciliations and refreshed the
-  owner-only Google token through its configured refresh path. The local connector environment was
-  updated from v0.29.68 to v0.29.69; all four enabled Discord sources now reach the expected missing
-  OAuth-client-file guard instead of the stale CLI parser. Discord authorization and recurring sync
-  therefore remain uninstalled and disabled until the owner supplies the Desktop RPC client/token
-  files and every enabled source has current complete validation coverage.
+  owner-only Google token through its configured refresh path. Discord Desktop RPC tokens now
+  refresh atomically from their owner-only refresh token before expiry; an expired token without a
+  refresh token still fails closed and requests reauthorization. The local connector environment
+  was updated from v0.29.68 to v0.29.69; all four enabled Discord sources now reach the expected
+  missing OAuth-client-file guard instead of the stale CLI parser. Discord authorization and
+  recurring sync therefore remain uninstalled and disabled until the owner supplies the Desktop
+  RPC client/token files and every enabled source has current complete validation coverage.
 - The current Desktop readiness source now compares the installed connector version with the
   bundled Cortana sidecar and marks a stale or unreadable connector unavailable before source jobs
   start. The regression suite covers matching and mismatching release versions.

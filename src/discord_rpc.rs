@@ -9,11 +9,11 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result, bail};
-use chrono::{Duration as ChronoDuration, Utc};
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use reqwest::{Client, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -189,12 +189,13 @@ pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationO
 /// List guilds visible to the authorized Discord desktop client.
 pub async fn list_servers(config: &Config, selected: &str) -> Result<ServerList> {
     let source = configured_source(config, selected)?;
+    let token_path = configured_token_path(source)?;
     let client = read_client_file(required_secure_path(
         source,
         source.oauth_client.as_ref(),
         "OAuth client",
     )?)?;
-    let token = read_token(&configured_token_path(source)?)?;
+    let token = read_authorized_token(config, &client, &token_path).await?;
     let mut rpc = RpcClient::connect(&client.client_id).await?;
     rpc.authenticate(&token.access_token).await?;
     let response = rpc.command("GET_GUILDS", serde_json::json!({})).await?;
@@ -205,12 +206,13 @@ pub async fn list_servers(config: &Config, selected: &str) -> Result<ServerList>
 /// client. This does not read message content.
 pub async fn list_channels(config: &Config, selected: &str) -> Result<ChannelList> {
     let source = configured_source(config, selected)?;
+    let token_path = configured_token_path(source)?;
     let client = read_client_file(required_secure_path(
         source,
         source.oauth_client.as_ref(),
         "OAuth client",
     )?)?;
-    let token = read_token(&configured_token_path(source)?)?;
+    let token = read_authorized_token(config, &client, &token_path).await?;
     let mut rpc = RpcClient::connect(&client.client_id).await?;
     rpc.authenticate(&token.access_token).await?;
     let guild_response = rpc.command("GET_GUILDS", serde_json::json!({})).await?;
@@ -325,6 +327,81 @@ async fn exchange_code(client: &ClientFile, code: &str) -> Result<StoredToken> {
         expiry: (Utc::now() + ChronoDuration::seconds(i64::try_from(expires).unwrap_or(604_800)))
             .to_rfc3339(),
     })
+}
+
+async fn read_authorized_token(
+    config: &Config,
+    client: &ClientFile,
+    token_path: &Path,
+) -> Result<StoredToken> {
+    ensure_outside_filesystem_roots(config, token_path, "token")?;
+    let mut token = read_token(token_path)?;
+    if !token_expired(&token) {
+        return Ok(token);
+    }
+    let refresh_token = token.refresh_token.as_deref().context(
+        "Discord authorization cannot be refreshed and its token has expired; run `cortana authorize-discord` again",
+    )?;
+    let http = Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(RPC_TIMEOUT)
+        .redirect(Policy::none())
+        .build()
+        .context("build Discord OAuth refresh client")?;
+    let mut form = vec![
+        ("client_id", client.client_id.as_str()),
+        ("refresh_token", refresh_token),
+        ("grant_type", "refresh_token"),
+    ];
+    if let Some(secret) = client.client_secret.as_deref() {
+        form.push(("client_secret", secret));
+    }
+    let response = http
+        .post(TOKEN_ENDPOINT)
+        .form(&form)
+        .send()
+        .await
+        .context("refresh Discord authorization")?;
+    anyhow::ensure!(
+        response.status().is_success(),
+        "Discord token refresh failed with status {}",
+        response.status().as_u16()
+    );
+    let refreshed: TokenResponse =
+        oauth_common::bounded_json(response, MAX_TOKEN_FILE_BYTES as usize, "Discord").await?;
+    oauth_common::validate_credential(
+        "Discord access token",
+        &refreshed.access_token,
+        MAX_CREDENTIAL_BYTES,
+    )?;
+    if let Some(refresh) = refreshed.refresh_token.as_deref() {
+        oauth_common::validate_credential("Discord refresh token", refresh, MAX_CREDENTIAL_BYTES)?;
+    }
+    token.access_token = refreshed.access_token;
+    token.token_type = refreshed.token_type;
+    token.refresh_token = refreshed
+        .refresh_token
+        .or_else(|| token.refresh_token.clone());
+    token.scope = refreshed.scope.or_else(|| token.scope.clone());
+    token.expiry = (Utc::now()
+        + ChronoDuration::seconds(
+            i64::try_from(refreshed.expires_in.unwrap_or(604_800)).unwrap_or(604_800),
+        ))
+    .to_rfc3339();
+    persist_token(token_path, &token)?;
+    Ok(token)
+}
+
+fn token_expired(token: &StoredToken) -> bool {
+    let Ok(expiry) = DateTime::parse_from_rfc3339(&token.expiry) else {
+        return true;
+    };
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    // Refresh slightly early so a long RPC discovery cannot cross expiry.
+    expiry.timestamp() <= now.saturating_add(60)
 }
 
 fn persist_token(path: &Path, token: &StoredToken) -> Result<()> {
@@ -622,7 +699,7 @@ fn socket_paths() -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_guilds, sanitize_name, validate_snowflake};
+    use super::{StoredToken, parse_guilds, sanitize_name, token_expired, validate_snowflake};
 
     #[test]
     fn guild_payloads_are_bounded_and_sanitized() {
@@ -649,5 +726,23 @@ mod tests {
     fn guild_payloads_accept_only_the_documented_shape() {
         assert!(parse_guilds(&serde_json::json!([])).is_err());
         assert!(parse_guilds(&serde_json::json!({"guilds": "not-a-list"})).is_err());
+    }
+
+    #[test]
+    fn expired_discord_tokens_are_detected_with_a_small_safety_window() {
+        let expired = StoredToken {
+            access_token: "access".into(),
+            token_type: "Bearer".into(),
+            refresh_token: Some("refresh".into()),
+            scope: None,
+            expiry: "2000-01-01T00:00:00Z".into(),
+        };
+        assert!(token_expired(&expired));
+
+        let malformed = StoredToken {
+            expiry: "not-a-timestamp".into(),
+            ..expired
+        };
+        assert!(token_expired(&malformed));
     }
 }

@@ -8,6 +8,7 @@ import sqlite3
 import stat
 import struct
 import sys
+import tempfile
 import time
 from collections.abc import Iterable
 from pathlib import Path
@@ -324,7 +325,7 @@ def fetch_discord(
     max_documents: int | None = None,
 ) -> Iterable[Document]:
     client_id = _read_discord_client_id(oauth_client_path)
-    access_token = _read_discord_access_token(token_path)
+    access_token = _read_discord_access_token(token_path, oauth_client_path)
     rpc = _DiscordRpc.connect(client_id, access_token)
     try:
         # Bounded validation is read-only. A full run records the messages
@@ -539,17 +540,129 @@ def _discord_socket_paths() -> list[str]:
 def _read_discord_client_id(path: Path) -> str:
     data = _read_private_json(path, "Discord OAuth client")
     client_id = str(data.get("client_id") or "").strip()
-    if not client_id or len(client_id) > 2048 or any(character.isspace() for character in client_id):
+    if (
+        not client_id
+        or len(client_id) > 2048
+        or any(character.isspace() for character in client_id)
+    ):
         raise RuntimeError("Discord OAuth client has an invalid client_id")
     return client_id
 
 
-def _read_discord_access_token(path: Path) -> str:
+def _read_discord_access_token(path: Path, oauth_client_path: Path) -> str:
     data = _read_private_json(path, "Discord RPC token")
     token = str(data.get("access_token") or "").strip()
     if not token or len(token) > 16 * 1024 or any(character.isspace() for character in token):
         raise RuntimeError("Discord RPC token is invalid; authorize Discord again")
-    return token
+    if not _discord_token_expired(data):
+        return token
+    refresh_token = str(data.get("refresh_token") or "").strip()
+    if (
+        not refresh_token
+        or len(refresh_token) > 16 * 1024
+        or any(character.isspace() for character in refresh_token)
+    ):
+        raise RuntimeError("Discord authorization cannot be refreshed; authorize Discord again")
+    client = _read_private_json(oauth_client_path, "Discord OAuth client")
+    client_id = str(client.get("client_id") or "").strip()
+    if (
+        not client_id
+        or len(client_id) > 2048
+        or any(character.isspace() for character in client_id)
+    ):
+        raise RuntimeError("Discord OAuth client has an invalid client_id")
+    form: dict[str, str] = {
+        "client_id": client_id,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token",
+    }
+    secret = str(client.get("client_secret") or "").strip()
+    if secret:
+        form["client_secret"] = secret
+    try:
+        with httpx.Client(timeout=30, follow_redirects=False) as http:
+            response = http.post("https://discord.com/api/oauth2/token", data=form)
+    except httpx.HTTPError as error:
+        raise RuntimeError("Discord authorization refresh request failed") from error
+    if response.status_code < 200 or response.status_code >= 300:
+        raise RuntimeError(f"Discord token refresh failed with status {response.status_code}")
+    if len(response.content) > 64 * 1024:
+        raise RuntimeError("Discord token refresh response exceeds 64 KiB")
+    try:
+        refreshed = response.json()
+    except (ValueError, json.JSONDecodeError) as error:
+        raise RuntimeError("Discord token refresh response is invalid JSON") from error
+    if not isinstance(refreshed, dict):
+        raise RuntimeError("Discord token refresh response must be an object")
+    next_access = str(refreshed.get("access_token") or "").strip()
+    if (
+        not next_access
+        or len(next_access) > 16 * 1024
+        or any(character.isspace() for character in next_access)
+    ):
+        raise RuntimeError("Discord token refresh returned an invalid access token")
+    next_refresh = str(refreshed.get("refresh_token") or "").strip() or refresh_token
+    if len(next_refresh) > 16 * 1024 or any(character.isspace() for character in next_refresh):
+        raise RuntimeError("Discord token refresh returned an invalid refresh token")
+    expires_in = refreshed.get("expires_in", 604800)
+    try:
+        expires_seconds = max(0, int(expires_in))
+    except (TypeError, ValueError) as error:
+        raise RuntimeError("Discord token refresh returned an invalid expiry") from error
+    next_data = dict(data)
+    next_data.update(
+        {
+            "access_token": next_access,
+            "token_type": str(refreshed.get("token_type") or data.get("token_type") or "Bearer"),
+            "refresh_token": next_refresh,
+            "scope": refreshed.get("scope") or data.get("scope"),
+            "expiry": (dt.datetime.now(dt.UTC) + dt.timedelta(seconds=expires_seconds)).isoformat(),
+        }
+    )
+    _write_private_json(path, next_data, "Discord RPC token")
+    return next_access
+
+
+def _discord_token_expired(data: dict[str, Any]) -> bool:
+    value = data.get("expiry")
+    if not isinstance(value, str) or not value.strip():
+        return True
+    try:
+        expiry = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=dt.UTC)
+    return expiry <= dt.datetime.now(dt.UTC) + dt.timedelta(seconds=60)
+
+
+def _write_private_json(path: Path, data: dict[str, Any], label: str) -> None:
+    if not path.is_absolute():
+        raise RuntimeError(f"{label} path must be absolute")
+    _reject_symlink_components(path)
+    parent = path.parent
+    parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    parent.chmod(0o700)
+    if path.exists() and path.is_symlink():
+        raise RuntimeError(f"{label} must not be a symlink")
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=parent, prefix=".cortana-discord-", delete=False
+        ) as file:
+            temporary = Path(file.name)
+            file.write(json.dumps(data, indent=2, sort_keys=True))
+            file.write("\n")
+            file.flush()
+            os.fchmod(file.fileno(), 0o600)
+            os.fsync(file.fileno())
+        os.replace(temporary, path)
+        path.chmod(0o600)
+    except OSError as error:
+        raise RuntimeError(f"could not persist {label}") from error
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink(missing_ok=True)
 
 
 def _read_private_json(path: Path, label: str) -> dict[str, Any]:
