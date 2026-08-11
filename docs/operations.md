@@ -237,15 +237,14 @@ GitHub CLI cannot stall the release gate indefinitely. Exhausting the budget sti
 release gate, so missing or invalid assets are never hidden.
 
 The v0.29.66 core archive passed its checksum, packaged-version, `cortana doctor`, and disposable
-control-plane checks. This release is a release-only version/changelog/lockfile bump over v0.29.65;
-no functional source files changed. Release-assets run `31455540401` published all 18 expected
-assets, and the local fail-closed verifier passed the cross-platform archives, checksums, minisign
-signatures, and updater manifest. The verified v0.29.66 CLI is installed headlessly and passes
-`doctor` and the disposable control-plane drill; the configured `auto-free` provider-backed
-evaluation passed in 12,149 ms with planner and synthesis model use, bounded planning, valid
-citations, cache reuse, and revision invalidation. Synthesis remains disabled by default in the
-production configuration. The packaged Desktop app at `/Applications/Cortana.app` remains v0.29.55;
-it was not launched or replaced.
+control-plane checks. v0.29.67 and v0.29.68 are release-only version/changelog/lockfile bumps over
+v0.29.65; no functional source files changed. The installed v0.29.67 CLI is headless and passes
+`doctor`, the disposable control-plane drill, and the configured-provider model evaluation in
+21,648 ms with planner and synthesis model use, bounded planning, valid citations, cache reuse, and
+revision invalidation. Synthesis remains disabled by default in the production configuration. The
+packaged Desktop app was not launched or replaced. The v0.29.67 release-assets workflow
+`31456659553` and v0.29.68 workflow `31457202736` remain incomplete; run the fail-closed 18-asset
+verifier before describing either release as a fully verified desktop release.
 The bounded control-plane, recovery, and model-backed checks are recorded in
 `docs/desktop-ux-audit.md`.
 
@@ -256,13 +255,13 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 Re-run the read-only verifier for an existing release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.65
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.29.66
 ```
 
-The v0.29.66 core archive can also be verified independently:
+The v0.29.67 core archive can also be verified independently:
 
 ```bash
-scripts/verify-release.sh cortana-v0.29.66-aarch64-apple-darwin.tar.gz
+scripts/verify-release.sh cortana-v0.29.67-aarch64-apple-darwin.tar.gz
 ```
 
 ## macOS launchd
