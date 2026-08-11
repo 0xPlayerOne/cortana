@@ -69,11 +69,11 @@ Ask for clarification when a missing decision would materially change the implem
 8. Run the broadest applicable validation available.
 9. Report what changed, exact checks and results, skipped checks with reasons, risks, and remaining work.
 
-For normal feature work, branch from `main` and target pull requests at `main`. Treat `main` as the protected release branch. Follow `.github/CONTRIBUTING.md` for the complete internal and external contribution flow.
+For normal feature work, branch from `staging` and target pull requests at `staging`. Treat `main` as the protected release branch promoted from validated staging. Follow `.github/CONTRIBUTING.md` for the complete internal and external contribution flow.
 
 ## Git workflow and merging
 
-This repository uses the `direct` workflow: topic branches **squash** directly into `main`, and the Release Please version PR **rebases** into `main` (`release_merge_strategy: rebase`). Feature PRs land on `main` with squash merges; release PRs land on `main` with rebase merges. No integration branch exists; all pull requests target `main`.
+This repository uses the `staging-release` workflow: topic branches **squash** into `staging`, a staging-to-main promotion PR **rebases** into `main` (`merge_strategy: rebase`), and the Release Please version PR **rebases** into `main` (`release_merge_strategy: rebase`). Feature PRs land on `staging`; promotion and release PRs land on `main`. Never bypass branch protection.
 
 Merge only with the repository's canonical method. Never merge with `--admin`, never default or auto-select a merge method, and never use a method the branch ruleset does not allow. When in doubt, prefer the merge button's configured method and verify the ruleset after merging. Check `.github/CONTRIBUTING.md` for the complete flow and merge table.
 

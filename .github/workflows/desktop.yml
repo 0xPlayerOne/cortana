@@ -2,7 +2,7 @@ name: Desktop
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, staging]
   # Explicit manual final audit path: dispatch this workflow to force the
   # Linux release compilation on any branch, independent of PR state.
   workflow_dispatch:
@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Keep the required aggregate check present on every main PR without
-  # starting the expensive desktop jobs for backend-only changes.
+  # Keep the required aggregate check present on every integration/release PR
+  # without starting the expensive desktop jobs for backend-only changes.
   changes:
     name: Detect desktop changes
     runs-on: ubuntu-slim
@@ -74,8 +74,8 @@ jobs:
   gtk_provenance:
     name: GTK Provenance
     needs: changes
-    # Job-level final-audit gate: run only for PRs targeting main and manual
-    # dispatch, excluding release-please version PRs.
+    # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
+    # staging tier; keep these jobs for main PRs and explicit dispatches only.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
@@ -122,8 +122,8 @@ jobs:
   gtk_iterator:
     name: GTK iterator (release)
     needs: changes
-    # Job-level final-audit gate: run only for PRs targeting main and manual
-    # dispatch, excluding release-please version PRs.
+    # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
+    # staging tier; keep these jobs for main PRs and explicit dispatches only.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
@@ -216,8 +216,8 @@ jobs:
   desktop_test:
     name: Desktop Tests
     needs: changes
-    # Job-level final-audit gate: run only for PRs targeting main and manual
-    # dispatch, excluding release-please version PRs.
+    # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
+    # staging tier; keep these jobs for main PRs and explicit dispatches only.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
@@ -265,8 +265,8 @@ jobs:
   desktop_clippy:
     name: Desktop Clippy
     needs: changes
-    # Job-level final-audit gate: run only for PRs targeting main and manual
-    # dispatch, excluding release-please version PRs.
+    # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
+    # staging tier; keep these jobs for main PRs and explicit dispatches only.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
@@ -314,8 +314,8 @@ jobs:
   release:
     name: Release Compilation
     needs: changes
-    # Job-level final-audit gate: run only for PRs targeting main and manual
-    # dispatch, excluding release-please version PRs.
+    # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
+    # staging tier; keep these jobs for main PRs and explicit dispatches only.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
@@ -356,7 +356,7 @@ jobs:
             ${{ runner.os }}-rust-
       # Linux release compilation is reserved for PRs targeting main and explicit
       # manual final audits (workflow_dispatch). It is intentionally skipped on
-      # ordinary feature PRs and Release Please version-only PRs.
+      # staging feature PRs and Release Please version-only PRs.
       - name: Compile release desktop
         # Final gate: run only for PRs targeting main and manual dispatch,
         # excluding release-please version PRs. This skips final audit steps
@@ -372,8 +372,8 @@ jobs:
 
   # Fast aggregate carrying the stable required check name. It always runs
   # after its dependencies so the check turns red on failure or cancellation
-  # instead of silently skipping. Skipped dependencies (release-please
-  # version-only PRs) are acceptable and leave the check green.
+  # instead of silently skipping. Skipped dependencies (staging fast-tier PRs
+  # and release-please version-only PRs) are acceptable and leave the check green.
   aggregate:
     name: Tauri 2 / Linux
     needs:
