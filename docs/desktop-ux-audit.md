@@ -113,7 +113,7 @@ is not part of a visual/UI change.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite based on main commit `b31cbe2` passes all 126 tests. The
+  The current-source native Desktop suite at v0.29.64 passes all 126 tests. The
   packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
