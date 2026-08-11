@@ -89,17 +89,19 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line and latest fully verified functional release are v0.29.64 at commit
-  `d732fa6`. Release-assets workflow `31448821264` published all 18 expected assets, and the local
-  fail-closed verifier passed the cross-platform archives, checksums, minisign signatures, and
-  updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports `cortana 0.29.64`;
+- The current main line and latest fully verified release are v0.29.65 at commit
+  `f8cc798`. This is a release-only version/changelog/lockfile bump over v0.29.64; no functional
+  source files changed. Release-assets workflow `31451927246` published all 18 expected assets,
+  and the local fail-closed verifier passed the cross-platform archives, checksums, minisign
+  signatures, and updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports
+  `cortana 0.29.65`;
   the packaged
   Desktop app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or
-  replaced. The installed v0.29.64 core passes `--version`, `cortana doctor`, and the disposable
+  replaced. The installed v0.29.65 core passes `--version`, `cortana doctor`, and the disposable
   control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
-  restore, and post-restore search). A fresh v0.29.64 model-backed evaluation against the
-  persistent `auto-free` query provider passed in 12,947 ms with planner and synthesis model use,
-  valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
+  restore, and post-restore search). A fresh v0.29.65 model-backed evaluation against the
+  persistent `auto-free` query provider passed in 19,619 ms with planner and synthesis model use,
+  bounded planning, valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
   `provider_unavailable` after 30,018 ms while the gateway was degraded; the successful rerun
   re-established provider-backed evaluation without changing the safe extractive runtime default.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected

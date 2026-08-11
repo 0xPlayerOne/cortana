@@ -94,10 +94,12 @@ synthesis model use, valid citations, cache reuse, and revision invalidation in 
 latest successful installed v0.29.60 aarch64 core binary rerun passed the same fixture-only evaluator in
 17,928 ms; a prior cache-warm run passed in 10,323 ms. Both runs had
 planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
-Desktop app remains installed locally at v0.29.55; the verified v0.29.64 core is installed at
-`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. A fresh v0.29.64
-model-backed evaluation against the configured `auto-free` provider passed in 12,947 ms with
-planner and synthesis model use, valid citations, cache reuse, and revision invalidation. An
+Desktop app remains installed locally at v0.29.55; the verified v0.29.65 core is installed at
+`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.65 is a
+release-only version/changelog/lockfile bump over v0.29.64 with no functional source changes. A
+fresh v0.29.65 model-backed evaluation against the configured `auto-free` provider passed in
+19,619 ms with planner and synthesis model use, bounded planning, valid citations, cache reuse,
+and revision invalidation. An
 earlier bounded provider-unavailable attempt remains historical evidence of the fail-closed path;
 the successful rerun re-established the provider gate without changing the safe extractive default.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
