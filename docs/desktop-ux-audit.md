@@ -104,6 +104,9 @@ is not part of a visual/UI change.
   connector sidecars, but used the deliberate `bundle:mac --no-sign` path. They are retained only
   as historical evidence; strict signature validation is not claimed for that artifact and the
   signed v0.30.2 release asset is authoritative.
+- A static check of the published v0.30.2 macOS ARM app archive reports
+  `CFBundleShortVersionString=0.30.2` and passes `codesign --verify --deep --strict`. `spctl --assess`
+  exits 3 because Developer ID signing/notarization is not configured; the app was not launched.
 - A headless v0.29.66 macOS ARM packaged-app drill verified the published app archive's minisign
   signature, safe tar members, `Cortana.app` bundle, `Info.plist` version `0.29.66`, and
   `codesign --verify --deep --strict`. `spctl --assess` rejects the ad-hoc bundle (exit 3) because
