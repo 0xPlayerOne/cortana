@@ -3830,7 +3830,7 @@ mod tests {
             configuration_fingerprint: Some(
                 cortana::source_validation::configuration_fingerprint(&source).unwrap(),
             ),
-            complete: None,
+            complete: Some(true),
             error: None,
         };
         cortana::source_validation::record(directory.path(), status.clone())

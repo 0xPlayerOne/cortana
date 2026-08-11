@@ -780,7 +780,7 @@ mod tests {
             max_bytes,
             max_seconds,
             configuration_fingerprint: source_validation::configuration_fingerprint(source).ok(),
-            complete: None,
+            complete: Some(true),
             error: None,
         }
     }
