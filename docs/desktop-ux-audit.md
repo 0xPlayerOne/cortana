@@ -43,14 +43,10 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. **Closed for the
-   current provider:** an earlier source `339240e` run passed in 20,176 ms and a packaged v0.29.31
-   rerun passed in 13,477 ms, but the installed v0.29.33 evaluator failed closed twice with invalid
-   model citations (8,313 ms and 13,398 ms). The current source strips only the model-gateway
-   attribution footer when its explicit provider header and exact footer shape agree. The installed
-   v0.29.67 aarch64 core binary passed the current fixture-only gate in 21,648 ms; the prior
-   installed v0.29.66 run passed in 12,149 ms. Both current runs used planner+synthesis,
-   valid citations, cache reuse, and revision invalidation. Keep extractive mode as the safe
-   production default because model synthesis remains opt-in.
+   current source:** v0.29.69 passed the fixture-only gate in 18,674 ms with planner and synthesis
+   model use, valid citations, cache reuse, and revision invalidation. Keep extractive mode as the
+   safe production default because model synthesis remains opt-in; the older installed v0.29.67
+   result remains historical evidence only.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -67,14 +63,12 @@ is not part of a visual/UI change.
    source of truth; Hindsight is the replacement-capable sidecar and Honcho is
    an append-only experimental sink. Neither is enabled for personal data until
    provider ACL, deletion, export, and packaged-UI gates are explicitly proven.
-6. Re-authorize `personal-calendar`: the existing owner-only Google token was migrated into
-   Cortana's configured token location, but its current refresh token record expired on
-   2026-07-22 and the latest bounded validation failed closed with `authorization denied`.
-   PR #571 merged the sanitized expiry diagnostic to main at `4f7f32d`; the current main line is
-   v0.29.68. The locally installed CLI remains v0.29.67 and emits reauthorization guidance;
-   the packaged Desktop app was not launched or replaced.
-   Recurring sync must remain disabled until browser authorization succeeds and the source is
-   revalidated.
+6. Complete source authorization and full validation coverage before recurring sync: the bounded
+   `personal-calendar` validation now succeeds and refreshes its owner-only Google token, but the
+   four enabled Discord sources still fail closed because the configured Desktop RPC OAuth client
+   and token files are absent. Filesystem/code sources are also only sampled (`complete=false`).
+   Recurring sync must remain uninstalled until Discord authorization is completed and every
+   enabled source has a current complete validation at its configured budget.
 
 ## Evidence limits
 
@@ -124,11 +118,10 @@ is not part of a visual/UI change.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite on the v0.29.69 source tree passes all 126 tests. The
-  packaged app
-  passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
-  unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
-  a release blocker; the previous v0.29.50 bundle is retained at
+  The current-source native Desktop suite on the v0.29.69 source tree passes all 128 tests. The
+  local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
+  verification fails as expected and no `TeamIdentifier` is present. Developer ID
+  signing/notarization remains a release blocker; the previous v0.29.50 bundle is retained at
   `/Users/amf/.Trash/Cortana.app.backup-v0.29.50-20260810-2205`
   for recovery (older v0.29.38, v0.29.37, v0.29.33, v0.29.31, v0.29.29, v0.29.28, v0.29.27,
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
@@ -139,12 +132,12 @@ is not part of a visual/UI change.
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
-  all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
+  all 128 tests; the focused `native_` subset passes 24 tests (104 filtered). These counts were
   refreshed against the v0.29.69 source tree without launching the Desktop app.
 - The current Rust library suite on the v0.29.69 source tree passes 252 tests with no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
-- The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
-  promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
+- The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
+  separate staging-to-main promotion produces the release on `main`. Desktop checks remain
   headless CI evidence; they do not claim packaged GUI, browser, OS-service, or signed-updater
   behavior. The older v0.29.8 readiness figures are historical and are not re-asserted.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
@@ -152,7 +145,7 @@ is not part of a visual/UI change.
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
   unauthenticated process-liveness check and must not be treated as full readiness evidence. The
   previous comprehensive readiness run against the installed v0.29.54 configuration passed
-  database integrity, embedding generation/provider, ACL, query API, verified-backup freshness
+  database integrity, embedding generation/provider, ACL, query API, and verified-backup freshness
   (24 hours within a 48-hour bound),
   query mode, and the safe query-only state with recurring sync not installed; it did not invoke
   source validation because `--allow-sync-service` was not supplied.
@@ -171,10 +164,13 @@ is not part of a visual/UI change.
 - A current v0.29.69 bounded validation of `personal-calendar` (1 document, 65,536 bytes, 30
   seconds) succeeded without writing documents, embeddings, or reconciliations and refreshed the
   owner-only Google token through its configured refresh path. The local connector environment was
-  updated from v0.29.68 to v0.29.69; a current Discord validation now reaches the expected missing
+  updated from v0.29.68 to v0.29.69; all four enabled Discord sources now reach the expected missing
   OAuth-client-file guard instead of the stale CLI parser. Discord authorization and recurring sync
   therefore remain uninstalled and disabled until the owner supplies the Desktop RPC client/token
   files and every enabled source has current complete validation coverage.
+- The current Desktop readiness source now compares the installed connector version with the
+  bundled Cortana sidecar and marks a stale or unreadable connector unavailable before source jobs
+  start. The regression suite covers matching and mismatching release versions.
 - A tracked-history `gitleaks detect --redact` scan covered 970 commits and found no secrets.
 - Release v0.29.61 also carries the fail-closed recurring-sync freshness guard across every
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
