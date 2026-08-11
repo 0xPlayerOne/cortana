@@ -82,21 +82,17 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line is v0.29.69 at commit `a6e739f`, which is also the latest fully verified
-  cross-platform release. The published release-assets workflow `31458199113` contains all 18
-  expected assets, and the local fail-closed verifier passed the core archive checksums, macOS
-  bundle/resources, six Tauri updater signatures, and updater manifest. The installed CLI
-  `/Users/amf/.local/bin/cortana` still reports `cortana 0.29.67`; the packaged Desktop app was
-  not launched or replaced. The installed v0.29.67 core passes `--version`, `cortana doctor`, and the disposable
-  control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
-  restore, and post-restore search). A fresh v0.29.67 model-backed evaluation against the
-  persistent configured query provider passed in 21,648 ms with planner and synthesis model use,
-  bounded planning, valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
-  `provider_unavailable` after 30,018 ms while the gateway was degraded; the successful rerun
-  re-established provider-backed evaluation without changing the safe extractive runtime default.
-  The published v0.29.69 binaries were not executed on this macOS host; the local verifier recorded
-  that platform-specific execution was skipped. The current v0.29.69 feature work is verified below
-  at source level.
+- The current main line is v0.30.0 at commit `0ab5b59` (`v0.30.0`), published from release-assets
+  workflow `31470374229`. The workflow produced 14 of the 18 expected assets; the Windows desktop
+  job failed because the Windows build exposed missing non-Unix Discord RPC stubs, so the release
+  is not yet fully verified and the Windows assets are absent. macOS ARM64, Linux desktop, and both
+  core archives completed successfully. The installed CLI `/Users/amf/.local/bin/cortana` still
+  reports `cortana 0.29.68`; the packaged Desktop app was not launched or replaced. The source
+  tree's current release metadata is v0.30.0, while the functional model/evaluation evidence below
+  was captured immediately before the metadata-only release bump.
+- Historical v0.29.69 evidence remains useful for the signed macOS/updater gates, but it must not be
+  read as proof that v0.30.0 is a complete cross-platform release until the Windows build is repaired
+  and the release assets are regenerated.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was
