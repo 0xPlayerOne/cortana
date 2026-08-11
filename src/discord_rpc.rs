@@ -677,6 +677,14 @@ impl RpcClient {
     async fn connect(_client_id: &str) -> Result<Self> {
         bail!("Discord Desktop RPC is supported only on Unix desktop builds")
     }
+
+    async fn authenticate(&mut self, _access_token: &str) -> Result<()> {
+        bail!("Discord Desktop RPC is supported only on Unix desktop builds")
+    }
+
+    async fn command(&mut self, _cmd: &str, _args: serde_json::Value) -> Result<RpcResponse> {
+        bail!("Discord Desktop RPC is supported only on Unix desktop builds")
+    }
 }
 
 #[cfg(unix)]
