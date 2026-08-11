@@ -275,7 +275,9 @@ pub async fn list_discord_channels<R: tauri::Runtime>(
         return Err(if detail.is_empty() {
             "Discord channel discovery failed; check Discord Desktop is running and the RPC authorization is complete".into()
         } else {
-            format!("Discord channel discovery failed; check Discord Desktop RPC authorization: {detail}")
+            format!(
+                "Discord channel discovery failed; check Discord Desktop RPC authorization: {detail}"
+            )
         });
     }
     if stdout.len() >= MAX_DISCORD_CHANNELS_BYTES {
@@ -352,7 +354,9 @@ pub async fn list_discord_servers<R: tauri::Runtime>(
         return Err(if detail.is_empty() {
             "Discord server discovery failed; check Discord Desktop is running and RPC authorization is complete".into()
         } else {
-            format!("Discord server discovery failed; check Discord Desktop RPC authorization: {detail}")
+            format!(
+                "Discord server discovery failed; check Discord Desktop RPC authorization: {detail}"
+            )
         });
     }
     if stdout.len() >= MAX_DISCORD_SERVERS_BYTES {

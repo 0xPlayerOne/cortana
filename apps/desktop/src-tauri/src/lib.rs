@@ -1733,8 +1733,7 @@ mod tests {
             .expect_err("missing user token must fail closed without network access");
             let message = error.as_str().unwrap_or_default();
             assert!(
-                message.contains("Discord Desktop RPC")
-                    || message.contains("Discord OAuth"),
+                message.contains("Discord Desktop RPC") || message.contains("Discord OAuth"),
                 "unexpected server discovery error: {message}"
             );
         });
@@ -1767,10 +1766,7 @@ mod tests {
             )
             .expect_err("Discord RPC must reject incomplete setup before starting");
             assert!(
-                error
-                    .as_str()
-                    .unwrap_or_default()
-                    .contains("Discord"),
+                error.as_str().unwrap_or_default().contains("Discord"),
                 "unexpected Discord authorization error: {}",
                 error.as_str().unwrap_or_default()
             );
