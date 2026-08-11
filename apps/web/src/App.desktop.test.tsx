@@ -30,7 +30,14 @@ const updatesButtonName = new RegExp(
   `Cortana ${escapeRegExp(desktopInfo.desktop_version)} · Updates`
 )
 
-afterEach(cleanup)
+afterEach(async () => {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+  cleanup()
+})
 afterEach(() => {
   window.localStorage.removeItem('cortana.workspace-selection.v1')
   window.localStorage.removeItem('cortana.source-selection.v1')
@@ -514,9 +521,22 @@ mock.module('./api', () => ({
 
 const { App, ServiceHealthIndicator } = await import('./App')
 
+async function flushDesktopBootstrap() {
+  // The shell starts several independent control-plane reads on mount. Keep
+  // those promise continuations inside React's act scope before asserting or
+  // dispatching the first user event.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
 test('global command shortcuts do not hijack editable fields', async () => {
   render(<App />)
   const search = await screen.findByRole('textbox', { name: 'Search your knowledge' })
+  await flushDesktopBootstrap()
 
   act(() => fireEvent.keyDown(search, { key: 'p', ctrlKey: true }))
   expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull()
@@ -590,17 +610,28 @@ test('desktop setup does not query documents before the control plane is ready',
   try {
     state.settings = { ...desktopSettings, needs_setup: true }
     render(<App />)
+    await flushDesktopBootstrap()
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
     )
+    await waitFor(() => expect(screen.getByText('Index online')).toBeTruthy())
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Open service health' })).toBeTruthy()
+    )
+    await flushDesktopBootstrap()
     expect(state.getDocumentsCalls).toHaveLength(0)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Graph' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Graph' }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1, name: 'No graph data' })).toBeTruthy()
     )
     expect(state.getGraphCalls).toBe(0)
+    await flushDesktopBootstrap()
   } finally {
     state.settings = originalSettings
   }
@@ -616,30 +647,49 @@ test('desktop shell pauses passive health polling while hidden and refreshes on 
     document.dispatchEvent(new Event('visibilitychange'))
   }
   try {
-    act(() => setVisibility('visible'))
+    await act(async () => {
+      setVisibility('visible')
+      await Promise.resolve()
+    })
     render(<App />)
+    await flushDesktopBootstrap()
     await waitFor(() => expect(state.getDesktopServicesCalls).toBeGreaterThan(0))
     const servicesBeforeHidden = state.getDesktopServicesCalls
     const statusBeforeHidden = state.statusCalls
 
-    act(() => setVisibility('hidden'))
-    await new Promise((resolve) => setTimeout(resolve, 25))
+    await act(async () => {
+      setVisibility('hidden')
+      await Promise.resolve()
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    })
     expect(state.getDesktopServicesCalls).toBe(servicesBeforeHidden)
     expect(state.statusCalls).toBe(statusBeforeHidden)
 
     // The webview may become visible before native focus is restored. That
     // event alone must not restart passive polling in the background.
-    act(() => {
+    await act(async () => {
       window.dispatchEvent(new Event('blur'))
       setVisibility('visible')
+      await Promise.resolve()
     })
-    await new Promise((resolve) => setTimeout(resolve, 25))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    })
     expect(state.getDesktopServicesCalls).toBe(servicesBeforeHidden)
     expect(state.statusCalls).toBe(statusBeforeHidden)
 
-    act(() => window.dispatchEvent(new Event('focus')))
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+      await Promise.resolve()
+    })
     await waitFor(() => expect(state.getDesktopServicesCalls).toBeGreaterThan(servicesBeforeHidden))
     expect(state.statusCalls).toBeGreaterThan(statusBeforeHidden)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    })
+    await flushDesktopBootstrap()
   } finally {
     if (descriptor) Object.defineProperty(document, 'visibilityState', descriptor)
     else setVisibility('visible')
@@ -829,6 +879,7 @@ test('advanced import preview cancellation keeps draft values unchanged', async 
     expect(screen.getByRole('button', { name: 'Save changes' }).hasAttribute('disabled')).toBe(
       false
     )
+    await flushDesktopBootstrap()
   } finally {
     window.confirm = originalConfirm
   }
@@ -1677,6 +1728,7 @@ test('Services settings stay a process-health surface with no source enablement 
   const checkboxes = screen.getAllByRole('checkbox')
   expect(checkboxes).toHaveLength(1)
   expect(screen.getByRole('checkbox', { name: /Open Cortana Desktop at login/ })).toBeTruthy()
+  await flushDesktopBootstrap()
 })
 
 test('services settings offers an explicit safe core-service install', async () => {
@@ -2059,6 +2111,7 @@ test('readiness activity survives leaving Settings while a scan is running', asy
       expect(screen.getByRole('heading', { name: 'System readiness' })).toBeTruthy()
     )
     expect(screen.getByText(/Last checked/)).toBeTruthy()
+    await flushDesktopBootstrap()
   } finally {
     state.readinessScan = originalScan
   }
@@ -2353,6 +2406,7 @@ test('saving settings with restart_required triggers a background restart and cl
     await waitFor(() =>
       expect(screen.queryByText('A service restart is still required.')).toBeNull()
     )
+    await flushDesktopBootstrap()
   } finally {
     window.confirm = originalConfirm
     state.settings = originalSettings
