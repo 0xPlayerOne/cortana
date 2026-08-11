@@ -132,15 +132,15 @@ is not part of a visual/UI change.
   v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
   available as well).
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
-  passes 256 tests across 22 files (latest run: 55.81 seconds, 1,266 assertions, including the
+  passes 256 tests across 22 files (latest run: 58.41 seconds, 1,266 assertions, including the
   desktop lockfile helper regression). The Python suite
   passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
-  refreshed against the v0.30.3 functional tree without launching the Desktop app.
-- The current Rust library suite on v0.30.3 passes 253 tests with
+  refreshed against the v0.30.6 functional tree without launching the Desktop app.
+- The current Rust library suite on v0.30.6 passes 253 tests with
   no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
@@ -150,9 +150,8 @@ is not part of a visual/UI change.
 - The remote branch policy now matches that staging-release flow: the active `code-foundry-main`
   and `code-foundry-staging` rulesets block deletion and non-fast-forward updates, require
   `Validation / Gate`, and require `Tauri 2 / Linux` for protected promotion; staging permits
-  only squash feature merges. PR #600 is the sole staging input for this Discord change after
-  the superseded direct-main duplicate was closed. This is repository-policy evidence, not a
-  packaged GUI or manual-drill result.
+  only squash feature merges. This is repository-policy evidence, not a packaged GUI or
+  manual-drill result.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an
