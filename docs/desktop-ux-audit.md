@@ -46,9 +46,12 @@ is not part of a visual/UI change.
    installed v0.30.10 run passed the fixture-only gate on 2026-08-11 in 10,544 ms with planner and
    synthesis model use, 1.0 retrieval/citation metrics, cache reuse, and revision invalidation.
    An earlier attempt correctly failed closed with `fallback_provider_unavailable=true` during a
-   transient gateway outage; the successful rerun re-established the provider gate. This remains
-   fixture-only evidence, not packaged-app proof. Keep extractive mode as the safe production
-   default because model synthesis remains opt-in; the installed v0.30.10 core still passes
+   transient gateway outage; the successful rerun re-established the provider gate. A subsequent
+   bounded repeat on 2026-08-11 failed closed again at the 30,000 ms deadline with the same
+   provider-unavailable marker because the configured query gateway did not answer. This remains
+   fixture-only evidence, not packaged-app proof, and provider availability must be re-established
+   before synthesis is enabled. Keep extractive mode as the safe production default; the installed
+   v0.30.10 core still passes
    `doctor`, readiness, and the disposable packaged control-plane and recovery drills, while the
    GUI remains unlaunched.
 3. Provider-advertised model metadata is implemented and bounded by
