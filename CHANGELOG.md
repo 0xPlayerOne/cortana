@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.1](https://github.com/0xPlayerOne/cortana/compare/v0.30.0...v0.30.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **discord:** promote staging release reconciliation ([4a42ce9](https://github.com/0xPlayerOne/cortana/commit/4a42ce9967e3b142b270f6de7682d1bc3382f9d3))
+
 ## [0.30.0](https://github.com/0xPlayerOne/cortana/compare/v0.29.70...v0.30.0) (2026-08-11)
 
 
