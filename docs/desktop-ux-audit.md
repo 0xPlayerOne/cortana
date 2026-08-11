@@ -42,15 +42,15 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Prove the persistent configured query provider with a model-backed evaluation. The last
-   successful installed v0.30.6 run passed the fixture-only gate in 14,937 ms with planner and
-   synthesis model use, valid citations, cache reuse, and revision invalidation. A fresh attempt
-   on 2026-08-11 correctly failed closed with `fallback_provider_unavailable=true` after the
-   configured gateway upstream timed out; no current provider-backed pass is claimed until that
-   upstream is available again. This remains fixture-only evidence, not packaged-app proof. Keep
-   extractive mode as the safe production default because model synthesis remains opt-in; the
-   installed v0.30.6 core still passes `doctor`, readiness, and the disposable packaged
-   control-plane and recovery drills, while the GUI remains unlaunched.
+2. Prove the persistent configured query provider with a model-backed evaluation. The latest
+   installed v0.30.6 run passed the fixture-only gate on 2026-08-11 in 19,954 ms with planner and
+   synthesis model use, valid citations, cache reuse, and revision invalidation. An earlier
+   attempt correctly failed closed with `fallback_provider_unavailable=true` during a transient
+   gateway outage; the successful rerun re-established the provider gate. This remains
+   fixture-only evidence, not packaged-app proof. Keep extractive mode as the safe production
+   default because model synthesis remains opt-in; the installed v0.30.6 core still passes
+   `doctor`, readiness, and the disposable packaged control-plane and recovery drills, while the
+   GUI remains unlaunched.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -193,8 +193,8 @@ is not part of a visual/UI change.
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
-- The last successful installed-core model-backed evaluation ran against the configured provider
-  without opening a personal index or starting sync/connectors and passed in 14,937 ms with
+- The latest successful installed-core model-backed evaluation ran against the configured provider
+  without opening a personal index or starting sync/connectors and passed in 19,954 ms with
   planner and synthesis model use, bounded planning, valid citations, cache reuse, and revision
   invalidation.
   The source at `339240e` and packaged v0.29.31 passed historical runs,
@@ -203,12 +203,10 @@ is not part of a visual/UI change.
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
   output cap was raised for gateway reasoning. The latest installed v0.29.60 core binary passed
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
-  17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The last successful installed
-  v0.30.6 rerun passed in 14,937 ms with the same planner, synthesis, citation, cache, and
-  revision checks. A fresh 2026-08-11 attempt failed closed when the configured gateway upstream
-  timed out before planner output; the evaluator reported `fallback_provider_unavailable=true`
-  and did not repeat the outage for cache checks. Extractive mode remains the safe production
-  default because synthesis is still an explicit opt-in.
+  17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The latest installed v0.30.6
+  rerun passed in 19,954 ms with the same planner, synthesis, citation, cache, and revision
+  checks. The earlier provider-unavailable attempt remains historical fail-closed evidence, and
+  extractive mode remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
   sync service is not installed, and all four enabled Discord sources fail closed until their
   owner-only RPC OAuth client/token files exist. Filesystem and code sources remain bounded samples
