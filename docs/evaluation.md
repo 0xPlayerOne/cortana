@@ -102,6 +102,10 @@ with planner and synthesis model use, bounded planning, valid citations, cache r
 invalidation. An
 earlier bounded provider-unavailable attempt remains historical evidence of the fail-closed path;
 the successful rerun re-established the provider gate without changing the safe extractive default.
+A fresh post-install v0.30.1 rerun was also attempted without touching the personal index or
+starting sync; the configured provider remained silent within the local diagnostic window and the
+process was stopped. No new installed-provider pass is claimed from that attempt, so extractive
+mode remains the safe production default until provider availability is re-established.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
 
