@@ -1667,7 +1667,7 @@ mod tests {
                 message.contains("Discord"),
                 "unexpected discovery error: {message}"
             );
-            assert!(!message.contains("DISCORD_BOT_TOKEN"));
+            assert!(!message.contains("DISCORD_LEGACY_TOKEN_ENV"));
         });
     }
 

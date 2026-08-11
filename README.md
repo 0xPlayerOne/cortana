@@ -255,7 +255,7 @@ invalid export therefore cannot delete the prior imported snapshot.
 
 Migration refuses to replace an existing Cortana configuration unless `--force` is explicit. It
 never prints credential values and recognizes only `SLACK_BOT_TOKEN` from legacy environment files;
-Discord bot credentials are intentionally not migrated.
+legacy Discord environment credentials are intentionally not migrated.
 
 ## Architecture
 

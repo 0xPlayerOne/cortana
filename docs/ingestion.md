@@ -131,7 +131,7 @@ configured document cap and never reconcile deletions.
   remains the operational message-sync credential.
 - Discord uses the signed-in Discord Desktop client through its local RPC socket. Cortana stores
   the resulting owner-only RPC access token in the configured `token` file and never accepts a
-  Discord bot token, self-bot token, or normal-user token pasted into configuration.
+  pasted Discord credential or an environment-variable token.
 - GitHub code sources read either a personal/GitHub App access token from the configured
   environment-variable name or a private OAuth token JSON file, and always require an explicit
   repository allowlist. `cortana authorize-github SOURCE` uses the configured GitHub OAuth client
@@ -139,7 +139,7 @@ configured document cap and never reconcile deletions.
   repository list for Desktop selection. The Desktop chooser persists only explicitly checked
   `owner/repository` entries. Neither command reads repository content.
 - `cortana discord-channels SOURCE` returns a bounded, read-only guild and channel list through
-  the running Discord Desktop RPC client. It never accepts a bot credential, starts ingestion, or
+  the running Discord Desktop RPC client. It never accepts a pasted credential, starts ingestion, or
   prints the RPC token. The Desktop chooser persists only explicitly checked channel snowflake
   IDs; the renderer can send only the source name and selected channel IDs.
 - `cortana provider-models --kind embedding|query` returns the bounded model catalog the

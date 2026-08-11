@@ -193,7 +193,8 @@ channels = ["123456789012345678"]
 # Discord uses the signed-in Discord Desktop client through its local RPC
 # socket. `oauth_client` holds the application `client_id` (and optionally a
 # `client_secret`); `token` is the private access-token file Cortana creates
-# after the Discord consent prompt. No bot account or bot token is used.
+# after the Discord consent prompt. Access is limited to the signed-in account
+# and the scopes approved in Discord Desktop.
 # servers = ["987654321098765432"]
 token = "/Users/you/.config/cortana/discord-rpc-token.json"
 oauth_client = "/Users/you/.config/cortana/discord-rpc-client.json"

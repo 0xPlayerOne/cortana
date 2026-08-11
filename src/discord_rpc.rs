@@ -1,7 +1,7 @@
 //! Discord Desktop RPC authorization and read-only message discovery.
 //!
-//! Cortana intentionally uses Discord's supported local RPC surface instead of
-//! a bot token or a normal-user token against private REST endpoints. The
+//! Cortana intentionally uses Discord’s supported local RPC surface instead of
+//! scraping a signed-in account through private REST endpoints. The
 //! operator authorizes Cortana in the running Discord desktop client with the
 //! `rpc`, `identify`, and `messages.read` scopes. RPC exposes only the guilds,
 //! channels, and messages the signed-in client can access.
@@ -140,7 +140,7 @@ struct RpcChannel {
 }
 
 /// Authorize the configured source through Discord Desktop RPC. No browser
-/// redirect or bot credential is involved; Discord displays its own consent
+/// redirect or pasted credential is involved; Discord displays its own consent
 /// prompt in the running desktop client.
 pub async fn authorize(config: &Config, selected: &str) -> Result<AuthorizationOutcome> {
     let source = configured_source(config, selected)?;
