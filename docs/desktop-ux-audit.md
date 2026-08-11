@@ -132,7 +132,7 @@ is not part of a visual/UI change.
   treated as current recovery evidence; the verified v0.30.10 release assets and installed CLI are
   authoritative.
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
-  passes 256 tests across 22 files (latest run: 61.27 seconds, 1,265 assertions, including the
+  passes 256 tests across 22 files (latest run: 36.82 seconds, 1,266 assertions, including the
   desktop lockfile helper regression). The Python suite
   passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
