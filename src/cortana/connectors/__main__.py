@@ -55,7 +55,8 @@ def parser() -> argparse.ArgumentParser:
 
     discord = commands.add_parser("discord")
     discord.add_argument("--channel", action="append", required=True, dest="channels")
-    discord.add_argument("--token-env", default="DISCORD_BOT_TOKEN")
+    discord.add_argument("--token", type=Path, required=True)
+    discord.add_argument("--oauth-client", type=Path, required=True)
 
     github = commands.add_parser("github")
     github.add_argument("--repo", action="append", required=True, dest="repositories")
@@ -115,7 +116,8 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
         return fetch_discord(
             arguments.channels,
             arguments.project,
-            arguments.token_env,
+            arguments.token,
+            arguments.oauth_client,
             cache_dir=None if arguments.no_cache else arguments.cache_dir,
             max_documents=arguments.max_documents,
         )

@@ -25,7 +25,7 @@ pub enum SourceAuthorizationMethod {
     Token,
     GoogleOauth,
     GithubOauth,
-    DiscordOauth,
+    DiscordRpc,
     SlackOauth,
 }
 
@@ -381,9 +381,9 @@ fn valid_github_bearer(value: &str) -> bool {
             .any(|character| character.is_control() || character.is_whitespace())
 }
 
-/// A Discord OAuth user token file is ready when it is a private regular
-/// file whose JSON carries a plausible bearer access token. The bot token
-/// environment variable is a separate credential and is never checked here.
+/// A Discord Desktop RPC token file is ready when it is a private regular
+/// file whose JSON carries a plausible bearer access token. Discord never
+/// falls back to an environment-variable or bot credential.
 fn discord_token_file_ready(path: &Path) -> bool {
     if !secure_regular_file_ready(path) {
         return false;
@@ -490,10 +490,8 @@ pub fn source_authorization_summary(
             .token
             .as_ref()
             .is_some_and(|path| google_token_file_ready(path.as_path()));
-        // Discord's `token_env` is the bot credential used for channel
-        // listing/sync. It must never be interpreted as a filesystem path for
-        // the separate browser-OAuth user token; that destination is always
-        // the explicit `token` field.
+        // Google may still use a token environment variable. Discord does not:
+        // its RPC token destination is always the explicit `token` field.
         let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready);
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::GoogleOauth,
@@ -548,12 +546,10 @@ pub fn source_authorization_summary(
             setup_required: !(token_file_ready || (oauth_client_ready && token_destination_ready)),
             authorized: token_file_ready,
         }
-    } else if source.kind == "discord" && (source.oauth_client.is_some() || source.token.is_some())
-    {
-        // Browser OAuth for Discord assigns servers to this source's
-        // workspace. The bot token environment variable remains the
-        // operational sync credential and is reported by the token branch
-        // below when no OAuth paths are configured.
+    } else if source.kind == "discord" {
+        // Discord Desktop RPC is the sole Discord authorization path. The
+        // user token is explicitly stored and is never sourced from an
+        // environment variable or interpreted as a bot credential.
         let oauth_client_ready = source
             .oauth_client
             .as_ref()
@@ -564,7 +560,7 @@ pub fn source_authorization_summary(
             .is_some_and(|path| discord_token_file_ready(path.as_path()));
         let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready);
         SourceAuthorizationSummary {
-            method: SourceAuthorizationMethod::DiscordOauth,
+            method: SourceAuthorizationMethod::DiscordRpc,
             setup_required: !(token_file_ready || (oauth_client_ready && token_destination_ready)),
             authorized: token_file_ready,
         }
@@ -656,7 +652,7 @@ mod tests {
             communities: Vec::new(),
             community_names: Vec::new(),
             repositories: Vec::new(),
-            token_env: Some("DISCORD_BOT_TOKEN".into()),
+            token_env: (kind == "slack").then_some("SLACK_BOT_TOKEN".into()),
             token,
             oauth_client,
             query: None,
@@ -672,7 +668,7 @@ mod tests {
     }
 
     #[test]
-    fn discord_oauth_authorization_is_reported_only_when_oauth_paths_exist() {
+    fn discord_rpc_authorization_is_reported_only_when_rpc_paths_exist() {
         use crate::source_status::SourceAuthorizationMethod;
 
         let directory = tempfile::tempdir().unwrap();
@@ -685,42 +681,41 @@ mod tests {
         #[cfg(unix)]
         crate::oauth_common::set_owner_only(&client_path).unwrap();
 
-        // Bot-token-only sources keep the plain token method (fallback).
+        // A Discord source without explicit RPC paths is not authorized and
+        // must not fall back to a token environment variable.
         let mut config = crate::config::Config::default();
         config.sources.push(source("discord", None, None));
-        config
-            .environment
-            .insert("DISCORD_BOT_TOKEN".into(), "bot-token".into());
         let summary = super::source_authorization_summary(&config, &config.sources[0]);
-        assert_eq!(summary.method, SourceAuthorizationMethod::Token);
-        assert!(summary.authorized);
+        assert_eq!(summary.method, SourceAuthorizationMethod::DiscordRpc);
+        assert!(!summary.authorized);
+        assert!(summary.setup_required);
 
-        // OAuth paths flip the method to discord_oauth and gate
-        // authorization on the stored user token file.
+        // RPC paths report the stored user token state without contacting
+        // Discord Desktop RPC or requiring a client prompt during status generation.
         config.sources[0] = source(
             "discord",
             Some(token_path.clone()),
             Some(client_path.clone()),
         );
         let summary = super::source_authorization_summary(&config, &config.sources[0]);
-        assert_eq!(summary.method, SourceAuthorizationMethod::DiscordOauth);
+        assert_eq!(summary.method, SourceAuthorizationMethod::DiscordRpc);
         assert!(summary.authorized);
         assert!(!summary.setup_required);
 
-        // Without the user token file, browser authorization is still
-        // required but no setup remains: the client file and the token
+        // Without the user token file, desktop authorization is still
+        // required but no setup remains: the client file and token
         // destination are both configured.
         std::fs::remove_file(&token_path).unwrap();
         config.sources[0] = source("discord", Some(token_path), Some(client_path));
         let summary = super::source_authorization_summary(&config, &config.sources[0]);
-        assert_eq!(summary.method, SourceAuthorizationMethod::DiscordOauth);
+        assert_eq!(summary.method, SourceAuthorizationMethod::DiscordRpc);
         assert!(!summary.authorized);
         assert!(!summary.setup_required);
 
         let json = serde_json::to_value(&summary).expect("summary serializes");
         assert_eq!(
             json.get("method"),
-            Some(&serde_json::Value::String("discord_oauth".into()))
+            Some(&serde_json::Value::String("discord_rpc".into()))
         );
     }
 
@@ -740,13 +735,13 @@ mod tests {
 
         // Bot-token-only sources keep the plain token method (fallback): the
         // bot token environment variable is a credential, never a path. The
-        // shared fixture helper hardcodes the env name DISCORD_BOT_TOKEN, so
-        // the environment must populate that name for the token branch.
+        // the fixture supplies Slack's operational bot credential for the
+        // token-only branch.
         let mut config = crate::config::Config::default();
         config.sources.push(source("slack", None, None));
         config
             .environment
-            .insert("DISCORD_BOT_TOKEN".into(), "bot-token".into());
+            .insert("SLACK_BOT_TOKEN".into(), "bot-token".into());
         let summary = super::source_authorization_summary(&config, &config.sources[0]);
         assert_eq!(summary.method, SourceAuthorizationMethod::Token);
         assert!(summary.authorized);
@@ -777,37 +772,6 @@ mod tests {
     }
 
     #[test]
-    fn discord_oauth_authorization_summary_does_not_use_bot_token_env_as_user_token_destination() {
-        use crate::source_status::SourceAuthorizationMethod;
-
-        let directory = tempfile::tempdir().unwrap();
-        let client_path = directory.path().join("discord-oauth-client.json");
-        let token_path = directory.path().join("fake-bot-token.json");
-
-        std::fs::write(&client_path, "{\"client_id\":\"client-id\"}").unwrap();
-        std::fs::write(&token_path, "not-a-token").unwrap();
-        #[cfg(unix)]
-        {
-            crate::oauth_common::set_owner_only(&client_path).unwrap();
-            crate::oauth_common::set_owner_only(&token_path).unwrap();
-        }
-
-        let mut config = crate::config::Config::default();
-        config.environment.insert(
-            "DISCORD_BOT_TOKEN".into(),
-            token_path.to_string_lossy().into(),
-        );
-        config
-            .sources
-            .push(source("discord", None, Some(client_path)));
-
-        let summary = super::source_authorization_summary(&config, &config.sources[0]);
-        assert_eq!(summary.method, SourceAuthorizationMethod::DiscordOauth);
-        assert!(!summary.authorized);
-        assert!(summary.setup_required);
-    }
-
-    #[test]
     fn slack_oauth_authorization_summary_does_not_use_bot_token_env_as_user_token_destination() {
         use crate::source_status::SourceAuthorizationMethod;
 
@@ -825,7 +789,7 @@ mod tests {
 
         let mut config = crate::config::Config::default();
         config.environment.insert(
-            "DISCORD_BOT_TOKEN".into(),
+            "SLACK_BOT_TOKEN".into(),
             token_path.to_string_lossy().into(),
         );
         config

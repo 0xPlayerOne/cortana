@@ -1626,15 +1626,17 @@ mod tests {
     }
 
     #[test]
-    fn native_discord_channel_discovery_fails_closed_without_configured_token() {
+    fn native_discord_channel_discovery_fails_closed_without_rpc_credentials() {
         let temp = tempfile::tempdir().expect("temporary config directory");
         let config_path = temp.path().join("cortana/config.toml");
         fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
         fs::write(
             &config_path,
             format!(
-                "data_dir = {}\n\n[[sources]]\nname = \"community\"\nkind = \"discord\"\nenabled = true\nproject = \"work\"\ntoken_env = \"CORTANA_TEST_DISCORD_BOT_TOKEN\"\n",
+                "data_dir = {}\n\n[[sources]]\nname = \"community\"\nkind = \"discord\"\nenabled = true\nproject = \"work\"\ntoken = {:?}\noauth_client = {:?}\n",
                 toml_string(&temp.path().join("cortana/data").display().to_string()),
+                temp.path().join("cortana/discord-token.json"),
+                temp.path().join("cortana/discord-client.json"),
             ),
         )
         .expect("test config");
@@ -1652,22 +1654,20 @@ mod tests {
                 .build()
                 .expect("build mock desktop window");
 
-            // Discovery must fail before any network request when the bot
-            // token environment variable is not configured, and the error
-            // must name only the variable, never a token value.
+            // Discovery must fail before any network request when Discord
+            // Desktop RPC credentials are not available.
             let error = invoke_json_with(
                 &window,
                 "desktop_discord_channels",
                 json!({ "source": "community" }),
             )
-            .expect_err("missing bot token must fail closed without network access");
+            .expect_err("missing RPC credentials must fail closed without network access");
             let message = error.as_str().unwrap_or_default();
             assert!(
-                message.contains("Discord bot token environment variable"),
+                message.contains("Discord"),
                 "unexpected discovery error: {message}"
             );
-            assert!(message.contains("CORTANA_TEST_DISCORD_BOT_TOKEN"));
-            assert!(!message.contains("Bot "));
+            assert!(!message.contains("DISCORD_BOT_TOKEN"));
         });
     }
 
@@ -1703,7 +1703,7 @@ mod tests {
         fs::write(
             &config_path,
             format!(
-                "data_dir = {}\n\n[[sources]]\nname = \"community\"\nkind = \"discord\"\nenabled = true\nproject = \"work\"\ntoken_env = \"CORTANA_TEST_DISCORD_BOT_TOKEN\"\ntoken = \"/tmp/cortana-test/missing-discord-token.json\"\noauth_client = \"/tmp/cortana-test/missing-oauth-client.json\"\n",
+                "data_dir = {}\n\n[[sources]]\nname = \"community\"\nkind = \"discord\"\nenabled = true\nproject = \"work\"\ntoken = \"/tmp/cortana-test/missing-discord-token.json\"\noauth_client = \"/tmp/cortana-test/missing-oauth-client.json\"\n",
                 toml_string(&temp.path().join("cortana/data").display().to_string()),
             ),
         )
@@ -1733,8 +1733,8 @@ mod tests {
             .expect_err("missing user token must fail closed without network access");
             let message = error.as_str().unwrap_or_default();
             assert!(
-                message.contains("check browser authorization")
-                    || message.contains("requires browser authorization"),
+                message.contains("Discord Desktop RPC")
+                    || message.contains("Discord OAuth"),
                 "unexpected server discovery error: {message}"
             );
         });
@@ -1748,7 +1748,7 @@ mod tests {
         fs::write(
             &config_path,
             format!(
-                "data_dir = {}\n\n[[sources]]\nname = \"community\"\nkind = \"discord\"\nenabled = true\nproject = \"work\"\ntoken_env = \"CORTANA_TEST_DISCORD_BOT_TOKEN\"\n",
+                "data_dir = {}\n\n[[sources]]\nname = \"community\"\nkind = \"discord\"\nenabled = true\nproject = \"work\"\n",
                 toml_string(&temp.path().join("cortana/data").display().to_string()),
             ),
         )
@@ -1765,12 +1765,14 @@ mod tests {
                 "desktop_source_authorization_start",
                 json!({ "source": "community" }),
             )
-            .expect_err("Discord OAuth must reject incomplete setup without a browser");
+            .expect_err("Discord RPC must reject incomplete setup before starting");
             assert!(
                 error
                     .as_str()
                     .unwrap_or_default()
-                    .contains("save a Discord user token destination file")
+                    .contains("Discord"),
+                "unexpected Discord authorization error: {}",
+                error.as_str().unwrap_or_default()
             );
         });
     }

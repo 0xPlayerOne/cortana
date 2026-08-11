@@ -1008,10 +1008,13 @@ mod tests {
             kind = "discord"
             enabled = true
             project = "work"
-            token_env = "DISCORD_TOKEN"
+            token = "{discord_token}"
+            oauth_client = "{discord_client}"
             acl = ["work"]
             "#,
             token_path_display = token_path.display(),
+            discord_token = directory.path().join("discord-rpc-token.json").display(),
+            discord_client = directory.path().join("discord-rpc-client.json").display(),
         ))
         .expect("configuration");
         config.data_dir = directory.path().to_path_buf();
@@ -1120,7 +1123,7 @@ mod tests {
             .iter()
             .find(|source| source["name"] == "discord")
             .expect("discord status");
-        assert_eq!(discord_status["authorization"]["method"], "token");
+        assert_eq!(discord_status["authorization"]["method"], "discord_rpc");
         assert_eq!(discord_status["authorization"]["authorized"], false);
         assert_eq!(discord_status["authorization"]["setup_required"], true);
         assert!(discord_status["validation"].is_null());

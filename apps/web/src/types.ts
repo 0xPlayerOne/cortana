@@ -86,7 +86,7 @@ export type SourceSyncSummary = {
 }
 
 export type SourceAuthorizationSummary = {
-  method: 'none' | 'token' | 'google_oauth' | 'github_oauth' | 'discord_oauth' | 'slack_oauth'
+  method: 'none' | 'token' | 'google_oauth' | 'github_oauth' | 'discord_rpc' | 'slack_oauth'
   setup_required: boolean
   authorized: boolean
 }
@@ -232,7 +232,7 @@ export type SourceSettings = {
   source: string | null
   channels: string[]
   repositories: string[]
-  /** Discord servers (guilds) assigned to this source's workspace via browser authorization. */
+  /** Discord servers (guilds) assigned to this source's workspace via Desktop RPC authorization. */
   servers: string[]
   /** Slack team (workspace) ids assigned to this source's workspace via browser authorization. */
   teams: string[]

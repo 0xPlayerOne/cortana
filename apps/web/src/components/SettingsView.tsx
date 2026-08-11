@@ -3822,7 +3822,7 @@ function SourcesSection({
                         !source.oauth_client_path ||
                         Boolean(activeJob)
                       }
-                      title={`Authorize read-only ${source.kind === 'github' ? 'GitHub' : source.kind === 'discord' ? 'Discord' : source.kind === 'slack' ? 'Slack' : 'Google'} access in the browser`}
+                      title={`Authorize read-only ${source.kind === 'github' ? 'GitHub' : source.kind === 'discord' ? 'Discord Desktop' : source.kind === 'slack' ? 'Slack' : 'Google'} access`}
                       onClick={() => void authorizeSource(source)}
                     >
                       {runningThis && activeJob?.operation === 'authorization' ? (
@@ -4289,7 +4289,7 @@ function SourcesSection({
                       {source.kind === 'discord' && (
                         <Field
                           label="Server chooser"
-                          hint="assign the servers this workspace may index; authorize with Discord first, then discover and check the servers to assign"
+                          hint="assign the servers this workspace may index; approve Cortana in Discord Desktop first, then discover and check the servers to assign"
                           wide
                         >
                           <div className="source-repository-chooser">
@@ -4344,7 +4344,7 @@ function SourcesSection({
                       {source.kind === 'discord' && (
                         <Field
                           label="Channel chooser"
-                          hint="discover channels with the bot token, then select only the channels Cortana may index; channels outside assigned servers stay available when no servers are assigned"
+                          hint="discover channels through the running Discord Desktop RPC client, then select only the channels Cortana may index; channels outside assigned servers stay available when no servers are assigned"
                           wide
                         >
                           <div className="source-repository-chooser">
@@ -4461,14 +4461,12 @@ function SourcesSection({
                           }}
                         />
                       </Field>
-                      <Field
+                      {source.kind !== 'discord' && <Field
                         label="Token variable"
                         hint={
-                          source.kind === 'discord'
-                            ? 'Discord bot token; required for channel listing and sync'
-                            : secret?.configured && !clearedSecrets.has(secret.name)
-                              ? `Configured via ${secret.source}`
-                              : 'stored in Cortana owner-only secret file'
+                          secret?.configured && !clearedSecrets.has(secret.name)
+                            ? `Configured via ${secret.source}`
+                            : 'stored in Cortana owner-only secret file'
                         }
                       >
                         <input
@@ -4476,16 +4474,15 @@ function SourcesSection({
                           disabled={sourceLocked || !source.editable}
                           required={
                             source.enabled &&
-                            (source.kind === 'discord' ||
-                              (source.kind !== 'github' && !source.token_path))
+                            (source.kind !== 'github' && !source.token_path)
                           }
                           pattern="[A-Z_][A-Z0-9_]*"
                           onChange={(event) =>
                             changeSource(index, { token_env: event.target.value || null })
                           }
                         />
-                      </Field>
-                      <Field label="New token" hint="write-only; leave blank to keep existing">
+                      </Field>}
+                      {source.kind !== 'discord' && <Field label="New token" hint="write-only; leave blank to keep existing">
                         <div className="secret-input">
                           <input
                             type="password"
@@ -4513,19 +4510,19 @@ function SourcesSection({
                               </button>
                             )}
                         </div>
-                      </Field>
+                      </Field>}
                       {source.kind === 'discord' && (
                         <>
                           <Field
-                            label="Discord OAuth token file"
-                            hint="private user token created by Cortana; used only to list servers for workspace assignment"
+                            label="Discord RPC token file"
+                            hint="private access token created through Discord Desktop RPC; used for server, channel, and message reads"
                             wide
                           >
                             <div className="path-input">
                               <input
                                 value={source.token_path || ''}
                                 disabled={sourceLocked || !source.editable}
-                                placeholder="/Users/you/.config/cortana/discord-user-token.json"
+                                placeholder="/Users/you/.config/cortana/discord-rpc-token.json"
                                 onChange={(event) =>
                                   changeSource(index, { token_path: event.target.value || null })
                                 }
@@ -4533,9 +4530,9 @@ function SourcesSection({
                               <button
                                 type="button"
                                 disabled={sourceLocked || !source.editable}
-                                aria-label="Choose Discord OAuth token destination"
-                                title="Choose Discord OAuth token destination"
-                                data-tooltip="Choose Discord OAuth token destination"
+                                aria-label="Choose Discord RPC token destination"
+                                title="Choose Discord RPC token destination"
+                                data-tooltip="Choose Discord RPC token destination"
                                 className="quick-tooltip"
                                 onClick={() =>
                                   void choosePath(index, 'discord-token', 'token_path')
@@ -4546,15 +4543,15 @@ function SourcesSection({
                             </div>
                           </Field>
                           <Field
-                            label="Discord OAuth client JSON"
-                            hint="JSON containing the OAuth app client_id; required for browser authorization"
+                            label="Discord RPC client JSON"
+                            hint="JSON containing the Discord application client_id and optional client_secret"
                             wide
                           >
                             <div className="path-input">
                               <input
                                 value={source.oauth_client_path || ''}
                                 disabled={sourceLocked || !source.editable}
-                                placeholder="/Users/you/.config/cortana/discord-oauth-client.json"
+                                placeholder="/Users/you/.config/cortana/discord-rpc-client.json"
                                 onChange={(event) =>
                                   changeSource(index, {
                                     oauth_client_path: event.target.value || null,
@@ -4564,9 +4561,9 @@ function SourcesSection({
                               <button
                                 type="button"
                                 disabled={sourceLocked || !source.editable}
-                                aria-label="Choose Discord OAuth client JSON"
-                                title="Choose Discord OAuth client JSON"
-                                data-tooltip="Choose Discord OAuth client JSON"
+                                aria-label="Choose Discord RPC client JSON"
+                                title="Choose Discord RPC client JSON"
+                                data-tooltip="Choose Discord RPC client JSON"
                                 className="quick-tooltip"
                                 onClick={() =>
                                   void choosePath(index, 'oauth-client', 'oauth_client_path')
@@ -5222,7 +5219,6 @@ function safeMarkdownUrl(value: string): string | null {
 function defaultTokenEnv(kind: SourceKind): string | null {
   if (kind === 'github') return 'GITHUB_TOKEN'
   if (kind === 'slack') return 'SLACK_BOT_TOKEN'
-  if (kind === 'discord') return 'DISCORD_BOT_TOKEN'
   return null
 }
 

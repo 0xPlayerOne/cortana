@@ -63,8 +63,9 @@ closed.
 Authorize only the source you intend to use, then run a small read-only validation. Google OAuth is
 started with `cortana authorize-google SOURCE`; GitHub uses `cortana authorize-github SOURCE`
 with a configured device-flow client id and private token destination; Discord uses
-`cortana authorize-discord SOURCE` with a configured OAuth client JSON and private user-token
-destination to assign servers per workspace; Slack uses `cortana authorize-slack SOURCE` with a
+`cortana authorize-discord SOURCE` through the running Discord Desktop client with a configured
+RPC client JSON and private RPC token destination to assign servers per workspace; Slack uses
+`cortana authorize-slack SOURCE` with a
 configured OAuth client JSON and private user-token destination to assign workspaces per
 workspace (`cortana slack-workspaces SOURCE` lists the assigned workspace); Buzz uses
 `cortana buzz-communities SOURCE` to list the bounded communities recorded in its read-only
@@ -234,8 +235,7 @@ verified their data:
 
 ```bash
 cortana migrate-hermes \
-  --connector-command "$HOME/.local/share/cortana/venv/bin/cortana-connectors" \
-  --discord-channel 123456789012345678
+  --connector-command "$HOME/.local/share/cortana/venv/bin/cortana-connectors"
 cortana doctor
 cortana sync
 ```
@@ -254,8 +254,8 @@ shared embedding cache, and reconciles only after the complete input is read. A 
 invalid export therefore cannot delete the prior imported snapshot.
 
 Migration refuses to replace an existing Cortana configuration unless `--force` is explicit. It
-never prints credential values and recognizes only `DISCORD_BOT_TOKEN` and `SLACK_BOT_TOKEN` from
-legacy environment files.
+never prints credential values and recognizes only `SLACK_BOT_TOKEN` from legacy environment files;
+Discord bot credentials are intentionally not migrated.
 
 ## Architecture
 

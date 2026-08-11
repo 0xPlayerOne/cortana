@@ -15,7 +15,7 @@ use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
 use cortana::{
-    api, buzz_communities, discord_oauth, github_oauth, google_oauth, mcp, migration,
+    api, buzz_communities, discord_rpc, github_oauth, google_oauth, mcp, migration,
     provider_models, service, slack_oauth, source_status, source_validation, supervisor,
 };
 use fs2::FileExt;
@@ -67,8 +67,6 @@ enum Command {
         connector_command: Option<PathBuf>,
         #[arg(long = "google-account")]
         google_accounts: Vec<String>,
-        #[arg(long = "discord-channel")]
-        discord_channels: Vec<String>,
         #[arg(long = "slack-channel")]
         slack_channels: Vec<String>,
         #[arg(
@@ -240,7 +238,7 @@ enum Command {
     AuthorizeGoogle { source: String },
     /// Authorize a configured GitHub source through the device flow without reading repository content.
     AuthorizeGithub { source: String },
-    /// Authorize a configured Discord source in the system browser without reading server or channel data.
+    /// Authorize a configured Discord source through the running Discord Desktop client without reading server or channel data.
     AuthorizeDiscord { source: String },
     /// Authorize a configured Slack source in the system browser without reading workspace or message data.
     AuthorizeSlack { source: String },
@@ -253,7 +251,7 @@ enum Command {
         #[arg(long, value_enum)]
         kind: ProviderModelsKind,
     },
-    /// List bounded Discord servers (guilds) the authorized user belongs to for per-workspace assignment.
+    /// List bounded Discord servers (guilds) visible to the authorized Discord Desktop client for per-workspace assignment.
     DiscordServers { source: String },
     /// List the bounded Slack workspace (team) a configured source's authorized user token is scoped to for per-workspace assignment.
     SlackWorkspaces { source: String },
@@ -458,7 +456,6 @@ async fn main() -> Result<()> {
         data_dir,
         connector_command,
         google_accounts,
-        discord_channels,
         slack_channels,
         force,
     }) = cli.command.as_ref()
@@ -474,7 +471,6 @@ async fn main() -> Result<()> {
             data_dir: data_dir.clone(),
             connector_command: connector_command.clone(),
             google_accounts: google_accounts.clone(),
-            discord_channels: discord_channels.clone(),
             slack_channels: slack_channels.clone(),
             force: *force,
         })
@@ -617,7 +613,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
     if let Some(Command::AuthorizeDiscord { source }) = cli.command.as_ref() {
-        let outcome = discord_oauth::authorize(&config, source).await?;
+        let outcome = discord_rpc::authorize(&config, source).await?;
         println!("{}", serde_json::to_string(&outcome)?);
         return Ok(());
     }
@@ -632,7 +628,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
     if let Some(Command::DiscordChannels { source }) = cli.command.as_ref() {
-        let channels = cortana::discord::list_channels(&config, source).await?;
+        let channels = cortana::discord_rpc::list_channels(&config, source).await?;
         println!("{}", serde_json::to_string(&channels)?);
         return Ok(());
     }
@@ -646,7 +642,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
     if let Some(Command::DiscordServers { source }) = cli.command.as_ref() {
-        let servers = discord_oauth::list_servers(&config, source).await?;
+        let servers = discord_rpc::list_servers(&config, source).await?;
         println!("{}", serde_json::to_string(&servers)?);
         return Ok(());
     }
@@ -3137,11 +3133,28 @@ fn connector_arguments(command: &mut Vec<String>, source: &SourceConfig) -> Resu
     for repository in &source.repositories {
         command.extend(["--repo".into(), repository.clone()]);
     }
-    if let Some(token_env) = &source.token_env {
-        command.extend(["--token-env".into(), token_env.clone()]);
+    if source.kind != "discord" {
+        if let Some(token_env) = &source.token_env {
+            command.extend(["--token-env".into(), token_env.clone()]);
+        }
     }
     if let Some(token) = &source.token {
         command.extend(["--token".into(), token.display().to_string()]);
+    }
+    if source.kind == "discord" {
+        anyhow::ensure!(
+            source.token_env.is_none(),
+            "Discord sources cannot use token_env; configure Desktop RPC paths"
+        );
+        let client = source
+            .oauth_client
+            .as_ref()
+            .context("Discord source requires an OAuth client path")?;
+        anyhow::ensure!(
+            source.token.is_some(),
+            "Discord source requires a private token path"
+        );
+        command.extend(["--oauth-client".into(), client.display().to_string()]);
     }
     if let Some(query) = &source.query {
         command.extend(["--query".into(), query.clone()]);
