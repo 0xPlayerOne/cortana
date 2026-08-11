@@ -89,12 +89,11 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line and latest verified core release are v0.29.66 at commit
+- The current main line and latest fully verified release are v0.29.66 at commit
   `15c7631`. This is a release-only version/changelog/lockfile bump over v0.29.65; no functional
-  source files changed. The aarch64 core archive from release-assets workflow `31455540401`
-  passed its checksum, safe-path, packaged-version, and structure checks. The remaining desktop
-  assets are still building, so the last fully verified desktop release remains v0.29.65 from
-  workflow `31451927246`. The installed CLI `/Users/amf/.local/bin/cortana` now reports
+  source files changed. Release-assets workflow `31455540401` published all 18 expected assets,
+  and the local fail-closed verifier passed the cross-platform archives, checksums, minisign
+  signatures, and updater manifest. The installed CLI `/Users/amf/.local/bin/cortana` now reports
   `cortana 0.29.66`;
   the packaged
   Desktop app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or
@@ -113,9 +112,9 @@ is not part of a visual/UI change.
 - A headless v0.29.66 macOS ARM packaged-app drill verified the published app archive's minisign
   signature, safe tar members, `Cortana.app` bundle, `Info.plist` version `0.29.66`, and
   `codesign --verify --deep --strict`. `spctl --assess` rejects the ad-hoc bundle (exit 3) because
-  Developer ID signing/notarization is not configured. The partial v0.29.66 `latest.json` currently
-  contains only the two Darwin entries while the remaining desktop assets build, so the full updater
-  manifest gate remains open; the app was not launched.
+  Developer ID signing/notarization is not configured. The v0.29.66 `latest.json` contains all
+  required platform entries and passed the full updater-manifest and signature gate; the app was
+  not launched.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
