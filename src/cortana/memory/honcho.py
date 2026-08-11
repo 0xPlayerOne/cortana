@@ -46,7 +46,7 @@ class HonchoHttpProvider(MemoryProvider):
         self._validate_identifier("workspace_id", config.workspace_id)
         self._validate_identifier("peer_id", config.peer_id)
         self._validate_identifier("session_prefix", config.session_prefix)
-        if not config.token or not config.token.strip():
+        if not isinstance(config.token, str) or not config.token.strip():
             raise MemoryArgumentError("token must be configured")
         if any(character in config.token for character in "\r\n"):
             raise MemoryArgumentError("token contains unsafe characters")
@@ -56,7 +56,7 @@ class HonchoHttpProvider(MemoryProvider):
 
     @staticmethod
     def _safe_base_url(base_url: str) -> httpx.URL:
-        if not base_url.strip():
+        if not isinstance(base_url, str) or not base_url.strip():
             raise MemoryArgumentError("base_url cannot be empty")
         try:
             parsed = httpx.URL(base_url)
@@ -72,7 +72,7 @@ class HonchoHttpProvider(MemoryProvider):
 
     @staticmethod
     def _validate_identifier(name: str, value: str) -> None:
-        if not value or len(value) > _IDENTIFIER_LIMIT:
+        if not isinstance(value, str) or not value or len(value) > _IDENTIFIER_LIMIT:
             raise MemoryArgumentError(f"{name} must be 1-{_IDENTIFIER_LIMIT} characters")
         if any(
             character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"
