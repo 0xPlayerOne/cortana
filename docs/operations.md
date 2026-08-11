@@ -259,7 +259,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.30.7
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.30.10
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
