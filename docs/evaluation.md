@@ -97,14 +97,12 @@ planner+synthesis model use, valid citations, cache reuse, and revision invalida
 Desktop app was not launched; the installed v0.30.6 core now lives at
 `/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 through v0.30.6
 are release/version and cross-platform compatibility fixes over the same query behavior.
-The installed v0.30.6 run above is the current provider-backed evidence; older source-tree runs
-remain historical evidence. An
-earlier bounded provider-unavailable attempt remains historical evidence of the fail-closed path;
-the successful rerun re-established the provider gate without changing the safe extractive default.
-The fresh installed v0.30.6 rerun passed in 14,937 ms with planner and synthesis model use,
-valid citations, cache reuse, and revision invalidation. A prior bounded provider-unavailable
-attempt and the silent v0.30.1 diagnostic remain historical fail-closed evidence; the v0.30.6 pass
-re-establishes provider availability without changing the safe extractive default.
+The last successful installed v0.30.6 run remains the current provider-backed pass at 14,937 ms
+with planner and synthesis model use, valid citations, cache reuse, and revision invalidation;
+older source-tree runs remain historical evidence. A fresh 2026-08-11 attempt failed closed with
+`fallback_provider_unavailable=true` after the configured gateway upstream timed out before
+planner output. The evaluator did not retry the failed provider for cache checks, and extractive
+mode remains the safe production default until provider availability is re-established.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
 
