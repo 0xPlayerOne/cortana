@@ -97,12 +97,11 @@ is not part of a visual/UI change.
   Desktop app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or
   replaced. The installed v0.29.64 core passes `--version`, `cortana doctor`, and the disposable
   control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
-  restore, and post-restore search). The latest successful model-backed run remains the v0.29.60
-  result at 17,928 ms (a prior cache-warm run completed in 10,323 ms); a fresh v0.29.64 attempt
-  against the persistent `auto-free` query provider returned a structured `provider_unavailable`
-  fallback after 30,018 ms, with planner and synthesis unused, and failed the model-backed
-  threshold. The runtime remained bounded and extractive retrieval stayed valid; provider-backed
-  synthesis therefore remains unverified on this run.
+  restore, and post-restore search). A fresh v0.29.64 model-backed evaluation against the
+  persistent `auto-free` query provider passed in 12,947 ms with planner and synthesis model use,
+  valid citations, cache reuse, and revision invalidation. An earlier bounded attempt returned
+  `provider_unavailable` after 30,018 ms while the gateway was degraded; the successful rerun
+  re-established provider-backed evaluation without changing the safe extractive runtime default.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was

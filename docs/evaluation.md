@@ -96,9 +96,10 @@ latest successful installed v0.29.60 aarch64 core binary rerun passed the same f
 planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
 Desktop app remains installed locally at v0.29.55; the verified v0.29.64 core is installed at
 `/Users/amf/.local/bin/cortana` without starting the app or recurring sync. A fresh v0.29.64
-model-backed attempt against the configured `auto-free` provider returned a structured
-`provider_unavailable` fallback after 30,018 ms, with planner and synthesis unused, and failed the
-model-backed threshold. The provider gate is not re-asserted here.
+model-backed evaluation against the configured `auto-free` provider passed in 12,947 ms with
+planner and synthesis model use, valid citations, cache reuse, and revision invalidation. An
+earlier bounded provider-unavailable attempt remains historical evidence of the fail-closed path;
+the successful rerun re-established the provider gate without changing the safe extractive default.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
 
