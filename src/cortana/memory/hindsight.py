@@ -9,6 +9,8 @@ import httpx
 from .models import MemoryArgumentError, MemoryDocument
 from .provider import MemoryProvider, ProviderError
 
+_DOCUMENT_ID_LENGTH = 64
+
 
 @dataclass(frozen=True)
 class HindsightConfig:
@@ -86,8 +88,10 @@ class HindsightHttpProvider(MemoryProvider):
             )
 
     def delete(self, document_id: str) -> None:
-        if not document_id or any(character in document_id for character in "?#/\\\r\n"):
-            raise MemoryArgumentError("document_id contains unsafe URL characters")
+        if len(document_id) != _DOCUMENT_ID_LENGTH or any(
+            character not in "0123456789abcdef" for character in document_id
+        ):
+            raise MemoryArgumentError("document_id must be a Cortana stable document id")
         response = self._request(
             "DELETE",
             self._url(
