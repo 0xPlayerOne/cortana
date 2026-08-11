@@ -32,11 +32,15 @@ const updatesButtonName = new RegExp(
 
 afterEach(async () => {
   await act(async () => {
+    // Unmount before flushing pending work so the shell's polling effects are
+    // cancelled before a late promise can update the next test's renderer.
+    cleanup()
     await new Promise((resolve) => setTimeout(resolve, 0))
     await Promise.resolve()
     await Promise.resolve()
+    await Promise.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 0))
   })
-  cleanup()
 })
 afterEach(() => {
   window.localStorage.removeItem('cortana.workspace-selection.v1')
@@ -557,7 +561,10 @@ test('desktop shell restores workspace and source scope and clears stale selecti
     expect(state.getDocumentsCalls.at(-1)?.source).toBe('work-code')
   })
 
-  cleanup()
+  await act(async () => {
+    cleanup()
+    await Promise.resolve()
+  })
   window.localStorage.setItem('cortana.workspace-selection.v1', 'work')
   window.localStorage.setItem('cortana.source-selection.v1', 'missing')
   render(<App />)
@@ -566,7 +573,10 @@ test('desktop shell restores workspace and source scope and clears stale selecti
     expect(window.localStorage.getItem('cortana.source-selection.v1')).toBeNull()
   })
 
-  cleanup()
+  await act(async () => {
+    cleanup()
+    await Promise.resolve()
+  })
   window.localStorage.setItem('cortana.workspace-selection.v1', 'missing')
   render(<App />)
   await waitFor(() => {
@@ -575,7 +585,10 @@ test('desktop shell restores workspace and source scope and clears stale selecti
     expect(window.localStorage.getItem('cortana.workspace-selection.v1')).toBe(migrated)
   })
 
-  cleanup()
+  await act(async () => {
+    cleanup()
+    await Promise.resolve()
+  })
   window.localStorage.setItem('cortana.workspace-selection.v1', 'personal')
   window.localStorage.setItem('cortana.source-selection.v1', 'work-code')
   render(<App />)
@@ -585,7 +598,10 @@ test('desktop shell restores workspace and source scope and clears stale selecti
     expect(window.localStorage.getItem('cortana.source-selection.v1')).toBeNull()
   })
 
-  cleanup()
+  await act(async () => {
+    cleanup()
+    await Promise.resolve()
+  })
   window.localStorage.setItem('cortana.workspace-selection.v1', 'personal')
   window.localStorage.setItem('cortana.source-selection.v1', 'missing')
   render(<App />)
@@ -872,7 +888,10 @@ test('advanced import preview cancellation keeps draft values unchanged', async 
     fireEvent.change(dataDir, { target: { value: '/tmp/dirty-draft' } })
     expect(dataDir.value).toBe('/tmp/dirty-draft')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Import preview' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Import preview' }))
+      await Promise.resolve()
+    })
     await waitFor(() => expect(state.importDesktopSettingsCalls).toBe(1))
 
     expect(dataDir.value).toBe('/tmp/dirty-draft')
@@ -1746,7 +1765,10 @@ test('services settings offers an explicit safe core-service install', async () 
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Install core services/ })).toBeTruthy()
     )
-    fireEvent.click(screen.getByRole('button', { name: /Install core services/ }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Install core services/ }))
+      await Promise.resolve()
+    })
     await waitFor(() => expect(state.serviceInstallCalls).toBe(1))
     expect(screen.getByText('3 loaded')).toBeTruthy()
     expect(screen.getByText(/Recurring sync is opt-in/)).toBeTruthy()
@@ -1995,7 +2017,10 @@ test('successful service actions clear a stale shell service error immediately',
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
     await waitFor(() => expect(screen.getByText('service status transport failed')).toBeTruthy())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
+      await Promise.resolve()
+    })
     await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
 
     fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
@@ -2430,7 +2455,10 @@ test('successful aggregate restart clears the saved-settings notice', async () =
     expect(screen.getByText('A service restart is still required.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open services' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Restart all' }))
+      await Promise.resolve()
+    })
     await waitFor(() => expect(state.serviceRestartCalls).toBe(1))
     expect(screen.queryByText('A service restart is still required.')).toBeNull()
   } finally {

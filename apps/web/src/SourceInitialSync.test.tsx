@@ -12,7 +12,13 @@ import type {
 } from './types'
 import { INITIAL_SYNC_BUDGETS } from './types'
 
-afterEach(cleanup)
+// SettingsView owns several asynchronous native-status effects. Let the
+// final microtask settle before unmounting so a promise from one test cannot
+// update a component while the next test is rendering.
+afterEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  cleanup()
+})
 
 type Deferred<T> = {
   promise: Promise<T>
