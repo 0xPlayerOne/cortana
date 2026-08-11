@@ -101,7 +101,7 @@ The installed v0.30.6 run above is the current provider-backed evidence; older s
 remain historical evidence. An
 earlier bounded provider-unavailable attempt remains historical evidence of the fail-closed path;
 the successful rerun re-established the provider gate without changing the safe extractive default.
-The fresh installed v0.30.6 rerun passed in 12,391 ms with planner and synthesis model use,
+The fresh installed v0.30.6 rerun passed in 14,937 ms with planner and synthesis model use,
 valid citations, cache reuse, and revision invalidation. A prior bounded provider-unavailable
 attempt and the silent v0.30.1 diagnostic remain historical fail-closed evidence; the v0.30.6 pass
 re-establishes provider availability without changing the safe extractive default.
