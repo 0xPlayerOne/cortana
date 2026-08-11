@@ -111,7 +111,7 @@ is not part of a visual/UI change.
   required platform entries and passed the full updater-manifest and signature gate; the app was
   not launched.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
-  1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
+  1 GB of SQLite integrity and backup scanning; the latest installed v0.30.2 run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
