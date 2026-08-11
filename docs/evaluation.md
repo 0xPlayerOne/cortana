@@ -97,7 +97,7 @@ planner+synthesis model use, valid citations, cache reuse, and revision invalida
 Desktop app was not launched; the verified v0.29.67 core remains installed at
 `/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 through v0.29.69
 are release-only version/changelog/lockfile bumps over v0.29.65 with no functional source changes.
-A current-source v0.29.69 model-backed evaluation against the configured provider passed in 18,345 ms
+A current-source v0.29.69 model-backed evaluation against the configured provider passed in 18,762 ms
 with planner and synthesis model use, bounded planning, valid citations, cache reuse, and revision
 invalidation. An
 earlier bounded provider-unavailable attempt remains historical evidence of the fail-closed path;
