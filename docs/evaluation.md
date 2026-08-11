@@ -91,12 +91,15 @@ provider appended an uncited attribution line to the synthesis response. The ear
 historical evidence, not proof that the current provider is citation-safe. After raising the bounded
 synthetic output cap to leave room for gateway reasoning, the source run passed with planner and
 synthesis model use, valid citations, cache reuse, and revision invalidation in 22,866 ms. The
-latest installed v0.29.60 aarch64 core binary rerun passed the same fixture-only evaluator in
+latest successful installed v0.29.60 aarch64 core binary rerun passed the same fixture-only evaluator in
 17,928 ms; a prior cache-warm run passed in 10,323 ms. Both runs had
 planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
-Desktop app remains installed locally at v0.29.55; Developer ID signing/notarization is not available
-in this environment. Extractive mode remains the safe production default because synthesis is still
-an explicit opt-in in the production configuration.
+Desktop app remains installed locally at v0.29.55; the verified v0.29.61 core is installed at
+`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. A fresh v0.29.61
+model-backed attempt against the configured `auto-free` provider returned no bounded planner
+response and was stopped by an external watchdog, so the provider gate is not re-asserted here.
+Developer ID signing/notarization is not available in this environment. Extractive mode remains the
+safe production default because synthesis is still an explicit opt-in in the production configuration.
 
 ```toml
 [query]
