@@ -43,10 +43,10 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. The latest
-   installed v0.30.6 run passed the fixture-only gate on 2026-08-11 in 19,954 ms with planner and
-   synthesis model use, valid citations, cache reuse, and revision invalidation. An earlier
-   attempt correctly failed closed with `fallback_provider_unavailable=true` during a transient
-   gateway outage; the successful rerun re-established the provider gate. This remains
+   installed v0.30.6 run passed the fixture-only gate on 2026-08-11 in 9,105 ms with planner and
+   synthesis model use, 1.0 retrieval/citation metrics, cache reuse, and revision invalidation.
+   An earlier attempt correctly failed closed with `fallback_provider_unavailable=true` during a
+   transient gateway outage; the successful rerun re-established the provider gate. This remains
    fixture-only evidence, not packaged-app proof. Keep extractive mode as the safe production
    default because model synthesis remains opt-in; the installed v0.30.6 core still passes
    `doctor`, readiness, and the disposable packaged control-plane and recovery drills, while the
