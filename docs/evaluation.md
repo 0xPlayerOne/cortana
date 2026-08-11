@@ -92,7 +92,7 @@ historical evidence, not proof that the current provider is citation-safe. After
 synthetic output cap to leave room for gateway reasoning, the source run passed with planner and
 synthesis model use, valid citations, cache reuse, and revision invalidation in 22,866 ms. The
 latest installed v0.29.60 aarch64 core binary rerun passed the same fixture-only evaluator in
-10,323 ms; the prior installed v0.29.59 run passed in 20,940 ms. Both runs had
+17,928 ms; a prior cache-warm run passed in 10,323 ms. Both runs had
 planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
 Desktop app remains installed locally at v0.29.55; Developer ID signing/notarization is not available
 in this environment. Extractive mode remains the safe production default because synthesis is still

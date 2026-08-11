@@ -79,7 +79,7 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-### Stale/provider audit (2026-08-10)
+### Stale/provider audit (2026-08-11)
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
   remaining `Spark` matches are Lucide `Sparkles` icons used by the Query navigation surface.
@@ -89,21 +89,22 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The audited functional snapshot is v0.29.59 at main commit `047960e`; v0.29.60 is a subsequent
-  version-only release. Release-assets workflow `31444139917` completed successfully with all 18
-  expected assets. The local fail-closed verifier passed the published cross-platform archives,
-  checksums, minisign signatures, and updater manifest. The published aarch64 core archive also
-  passed its packaged-version, `doctor`, model-evaluation, and offline control-plane checks.
+- The latest published functional snapshot is v0.29.61 at main commit `b31cbe2`. Release-assets
+  workflow `31445913201` completed successfully with all 18 expected assets. The local fail-closed
+  verifier passed the published cross-platform archives, checksums, minisign signatures, and
+  updater manifest. The published aarch64 core archive also passed its packaged-version,
+  `doctor`, model-evaluation, and offline control-plane checks.
 - The installed CLI `/Users/amf/.local/bin/cortana` reports `cortana 0.29.60`; the packaged Desktop
   app `/Applications/Cortana.app` remains `cortana 0.29.55` because it was not launched or replaced.
   The installed v0.29.60 core passes `--version`, `cortana doctor`, the disposable control-plane
-  drill, and the bounded model-backed gate in 10,323 ms.
+  drill, and the bounded model-backed gate in 17,928 ms (a prior cache-warm run completed in
+  10,323 ms).
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-  The current-source native Desktop suite at main commit `047960e` passes all 126 tests. The
+  The current-source native Desktop suite based on main commit `b31cbe2` passes all 126 tests. The
   packaged app
   passes `codesign --verify --deep --strict`, but remains ad-hoc signed (`TeamIdentifier` is
   unset) and is rejected by `spctl --assess` (exit 3). Developer ID signing/notarization remains
@@ -119,8 +120,8 @@ is not part of a visual/UI change.
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 126 tests; the focused `native_` subset passes 24 tests (102 filtered). These counts were
-  refreshed against the v0.29.59 source tree without launching the Desktop app.
-- The current Rust library suite on the v0.29.59 source tree passes 266 tests with no failures;
+  refreshed against the v0.29.61 source tree without launching the Desktop app.
+- The current Rust library suite on the v0.29.61 source tree passes 266 tests with no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The direct-main workflow is now authoritative: feature PRs target `main`, `staging` and its
   promotion worktrees are retired, and release automation runs from `main`. Desktop checks remain
@@ -144,7 +145,7 @@ is not part of a visual/UI change.
   bytes, and a 30-second per-source cap: 11 of 12 enabled sources passed. `personal-calendar`
   failed closed as `authorization denied` because its Google refresh token is expired; no sync was
   requested and recurring sync remains uninstalled.
-- Release v0.29.59 also carries the fail-closed recurring-sync freshness guard across every
+- Release v0.29.61 also carries the fail-closed recurring-sync freshness guard across every
   reconciling path: the all-source gate, single-source `sync --require-validation`, and
   `readiness --allow-sync-service` reject `validation_max_age_hours = 0`; targeted Rust tests cover
   each path. Query-only/manual checks continue to permit an unbounded age without installing sync.
@@ -155,7 +156,7 @@ is not part of a visual/UI change.
   The latest source run passed planner+synthesis citation validation in 22,866 ms after the bounded
   output cap was raised for gateway reasoning. The latest installed v0.29.60 core binary passed
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
-  10,323 ms; the prior v0.29.59 run passed in 20,940 ms.
+  17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms.
   Extractive mode remains the safe production default because synthesis is still an explicit opt-in.
 - The latest bounded source validation sweep (25 documents, 5 MiB, 60 seconds per source; recorded
   before the v0.29.54 core install)
@@ -169,8 +170,8 @@ is not part of a visual/UI change.
   explicitly approved.
 - A previous disposable backup/restore drill against the installed v0.29.54 CLI passed: the live
   database backup was verified, restored into a temporary data directory, and SQLite integrity
-  verification passed. The published v0.29.59 aarch64 rerun of the disposable control-plane drill
-  also passed offline init, bounded fixture
+  verification passed. The installed v0.29.60 rerun of the disposable control-plane drill also
+  passed offline init, bounded fixture
   ingestion, search/context, metadata-only audit export, backup, restore, and post-restore search.
   A separate live v0.29.56 backup/restore drill also passed against the configured database and
   verified the restored SQLite file; neither drill touched indexed personal data.
