@@ -110,6 +110,12 @@ is not part of a visual/UI change.
 --strict` passed. This proves archive integrity and local signature structure only: the app was
   not launched, notarization was not assessed, and tray, native dialogs, OAuth, and updater UI
   remain manual gates.
+- A headless v0.29.66 macOS ARM packaged-app drill verified the published app archive's minisign
+  signature, safe tar members, `Cortana.app` bundle, `Info.plist` version `0.29.66`, and
+  `codesign --verify --deep --strict`. `spctl --assess` rejects the ad-hoc bundle (exit 3) because
+  Developer ID signing/notarization is not configured. The partial v0.29.66 `latest.json` currently
+  contains only the two Darwin entries while the remaining desktop assets build, so the full updater
+  manifest gate remains open; the app was not launched.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
