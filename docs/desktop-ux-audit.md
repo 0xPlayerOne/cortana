@@ -99,9 +99,10 @@ is not part of a visual/UI change.
   control-plane drill (offline init, bounded ingest, retrieval, metadata-only audit export, backup,
   restore, and post-restore search). The latest successful model-backed run remains the v0.29.60
   result at 17,928 ms (a prior cache-warm run completed in 10,323 ms); a fresh v0.29.63 attempt
-  against the persistent `auto-free` query provider did not return a bounded planner response and
-  was stopped by an external watchdog. Provider-backed synthesis therefore remains unverified on
-  this run.
+  against the persistent `auto-free` query provider returned a structured `provider_unavailable`
+  fallback after 30,018 ms, with planner and synthesis unused, and failed the model-backed
+  threshold. The runtime remained bounded and extractive retrieval stayed valid; provider-backed
+  synthesis therefore remains unverified on this run.
   The full `cortana readiness` scan is a read-only operational check because it includes roughly
   1 GB of SQLite integrity and backup scanning; the latest installed-core run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding

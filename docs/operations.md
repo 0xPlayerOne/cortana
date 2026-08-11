@@ -240,8 +240,9 @@ The v0.29.63 core archive passed its checksum, packaged-version, `cortana doctor
 control-plane checks. Release-assets run `31445913201` completed successfully with all 18 expected
 assets, and the local verifier passed its cross-platform archives, checksums, minisign signatures,
 and updater manifest. The verified v0.29.63 CLI is installed headlessly and passes `doctor` and the
-disposable control-plane drill; the current configured provider did not return a bounded model
-evaluation response, so synthesis remains unverified and disabled by default. The packaged Desktop app
+disposable control-plane drill; the current configured provider returned a bounded
+`provider_unavailable` evaluation fallback after 30,018 ms, so synthesis remains unverified and
+disabled by default. The packaged Desktop app
 at `/Applications/Cortana.app` remains v0.29.55; it was not launched or replaced.
 The bounded control-plane, recovery, and model-backed checks are recorded in
 `docs/desktop-ux-audit.md`.
