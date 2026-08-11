@@ -88,7 +88,7 @@ class HindsightHttpProvider(MemoryProvider):
             )
 
     def delete(self, document_id: str) -> None:
-        if len(document_id) != _DOCUMENT_ID_LENGTH or any(
+        if not isinstance(document_id, str) or len(document_id) != _DOCUMENT_ID_LENGTH or any(
             character not in "0123456789abcdef" for character in document_id
         ):
             raise MemoryArgumentError("document_id must be a Cortana stable document id")

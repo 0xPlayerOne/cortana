@@ -143,6 +143,8 @@ def test_hindsight_invalid_config_and_request_errors_are_retriable_and_opaque() 
 
     with pytest.raises(MemoryArgumentError, match="stable document id"):
         provider.delete("not-a-cortana-document-id")
+    with pytest.raises(MemoryArgumentError, match="stable document id"):
+        provider.delete(None)  # type: ignore[arg-type]
 
 
 def test_honcho_retain_uses_stable_document_session_and_delete_removes_only_that_session() -> None:
