@@ -43,7 +43,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. The latest
-   installed v0.30.10 run passed the fixture-only gate on 2026-08-11 in 13,117 ms with planner and
+   installed v0.30.10 run passed the fixture-only gate on 2026-08-11 in 10,544 ms with planner and
    synthesis model use, 1.0 retrieval/citation metrics, cache reuse, and revision invalidation.
    An earlier attempt correctly failed closed with `fallback_provider_unavailable=true` during a
    transient gateway outage; the successful rerun re-established the provider gate. This remains
@@ -70,9 +70,9 @@ is not part of a visual/UI change.
    comparative fixture (`uv run cortana-memory-eval`) reports `material_gain=true`, with recall and
    MRR gains of `0.375`; that is useful evidence for a future opt-in review, not live-provider proof.
 6. Complete source authorization and full validation coverage before recurring sync: the three
-   enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh bounded
-   validation (25 documents each, no writes); the personal AMF Discord source is disabled. The
-   bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
+   enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh validation-only
+   smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source; the personal AMF
+   Discord source is disabled. The bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
    either bounded samples (`complete=false`) or legacy records without an explicit completeness
    marker. Both states fail closed; recurring sync must remain uninstalled until every enabled
    source has a current `complete=true` validation at its configured budget.
@@ -182,7 +182,7 @@ is not part of a visual/UI change.
   refresh atomically from their owner-only refresh token before expiry; an expired token without a
   refresh token still fails closed and requests reauthorization. On 2026-08-11, Discord
   authorization succeeded for the Nifty League Team, Nifty League, and The Pink Binder sources;
-  bounded connector snapshots validated 25 documents per enabled source without writes. The
+  the current validation-only smoke used a one-document cap per enabled source without writes. The
   personal AMF source remains disabled, and recurring sync remains uninstalled until full
   complete validation coverage exists for every enabled source.
 - The current Desktop readiness source now compares the installed connector version with the
@@ -203,7 +203,7 @@ is not part of a visual/UI change.
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
   17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The prior installed v0.30.6
   rerun passed in 19,954 ms with the same planner, synthesis, citation, cache, and revision
-  checks. The latest installed v0.30.10 run passed in 13,117 ms with planner and synthesis model
+  checks. The latest installed v0.30.10 run passed in 10,544 ms with planner and synthesis model
   use, valid citations, cache reuse, and revision invalidation; retrieval recall, MRR, case pass
   rate, and citation validity were all 1.0 within the 30,000 ms answer deadline. The earlier
   provider-unavailable attempt remains historical fail-closed evidence, and extractive mode
