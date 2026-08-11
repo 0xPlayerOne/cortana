@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.5](https://github.com/0xPlayerOne/cortana/compare/v0.30.4...v0.30.5) (2026-08-11)
+
+
+### Maintenance
+
+* promote staging to main (2026-08-11) ([cbf657d](https://github.com/0xPlayerOne/cortana/commit/cbf657d45ceef51a6ed5b92977658152c3fdcefe))
+
 ## [0.30.4](https://github.com/0xPlayerOne/cortana/compare/v0.30.3...v0.30.4) (2026-08-11)
 
 
