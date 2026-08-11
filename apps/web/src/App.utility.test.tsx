@@ -14,11 +14,13 @@ import type {
 
 afterEach(async () => {
   await act(async () => {
+    // Stop UtilityView effects before draining pending work so a late shell
+    // update cannot reach the renderer owned by the next test.
+    cleanup()
     await new Promise((resolve) => setTimeout(resolve, 0))
     await Promise.resolve()
     await Promise.resolve()
   })
-  cleanup()
 })
 
 // Capture the real api module, then register a mock that delegates every export
