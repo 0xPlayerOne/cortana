@@ -149,8 +149,8 @@ is not part of a visual/UI change.
   full-corpus budget, and `personal-calendar` had no successful validation. This is the expected
   safety result; recurring sync remains uninstalled until complete validation and the missing Google
   token are repaired.
-- The latest headless `scripts/source-smoke.sh` validation-only pass used one document, 65,536
-  bytes, and a 30-second per-source cap: 11 of 12 enabled sources passed. `personal-calendar`
+- A fresh v0.29.64 headless `scripts/source-smoke.sh` validation-only pass used one document,
+  65,536 bytes, and a 30-second per-source cap: 11 of 12 enabled sources passed. `personal-calendar`
   failed closed as `authorization denied` because its Google refresh token is expired; no sync was
   requested and recurring sync remains uninstalled.
 - Release v0.29.61 also carries the fail-closed recurring-sync freshness guard across every
