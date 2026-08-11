@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.65](https://github.com/0xPlayerOne/cortana/compare/v0.29.64...v0.29.65) (2026-08-11)
+
+
+### Documentation
+
+* record-v02961-install-gate ([#589](https://github.com/0xPlayerOne/cortana/issues/589)) ([b0a0df1](https://github.com/0xPlayerOne/cortana/commit/b0a0df18363a27722f55eeda941cbe1a9d4e4f13))
+
 ## [0.29.64](https://github.com/0xPlayerOne/cortana/compare/v0.29.63...v0.29.64) (2026-08-11)
 
 
