@@ -762,17 +762,21 @@ mod tests {
 
     #[test]
     fn connector_version_must_match_the_bundled_runtime() {
+        let current_version = env!("CARGO_PKG_VERSION");
         let connector = ToolStatus {
             id: "connectors",
             label: "Connector environment",
             required: true,
             available: true,
             path: Some("/tmp/cortana-connectors".into()),
-            version: Some("0.29.68".into()),
+            version: Some("0.0.0".into()),
             install_supported: true,
             detail: "Found connector".into(),
         };
-        let status = enforce_connector_version_match(connector, Some("cortana 0.29.69"));
+        let status = enforce_connector_version_match(
+            connector,
+            Some(&format!("cortana {current_version}")),
+        );
         assert!(!status.available);
         assert!(status.detail.contains("does not match"));
 
@@ -782,17 +786,21 @@ mod tests {
             required: true,
             available: true,
             path: Some("/tmp/cortana-connectors".into()),
-            version: Some("0.29.69".into()),
+            version: Some(current_version.into()),
             install_supported: true,
             detail: "Found connector".into(),
         };
-        assert!(enforce_connector_version_match(connector, Some("cortana 0.29.69")).available);
+        assert!(enforce_connector_version_match(
+            connector,
+            Some(&format!("cortana {current_version}")),
+        )
+        .available);
     }
 
     #[test]
     fn release_version_parser_ignores_command_labels() {
-        assert_eq!(release_version("cortana 0.29.69"), Some("0.29.69"));
-        assert_eq!(release_version("0.29.69"), Some("0.29.69"));
+        assert_eq!(release_version("cortana 1.2.3"), Some("1.2.3"));
+        assert_eq!(release_version("1.2.3"), Some("1.2.3"));
         assert_eq!(release_version("unknown"), None);
         assert_eq!(release_version("0.29"), None);
     }
