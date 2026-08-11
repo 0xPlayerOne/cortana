@@ -102,6 +102,10 @@ def test_hindsight_invalid_config_and_request_errors_are_retriable_and_opaque() 
     with pytest.raises(MemoryArgumentError):
         HindsightHttpProvider(HindsightConfig(base_url="", bank="b", token="t"))
     with pytest.raises(MemoryArgumentError):
+        HindsightHttpProvider(  # type: ignore[arg-type]
+            HindsightConfig(base_url=None, bank="b", token="t")
+        )
+    with pytest.raises(MemoryArgumentError):
         HindsightHttpProvider(HindsightConfig(base_url="https://example.test", bank="", token="t"))
     with pytest.raises(MemoryArgumentError):
         HindsightHttpProvider(HindsightConfig(base_url="https://example.test", bank="b", token=""))
@@ -204,9 +208,17 @@ def test_honcho_rejects_unsafe_config_and_bounds_message_content() -> None:
     with pytest.raises(MemoryArgumentError):
         HonchoHttpProvider(HonchoConfig("", "workspace", "peer", "token"))
     with pytest.raises(MemoryArgumentError):
+        HonchoHttpProvider(  # type: ignore[arg-type]
+            HonchoConfig(None, "workspace", "peer", "token")
+        )
+    with pytest.raises(MemoryArgumentError):
         HonchoHttpProvider(HonchoConfig("https://example.test", "work/space", "peer", "token"))
     with pytest.raises(MemoryArgumentError):
         HonchoHttpProvider(HonchoConfig("https://example.test", "workspace", "peer id", "token"))
+    with pytest.raises(MemoryArgumentError):
+        HonchoHttpProvider(  # type: ignore[arg-type]
+            HonchoConfig("https://example.test", None, "peer", "token")
+        )
     with pytest.raises(MemoryArgumentError):
         HonchoHttpProvider(HonchoConfig("http://remote.example.test", "workspace", "peer", "token"))
     with pytest.raises(MemoryArgumentError):

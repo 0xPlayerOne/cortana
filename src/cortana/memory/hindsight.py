@@ -37,18 +37,18 @@ class HindsightHttpProvider(MemoryProvider):
         self._client = client or self._build_client(timeout_seconds)
         self._owns_client = client is None
 
-        if not self._config.bank or not self._config.bank.strip():
+        if not isinstance(self._config.bank, str) or not self._config.bank.strip():
             raise MemoryArgumentError("bank must be configured")
         if any(character in self._config.bank for character in "?#/\\\r\n"):
             raise MemoryArgumentError("bank contains unsafe URL characters")
-        if not self._config.token or not self._config.token.strip():
+        if not isinstance(self._config.token, str) or not self._config.token.strip():
             raise MemoryArgumentError("token must be configured")
         if any(character in self._config.token for character in "\r\n"):
             raise MemoryArgumentError("token contains unsafe characters")
 
     @staticmethod
     def _safe_base_url(base_url: str) -> httpx.URL:
-        if not base_url.strip():
+        if not isinstance(base_url, str) or not base_url.strip():
             raise MemoryArgumentError("base_url cannot be empty")
         try:
             parsed = httpx.URL(base_url)
@@ -88,8 +88,10 @@ class HindsightHttpProvider(MemoryProvider):
             )
 
     def delete(self, document_id: str) -> None:
-        if not isinstance(document_id, str) or len(document_id) != _DOCUMENT_ID_LENGTH or any(
-            character not in "0123456789abcdef" for character in document_id
+        if (
+            not isinstance(document_id, str)
+            or len(document_id) != _DOCUMENT_ID_LENGTH
+            or any(character not in "0123456789abcdef" for character in document_id)
         ):
             raise MemoryArgumentError("document_id must be a Cortana stable document id")
         response = self._request(
