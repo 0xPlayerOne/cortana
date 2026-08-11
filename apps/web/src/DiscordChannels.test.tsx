@@ -226,6 +226,7 @@ test('discord chooser warns when discovery is truncated at 100 servers', async (
       'Discord returned more than 100 servers; select from the first 100.'
     )
   )
+  await waitFor(() => expect(screen.getByText('Engineering')).toBeTruthy())
 })
 
 test('discord chooser marks a server with more than 100 channels as truncated', async () => {
@@ -249,9 +250,12 @@ test('discord chooser marks a server with more than 100 channels as truncated', 
 
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() => expect(screen.getByText('channel-99 · text')).toBeTruthy())
+  await waitFor(() =>
+    expect(screen.getByRole('checkbox', { name: /channel-0 · text/ })).toBeTruthy()
+  )
   // The per-server truncation marker is always rendered so the user knows
   // the persisted selection is limited to the returned channels.
   expect(screen.getByText(/first 100 channels/)).toBeTruthy()
   fireEvent.click(screen.getByRole('checkbox', { name: /channel-0 · text/ }))
-  expect(channelIdsTextarea().value).toBe('1759288472991000000')
+  await waitFor(() => expect(channelIdsTextarea().value).toBe('1759288472991000000'))
 })

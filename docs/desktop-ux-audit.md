@@ -43,7 +43,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Prove the persistent configured query provider with a model-backed evaluation. The latest
-   installed v0.30.10 run passed the fixture-only gate on 2026-08-11 in 14,619 ms with planner and
+   installed v0.30.10 run passed the fixture-only gate on 2026-08-11 in 21,656 ms with planner and
    synthesis model use, 1.0 retrieval/citation metrics, cache reuse, and revision invalidation.
    An earlier attempt correctly failed closed with `fallback_provider_unavailable=true` during a
    transient gateway outage; the successful rerun re-established the provider gate. This remains
@@ -128,22 +128,20 @@ is not part of a visual/UI change.
   129 tests. The
   local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
   verification fails as expected and no `TeamIdentifier` is present. Developer ID
-  signing/notarization remains a release blocker; the previous v0.29.50 bundle is retained at
-  `/Users/amf/.Trash/Cortana.app.backup-v0.29.50-20260810-2205`
-  for recovery (older v0.29.38, v0.29.37, v0.29.33, v0.29.31, v0.29.29, v0.29.28, v0.29.27,
-  v0.29.26, v0.29.24, v0.29.23, v0.29.22, v0.29.20, v0.29.19, and v0.29.14 backups remain
-  available as well).
+  signing/notarization remains a release blocker. No unsigned historical developer bundle is
+  treated as current recovery evidence; the verified v0.30.10 release assets and installed CLI are
+  authoritative.
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
-  passes 256 tests across 22 files (latest run: 65.02 seconds, 1,266 assertions, including the
+  passes 256 tests across 22 files (latest run: 42.27 seconds, 1,267 assertions, including the
   desktop lockfile helper regression). The Python suite
   passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
-  refreshed against the v0.30.7 functional tree without launching the Desktop app. React's test
-  harness still emits non-fatal `act(...)` warnings in a few asynchronous cases; all assertions
-  pass and no warning is treated as a successful production-GUI drill.
+  refreshed against the current v0.30.10 source tree without launching the Desktop app; the
+  act-aware harness now completes without React act warnings. These are headless assertions and
+  do not count as a successful production-GUI drill.
 - The current Rust library suite on v0.30.10 passes 253 tests with
   no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
@@ -205,7 +203,7 @@ is not part of a visual/UI change.
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
   17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The prior installed v0.30.6
   rerun passed in 19,954 ms with the same planner, synthesis, citation, cache, and revision
-  checks. The latest installed v0.30.10 run passed in 14,619 ms with planner and synthesis model
+  checks. The latest installed v0.30.10 run passed in 21,656 ms with planner and synthesis model
   use, valid citations, cache reuse, and revision invalidation; retrieval recall, MRR, case pass
   rate, and citation validity were all 1.0 within the 30,000 ms answer deadline. The earlier
   provider-unavailable attempt remains historical fail-closed evidence, and extractive mode
