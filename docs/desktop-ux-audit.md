@@ -7,24 +7,27 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-12)
 
-- `v0.31.4` is the current protected release. The source fix arrived through
-  staging PR #827 and exact-tree promotion PR #829; Release Please PR #830
-  published the patch release from main. The promotion subject explicitly
-  preserves the release-bearing evaluator fix because exact-tree squash
-  promotions otherwise hide staging commit metadata from Release Please.
-- Release `v0.31.4` is published and release-assets workflow `31569675691`
-  completed all platform jobs plus the strict verifier with all 18 core,
-  Desktop, signature, checksum, and updater-manifest assets. Archive
+- `v0.31.5` is the current protected release. The bounded Discord handshake
+  fix arrived through staging PR #841, exact-tree promotion PR #845, and
+  Release Please PR #846 published the patch release from main. The
+  promotion subject preserves the release-bearing fix because exact-tree
+  squash promotions otherwise hide staging commit metadata from Release
+  Please.
+- Release `v0.31.5` is published and release-assets workflow `31575709770`
+  completed all five platform jobs plus the strict verifier with all 18 core,
+  Desktop, signature, checksum, and updater-manifest assets. Asset
   verification does not launch the packaged GUI or prove OS-level
   signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` now reports `v0.31.4`.
+- The installed core at `/Users/amf/.local/bin/cortana` still reports
+  `v0.31.4`; v0.31.5 installation is intentionally deferred until its
+  release assets pass strict verification.
   The upgrade used the signed aarch64 archive with services disabled: it did
   not launch the GUI, restart the existing background process, authorize a
   source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
-- The installed v0.31.4 fixture evaluation most recently completed in 15,774 ms
-  (an earlier run completed in 13,237 ms) with planner and synthesis model use,
+- The installed v0.31.4 fixture evaluation most recently completed in 19,524 ms
+  (earlier verified runs completed in 15,774 ms and 13,237 ms) with planner and synthesis model use,
   valid citations, cache reuse, and revision invalidation. The opt-in evaluator remains fail-closed below one minute with
   a 55-second whole-run bound; extractive mode remains the production default
   and recurring sync remains uninstalled because enabled filesystem/code sources
