@@ -5,6 +5,28 @@ intentionally separate from runtime migration work:
 legacy scope quarantine remains in place, so changing or deleting indexed data
 is not part of a visual/UI change.
 
+## Current release evidence (2026-08-12)
+
+- The protected staging reconciliation has merged. `origin/main` is release
+  `v0.31.0` at commit `2d6ef86`, and `origin/staging` is the matching tree at
+  commit `848c4ca` (PR #778). The staging branch is clean and the superseded
+  reconciliation branch was deleted.
+- Release `v0.31.0` is published, but its release-assets workflow
+  (`31555962734`) is still running. The release currently exposes 4 of the
+  expected 8 core assets (the two completed binary archives and checksums).
+  Treat cross-platform packaging and the strict release verifier as pending
+  until the remaining macOS, Windows, and Linux Desktop jobs finish and all
+  assets are present.
+- The installed `/Users/amf/.local/bin/cortana` remains `v0.30.10`; it is not
+  evidence that the `v0.31.0` binary or Desktop bundle has been installed. The
+  packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
+  Developer ID signing, and notarization remain manual gates.
+- A fresh read-only readiness pass succeeded, while the
+  `--allow-sync-service` variant failed closed on incomplete source validation.
+  Recurring sync remains uninstalled and no large sync was run. Filesystem/code
+  samples with `complete=false` and sources with unknown completeness cannot
+  authorize reconciliation.
+
 ## Requirement matrix
 
 | Area                                                   | Current evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Status            | Follow-up                                                                                                                                                      |
@@ -42,13 +64,14 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: PASS for the current configured provider. The latest installed v0.30.10
-   rerun passed the fixture-only gate on 2026-08-12 in 11,100 ms with planner and synthesis model use,
+2. Model-backed provider gate: PASS for the configured provider's fixture-only
+   gate, but the evidence is from the installed pre-release `v0.30.10` binary.
+   The latest recorded rerun on 2026-08-12 completed in 11,100 ms with planner and synthesis model use,
    valid citations, cache reuse, and revision invalidation; the prior 15,107 ms and 13,472 ms runs
    remain historical evidence. Earlier attempts correctly failed closed with
    `fallback_provider_unavailable=true` during transient gateway outages. This remains
-   fixture-only evidence, not packaged-app proof; provider outages must continue to fail closed. Keep
-   extractive mode as the safe production default; the installed v0.30.10 core still passes
+   fixture-only evidence, not packaged-app or `v0.31.0` binary proof; provider outages must continue to
+   fail closed. Keep extractive mode as the safe production default; the installed pre-release core still passes
    `doctor`, readiness, and the disposable packaged control-plane and recovery drills, while the
    GUI remains unlaunched. A stricter 15-second operator probe on 2026-08-12 timed out without a
    report while the provider metadata endpoint remained responsive; it is recorded as a non-pass
@@ -93,16 +116,13 @@ is not part of a visual/UI change.
   safety paths. They are not dead Spark-era code; deleting them before existing configurations are
   migrated would orphan source scopes or weaken the fail-closed migration boundary.
 
-- The current main line includes the final protected staging promotion; the latest release is v0.30.10
-  at immutable tag commit `b46dda8`, published from release-assets workflow `31515684053`. The workflow completed
-  all five platform jobs, and the
-  strict verifier passed all 18 required core, desktop, signature, checksum, and updater assets,
-  including the repaired Windows installers. The installed CLI `/Users/amf/.local/bin/cortana`
-  reports `cortana 0.30.10`; the packaged Desktop app was not launched. The current
-  model/evaluation evidence remains fixture-only evidence, while GUI/browser OAuth, tray, native
-  dialogs, and notarization remain manual gates.
-- Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release investigations, but it must not
-  be read as current-release proof; v0.30.10 is the verified cross-platform release.
+- The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
+  is historical evidence. It completed its then-current asset and signature
+  checks, and the installed CLI still reports `cortana 0.30.10`; neither proves
+  the current `v0.31.0` binary or packaged Desktop behavior. The current
+  `v0.31.0` asset workflow and strict verifier remain pending as described above.
+- Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
+  investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
   `Cortana.app` bundle, executable, and `Info.plist` version `0.29.64`; `codesign --verify --deep
 --strict` passed. This proves archive integrity and local signature structure only: the app was
