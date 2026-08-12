@@ -111,6 +111,12 @@ The latest bounded rerun on 2026-08-12 also passed in 11,100 ms with the same pl
 citation, cache, and revision checks; the 15,107 ms result is now historical evidence. Retrieval
 quality remained perfect (recall, MRR, case pass rate, and citation validity all 1.0) within the
 30,000 ms answer deadline.
+An additional operator probe on 2026-08-12 used a stricter 15-second wall-clock bound and timed
+out without producing an evaluation report (exit 124). The provider's metadata endpoint remained
+responsive and advertised 30 models, so this is recorded as a transient model-call latency
+observation rather than a successful quality gate. It does not change the production configuration:
+the evaluator remains opt-in and bounded, and extractive mode remains the safe default when the
+provider is slow or unavailable.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
 
