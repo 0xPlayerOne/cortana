@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.5](https://github.com/0xPlayerOne/cortana/compare/v0.31.4...v0.31.5) (2026-08-12)
+
+
+### Bug Fixes
+
+* **discord:** publish bounded RPC handshake and production evidence ([2ad2af2](https://github.com/0xPlayerOne/cortana/commit/2ad2af21a3bfab3a0fa0b308371bc42d34637cee))
+
 ## [0.31.4](https://github.com/0xPlayerOne/cortana/compare/v0.31.3...v0.31.4) (2026-08-12)
 
 
