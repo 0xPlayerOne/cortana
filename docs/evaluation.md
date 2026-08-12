@@ -25,8 +25,9 @@ workflow `31578434124` completed all platform jobs; the strict 18-asset
 verifier passed. The installed CLI now reports `v0.31.6`;
 its doctor, query-only readiness, and disposable control-plane checks pass
 without starting services or sync. The installed v0.31.6 provider-backed fixture
-evaluation passed on 2026-08-12 in 15,728 ms (an earlier v0.31.6 run passed in
-22,269 ms; the v0.31.5 runtime-baseline run passed in 13,871 ms; prior verified
+evaluation passed on 2026-08-12 in 21,409 ms (an earlier v0.31.6 run passed in
+15,728 ms; another earlier run passed in 22,269 ms; the v0.31.5 runtime-baseline
+run passed in 13,871 ms; prior verified
 runs passed in 19,524 ms, 15,774 ms,
 and 13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
 and revision invalidation. This remains fixture-only query-layer evidence and does
