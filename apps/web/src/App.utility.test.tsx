@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 import { demoEvidence, demoStatus } from './demo'
@@ -21,6 +21,11 @@ afterEach(async () => {
     await Promise.resolve()
     await Promise.resolve()
   })
+
+  // Keep mutable API fixtures isolated between tests. In particular, a test
+  // that enables answer/context data must not unlock result-only navigation in
+  // the next test or leak a graph page into a fresh shell.
+  resetState()
 })
 
 // Capture the real api module, then register a mock that delegates every export
@@ -55,6 +60,22 @@ const state = {
   getDocument: null as ((id: string, signal?: AbortSignal) => Promise<BrainDocument>) | null,
   graph: null as BrainGraphPage | null,
 }
+
+const resetState = () => {
+  state.status = demoStatus
+  state.answer = null
+  state.context = null
+  state.getContext = null
+  state.getDocument = null
+  state.graph = null
+}
+
+beforeEach(() => {
+  // A preceding test file can leave a renderer behind when Bun reuses the
+  // worker. Start each utility test from a clean DOM and API fixture state.
+  cleanup()
+  resetState()
+})
 
 mock.module('./api', () => ({
   ...realApi,
