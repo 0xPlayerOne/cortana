@@ -246,18 +246,17 @@ The v0.30.0 release-assets workflow `31470374229` is historical evidence only: i
 release-assets workflow `31474156961` completed all five platform jobs. The v0.30.2, v0.30.7, and
 v0.30.8 release-assets workflows are historical evidence. The current v0.30.10 release-assets
 workflow `31515684053` completed all five platform jobs; its strict verifier result is historical.
-The current `v0.31.0` release was published from tag commit `2d6ef86`, but release-assets workflow
-`31555962734` is still in progress and currently exposes only 4 of 8 expected core assets. Do not
-run or report the strict `v0.31.0` verifier as passed until that workflow completes and all assets
-are present. The installed core still reports v0.30.10; the packaged Desktop GUI has not been
-launched or replaced on this host. The bounded control-plane, recovery, and model-backed checks are
-recorded in `docs/desktop-ux-audit.md`.
+The current `v0.31.0` release was published from tag commit `2d6ef86`; release-assets workflow
+`31555962734` completed all five platform jobs and the strict verifier passed all 18 assets,
+signatures, checksums, and updater-manifest checks. The installed core still reports v0.30.10; the
+packaged Desktop GUI has not been launched or replaced on this host. The bounded control-plane,
+recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
 ID notarization), so `spctl --assess` still rejects it and notarization remains a release blocker.
 
-Re-run the read-only verifier after the current release-assets workflow completes with:
+Re-run the read-only verifier for the current release with:
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.0

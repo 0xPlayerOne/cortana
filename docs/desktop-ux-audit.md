@@ -8,15 +8,14 @@ is not part of a visual/UI change.
 ## Current release evidence (2026-08-12)
 
 - The protected staging reconciliation has merged. `origin/main` is release
-  `v0.31.0` at commit `2d6ef86`, and `origin/staging` is the matching tree at
-  commit `848c4ca` (PR #778). The staging branch is clean and the superseded
-  reconciliation branch was deleted.
-- Release `v0.31.0` is published, but its release-assets workflow
-  (`31555962734`) is still running. The release currently exposes 4 of the
-  expected 8 core assets (the two completed binary archives and checksums).
-  Treat cross-platform packaging and the strict release verifier as pending
-  until the remaining macOS, Windows, and Linux Desktop jobs finish and all
-  assets are present.
+  `v0.31.0` at commit `cbfb798`; staging currently includes the follow-up
+  readiness fix at `1d8df08` (PR #782), with the OAuth-helper cleanup queued
+  separately. The superseded promotion branches were deleted.
+- Release `v0.31.0` is published from tag commit `2d6ef86`. Its release-assets
+  workflow (`31555962734`) completed all five platform jobs and the strict
+  verifier passed all 18 required core, Desktop, signature, checksum, and
+  updater-manifest assets. This verifies archive and updater integrity only;
+  it does not launch the packaged GUI or prove OS-level signing/notarization.
 - The installed `/Users/amf/.local/bin/cortana` remains `v0.30.10`; it is not
   evidence that the `v0.31.0` binary or Desktop bundle has been installed. The
   packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
@@ -26,6 +25,19 @@ is not part of a visual/UI change.
   Recurring sync remains uninstalled and no large sync was run. Filesystem/code
   samples with `complete=false` and sources with unknown completeness cannot
   authorize reconciliation.
+- The published `v0.31.0` aarch64 core archive was run in an isolated temporary
+  directory on 2026-08-12. `cortana 0.31.0 eval --model` passed with planner and
+  synthesis model use, valid citations, cache reuse/invalidation, perfect
+  fixture retrieval metrics, and 18,312 ms latency under the 30,000 ms bound.
+  The fixture is synthetic-only; the installed CLI and packaged GUI remain
+  separate manual gates.
+- A bounded end-to-end Discord trial on 2026-08-12 covered all three enabled
+  authorized sources with one document and a 64 KiB cap. `community-discord`
+  completed under 30 seconds; `community-discord-pending-1` and
+  `community-discord-pending-2` exceeded that strict probe but both completed
+  successfully when rerun at a still-bounded 180-second cap. All three trials
+  were non-reconciling and deleted zero records. This proves the selected
+  connector-to-embedding-to-index path, not full-corpus readiness.
 
 ## Requirement matrix
 
@@ -65,12 +77,12 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: PASS for the configured provider's fixture-only
-   gate, but the evidence is from the installed pre-release `v0.30.10` binary.
-   The latest recorded rerun on 2026-08-12 completed in 11,100 ms with planner and synthesis model use,
+   gate on the published `v0.31.0` core archive. The isolated rerun on 2026-08-12
+   completed in 18,312 ms with planner and synthesis model use,
    valid citations, cache reuse, and revision invalidation; the prior 15,107 ms and 13,472 ms runs
    remain historical evidence. Earlier attempts correctly failed closed with
    `fallback_provider_unavailable=true` during transient gateway outages. This remains
-   fixture-only evidence, not packaged-app or `v0.31.0` binary proof; provider outages must continue to
+   fixture-only evidence, not packaged-app proof; provider outages must continue to
    fail closed. Keep extractive mode as the safe production default; the installed pre-release core still passes
    `doctor`, readiness, and the disposable packaged control-plane and recovery drills, while the
    GUI remains unlaunched. A stricter 15-second operator probe on 2026-08-12 timed out without a
@@ -96,7 +108,8 @@ is not part of a visual/UI change.
    MRR gains of `0.375`; that is useful evidence for a future opt-in review, not live-provider proof.
 6. Complete source authorization and full validation coverage before recurring sync: the three
    enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh validation-only
-   smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source; the personal AMF
+   smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source. Their bounded
+   end-to-end trials pass at a 180-second cap where the two slower RPC paths need it; the personal AMF
    Discord source is disabled. The bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
    either bounded samples (`complete=false`) or legacy records without an explicit completeness
    marker. Both states fail closed; recurring sync must remain uninstalled until every enabled
@@ -120,7 +133,7 @@ is not part of a visual/UI change.
   is historical evidence. It completed its then-current asset and signature
   checks, and the installed CLI still reports `cortana 0.30.10`; neither proves
   the current `v0.31.0` binary or packaged Desktop behavior. The current
-  `v0.31.0` asset workflow and strict verifier remain pending as described above.
+  `v0.31.0` asset workflow and strict verifier are now complete as described above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
