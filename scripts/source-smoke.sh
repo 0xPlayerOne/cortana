@@ -258,9 +258,7 @@ for entry in "${configured_sources[@]}"; do
         sync_attempt=$((sync_attempt + 1))
       done
       attempts_used="$sync_attempt"
-      if ((sync_succeeded)); then
-        attempts_used=$((sync_attempt - 1))
-      elif ((attempts_used > sync_attempts)); then
+      if ((attempts_used > sync_attempts)); then
         attempts_used="$sync_attempts"
       fi
       # The trial is equally bounded (same budgets as the validation above)
