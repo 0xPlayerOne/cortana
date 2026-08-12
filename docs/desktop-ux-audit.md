@@ -7,10 +7,11 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-12)
 
-- `origin/main` is release `v0.31.3` at commit `5fdfc60`. The clean
-  metadata-only reconciliation back to protected `staging` is PR #811; the
+- `origin/main` is release `v0.31.3` at promotion commit `80c24d7`. Release
+  metadata reached protected `staging` through PR #811, the evidence refresh
+  through PR #812, and the exact-tree promotion through PR #815. The
   superseded full-history reconciliation PR #810 was closed as structurally
-  conflicting rather than merged. Neither reconciliation changes runtime,
+  conflicting rather than merged; none of these PRs changes runtime,
   connector, credential, or sync code.
 - Release `v0.31.3` is published and workflow `31563026950` completed all
   platform jobs plus the strict verifier with all 18 core, Desktop, signature,
@@ -31,11 +32,8 @@ is not part of a visual/UI change.
   default and recurring sync remains uninstalled because enabled
   filesystem/code sources are still bounded samples or otherwise below their
   configured full-sync budgets.
-- The latest full Bun run exposed one intermittent `graph and timeline evidence
-actions open the selected source` failure; the same test passes in isolation,
-  as does the isolated keyset-pagination regression. Treat the full-suite
-  result as a harness-stability follow-up rather than a clean release gate until
-  a sequential run is green. The native Tauri suite passes 129 tests in about
+- The latest full Bun suite passes 258 tests across 22 files with 1,273
+  assertions in 73.50 seconds. The native Tauri suite passes 129 tests in about
   5.5 seconds after compilation. Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
 - The installed v0.31.3 binary passed the disposable offline control-plane
@@ -88,19 +86,16 @@ actions open the selected source` failure; the same test passes in isolation,
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: PASS for the configured provider's fixture-only
-   gate on the published `v0.31.0` core archive and the installed `v0.31.0`
-   core. The installed rerun on 2026-08-12
-   completed in 18,979 ms with planner and synthesis model use,
-   valid citations, cache reuse, and revision invalidation; the prior 15,107 ms and 13,472 ms runs
-   remain historical evidence. Earlier attempts correctly failed closed with
-   `fallback_provider_unavailable=true` during transient gateway outages. This remains
-   fixture-only evidence, not packaged-app proof; provider outages must continue to
-   fail closed. Keep extractive mode as the safe production default; the installed pre-release core still passes
-   `doctor`, readiness, and the disposable packaged control-plane and recovery drills, while the
-   GUI remains unlaunched. A stricter 15-second operator probe on 2026-08-12 timed out without a
-   report while the provider metadata endpoint remained responsive; it is recorded as a non-pass
-   latency observation, not new model-quality evidence.
+2. Model-backed provider gate: the last successful installed-core fixture gate was
+   v0.31.1. Fresh v0.31.3 source and installed reruns on 2026-08-12 hit the
+   bounded 30-second outer deadline and failed closed, so there is no current
+   v0.31.3 model-quality claim. Earlier successful runs remain fixture-only
+   evidence, not packaged-app proof; provider outages or slow responses must
+   continue to fail closed. Keep extractive mode as the safe production default.
+   The installed v0.31.3 core still passes `doctor`, query-only readiness, and
+   the disposable packaged control-plane and recovery drills, while the GUI
+   remains unlaunched. The bounded timeout is an explicit follow-up for provider
+   availability/latency, not permission to relax the evaluator's safety ceiling.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -133,7 +128,7 @@ actions open the selected source` failure; the same test passes in isolation,
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.3 release or installed v0.31.2 core; use the
+does not describe the current v0.31.3 release or installed v0.31.3 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -149,8 +144,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the installed CLI still reports `cortana 0.30.10`; neither proves
-  the current `v0.31.0` binary or packaged Desktop behavior. The current
-  `v0.31.0` asset workflow and strict verifier are now complete as described above.
+  the current `v0.31.3` binary or packaged Desktop behavior. The current
+  `v0.31.3` asset workflow and strict verifier are now complete as described above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
