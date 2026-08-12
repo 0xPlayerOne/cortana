@@ -18,16 +18,15 @@ is not part of a visual/UI change.
   Desktop, signature, checksum, and updater-manifest assets. Asset
   verification does not launch the packaged GUI or prove OS-level
   signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` still reports
-  `v0.31.4`; v0.31.5 installation is intentionally deferred until its
-  release assets pass strict verification.
-  The upgrade used the signed aarch64 archive with services disabled: it did
+- The installed core at `/Users/amf/.local/bin/cortana` now reports
+  `v0.31.5`. The upgrade used the verified aarch64 archive with services
+  disabled: it did
   not launch the GUI, restart the existing background process, authorize a
   source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
-- The installed v0.31.4 fixture evaluation most recently completed in 19,524 ms
-  (earlier verified runs completed in 15,774 ms and 13,237 ms) with planner and synthesis model use,
+- The installed v0.31.5 fixture evaluation most recently completed in 13,871 ms
+  (earlier verified runs completed in 19,524 ms, 15,774 ms, and 13,237 ms) with planner and synthesis model use,
   valid citations, cache reuse, and revision invalidation. The opt-in evaluator remains fail-closed below one minute with
   a 55-second whole-run bound; extractive mode remains the production default
   and recurring sync remains uninstalled because enabled filesystem/code sources
@@ -38,7 +37,7 @@ is not part of a visual/UI change.
   latest run took 1.61 seconds after compilation (44.07 seconds including
   compilation). Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
-- The installed v0.31.4 binary passed the disposable offline control-plane
+- The installed v0.31.5 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
   audit export, verified backup, restore into a second temporary data directory,
   SQLite verification, and post-restore search. The drill touched no live
@@ -88,8 +87,8 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.31.4 core most recently passed the bounded
-   fixture gate in 15,774 ms (an earlier run passed in 13,237 ms) with planner/synthesis, citations, cache reuse, and
+2. Model-backed provider gate: the installed v0.31.5 core most recently passed the bounded
+   fixture gate in 13,871 ms (earlier verified runs completed in 19,524 ms, 15,774 ms, and 13,237 ms) with planner/synthesis, citations, cache reuse, and
    revision invalidation. This remains fixture-only evidence, not packaged-app
    proof; provider outages or slow responses still fail closed, and extractive
    mode remains the safe production default. The installed core also passes
@@ -127,7 +126,7 @@ is not part of a visual/UI change.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.4 release or installed v0.31.4 core; use the
+does not describe the current v0.31.5 release or installed v0.31.5 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -143,8 +142,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.31.4` binary or packaged Desktop behavior. The current
-  `v0.31.4` asset workflow and strict verifier are now complete as described above.
+  the current `v0.31.5` binary or packaged Desktop behavior. The current
+  `v0.31.5` asset workflow and strict verifier are now complete as described above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
