@@ -159,6 +159,7 @@ def test_apple_notes_bounds_script_when_max_documents_is_set(
 
     list(apple_notes.fetch(project="personal", max_documents=2))
 
+    assert captured["args"][0] == apple_notes.OSASCRIPT
     script = captured["args"][4]
     assert "const maxDocuments = 2;" in script
     assert "break outer;" in script
