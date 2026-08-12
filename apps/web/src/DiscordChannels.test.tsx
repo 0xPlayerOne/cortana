@@ -183,6 +183,37 @@ test('discord chooser discovers guilds and channels and persists selected snowfl
   expect(state.saved?.sources[0].channels).toEqual(['175928847299117068'])
 })
 
+test('discord chooser selects every text and announcement channel in the assigned servers', async () => {
+  renderDiscordSettings()
+
+  fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
+  await waitFor(() => expect(screen.getByText('Engineering')).toBeTruthy())
+
+  fireEvent.click(screen.getByRole('button', { name: /Select all Discord text channels/ }))
+  await waitFor(() =>
+    expect(channelIdsTextarea().value).toBe(
+      '175928847299117064, 175928847299117065, 175928847299117068'
+    )
+  )
+  expect(
+    (screen.getByRole('checkbox', { name: /Town Hall · voice/ }) as HTMLInputElement).checked
+  ).toBe(false)
+})
+
+test('discord chooser limits select-all to assigned servers', async () => {
+  state.settings = settingsWith({
+    ...discordSource,
+    servers: ['175928847299117067'],
+  })
+  renderDiscordSettings()
+
+  fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
+  await waitFor(() => expect(screen.getByText('Community')).toBeTruthy())
+
+  fireEvent.click(screen.getByRole('button', { name: /Select all Discord text channels/ }))
+  await waitFor(() => expect(channelIdsTextarea().value).toBe('175928847299117068'))
+})
+
 test('discord chooser refuses to discover unsaved changes and surfaces failures', async () => {
   // A selected channel keeps the required Channel IDs field satisfied so the
   // rename can be saved and the failure path reached.
