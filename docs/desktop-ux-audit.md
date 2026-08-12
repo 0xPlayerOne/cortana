@@ -226,6 +226,12 @@ is not part of a visual/UI change.
   sources, with no trial sync, embeddings, or reconciliation. This confirms authorization and
   connector reachability only; the seven filesystem/code sources remain sampled and every source
   is below the configured recurring-sync budget.
+- A subsequent one-document/65,536-byte non-reconciling trial showed the full connector-to-index
+  path is sensitive to the per-source wall-clock budget: Personal Drive and Personal Gmail both
+  completed after their validation and trial windows were raised to 180 seconds, while the same
+  sources exceeded the tighter 30-second embedding window. The Discord pending-1 trial was
+  cancelled before completion when its RPC channel walk outlasted the bounded operator probe.
+  No trial reconciled or deleted indexed records; this evidence does not authorize recurring sync.
 - A current v0.30.10 packaged control-plane drill passed verified backup creation, disposable restore,
   SQLite verification, and cleanup. It also passed offline
   init, bounded fixture ingestion, search/context, metadata-only audit export, backup, restore, and
