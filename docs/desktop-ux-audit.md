@@ -274,7 +274,7 @@ current-release section above for sign-off status.
   is below its configured full-sync budget and filesystem/code records are bounded samples; no
   sync service was installed or started. Recurring mode must stay fail-closed until every enabled
   source covers its configured full-sync budget.
-- A current validation-only `scripts/source-smoke.sh` run on 2026-08-11 passed all 21 enabled
+- A current validation-only `scripts/source-smoke.sh` run on 2026-08-12 passed all 21 enabled
   sources at the bounded one-document/65,536-byte/30-second budget, including the three Discord
   sources, with no trial sync, embeddings, or reconciliation. This confirms authorization and
   connector reachability only; the seven filesystem/code sources remain sampled and every source
