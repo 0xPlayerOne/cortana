@@ -14,15 +14,14 @@ is not part of a visual/UI change.
   strict verifier confirmed all 18 v0.31.7 core, Desktop, signature, checksum,
   and updater-manifest assets. Asset verification does not launch the packaged
   GUI or prove OS-level signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` remains `v0.31.6`;
-  v0.31.7 has not been installed on this host. The last verified installation
-  used the aarch64 archive with services disabled: it did
+- The installed core at `/Users/amf/.local/bin/cortana` is now `v0.31.7`, installed
+  from the verified aarch64 archive with services disabled. The install did
   not launch the GUI, restart the existing background process, authorize a
   source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
-- The latest installed v0.31.6 provider-backed fixture evaluation completed on
-  2026-08-12 in 13,416 ms (the earlier 17,145 ms and 12,613 ms runs and prior
+- The latest installed v0.31.7 provider-backed fixture evaluation completed on
+  2026-08-12 in 20,027 ms (the earlier 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
   v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
   runtime-baseline run completed in 13,871 ms; prior verified runs
   completed in 19,524 ms, 15,774 ms, and
@@ -37,7 +36,7 @@ is not part of a visual/UI change.
   latest run took 1.61 seconds after compilation (44.07 seconds including
   compilation). Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
-- The installed v0.31.6 binary passed the disposable offline control-plane
+- The installed v0.31.7 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
   audit export, verified backup, restore into a second temporary data directory,
   SQLite verification, and post-restore search. The drill touched no live
@@ -86,8 +85,8 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.31.6 runtime passed the bounded
-   fixture gate on 2026-08-12 in 17,145 ms (the earlier 12,613 ms run and prior
+2. Model-backed provider gate: the installed v0.31.7 runtime passed the bounded
+   fixture gate on 2026-08-12 in 20,027 ms (the earlier 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
    v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
    the v0.31.5 runtime-baseline
    run completed in 13,871 ms; prior
@@ -130,7 +129,7 @@ is not part of a visual/UI change.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.7 release or installed v0.31.6 core; use the
+does not describe the current v0.31.7 release or the installed v0.31.7 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only

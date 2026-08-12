@@ -264,10 +264,10 @@ promotion PR #851 and Release Please PR #854; workflow `31578434124` completed
 all platform jobs and the strict 18-asset verifier passed. Release v0.31.7 was
 published through Release Please PR #895; release-assets workflow `31597160527`
 completed all platform jobs and the strict v0.31.7 verifier passed. The
-installed core remains v0.31.6 and its
+installed core is now v0.31.7 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
-starting services or sync. Its latest installed v0.31.6 provider-backed fixture model
-gate passed on 2026-08-12 in 13,416 ms (the earlier 17,145 ms and 12,613 ms runs
+starting services or sync. Its latest installed v0.31.7 provider-backed fixture model
+gate passed on 2026-08-12 in 20,027 ms (the earlier 13,416 ms, 17,145 ms, and 12,613 ms runs
 and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
 runtime-baseline run passed in
 13,871 ms; prior verified runs passed
@@ -275,7 +275,7 @@ in 19,524 ms, 15,774 ms, and
 13,237 ms) with planner/synthesis, citations, cache reuse, and revision
 invalidation. No packaged-GUI evaluation is claimed.
 
-The installed v0.31.6 binary also passed the disposable offline control-plane
+The installed v0.31.7 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
 backup, restore, SQLite verify, and post-restore search). It does not exercise
 the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.

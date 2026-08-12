@@ -22,10 +22,10 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 The current protected source is `v0.31.7` (the post-release hardening promotion
 followed by Release Please PR #895). Release `v0.31.7` is published and
 release-assets workflow `31597160527` completed all platform jobs; the strict
-18-asset verifier passed. The installed CLI remains `v0.31.6`;
+18-asset verifier passed. The installed CLI is now `v0.31.7`;
 its doctor, query-only readiness, and disposable control-plane checks pass
-without starting services or sync. The latest installed v0.31.6 provider-backed fixture
-evaluation passed on 2026-08-12 in 13,416 ms (the earlier 17,145 ms and 12,613 ms
+without starting services or sync. The latest installed v0.31.7 provider-backed fixture
+evaluation passed on 2026-08-12 in 20,027 ms (the earlier 13,416 ms, 17,145 ms, and 12,613 ms
 runs and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the
 v0.31.5 runtime-baseline run passed in 13,871 ms; prior verified
 runs passed in 19,524 ms, 15,774 ms,
@@ -36,8 +36,8 @@ ID/notarization trust. The evaluator remains bounded and opt-in; extractive
 mode is the production default.
 
 The v0.31.7 source also contains the post-v0.31.6 Apple Notes executable
-hardening and Buzz source-directory/log-size guards. The installed v0.31.6
-evaluation above is not presented as packaged v0.31.7 evidence.
+hardening and Buzz source-directory/log-size guards. The installed v0.31.7
+evaluation above is still not packaged-GUI evidence.
 
 The built-in thresholds and data live in `eval/fixtures.json`. Use
 `cortana eval --fixture /path/to/synthetic.json` for a versioned project-specific fixture. Never
