@@ -32,8 +32,11 @@ if "sync" in sys.argv and os.environ.get("SMOKE_BINARY_FAIL_FIRST_SYNC"):
     marker = os.environ["SMOKE_BINARY_FAIL_FIRST_SYNC"]
     if not os.path.exists(marker):
         open(marker, "w", encoding="utf-8").close()
-        print("transient connector failure", file=sys.stderr)
+        print("temporarily unavailable", file=sys.stderr)
         sys.exit(1)
+if "sync" in sys.argv and os.environ.get("SMOKE_BINARY_SYNC_ERROR"):
+    print(os.environ["SMOKE_BINARY_SYNC_ERROR"], file=sys.stderr)
+    sys.exit(1)
 if os.environ.get("SMOKE_BINARY_ERROR"):
     print(os.environ["SMOKE_BINARY_ERROR"], file=sys.stderr)
 sys.exit(int(os.environ.get("SMOKE_BINARY_EXIT", "0")))
@@ -73,6 +76,7 @@ def _run_smoke(
     exit_code: str = "0",
     error: str = "",
     fail_first_sync: bool = False,
+    sync_error: str = "",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     log = tmp_path / "invocations.jsonl"
     smoke_tmpdir = tmp_path / "smoke-tmp"
@@ -81,6 +85,7 @@ def _run_smoke(
     env["SMOKE_BINARY_LOG"] = str(log)
     env["SMOKE_BINARY_EXIT"] = exit_code
     env["SMOKE_BINARY_ERROR"] = error
+    env["SMOKE_BINARY_SYNC_ERROR"] = sync_error
     if fail_first_sync:
         env["SMOKE_BINARY_FAIL_FIRST_SYNC"] = str(tmp_path / "first-sync.marker")
     env["TMPDIR"] = str(smoke_tmpdir)
@@ -185,6 +190,22 @@ def test_bounded_trial_retries_once_after_a_transient_connector_failure(
         == ["sync", "--source", "drive"]
     ]
     assert len(drive_trials) == 2, drive_trials
+
+
+def test_non_retryable_trial_failure_fails_fast(tmp_path: Path) -> None:
+    _require_bash()
+    result, log = _run_smoke(tmp_path, "--sync", sync_error="invalid_grant")
+    assert result.returncode == 1
+    assert "drive\tgoogle-drive\ttrue\tpassed\tfailed" in result.stdout
+    assert "authorization denied after 1 attempt(s)" in result.stdout
+    drive_trials = [
+        invocation
+        for invocation in _invocations(log)
+        if "sync" in invocation
+        and invocation[invocation.index("sync") : invocation.index("sync") + 3]
+        == ["sync", "--source", "drive"]
+    ]
+    assert len(drive_trials) == 1, drive_trials
 
 
 def test_filesystem_trials_require_include_filesystem(tmp_path: Path) -> None:

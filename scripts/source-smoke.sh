@@ -195,6 +195,11 @@ classify_failure() {
   fi
 }
 
+retryable_trial_failure() {
+  local log_path="$1"
+  grep -Eqi 'timed out|timeout|temporarily unavailable|connection (reset|refused|closed)|broken pipe|(^|[^0-9])50[23]([^0-9]|$)|(^|[^0-9])429([^0-9]|$)|rate limit|transport' "$log_path"
+}
+
 for entry in "${configured_sources[@]}"; do
   IFS=$'\t' read -r source kind enabled <<< "$entry"
   validation_status="failed"
@@ -247,8 +252,17 @@ for entry in "${configured_sources[@]}"; do
           sync_succeeded=1
           break
         fi
+        if ! retryable_trial_failure "$sync_log"; then
+          break
+        fi
         sync_attempt=$((sync_attempt + 1))
       done
+      attempts_used="$sync_attempt"
+      if ((sync_succeeded)); then
+        attempts_used=$((sync_attempt - 1))
+      elif ((attempts_used > sync_attempts)); then
+        attempts_used="$sync_attempts"
+      fi
       # The trial is equally bounded (same budgets as the validation above)
       # and non-reconciling, so for filesystem sources it may rely on the
       # matching sampled validation via --require-validation while never
@@ -261,7 +275,7 @@ for entry in "${configured_sources[@]}"; do
         fi
       else
         sync_status="failed"
-        note="${note:+$note; }trial: $(classify_failure "$sync_log") after $sync_attempts attempt(s)"
+          note="${note:+$note; }trial: $(classify_failure "$sync_log") after $attempts_used attempt(s)"
         failures=$((failures + 1))
       fi
     fi
