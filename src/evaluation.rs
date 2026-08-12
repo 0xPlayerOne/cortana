@@ -895,7 +895,8 @@ mod tests {
 
     #[test]
     fn model_evaluation_budget_stays_below_one_minute() {
-        assert!(MODEL_EVALUATION_MAX_SECONDS < 60);
+        let budget = std::hint::black_box(MODEL_EVALUATION_MAX_SECONDS);
+        assert!(budget < 60);
     }
 
     #[tokio::test]
