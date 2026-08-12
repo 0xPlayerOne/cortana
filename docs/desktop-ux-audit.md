@@ -39,6 +39,11 @@ is not part of a visual/UI change.
   assertions in 143.29 seconds. The native Tauri suite passes 129 tests in
   0.73 seconds after compilation. These are headless assertions and do not
   substitute for the still-unverified interactive packaged GUI flows.
+- The installed v0.31.2 binary passed the disposable offline control-plane
+  drill: init, bounded fixture ingest, hybrid search/context, metadata-only
+  audit export, verified backup, restore into a second temporary data directory,
+  SQLite verification, and post-restore search. The drill touched no live
+  indexed data and does not prove packaged GUI, OAuth, tray, or updater flows.
 - A bounded end-to-end Discord trial on 2026-08-12 covered all three enabled
   authorized sources with one document and a 64 KiB cap. `community-discord`
   completed under 30 seconds; `community-discord-pending-1` and

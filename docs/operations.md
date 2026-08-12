@@ -262,6 +262,11 @@ the v0.31.1 checks recorded above; a v0.31.2 model rerun exceeded its bounded
 operator window and was stopped without a quality report. Release v0.31.2 is
 published from main commit `326d0f0`.
 
+The installed v0.31.2 binary also passed the disposable offline control-plane
+drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
+backup, restore, SQLite verify, and post-restore search). It does not exercise
+the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
+
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
 ID notarization), so `spctl --assess` still rejects it and notarization remains a release blocker.
