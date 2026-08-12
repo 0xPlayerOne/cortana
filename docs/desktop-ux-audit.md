@@ -24,8 +24,8 @@ is not part of a visual/UI change.
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
 - The installed v0.31.6 provider-backed fixture evaluation completed on
-  2026-08-12 in 21,409 ms (an earlier v0.31.6 run completed in 15,728 ms;
-  another earlier run completed in 22,269 ms; the v0.31.5 runtime-baseline run
+  2026-08-12 in 12,613 ms (earlier v0.31.6 runs completed in 25,789 ms,
+  21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5 runtime-baseline run
   completed in 13,871 ms; prior verified runs
   completed in 19,524 ms, 15,774 ms, and
   13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
@@ -34,8 +34,8 @@ is not part of a visual/UI change.
   and recurring sync remains uninstalled because enabled filesystem/code sources
   are still bounded samples or otherwise below their
   configured full-sync budgets.
-- The latest full Bun suite passes 258 tests across 22 files with 1,268
-  assertions in 73.00 seconds. The native Tauri suite passes 129 tests; the
+- The latest full Bun suite passes 258 tests across 22 files with 1,273
+  assertions in 78.64 seconds. The native Tauri suite passes 129 tests; the
   latest run took 1.61 seconds after compilation (44.07 seconds including
   compilation). Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
@@ -44,13 +44,12 @@ is not part of a visual/UI change.
   audit export, verified backup, restore into a second temporary data directory,
   SQLite verification, and post-restore search. The drill touched no live
   indexed data and does not prove packaged GUI, OAuth, tray, or updater flows.
-- A bounded end-to-end Discord trial on 2026-08-12 covered all three enabled
-  authorized sources with one document and a 64 KiB cap. `community-discord`
-  completed under 30 seconds; `community-discord-pending-1` and
-  `community-discord-pending-2` exceeded that strict probe but both completed
-  successfully when rerun at a still-bounded 180-second cap. All three trials
-  were non-reconciling and deleted zero records. This proves the selected
-  connector-to-embedding-to-index path, not full-corpus readiness.
+- A bounded end-to-end Discord sync trial on 2026-08-12 covered all three enabled
+  authorized sources with one document, a 64 KiB cap, and a 30-second cap per
+  source. Each source completed with `changed=0`, `unchanged=1`, and `deleted=0`.
+  All three trials were non-reconciling and did not install recurring sync. This
+  proves the selected connector-to-embedding-to-index path, not full-corpus
+  readiness.
 
 ## Requirement matrix
 
@@ -90,9 +89,9 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.31.6 runtime passed the bounded
-   fixture gate on 2026-08-12 in 21,409 ms (an earlier v0.31.6 run completed in
-   15,728 ms; another earlier run completed in 22,269 ms; the v0.31.5
-   runtime-baseline run completed in 13,871 ms; prior
+   fixture gate on 2026-08-12 in 12,613 ms (earlier v0.31.6 runs completed in
+   25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5 runtime-baseline
+   run completed in 13,871 ms; prior
    verified runs completed in 19,524 ms,
    15,774 ms, and 13,237 ms) with planner/synthesis, citations, cache reuse, and
    revision invalidation. This remains fixture-only evidence, not packaged-app
@@ -120,8 +119,8 @@ is not part of a visual/UI change.
    MRR gains of `0.375`; that is useful evidence for a future opt-in review, not live-provider proof.
 6. Complete source authorization and full validation coverage before recurring sync: the three
    enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh validation-only
-   smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source. Their bounded
-   end-to-end trials pass at a 180-second cap where the two slower RPC paths need it; the personal AMF
+   smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source. Their latest bounded
+   non-reconciling sync trials also pass within that 30-second cap; the personal AMF
    Discord source is disabled. The bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
    either bounded samples (`complete=false`) or legacy records without an explicit completeness
    marker. Both states fail closed; recurring sync must remain uninstalled until every enabled
@@ -171,7 +170,7 @@ current-release section above for sign-off status.
   required platform entries and passed the full updater-manifest and signature gate; the app was
   not launched.
 - The full `cortana readiness` scan is a read-only operational check because it includes roughly
-  1 GB of SQLite integrity and backup scanning; the latest installed v0.30.10 run completed successfully.
+  1 GB of SQLite integrity and backup scanning; the then-installed v0.30.10 run completed successfully.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
