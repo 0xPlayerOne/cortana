@@ -273,6 +273,12 @@ in 19,524 ms, 15,774 ms, and
 13,237 ms) with planner/synthesis, citations, cache reuse, and revision
 invalidation. No packaged-GUI evaluation is claimed.
 
+The post-v0.31.6 protected promotion also carries two connector hardening fixes:
+Apple Notes now invokes its fixed system automation executable, and Buzz rejects
+symlinked source directories and oversized logs before reading them. These changes
+are recorded here so the published artifact and changelog can be checked against
+the current main tree.
+
 The installed v0.31.6 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
 backup, restore, SQLite verify, and post-restore search). It does not exercise
