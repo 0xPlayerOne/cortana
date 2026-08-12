@@ -13,6 +13,7 @@ RUNTIME_PATHS = (
     ROOT / "pyproject.toml",
     ROOT / "package.json",
     ROOT / "config.example.toml",
+    ROOT / ".env.example",
 )
 RETIRED_IDENTIFIERS = (
     "gpt-5.3-codex-spark",
