@@ -19,17 +19,15 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.3` (the exact-tree promotion in PR #819).
-Release `v0.31.3` is published and workflow `31563026950` completed all
-platform jobs plus the strict 18-asset verifier. The installed CLI now reports
-`v0.31.3`; its doctor, query-only readiness, and disposable control-plane
-checks pass without starting services or sync. A prior source-tree provider-backed fixture
-evaluation passed in 14,186 ms with planner and synthesis model use, valid
-citations, cache reuse, and revision invalidation. A fresh v0.31.3 source run
-hit the 30-second outer deadline and failed closed, so there is no v0.31.3
-model-quality claim yet; the installed v0.31.3 rerun also hit that deadline and
-failed closed. This remains fixture-only query-layer evidence and
-does not prove packaged GUI behavior, personal-index sync, or Developer
+The current protected source is `v0.31.4` (the exact-tree promotion in PR #829,
+followed by Release Please PR #830). Release `v0.31.4` is published and
+workflow `31569675691` completed all platform jobs plus the strict 18-asset
+verifier. The installed CLI now reports `v0.31.4`; its doctor, query-only
+readiness, and disposable control-plane checks pass without starting services
+or sync. The installed provider-backed fixture evaluation passed in 13,237 ms
+with planner and synthesis model use, valid citations, cache reuse, and
+revision invalidation. This remains fixture-only query-layer evidence and does
+not prove packaged GUI behavior, personal-index sync, or Developer
 ID/notarization trust. The evaluator remains bounded and opt-in; extractive
 mode is the production default.
 
