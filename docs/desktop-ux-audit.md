@@ -21,7 +21,7 @@ is not part of a visual/UI change.
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
 - The latest installed v0.31.7 provider-backed fixture evaluation completed on
-  2026-08-12 in 17,734 ms (the earlier 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
+  2026-08-12 in 10,083 ms (the earlier 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
   v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
   runtime-baseline run completed in 13,871 ms; prior verified runs
   completed in 19,524 ms, 15,774 ms, and
@@ -31,9 +31,9 @@ is not part of a visual/UI change.
   and recurring sync remains uninstalled because enabled filesystem/code sources
   are still bounded samples or otherwise below their
   configured full-sync budgets.
-- The latest full Bun suite passes 258 tests across 22 files with 1,273
-  assertions in 78.64 seconds. The native Tauri suite passes 129 tests; the
-  latest run took 1.61 seconds after compilation (44.07 seconds including
+- The latest full Bun suite passes 258 tests across 22 files with 1,272
+  assertions in 71.84 seconds. The native Tauri suite passes 129 tests; the
+  latest run took 1.80 seconds after compilation (46.97 seconds including
   compilation). Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
 - The installed v0.31.7 binary passed the disposable offline control-plane
@@ -86,7 +86,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.31.7 runtime passed the bounded
-   fixture gate on 2026-08-12 in 17,734 ms (the earlier 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
+   fixture gate on 2026-08-12 in 10,083 ms (the earlier 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
    v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
    the v0.31.5 runtime-baseline
    run completed in 13,871 ms; prior
@@ -180,7 +180,7 @@ current-release section above for sign-off status.
   treated as current recovery evidence; the verified v0.30.10 release assets and installed CLI are
   authoritative.
 - The historical focused Desktop web gate passed 160 tests across 9 files, and the isolated full
-  Bun suite passed 258 tests across 22 files (that run: 62.41 seconds, 1,273 assertions, including
+  Bun suite passed 258 tests across 22 files (that run: 71.84 seconds, 1,272 assertions, including
   the desktop lockfile helper regression). The Python suite passed 160 tests, `bun run type-check`,
   `uv lock --check`, and the source formatting/lint gates passed. These are per-suite figures, not
   a deduplicated aggregate. The root `test` script now runs Bun with isolated, single-worker file
