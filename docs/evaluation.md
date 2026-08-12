@@ -19,10 +19,10 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.0` (`origin/main` commit `2d6ef86`,
-with staging reconciled at `9b9d51e`). The installed core used for the latest
-provider-backed fixture evidence is still `v0.30.10`, so those results are
-pre-release evidence rather than proof of the installed `v0.31.0` binary. The
+The current protected source is `v0.31.0` (`origin/main` commit `cbfb798`,
+with staging's readiness fix at `1d8df08`). The installed core remains
+`v0.30.10`, but the published `v0.31.0` aarch64 core archive was independently
+executed for the latest provider-backed fixture evidence. The
 published `v0.31.0` assets and strict release verifier are complete, proving
 archive, checksum, signature, and updater-manifest integrity. This still does
 not prove packaged GUI behavior or Developer ID/notarization trust.
@@ -119,7 +119,7 @@ in 15,107 ms with planner and synthesis model use, valid citations, cache reuse,
 invalidation; the prior 13,472 ms run remains historical evidence from the same day. This is still
 fixture-only evidence, not packaged-app proof; provider outages must
 continue to fail closed, and extractive mode remains the safe production default.
-The latest bounded pre-release rerun on 2026-08-12 also passed in 11,100 ms with the same planner/synthesis,
+The latest bounded `v0.31.0` archive rerun on 2026-08-12 passed in 18,312 ms with the same planner/synthesis,
 citation, cache, and revision checks; the 15,107 ms result is now historical evidence. Retrieval
 quality remained perfect (recall, MRR, case pass rate, and citation validity all 1.0) within the
 30,000 ms answer deadline.
