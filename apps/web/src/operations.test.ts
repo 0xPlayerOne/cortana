@@ -258,7 +258,7 @@ describe('operational source visibility', () => {
     expect(health.label).toContain('re-validate')
   })
 
-  test('keeps an explicitly complete validation healthy', () => {
+  test('keeps an explicitly complete validation healthy for recurring sync', () => {
     const status = structuredClone(demoStatus)
     const buzz = status.ingestion.configured_sources.find((source) => source.name === 'buzz')!
     buzz.validation = {
