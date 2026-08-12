@@ -259,10 +259,12 @@ The fully verified follow-ups are v0.31.1 and v0.31.2. Release-assets workflow
 v0.31.3 was published from the protected promotion in PR #819. The current
 v0.31.5 patch was promoted through PR #845 and Release Please PR #846;
 release-assets workflow `31575709770` completed all platform jobs plus the
-strict 18-asset verifier. The installed core now reports v0.31.5 and its
+strict 18-asset verifier. Release v0.31.6 was then published through evidence
+promotion PR #851 and Release Please PR #854; its release-assets workflow
+`31578434124` is still running. The installed core reports v0.31.5 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
 starting services or sync. Its latest provider-backed fixture model gate passed in
-13,871 ms (earlier verified runs passed in 19,524 ms, 15,774 ms, and 13,237 ms) with planner/synthesis, citations,
+12,250 ms (earlier verified runs passed in 13,871 ms, 19,524 ms, 15,774 ms, and 13,237 ms) with planner/synthesis, citations,
 cache reuse, and revision invalidation. No packaged-GUI evaluation is claimed.
 
 The installed v0.31.5 binary also passed the disposable offline control-plane
@@ -277,7 +279,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.5
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.6
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
