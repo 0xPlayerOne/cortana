@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.11](https://github.com/0xPlayerOne/cortana/compare/v0.30.10...v0.30.11) (2026-08-11)
+
+
+### Bug Fixes
+
+* **discord:** bound RPC writes and response reads by the command deadline ([ea2fcbe](https://github.com/0xPlayerOne/cortana/commit/ea2fcbe3b93c6e259f0bfaa594df011775bf169f))
+
 ## [0.30.10](https://github.com/0xPlayerOne/cortana/compare/v0.30.9...v0.30.10) (2026-08-11)
 
 
