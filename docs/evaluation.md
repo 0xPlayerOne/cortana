@@ -19,14 +19,15 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.0` (`origin/main` commit `cbfb798`,
-with the current staging evidence at `51e5f5d`). The verified `v0.31.0` core is
-installed at `/Users/amf/.local/bin/cortana` and was independently executed for
-the latest provider-backed fixture evidence. The
-published `v0.31.0` assets and strict release verifier are complete, proving
-archive, checksum, signature, and updater-manifest integrity. This still does
-not prove packaged GUI behavior or Developer ID/notarization trust.
-The evaluator remains fixture-only, bounded, and opt-in; extractive mode is the
+The current protected source is `v0.31.2` (`origin/main` commit `326d0f0`,
+with the release-only metadata reconciled to staging by PR #800). The verified
+`v0.31.2` assets and strict release verifier are complete, proving archive,
+checksum, signature, and updater-manifest integrity. The installed CLI reports
+`v0.31.2` and its doctor/control-plane checks pass, but the last completed
+provider-backed fixture evaluation is the v0.31.1 run documented below; a
+v0.31.2 rerun exceeded the bounded operator window and was stopped. This still
+does not prove packaged GUI behavior or Developer ID/notarization trust. The
+evaluator remains fixture-only, bounded, and opt-in; extractive mode is the
 production default.
 
 The built-in thresholds and data live in `eval/fixtures.json`. Use
@@ -131,6 +132,17 @@ the evaluator remains opt-in and bounded, and extractive mode remains the safe d
 provider is slow or unavailable.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
+
+The installed v0.31.1 core rerun on 2026-08-12 passed the same fixture-only
+model gate in 24,546 ms: planner and synthesis were used, citations were valid,
+cache reuse and post-update invalidation both passed, and recall, MRR, case pass
+rate, and citation validity were all 1.0 within the 30,000 ms answer deadline.
+This is the last completed model-backed installed-core evidence; it does not
+prove packaged GUI behavior or authorize a personal-index sync. The v0.31.2
+release archive and all 18 Desktop assets are independently verified, and the
+v0.31.2 CLI is installed, but its rerun exceeded the bounded operator window
+and was stopped without a quality report. No v0.31.2 model-quality claim or
+packaged-GUI evaluation is made.
 
 The bounded source trial remains deliberately separate from this fixture gate. A one-document,
 non-reconciling run completed for Personal Drive and Personal Gmail after a 180-second per-source
