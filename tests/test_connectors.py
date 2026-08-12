@@ -318,6 +318,17 @@ def test_buzz_rejects_symlinked_source_directories(tmp_path: Path) -> None:
         list(buzz.fetch(tmp_path))
 
 
+def test_buzz_rejects_oversized_logs(tmp_path: Path) -> None:
+    logs = tmp_path / "agents" / "logs"
+    logs.mkdir(parents=True)
+    oversized = logs / "oversized.log"
+    with oversized.open("wb") as stream:
+        stream.truncate(buzz.MAX_LOG_BYTES + 1)
+
+    with pytest.raises(RuntimeError, match="log exceeds"):
+        list(buzz.fetch(tmp_path))
+
+
 class FakeSlackClient:
     def __init__(self, *_args: object, **_kwargs: object) -> None:
         self.calls: list[str] = []

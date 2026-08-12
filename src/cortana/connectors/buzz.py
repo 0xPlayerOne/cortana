@@ -11,6 +11,8 @@ from urllib.parse import quote
 
 from .model import Document
 
+MAX_LOG_BYTES = 16 * 1024 * 1024
+
 
 def fetch(
     root: Path, project: str = "buzz", max_documents: int | None = None
@@ -75,8 +77,10 @@ def fetch(
             raise RuntimeError(f"Buzz log must not be a symlink: {path}")
         if not path.is_file():
             continue
-        content = path.read_text(encoding="utf-8", errors="replace")
         file_stat = path.stat()
+        if file_stat.st_size > MAX_LOG_BYTES:
+            raise RuntimeError(f"Buzz log exceeds the {MAX_LOG_BYTES} byte safety limit: {path}")
+        content = path.read_text(encoding="utf-8", errors="replace")
         yield Document(
             source="buzz",
             source_id=f"log:{path.name}",
