@@ -17,6 +17,17 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 - planner bounds, cache hits, and corpus-revision invalidation;
 - a deterministic retrieval latency ceiling.
 
+### Current release boundary
+
+The current protected source is `v0.31.0` (`origin/main` commit `2d6ef86`,
+with staging reconciled at `848c4ca`). The installed core used for the latest
+provider-backed fixture evidence is still `v0.30.10`, so those results are
+pre-release evidence rather than proof of the installed `v0.31.0` binary. The
+published `v0.31.0` assets are still being built; do not treat the release as
+cross-platform verified until its asset workflow and strict verifier complete.
+The evaluator remains fixture-only, bounded, and opt-in; extractive mode is the
+production default.
+
 The built-in thresholds and data live in `eval/fixtures.json`. Use
 `cortana eval --fixture /path/to/synthetic.json` for a versioned project-specific fixture. Never
 put personal or production content into committed evaluation data.
@@ -107,7 +118,7 @@ in 15,107 ms with planner and synthesis model use, valid citations, cache reuse,
 invalidation; the prior 13,472 ms run remains historical evidence from the same day. This is still
 fixture-only evidence, not packaged-app proof; provider outages must
 continue to fail closed, and extractive mode remains the safe production default.
-The latest bounded rerun on 2026-08-12 also passed in 11,100 ms with the same planner/synthesis,
+The latest bounded pre-release rerun on 2026-08-12 also passed in 11,100 ms with the same planner/synthesis,
 citation, cache, and revision checks; the 15,107 ms result is now historical evidence. Retrieval
 quality remained perfect (recall, MRR, case pass rate, and citation validity all 1.0) within the
 30,000 ms answer deadline.
