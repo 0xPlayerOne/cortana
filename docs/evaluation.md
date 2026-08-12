@@ -25,8 +25,8 @@ workflow `31578434124` completed all platform jobs; the strict 18-asset
 verifier passed. The installed CLI now reports `v0.31.6`;
 its doctor, query-only readiness, and disposable control-plane checks pass
 without starting services or sync. The latest installed v0.31.6 provider-backed fixture
-evaluation passed on 2026-08-12 in 17,145 ms (the earlier 12,613 ms run and prior
-v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the
+evaluation passed on 2026-08-12 in 14,249 ms (the earlier 17,145 ms and 12,613 ms
+runs and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the
 v0.31.5 runtime-baseline run passed in 13,871 ms; prior verified
 runs passed in 19,524 ms, 15,774 ms,
 and 13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
@@ -34,6 +34,11 @@ and revision invalidation. This remains fixture-only query-layer evidence and do
 not prove packaged GUI behavior, personal-index sync, or Developer
 ID/notarization trust. The evaluator remains bounded and opt-in; extractive
 mode is the production default.
+
+The current main tree also contains the post-v0.31.6 Apple Notes executable
+hardening and Buzz source-directory/log-size guards; these are included in the
+next patch-release bookkeeping and are not retroactively attributed to the
+v0.31.6 artifact.
 
 The built-in thresholds and data live in `eval/fixtures.json`. Use
 `cortana eval --fixture /path/to/synthetic.json` for a versioned project-specific fixture. Never

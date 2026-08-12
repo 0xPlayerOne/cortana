@@ -265,13 +265,19 @@ all platform jobs and the strict 18-asset verifier passed. The installed core
 now reports v0.31.6 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
 starting services or sync. Its latest installed v0.31.6 provider-backed fixture model
-gate passed on 2026-08-12 in 17,145 ms (the earlier 12,613 ms run and prior v0.31.6
-runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
+gate passed on 2026-08-12 in 14,249 ms (the earlier 17,145 ms and 12,613 ms runs
+and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
 runtime-baseline run passed in
 13,871 ms; prior verified runs passed
 in 19,524 ms, 15,774 ms, and
 13,237 ms) with planner/synthesis, citations, cache reuse, and revision
 invalidation. No packaged-GUI evaluation is claimed.
+
+The post-v0.31.6 protected promotion also carries two connector hardening fixes:
+Apple Notes now invokes its fixed system automation executable, and Buzz rejects
+symlinked source directories and oversized logs before reading them. These changes
+are recorded here so the published artifact and changelog can be checked against
+the current main tree.
 
 The installed v0.31.6 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
