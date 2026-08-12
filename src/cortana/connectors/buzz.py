@@ -16,7 +16,15 @@ def fetch(
     root: Path, project: str = "buzz", max_documents: int | None = None
 ) -> Iterable[Document]:
     emitted = 0
-    database = root / "agents" / "retention.db"
+    if root.is_symlink():
+        raise RuntimeError(f"Buzz root must not be a symlink: {root}")
+    agents = root / "agents"
+    if agents.is_symlink():
+        raise RuntimeError(f"Buzz agents directory must not be a symlink: {agents}")
+    if not agents.is_dir():
+        return
+
+    database = agents / "retention.db"
     if _is_regular_non_symlink(database):
         uri = f"file:{database}?mode=ro"
         with sqlite3.connect(uri, uri=True) as connection:
@@ -27,7 +35,8 @@ def fetch(
                 text = str(content or "").strip()
                 if not text or not all(str(value or "").strip() for value in (kind, pubkey, tag)):
                     print(
-                        f"connector warning: skipping malformed Buzz persona {source_id or 'unknown'}",
+                        "connector warning: skipping malformed Buzz persona "
+                        f"{source_id or 'unknown'}",
                         file=sys.stderr,
                     )
                     continue
@@ -56,7 +65,12 @@ def fetch(
         raise RuntimeError(
             f"Buzz retention database must be a regular non-symlink file: {database}"
         )
-    for path in sorted((root / "agents" / "logs").glob("*.log")):
+    logs = agents / "logs"
+    if logs.is_symlink():
+        raise RuntimeError(f"Buzz logs directory must not be a symlink: {logs}")
+    if not logs.is_dir():
+        return
+    for path in sorted(logs.glob("*.log")):
         if path.is_symlink():
             raise RuntimeError(f"Buzz log must not be a symlink: {path}")
         if not path.is_file():
