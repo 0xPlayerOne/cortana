@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.7](https://github.com/0xPlayerOne/cortana/compare/v0.31.6...v0.31.7) (2026-08-12)
+
+
+### Bug Fixes
+
+* **release:** publish post-0.31.6 connector hardening ([#892](https://github.com/0xPlayerOne/cortana/issues/892)) ([5d77b76](https://github.com/0xPlayerOne/cortana/commit/5d77b763b4c9abb38cca5b2b0a4cff8c4cdb97ae))
+
 ## [0.31.6](https://github.com/0xPlayerOne/cortana/compare/v0.31.5...v0.31.6) (2026-08-12)
 
 
