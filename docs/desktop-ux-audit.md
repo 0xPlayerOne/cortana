@@ -8,29 +8,33 @@ is not part of a visual/UI change.
 ## Current release evidence (2026-08-12)
 
 - The protected staging reconciliation has merged. `origin/main` is release
-  `v0.31.0` at commit `cbfb798`; staging currently includes the follow-up
-  readiness fix at `1d8df08` (PR #782), with the OAuth-helper cleanup queued
-  separately. The superseded promotion branches were deleted.
+  `v0.31.0` at commit `cbfb798`; current staging includes the active-sync
+  readiness fix, provider-neutral OAuth helper, and model-evaluation evidence
+  through `51e5f5d` (PRs #782, #785, and #787). Superseded promotion branches
+  were deleted.
 - Release `v0.31.0` is published from tag commit `2d6ef86`. Its release-assets
   workflow (`31555962734`) completed all five platform jobs and the strict
   verifier passed all 18 required core, Desktop, signature, checksum, and
   updater-manifest assets. This verifies archive and updater integrity only;
   it does not launch the packaged GUI or prove OS-level signing/notarization.
-- The installed `/Users/amf/.local/bin/cortana` remains `v0.30.10`; it is not
-  evidence that the `v0.31.0` binary or Desktop bundle has been installed. The
-  packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
-  Developer ID signing, and notarization remain manual gates.
+- The verified core release is now installed at `/Users/amf/.local/bin/cortana`
+  and reports `v0.31.0`; installation was performed with services disabled, so
+  it did not launch the GUI, restart the existing background process, authorize
+  a source, or enable recurring sync. The packaged GUI, browser OAuth,
+  tray/menu, native dialogs, updater interaction, Developer ID signing, and
+  notarization remain manual gates.
 - A fresh read-only readiness pass succeeded, while the
   `--allow-sync-service` variant failed closed on incomplete source validation.
   Recurring sync remains uninstalled and no large sync was run. Filesystem/code
   samples with `complete=false` and sources with unknown completeness cannot
   authorize reconciliation.
 - The published `v0.31.0` aarch64 core archive was run in an isolated temporary
-  directory on 2026-08-12. `cortana 0.31.0 eval --model` passed with planner and
-  synthesis model use, valid citations, cache reuse/invalidation, perfect
-  fixture retrieval metrics, and 18,312 ms latency under the 30,000 ms bound.
-  The fixture is synthetic-only; the installed CLI and packaged GUI remain
-  separate manual gates.
+  directory on 2026-08-12, then the installed `v0.31.0` binary was rerun against
+  the same synthetic fixture. Both passed with planner and synthesis model use,
+  valid citations, cache reuse/invalidation, and perfect fixture retrieval
+  metrics; the installed run completed in 18,979 ms under the 30,000 ms bound
+  (the archive run completed in 18,312 ms). The fixture is synthetic-only; the
+  packaged GUI remains a separate manual gate.
 - A bounded end-to-end Discord trial on 2026-08-12 covered all three enabled
   authorized sources with one document and a 64 KiB cap. `community-discord`
   completed under 30 seconds; `community-discord-pending-1` and
@@ -77,8 +81,9 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: PASS for the configured provider's fixture-only
-   gate on the published `v0.31.0` core archive. The isolated rerun on 2026-08-12
-   completed in 18,312 ms with planner and synthesis model use,
+   gate on the published `v0.31.0` core archive and the installed `v0.31.0`
+   core. The installed rerun on 2026-08-12
+   completed in 18,979 ms with planner and synthesis model use,
    valid citations, cache reuse, and revision invalidation; the prior 15,107 ms and 13,472 ms runs
    remain historical evidence. Earlier attempts correctly failed closed with
    `fallback_provider_unavailable=true` during transient gateway outages. This remains
