@@ -415,20 +415,49 @@ async fn backup_check(directory: &Path, max_age_hours: u64, timeout: Duration) -
 
 fn sync_check(allow_sync_service: bool) -> ReadinessCheck {
     let installed = service::sync_job_installed();
+    let service_status = installed.then(service::status);
+    let active = service_status.as_ref().is_some_and(|result| {
+        result
+            .as_ref()
+            .ok()
+            .and_then(|report| {
+                report
+                    .services
+                    .iter()
+                    .find(|service| service.name == "sync")
+            })
+            .is_some_and(sync_service_is_active)
+    });
+    let status_error = service_status
+        .as_ref()
+        .and_then(|result| result.as_ref().err());
     ReadinessCheck {
         name: "sync-service".into(),
-        passed: !installed || allow_sync_service,
+        passed: !installed || (allow_sync_service && active),
         detail: if installed {
-            if allow_sync_service {
-                "installed and explicitly allowed for this readiness check"
+            if let Some(error) = status_error {
+                format!("installed but service status could not be read: {error:#}")
+            } else if !allow_sync_service {
+                "installed; rerun with --allow-sync-service only after source validation".into()
+            } else if active {
+                "installed, loaded, and explicitly allowed for this readiness check".into()
             } else {
-                "installed; rerun with --allow-sync-service only after source validation"
+                "installed but not loaded or active; start the sync service before readiness".into()
             }
         } else {
-            "not installed (safe query-only operation)"
-        }
-        .into(),
+            "not installed (safe query-only operation)".into()
+        },
     }
+}
+
+fn sync_service_is_active(service: &service::ServiceStatus) -> bool {
+    if !service.installed || !service.loaded {
+        return false;
+    }
+    matches!(
+        service.state.as_deref(),
+        Some("active" | "queued" | "ready" | "running" | "waiting")
+    )
 }
 
 /// Verify the recurring-sync validation gate without touching any connector.
@@ -652,6 +681,57 @@ mod tests {
             .backup(&directory.path().join("verified.sqlite3"))
             .expect("verified backup fixture");
         assert!(backup_check_blocking(directory.path(), 48).passed);
+    }
+
+    #[test]
+    fn sync_service_requires_a_loaded_nonterminal_state() {
+        let active = service::ServiceStatus {
+            name: "sync",
+            label: "ai.cortana.sync",
+            installed: true,
+            loaded: true,
+            state: Some("waiting".into()),
+            pid: None,
+            last_exit_status: None,
+        };
+        assert!(sync_service_is_active(&active));
+
+        for state in ["dead", "failed", "inactive", "unknown", "not loaded"] {
+            let status = service::ServiceStatus {
+                name: "sync",
+                label: "ai.cortana.sync",
+                installed: true,
+                loaded: true,
+                state: Some(state.into()),
+                pid: None,
+                last_exit_status: None,
+            };
+            assert!(!sync_service_is_active(&status), "state={state}");
+        }
+
+        for state in ["loaded", "starting", "stopped"] {
+            let status = service::ServiceStatus {
+                name: "sync",
+                label: "ai.cortana.sync",
+                installed: true,
+                loaded: true,
+                state: Some(state.into()),
+                pid: None,
+                last_exit_status: None,
+            };
+            assert!(!sync_service_is_active(&status), "state={state}");
+        }
+
+        let unloaded = service::ServiceStatus {
+            name: "sync",
+            label: "ai.cortana.sync",
+            installed: true,
+            loaded: false,
+            state: Some("waiting".into()),
+            pid: None,
+            last_exit_status: None,
+        };
+        assert!(!sync_service_is_active(&unloaded));
     }
 
     #[test]
