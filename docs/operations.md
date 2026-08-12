@@ -261,12 +261,14 @@ v0.31.5 patch was promoted through PR #845 and Release Please PR #846;
 release-assets workflow `31575709770` completed all platform jobs plus the
 strict 18-asset verifier. Release v0.31.6 was then published through evidence
 promotion PR #851 and Release Please PR #854; workflow `31578434124` completed
-all platform jobs and the strict 18-asset verifier passed. The installed core
-now reports v0.31.6 and its
+all platform jobs and the strict 18-asset verifier passed. Release v0.31.7 was
+published through Release Please PR #895; release-assets workflow `31597160527`
+completed all platform jobs and the strict v0.31.7 verifier passed. The
+installed core remains v0.31.6 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
 starting services or sync. Its latest installed v0.31.6 provider-backed fixture model
-gate passed on 2026-08-12 in 17,145 ms (the earlier 12,613 ms run and prior v0.31.6
-runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
+gate passed on 2026-08-12 in 13,416 ms (the earlier 17,145 ms and 12,613 ms runs
+and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
 runtime-baseline run passed in
 13,871 ms; prior verified runs passed
 in 19,524 ms, 15,774 ms, and
@@ -285,7 +287,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.6
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.7
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
