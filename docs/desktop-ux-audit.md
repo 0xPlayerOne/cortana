@@ -46,10 +46,9 @@ is not part of a visual/UI change.
   indexed data and does not prove packaged GUI, OAuth, tray, or updater flows.
 - A bounded end-to-end Discord trial on 2026-08-12 covered all three enabled
   authorized sources with one document and a 64 KiB cap. `community-discord`
-  completed under 30 seconds; `community-discord-pending-1` and
-  `community-discord-pending-2` exceeded that strict probe but both completed
-  successfully when rerun at a still-bounded 180-second cap. All three trials
-  were non-reconciling and deleted zero records. This proves the selected
+  and both pending sources completed within the 30-second cap on the latest
+  validation-only rerun. All three trials were non-reconciling and deleted zero
+  records. This proves the selected
   connector-to-embedding-to-index path, not full-corpus readiness.
 
 ## Requirement matrix
@@ -120,8 +119,8 @@ is not part of a visual/UI change.
    MRR gains of `0.375`; that is useful evidence for a future opt-in review, not live-provider proof.
 6. Complete source authorization and full validation coverage before recurring sync: the three
    enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh validation-only
-   smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source. Their bounded
-   end-to-end trials pass at a 180-second cap where the two slower RPC paths need it; the personal AMF
+   smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source. Their latest bounded
+   end-to-end trials also pass within that 30-second cap; the personal AMF
    Discord source is disabled. The bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
    either bounded samples (`complete=false`) or legacy records without an explicit completeness
    marker. Both states fail closed; recurring sync must remain uninstalled until every enabled
