@@ -1,9 +1,10 @@
 use std::collections::HashSet;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration as StdDuration, Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -157,7 +158,7 @@ pub async fn run_with_config(
             .with_context(|| format!("failed to read evaluation fixture {}", path.display()))?,
     )
     .with_context(|| format!("invalid evaluation fixture {}", path.display()))?;
-    run_fixture(fixture, Some((bounded_model_config(query), api_key))).await
+    run_model_fixture(fixture, Some((bounded_model_config(query), api_key))).await
 }
 
 pub async fn run_with_model_default(
@@ -166,7 +167,27 @@ pub async fn run_with_model_default(
 ) -> Result<EvaluationReport> {
     let fixture: EvaluationFixture = serde_json::from_str(include_str!("../eval/fixtures.json"))
         .context("invalid built-in evaluation fixture")?;
-    run_fixture(fixture, Some((bounded_model_config(query), api_key))).await
+    run_model_fixture(fixture, Some((bounded_model_config(query), api_key))).await
+}
+
+async fn run_model_fixture(
+    fixture: EvaluationFixture,
+    model: Option<(QueryConfig, Option<String>)>,
+) -> Result<EvaluationReport> {
+    bounded_model_evaluation(
+        run_fixture(fixture, model),
+        StdDuration::from_secs(MODEL_EVALUATION_MAX_SECONDS),
+    )
+    .await
+}
+
+async fn bounded_model_evaluation<T, F>(future: F, timeout: StdDuration) -> Result<T>
+where
+    F: Future<Output = Result<T>>,
+{
+    tokio::time::timeout(timeout, future)
+        .await
+        .map_err(|_| anyhow!("model-backed evaluation timed out after {timeout:?}"))?
 }
 
 fn bounded_model_config(query: &QueryConfig) -> QueryConfig {
@@ -867,6 +888,21 @@ mod tests {
             QueryConfig::default()
                 .output_tokens
                 .min(MODEL_EVALUATION_MAX_OUTPUT_TOKENS)
+        );
+    }
+
+    #[tokio::test]
+    async fn model_evaluation_timeout_fails_closed() {
+        let error = bounded_model_evaluation(
+            std::future::pending::<Result<()>>(),
+            StdDuration::from_millis(1),
+        )
+        .await
+        .expect_err("a stalled model evaluation must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("model-backed evaluation timed out")
         );
     }
 }
