@@ -7,39 +7,38 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-12)
 
-- `origin/main` is now release `v0.31.2` at commit `326d0f0`, and the release-only
-  metadata delta has been reconciled back to protected `staging` through clean
-  PR #800. No runtime, connector, credential, or sync code was part of that PR.
-  The earlier full-history reconciliation PR #799 was closed as structurally
-  dirty rather than merged.
-- `v0.31.2` is now the latest fully verified Desktop release: workflow
-  `31559861575` completed all platform jobs and the strict verifier passed all
-  18 core, Desktop, signature, checksum, and updater-manifest assets. The
-  previous v0.31.1 release remains fully verified as well. Archive verification
-  does not launch the packaged GUI or prove OS-level signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` reports `v0.31.2`.
-  Installation used services-disabled mode: it did not launch the GUI, restart
-  the existing background process, authorize a source, or enable recurring
-  sync. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater
-  interaction, Developer ID signing, and notarization remain manual gates.
-- The installed `v0.31.2` doctor check succeeded. The last completed full
-  readiness and model-backed evaluation evidence is from the v0.31.1 core:
-  readiness passed query-only, while the `--allow-sync-service` gate failed
-  closed because enabled filesystem/code sources remain bounded samples or
-  otherwise below their configured full-sync budgets. Recurring sync remains
-  uninstalled and no large sync was run.
-- The completed v0.31.1 fixture-only model evaluation passed with planner and
-  synthesis model use, valid citations, cache reuse/invalidation, and perfect
-  retrieval metrics (recall, MRR, case pass rate, and citation validity all
-  1.0), with 24,546 ms answer latency under the 30,000 ms bound. A v0.31.2
-  rerun was stopped after exceeding its bounded operator window; no v0.31.2
-  model-quality claim is made. These are model and query-layer checks only,
-  not personal-index, sync, or packaged GUI proof.
-- The current isolated Bun suite passes 258 tests across 22 files with 1,272
-  assertions in 143.29 seconds. The native Tauri suite passes 129 tests in
-  0.73 seconds after compilation. These are headless assertions and do not
-  substitute for the still-unverified interactive packaged GUI flows.
-- The installed v0.31.2 binary passed the disposable offline control-plane
+- `origin/main` is release `v0.31.3` at commit `5fdfc60`. The clean
+  metadata-only reconciliation back to protected `staging` is PR #811; the
+  superseded full-history reconciliation PR #810 was closed as structurally
+  conflicting rather than merged. Neither reconciliation changes runtime,
+  connector, credential, or sync code.
+- Release `v0.31.3` is published and workflow `31563026950` completed all
+  platform jobs plus the strict verifier with all 18 core, Desktop, signature,
+  checksum, and updater-manifest assets. Archive verification does not launch
+  the packaged GUI or prove OS-level signing/notarization.
+- The installed core at `/Users/amf/.local/bin/cortana` now reports `v0.31.3`.
+  The upgrade used the signed aarch64 archive with services disabled: it did
+  not launch the GUI, restart the existing background process, authorize a
+  source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
+  native dialogs, updater interaction, Developer ID signing, and notarization
+  remain manual gates.
+- A prior source-tree fixture evaluation completed in 14,186 ms with planner
+  and synthesis model use, valid citations, cache reuse, and revision
+  invalidation. A fresh v0.31.3 source run hit the 30-second outer deadline and
+  failed closed, so there is no v0.31.3 model-quality claim yet. This is
+  synthetic, query-layer evidence only; the installed v0.31.3 rerun also hit
+  the outer deadline and failed closed. Extractive mode remains the production
+  default and recurring sync remains uninstalled because enabled
+  filesystem/code sources are still bounded samples or otherwise below their
+  configured full-sync budgets.
+- The latest full Bun run exposed one intermittent `graph and timeline evidence
+actions open the selected source` failure; the same test passes in isolation,
+  as does the isolated keyset-pagination regression. Treat the full-suite
+  result as a harness-stability follow-up rather than a clean release gate until
+  a sequential run is green. The native Tauri suite passes 129 tests in about
+  5.5 seconds after compilation. Both suites are headless and do not substitute
+  for the still-unverified interactive packaged GUI flows.
+- The installed v0.31.3 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
   audit export, verified backup, restore into a second temporary data directory,
   SQLite verification, and post-restore search. The drill touched no live
@@ -134,7 +133,7 @@ is not part of a visual/UI change.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.2 installed core or release; use the
+does not describe the current v0.31.3 release or installed v0.31.2 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only

@@ -19,16 +19,19 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.2` (`origin/main` commit `326d0f0`,
-with the release-only metadata reconciled to staging by PR #800). The verified
-`v0.31.2` assets and strict release verifier are complete, proving archive,
-checksum, signature, and updater-manifest integrity. The installed CLI reports
-`v0.31.2` and its doctor/control-plane checks pass, but the last completed
-provider-backed fixture evaluation is the v0.31.1 run documented below; a
-v0.31.2 rerun exceeded the bounded operator window and was stopped. This still
-does not prove packaged GUI behavior or Developer ID/notarization trust. The
-evaluator remains fixture-only, bounded, and opt-in; extractive mode is the
-production default.
+The current protected source is `v0.31.3` (`origin/main` commit `5fdfc60`).
+Release `v0.31.3` is published and workflow `31563026950` completed all
+platform jobs plus the strict 18-asset verifier. The installed CLI now reports
+`v0.31.3`; its doctor, query-only readiness, and disposable control-plane
+checks pass without starting services or sync. A prior source-tree provider-backed fixture
+evaluation passed in 14,186 ms with planner and synthesis model use, valid
+citations, cache reuse, and revision invalidation. A fresh v0.31.3 source run
+hit the 30-second outer deadline and failed closed, so there is no v0.31.3
+model-quality claim yet; the installed v0.31.3 rerun also hit that deadline and
+failed closed. This remains fixture-only query-layer evidence and
+does not prove packaged GUI behavior, personal-index sync, or Developer
+ID/notarization trust. The evaluator remains bounded and opt-in; extractive
+mode is the production default.
 
 The built-in thresholds and data live in `eval/fixtures.json`. Use
 `cortana eval --fixture /path/to/synthetic.json` for a versioned project-specific fixture. Never
@@ -146,8 +149,10 @@ This is the last completed model-backed installed-core evidence; it does not
 prove packaged GUI behavior or authorize a personal-index sync. The v0.31.2
 release archive and all 18 Desktop assets are independently verified, and the
 v0.31.2 CLI is installed, but its rerun exceeded the bounded operator window
-and was stopped without a quality report. No v0.31.2 model-quality claim or
-packaged-GUI evaluation is made.
+and was stopped without a quality report. A prior source-tree run passed in
+14,186 ms with the same planner/synthesis, citation, cache, and revision
+checks, while the current v0.31.3 source rerun hit the outer deadline and
+failed closed. No packaged-GUI evaluation is made.
 
 The bounded source trial remains deliberately separate from this fixture gate. A one-document,
 non-reconciling run completed for Personal Drive and Personal Gmail after a 180-second per-source
