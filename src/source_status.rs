@@ -381,10 +381,11 @@ fn valid_github_bearer(value: &str) -> bool {
             .any(|character| character.is_control() || character.is_whitespace())
 }
 
-/// A Discord Desktop RPC token file is ready when it is a private regular
-/// file whose JSON carries a plausible bearer access token. Discord never
-/// falls back to an environment-variable or bot credential.
-fn discord_token_file_ready(path: &Path) -> bool {
+/// An owner-authorized OAuth token file is ready when it is a private regular
+/// file whose JSON carries a plausible bearer access token. Provider-specific
+/// authorization methods decide whether the token is a user token or RPC
+/// credential; this helper only validates the shared file contract.
+fn oauth_access_token_file_ready(path: &Path) -> bool {
     if !secure_regular_file_ready(path) {
         return false;
     }
@@ -410,13 +411,6 @@ fn discord_token_file_ready(path: &Path) -> bool {
         .get("access_token")
         .and_then(serde_json::Value::as_str)
         .is_some_and(valid_github_bearer)
-}
-
-fn slack_token_file_ready(path: &Path) -> bool {
-    // Slack user tokens are stored in the same owner-only JSON contract as
-    // Discord's: a bounded `access_token` field is enough to consider the
-    // browser-authorization path complete.
-    discord_token_file_ready(path)
 }
 
 fn secure_regular_file_ready(path: &Path) -> bool {
@@ -539,7 +533,7 @@ pub fn source_authorization_summary(
         let token_file_ready = source
             .token
             .as_ref()
-            .is_some_and(|path| slack_token_file_ready(path.as_path()));
+            .is_some_and(|path| oauth_access_token_file_ready(path.as_path()));
         let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready);
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::SlackOauth,
@@ -557,7 +551,7 @@ pub fn source_authorization_summary(
         let token_file_ready = source
             .token
             .as_ref()
-            .is_some_and(|path| discord_token_file_ready(path.as_path()));
+            .is_some_and(|path| oauth_access_token_file_ready(path.as_path()));
         let token_destination_ready = source.token.as_deref().is_some_and(token_destination_ready);
         SourceAuthorizationSummary {
             method: SourceAuthorizationMethod::DiscordRpc,
