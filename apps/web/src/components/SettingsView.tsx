@@ -3451,6 +3451,22 @@ function SourcesSection({
     changeSource(index, { channels })
   }
 
+  const selectAllDiscordTextChannels = (
+    index: number,
+    source: SourceSettings,
+    discovery: { guilds: DiscordGuildChannels[]; truncated: boolean }
+  ) => {
+    const assignedServers = new Set(source.servers)
+    const channels = discovery.guilds
+      .filter((guild) => assignedServers.size === 0 || assignedServers.has(guild.id))
+      .flatMap((guild) =>
+        guild.channels
+          .filter((channel) => channel.kind === 'text' || channel.kind === 'announcement')
+          .map((channel) => channel.id)
+      )
+    changeSource(index, { channels: [...new Set(channels)] })
+  }
+
   const discoverDiscordServers = async (index: number, source: SourceSettings) => {
     if (!canValidate) {
       setError('Save source changes before discovering servers.')
@@ -4368,6 +4384,25 @@ function SourcesSection({
                             </button>
                             {discordChannels[source.name] && (
                               <div className="source-repository-options">
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  aria-label="Select all Discord text channels"
+                                  disabled={sourceLocked || !source.editable}
+                                  onClick={() =>
+                                    selectAllDiscordTextChannels(
+                                      index,
+                                      source,
+                                      discordChannels[source.name]
+                                    )
+                                  }
+                                >
+                                  Select all text channels
+                                </button>
+                                <small>
+                                  Selects text and announcement channels in assigned servers; voice,
+                                  forum, stage, and category channels are excluded.
+                                </small>
                                 {discordChannels[source.name].guilds.length === 0 ? (
                                   <small>No accessible servers returned.</small>
                                 ) : (
