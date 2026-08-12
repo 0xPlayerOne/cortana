@@ -102,9 +102,10 @@ valid citations, cache reuse, and revision invalidation; retrieval recall, MRR, 
 citation validity were all 1.0 within the 30,000 ms deadline. The earlier 13,117 ms and 9,105 ms
 runs and older source-tree runs remain historical evidence. Earlier 2026-08-11 attempts failed
 closed with `fallback_provider_unavailable=true` during transient configured-gateway outages. A
-fresh bounded run on 2026-08-11 re-established provider availability: installed v0.30.10 passed
-in 13,472 ms with planner and synthesis model use, valid citations, cache reuse, and revision
-invalidation. This is still fixture-only evidence, not packaged-app proof; provider outages must
+fresh bounded rerun on 2026-08-11 re-established provider availability: installed v0.30.10 passed
+in 15,107 ms with planner and synthesis model use, valid citations, cache reuse, and revision
+invalidation; the prior 13,472 ms run remains historical evidence from the same day. This is still
+fixture-only evidence, not packaged-app proof; provider outages must
 continue to fail closed, and extractive mode remains the safe production default.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
