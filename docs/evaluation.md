@@ -89,6 +89,11 @@ cannot turn this fixture-only check into a production load test. When the first 
 synthesis call fails closed, the evaluator emits the failure report without repeating the same
 provider outage for cache and post-update checks.
 
+The current source applies that ceiling to the entire fixture run as well as to individual model
+requests. A provider that ignores request-level cancellation therefore returns a stable deadline
+failure instead of leaving the CLI waiting indefinitely; this outer guard is covered by a focused
+regression test and does not enable synthesis in production.
+
 The command exits nonzero when model quality thresholds fail.
 
 When the configured endpoint is the model-gateway adapter, Cortana removes an attribution
