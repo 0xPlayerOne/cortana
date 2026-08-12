@@ -166,6 +166,7 @@ export function App() {
 
   const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
   const desktopSettingsRequestRef = useRef(0)
+  const desktopInfoRequestRef = useRef(0)
   const desktopServicesRequestRef = useRef(0)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${effectiveWorkspace}\u0000${source}\u0000${debouncedDocumentQuery}`
@@ -528,6 +529,7 @@ export function App() {
   useEffect(() => {
     if (!isDesktopApp) return
     const requestId = ++desktopSettingsRequestRef.current
+    const infoRequestId = ++desktopInfoRequestRef.current
     let active = true
     void getDesktopSettings()
       .then((next) => {
@@ -540,7 +542,7 @@ export function App() {
       })
     void getDesktopInfo()
       .then((next) => {
-        if (active && desktopSettingsRequestRef.current === requestId) {
+        if (active && desktopInfoRequestRef.current === infoRequestId) {
           setDesktopInfo(next)
         }
       })
@@ -558,6 +560,7 @@ export function App() {
       })
     return () => {
       active = false
+      desktopInfoRequestRef.current += 1
       if (desktopSettingsRequestRef.current === requestId) {
         desktopSettingsRequestRef.current += 1
       }
@@ -1548,8 +1551,13 @@ export function App() {
                   caught instanceof Error ? caught.message : 'Service status is unavailable'
                 )
               })
+            const infoRequestId = ++desktopInfoRequestRef.current
             void getDesktopInfo()
-              .then(setDesktopInfo)
+              .then((nextInfo) => {
+                if (desktopInfoRequestRef.current === infoRequestId) {
+                  setDesktopInfo(nextInfo)
+                }
+              })
               .catch(() => {
                 // Keep the previous metadata snapshot when the refresh is
                 // unavailable; the Services panel can retry explicitly.
