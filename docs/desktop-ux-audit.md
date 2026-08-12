@@ -12,24 +12,22 @@ is not part of a visual/UI change.
   PR #800. No runtime, connector, credential, or sync code was part of that PR.
   The earlier full-history reconciliation PR #799 was closed as structurally
   dirty rather than merged.
-- `v0.31.1` is the latest fully verified Desktop release: workflow
-  `31559030475` completed all platform jobs and the strict verifier passed all
-  18 core, Desktop, signature, checksum, and updater-manifest assets. Release
-  `v0.31.2` is published, but its asset workflow `31559861575` is still in
-  progress; only the two core archives are present so far, so the strict
-  verifier must not be treated as passed for v0.31.2 yet. Archive verification
+- `v0.31.2` is now the latest fully verified Desktop release: workflow
+  `31559861575` completed all platform jobs and the strict verifier passed all
+  18 core, Desktop, signature, checksum, and updater-manifest assets. The
+  previous v0.31.1 release remains fully verified as well. Archive verification
   does not launch the packaged GUI or prove OS-level signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` reports `v0.31.1`.
+- The installed core at `/Users/amf/.local/bin/cortana` reports `v0.31.2`.
   Installation used services-disabled mode: it did not launch the GUI, restart
   the existing background process, authorize a source, or enable recurring
   sync. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater
   interaction, Developer ID signing, and notarization remain manual gates.
-- A fresh read-only `v0.31.1` readiness pass and doctor check succeeded. The
+- A fresh read-only `v0.31.2` readiness pass and doctor check succeeded. The
   matching `readiness --allow-sync-service` gate remains fail-closed because
   enabled filesystem/code sources are still bounded samples or otherwise below
   their configured full-sync budgets. Recurring sync remains uninstalled and no
   large sync was run.
-- The installed `v0.31.1` fixture-only model evaluation passed with planner and
+- The installed `v0.31.2` fixture-only model evaluation passed with planner and
   synthesis model use, valid citations, cache reuse/invalidation, and perfect
   retrieval metrics (recall, MRR, case pass rate, and citation validity all
   1.0). Answer latency was 24,546 ms under the 30,000 ms bound. This is model

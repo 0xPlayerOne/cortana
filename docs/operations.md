@@ -253,14 +253,12 @@ signatures, checksums, and updater-manifest checks. The verified core now report
 this host. The bounded control-plane,
 recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
 
-The fully verified follow-up is v0.31.1: release-assets workflow `31559030475`
-completed all platform jobs and `scripts/verify-desktop-release.sh v0.31.1`
-verified all 18 assets. The installed core now reports v0.31.1 and its doctor,
-readiness, and fixture-only model gate pass without starting services or sync.
-Release v0.31.2 is published from main commit `326d0f0`, but its asset workflow
-`31559861575` is still in progress; only two core archives are currently
-available, so do not run or cite the strict verifier for v0.31.2 until that
-workflow completes.
+The fully verified follow-ups are v0.31.1 and v0.31.2. Release-assets workflow
+`31559861575` completed all platform jobs and
+`scripts/verify-desktop-release.sh v0.31.2` verified all 18 assets. The
+installed core now reports v0.31.2 and its doctor, readiness, and fixture-only
+model gate pass without starting services or sync. Release v0.31.2 is published
+from main commit `326d0f0`.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
@@ -269,7 +267,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.1
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.2
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
