@@ -31,10 +31,9 @@ is not part of a visual/UI change.
   and recurring sync remains uninstalled because enabled filesystem/code sources
   are still bounded samples or otherwise below their
   configured full-sync budgets.
-- The latest full Bun suite passes 258 tests across 22 files with 1,272
-  assertions in 71.84 seconds. The native Tauri suite passes 129 tests; the
-  latest run took 1.80 seconds after compilation (46.97 seconds including
-  compilation). Both suites are headless and do not substitute
+- The latest full Bun suite passes 258 tests across 22 files with 1,273
+  assertions in 78.47 seconds. The native Tauri suite passes 129 tests; the
+  latest run took 5.31 seconds after compilation. Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
 - The installed v0.31.7 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
