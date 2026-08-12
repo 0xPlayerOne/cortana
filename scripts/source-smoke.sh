@@ -30,7 +30,8 @@ Options:
 
 Environment overrides:
   CORTANA_BINARY, CORTANA_CONFIG, CORTANA_SOURCE_SMOKE_MAX_DOCUMENTS,
-  CORTANA_SOURCE_SMOKE_MAX_BYTES, CORTANA_SOURCE_SMOKE_MAX_SECONDS
+  CORTANA_SOURCE_SMOKE_MAX_BYTES, CORTANA_SOURCE_SMOKE_MAX_SECONDS,
+  CORTANA_SOURCE_SMOKE_SYNC_ATTEMPTS (1-3, default: 2)
 EOF
 }
 
@@ -39,6 +40,7 @@ config_path="${CORTANA_CONFIG:-${XDG_CONFIG_HOME:-${HOME}/.config}/cortana/confi
 max_documents="${CORTANA_SOURCE_SMOKE_MAX_DOCUMENTS:-25}"
 max_bytes="${CORTANA_SOURCE_SMOKE_MAX_BYTES:-5242880}"
 max_seconds="${CORTANA_SOURCE_SMOKE_MAX_SECONDS:-60}"
+sync_attempts="${CORTANA_SOURCE_SMOKE_SYNC_ATTEMPTS:-2}"
 run_sync=0
 include_disabled=0
 include_filesystem=0
@@ -114,6 +116,10 @@ for value_name in max_documents max_bytes max_seconds; do
     exit 2
   }
 done
+[[ "$sync_attempts" =~ ^[1-3]$ ]] || {
+  echo "sync_attempts must be an integer from 1 to 3" >&2
+  exit 2
+}
 
 declare -a requested_sources=("$@")
 declare -a configured_sources=()
@@ -228,21 +234,36 @@ for entry in "${configured_sources[@]}"; do
     elif [[ "$validation_status" != "passed" ]]; then
       sync_status="skipped-validation"
       note="${note:+$note; }trial requires successful validation"
-    elif "$binary_path" --config "$config_path" sync --source "$source" \
-        --no-reconcile \
-        --max-documents "$max_documents" \
-        --max-bytes "$max_bytes" \
-        --max-seconds "$max_seconds" \
-        --require-validation >"$sync_log" 2>&1; then
+    else
+      sync_succeeded=0
+      sync_attempt=1
+      while ((sync_attempt <= sync_attempts)); do
+        if "$binary_path" --config "$config_path" sync --source "$source" \
+            --no-reconcile \
+            --max-documents "$max_documents" \
+            --max-bytes "$max_bytes" \
+            --max-seconds "$max_seconds" \
+            --require-validation >"$sync_log" 2>&1; then
+          sync_succeeded=1
+          break
+        fi
+        sync_attempt=$((sync_attempt + 1))
+      done
       # The trial is equally bounded (same budgets as the validation above)
       # and non-reconciling, so for filesystem sources it may rely on the
       # matching sampled validation via --require-validation while never
-      # authorizing a full-corpus sync.
-      sync_status="passed"
-    else
-      sync_status="failed"
-      note="${note:+$note; }trial: $(classify_failure "$sync_log")"
-      failures=$((failures + 1))
+      # authorizing a full-corpus sync. Retries are capped and apply only to
+      # this explicitly requested probe; they never change service state.
+      if ((sync_succeeded)); then
+        sync_status="passed"
+        if ((sync_attempt > 1)); then
+          note="${note:+$note; }trial passed on attempt $sync_attempt"
+        fi
+      else
+        sync_status="failed"
+        note="${note:+$note; }trial: $(classify_failure "$sync_log") after $sync_attempts attempt(s)"
+        failures=$((failures + 1))
+      fi
     fi
   fi
 
