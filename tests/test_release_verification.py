@@ -17,6 +17,7 @@ import base64
 import hashlib
 import json
 import os
+import plistlib
 import subprocess
 import sys
 import tarfile
@@ -124,6 +125,17 @@ def build_app_archive(directory: Path) -> Path:
     (app / "Contents/Resources/resources/cortana-connectors").mkdir(parents=True)
     write_executable(app / "Contents/MacOS/cortana", fake_binary(VERSION))
     write_executable(app / "Contents/MacOS/cortana-desktop", b"#!/bin/sh\n")
+    (app / "Contents/Info.plist").write_bytes(
+        plistlib.dumps(
+            {
+                "CFBundleIdentifier": "ai.cortana.desktop",
+                "CFBundlePackageType": "APPL",
+                "CFBundleExecutable": "cortana-desktop",
+                "CFBundleShortVersionString": VERSION,
+                "CFBundleVersion": VERSION,
+            }
+        )
+    )
     (app / "Contents/Resources/resources/cortana-connectors/__init__.py").write_text("")
     archive = directory / APP_ARCHIVE
     with tarfile.open(archive, "w:gz") as handle:
@@ -510,6 +522,44 @@ def test_desktop_verify_rejects_published_version_skew(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "published Linux binary version mismatch" in result.stderr
     assert "expected 'cortana 9.9.9', got 'cortana 1.0.0'" in result.stderr
+
+
+def rewrite_app_archive_with_plist(tmp_path: Path, **updates: str) -> dict[str, bytes]:
+    assets = build_desktop_assets(tmp_path, VERSION)
+    app_archive = tmp_path / APP_ARCHIVE
+    app = tmp_path / "rewritten.app"
+    with tarfile.open(app_archive, "r:gz") as source:
+        source.extractall(app)
+    plist_path = app / "Cortana.app/Contents/Info.plist"
+    plist = plistlib.loads(plist_path.read_bytes())
+    plist.update(updates)
+    plist_path.write_bytes(plistlib.dumps(plist))
+    with tarfile.open(app_archive, "w:gz") as archive:
+        archive.add(app / "Cortana.app", arcname="Cortana.app")
+    assets[APP_ARCHIVE] = app_archive.read_bytes()
+    return assets
+
+
+@requires_shell
+def test_desktop_verify_rejects_macos_bundle_version_skew(tmp_path: Path) -> None:
+    assets = rewrite_app_archive_with_plist(tmp_path, CFBundleShortVersionString="1.0.0")
+
+    result = run_desktop_verify(tmp_path, assets)
+
+    assert result.returncode == 1
+    assert "CFBundleShortVersionString mismatch" in result.stderr
+    assert "expected '9.9.9', got '1.0.0'" in result.stderr
+
+
+@requires_shell
+def test_desktop_verify_rejects_macos_bundle_identity_skew(tmp_path: Path) -> None:
+    assets = rewrite_app_archive_with_plist(tmp_path, CFBundleIdentifier="com.example.wrong")
+
+    result = run_desktop_verify(tmp_path, assets)
+
+    assert result.returncode == 1
+    assert "CFBundleIdentifier mismatch" in result.stderr
+    assert "expected 'ai.cortana.desktop', got 'com.example.wrong'" in result.stderr
 
 
 @requires_shell

@@ -216,8 +216,9 @@ flows, tray integration, or updater behavior, none of which it exercises.
 Published releases have a final cross-platform asset gate. It checks that the core archives,
 checksums, signed macOS/Linux/Windows desktop installers, and every updater platform entry are
 present for the same tag before the release workflow succeeds. It also inspects the core archives
-and macOS app archive for safe paths, executable runtime files, the connector resource, the web
-bundle, the release installer scripts, and the published SHA-256 files against their downloaded
+and macOS app archive for safe paths, executable runtime files, the expected
+`ai.cortana.desktop` bundle identity/version in `Contents/Info.plist`, the connector resource, the
+web bundle, the release installer scripts, and the published SHA-256 files against their downloaded
 archives, then executes the published Linux core binary and asserts that its `--version` output
 matches the release tag (on non-Linux hosts the executable check is skipped because the verifier
 cannot run foreign-OS binaries).

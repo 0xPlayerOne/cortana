@@ -172,15 +172,17 @@ for archive in "${core_archives[@]}"; do
 done
 echo "verified core archive checksums"
 
-python3 - "$staging" "${core_archives[@]}" "${signed_archives[@]}" <<'PY'
+python3 - "$staging" "$version" "${core_archives[@]}" "${signed_archives[@]}" <<'PY'
 import os
+import plistlib
 import sys
 import tarfile
 from pathlib import PurePosixPath
 
 root = sys.argv[1]
-core_archives = sys.argv[2:4]
-signed_archives = sys.argv[4:]
+version = sys.argv[2]
+core_archives = sys.argv[3:5]
+signed_archives = sys.argv[5:]
 app_archive = signed_archives[0]
 
 
@@ -224,6 +226,19 @@ def verify_archive(path, label, required):
             raise SystemExit(f"{label} contains a non-executable {expected}")
 
 
+def read_regular_member(path, label, expected):
+    with tarfile.open(path, "r:gz") as archive:
+        for member in archive.getmembers():
+            if path_matches(member.name, expected):
+                if not member.isfile():
+                    raise SystemExit(f"{label} contains a non-regular {expected}")
+                handle = archive.extractfile(member)
+                if handle is None:
+                    raise SystemExit(f"{label} cannot read {expected}")
+                return handle.read()
+    raise SystemExit(f"{label} is missing {expected}")
+
+
 for filename in core_archives:
     verify_archive(
         os.path.join(root, filename),
@@ -245,9 +260,31 @@ verify_archive(
     (
         ("Contents/MacOS/cortana", "executable"),
         ("Contents/MacOS/cortana-desktop", "executable"),
+        ("Contents/Info.plist", "file"),
         ("Contents/Resources/resources/cortana-connectors", "prefix"),
     ),
 )
+try:
+    plist = plistlib.loads(
+        read_regular_member(
+            os.path.join(root, app_archive), app_archive, "Contents/Info.plist"
+        )
+    )
+except (plistlib.InvalidFileException, ValueError, TypeError) as error:
+    raise SystemExit(f"{app_archive} contains an invalid Contents/Info.plist: {error}") from error
+
+expected_bundle = {
+    "CFBundleIdentifier": "ai.cortana.desktop",
+    "CFBundlePackageType": "APPL",
+    "CFBundleExecutable": "cortana-desktop",
+    "CFBundleShortVersionString": version,
+    "CFBundleVersion": version,
+}
+for key, expected in expected_bundle.items():
+    if plist.get(key) != expected:
+        raise SystemExit(
+            f"{app_archive} Info.plist {key} mismatch: expected {expected!r}, got {plist.get(key)!r}"
+        )
 print("verified core archives and macOS sidecar/resources")
 PY
 
