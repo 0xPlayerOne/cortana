@@ -23,16 +23,17 @@ is not part of a visual/UI change.
   source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
-- The installed v0.31.4 fixture evaluation completed in 13,237 ms with planner
-  and synthesis model use, valid citations, cache reuse, and revision
-  invalidation. The opt-in evaluator remains fail-closed below one minute with
+- The installed v0.31.4 fixture evaluation most recently completed in 15,774 ms
+  (an earlier run completed in 13,237 ms) with planner and synthesis model use,
+  valid citations, cache reuse, and revision invalidation. The opt-in evaluator remains fail-closed below one minute with
   a 55-second whole-run bound; extractive mode remains the production default
   and recurring sync remains uninstalled because enabled filesystem/code sources
   are still bounded samples or otherwise below their
   configured full-sync budgets.
-- The latest full Bun suite passes 258 tests across 22 files with 1,273
-  assertions in 73.50 seconds. The native Tauri suite passes 129 tests in about
-  5.5 seconds after compilation. Both suites are headless and do not substitute
+- The latest full Bun suite passes 258 tests across 22 files with 1,270
+  assertions in 72.43 seconds. The native Tauri suite passes 129 tests; the
+  latest run took 1.61 seconds after compilation (44.07 seconds including
+  compilation). Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
 - The installed v0.31.4 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
@@ -138,7 +139,7 @@ current-release section above for sign-off status.
 
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
-  checks, and the installed CLI still reports `cortana 0.30.10`; neither proves
+  checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
   the current `v0.31.4` binary or packaged Desktop behavior. The current
   `v0.31.4` asset workflow and strict verifier are now complete as described above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
@@ -166,7 +167,7 @@ current-release section above for sign-off status.
   That fresh query-only run passed database integrity, embedding/index generation, embedding
   provider, ACL, API liveness, backup freshness, extractive query mode, and confirmed that the
   recurring sync service is not installed.
-- The current-source native Desktop suite on v0.30.10 passes all
+- The v0.30.10 source tree's native Desktop suite passed all
   129 tests. The
   local developer bundle is intentionally unsigned (`bundle:mac --no-sign`); strict `codesign`
   verification fails as expected and no `TeamIdentifier` is present. Developer ID
