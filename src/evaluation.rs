@@ -893,6 +893,12 @@ mod tests {
         );
     }
 
+    #[test]
+    fn model_evaluation_budget_stays_below_one_minute() {
+        let budget = std::hint::black_box(MODEL_EVALUATION_MAX_SECONDS);
+        assert!(budget < 60);
+    }
+
     #[tokio::test]
     async fn model_evaluation_timeout_fails_closed() {
         let error = bounded_model_evaluation(
