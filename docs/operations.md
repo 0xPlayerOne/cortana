@@ -268,7 +268,7 @@ completed all platform jobs and the strict v0.31.7 verifier passed. The
 installed core is now v0.31.7 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
 starting services or sync. Its latest installed v0.31.7 provider-backed fixture model
-gate passed on 2026-08-12 in 10,083 ms (the earlier 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs
+gate passed on 2026-08-12 in 18,270 ms (the earlier 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs
 and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
 runtime-baseline run passed in
 13,871 ms; prior verified runs passed
@@ -280,6 +280,11 @@ The installed v0.31.7 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
 backup, restore, SQLite verify, and post-restore search). It does not exercise
 the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
+
+A fresh validation-only `scripts/source-smoke.sh` run passed all 21 enabled
+sources at one document, 65,536 bytes, and 30 seconds per source. It performed
+no embedding, indexing, reconciliation, or scheduler changes; filesystem/code
+records remain sampled and cannot authorize recurring full-corpus sync.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer

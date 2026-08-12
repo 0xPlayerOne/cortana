@@ -21,7 +21,7 @@ is not part of a visual/UI change.
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
 - The latest installed v0.31.7 provider-backed fixture evaluation completed on
-  2026-08-12 in 10,083 ms (the earlier 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
+  2026-08-12 in 18,270 ms (the earlier 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
   v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
   runtime-baseline run completed in 13,871 ms; prior verified runs
   completed in 19,524 ms, 15,774 ms, and
@@ -31,10 +31,9 @@ is not part of a visual/UI change.
   and recurring sync remains uninstalled because enabled filesystem/code sources
   are still bounded samples or otherwise below their
   configured full-sync budgets.
-- The latest full Bun suite passes 258 tests across 22 files with 1,272
-  assertions in 71.84 seconds. The native Tauri suite passes 129 tests; the
-  latest run took 1.80 seconds after compilation (46.97 seconds including
-  compilation). Both suites are headless and do not substitute
+- The latest full Bun suite passes 258 tests across 22 files with 1,273
+  assertions in 78.47 seconds. The native Tauri suite passes 129 tests; the
+  latest run took 5.31 seconds after compilation. Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
 - The installed v0.31.7 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
@@ -47,6 +46,10 @@ is not part of a visual/UI change.
   All three trials were non-reconciling and did not install recurring sync. This
   proves the selected connector-to-embedding-to-index path, not full-corpus
   readiness.
+- A fresh validation-only source smoke on 2026-08-12 passed all 21 enabled
+  sources at the same one-document/64 KiB/30-second bounds, without embedding,
+  indexing, reconciliation, or scheduler changes. Filesystem and code sources
+  remain sampled by design, so this is authorization/reachability evidence only.
 
 ## Requirement matrix
 
