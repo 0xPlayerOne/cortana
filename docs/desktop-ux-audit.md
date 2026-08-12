@@ -42,10 +42,10 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: PASS for the current configured provider. A fresh installed v0.30.10
-   rerun passed the fixture-only gate on 2026-08-11 in 15,107 ms with planner and synthesis model use,
-   valid citations, cache reuse, and revision invalidation; the prior 13,472 ms run remains historical
-   evidence from the same day. Earlier attempts correctly failed closed with
+2. Model-backed provider gate: PASS for the current configured provider. The latest installed v0.30.10
+   rerun passed the fixture-only gate on 2026-08-12 in 11,100 ms with planner and synthesis model use,
+   valid citations, cache reuse, and revision invalidation; the prior 15,107 ms and 13,472 ms runs
+   remain historical evidence. Earlier attempts correctly failed closed with
    `fallback_provider_unavailable=true` during transient gateway outages. This remains
    fixture-only evidence, not packaged-app proof; provider outages must continue to fail closed. Keep
    extractive mode as the safe production default; the installed v0.30.10 core still passes
@@ -205,7 +205,8 @@ is not part of a visual/UI change.
   rerun passed in 19,954 ms with the same planner, synthesis, citation, cache, and revision
   checks. A fresh installed v0.30.10 rerun passed in 15,107 ms with planner and synthesis model
   use, valid citations, cache reuse, and revision invalidation; retrieval recall, MRR, case pass
-  rate, and citation validity were all 1.0 within the 30,000 ms answer deadline. Earlier
+  rate, and citation validity were all 1.0 within the 30,000 ms answer deadline. The latest
+  2026-08-12 rerun also passed in 11,100 ms; the earlier 15,107 ms result is historical. Earlier
   provider-unavailable attempts remain historical fail-closed evidence, and extractive mode
   remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
