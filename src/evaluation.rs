@@ -18,10 +18,12 @@ use crate::store::Store;
 
 use crate::answer::configured_model;
 
-/// Keep the opt-in model quality gate bounded independently from the interactive
-/// query deadline. A provider outage must not make a release audit wait for the
-/// full production request budget on every synthetic pass.
-pub const MODEL_EVALUATION_MAX_SECONDS: u64 = 30;
+/// Keep the opt-in model quality gate below one minute while matching the
+/// runtime's hard answer deadline. The gate performs more than one bounded
+/// provider answer to prove cache reuse and corpus-revision invalidation, so a
+/// 30-second whole-run ceiling rejected healthy providers solely because of
+/// those required checks. A provider outage still fails closed at this bound.
+pub const MODEL_EVALUATION_MAX_SECONDS: u64 = 55;
 
 // The fixture is deliberately tiny. Keep its prompts bounded independently
 // from a user's production context/output settings so a large personal
@@ -857,7 +859,7 @@ mod tests {
     fn model_evaluation_caps_provider_and_answer_deadlines() {
         let config = QueryConfig {
             answer_timeout_seconds: 55,
-            request_timeout_seconds: 40,
+            request_timeout_seconds: 60,
             ..QueryConfig::default()
         };
         let bounded = bounded_model_config(&config);
