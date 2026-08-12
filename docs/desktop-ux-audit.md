@@ -31,8 +31,8 @@ is not part of a visual/UI change.
   and recurring sync remains uninstalled because enabled filesystem/code sources
   are still bounded samples or otherwise below their
   configured full-sync budgets.
-- The latest full Bun suite passes 258 tests across 22 files with 1,270
-  assertions in 72.43 seconds. The native Tauri suite passes 129 tests; the
+- The latest full Bun suite passes 258 tests across 22 files with 1,271
+  assertions in 70.25 seconds. The native Tauri suite passes 129 tests; the
   latest run took 1.61 seconds after compilation (44.07 seconds including
   compilation). Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
