@@ -7,9 +7,9 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-12)
 
-- `origin/main` is release `v0.31.3` at promotion commit `80c24d7`. Release
-  metadata reached protected `staging` through PR #811, the evidence refresh
-  through PR #812, and the exact-tree promotion through PR #815. The
+- `v0.31.3` is the current protected release. Release metadata reached
+  protected `staging` through PR #811, the evidence refresh through PR #812,
+  and the exact-tree promotions through PRs #815 and #819. The
   superseded full-history reconciliation PR #810 was closed as structurally
   conflicting rather than merged; none of these PRs changes runtime,
   connector, credential, or sync code.
@@ -23,14 +23,15 @@ is not part of a visual/UI change.
   source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
-- A prior source-tree fixture evaluation completed in 14,186 ms with planner
-  and synthesis model use, valid citations, cache reuse, and revision
-  invalidation. A fresh v0.31.3 source run hit the 30-second outer deadline and
-  failed closed, so there is no v0.31.3 model-quality claim yet. This is
-  synthetic, query-layer evidence only; the installed v0.31.3 rerun also hit
-  the outer deadline and failed closed. Extractive mode remains the production
-  default and recurring sync remains uninstalled because enabled
-  filesystem/code sources are still bounded samples or otherwise below their
+- A fresh source-tree fixture evaluation on PR #822 completed in 11,866 ms with
+  planner and synthesis model use, valid citations, cache reuse, and revision
+  invalidation. The opt-in evaluator remains fail-closed and below one minute;
+  the source change raises its whole-run bound to 55 seconds so the required
+  cache/invalidation calls are not rejected solely by the old 30-second cap.
+  This is source-branch evidence only: the installed v0.31.3 binary predates
+  that change and is not a current released model-quality claim. Extractive
+  mode remains the production default and recurring sync remains uninstalled
+  because enabled filesystem/code sources are still bounded samples or otherwise below their
   configured full-sync budgets.
 - The latest full Bun suite passes 258 tests across 22 files with 1,273
   assertions in 73.50 seconds. The native Tauri suite passes 129 tests in about
@@ -86,16 +87,16 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the last successful installed-core fixture gate was
-   v0.31.1. Fresh v0.31.3 source and installed reruns on 2026-08-12 hit the
-   bounded 30-second outer deadline and failed closed, so there is no current
-   v0.31.3 model-quality claim. Earlier successful runs remain fixture-only
-   evidence, not packaged-app proof; provider outages or slow responses must
-   continue to fail closed. Keep extractive mode as the safe production default.
+2. Model-backed provider gate: PR #822 contains the bounded source fix and a
+   current 11,866 ms provider-backed pass with planner/synthesis, citations,
+   cache reuse, and revision invalidation. It remains fixture-only evidence,
+   not packaged-app proof, and the installed v0.31.3 binary predates the fix;
+   publish and verify the resulting patch release before treating this as
+   current release evidence. Provider outages or slow responses must continue
+   to fail closed, and extractive mode remains the safe production default.
    The installed v0.31.3 core still passes `doctor`, query-only readiness, and
    the disposable packaged control-plane and recovery drills, while the GUI
-   remains unlaunched. The bounded timeout is an explicit follow-up for provider
-   availability/latency, not permission to relax the evaluator's safety ceiling.
+   remains unlaunched.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
