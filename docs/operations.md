@@ -261,9 +261,9 @@ v0.31.4 patch was promoted through PR #829 and Release Please PR #830;
 release-assets workflow `31569675691` completed all platform jobs and the
 strict 18-asset verifier. The installed core now reports v0.31.4 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
-starting services or sync. Its provider-backed fixture model gate passed in
-13,237 ms with planner/synthesis, citations, cache reuse, and revision
-invalidation. No packaged-GUI evaluation is claimed.
+starting services or sync. Its latest provider-backed fixture model gate passed in
+15,774 ms (an earlier run passed in 13,237 ms) with planner/synthesis, citations,
+cache reuse, and revision invalidation. No packaged-GUI evaluation is claimed.
 
 The installed v0.31.4 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified

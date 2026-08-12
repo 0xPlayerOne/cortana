@@ -596,22 +596,40 @@ impl RpcClient {
             if let Ok(Ok(stream)) =
                 tokio::time::timeout(RPC_TIMEOUT, tokio::net::UnixStream::connect(&path)).await
             {
-                let mut client = Self { stream };
-                client
-                    .send(
-                        OP_HANDSHAKE,
-                        serde_json::json!({"v": RPC_VERSION, "client_id": client_id}),
-                    )
-                    .await?;
-                let ready = client.read_response().await?;
-                anyhow::ensure!(
-                    ready.evt.as_deref() == Some("READY"),
-                    "Discord RPC handshake failed"
-                );
-                return Ok(client);
+                return Self::handshake(stream, client_id, RPC_TIMEOUT).await;
             }
         }
         bail!("Discord Desktop RPC is unavailable; start Discord and authorize Cortana");
+    }
+
+    async fn handshake(
+        stream: tokio::net::UnixStream,
+        client_id: &str,
+        timeout: Duration,
+    ) -> Result<Self> {
+        let mut client = Self { stream };
+        let ready = match tokio::time::timeout(timeout, async {
+            client
+                .send(
+                    OP_HANDSHAKE,
+                    serde_json::json!({"v": RPC_VERSION, "client_id": client_id}),
+                )
+                .await?;
+            client.read_response().await
+        })
+        .await
+        {
+            Ok(result) => result?,
+            Err(_) => bail!(
+                "Discord RPC handshake timed out after {} seconds",
+                timeout.as_secs_f32()
+            ),
+        };
+        anyhow::ensure!(
+            ready.evt.as_deref() == Some("READY"),
+            "Discord RPC handshake failed"
+        );
+        Ok(client)
     }
 
     async fn authenticate(&mut self, access_token: &str) -> Result<()> {
@@ -796,6 +814,19 @@ mod tests {
             .await
             .expect_err("silent Discord RPC must time out");
         assert!(error.to_string().contains("timed out"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn silent_rpc_handshakes_fail_closed_at_the_handshake_deadline() {
+        let (client, _server) = tokio::net::UnixStream::pair().expect("Unix stream pair");
+        let error = match super::RpcClient::handshake(client, "client-id", Duration::from_millis(1))
+            .await
+        {
+            Ok(_) => panic!("silent Discord RPC peer must time out during the handshake"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("handshake timed out"));
     }
 
     #[cfg(unix)]
