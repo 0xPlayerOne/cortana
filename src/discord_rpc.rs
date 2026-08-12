@@ -635,14 +635,24 @@ impl RpcClient {
             serde_json::json!({"cmd": cmd, "args": args, "nonce": nonce}),
         )
         .await?;
-        loop {
-            let response = self.read_response().await?;
-            if response.nonce.as_deref() == Some(nonce.as_str()) {
-                if response.evt.as_deref() == Some("ERROR") {
-                    bail!("Discord RPC {cmd} failed");
+        match tokio::time::timeout(RPC_TIMEOUT, async {
+            loop {
+                let response = self.read_response().await?;
+                if response.nonce.as_deref() == Some(nonce.as_str()) {
+                    if response.evt.as_deref() == Some("ERROR") {
+                        bail!("Discord RPC {cmd} failed");
+                    }
+                    return Ok(response);
                 }
-                return Ok(response);
             }
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => bail!(
+                "Discord RPC {cmd} timed out after {} seconds",
+                RPC_TIMEOUT.as_secs()
+            ),
         }
     }
 
