@@ -41,6 +41,7 @@ for (const account of Notes.accounts()) {
 JSON.stringify(rows);
 """
 MAX_EXPORT_BYTES = 64 * 1024 * 1024
+OSASCRIPT = "/usr/bin/osascript"
 
 
 def _build_script(max_documents: int | None) -> str:
@@ -57,8 +58,8 @@ def fetch(
     max_documents: int | None = None,
 ) -> Iterable[Document]:
     try:
-        result = subprocess.run(
-            ["osascript", "-l", "JavaScript", "-e", _build_script(max_documents)],
+        result = subprocess.run(  # noqa: S603 - fixed system executable; no shell
+            [OSASCRIPT, "-l", "JavaScript", "-e", _build_script(max_documents)],
             check=True,
             capture_output=True,
             text=True,
