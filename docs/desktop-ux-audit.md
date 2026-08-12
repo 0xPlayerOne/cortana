@@ -184,8 +184,11 @@ is not part of a visual/UI change.
   refresh token still fails closed and requests reauthorization. On 2026-08-11, Discord
   authorization succeeded for the Nifty League Team, Nifty League, and The Pink Binder sources;
   the current validation-only smoke used a one-document cap per enabled source without writes. The
-  personal AMF source remains disabled, and recurring sync remains uninstalled until full
-  complete validation coverage exists for every enabled source.
+  owner configuration assigns all discovered text-like channels to those three sources (18 for
+  Nifty League Team, 39 for Nifty League, and 3 for The Pink Binder); Discord RPC commands now
+  fail closed after the bounded 30-second response deadline instead of waiting indefinitely. The
+  personal AMF source remains disabled, and recurring sync remains uninstalled until full complete
+  validation coverage exists for every enabled source.
 - The current Desktop readiness source now compares the installed connector version with the
   bundled Cortana sidecar and marks a stale or unreadable connector unavailable before source jobs
   start. The regression suite covers matching and mismatching release versions.
