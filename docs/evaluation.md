@@ -24,9 +24,10 @@ followed by Release Please PR #854). Release `v0.31.6` is published and
 workflow `31578434124` completed all platform jobs; the strict 18-asset
 verifier passed. The installed CLI now reports `v0.31.6`;
 its doctor, query-only readiness, and disposable control-plane checks pass
-without starting services or sync. The latest installed provider-backed fixture
-evaluation against the v0.31.5 runtime baseline passed in 13,871 ms (earlier verified runs passed in 19,524 ms,
-15,774 ms, and 13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
+without starting services or sync. The installed v0.31.6 provider-backed fixture
+evaluation passed on 2026-08-12 in 22,269 ms (the earlier v0.31.5 runtime-baseline
+run passed in 13,871 ms; prior verified runs passed in 19,524 ms, 15,774 ms,
+and 13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
 and revision invalidation. This remains fixture-only query-layer evidence and does
 not prove packaged GUI behavior, personal-index sync, or Developer
 ID/notarization trust. The evaluator remains bounded and opt-in; extractive
