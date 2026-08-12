@@ -19,13 +19,13 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.6` (the evidence promotion in PR #851,
-followed by Release Please PR #854). Release `v0.31.6` is published and
-workflow `31578434124` completed all platform jobs; the strict 18-asset
-verifier passed. The installed CLI now reports `v0.31.6`;
+The current protected source is `v0.31.7` (the post-release hardening promotion
+followed by Release Please PR #895). Release `v0.31.7` is published and
+release-assets workflow `31597160527` completed all platform jobs; the strict
+18-asset verifier passed. The installed CLI remains `v0.31.6`;
 its doctor, query-only readiness, and disposable control-plane checks pass
 without starting services or sync. The latest installed v0.31.6 provider-backed fixture
-evaluation passed on 2026-08-12 in 14,249 ms (the earlier 17,145 ms and 12,613 ms
+evaluation passed on 2026-08-12 in 13,416 ms (the earlier 17,145 ms and 12,613 ms
 runs and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the
 v0.31.5 runtime-baseline run passed in 13,871 ms; prior verified
 runs passed in 19,524 ms, 15,774 ms,
@@ -35,10 +35,9 @@ not prove packaged GUI behavior, personal-index sync, or Developer
 ID/notarization trust. The evaluator remains bounded and opt-in; extractive
 mode is the production default.
 
-The current main tree also contains the post-v0.31.6 Apple Notes executable
-hardening and Buzz source-directory/log-size guards; these are included in the
-next patch-release bookkeeping and are not retroactively attributed to the
-v0.31.6 artifact.
+The v0.31.7 source also contains the post-v0.31.6 Apple Notes executable
+hardening and Buzz source-directory/log-size guards. The installed v0.31.6
+evaluation above is not presented as packaged v0.31.7 evidence.
 
 The built-in thresholds and data live in `eval/fixtures.json`. Use
 `cortana eval --fixture /path/to/synthetic.json` for a versioned project-specific fixture. Never
@@ -115,7 +114,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.31.6 sign-off state.
+release evidence; use **Current release boundary** above for the v0.31.7 sign-off state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33

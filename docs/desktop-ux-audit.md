@@ -7,25 +7,22 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-12)
 
-- `v0.31.6` is the current protected release. It carries the verified
-  v0.31.5 production evidence through promotion PR #851 and Release Please
-  PR #854. The post-release main tree also carries the Apple Notes executable
-  hardening and Buzz symlink/oversized-log guards; release bookkeeping for
-  those changes is tracked separately from the v0.31.6 artifact.
-- Release `v0.31.6` is published and release-assets workflow `31578434124`
-  completed all platform jobs. The strict verifier confirmed all 18 core,
-  Desktop, signature, checksum, and updater-manifest assets. Asset
-  verification does not launch the packaged GUI or prove OS-level
-  signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` now reports
-  `v0.31.6`. The upgrade used the verified aarch64 archive with services
-  disabled: it did
+- `v0.31.7` is the current protected release, published through Release Please
+  PR #895 after the post-v0.31.6 Apple Notes executable and Buzz source guards
+  merged through protected main.
+- Release-assets workflow `31597160527` completed all platform jobs and the
+  strict verifier confirmed all 18 v0.31.7 core, Desktop, signature, checksum,
+  and updater-manifest assets. Asset verification does not launch the packaged
+  GUI or prove OS-level signing/notarization.
+- The installed core at `/Users/amf/.local/bin/cortana` remains `v0.31.6`;
+  v0.31.7 has not been installed on this host. The last verified installation
+  used the aarch64 archive with services disabled: it did
   not launch the GUI, restart the existing background process, authorize a
   source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
 - The latest installed v0.31.6 provider-backed fixture evaluation completed on
-  2026-08-12 in 14,249 ms (the earlier 17,145 ms and 12,613 ms runs and prior
+  2026-08-12 in 13,416 ms (the earlier 17,145 ms and 12,613 ms runs and prior
   v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
   runtime-baseline run completed in 13,871 ms; prior verified runs
   completed in 19,524 ms, 15,774 ms, and
@@ -90,8 +87,8 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.31.6 runtime passed the bounded
-   fixture gate on 2026-08-12 in 14,249 ms (the earlier 17,145 ms and 12,613 ms
-   runs and prior v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
+   fixture gate on 2026-08-12 in 17,145 ms (the earlier 12,613 ms run and prior
+   v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
    the v0.31.5 runtime-baseline
    run completed in 13,871 ms; prior
    verified runs completed in 19,524 ms,
@@ -133,7 +130,7 @@ is not part of a visual/UI change.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.6 release or installed v0.31.6 core; use the
+does not describe the current v0.31.7 release or installed v0.31.6 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -149,8 +146,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.31.6` binary or packaged Desktop behavior. The current
-  `v0.31.6` asset workflow and strict verifier are now complete as described above.
+  the current `v0.31.7` binary or packaged Desktop behavior. The current
+  `v0.31.7` asset workflow and strict verifier are recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
