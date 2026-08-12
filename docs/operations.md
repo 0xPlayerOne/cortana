@@ -256,9 +256,11 @@ recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
 The fully verified follow-ups are v0.31.1 and v0.31.2. Release-assets workflow
 `31559861575` completed all platform jobs and
 `scripts/verify-desktop-release.sh v0.31.2` verified all 18 assets. The
-installed core now reports v0.31.2 and its doctor, readiness, and fixture-only
-model gate pass without starting services or sync. Release v0.31.2 is published
-from main commit `326d0f0`.
+installed core now reports v0.31.2 and its doctor passes without starting
+services or sync. The last completed readiness and fixture-only model gate are
+the v0.31.1 checks recorded above; a v0.31.2 model rerun exceeded its bounded
+operator window and was stopped without a quality report. Release v0.31.2 is
+published from main commit `326d0f0`.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer

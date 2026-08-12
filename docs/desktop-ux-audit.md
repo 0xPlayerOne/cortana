@@ -22,17 +22,19 @@ is not part of a visual/UI change.
   the existing background process, authorize a source, or enable recurring
   sync. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater
   interaction, Developer ID signing, and notarization remain manual gates.
-- A fresh read-only `v0.31.2` readiness pass and doctor check succeeded. The
-  matching `readiness --allow-sync-service` gate remains fail-closed because
-  enabled filesystem/code sources are still bounded samples or otherwise below
-  their configured full-sync budgets. Recurring sync remains uninstalled and no
-  large sync was run.
-- The installed `v0.31.2` fixture-only model evaluation passed with planner and
+- The installed `v0.31.2` doctor check succeeded. The last completed full
+  readiness and model-backed evaluation evidence is from the v0.31.1 core:
+  readiness passed query-only, while the `--allow-sync-service` gate failed
+  closed because enabled filesystem/code sources remain bounded samples or
+  otherwise below their configured full-sync budgets. Recurring sync remains
+  uninstalled and no large sync was run.
+- The completed v0.31.1 fixture-only model evaluation passed with planner and
   synthesis model use, valid citations, cache reuse/invalidation, and perfect
   retrieval metrics (recall, MRR, case pass rate, and citation validity all
-  1.0). Answer latency was 24,546 ms under the 30,000 ms bound. This is model
-  and query-layer evidence only; it is not a personal-index, sync, or packaged
-  GUI proof.
+  1.0), with 24,546 ms answer latency under the 30,000 ms bound. A v0.31.2
+  rerun was stopped after exceeding its bounded operator window; no v0.31.2
+  model-quality claim is made. These are model and query-layer checks only,
+  not personal-index, sync, or packaged GUI proof.
 - The current isolated Bun suite passes 258 tests across 22 files with 1,272
   assertions in 143.29 seconds. The native Tauri suite passes 129 tests in
   0.73 seconds after compilation. These are headless assertions and do not
