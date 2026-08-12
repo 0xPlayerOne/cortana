@@ -20,11 +20,12 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 ### Current release boundary
 
 The current protected source is `v0.31.0` (`origin/main` commit `2d6ef86`,
-with staging reconciled at `848c4ca`). The installed core used for the latest
+with staging reconciled at `9b9d51e`). The installed core used for the latest
 provider-backed fixture evidence is still `v0.30.10`, so those results are
 pre-release evidence rather than proof of the installed `v0.31.0` binary. The
-published `v0.31.0` assets are still being built; do not treat the release as
-cross-platform verified until its asset workflow and strict verifier complete.
+published `v0.31.0` assets and strict release verifier are complete, proving
+archive, checksum, signature, and updater-manifest integrity. This still does
+not prove packaged GUI behavior or Developer ID/notarization trust.
 The evaluator remains fixture-only, bounded, and opt-in; extractive mode is the
 production default.
 

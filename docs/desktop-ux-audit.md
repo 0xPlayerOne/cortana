@@ -8,15 +8,14 @@ is not part of a visual/UI change.
 ## Current release evidence (2026-08-12)
 
 - The protected staging reconciliation has merged. `origin/main` is release
-  `v0.31.0` at commit `2d6ef86`, and `origin/staging` is the matching tree at
-  commit `848c4ca` (PR #778). The staging branch is clean and the superseded
+  `v0.31.0` at commit `cbfb798`, and `origin/staging` is the matching tree at
+  commit `9b9d51e` (PR #779). The staging branch is clean and the superseded
   reconciliation branch was deleted.
-- Release `v0.31.0` is published, but its release-assets workflow
-  (`31555962734`) is still running. The release currently exposes 4 of the
-  expected 8 core assets (the two completed binary archives and checksums).
-  Treat cross-platform packaging and the strict release verifier as pending
-  until the remaining macOS, Windows, and Linux Desktop jobs finish and all
-  assets are present.
+- Release `v0.31.0` is published from tag commit `2d6ef86`. Its release-assets
+  workflow (`31555962734`) completed all five platform jobs and the strict
+  verifier passed all 18 required core, Desktop, signature, checksum, and
+  updater-manifest assets. This verifies archive and updater integrity only;
+  it does not launch the packaged GUI or prove OS-level signing/notarization.
 - The installed `/Users/amf/.local/bin/cortana` remains `v0.30.10`; it is not
   evidence that the `v0.31.0` binary or Desktop bundle has been installed. The
   packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
