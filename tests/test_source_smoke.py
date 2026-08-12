@@ -68,10 +68,13 @@ def _run_smoke(
     error: str = "",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     log = tmp_path / "invocations.jsonl"
+    smoke_tmpdir = tmp_path / "smoke-tmp"
+    smoke_tmpdir.mkdir()
     env = os.environ.copy()
     env["SMOKE_BINARY_LOG"] = str(log)
     env["SMOKE_BINARY_EXIT"] = exit_code
     env["SMOKE_BINARY_ERROR"] = error
+    env["TMPDIR"] = str(smoke_tmpdir)
     result = subprocess.run(
         [
             "bash",
@@ -216,3 +219,10 @@ def test_missing_private_oauth_file_is_classified_as_credential_path(
         "drive\tgoogle-drive\ttrue\tfailed\tnot-requested\tvalidation: credential or path missing"
         in result.stdout
     )
+
+
+def test_temporary_diagnostics_are_removed_after_a_failure(tmp_path: Path) -> None:
+    _require_bash()
+    result, _ = _run_smoke(tmp_path, exit_code="1", error="connector failed")
+    assert result.returncode == 1
+    assert list((tmp_path / "smoke-tmp").iterdir()) == []

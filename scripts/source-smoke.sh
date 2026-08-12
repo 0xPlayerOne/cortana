@@ -165,6 +165,12 @@ if ((${#configured_sources[@]} == 0)); then
   exit 1
 fi
 
+# Keep probe diagnostics in one private temporary directory so an interrupted
+# connector cannot leave validation or sync logs behind. The EXIT trap also
+# covers probe failures after allocation without changing help/config errors.
+smoke_tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/cortana-source-smoke.XXXXXX")"
+trap 'rm -rf -- "$smoke_tmpdir"' EXIT
+
 failures=0
 printf 'source\tkind\tenabled\tvalidation\ttrial_sync\tnote\n'
 
@@ -189,8 +195,8 @@ for entry in "${configured_sources[@]}"; do
   sync_status="not-requested"
   note=""
 
-  validation_log="$(mktemp "${TMPDIR:-/tmp}/cortana-source-validation.XXXXXX")"
-  sync_log="$(mktemp "${TMPDIR:-/tmp}/cortana-source-sync.XXXXXX")"
+  validation_log="$smoke_tmpdir/validation.log"
+  sync_log="$smoke_tmpdir/sync.log"
   # Filesystem/code validations explicitly opt into a bounded sample so a root
   # larger than the budget records a partial validation instead of failing;
   # connector sources keep the ordinary fail-closed preflight. The sample can
@@ -244,7 +250,6 @@ for entry in "${configured_sources[@]}"; do
   # remain in the Cortana status/audit surfaces, not in this summary table.
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$source" "$kind" "$enabled" "$validation_status" "$sync_status" "$note"
-  rm -f -- "$validation_log" "$sync_log"
 done
 
 if ((failures)); then

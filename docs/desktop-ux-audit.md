@@ -24,16 +24,17 @@ is not part of a visual/UI change.
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
 - The installed v0.31.6 provider-backed fixture evaluation completed on
-  2026-08-12 in 22,269 ms (the earlier v0.31.5 runtime-baseline run completed
-  in 13,871 ms; prior verified runs completed in 19,524 ms, 15,774 ms, and
+  2026-08-12 in 15,728 ms (an earlier v0.31.6 run completed in 22,269 ms;
+  the v0.31.5 runtime-baseline run completed in 13,871 ms; prior verified runs
+  completed in 19,524 ms, 15,774 ms, and
   13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
   and revision invalidation. The opt-in evaluator remains fail-closed below one minute with
   a 55-second whole-run bound; extractive mode remains the production default
   and recurring sync remains uninstalled because enabled filesystem/code sources
   are still bounded samples or otherwise below their
   configured full-sync budgets.
-- The latest full Bun suite passes 258 tests across 22 files with 1,271
-  assertions in 70.25 seconds. The native Tauri suite passes 129 tests; the
+- The latest full Bun suite passes 258 tests across 22 files with 1,268
+  assertions in 73.00 seconds. The native Tauri suite passes 129 tests; the
   latest run took 1.61 seconds after compilation (44.07 seconds including
   compilation). Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
@@ -88,8 +89,9 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.31.6 runtime passed the bounded
-   fixture gate on 2026-08-12 in 22,269 ms (the earlier v0.31.5 runtime-baseline
-   run completed in 13,871 ms; prior verified runs completed in 19,524 ms,
+   fixture gate on 2026-08-12 in 15,728 ms (an earlier v0.31.6 run completed in
+   22,269 ms; the v0.31.5 runtime-baseline run completed in 13,871 ms; prior
+   verified runs completed in 19,524 ms,
    15,774 ms, and 13,237 ms) with planner/synthesis, citations, cache reuse, and
    revision invalidation. This remains fixture-only evidence, not packaged-app
    proof; provider outages or slow responses still fail closed, and extractive
