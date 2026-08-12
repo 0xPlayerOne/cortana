@@ -167,6 +167,7 @@ export function App() {
   const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
   const desktopSettingsRequestRef = useRef(0)
   const desktopInfoRequestRef = useRef(0)
+  const desktopUpdateRequestRef = useRef(0)
   const desktopServicesRequestRef = useRef(0)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${effectiveWorkspace}\u0000${source}\u0000${debouncedDocumentQuery}`
@@ -530,6 +531,7 @@ export function App() {
     if (!isDesktopApp) return
     const requestId = ++desktopSettingsRequestRef.current
     const infoRequestId = ++desktopInfoRequestRef.current
+    const updateRequestId = ++desktopUpdateRequestRef.current
     let active = true
     void getDesktopSettings()
       .then((next) => {
@@ -551,7 +553,7 @@ export function App() {
       })
     void getDesktopUpdate()
       .then((next) => {
-        if (active && desktopSettingsRequestRef.current === requestId) {
+        if (active && desktopUpdateRequestRef.current === updateRequestId) {
           setDesktopUpdate(next)
         }
       })
@@ -561,6 +563,7 @@ export function App() {
     return () => {
       active = false
       desktopInfoRequestRef.current += 1
+      desktopUpdateRequestRef.current += 1
       if (desktopSettingsRequestRef.current === requestId) {
         desktopSettingsRequestRef.current += 1
       }
