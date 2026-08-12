@@ -20,9 +20,9 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 ### Current release boundary
 
 The current protected source is `v0.31.0` (`origin/main` commit `cbfb798`,
-with staging's readiness fix at `1d8df08`). The installed core remains
-`v0.30.10`, but the published `v0.31.0` aarch64 core archive was independently
-executed for the latest provider-backed fixture evidence. The
+with the current staging evidence at `51e5f5d`). The verified `v0.31.0` core is
+installed at `/Users/amf/.local/bin/cortana` and was independently executed for
+the latest provider-backed fixture evidence. The
 published `v0.31.0` assets and strict release verifier are complete, proving
 archive, checksum, signature, and updater-manifest integrity. This still does
 not prove packaged GUI behavior or Developer ID/notarization trust.
@@ -120,9 +120,9 @@ invalidation; the prior 13,472 ms run remains historical evidence from the same 
 fixture-only evidence, not packaged-app proof; provider outages must
 continue to fail closed, and extractive mode remains the safe production default.
 The latest bounded `v0.31.0` archive rerun on 2026-08-12 passed in 18,312 ms with the same planner/synthesis,
-citation, cache, and revision checks; the 15,107 ms result is now historical evidence. Retrieval
-quality remained perfect (recall, MRR, case pass rate, and citation validity all 1.0) within the
-30,000 ms answer deadline.
+citation, cache, and revision checks. The installed `v0.31.0` rerun passed in 18,979 ms with the
+same result; the 15,107 ms result is now historical evidence. Retrieval quality remained perfect
+(recall, MRR, case pass rate, and citation validity all 1.0) within the 30,000 ms answer deadline.
 An additional operator probe on 2026-08-12 used a stricter 15-second wall-clock bound and timed
 out without producing an evaluation report (exit 124). The provider's metadata endpoint remained
 responsive and advertised 30 models, so this is recorded as a transient model-call latency
