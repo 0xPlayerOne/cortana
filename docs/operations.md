@@ -244,14 +244,28 @@ and configured-provider evaluation checks. Synthesis remains disabled by default
 The v0.30.0 release-assets workflow `31470374229` is historical evidence only: it published 14 of
 18 assets because the Windows build exposed the missing non-Unix Discord RPC methods. The v0.30.1
 release-assets workflow `31474156961` completed all five platform jobs. The v0.30.2, v0.30.7, and
-v0.30.8 release-assets workflows are historical evidence. The current v0.30.10 release-assets
+v0.30.8 release-assets workflows are historical evidence. The historical v0.30.10 release-assets
 workflow `31515684053` completed all five platform jobs; its strict verifier result is historical.
-The current `v0.31.0` release was published from tag commit `2d6ef86`; release-assets workflow
+The historical `v0.31.0` release was published from tag commit `2d6ef86`; release-assets workflow
 `31555962734` completed all five platform jobs and the strict verifier passed all 18 assets,
-signatures, checksums, and updater-manifest checks. The verified core now reports v0.31.0 at
+signatures, checksums, and updater-manifest checks. Its verified core reported v0.31.0 at
 `/Users/amf/.local/bin/cortana`; the packaged Desktop GUI has not been launched or replaced on
 this host. The bounded control-plane,
 recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
+
+The fully verified follow-ups are v0.31.1 and v0.31.2. Release-assets workflow
+`31559861575` completed all platform jobs and
+`scripts/verify-desktop-release.sh v0.31.2` verified all 18 assets. The
+installed core now reports v0.31.2 and its doctor passes without starting
+services or sync. The last completed readiness and fixture-only model gate are
+the v0.31.1 checks recorded above; a v0.31.2 model rerun exceeded its bounded
+operator window and was stopped without a quality report. Release v0.31.2 is
+published from main commit `326d0f0`.
+
+The installed v0.31.2 binary also passed the disposable offline control-plane
+drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
+backup, restore, SQLite verify, and post-restore search). It does not exercise
+the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
@@ -260,7 +274,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.0
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.2
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
