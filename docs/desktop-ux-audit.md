@@ -85,8 +85,8 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.31.4 core passes the bounded
-   fixture gate in 13,237 ms with planner/synthesis, citations, cache reuse, and
+2. Model-backed provider gate: the installed v0.31.4 core most recently passed the bounded
+   fixture gate in 15,774 ms (an earlier run passed in 13,237 ms) with planner/synthesis, citations, cache reuse, and
    revision invalidation. This remains fixture-only evidence, not packaged-app
    proof; provider outages or slow responses still fail closed, and extractive
    mode remains the safe production default. The installed core also passes
