@@ -256,7 +256,7 @@ recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
 The fully verified follow-ups are v0.31.1 and v0.31.2. Release-assets workflow
 `31559861575` completed all platform jobs and
 `scripts/verify-desktop-release.sh v0.31.2` verified all 18 assets. Release
-v0.31.3 was published from the protected promotion in PR #819. The current
+v0.31.3 was published from the protected promotion in PR #819. The preceding
 v0.31.5 patch was promoted through PR #845 and Release Please PR #846;
 release-assets workflow `31575709770` completed all platform jobs plus the
 strict 18-asset verifier. Release v0.31.6 was then published through evidence
@@ -265,8 +265,9 @@ all platform jobs and the strict 18-asset verifier passed. The installed core
 now reports v0.31.6 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
 starting services or sync. Its installed v0.31.6 provider-backed fixture model
-gate passed on 2026-08-12 in 15,728 ms (an earlier v0.31.6 run passed in 22,269 ms;
-the v0.31.5 runtime-baseline run passed in 13,871 ms; prior verified runs passed
+gate passed on 2026-08-12 in 21,409 ms (an earlier v0.31.6 run passed in 15,728 ms;
+another earlier run passed in 22,269 ms; the v0.31.5 runtime-baseline run passed
+in 13,871 ms; prior verified runs passed
 in 19,524 ms, 15,774 ms, and
 13,237 ms) with planner/synthesis, citations, cache reuse, and revision
 invalidation. No packaged-GUI evaluation is claimed.

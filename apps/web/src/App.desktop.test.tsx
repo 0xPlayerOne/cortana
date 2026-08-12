@@ -2139,13 +2139,16 @@ test('readiness activity survives leaving Settings while a scan is running', asy
     fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
     await waitFor(() => expect(screen.getByText('Readiness: scanning…')).toBeTruthy())
 
-    resolveScan?.({
-      scanned_at_unix_seconds: 1785000000,
-      platform: 'macos',
-      tools_ready: true,
-      core: null,
-      core_error: null,
-      tools: [],
+    await act(async () => {
+      resolveScan?.({
+        scanned_at_unix_seconds: 1785000000,
+        platform: 'macos',
+        tools_ready: true,
+        core: null,
+        core_error: null,
+        tools: [],
+      })
+      await Promise.resolve()
     })
     await waitFor(() => expect(screen.getByText('Readiness: ready')).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Open readiness activity' }))
