@@ -257,12 +257,13 @@ The fully verified follow-ups are v0.31.1 and v0.31.2. Release-assets workflow
 `31559861575` completed all platform jobs and
 `scripts/verify-desktop-release.sh v0.31.2` verified all 18 assets. Release
 v0.31.3 was published from the protected promotion in PR #819. The current
-v0.31.4 patch was promoted through PR #829 and Release Please PR #830;
-release-assets workflow `31569675691` completed all platform jobs and the
-strict 18-asset verifier. The installed core now reports v0.31.4 and its
+v0.31.5 patch was promoted through PR #845 and Release Please PR #846;
+release-assets workflow `31575709770` is the authoritative current asset run,
+while `31569675691` remains the latest completed strict 18-asset verifier until
+the v0.31.5 run completes. The installed core still reports v0.31.4 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
 starting services or sync. Its latest provider-backed fixture model gate passed in
-15,774 ms (an earlier run passed in 13,237 ms) with planner/synthesis, citations,
+19,524 ms (earlier verified runs passed in 15,774 ms and 13,237 ms) with planner/synthesis, citations,
 cache reuse, and revision invalidation. No packaged-GUI evaluation is claimed.
 
 The installed v0.31.4 binary also passed the disposable offline control-plane

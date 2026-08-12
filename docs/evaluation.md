@@ -19,14 +19,16 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.4` (the exact-tree promotion in PR #829,
-followed by Release Please PR #830). Release `v0.31.4` is published and
-workflow `31569675691` completed all platform jobs plus the strict 18-asset
-verifier. The installed CLI now reports `v0.31.4`; its doctor, query-only
-readiness, and disposable control-plane checks pass without starting services
-or sync. The latest installed provider-backed fixture evaluation passed in
-15,774 ms (an earlier run passed in 13,237 ms) with planner and synthesis model
-use, valid citations, cache reuse, and revision invalidation. This remains fixture-only query-layer evidence and does
+The current protected source is `v0.31.5` (the exact-tree promotion in PR #845,
+followed by Release Please PR #846). Release `v0.31.5` is published and
+workflow `31575709770` is the authoritative current asset run; the prior
+`v0.31.4` workflow `31569675691` is the latest completed strict 18-asset
+verifier until that run completes. The installed CLI still reports `v0.31.4`;
+its doctor, query-only readiness, and disposable control-plane checks pass
+without starting services or sync. The latest installed provider-backed fixture
+evaluation passed in 19,524 ms (earlier verified runs passed in 15,774 ms and
+13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
+and revision invalidation. This remains fixture-only query-layer evidence and does
 not prove packaged GUI behavior, personal-index sync, or Developer
 ID/notarization trust. The evaluator remains bounded and opt-in; extractive
 mode is the production default.
