@@ -210,8 +210,8 @@ is not part of a visual/UI change.
   remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
   sync service is not installed, and the configured inventory has 22 sources (21 enabled; the
-  personal AMF Discord source is disabled). Fourteen enabled sources currently report successful
-  bounded validation, including all three authorized Discord sources; seven filesystem/code
+  personal AMF Discord source is disabled). The latest bounded smoke reports successful validation
+  for all 21 enabled sources, including all three authorized Discord sources; seven filesystem/code
   sources remain bounded samples (`complete=false`). These bounded records do not cover the
   configured recurring-sync budgets, so neither sampled nor under-budget state authorizes a
   full-corpus or recurring run without fresh validation at the configured limits.
@@ -226,6 +226,12 @@ is not part of a visual/UI change.
   sources, with no trial sync, embeddings, or reconciliation. This confirms authorization and
   connector reachability only; the seven filesystem/code sources remain sampled and every source
   is below the configured recurring-sync budget.
+- A subsequent one-document/65,536-byte non-reconciling trial showed the full connector-to-index
+  path is sensitive to the per-source wall-clock budget: Personal Drive and Personal Gmail both
+  completed after their validation and trial windows were raised to 180 seconds, while the same
+  sources exceeded the tighter 30-second embedding window. The Discord pending-1 trial was
+  cancelled before completion when its RPC channel walk outlasted the bounded operator probe.
+  No trial reconciled or deleted indexed records; this evidence does not authorize recurring sync.
 - A current v0.30.10 packaged control-plane drill passed verified backup creation, disposable restore,
   SQLite verification, and cleanup. It also passed offline
   init, bounded fixture ingestion, search/context, metadata-only audit export, backup, restore, and

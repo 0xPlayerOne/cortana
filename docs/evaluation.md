@@ -110,6 +110,11 @@ continue to fail closed, and extractive mode remains the safe production default
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
 
+The bounded source trial remains deliberately separate from this fixture gate. A one-document,
+non-reconciling run completed for Personal Drive and Personal Gmail after a 180-second per-source
+window, while their tighter 30-second operator probe expired during connector-to-embedding work.
+The trial did not authorize recurring sync or reconcile indexed data.
+
 ```toml
 [query]
 synthesis_enabled = true
