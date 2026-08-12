@@ -9,8 +9,9 @@ is not part of a visual/UI change.
 
 - `v0.31.6` is the current protected release. It carries the verified
   v0.31.5 production evidence through promotion PR #851 and Release Please
-  PR #854; the v0.31.5 Discord handshake fix remains the latest runtime
-  change.
+  PR #854. The post-release main tree also carries the Apple Notes executable
+  hardening and Buzz symlink/oversized-log guards; release bookkeeping for
+  those changes is tracked separately from the v0.31.6 artifact.
 - Release `v0.31.6` is published and release-assets workflow `31578434124`
   completed all platform jobs. The strict verifier confirmed all 18 core,
   Desktop, signature, checksum, and updater-manifest assets. Asset
@@ -24,8 +25,8 @@ is not part of a visual/UI change.
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
 - The latest installed v0.31.6 provider-backed fixture evaluation completed on
-  2026-08-12 in 17,145 ms (the earlier 12,613 ms run and prior v0.31.6 runs
-  completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
+  2026-08-12 in 14,249 ms (the earlier 17,145 ms and 12,613 ms runs and prior
+  v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
   runtime-baseline run completed in 13,871 ms; prior verified runs
   completed in 19,524 ms, 15,774 ms, and
   13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
@@ -89,8 +90,8 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.31.6 runtime passed the bounded
-   fixture gate on 2026-08-12 in 17,145 ms (the earlier 12,613 ms run and prior
-   v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
+   fixture gate on 2026-08-12 in 14,249 ms (the earlier 17,145 ms and 12,613 ms
+   runs and prior v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
    the v0.31.5 runtime-baseline
    run completed in 13,871 ms; prior
    verified runs completed in 19,524 ms,
