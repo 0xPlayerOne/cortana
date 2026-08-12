@@ -539,12 +539,20 @@ export function App() {
         if (active && desktopSettingsRequestRef.current === requestId) setView('settings')
       })
     void getDesktopInfo()
-      .then(setDesktopInfo)
+      .then((next) => {
+        if (active && desktopSettingsRequestRef.current === requestId) {
+          setDesktopInfo(next)
+        }
+      })
       .catch(() => {
         // The settings view will surface the local configuration error.
       })
     void getDesktopUpdate()
-      .then(setDesktopUpdate)
+      .then((next) => {
+        if (active && desktopSettingsRequestRef.current === requestId) {
+          setDesktopUpdate(next)
+        }
+      })
       .catch(() => {
         // The Updates section will surface a more specific updater error.
       })
