@@ -629,13 +629,22 @@ impl RpcClient {
     }
 
     async fn command(&mut self, cmd: &str, args: serde_json::Value) -> Result<RpcResponse> {
+        self.command_with_timeout(cmd, args, RPC_TIMEOUT).await
+    }
+
+    async fn command_with_timeout(
+        &mut self,
+        cmd: &str,
+        args: serde_json::Value,
+        response_timeout: Duration,
+    ) -> Result<RpcResponse> {
         let nonce = uuid::Uuid::new_v4().to_string();
-        self.send(
-            OP_FRAME,
-            serde_json::json!({"cmd": cmd, "args": args, "nonce": nonce}),
-        )
-        .await?;
-        match tokio::time::timeout(RPC_TIMEOUT, async {
+        match tokio::time::timeout(response_timeout, async {
+            self.send(
+                OP_FRAME,
+                serde_json::json!({"cmd": cmd, "args": args, "nonce": nonce}),
+            )
+            .await?;
             loop {
                 let response = self.read_response().await?;
                 if response.nonce.as_deref() == Some(nonce.as_str()) {
@@ -651,7 +660,7 @@ impl RpcClient {
             Ok(result) => result,
             Err(_) => bail!(
                 "Discord RPC {cmd} timed out after {} seconds",
-                RPC_TIMEOUT.as_secs()
+                response_timeout.as_secs_f32()
             ),
         }
     }
@@ -724,6 +733,8 @@ fn socket_paths() -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::{StoredToken, parse_guilds, sanitize_name, token_expired, validate_snowflake};
 
     #[test]
@@ -769,5 +780,38 @@ mod tests {
             ..expired
         };
         assert!(token_expired(&malformed));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn silent_rpc_commands_fail_closed_at_the_response_deadline() {
+        let (client, _server) = tokio::net::UnixStream::pair().expect("Unix stream pair");
+        let mut rpc = super::RpcClient { stream: client };
+        let error = rpc
+            .command_with_timeout(
+                "GET_GUILDS",
+                serde_json::json!({}),
+                Duration::from_millis(1),
+            )
+            .await
+            .expect_err("silent Discord RPC must time out");
+        assert!(error.to_string().contains("timed out"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn blocked_rpc_writes_fail_closed_at_the_response_deadline() {
+        let (client, _server) = tokio::net::UnixStream::pair().expect("Unix stream pair");
+        let mut rpc = super::RpcClient { stream: client };
+        let payload = "x".repeat(super::MAX_FRAME_BYTES - 1024);
+        let error = rpc
+            .command_with_timeout(
+                "GET_CHANNELS",
+                serde_json::json!({"payload": payload}),
+                Duration::from_millis(1),
+            )
+            .await
+            .expect_err("a non-reading Discord peer must time out during the write");
+        assert!(error.to_string().contains("timed out"));
     }
 }
