@@ -44,12 +44,12 @@ is not part of a visual/UI change.
   audit export, verified backup, restore into a second temporary data directory,
   SQLite verification, and post-restore search. The drill touched no live
   indexed data and does not prove packaged GUI, OAuth, tray, or updater flows.
-- A bounded end-to-end Discord trial on 2026-08-12 covered all three enabled
-  authorized sources with one document and a 64 KiB cap. `community-discord`
-  and both pending sources completed within the 30-second cap on the latest
-  validation-only rerun. All three trials were non-reconciling and deleted zero
-  records. This proves the selected
-  connector-to-embedding-to-index path, not full-corpus readiness.
+- A bounded end-to-end Discord sync trial on 2026-08-12 covered all three enabled
+  authorized sources with one document, a 64 KiB cap, and a 30-second cap per
+  source. Each source completed with `changed=0`, `unchanged=1`, and `deleted=0`.
+  All three trials were non-reconciling and did not install recurring sync. This
+  proves the selected connector-to-embedding-to-index path, not full-corpus
+  readiness.
 
 ## Requirement matrix
 
@@ -120,7 +120,7 @@ is not part of a visual/UI change.
 6. Complete source authorization and full validation coverage before recurring sync: the three
    enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh validation-only
    smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source. Their latest bounded
-   end-to-end trials also pass within that 30-second cap; the personal AMF
+   non-reconciling sync trials also pass within that 30-second cap; the personal AMF
    Discord source is disabled. The bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
    either bounded samples (`complete=false`) or legacy records without an explicit completeness
    marker. Both states fail closed; recurring sync must remain uninstalled until every enabled
