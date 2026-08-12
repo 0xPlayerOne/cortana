@@ -50,7 +50,9 @@ is not part of a visual/UI change.
    fixture-only evidence, not packaged-app proof; provider outages must continue to fail closed. Keep
    extractive mode as the safe production default; the installed v0.30.10 core still passes
    `doctor`, readiness, and the disposable packaged control-plane and recovery drills, while the
-   GUI remains unlaunched.
+   GUI remains unlaunched. A stricter 15-second operator probe on 2026-08-12 timed out without a
+   report while the provider metadata endpoint remained responsive; it is recorded as a non-pass
+   latency observation, not new model-quality evidence.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.

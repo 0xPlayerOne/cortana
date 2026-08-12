@@ -639,12 +639,12 @@ impl RpcClient {
         response_timeout: Duration,
     ) -> Result<RpcResponse> {
         let nonce = uuid::Uuid::new_v4().to_string();
-        self.send(
-            OP_FRAME,
-            serde_json::json!({"cmd": cmd, "args": args, "nonce": nonce}),
-        )
-        .await?;
         match tokio::time::timeout(response_timeout, async {
+            self.send(
+                OP_FRAME,
+                serde_json::json!({"cmd": cmd, "args": args, "nonce": nonce}),
+            )
+            .await?;
             loop {
                 let response = self.read_response().await?;
                 if response.nonce.as_deref() == Some(nonce.as_str()) {
@@ -795,6 +795,23 @@ mod tests {
             )
             .await
             .expect_err("silent Discord RPC must time out");
+        assert!(error.to_string().contains("timed out"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn blocked_rpc_writes_fail_closed_at_the_response_deadline() {
+        let (client, _server) = tokio::net::UnixStream::pair().expect("Unix stream pair");
+        let mut rpc = super::RpcClient { stream: client };
+        let payload = "x".repeat(super::MAX_FRAME_BYTES - 1024);
+        let error = rpc
+            .command_with_timeout(
+                "GET_CHANNELS",
+                serde_json::json!({"payload": payload}),
+                Duration::from_millis(1),
+            )
+            .await
+            .expect_err("a non-reading Discord peer must time out during the write");
         assert!(error.to_string().contains("timed out"));
     }
 }
