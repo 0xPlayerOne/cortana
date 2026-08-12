@@ -23,7 +23,7 @@ The current protected source is `v0.31.5` (the exact-tree promotion in PR #845,
 followed by Release Please PR #846). Release `v0.31.5` is published and
 workflow `31575709770` is the authoritative current asset run; the prior
 `v0.31.4` workflow `31569675691` is the latest completed strict 18-asset
-verifier until that run completes. The installed CLI still reports `v0.31.4`;
+verifier; the v0.31.5 verification result is tracked by that workflow. The installed CLI still reports `v0.31.4`;
 its doctor, query-only readiness, and disposable control-plane checks pass
 without starting services or sync. The latest installed provider-backed fixture
 evaluation passed in 19,524 ms (earlier verified runs passed in 15,774 ms and

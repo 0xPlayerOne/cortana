@@ -17,7 +17,8 @@ is not part of a visual/UI change.
   the authoritative current platform build and verification run. Asset
   verification does not launch the packaged GUI or prove OS-level
   signing/notarization. The prior `v0.31.4` workflow `31569675691` remains
-  the latest completed 18-asset verifier until the v0.31.5 run completes.
+  the latest completed 18-asset verifier; the v0.31.5 verification result is
+  tracked by workflow `31575709770`.
 - The installed core at `/Users/amf/.local/bin/cortana` still reports
   `v0.31.4`; v0.31.5 installation is intentionally deferred until its
   release assets pass strict verification.
