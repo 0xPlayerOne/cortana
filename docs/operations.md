@@ -281,6 +281,11 @@ drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
 backup, restore, SQLite verify, and post-restore search). It does not exercise
 the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
 
+A fresh validation-only `scripts/source-smoke.sh` run passed all 21 enabled
+sources at one document, 65,536 bytes, and 30 seconds per source. It performed
+no embedding, indexing, reconciliation, or scheduler changes; filesystem/code
+records remain sampled and cannot authorize recurring full-corpus sync.
+
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
 ID notarization), so `spctl --assess` still rejects it and notarization remains a release blocker.

@@ -46,6 +46,10 @@ is not part of a visual/UI change.
   All three trials were non-reconciling and did not install recurring sync. This
   proves the selected connector-to-embedding-to-index path, not full-corpus
   readiness.
+- A fresh validation-only source smoke on 2026-08-12 passed all 21 enabled
+  sources at the same one-document/64 KiB/30-second bounds, without embedding,
+  indexing, reconciliation, or scheduler changes. Filesystem and code sources
+  remain sampled by design, so this is authorization/reachability evidence only.
 
 ## Requirement matrix
 
