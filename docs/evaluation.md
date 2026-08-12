@@ -107,6 +107,10 @@ in 15,107 ms with planner and synthesis model use, valid citations, cache reuse,
 invalidation; the prior 13,472 ms run remains historical evidence from the same day. This is still
 fixture-only evidence, not packaged-app proof; provider outages must
 continue to fail closed, and extractive mode remains the safe production default.
+The latest bounded rerun on 2026-08-12 also passed in 11,100 ms with the same planner/synthesis,
+citation, cache, and revision checks; the 15,107 ms result is now historical evidence. Retrieval
+quality remained perfect (recall, MRR, case pass rate, and citation validity all 1.0) within the
+30,000 ms answer deadline.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
 
