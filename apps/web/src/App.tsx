@@ -166,6 +166,8 @@ export function App() {
 
   const installerStatusRef = useRef<DesktopInstallJob['status'] | null>(null)
   const desktopSettingsRequestRef = useRef(0)
+  const desktopInfoRequestRef = useRef(0)
+  const desktopUpdateRequestRef = useRef(0)
   const desktopServicesRequestRef = useRef(0)
   const refreshedSourceJobsRef = useRef<Set<string>>(new Set())
   const documentScope = `${effectiveWorkspace}\u0000${source}\u0000${debouncedDocumentQuery}`
@@ -528,6 +530,8 @@ export function App() {
   useEffect(() => {
     if (!isDesktopApp) return
     const requestId = ++desktopSettingsRequestRef.current
+    const infoRequestId = ++desktopInfoRequestRef.current
+    const updateRequestId = ++desktopUpdateRequestRef.current
     let active = true
     void getDesktopSettings()
       .then((next) => {
@@ -539,17 +543,27 @@ export function App() {
         if (active && desktopSettingsRequestRef.current === requestId) setView('settings')
       })
     void getDesktopInfo()
-      .then(setDesktopInfo)
+      .then((next) => {
+        if (active && desktopInfoRequestRef.current === infoRequestId) {
+          setDesktopInfo(next)
+        }
+      })
       .catch(() => {
         // The settings view will surface the local configuration error.
       })
     void getDesktopUpdate()
-      .then(setDesktopUpdate)
+      .then((next) => {
+        if (active && desktopUpdateRequestRef.current === updateRequestId) {
+          setDesktopUpdate(next)
+        }
+      })
       .catch(() => {
         // The Updates section will surface a more specific updater error.
       })
     return () => {
       active = false
+      desktopInfoRequestRef.current += 1
+      desktopUpdateRequestRef.current += 1
       if (desktopSettingsRequestRef.current === requestId) {
         desktopSettingsRequestRef.current += 1
       }
@@ -1540,8 +1554,13 @@ export function App() {
                   caught instanceof Error ? caught.message : 'Service status is unavailable'
                 )
               })
+            const infoRequestId = ++desktopInfoRequestRef.current
             void getDesktopInfo()
-              .then(setDesktopInfo)
+              .then((nextInfo) => {
+                if (desktopInfoRequestRef.current === infoRequestId) {
+                  setDesktopInfo(nextInfo)
+                }
+              })
               .catch(() => {
                 // Keep the previous metadata snapshot when the refresh is
                 // unavailable; the Services panel can retry explicitly.
