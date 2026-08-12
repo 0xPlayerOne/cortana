@@ -132,15 +132,16 @@ is not part of a visual/UI change.
   treated as current recovery evidence; the verified v0.30.10 release assets and installed CLI are
   authoritative.
 - The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
-  passes 256 tests across 22 files (latest run: 37.32 seconds, 1,266 assertions, including the
+  passes 258 tests across 22 files (latest run: 62.41 seconds, 1,273 assertions, including the
   desktop lockfile helper regression). The Python suite
   passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
   gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
   runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
   OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
   all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
-  refreshed against the current v0.30.10 source tree without launching the Desktop app; the
-  act-aware harness now completes without React act warnings. These are headless assertions and
+  refreshed against the current v0.30.10 source tree without launching the Desktop app. The full
+  run still emits non-fatal React act diagnostics from a few asynchronous shell tests; these are
+  separate from pass/fail results and do not constitute packaged-GUI evidence. These are headless assertions and
   do not count as a successful production-GUI drill.
 - The current Rust library suite on v0.30.10 passes 253 tests with
   no failures;
@@ -239,7 +240,7 @@ is not part of a visual/UI change.
   post-restore search; neither drill touched indexed personal data.
 - The current source-native headless acceptance suite passes without starting Tauri: the 129 native
   tests cover OAuth guards, tray/background lifecycle, updater guards, settings import/export,
-  backup/restore, and source validation. They complement the 256 Bun tests and do not substitute for
+  backup/restore, and source validation. They complement the 258 Bun tests and do not substitute for
   the still-unverified interactive packaged GUI flows.
 - Packaged-app GUI/browser OAuth, tray/menu, native file-dialog import/export, and signed updater
   interactions remain unverified because no callable Computer Use session was available. Native
