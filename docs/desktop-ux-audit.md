@@ -23,10 +23,10 @@ is not part of a visual/UI change.
   source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
-- The installed v0.31.6 provider-backed fixture evaluation completed on
-  2026-08-12 in 12,613 ms (earlier v0.31.6 runs completed in 25,789 ms,
-  21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5 runtime-baseline run
-  completed in 13,871 ms; prior verified runs
+- The latest installed v0.31.6 provider-backed fixture evaluation completed on
+  2026-08-12 in 17,145 ms (the earlier 12,613 ms run and prior v0.31.6 runs
+  completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
+  runtime-baseline run completed in 13,871 ms; prior verified runs
   completed in 19,524 ms, 15,774 ms, and
   13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
   and revision invalidation. The opt-in evaluator remains fail-closed below one minute with
@@ -89,8 +89,9 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.31.6 runtime passed the bounded
-   fixture gate on 2026-08-12 in 12,613 ms (earlier v0.31.6 runs completed in
-   25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5 runtime-baseline
+   fixture gate on 2026-08-12 in 17,145 ms (the earlier 12,613 ms run and prior
+   v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
+   the v0.31.5 runtime-baseline
    run completed in 13,871 ms; prior
    verified runs completed in 19,524 ms,
    15,774 ms, and 13,237 ms) with planner/synthesis, citations, cache reuse, and
