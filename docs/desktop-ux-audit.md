@@ -134,8 +134,8 @@ is not part of a visual/UI change.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.1 installed core or the v0.31.2 release
-under construction; use the current-release section above for sign-off status.
+does not describe the current v0.31.2 installed core or release; use the
+current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
   remaining `Spark` matches are Lucide `Sparkles` icons used by the Query navigation surface.

@@ -19,14 +19,15 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.0` (`origin/main` commit `cbfb798`,
-with the current staging evidence at `51e5f5d`). The verified `v0.31.0` core is
-installed at `/Users/amf/.local/bin/cortana` and was independently executed for
-the latest provider-backed fixture evidence. The
-published `v0.31.0` assets and strict release verifier are complete, proving
-archive, checksum, signature, and updater-manifest integrity. This still does
-not prove packaged GUI behavior or Developer ID/notarization trust.
-The evaluator remains fixture-only, bounded, and opt-in; extractive mode is the
+The current protected source is `v0.31.2` (`origin/main` commit `326d0f0`,
+with the release-only metadata reconciled to staging by PR #800). The verified
+`v0.31.2` assets and strict release verifier are complete, proving archive,
+checksum, signature, and updater-manifest integrity. The installed CLI reports
+`v0.31.2` and its doctor/control-plane checks pass, but the last completed
+provider-backed fixture evaluation is the v0.31.1 run documented below; a
+v0.31.2 rerun exceeded the bounded operator window and was stopped. This still
+does not prove packaged GUI behavior or Developer ID/notarization trust. The
+evaluator remains fixture-only, bounded, and opt-in; extractive mode is the
 production default.
 
 The built-in thresholds and data live in `eval/fixtures.json`. Use

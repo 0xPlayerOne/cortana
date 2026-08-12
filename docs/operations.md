@@ -244,7 +244,7 @@ and configured-provider evaluation checks. Synthesis remains disabled by default
 The v0.30.0 release-assets workflow `31470374229` is historical evidence only: it published 14 of
 18 assets because the Windows build exposed the missing non-Unix Discord RPC methods. The v0.30.1
 release-assets workflow `31474156961` completed all five platform jobs. The v0.30.2, v0.30.7, and
-v0.30.8 release-assets workflows are historical evidence. The current v0.30.10 release-assets
+v0.30.8 release-assets workflows are historical evidence. The historical v0.30.10 release-assets
 workflow `31515684053` completed all five platform jobs; its strict verifier result is historical.
 The historical `v0.31.0` release was published from tag commit `2d6ef86`; release-assets workflow
 `31555962734` completed all five platform jobs and the strict verifier passed all 18 assets,
