@@ -256,7 +256,7 @@ recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
 The fully verified follow-ups are v0.31.1 and v0.31.2. Release-assets workflow
 `31559861575` completed all platform jobs and
 `scripts/verify-desktop-release.sh v0.31.2` verified all 18 assets. Release
-v0.31.3 is now published from main commit `5fdfc60`; workflow `31563026950`
+v0.31.3 is now published from promotion commit `80c24d7`; workflow `31563026950`
 completed all platform jobs and the strict 18-asset verifier. The installed
 core now reports v0.31.3 and its doctor, query-only readiness, and disposable
 control-plane checks pass without starting services or sync. A prior

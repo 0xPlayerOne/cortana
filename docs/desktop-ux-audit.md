@@ -7,10 +7,11 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-12)
 
-- `origin/main` is release `v0.31.3` at commit `5fdfc60`. The clean
-  metadata-only reconciliation back to protected `staging` is PR #811; the
+- `origin/main` is release `v0.31.3` at promotion commit `80c24d7`. Release
+  metadata reached protected `staging` through PR #811, the evidence refresh
+  through PR #812, and the exact-tree promotion through PR #815. The
   superseded full-history reconciliation PR #810 was closed as structurally
-  conflicting rather than merged. Neither reconciliation changes runtime,
+  conflicting rather than merged; none of these PRs changes runtime,
   connector, credential, or sync code.
 - Release `v0.31.3` is published and workflow `31563026950` completed all
   platform jobs plus the strict verifier with all 18 core, Desktop, signature,
@@ -133,7 +134,7 @@ actions open the selected source` failure; the same test passes in isolation,
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.3 release or installed v0.31.2 core; use the
+does not describe the current v0.31.3 release or installed v0.31.3 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
