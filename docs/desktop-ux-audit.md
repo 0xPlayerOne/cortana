@@ -13,12 +13,11 @@ is not part of a visual/UI change.
   promotion subject preserves the release-bearing fix because exact-tree
   squash promotions otherwise hide staging commit metadata from Release
   Please.
-- Release `v0.31.5` is published and release-assets workflow `31575709770` is
-  the authoritative current platform build and verification run. Asset
+- Release `v0.31.5` is published and release-assets workflow `31575709770`
+  completed all five platform jobs plus the strict verifier with all 18 core,
+  Desktop, signature, checksum, and updater-manifest assets. Asset
   verification does not launch the packaged GUI or prove OS-level
-  signing/notarization. The prior `v0.31.4` workflow `31569675691` remains
-  the latest completed 18-asset verifier; the v0.31.5 verification result is
-  tracked by workflow `31575709770`.
+  signing/notarization.
 - The installed core at `/Users/amf/.local/bin/cortana` still reports
   `v0.31.4`; v0.31.5 installation is intentionally deferred until its
   release assets pass strict verification.
