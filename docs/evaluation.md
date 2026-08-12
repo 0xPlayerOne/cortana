@@ -24,9 +24,9 @@ followed by Release Please PR #830). Release `v0.31.4` is published and
 workflow `31569675691` completed all platform jobs plus the strict 18-asset
 verifier. The installed CLI now reports `v0.31.4`; its doctor, query-only
 readiness, and disposable control-plane checks pass without starting services
-or sync. The installed provider-backed fixture evaluation passed in 13,237 ms
-with planner and synthesis model use, valid citations, cache reuse, and
-revision invalidation. This remains fixture-only query-layer evidence and does
+or sync. The latest installed provider-backed fixture evaluation passed in
+15,774 ms (an earlier run passed in 13,237 ms) with planner and synthesis model
+use, valid citations, cache reuse, and revision invalidation. This remains fixture-only query-layer evidence and does
 not prove packaged GUI behavior, personal-index sync, or Developer
 ID/notarization trust. The evaluator remains bounded and opt-in; extractive
 mode is the production default.
@@ -103,6 +103,11 @@ matches the gateway's exact shape and provider token (including its documented `
 suffix). Ordinary bullets, uncited text, and responses without that header remain unchanged and
 continue through citation validation fail-closed.
 
+### Historical provider-run notes (archived)
+
+The run records below are retained for incident and migration history. They are not current
+release evidence; use **Current release boundary** above for the v0.31.4 sign-off state.
+
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33
 evaluator failed closed twice (8,313 ms and 13,398 ms) after the planner call because the configured
@@ -112,10 +117,10 @@ synthetic output cap to leave room for gateway reasoning, the source run passed 
 synthesis model use, valid citations, cache reuse, and revision invalidation in 22,866 ms. The
 latest successful installed v0.29.60 aarch64 core binary rerun passed the same fixture-only evaluator in
 17,928 ms; a prior cache-warm run passed in 10,323 ms. Both runs had
-planner+synthesis model use, valid citations, cache reuse, and revision invalidation. The packaged
-Desktop app was not launched; the installed v0.30.10 core now lives at
-`/Users/amf/.local/bin/cortana` without starting the app or recurring sync. v0.29.67 through v0.30.10
-are release/version and cross-platform compatibility fixes over the same query behavior.
+planner+synthesis model use, valid citations, cache reuse, and revision invalidation. At that time,
+the packaged Desktop app was not launched; the then-installed v0.30.10 core was used without
+starting the app or recurring sync. v0.29.67 through v0.30.10 were release/version and
+cross-platform compatibility fixes over the same query behavior.
 An installed v0.30.10 run previously passed in 10,544 ms with planner and synthesis model use,
 valid citations, cache reuse, and revision invalidation; retrieval recall, MRR, case pass rate, and
 citation validity were all 1.0 within the 30,000 ms deadline. The earlier 13,117 ms and 9,105 ms
@@ -139,12 +144,11 @@ provider is slow or unavailable.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
 
-The installed v0.31.1 core rerun on 2026-08-12 passed the same fixture-only
+At that point, the installed v0.31.1 core rerun on 2026-08-12 passed the same fixture-only
 model gate in 24,546 ms: planner and synthesis were used, citations were valid,
 cache reuse and post-update invalidation both passed, and recall, MRR, case pass
 rate, and citation validity were all 1.0 within the 30,000 ms answer deadline.
-This is the last completed model-backed installed-core evidence; it does not
-prove packaged GUI behavior or authorize a personal-index sync. The v0.31.2
+That historical result did not prove packaged GUI behavior or authorize a personal-index sync. The v0.31.2
 release archive and all 18 Desktop assets are independently verified, and the
 v0.31.2 CLI is installed, but its rerun exceeded the bounded operator window
 and was stopped without a quality report. A prior source-tree run passed in

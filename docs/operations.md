@@ -248,9 +248,9 @@ v0.30.8 release-assets workflows are historical evidence. The historical v0.30.1
 workflow `31515684053` completed all five platform jobs; its strict verifier result is historical.
 The historical `v0.31.0` release was published from tag commit `2d6ef86`; release-assets workflow
 `31555962734` completed all five platform jobs and the strict verifier passed all 18 assets,
-signatures, checksums, and updater-manifest checks. Its verified core reported v0.31.0 at
-`/Users/amf/.local/bin/cortana`; the packaged Desktop GUI has not been launched or replaced on
-this host. The bounded control-plane,
+signatures, checksums, and updater-manifest checks. Its verified core reported v0.31.0 during that
+historical installation; the packaged Desktop GUI was not launched or replaced on this host. The
+bounded control-plane,
 recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
 
 The fully verified follow-ups are v0.31.1 and v0.31.2. Release-assets workflow
