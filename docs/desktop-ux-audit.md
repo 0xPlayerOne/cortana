@@ -7,9 +7,9 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-12)
 
-- `origin/main` is release `v0.31.3` at promotion commit `80c24d7`. Release
-  metadata reached protected `staging` through PR #811, the evidence refresh
-  through PR #812, and the exact-tree promotion through PR #815. The
+- `v0.31.3` is the current protected release. Release metadata reached
+  protected `staging` through PR #811, the evidence refresh through PR #812,
+  and the exact-tree promotions through PRs #815 and #819. The
   superseded full-history reconciliation PR #810 was closed as structurally
   conflicting rather than merged; none of these PRs changes runtime,
   connector, credential, or sync code.

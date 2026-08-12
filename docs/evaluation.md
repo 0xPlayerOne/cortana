@@ -19,7 +19,7 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.3` (`origin/main` promotion commit `80c24d7`).
+The current protected source is `v0.31.3` (the exact-tree promotion in PR #819).
 Release `v0.31.3` is published and workflow `31563026950` completed all
 platform jobs plus the strict 18-asset verifier. The installed CLI now reports
 `v0.31.3`; its doctor, query-only readiness, and disposable control-plane
