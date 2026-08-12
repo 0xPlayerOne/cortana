@@ -893,6 +893,11 @@ mod tests {
         );
     }
 
+    #[test]
+    fn model_evaluation_budget_stays_below_one_minute() {
+        assert!(MODEL_EVALUATION_MAX_SECONDS < 60);
+    }
+
     #[tokio::test]
     async fn model_evaluation_timeout_fails_closed() {
         let error = bounded_model_evaluation(
