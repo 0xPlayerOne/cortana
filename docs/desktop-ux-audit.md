@@ -43,9 +43,10 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: PASS for the current configured provider. A fresh installed v0.30.10
-   run passed the fixture-only gate on 2026-08-11 in 13,472 ms with planner and synthesis model use,
-   valid citations, cache reuse, and revision invalidation. Earlier attempts correctly failed closed
-   with `fallback_provider_unavailable=true` during transient gateway outages. This remains
+   rerun passed the fixture-only gate on 2026-08-11 in 15,107 ms with planner and synthesis model use,
+   valid citations, cache reuse, and revision invalidation; the prior 13,472 ms run remains historical
+   evidence from the same day. Earlier attempts correctly failed closed with
+   `fallback_provider_unavailable=true` during transient gateway outages. This remains
    fixture-only evidence, not packaged-app proof; provider outages must continue to fail closed. Keep
    extractive mode as the safe production default; the installed v0.30.10 core still passes
    `doctor`, readiness, and the disposable packaged control-plane and recovery drills, while the
@@ -202,7 +203,7 @@ is not part of a visual/UI change.
   the current planner+synthesis citation validation with cache reuse and revision invalidation in
   17,928 ms; the prior cache-warm v0.29.60 run passed in 10,323 ms. The prior installed v0.30.6
   rerun passed in 19,954 ms with the same planner, synthesis, citation, cache, and revision
-  checks. A fresh installed v0.30.10 run passed in 13,472 ms with planner and synthesis model
+  checks. A fresh installed v0.30.10 rerun passed in 15,107 ms with planner and synthesis model
   use, valid citations, cache reuse, and revision invalidation; retrieval recall, MRR, case pass
   rate, and citation validity were all 1.0 within the 30,000 ms answer deadline. Earlier
   provider-unavailable attempts remain historical fail-closed evidence, and extractive mode
