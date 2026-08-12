@@ -256,15 +256,16 @@ recovery, and model-backed checks are recorded in `docs/desktop-ux-audit.md`.
 The fully verified follow-ups are v0.31.1 and v0.31.2. Release-assets workflow
 `31559861575` completed all platform jobs and
 `scripts/verify-desktop-release.sh v0.31.2` verified all 18 assets. Release
-v0.31.3 is now published from the protected promotion in PR #819; workflow `31563026950`
-completed all platform jobs and the strict 18-asset verifier. The installed
-core now reports v0.31.3 and its doctor, query-only readiness, and disposable
-control-plane checks pass without starting services or sync. A prior
-source-tree fixture model gate passed in 14,186 ms, while the current v0.31.3
-source and installed reruns hit the bounded outer deadline and failed closed.
-No packaged-GUI evaluation is claimed.
+v0.31.3 was published from the protected promotion in PR #819. The current
+v0.31.4 patch was promoted through PR #829 and Release Please PR #830;
+release-assets workflow `31569675691` completed all platform jobs and the
+strict 18-asset verifier. The installed core now reports v0.31.4 and its
+doctor, query-only readiness, and disposable control-plane checks pass without
+starting services or sync. Its provider-backed fixture model gate passed in
+13,237 ms with planner/synthesis, citations, cache reuse, and revision
+invalidation. No packaged-GUI evaluation is claimed.
 
-The installed v0.31.3 binary also passed the disposable offline control-plane
+The installed v0.31.4 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
 backup, restore, SQLite verify, and post-restore search). It does not exercise
 the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
@@ -273,11 +274,10 @@ minisign verification covers the Tauri updater archives only and fails closed in
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
 ID notarization), so `spctl --assess` still rejects it and notarization remains a release blocker.
 
-After release-assets workflow `31563026950` completes, re-run the read-only
-verifier for the current release with:
+Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.3
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.4
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified

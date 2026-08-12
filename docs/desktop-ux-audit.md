@@ -7,37 +7,34 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-12)
 
-- `v0.31.3` is the current protected release. Release metadata reached
-  protected `staging` through PR #811, the evidence refresh through PR #812,
-  and the exact-tree promotions through PRs #815 and #819. The
-  superseded full-history reconciliation PR #810 was closed as structurally
-  conflicting rather than merged; none of these PRs changes runtime,
-  connector, credential, or sync code.
-- Release `v0.31.3` is published and workflow `31563026950` completed all
-  platform jobs plus the strict verifier with all 18 core, Desktop, signature,
-  checksum, and updater-manifest assets. Archive verification does not launch
-  the packaged GUI or prove OS-level signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` now reports `v0.31.3`.
+- `v0.31.4` is the current protected release. The source fix arrived through
+  staging PR #827 and exact-tree promotion PR #829; Release Please PR #830
+  published the patch release from main. The promotion subject explicitly
+  preserves the release-bearing evaluator fix because exact-tree squash
+  promotions otherwise hide staging commit metadata from Release Please.
+- Release `v0.31.4` is published and release-assets workflow `31569675691`
+  completed all platform jobs plus the strict verifier with all 18 core,
+  Desktop, signature, checksum, and updater-manifest assets. Archive
+  verification does not launch the packaged GUI or prove OS-level
+  signing/notarization.
+- The installed core at `/Users/amf/.local/bin/cortana` now reports `v0.31.4`.
   The upgrade used the signed aarch64 archive with services disabled: it did
   not launch the GUI, restart the existing background process, authorize a
   source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
-- A fresh source-tree fixture evaluation on PR #822 completed in 11,866 ms with
-  planner and synthesis model use, valid citations, cache reuse, and revision
-  invalidation. The opt-in evaluator remains fail-closed and below one minute;
-  the source change raises its whole-run bound to 55 seconds so the required
-  cache/invalidation calls are not rejected solely by the old 30-second cap.
-  This is source-branch evidence only: the installed v0.31.3 binary predates
-  that change and is not a current released model-quality claim. Extractive
-  mode remains the production default and recurring sync remains uninstalled
-  because enabled filesystem/code sources are still bounded samples or otherwise below their
+- The installed v0.31.4 fixture evaluation completed in 13,237 ms with planner
+  and synthesis model use, valid citations, cache reuse, and revision
+  invalidation. The opt-in evaluator remains fail-closed below one minute with
+  a 55-second whole-run bound; extractive mode remains the production default
+  and recurring sync remains uninstalled because enabled filesystem/code sources
+  are still bounded samples or otherwise below their
   configured full-sync budgets.
 - The latest full Bun suite passes 258 tests across 22 files with 1,273
   assertions in 73.50 seconds. The native Tauri suite passes 129 tests in about
   5.5 seconds after compilation. Both suites are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
-- The installed v0.31.3 binary passed the disposable offline control-plane
+- The installed v0.31.4 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
   audit export, verified backup, restore into a second temporary data directory,
   SQLite verification, and post-restore search. The drill touched no live
@@ -87,16 +84,13 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: PR #822 contains the bounded source fix and a
-   current 11,866 ms provider-backed pass with planner/synthesis, citations,
-   cache reuse, and revision invalidation. It remains fixture-only evidence,
-   not packaged-app proof, and the installed v0.31.3 binary predates the fix;
-   publish and verify the resulting patch release before treating this as
-   current release evidence. Provider outages or slow responses must continue
-   to fail closed, and extractive mode remains the safe production default.
-   The installed v0.31.3 core still passes `doctor`, query-only readiness, and
-   the disposable packaged control-plane and recovery drills, while the GUI
-   remains unlaunched.
+2. Model-backed provider gate: the installed v0.31.4 core passes the bounded
+   fixture gate in 13,237 ms with planner/synthesis, citations, cache reuse, and
+   revision invalidation. This remains fixture-only evidence, not packaged-app
+   proof; provider outages or slow responses still fail closed, and extractive
+   mode remains the safe production default. The installed core also passes
+   `doctor`, query-only readiness, and the disposable control-plane and recovery
+   drills, while the GUI remains unlaunched.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -129,7 +123,7 @@ is not part of a visual/UI change.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.3 release or installed v0.31.3 core; use the
+does not describe the current v0.31.4 release or installed v0.31.4 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -145,8 +139,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the installed CLI still reports `cortana 0.30.10`; neither proves
-  the current `v0.31.3` binary or packaged Desktop behavior. The current
-  `v0.31.3` asset workflow and strict verifier are now complete as described above.
+  the current `v0.31.4` binary or packaged Desktop behavior. The current
+  `v0.31.4` asset workflow and strict verifier are now complete as described above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
