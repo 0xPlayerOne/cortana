@@ -7,9 +7,9 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-12)
 
-- `origin/main` is now release `v0.31.2` at commit `326d0f0`. The release-only
-  metadata delta is being reconciled back to protected `staging` through clean
-  PR #800; no runtime, connector, credential, or sync code is part of that PR.
+- `origin/main` is now release `v0.31.2` at commit `326d0f0`, and the release-only
+  metadata delta has been reconciled back to protected `staging` through clean
+  PR #800. No runtime, connector, credential, or sync code was part of that PR.
   The earlier full-history reconciliation PR #799 was closed as structurally
   dirty rather than merged.
 - `v0.31.1` is the latest fully verified Desktop release: workflow
