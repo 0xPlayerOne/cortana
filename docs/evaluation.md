@@ -19,7 +19,7 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.3` (`origin/main` promotion commit `80c24d7`).
+The current protected source is `v0.31.3` (the exact-tree promotion in PR #819).
 Release `v0.31.3` is published and workflow `31563026950` completed all
 platform jobs plus the strict 18-asset verifier. The installed CLI now reports
 `v0.31.3`; its doctor, query-only readiness, and disposable control-plane
@@ -85,7 +85,7 @@ with provider-backed metrics:
   `extractive_fallback`)
 - `latency_ms`, `deadline_ms`
 
-The opt-in model gate applies a 30-second in-memory ceiling to the answer and provider request
+The opt-in model gate applies a 55-second in-memory ceiling to the answer and provider request
 timeouts, independent of the interactive query budget. It also caps the synthetic prompt context
 at 2,048 tokens and the generated answer at 512 tokens, so a large personal query configuration
 cannot turn this fixture-only check into a production load test. When the first planner or
@@ -151,8 +151,11 @@ release archive and all 18 Desktop assets are independently verified, and the
 v0.31.2 CLI is installed, but its rerun exceeded the bounded operator window
 and was stopped without a quality report. A prior source-tree run passed in
 14,186 ms with the same planner/synthesis, citation, cache, and revision
-checks, while the current v0.31.3 source rerun hit the outer deadline and
-failed closed. No packaged-GUI evaluation is made.
+checks. After raising the whole-run ceiling to 55 seconds while retaining the
+under-one-minute fail-closed bound, the current source rerun passed in 11,866 ms
+with planner and synthesis, valid citations, cache reuse, and post-update
+invalidation. This source result does not prove packaged GUI behavior or
+authorize a personal-index sync. No packaged-GUI evaluation is made.
 
 The bounded source trial remains deliberately separate from this fixture gate. A one-document,
 non-reconciling run completed for Personal Drive and Personal Gmail after a 180-second per-source
