@@ -294,6 +294,41 @@ def test_buzz_rejects_symlinked_retention_files_and_logs(tmp_path: Path) -> None
         list(buzz.fetch(tmp_path))
 
 
+def test_buzz_rejects_symlinked_source_directories(tmp_path: Path) -> None:
+    external_root = tmp_path / "external-root"
+    external_root.mkdir()
+    linked_root = tmp_path / "linked-root"
+    linked_root.symlink_to(external_root, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="root must not be a symlink"):
+        list(buzz.fetch(linked_root))
+
+    agents = tmp_path / "agents"
+    external_agents = tmp_path / "external-agents"
+    external_agents.mkdir()
+    agents.symlink_to(external_agents, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="agents directory must not be a symlink"):
+        list(buzz.fetch(tmp_path))
+
+    agents.unlink()
+    agents.mkdir()
+    external_logs = tmp_path / "external-logs"
+    external_logs.mkdir()
+    (agents / "logs").symlink_to(external_logs, target_is_directory=True)
+    with pytest.raises(RuntimeError, match="logs directory must not be a symlink"):
+        list(buzz.fetch(tmp_path))
+
+
+def test_buzz_rejects_oversized_logs(tmp_path: Path) -> None:
+    logs = tmp_path / "agents" / "logs"
+    logs.mkdir(parents=True)
+    oversized = logs / "oversized.log"
+    with oversized.open("wb") as stream:
+        stream.truncate(buzz.MAX_LOG_BYTES + 1)
+
+    with pytest.raises(RuntimeError, match="log exceeds"):
+        list(buzz.fetch(tmp_path))
+
+
 class FakeSlackClient:
     def __init__(self, *_args: object, **_kwargs: object) -> None:
         self.calls: list[str] = []
