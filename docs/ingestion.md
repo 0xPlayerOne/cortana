@@ -145,7 +145,8 @@ configured document cap and never reconcile deletions.
 - `cortana provider-models --kind embedding|query` returns the bounded model catalog the
   configured OpenAI-compatible provider advertises through `/models` (sanitized ids plus explicit
   capability metadata only when the provider publishes it). The Desktop model selectors use it
-  when available and fall back to the local Qwen presets or the saved custom model otherwise. The
+  when available; local Qwen embedding presets remain available for the bundled local path, while
+  cloud and query models stay as the saved custom value until the provider advertises them. The
   call is read-only, never follows redirects, uses a strict timeout, and never prints the provider
   API key.
 - `cortana authorize-discord SOURCE` asks the running Discord Desktop client to authorize the
