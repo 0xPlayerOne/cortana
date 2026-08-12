@@ -267,7 +267,7 @@ completed all platform jobs and the strict v0.31.7 verifier passed. The
 installed core is now v0.31.7 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
 starting services or sync. Its latest installed v0.31.7 provider-backed fixture model
-gate passed on 2026-08-12 in 17,734 ms (the earlier 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs
+gate passed on 2026-08-12 in 10,083 ms (the earlier 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs
 and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
 runtime-baseline run passed in
 13,871 ms; prior verified runs passed
