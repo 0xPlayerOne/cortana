@@ -24,9 +24,9 @@ is not part of a visual/UI change.
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
 - The installed v0.31.6 provider-backed fixture evaluation completed on
-  2026-08-12 in 25,789 ms (earlier v0.31.6 runs completed in 21,409 ms,
-  15,728 ms, and 22,269 ms; the v0.31.5 runtime-baseline run completed in
-  13,871 ms; prior verified runs
+  2026-08-12 in 12,613 ms (earlier v0.31.6 runs completed in 25,789 ms,
+  21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5 runtime-baseline run
+  completed in 13,871 ms; prior verified runs
   completed in 19,524 ms, 15,774 ms, and
   13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
   and revision invalidation. The opt-in evaluator remains fail-closed below one minute with
@@ -44,12 +44,12 @@ is not part of a visual/UI change.
   audit export, verified backup, restore into a second temporary data directory,
   SQLite verification, and post-restore search. The drill touched no live
   indexed data and does not prove packaged GUI, OAuth, tray, or updater flows.
-- A bounded end-to-end Discord trial on 2026-08-12 covered all three enabled
-  authorized sources with one document and a 64 KiB cap. `community-discord`
-  and both pending sources completed within the 30-second cap on the latest
-  validation-only rerun. All three trials were non-reconciling and deleted zero
-  records. This proves the selected
-  connector-to-embedding-to-index path, not full-corpus readiness.
+- A bounded end-to-end Discord sync trial on 2026-08-12 covered all three enabled
+  authorized sources with one document, a 64 KiB cap, and a 30-second cap per
+  source. Each source completed with `changed=0`, `unchanged=1`, and `deleted=0`.
+  All three trials were non-reconciling and did not install recurring sync. This
+  proves the selected connector-to-embedding-to-index path, not full-corpus
+  readiness.
 
 ## Requirement matrix
 
@@ -89,9 +89,9 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.31.6 runtime passed the bounded
-   fixture gate on 2026-08-12 in 25,789 ms (earlier v0.31.6 runs completed in
-   21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5 runtime-baseline run
-   completed in 13,871 ms; prior
+   fixture gate on 2026-08-12 in 12,613 ms (earlier v0.31.6 runs completed in
+   25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5 runtime-baseline
+   run completed in 13,871 ms; prior
    verified runs completed in 19,524 ms,
    15,774 ms, and 13,237 ms) with planner/synthesis, citations, cache reuse, and
    revision invalidation. This remains fixture-only evidence, not packaged-app
@@ -120,7 +120,7 @@ is not part of a visual/UI change.
 6. Complete source authorization and full validation coverage before recurring sync: the three
    enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh validation-only
    smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source. Their latest bounded
-   end-to-end trials also pass within that 30-second cap; the personal AMF
+   non-reconciling sync trials also pass within that 30-second cap; the personal AMF
    Discord source is disabled. The bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
    either bounded samples (`complete=false`) or legacy records without an explicit completeness
    marker. Both states fail closed; recurring sync must remain uninstalled until every enabled
