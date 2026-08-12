@@ -132,6 +132,15 @@ provider is slow or unavailable.
 Developer ID signing/notarization is not available in this environment. Extractive mode remains the
 safe production default because synthesis is still an explicit opt-in in the production configuration.
 
+The installed v0.31.1 core rerun on 2026-08-12 passed the same fixture-only
+model gate in 24,546 ms: planner and synthesis were used, citations were valid,
+cache reuse and post-update invalidation both passed, and recall, MRR, case pass
+rate, and citation validity were all 1.0 within the 30,000 ms answer deadline.
+This is the current installed-core evidence; it does not prove packaged GUI
+behavior or authorize a personal-index sync. The v0.31.2 release is published
+but its full Desktop asset workflow remains in progress, so no v0.31.2 packaged
+evaluation is claimed yet.
+
 The bounded source trial remains deliberately separate from this fixture gate. A one-document,
 non-reconciling run completed for Personal Drive and Personal Gmail after a 180-second per-source
 window, while their tighter 30-second operator probe expired during connector-to-embedding work.

@@ -7,34 +7,38 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-12)
 
-- The protected staging reconciliation has merged. `origin/main` is release
-  `v0.31.0` at commit `cbfb798`; current staging includes the active-sync
-  readiness fix, provider-neutral OAuth helper, and model-evaluation evidence
-  through `51e5f5d` (PRs #782, #785, and #787). Superseded promotion branches
-  were deleted.
-- Release `v0.31.0` is published from tag commit `2d6ef86`. Its release-assets
-  workflow (`31555962734`) completed all five platform jobs and the strict
-  verifier passed all 18 required core, Desktop, signature, checksum, and
-  updater-manifest assets. This verifies archive and updater integrity only;
-  it does not launch the packaged GUI or prove OS-level signing/notarization.
-- The verified core release is now installed at `/Users/amf/.local/bin/cortana`
-  and reports `v0.31.0`; installation was performed with services disabled, so
-  it did not launch the GUI, restart the existing background process, authorize
-  a source, or enable recurring sync. The packaged GUI, browser OAuth,
-  tray/menu, native dialogs, updater interaction, Developer ID signing, and
-  notarization remain manual gates.
-- A fresh read-only readiness pass succeeded, while the
-  `--allow-sync-service` variant failed closed on incomplete source validation.
-  Recurring sync remains uninstalled and no large sync was run. Filesystem/code
-  samples with `complete=false` and sources with unknown completeness cannot
-  authorize reconciliation.
-- The published `v0.31.0` aarch64 core archive was run in an isolated temporary
-  directory on 2026-08-12, then the installed `v0.31.0` binary was rerun against
-  the same synthetic fixture. Both passed with planner and synthesis model use,
-  valid citations, cache reuse/invalidation, and perfect fixture retrieval
-  metrics; the installed run completed in 18,979 ms under the 30,000 ms bound
-  (the archive run completed in 18,312 ms). The fixture is synthetic-only; the
-  packaged GUI remains a separate manual gate.
+- `origin/main` is now release `v0.31.2` at commit `326d0f0`. The release-only
+  metadata delta is being reconciled back to protected `staging` through clean
+  PR #800; no runtime, connector, credential, or sync code is part of that PR.
+  The earlier full-history reconciliation PR #799 was closed as structurally
+  dirty rather than merged.
+- `v0.31.1` is the latest fully verified Desktop release: workflow
+  `31559030475` completed all platform jobs and the strict verifier passed all
+  18 core, Desktop, signature, checksum, and updater-manifest assets. Release
+  `v0.31.2` is published, but its asset workflow `31559861575` is still in
+  progress; only the two core archives are present so far, so the strict
+  verifier must not be treated as passed for v0.31.2 yet. Archive verification
+  does not launch the packaged GUI or prove OS-level signing/notarization.
+- The installed core at `/Users/amf/.local/bin/cortana` reports `v0.31.1`.
+  Installation used services-disabled mode: it did not launch the GUI, restart
+  the existing background process, authorize a source, or enable recurring
+  sync. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater
+  interaction, Developer ID signing, and notarization remain manual gates.
+- A fresh read-only `v0.31.1` readiness pass and doctor check succeeded. The
+  matching `readiness --allow-sync-service` gate remains fail-closed because
+  enabled filesystem/code sources are still bounded samples or otherwise below
+  their configured full-sync budgets. Recurring sync remains uninstalled and no
+  large sync was run.
+- The installed `v0.31.1` fixture-only model evaluation passed with planner and
+  synthesis model use, valid citations, cache reuse/invalidation, and perfect
+  retrieval metrics (recall, MRR, case pass rate, and citation validity all
+  1.0). Answer latency was 24,546 ms under the 30,000 ms bound. This is model
+  and query-layer evidence only; it is not a personal-index, sync, or packaged
+  GUI proof.
+- The current isolated Bun suite passes 258 tests across 22 files with 1,272
+  assertions in 143.29 seconds. The native Tauri suite passes 129 tests in
+  0.73 seconds after compilation. These are headless assertions and do not
+  substitute for the still-unverified interactive packaged GUI flows.
 - A bounded end-to-end Discord trial on 2026-08-12 covered all three enabled
   authorized sources with one document and a 64 KiB cap. `community-discord`
   completed under 30 seconds; `community-discord-pending-1` and
@@ -122,7 +126,11 @@ is not part of a visual/UI change.
 
 ## Evidence limits
 
-### Stale/provider audit (2026-08-11)
+### Historical/provider audit (archived evidence through v0.30.10)
+
+The evidence in this section is retained for incident and migration history. It
+does not describe the current v0.31.1 installed core or the v0.31.2 release
+under construction; use the current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
   remaining `Spark` matches are Lucide `Sparkles` icons used by the Query navigation surface.
