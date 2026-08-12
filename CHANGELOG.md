@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.4](https://github.com/0xPlayerOne/cortana/compare/v0.31.3...v0.31.4) (2026-08-12)
+
+
+### Bug Fixes
+
+* **eval:** publish bounded evaluation patch ([#829](https://github.com/0xPlayerOne/cortana/issues/829)) ([58f51e1](https://github.com/0xPlayerOne/cortana/commit/58f51e1387dce219bd5a21e87da285c1a3a74d7b))
+
 ## [0.31.3](https://github.com/0xPlayerOne/cortana/compare/v0.31.2...v0.31.3) (2026-08-12)
 
 
