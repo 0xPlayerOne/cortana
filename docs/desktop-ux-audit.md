@@ -174,19 +174,19 @@ current-release section above for sign-off status.
   signing/notarization remains a release blocker. No unsigned historical developer bundle is
   treated as current recovery evidence; the verified v0.30.10 release assets and installed CLI are
   authoritative.
-- The focused Desktop web gate passes 160 tests across 9 files, and the isolated full Bun suite
-  passes 258 tests across 22 files (latest run: 62.41 seconds, 1,273 assertions, including the
-  desktop lockfile helper regression). The Python suite
-  passes 160 tests, `bun run type-check`, `uv lock --check`, and the current source formatting/lint
-  gates pass. These are per-suite figures, not a deduplicated aggregate. The root `test` script now
-  runs Bun with isolated, single-worker file execution so file-local API mocks cannot leak between
-  OAuth suites or race the desktop pagination tests. The current-source native Desktop suite passes
-  all 129 tests; the focused `native_` subset passes 24 tests (105 filtered). These counts were
-  refreshed against the current v0.30.10 source tree without launching the Desktop app. The full
+- The historical focused Desktop web gate passed 160 tests across 9 files, and the isolated full
+  Bun suite passed 258 tests across 22 files (that run: 62.41 seconds, 1,273 assertions, including
+  the desktop lockfile helper regression). The Python suite passed 160 tests, `bun run type-check`,
+  `uv lock --check`, and the source formatting/lint gates passed. These are per-suite figures, not
+  a deduplicated aggregate. The root `test` script now runs Bun with isolated, single-worker file
+  execution so file-local API mocks cannot leak between OAuth suites or race the desktop pagination
+  tests. The v0.30.10 source tree's native Desktop suite passed all 129 tests; the focused `native_`
+  subset passed 24 tests (105 filtered). These counts were refreshed against that historical source
+  tree without launching the Desktop app. The full
   run still emits non-fatal React act diagnostics from a few asynchronous shell tests; these are
   separate from pass/fail results and do not constitute packaged-GUI evidence. These are headless assertions and
   do not count as a successful production-GUI drill.
-- The current Rust library suite on v0.30.10 passes 253 tests with
+- The historical v0.30.10 Rust library suite passed 253 tests with
   no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
 - The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
@@ -277,7 +277,7 @@ current-release section above for sign-off status.
   sources exceeded the tighter 30-second embedding window. The Discord pending-1 trial was
   cancelled before completion when its RPC channel walk outlasted the bounded operator probe.
   No trial reconciled or deleted indexed records; this evidence does not authorize recurring sync.
-- A current v0.30.10 packaged control-plane drill passed verified backup creation, disposable restore,
+- A historical v0.30.10 packaged control-plane drill passed verified backup creation, disposable restore,
   SQLite verification, and cleanup. It also passed offline
   init, bounded fixture ingestion, search/context, metadata-only audit export, backup, restore, and
   post-restore search; neither drill touched indexed personal data.

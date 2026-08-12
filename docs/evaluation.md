@@ -150,7 +150,7 @@ cache reuse and post-update invalidation both passed, and recall, MRR, case pass
 rate, and citation validity were all 1.0 within the 30,000 ms answer deadline.
 That historical result did not prove packaged GUI behavior or authorize a personal-index sync. The v0.31.2
 release archive and all 18 Desktop assets are independently verified, and the
-v0.31.2 CLI is installed, but its rerun exceeded the bounded operator window
+v0.31.2 CLI was installed for that historical check, but its rerun exceeded the bounded operator window
 and was stopped without a quality report. A prior source-tree run passed in
 14,186 ms with the same planner/synthesis, citation, cache, and revision
 checks. After raising the whole-run ceiling to 55 seconds while retaining the
