@@ -23,10 +23,11 @@ is not part of a visual/UI change.
   source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
-- The latest completed provider-backed fixture evaluation against the installed
-  v0.31.5 runtime baseline completed in 13,871 ms (earlier verified runs
-  completed in 19,524 ms, 15,774 ms, and 13,237 ms) with planner and synthesis model use,
-  valid citations, cache reuse, and revision invalidation. The opt-in evaluator remains fail-closed below one minute with
+- The installed v0.31.6 provider-backed fixture evaluation completed on
+  2026-08-12 in 22,269 ms (the earlier v0.31.5 runtime-baseline run completed
+  in 13,871 ms; prior verified runs completed in 19,524 ms, 15,774 ms, and
+  13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
+  and revision invalidation. The opt-in evaluator remains fail-closed below one minute with
   a 55-second whole-run bound; extractive mode remains the production default
   and recurring sync remains uninstalled because enabled filesystem/code sources
   are still bounded samples or otherwise below their
@@ -86,8 +87,10 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.31.5 runtime baseline most recently passed the bounded
-   fixture gate in 13,871 ms (earlier verified runs completed in 19,524 ms, 15,774 ms, and 13,237 ms) with planner/synthesis, citations, cache reuse, and
+2. Model-backed provider gate: the installed v0.31.6 runtime passed the bounded
+   fixture gate on 2026-08-12 in 22,269 ms (the earlier v0.31.5 runtime-baseline
+   run completed in 13,871 ms; prior verified runs completed in 19,524 ms,
+   15,774 ms, and 13,237 ms) with planner/synthesis, citations, cache reuse, and
    revision invalidation. This remains fixture-only evidence, not packaged-app
    proof; provider outages or slow responses still fail closed, and extractive
    mode remains the safe production default. The installed core also passes
