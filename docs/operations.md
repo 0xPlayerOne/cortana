@@ -114,6 +114,10 @@ or requested trial fails:
 scripts/source-smoke.sh --sync --max-documents 25 --max-bytes 5242880 --max-seconds 60
 ```
 
+Requested trials retry only transient transport, timeout, rate-limit, and 5xx failures once by
+default. `CORTANA_SOURCE_SMOKE_SYNC_ATTEMPTS=1` disables retries; values above `3` are rejected.
+Credential and configuration failures remain fail-fast.
+
 Credential failures are reported as `authorization denied` without exposing connector details;
 this includes Google OAuth refresh failures such as `invalid_grant` and a `400` response from the
 Google token endpoint. Re-authorize that source before enabling a recurring schedule.

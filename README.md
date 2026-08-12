@@ -122,6 +122,10 @@ never authorizing a full-corpus sync:
 scripts/source-smoke.sh --sync
 ```
 
+Explicit trial probes retry only transient transport, timeout, rate-limit, and 5xx failures
+once by default. Set `CORTANA_SOURCE_SMOKE_SYNC_ATTEMPTS=1` to disable retries (or `3` for the
+maximum); authorization and configuration failures remain fail-fast.
+
 ### 5. Start, stop, and uninstall safely
 
 The service commands affect only Cortana's per-user jobs and preserve configuration, data, logs,
