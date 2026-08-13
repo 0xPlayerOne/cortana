@@ -21,7 +21,7 @@ is not part of a visual/UI change.
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
 - The latest installed v0.31.7 provider-backed fixture evaluation completed on
-  2026-08-13 in 15,542 ms (the earlier 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
+  2026-08-13 in 14,258 ms (the earlier 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
   v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
   runtime-baseline run completed in 13,871 ms; prior verified runs
   completed in 19,524 ms, 15,774 ms, and
@@ -41,6 +41,11 @@ is not part of a visual/UI change.
   the Python suite (168 tests, 58.19 seconds). These are current headless
   source checks; they do not convert the packaged GUI/manual gates below into
   automated evidence.
+- The published macOS ARM archive was statically inspected on 2026-08-13:
+  `Contents/MacOS/cortana --version` reports `cortana 0.31.7`, the bundle passes
+  strict `codesign --verify --deep --strict`, and `spctl --assess` still rejects
+  it because Developer ID signing and notarization are not configured. The
+  archive was not launched.
 - The installed v0.31.7 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
   audit export, verified backup, restore into a second temporary data directory,
@@ -95,7 +100,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.31.7 runtime passed the bounded
-   fixture gate on 2026-08-13 in 15,542 ms (the earlier 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
+   fixture gate on 2026-08-13 in 14,258 ms (the earlier 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
    v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
    the v0.31.5 runtime-baseline
    run completed in 13,871 ms; prior

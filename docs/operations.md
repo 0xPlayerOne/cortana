@@ -272,7 +272,7 @@ completed all platform jobs and the strict v0.31.7 verifier passed. The
 installed core is now v0.31.7 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
 starting services or sync. Its latest installed v0.31.7 provider-backed fixture model
-gate passed on 2026-08-13 in 15,542 ms (the earlier 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs
+gate passed on 2026-08-13 in 14,258 ms (the earlier 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs
 and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
 runtime-baseline run passed in
 13,871 ms; prior verified runs passed
@@ -284,6 +284,19 @@ The installed v0.31.7 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
 backup, restore, SQLite verify, and post-restore search). It does not exercise
 the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
+
+To verify a published macOS package without launching its GUI, run the static
+package smoke check on macOS:
+
+```bash
+GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.7
+```
+
+It checks the bundle version, executes only the bundled core's `--version`
+command, and performs strict code-sign verification. Gatekeeper rejection is
+reported as an expected Developer ID/notarization gap unless
+`CORTANA_REQUIRE_GATEKEEPER=1` is set. This command does not exercise OAuth,
+tray, native dialogs, updater installation, or other GUI behavior.
 
 A fresh validation-only `scripts/source-smoke.sh` run passed all 21 enabled
 sources at one document, 65,536 bytes, and 30 seconds per source. It performed
