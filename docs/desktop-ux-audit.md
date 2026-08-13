@@ -93,8 +93,8 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the v0.31.9-configured persistent provider passed
-   the bounded fixture gate on 2026-08-13 in 13,460 ms (the published v0.31.8
+2. Model-backed provider gate: the v0.31.10-configured persistent provider passed
+   the bounded fixture gate on 2026-08-13 in 24,491 ms (the published v0.31.8
    archive's earlier 14,879 ms and the installed v0.31.7
    runtime's earlier 14,258 ms, 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms,
    17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
@@ -138,7 +138,7 @@ is not part of a visual/UI change.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.9 release or the installed v0.31.7 core; use the
+does not describe the current v0.31.10 release or the installed v0.31.7 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -154,7 +154,7 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.31.9` binary or packaged Desktop behavior. The current
+  the current `v0.31.10` binary or packaged Desktop behavior. The current
   `v0.31.8` asset workflow and strict verifier are recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
