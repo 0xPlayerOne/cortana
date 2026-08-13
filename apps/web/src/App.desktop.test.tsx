@@ -1135,7 +1135,7 @@ test('embedding model field supports preset catalog with custom fallback', async
   }
 })
 
-test('query model field supports catalog and custom text mode', async () => {
+test('query model field preserves custom text until provider discovery', async () => {
   const originalSettings = state.settings
   state.settings = {
     ...desktopSettings,
@@ -1154,11 +1154,6 @@ test('query model field supports catalog and custom text mode', async () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Query' }))
 
-    const catalog = screen.getByRole('combobox', { name: 'Model catalog' })
-    fireEvent.change(catalog, { target: { value: 'claude-3-5-sonnet-20241022' } })
-    expect((catalog as HTMLSelectElement).value).toBe('claude-3-5-sonnet-20241022')
-
-    fireEvent.change(catalog, { target: { value: 'Custom' } })
     const custom = screen.getByRole('textbox', { name: 'Model' }) as HTMLInputElement
     fireEvent.change(custom, { target: { value: 'custom-model-name' } })
     expect(custom.value).toBe('custom-model-name')

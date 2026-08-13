@@ -5395,11 +5395,7 @@ function EmbeddingSection({
               { value: 'Qwen/Qwen3-Embedding-0.6B', label: 'Qwen/Qwen3-Embedding-0.6B' },
               { value: 'Qwen/Qwen3-Embedding-4B', label: 'Qwen/Qwen3-Embedding-4B' },
             ]
-          : [
-              { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
-              { value: 'gpt-4o', label: 'gpt-4o' },
-              { value: 'text-embedding-3-small', label: 'text-embedding-3-small' },
-            ]
+          : []
       }
     >
       <div className="settings-note">
@@ -5505,9 +5501,10 @@ function ProviderSection<T extends ProviderValue>({
   const secret = provider.api_key_env
     ? secrets.find((item) => item.name === provider.api_key_env)
     : undefined
-  // Provider-advertised models take precedence only while available; the
-  // static catalog (local Qwen defaults, cloud presets) remains the safe
-  // fallback whenever discovery is unavailable or the endpoint changed.
+  // Provider-advertised models take precedence while available. Local Qwen
+  // presets are the only static catalog because they are Cortana's supported
+  // bundled path; cloud and local query model ids must come from the provider
+  // or remain explicit custom values rather than aging silently in the UI.
   const activeCatalog =
     advertisedModels && advertisedModels.length > 0 ? advertisedModels : modelCatalog
   const catalogValues = activeCatalog.map((candidate) => candidate.value)
@@ -5710,19 +5707,7 @@ function QuerySection({
       modelsError={modelsError}
       modelsTruncated={modelsTruncated}
       onRefreshModels={onRefreshModels}
-      modelCatalog={
-        settings.query.provider === 'local'
-          ? [
-              { value: 'qwen2.5-72b-instruct', label: 'qwen2.5-72b-instruct' },
-              { value: 'gemma2-27b-it', label: 'gemma2-27b-it' },
-            ]
-          : [
-              { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
-              { value: 'gpt-4o', label: 'gpt-4o' },
-              { value: 'claude-3-5-sonnet-20241022', label: 'claude-3.5-sonnet' },
-              { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash' },
-            ]
-      }
+      modelCatalog={[]}
     >
       <label className="toggle-row">
         <input
