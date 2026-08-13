@@ -15,6 +15,17 @@ pagination. Selecting a document opens bounded canonical content and its origina
 The webview reaches this data only through fixed typed loopback commands; it cannot open the index
 database or select a backend URL.
 
+## Download and first launch
+
+Normal users should download the matching package from the
+[latest Cortana release](https://github.com/0xPlayerOne/cortana/releases/latest). Install it, launch
+the app, and follow the guided **Readiness** panel. The panel is read-only until you approve a
+tool installation or a source action: Cortana does not authorize accounts, index content, or start
+recurring ingestion on its own. Create a workspace, configure one source, run **Validate**, and
+then use the confirmation-gated **Initial sync** for a small trial. The repository
+[README](../../README.md#desktop-first-launch-recommended) is the short user path; this file covers
+the native control-plane boundary and contributor setup.
+
 ## Development
 
 Start the installed Cortana services, then run:

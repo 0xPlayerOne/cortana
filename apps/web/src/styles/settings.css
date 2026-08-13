@@ -354,6 +354,10 @@
   padding-top: 12px;
 }
 
+.workspace-advanced-details[open] {
+  margin-bottom: 18px;
+}
+
 .workspace-advanced-details > summary {
   cursor: pointer;
   color: var(--theme-text-secondary);
@@ -363,7 +367,7 @@
 
 .workspace-advanced-fields {
   margin-top: 9px;
-  margin-bottom: 15px;
+  margin-bottom: 18px;
   display: grid;
   gap: 10px;
 }
