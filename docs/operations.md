@@ -230,12 +230,12 @@ archives, then executes the published Linux core binary and asserts that its `--
 matches the release tag (on non-Linux hosts the executable check is skipped because the verifier
 cannot run foreign-OS binaries).
 
-When `minisign` is installed, the verifier decodes each Tauri base64-encoded `.sig` payload and
-cryptographically verifies the published macOS, Linux, and Windows updater archives against the
-updater public key in `apps/desktop/src-tauri/tauri.conf.json`. The published-release workflow
-installs Ubuntu's `minisign` package and sets `CORTANA_REQUIRE_MINISIGN=1`, so that gate fails closed
-if the verifier is unavailable. Local invocations keep the portable default and skip the
-cryptographic check on hosts without `minisign`.
+The verifier decodes each Tauri base64-encoded `.sig` payload and cryptographically verifies the
+published macOS, Linux, and Windows updater archives against the updater public key in
+`apps/desktop/src-tauri/tauri.conf.json`. Signature verification is required by default and fails
+closed when `minisign` is unavailable. The published-release workflow also sets
+`CORTANA_REQUIRE_MINISIGN=1`; use the explicit `CORTANA_REQUIRE_MINISIGN=0` opt-out only for
+offline fixture work, never for a release decision.
 
 Each release-asset download uses a bounded three-attempt retry for transient transport failures;
 the attempt budget is capped at five and the retry delay at 60 seconds. Set
@@ -303,9 +303,9 @@ package smoke check on macOS. It selects the host architecture automatically;
 use `CORTANA_MAC_ARCH=arm64` or `CORTANA_MAC_ARCH=x86_64` to override it when
 cross-checking a release. The release must contain the matching architecture's
 app archive; the verifier fails explicitly when it does not.
-When `minisign` is installed it also verifies the published Tauri signature
-before extraction; set `CORTANA_REQUIRE_MINISIGN=1` to make that cryptographic
-check mandatory.
+The macOS verifier also verifies the published Tauri signature before extraction. Signature
+verification is mandatory by default; set `CORTANA_REQUIRE_MINISIGN=0` only for offline fixture
+work where `minisign` is intentionally unavailable.
 
 ```bash
 GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.7
