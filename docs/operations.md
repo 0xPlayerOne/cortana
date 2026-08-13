@@ -5,6 +5,11 @@ Cortana is designed to run as a private per-user service. The default server bin
 refused unless `--allow-remote` is paired with configured `[[auth.tokens]]` principals. The workspace stores
 that bearer token only in browser session storage.
 
+For a new installation, use the [Desktop-first download path](../README.md#desktop-first-launch-recommended)
+or the CLI steps in the [README](../README.md#quick-start). Keep the runtime query-only until
+readiness and a deliberately bounded source validation pass; this guide is the operator reference
+for service state, backups, authentication, sync safety, and release evidence.
+
 ## Health and telemetry
 
 - `GET /healthz` is an unauthenticated process-liveness check.
