@@ -113,6 +113,19 @@ publish the verification contract without changing the runtime or indexed data.
 
 This marker is the v0.31.12 release boundary for the protected promotion flow.
 
+## Post-v0.31.12 onboarding and auth hardening
+
+The protected promotion after `v0.31.12` carries the Desktop-first getting-started guide,
+documentation synchronization rules, and atomic HTTP bearer-policy reload with fail-closed
+remote-listener protection. This metadata-only marker restores those already-validated staging
+capabilities to Release Please's conventional-commit history after exact-tree promotion flattened
+their topic commits. It changes release metadata only; it does not authorize sources, enable
+recurring sync, alter credentials, or change indexed data.
+
+The next release verification must retain the v0.31.12 archive, checksum, updater-signature,
+manifest, and packaged-core gates. The HTTP reload behavior is covered by rotation, invalid-policy,
+remote-listener, and metadata-only audit tests; MCP remains process-scoped and must reconnect.
+
 ## Desktop release gates
 
 The desktop pipeline follows a staged audit policy:
