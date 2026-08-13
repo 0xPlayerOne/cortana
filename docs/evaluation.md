@@ -41,6 +41,11 @@ published artifact. Run the release verifier against the eventual patch release
 before using source-tree results as downloadable-release evidence; the model
 fixture remains synthetic and does not authorize sources or recurring sync.
 
+The current source tree also serializes Desktop settings and service-schedule writes through a
+shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
+This protects concurrent Desktop windows/processes but is not claimed for the published v0.31.12
+binary until a later package includes and verifies the change.
+
 The current source-tree evaluator also rejects oversized custom fixtures before parsing: the file,
 document count, case count, document content, and query sizes are bounded. The direct JSONL import
 path has its own bounded document, byte, wall-clock, and line-size limits. These protections are

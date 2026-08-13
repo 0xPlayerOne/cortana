@@ -144,6 +144,7 @@ The same source-tree lane now also:
 - fences Hindsight/Honcho outbox acknowledgements and failures to the specific lease that claimed
   the row, preventing an expired worker from changing a newer worker's result; and
 - serializes Desktop sidecar preparation and atomically renames completed sidecars into place.
+- serializes Desktop settings and schedule writes through one per-config cross-process lock.
 
 These are source-tree safety contracts, not evidence that a large personal sync or optional memory
 provider is enabled. The next release must rerun the full package, signature, packaged-core, and

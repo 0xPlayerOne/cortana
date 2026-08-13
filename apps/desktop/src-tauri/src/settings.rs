@@ -7,6 +7,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use toml::{Table, Value};
 
@@ -531,6 +532,10 @@ impl SettingsStore {
 
     fn save(&self, mut update: SettingsUpdate) -> Result<SettingsSnapshot, String> {
         reject_symlink(&self.config_path)?;
+        // Settings and schedule updates share this lock so concurrent windows
+        // or desktop processes cannot interleave backups, secret writes, and
+        // audit events. Keep the guard alive through the final reload.
+        let _config_lock = lock_config_file(&self.config_path)?;
 
         let mut root = read_config(&self.config_path)?;
         let visible_workspace_ids = configured_workspaces(&root)
@@ -1816,6 +1821,42 @@ pub(crate) fn default_config_path() -> PathBuf {
         })
 }
 
+/// Acquire the per-config lock used by all desktop configuration writers.
+///
+/// The lock file is intentionally retained after release: its inode is the
+/// stable cross-process synchronization primitive, while the advisory lock is
+/// held only for the duration of the returned file handle.
+pub(crate) fn lock_config_file(config_path: &Path) -> Result<std::fs::File, String> {
+    let parent = config_path
+        .parent()
+        .ok_or_else(|| "Cortana config path has no parent directory".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| format!("create config lock directory: {error}"))?;
+    let lock_path = config_lock_path(config_path);
+    reject_symlink(&lock_path)?;
+    let mut options = OpenOptions::new();
+    options.create(true).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let file = options
+        .open(&lock_path)
+        .map_err(|error| format!("open config lock {}: {error}", lock_path.display()))?;
+    set_owner_only_file(&file)?;
+    file.lock_exclusive()
+        .map_err(|error| format!("lock config {}: {error}", config_path.display()))?;
+    Ok(file)
+}
+
+pub(crate) fn config_lock_path(config_path: &Path) -> PathBuf {
+    let name = config_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("config.toml");
+    config_path.with_file_name(format!(".{name}.lock"))
+}
+
 fn default_data_path() -> PathBuf {
     std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -2566,6 +2607,16 @@ fn set_owner_only(path: &Path) -> Result<(), String> {
         .map_err(|error| format!("secure {}: {error}", path.display()))
 }
 
+fn set_owner_only_file(file: &std::fs::File) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))
+            .map_err(|error| format!("secure config lock: {error}"))?;
+    }
+    Ok(())
+}
+
 #[cfg(not(unix))]
 fn set_owner_only(_path: &Path) -> Result<(), String> {
     Ok(())
@@ -3117,6 +3168,40 @@ mod tests {
             audit
                 .iter()
                 .all(|event| event["secret_values_recorded"] == false)
+        );
+    }
+
+    #[test]
+    fn config_lock_serializes_desktop_writers() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let config_path = temp.path().join("config/config.toml");
+        let first = lock_config_file(&config_path).expect("first config lock");
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (acquired_tx, acquired_rx) = std::sync::mpsc::channel();
+        let second_path = config_path.clone();
+        let worker = std::thread::spawn(move || {
+            started_tx.send(()).expect("signal lock attempt");
+            let second = lock_config_file(&second_path).expect("second config lock");
+            acquired_tx.send(()).expect("signal lock acquisition");
+            drop(second);
+        });
+
+        started_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("second writer started");
+        assert!(
+            acquired_rx
+                .recv_timeout(std::time::Duration::from_millis(100))
+                .is_err()
+        );
+        drop(first);
+        acquired_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("second writer acquired lock after release");
+        worker.join().expect("lock worker");
+        assert_eq!(
+            config_lock_path(&config_path),
+            temp.path().join("config/.config.toml.lock")
         );
     }
 
