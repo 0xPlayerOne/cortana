@@ -86,6 +86,8 @@ runtime behavior, credentials, or indexed data.
 The release signal is intentionally documentation-only so Release Please can
 publish the verification contract without changing the runtime or indexed data.
 
+This marker is the v0.31.12 release boundary for the protected promotion flow.
+
 ## Desktop release gates
 
 The desktop pipeline follows a staged audit policy:
