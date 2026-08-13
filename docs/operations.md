@@ -36,6 +36,11 @@ before opening the store. This covers schema/backfill/fingerprint work as well a
 or sync operation. It is source-tree hardening and is not claimed for the v0.31.12 binary until a
 later release is published and verified.
 
+Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
+held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
+so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
+also source-tree hardening until a later packaged release includes and verifies it.
+
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
 `RUST_LOG=cortana=debug,tower_http=info`, to change verbosity. Request headers and evidence content
 are never logged.
