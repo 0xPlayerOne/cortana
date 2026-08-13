@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.12](https://github.com/0xPlayerOne/cortana/compare/v0.31.11...v0.31.12) (2026-08-13)
+
+
+### Bug Fixes
+
+* **release:** promote v0.31.12 verification boundary ([607b467](https://github.com/0xPlayerOne/cortana/commit/607b467d8938fa1a153ccc1a130e9ec133aea03e))
+
 ## [0.31.11](https://github.com/0xPlayerOne/cortana/compare/v0.31.10...v0.31.11) (2026-08-13)
 
 
