@@ -7,20 +7,22 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-13)
 
-- `v0.31.11` is the current protected release, published through Release Please
-  PR #979. Release-assets workflow `31675820099` completed all platform jobs and
-  the strict verifier confirmed all 18 core, Desktop, signature, checksum, and
-  updater-manifest assets. Asset verification does not launch the packaged GUI
-  or prove OS-level signing/notarization.
+- `v0.31.12` is the current protected release, published through Release Please
+  PR #1030. Release-assets workflow `31699076439` completed all platform jobs and
+  the strict verifier confirmed all 18 core, Desktop, signature, checksum,
+  updater-manifest, and packaged-core offline-evaluation gates. Asset verification
+  does not launch the packaged GUI or prove OS-level signing/notarization.
 - The installed core at `/Users/amf/.local/bin/cortana` remains `v0.31.7`; no
   local install, GUI launch, service restart, source authorization, or recurring
-  sync was performed for v0.31.11. The packaged GUI, browser OAuth, tray/menu,
+  sync was performed for v0.31.12. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
-- The published v0.31.11 core archive passed the persistent-provider fixture
-  evaluation on 2026-08-13 in 18,755 ms with planner and synthesis model use,
-  valid citations, cache reuse, and revision invalidation. The opt-in evaluator
-  remains fail-closed below one minute with a 55-second whole-run bound;
+- The current configured provider passed the persistent-provider fixture
+  evaluation on 2026-08-13 in 16,539 ms using the installed v0.31.7 CLI, with
+  planner and synthesis model use, valid citations, cache reuse, and revision
+  invalidation. The v0.31.12 release verifier separately passed the packaged
+  core's credential-free offline evaluator within 60 seconds. The opt-in model
+  evaluator remains fail-closed below one minute with a 55-second whole-run bound;
   extractive mode remains the production default and recurring sync remains
   uninstalled because enabled filesystem/code sources are still bounded samples
   or otherwise below their configured full-sync budgets.
@@ -30,13 +32,13 @@ is not part of a visual/UI change.
   passes 171 tests, including the retired-model runtime guard. These are
   headless source checks and do not
   substitute for the still-unverified interactive packaged GUI flows.
-- The published v0.31.11 macOS ARM archive was statically inspected on 2026-08-13:
-  `Contents/MacOS/cortana --version` reports `cortana 0.31.11`, the bundle passes
+- The published v0.31.12 macOS ARM archive was statically inspected on 2026-08-13:
+  `Contents/MacOS/cortana --version` reports `cortana 0.31.12`, the bundle passes
   strict `codesign --verify --deep --strict`, and `spctl --assess` still rejects
   it because Developer ID signing and notarization are not configured. The
   archive was not launched. The static verifier now selects the host
   architecture (or an explicit `CORTANA_MAC_ARCH` override) and fails closed
-  when the release does not publish a matching app archive; v0.31.11 publishes
+  when the release does not publish a matching app archive; v0.31.12 publishes
   only the ARM64 macOS app, so Intel macOS remains an explicit packaging gap.
 - The installed v0.31.7 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
@@ -137,7 +139,7 @@ is not part of a visual/UI change.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.11 release or the installed v0.31.7 core; use the
+does not describe the current v0.31.12 release or the installed v0.31.7 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -153,8 +155,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.31.11` binary or packaged Desktop behavior. The current
-  `v0.31.11` asset workflow and strict verifier are recorded in the release section above.
+  the current `v0.31.12` binary or packaged Desktop behavior. The current
+  `v0.31.12` asset workflow and strict verifier are recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
