@@ -2065,7 +2065,9 @@ mod tests {
         assert!(audit.iter().any(|event| {
             event.action == "auth.reload"
                 && event.outcome == "failed"
-                && !event.action.contains("stable-secret")
+                && event.principal == "admin-agent"
+                && event.project.is_none()
+                && event.source.is_none()
         }));
     }
 
