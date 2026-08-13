@@ -281,8 +281,9 @@ Release Please PR #979; release-assets workflow `31675820099` completed all
 platform jobs and the strict 18-asset verifier passed. The installed core remains
 v0.31.7 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
-starting services or sync. The persistent-provider fixture model gate passed on
-2026-08-13 in 24,491 ms (the published v0.31.8 archive's earlier 14,879 ms and
+starting services or sync. The published v0.31.11 core archive's persistent-provider
+fixture model gate passed on 2026-08-13 in 18,755 ms (the earlier v0.31.10-configured
+run passed in 24,491 ms; the published v0.31.8 archive's earlier 14,879 ms and
 the installed v0.31.7 14,258 ms, 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms,
 13,416 ms, 17,145 ms, and 12,613 ms runs
 and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
