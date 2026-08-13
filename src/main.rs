@@ -992,7 +992,8 @@ async fn main() -> Result<()> {
                 api::AppState::new(store, embedder)
                     .with_config(&config, service::sync_job_installed())
                     .with_answer_engine(answer)
-                    .with_auth_policy(auth),
+                    .with_auth_policy(auth)
+                    .with_auth_config_path(config_path.clone()),
                 &address,
                 web_dir.as_deref(),
                 allow_remote,

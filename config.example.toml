@@ -85,6 +85,27 @@ audit_max_events = 10000
 # token_env = "CORTANA_SHARED_AGENT_TOKEN"
 # scopes = ["query", "status"]
 # acl = ["work", "shared"]
+#
+# A query-only agent can be narrower:
+# [[auth.tokens]]
+# principal = "query-agent"
+# token_env = "CORTANA_QUERY_AGENT_TOKEN"
+# scopes = ["query"]
+# acl = ["work"]
+#
+# Keep status and admin as separate principals when possible. The admin example
+# includes query/status because HTTP routes enforce each scope independently.
+# [[auth.tokens]]
+# principal = "status-agent"
+# token_env = "CORTANA_STATUS_AGENT_TOKEN"
+# scopes = ["query", "status"]
+# acl = ["work", "shared"]
+#
+# [[auth.tokens]]
+# principal = "admin-agent"
+# token_env = "CORTANA_ADMIN_AGENT_TOKEN"
+# scopes = ["query", "status", "admin"]
+# acl = []
 
 [ingestion]
 # Every source must pass a complete preflight before Cortana embeds or reconciles it.

@@ -77,7 +77,7 @@ impl BackendClient {
         body: Option<Value>,
     ) -> Result<Value, String> {
         let scope = match url.path() {
-            "/metrics" | "/v1/audit" => "admin",
+            "/metrics" | "/v1/audit" | "/v1/auth/reload" => "admin",
             "/v1/status" => "status",
             _ => "query",
         };
