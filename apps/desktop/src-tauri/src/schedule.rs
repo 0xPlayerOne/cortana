@@ -61,6 +61,7 @@ pub fn load() -> Result<ScheduleSettings, String> {
 
 pub fn save(settings: ScheduleSettings) -> Result<ScheduleSettings, String> {
     validate(&settings)?;
+    let _config_lock = settings::lock_config_file(&settings::default_config_path())?;
     let path = schedule_path()?;
     let parent = path
         .parent()

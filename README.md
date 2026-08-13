@@ -44,7 +44,8 @@ The published v0.31.12 package is the latest downloadable release. This checkout
 post-release hardening being promoted through the protected `staging` to `main` flow: mutating
 CLI startup and direct JSONL imports serialize on the global lock, imports and evaluation fixtures
 have explicit resource ceilings, remote `/readyz` requires scoped bearer access, optional memory
-outbox leases are fenced, and Desktop sidecars publish atomically. These source-tree changes must
+outbox leases are fenced, Desktop settings and schedules serialize through a shared per-config
+lock, and Desktop sidecars publish atomically. These source-tree changes must
 not be represented as v0.31.12 package behavior until a later release is verified.
 
 ## Download the latest release
