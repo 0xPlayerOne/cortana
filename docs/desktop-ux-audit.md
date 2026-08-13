@@ -93,10 +93,11 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the published v0.31.11 core passed the bounded
-   fixture gate on 2026-08-13 in 18,755 ms (the v0.31.10-configured provider
-   run passed in 24,491 ms; the published v0.31.8
-   archive's earlier 14,879 ms and the installed v0.31.7
+2. Model-backed provider gate: the current configured provider passed the bounded
+   fixture gate on 2026-08-13 in 16,539 ms using the installed v0.31.7 CLI. The
+   published v0.31.12 release separately passed the credential-free packaged-core
+   offline evaluator within 60 seconds (the v0.31.10-configured provider run
+   passed in 24,491 ms; the published v0.31.8 archive's earlier 14,879 ms and the installed v0.31.7
    runtime's earlier 14,258 ms, 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms,
    17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
    v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
