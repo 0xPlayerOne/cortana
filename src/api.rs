@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::RwLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
@@ -47,11 +48,29 @@ pub struct AppState {
     pub store: Store,
     pub embedder: Arc<dyn Embedder>,
     metrics: Arc<RuntimeMetrics>,
-    auth: AuthPolicy,
+    auth: Arc<RwLock<AuthRuntime>>,
     ingestion: Arc<IngestionStatus>,
     workspaces: Arc<Vec<WorkspaceConfig>>,
     answer: AnswerEngine,
     audit_max_events: usize,
+    auth_config_path: Option<std::path::PathBuf>,
+}
+
+#[derive(Clone)]
+struct AuthRuntime {
+    policy: AuthPolicy,
+    /// A remote listener must never be left without a bearer policy after a
+    /// reload. Loopback-only services may use local-owner mode.
+    remote_listener: bool,
+}
+
+impl AuthRuntime {
+    fn new(policy: AuthPolicy, remote_listener: bool) -> Self {
+        Self {
+            policy,
+            remote_listener,
+        }
+    }
 }
 
 impl AppState {
@@ -66,11 +85,12 @@ impl AppState {
             store,
             embedder,
             metrics: Arc::new(RuntimeMetrics::new()),
-            auth: AuthPolicy::default(),
+            auth: Arc::new(RwLock::new(AuthRuntime::new(AuthPolicy::default(), false))),
             ingestion: Arc::new(IngestionStatus::default()),
             workspaces: Arc::new(Vec::new()),
             answer,
             audit_max_events: crate::config::AuthConfig::default().audit_max_events,
+            auth_config_path: None,
         }
     }
 
@@ -86,9 +106,60 @@ impl AppState {
         self
     }
 
-    pub fn with_auth_policy(mut self, auth: AuthPolicy) -> Self {
-        self.auth = auth;
+    pub fn with_auth_config_path(mut self, path: impl Into<std::path::PathBuf>) -> Self {
+        self.auth_config_path = Some(path.into());
         self
+    }
+
+    pub fn auth_policy(&self) -> AuthPolicy {
+        self.auth_snapshot().policy
+    }
+
+    pub fn with_auth_policy(mut self, auth: AuthPolicy) -> Self {
+        self.auth = Arc::new(RwLock::new(AuthRuntime::new(auth, false)));
+        self
+    }
+
+    pub fn with_auth_policy_for_listener(
+        mut self,
+        auth: AuthPolicy,
+        remote_listener: bool,
+    ) -> Self {
+        self.auth = Arc::new(RwLock::new(AuthRuntime::new(auth, remote_listener)));
+        self
+    }
+
+    fn auth_snapshot(&self) -> AuthRuntime {
+        self.auth
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn replace_auth_policy(&self, policy: AuthPolicy) -> Result<()> {
+        let mut runtime = self
+            .auth
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        anyhow::ensure!(
+            !runtime.remote_listener || policy.requires_token(),
+            "remote listeners must retain at least one configured bearer principal"
+        );
+        runtime.policy = policy;
+        Ok(())
+    }
+
+    fn set_remote_listener(&self, remote_listener: bool) -> Result<()> {
+        let mut runtime = self
+            .auth
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        anyhow::ensure!(
+            !remote_listener || runtime.policy.requires_token(),
+            "remote listeners must retain at least one configured bearer principal"
+        );
+        runtime.remote_listener = remote_listener;
+        Ok(())
     }
 }
 
@@ -379,6 +450,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/context", post(context))
         .route("/v1/answer", post(answer))
         .route("/v1/audit", get(audit_events))
+        .route("/v1/auth/reload", post(reload_auth))
         .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
@@ -402,13 +474,14 @@ async fn authorize(
     if matches!(path, "/healthz" | "/readyz") {
         return next.run(request).await;
     }
-    let principal = if state.auth.requires_token() {
+    let auth = state.auth_snapshot();
+    let principal = if auth.policy.requires_token() {
         request
             .headers()
             .get(header::AUTHORIZATION)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.strip_prefix("Bearer "))
-            .and_then(|token| state.auth.authenticate(token))
+            .and_then(|token| auth.policy.authenticate(token))
     } else {
         Some(Principal::local("local-http"))
     };
@@ -421,7 +494,7 @@ async fn authorize(
             .into_response();
     };
     let required_scope = match path {
-        "/metrics" | "/v1/audit" => ADMIN_SCOPE,
+        "/metrics" | "/v1/audit" | "/v1/auth/reload" => ADMIN_SCOPE,
         "/v1/status" => STATUS_SCOPE,
         _ => QUERY_SCOPE,
     };
@@ -495,6 +568,87 @@ async fn list_documents(
             Err(internal_error(error))
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+struct AuthReloadResponse {
+    reloaded: bool,
+    requires_token: bool,
+}
+
+async fn reload_auth(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<AuthReloadResponse>, (StatusCode, String)> {
+    let started = Instant::now();
+    let Some(path) = state.auth_config_path.as_ref() else {
+        record_audit(
+            &state,
+            &principal,
+            "auth.reload",
+            None,
+            None,
+            "failed",
+            None,
+            started,
+        );
+        return Err((
+            StatusCode::NOT_IMPLEMENTED,
+            "auth reload requires a file-backed configuration".into(),
+        ));
+    };
+    let result = (|| -> Result<AuthPolicy> {
+        let mut config = Config::load(Some(path))?;
+        config.load_environment()?;
+        AuthPolicy::from_config(&config)
+    })();
+    let policy = match result {
+        Ok(policy) => policy,
+        Err(_error) => {
+            record_audit(
+                &state,
+                &principal,
+                "auth.reload",
+                None,
+                None,
+                "failed",
+                None,
+                started,
+            );
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "auth policy reload failed validation".into(),
+            ));
+        }
+    };
+    let requires_token = policy.requires_token();
+    if let Err(error) = state.replace_auth_policy(policy) {
+        record_audit(
+            &state,
+            &principal,
+            "auth.reload",
+            None,
+            None,
+            "failed",
+            None,
+            started,
+        );
+        return Err((StatusCode::CONFLICT, error.to_string()));
+    }
+    record_audit(
+        &state,
+        &principal,
+        "auth.reload",
+        None,
+        None,
+        "succeeded",
+        None,
+        started,
+    );
+    Ok(Json(AuthReloadResponse {
+        reloaded: true,
+        requires_token,
+    }))
 }
 
 async fn document(
@@ -1271,11 +1425,12 @@ pub async fn serve(
     allow_remote: bool,
 ) -> Result<()> {
     let socket: std::net::SocketAddr = address.parse()?;
-    let authenticated = state.auth.requires_token();
+    let authenticated = state.auth_snapshot().policy.requires_token();
     anyhow::ensure!(
         socket.ip().is_loopback() || (allow_remote && authenticated),
         "refusing non-loopback bind without --allow-remote and a bearer token"
     );
+    state.set_remote_listener(!socket.ip().is_loopback())?;
     if !socket.ip().is_loopback() {
         tracing::warn!(%socket, "serving a bearer-authenticated remote endpoint; terminate TLS upstream");
     }
@@ -1423,6 +1578,22 @@ mod tests {
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
                 .expect("secure fixture");
         }
+    }
+
+    fn write_auth_reload_fixture(
+        directory: &std::path::Path,
+        token_env: &str,
+        token: &str,
+        tokens: &str,
+    ) -> std::path::PathBuf {
+        let env_path = directory.join("secrets.env");
+        write_private_fixture(&env_path, &format!("{token_env}={token}\n"));
+        let config_path = directory.join("config.toml");
+        write_private_fixture(
+            &config_path,
+            &format!("[runtime]\nenv_file = \"secrets.env\"\n\n[auth]\n{tokens}\n"),
+        );
+        config_path
     }
 
     fn google_source(token: Option<std::path::PathBuf>) -> SourceConfig {
@@ -1773,6 +1944,150 @@ mod tests {
             .await
             .expect("metrics response");
         assert_eq!(authorized.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn auth_reload_rotates_http_tokens_and_revokes_the_old_value() {
+        let (directory, state) = test_state();
+        let config_path = write_auth_reload_fixture(
+            directory.path(),
+            "CORTANA_TOKEN",
+            "old-secret",
+            "[[auth.tokens]]\nprincipal = \"admin-agent\"\ntoken_env = \"CORTANA_TOKEN\"\nscopes = [\"query\", \"status\", \"admin\"]\n",
+        );
+        let mut config = Config::load(Some(&config_path)).expect("config");
+        config.load_environment().expect("environment");
+        let policy = AuthPolicy::from_config(&config).expect("policy");
+        let state = state
+            .with_auth_policy(policy)
+            .with_auth_config_path(&config_path);
+        let app = router(state.clone());
+
+        let before = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer old-secret")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(before.status(), StatusCode::OK);
+
+        write_private_fixture(
+            &directory.path().join("secrets.env"),
+            "CORTANA_TOKEN=new-secret\n",
+        );
+        let reloaded = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/reload")
+                    .header(header::AUTHORIZATION, "Bearer old-secret")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("reload response");
+        assert_eq!(reloaded.status(), StatusCode::OK);
+
+        let revoked = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer old-secret")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("revoked response");
+        assert_eq!(revoked.status(), StatusCode::UNAUTHORIZED);
+        let current = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer new-secret")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("current response");
+        assert_eq!(current.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn auth_reload_preserves_last_good_policy_on_invalid_config() {
+        let (directory, state) = test_state();
+        let config_path = write_auth_reload_fixture(
+            directory.path(),
+            "CORTANA_TOKEN",
+            "stable-secret",
+            "[[auth.tokens]]\nprincipal = \"admin-agent\"\ntoken_env = \"CORTANA_TOKEN\"\nscopes = [\"query\", \"status\", \"admin\"]\n",
+        );
+        let mut config = Config::load(Some(&config_path)).expect("config");
+        config.load_environment().expect("environment");
+        let policy = AuthPolicy::from_config(&config).expect("policy");
+        let state = state
+            .with_auth_policy(policy)
+            .with_auth_config_path(&config_path);
+        let app = router(state.clone());
+
+        write_private_fixture(&directory.path().join("secrets.env"), "CORTANA_TOKEN=\n");
+        let failed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/reload")
+                    .header(header::AUTHORIZATION, "Bearer stable-secret")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("reload response");
+        assert_eq!(failed.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let still_valid = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/status")
+                    .header(header::AUTHORIZATION, "Bearer stable-secret")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(still_valid.status(), StatusCode::OK);
+        let audit = state.store.audit_events(10).expect("audit events");
+        assert!(audit.iter().any(|event| {
+            event.action == "auth.reload"
+                && event.outcome == "failed"
+                && event.principal == "admin-agent"
+                && event.project.is_none()
+                && event.source.is_none()
+        }));
+    }
+
+    #[test]
+    fn remote_listener_cannot_be_deauthenticated_by_reload() {
+        let (_directory, state) = test_state();
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("REMOTE_TOKEN".into(), "secret".into());
+        config.auth.tokens.push(AuthTokenConfig {
+            principal: "remote-admin".into(),
+            token_env: "REMOTE_TOKEN".into(),
+            scopes: vec![QUERY_SCOPE.into(), STATUS_SCOPE.into(), ADMIN_SCOPE.into()],
+            acl: Vec::new(),
+        });
+        let policy = AuthPolicy::from_config(&config).expect("policy");
+        let state = state.with_auth_policy_for_listener(policy, true);
+        assert!(state.replace_auth_policy(AuthPolicy::default()).is_err());
+        assert!(state.auth_policy().requires_token());
     }
 
     #[tokio::test]
