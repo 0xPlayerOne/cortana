@@ -36,6 +36,11 @@ The v0.31.12 source retains the post-v0.31.6 Apple Notes executable hardening an
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
+The checkout may include post-v0.31.12 hardening that has not shipped in a
+published artifact. Run the release verifier against the eventual patch release
+before using source-tree results as downloadable-release evidence; the model
+fixture remains synthetic and does not authorize sources or recurring sync.
+
 The built-in thresholds and data live in `eval/fixtures.json`. Use
 `cortana eval --fixture /path/to/synthetic.json` for a versioned project-specific fixture. Never
 put personal or production content into committed evaluation data.

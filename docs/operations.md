@@ -13,7 +13,8 @@ for service state, backups, authentication, sync safety, and release evidence.
 ## Health and telemetry
 
 - `GET /healthz` is an unauthenticated process-liveness check.
-- `GET /readyz` verifies both the SQLite index and a real embedding request.
+- `GET /readyz` verifies both the SQLite index and a real embedding request. It is public on
+  loopback, but requires a bearer principal with `status` scope on remote listeners.
 - `GET /v1/status` reports source freshness, index counts, runtime counters, and cache telemetry
   through a bounded database-stats probe; a stalled SQLite read fails closed instead of hanging.
 - `POST /v1/answer` runs the bounded human-facing query pipeline.
@@ -309,6 +310,13 @@ The installed v0.31.12 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
 backup, restore, SQLite verify, and post-restore search). It does not exercise
 the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
+
+The current checkout also contains post-v0.31.12 hardening that is not part of
+that published artifact until a later protected release: direct ingestion and
+source validation share the global `sync.lock`, and remote `/readyz` requests
+require a bearer principal with `status` scope while `/healthz` remains public
+liveness. Keep the published-release evidence above separate from these
+source-tree changes.
 
 To verify a published macOS package without launching its GUI, run the static
 package smoke check on macOS. It selects the host architecture automatically;

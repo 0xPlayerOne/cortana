@@ -594,6 +594,10 @@ async fn main() -> Result<()> {
         sample,
     }) = cli.command.as_ref()
     {
+        // Validation launches connector helpers and cleans their temporary
+        // spools. Serialize it with ingestion/sync so a read-only preflight
+        // cannot remove an active connector's output.
+        let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
         return validate_configured_source(
             &config,
             source,
@@ -779,7 +783,14 @@ async fn main() -> Result<()> {
         ) => {
             unreachable!()
         }
-        Some(Command::Ingest { input }) => ingest(&store, embedder.as_ref(), &input).await,
+        Some(Command::Ingest { input }) => {
+            // JSONL ingestion mutates the same index and operational metadata as
+            // configured syncs. Serialize it with sync, backup, restore, and
+            // embedding operations so a direct CLI ingest cannot race a
+            // snapshot or leave partially updated sync state behind.
+            let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+            ingest(&store, embedder.as_ref(), &input).await
+        }
         Some(Command::ImportEmbeddings {
             input,
             no_reconcile,

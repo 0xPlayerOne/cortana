@@ -34,6 +34,11 @@ GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
+The checkout may contain post-v0.31.12 hardening that has not yet been published as a release.
+Unreleased source-tree behavior must not be represented as v0.31.12 package evidence; use the
+protected staging and promotion flow, followed by the release verifier, before calling it part of
+the downloadable release.
+
 Generated version pull requests are restricted to changelog and configured
 version files, then merged automatically without running the code-change test
 matrix. Topic pull requests target the protected `staging` branch and run the
@@ -113,7 +118,7 @@ publish the verification contract without changing the runtime or indexed data.
 
 This marker is the v0.31.12 release boundary for the protected promotion flow.
 
-## Post-v0.31.12 onboarding and auth hardening
+## Post-v0.31.12 onboarding and auth hardening (source-tree, not yet a release)
 
 The protected promotion after `v0.31.12` carries the Desktop-first getting-started guide,
 documentation synchronization rules, and atomic HTTP bearer-policy reload with fail-closed
@@ -125,6 +130,10 @@ recurring sync, alter credentials, or change indexed data.
 The next release verification must retain the v0.31.12 archive, checksum, updater-signature,
 manifest, and packaged-core gates. The HTTP reload behavior is covered by rotation, invalid-policy,
 remote-listener, and metadata-only audit tests; MCP remains process-scoped and must reconnect.
+
+The post-release source also serializes direct JSONL ingestion and source validation with the
+global `sync.lock`, and requires a bearer principal for `/readyz` on remote listeners while keeping
+`/healthz` public liveness. These changes are not retroactively claimed for the v0.31.12 artifact.
 
 ## Desktop release gates
 
