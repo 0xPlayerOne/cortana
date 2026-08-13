@@ -16,19 +16,6 @@ import type {
   ContextBundle,
 } from './types'
 
-afterEach(async () => {
-  await act(async () => {
-    // Unmount before draining pending shell work so a late promise cannot
-    // update the renderer after this test has finished.
-    cleanup()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    await Promise.resolve()
-    await Promise.resolve()
-    await Promise.resolve()
-    await new Promise((resolve) => setTimeout(resolve, 0))
-  })
-})
-
 // Capture the real api module, then register a mock that delegates every export
 // to a mutable state object so each test controls the network boundary.
 const realApi = await import('./api')
@@ -112,6 +99,29 @@ mock.module('./api', () => ({
 }))
 
 const { App } = await import('./App')
+
+afterEach(async () => {
+  await act(async () => {
+    // Unmount before draining pending shell work so a late promise cannot
+    // update the renderer after this test has finished.
+    cleanup()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+  // Tests deliberately replace the API delegates with deferred or failing
+  // handlers. Restore every mutable boundary after unmounting so this file's
+  // evidence is order-independent when Bun runs the complete suite.
+  state.statusRequest = null
+  state.documents = (_project, _source, _query, cursor) =>
+    Promise.resolve(cursor ? secondDocumentsPage : firstDocumentsPage)
+  state.documentsCalls = []
+  state.answer = null
+  state.getContext = null
+  state.getDocument = null
+})
 
 async function flushAppBootstrap() {
   await act(async () => {
