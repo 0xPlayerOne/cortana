@@ -9,8 +9,8 @@ configuration only.
 
 ## Install the portable skill
 
-`scripts/install-agent-integrations.sh` installs the skill into the shared skill roots used by
-Codex, Hermes, OpenCode, and agents that follow the `~/.agents/skills` convention:
+`scripts/install-agent-integrations.sh` installs the skill into the current Codex and
+`~/.agents/skills` roots by default:
 
 ```bash
 ./scripts/install-agent-integrations.sh
@@ -18,16 +18,18 @@ Codex, Hermes, OpenCode, and agents that follow the `~/.agents/skills` conventio
 
 It installs only the skill files (`SKILL.md` plus `agents/openai.yaml`). MCP client configuration
 remains an explicit, one-time setting per client — the script never edits client configuration.
+Hermes and OpenCode roots are legacy integrations and are never modified implicitly; add them
+explicitly to `CORTANA_SKILL_ROOTS` when those clients are intentionally in scope.
 The same install runs automatically when `install-local.sh` is invoked with
 `CORTANA_INSTALL_AGENT_INTEGRATIONS=1`.
 
 Defaults, all overridable with environment variables:
 
-| Setting     | Default                                                                                                               |
-| ----------- | --------------------------------------------------------------------------------------------------------------------- |
-| Binary      | `$HOME/.local/bin/cortana` (`CORTANA_BINARY`)                                                                         |
-| Config      | `$HOME/.config/cortana/config.toml` (`CORTANA_CONFIG`)                                                                |
-| Skill roots | `$HOME/.codex/skills:$HOME/.hermes/skills:$HOME/.config/opencode/skills:$HOME/.agents/skills` (`CORTANA_SKILL_ROOTS`) |
+| Setting     | Default                                                                                                     |
+| ----------- | ----------------------------------------------------------------------------------------------------------- |
+| Binary      | `$HOME/.local/bin/cortana` (`CORTANA_BINARY`)                                                               |
+| Config      | `$HOME/.config/cortana/config.toml` (`CORTANA_CONFIG`)                                                      |
+| Skill roots | `$HOME/.codex/skills:$HOME/.agents/skills` (`CORTANA_SKILL_ROOTS`; Hermes/OpenCode require explicit opt-in) |
 
 The installed skill instructs agents to prefer the configured MCP server first, fall back to
 `cortana context`, and only then use raw search. Client configuration examples below use absolute
