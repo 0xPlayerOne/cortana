@@ -2312,26 +2312,22 @@ async fn ingest(store: &Store, embedder: &dyn Embedder, input: &str) -> Result<(
         }
         anyhow::ensure!(
             line.len() <= MAX_JSONL_LINE_BYTES,
-            "direct ingest JSONL line exceeds the {} byte safety limit",
-            MAX_JSONL_LINE_BYTES
+            "direct ingest JSONL line exceeds the {MAX_JSONL_LINE_BYTES} byte safety limit"
         );
         let document: Document = serde_json::from_str(&line).context("invalid Document JSONL")?;
         document_count = document_count.saturating_add(1);
         anyhow::ensure!(
             document_count <= DIRECT_INGEST_MAX_DOCUMENTS,
-            "direct ingest exceeds the {} document safety limit",
-            DIRECT_INGEST_MAX_DOCUMENTS
+            "direct ingest exceeds the {DIRECT_INGEST_MAX_DOCUMENTS} document safety limit"
         );
         content_bytes = content_bytes.saturating_add(document.content.len() as u64);
         anyhow::ensure!(
             content_bytes <= DIRECT_INGEST_MAX_BYTES,
-            "direct ingest exceeds the {} byte safety limit",
-            DIRECT_INGEST_MAX_BYTES
+            "direct ingest exceeds the {DIRECT_INGEST_MAX_BYTES} byte safety limit"
         );
         anyhow::ensure!(
             started.elapsed() <= Duration::from_secs(DIRECT_INGEST_MAX_SECONDS),
-            "direct ingest exceeded the {} second safety limit",
-            DIRECT_INGEST_MAX_SECONDS
+            "direct ingest exceeded the {DIRECT_INGEST_MAX_SECONDS} second safety limit"
         );
         documents.push(document);
         if documents.len() == 64 {
