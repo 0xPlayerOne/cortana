@@ -26,23 +26,20 @@ is not part of a visual/UI change.
   extractive mode remains the production default and recurring sync remains
   uninstalled because enabled filesystem/code sources are still bounded samples
   or otherwise below their configured full-sync budgets.
-- The latest focused native Tauri acceptance suite passes 24 tests in 5.12 seconds
-  after compilation. The broader recorded Bun and native suites remain historical;
-  both harnesses are headless and do not substitute
-  for the still-unverified interactive packaged GUI flows.
-- A fresh v0.31.8 source-tree verification on 2026-08-13 also passed the complete
-  Bun suite (258 tests across 22 files, 1,262 assertions, 56.30 seconds), the
-  complete native Tauri suite (129 tests, 4.58 seconds after compilation), and
-  the Python suite (168 tests, 58.19 seconds). These are current headless
-  source checks; they do not convert the packaged GUI/manual gates below into
-  automated evidence.
-- The published macOS ARM archive was statically inspected on 2026-08-13:
-  `Contents/MacOS/cortana --version` reports `cortana 0.31.7`, the bundle passes
+- The complete native Tauri suite passes 129 tests in 3.88 seconds after
+  compilation. The focused web App suite passes all 10 tests; a full web run
+  under the locally installed Bun 1.4 canary remains order-sensitive (255/258
+  passed, with three cross-file UI flakes), so it is not recorded as a green
+  release gate. The Python package gate passes 168 tests after restoring the
+  Release Please Cargo.lock marker. These are headless source checks and do not
+  substitute for the still-unverified interactive packaged GUI flows.
+- The published v0.31.8 macOS ARM archive was statically inspected on 2026-08-13:
+  `Contents/MacOS/cortana --version` reports `cortana 0.31.8`, the bundle passes
   strict `codesign --verify --deep --strict`, and `spctl --assess` still rejects
   it because Developer ID signing and notarization are not configured. The
   archive was not launched. The static verifier now selects the host
   architecture (or an explicit `CORTANA_MAC_ARCH` override) and fails closed
-  when the release does not publish a matching app archive; v0.31.7 publishes
+  when the release does not publish a matching app archive; v0.31.8 publishes
   only the ARM64 macOS app, so Intel macOS remains an explicit packaging gap.
 - The installed v0.31.7 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
@@ -97,13 +94,13 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.31.7 runtime passed the bounded
-   fixture gate on 2026-08-13 in 14,258 ms (the earlier 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
+2. Model-backed provider gate: the published v0.31.8 aarch64 archive passed the
+   bounded fixture gate on 2026-08-13 in 14,879 ms (the installed v0.31.7
+   runtime's earlier 14,258 ms, 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms,
+   17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
    v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
-   the v0.31.5 runtime-baseline
-   run completed in 13,871 ms; prior
-   verified runs completed in 19,524 ms,
-   15,774 ms, and 13,237 ms) with planner/synthesis, citations, cache reuse, and
+   the v0.31.5 runtime-baseline run completed in 13,871 ms; prior verified runs
+   completed in 19,524 ms, 15,774 ms, and 13,237 ms) with planner/synthesis, citations, cache reuse, and
    revision invalidation. This remains fixture-only evidence, not packaged-app
    proof; provider outages or slow responses still fail closed, and extractive
    mode remains the safe production default. The installed core also passes
@@ -141,7 +138,7 @@ is not part of a visual/UI change.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.7 release or the installed v0.31.7 core; use the
+does not describe the current v0.31.8 release or the installed v0.31.7 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -157,8 +154,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.31.7` binary or packaged Desktop behavior. The current
-  `v0.31.7` asset workflow and strict verifier are recorded in the release section above.
+  the current `v0.31.8` binary or packaged Desktop behavior. The current
+  `v0.31.8` asset workflow and strict verifier are recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
