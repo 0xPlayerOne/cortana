@@ -69,13 +69,14 @@ a corpus sync.
 ## Post-v0.31.11 production hardening
 
 The source tree after the published `v0.31.11` tag includes production hardening
-that must be carried by the next patch release: provider and Desktop loopback
+that is carried by the next patch release: provider and Desktop loopback
 clients reject redirects, the required unit gate runs both Bun and Python tests,
 retired model identifiers are guarded in shipped runtime paths, and packaged-core
 offline evaluation is enforced by the release verifiers. This marker restores
 those changes to Release Please's conventional-commit history after the protected
 promotion flattened their source commits. It changes release metadata only; it
 does not alter runtime behavior, credentials, or trigger a corpus sync.
+
 
 ## Desktop release gates
 
