@@ -201,7 +201,6 @@ function BrainDocumentView({
             type="button"
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
-            title={favorite ? 'Remove favorite' : 'Add favorite'}
             data-tooltip={favorite ? 'Remove favorite' : 'Add favorite'}
             className="quick-tooltip"
             onClick={() => setFavorite(toggleFavoriteDocument(document.id))}
@@ -214,7 +213,6 @@ function BrainDocumentView({
               target={isDesktopApp ? undefined : '_blank'}
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
-              title="Open original source"
               data-tooltip="Open original source"
               className="quick-tooltip"
               onClick={(event) => {
@@ -362,7 +360,6 @@ function DocumentView({
             type="button"
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
-            title={favorite ? 'Remove favorite' : 'Add favorite'}
             data-tooltip={favorite ? 'Remove favorite' : 'Add favorite'}
             className="quick-tooltip"
             onClick={() => setFavorite(toggleFavoriteDocument(active.chunk_id))}
@@ -375,7 +372,6 @@ function DocumentView({
               target={isDesktopApp ? undefined : '_blank'}
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
-              title="Open original source"
               data-tooltip="Open original source"
               className="quick-tooltip"
               onClick={(event) => {
