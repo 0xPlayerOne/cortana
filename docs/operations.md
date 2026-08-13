@@ -286,7 +286,13 @@ backup, restore, SQLite verify, and post-restore search). It does not exercise
 the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
 
 To verify a published macOS package without launching its GUI, run the static
-package smoke check on macOS:
+package smoke check on macOS. It selects the host architecture automatically;
+use `CORTANA_MAC_ARCH=arm64` or `CORTANA_MAC_ARCH=x86_64` to override it when
+cross-checking a release. The release must contain the matching architecture's
+app archive; the verifier fails explicitly when it does not.
+When `minisign` is installed it also verifies the published Tauri signature
+before extraction; set `CORTANA_REQUIRE_MINISIGN=1` to make that cryptographic
+check mandatory.
 
 ```bash
 GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.7
