@@ -9,6 +9,31 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
+## Current release: v0.31.12
+
+Download the Desktop app or a matching core archive from the
+[latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
+`v0.31.12` release contains the current Rust runtime, web workspace, connector package, Desktop
+bundles, example configuration, and Cortana agent skill. Its published 18-asset set passed the
+archive, checksum, updater-signature, manifest, and credential-free packaged-core verification
+gates.
+
+For a first installation, use the Desktop-first steps in the [README](../README.md#desktop-first-launch-recommended).
+The app starts query-only: source authorization, validation, initial sync, local model setup, and
+recurring ingestion are separate confirmation-gated actions. macOS Developer ID/notarization and
+real browser, tray, native-dialog, and updater interactions remain host acceptance gates; passing
+the release verifier does not claim those GUI behaviors.
+
+To re-check the published release without touching the live index or starting a sync:
+
+```bash
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
+  scripts/verify-desktop-release.sh v0.31.12
+```
+
+The current-release section is the operational source of truth. Entries below preserve historical
+release and incident evidence and should be labeled historical when a newer patch is published.
+
 Generated version pull requests are restricted to changelog and configured
 version files, then merged automatically without running the code-change test
 matrix. Topic pull requests target the protected `staging` branch and run the
