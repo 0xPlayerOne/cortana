@@ -19,18 +19,19 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.8`, published through Release Please PR
-#956. Release-assets workflow `31667577467` completed all platform jobs and the
-strict 18-asset verifier passed. The installed CLI remains `v0.31.7`; no local
-install or service restart was performed for this metadata-only patch. A fresh
-`v0.31.8` aarch64 core archive evaluation passed on 2026-08-13 in 14,879 ms
-under the 55-second bound, with planner and synthesis model use, valid citations,
-cache reuse, and revision invalidation. This remains fixture-only query-layer
-evidence and does not prove packaged GUI behavior, personal-index sync, or
-Developer ID/notarization trust. The evaluator remains bounded and opt-in;
-extractive mode is the production default.
+The current protected source is `v0.31.9`, published after exact-tree promotion
+PR #960 and reconciliation PR #962. It is a metadata-only follow-up to the fully
+verified v0.31.8 Desktop release; release-assets workflow `31667577467` completed
+all platform jobs and the strict 18-asset verifier passed. The installed CLI
+remains `v0.31.7`; no local install or service restart was performed for v0.31.9.
+A fresh v0.31.9-configured model evaluation against the persistent query provider
+passed on 2026-08-13 in 13,460 ms under the 55-second bound, with planner and
+synthesis model use, valid citations, cache reuse, and revision invalidation.
+This remains fixture-only query-layer evidence and does not prove packaged GUI
+behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
+remains bounded and opt-in; extractive mode is the production default.
 
-The v0.31.8 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.31.9 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
