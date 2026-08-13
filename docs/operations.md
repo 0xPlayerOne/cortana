@@ -293,6 +293,13 @@ in 19,524 ms, 15,774 ms, and
 13,237 ms) with planner/synthesis, citations, cache reuse, and revision
 invalidation. No packaged-GUI evaluation is claimed.
 
+Release v0.31.12 followed through Release Please PR #1030; release-assets
+workflow `31699076439` completed all platform jobs and the strict 18-asset
+verifier passed, including the packaged-core offline evaluator. The installed
+core remains v0.31.7, so the provider-backed 16,539 ms fixture result above is
+installed-core evidence rather than a claim about a locally installed v0.31.12
+binary. No packaged-GUI evaluation is claimed.
+
 The installed v0.31.7 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
 backup, restore, SQLite verify, and post-restore search). It does not exercise
@@ -308,7 +315,7 @@ verification is mandatory by default; set `CORTANA_REQUIRE_MINISIGN=0` only for 
 work where `minisign` is intentionally unavailable.
 
 ```bash
-GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.7
+GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.12
 ```
 
 It checks the bundle version, executes only the bundled core's `--version`
@@ -328,15 +335,15 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. This gate was added after v0.31.11, so the published v0.31.11 asset result above remains
-the prior archive/signature/checksum/updater-manifest evidence and does not claim packaged-core eval.
+`passed: true`. The published v0.31.12 verifier passed this packaged-core gate in addition to the
+archive/signature/checksum/updater-manifest checks.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
 
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.11
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.12
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
