@@ -44,7 +44,6 @@ export function TitleActions({
         <button
           type="button"
           aria-label="Filter documents"
-          title="Filter documents"
           data-tooltip="Filter documents"
           className="quick-tooltip"
           onClick={onOpenFilters}
@@ -54,7 +53,6 @@ export function TitleActions({
         <button
           type="button"
           aria-label="Open conversations"
-          title="Open conversations"
           data-tooltip="Open conversations"
           className="quick-tooltip"
           onClick={onOpenHistory}
@@ -65,7 +63,6 @@ export function TitleActions({
           type="button"
           className="mobile-button quick-tooltip"
           aria-label="Open agent context"
-          title="Open agent context"
           data-tooltip="Open agent context"
           onClick={onOpenContext}
         >
@@ -81,7 +78,6 @@ export function TitleActions({
         type="button"
         className="mobile-button quick-tooltip"
         aria-label="Open sources"
-        title="Open sources"
         data-tooltip="Open sources"
         onClick={onOpenSources}
       >
@@ -90,7 +86,6 @@ export function TitleActions({
       <div className="history-buttons" role="group" aria-label="Search history">
         <button
           aria-label="Previous search query"
-          title="Previous search query"
           data-tooltip="Previous search query"
           className="quick-tooltip"
           disabled={!canGoBack}
@@ -101,7 +96,6 @@ export function TitleActions({
         </button>
         <button
           aria-label="Next search query"
-          title="Next search query"
           data-tooltip="Next search query"
           className="quick-tooltip"
           disabled={!canGoForward}
@@ -220,7 +214,6 @@ function RailButton({
       type="button"
       className={`rail-button ${active ? 'active' : ''} quick-tooltip`}
       aria-label={label}
-      title={title}
       data-tooltip={title}
       disabled={disabled}
       onClick={onClick}

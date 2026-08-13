@@ -1916,7 +1916,6 @@ export function App() {
           <button
             type="button"
             className="status-link quick-tooltip quick-tooltip--above"
-            title={`Open the Updates section (Cortana ${desktopInfo?.desktop_version || '—'})`}
             data-tooltip={`Open the Updates section (Cortana ${desktopInfo?.desktop_version || '—'})`}
             onClick={() => {
               if (!canLeaveSettings()) return
@@ -1981,7 +1980,6 @@ function ActiveSourceJobs({ jobs, onOpen }: { jobs: DesktopSourceJob[]; onOpen: 
       type="button"
       className="source-jobs status-link quick-tooltip quick-tooltip--above"
       aria-label="Open active source jobs"
-      title={`${detail}. Open the activity inbox.`}
       data-tooltip={`${detail}. Open the activity inbox.`}
       onClick={onOpen}
     >
@@ -2000,7 +1998,6 @@ function SourceJobsErrorIndicator({ error, onOpen }: { error: string; onOpen: ()
       type="button"
       className="source-jobs status-link attention quick-tooltip quick-tooltip--above"
       aria-label="Open source job status"
-      title={`${detail}. Open the activity inbox.`}
       data-tooltip={`${detail}. Open the activity inbox.`}
       onClick={onOpen}
     >
@@ -2024,7 +2021,6 @@ function SourceJobAttentionIndicator({
       type="button"
       className="source-jobs status-link attention quick-tooltip quick-tooltip--above"
       aria-label="Open source job attention"
-      title={`${detail}. Open the activity inbox.`}
       data-tooltip={`${detail}. Open the activity inbox.`}
       onClick={onOpen}
     >
@@ -2057,7 +2053,6 @@ function InstallerIndicator({
       type="button"
       className={`installer-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label={`Open installer status for ${job.tool}`}
-      title={`${job.summary}. Open readiness for details.`}
       data-tooltip={`${job.summary}. Open readiness for details.`}
       onClick={onOpen}
     >
@@ -2082,7 +2077,6 @@ function ServiceActivityIndicator({
       type="button"
       className={`service-activity-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label="Open service activity"
-      title={`${action} ${activity.target}${activity.detail ? `: ${activity.detail}` : ''}. Open services for details.`}
       data-tooltip={`${action} ${activity.target}${activity.detail ? `: ${activity.detail}` : ''}. Open services for details.`}
       onClick={onOpen}
     >
@@ -2109,7 +2103,6 @@ function ReadinessActivityIndicator({
       type="button"
       className={`readiness-activity-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label="Open readiness activity"
-      title={`${activity.detail || (active ? 'System readiness scan is running.' : 'System readiness scan completed.')}`}
       data-tooltip={`${activity.detail || (active ? 'System readiness scan is running.' : 'System readiness scan completed.')}`}
       onClick={onOpen}
     >
@@ -2137,7 +2130,6 @@ export function ServiceHealthIndicator({
         type="button"
         className="service-activity-health warning quick-tooltip quick-tooltip--above"
         aria-label="Open service health"
-        title={`${error}. Open Services for details.`}
         data-tooltip={`${error}. Open Services for details.`}
         onClick={onOpen}
       >
@@ -2171,7 +2163,6 @@ export function ServiceHealthIndicator({
       type="button"
       className={`service-activity-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label="Open service health"
-      title={`${detail}. Open Services for controls.`}
       data-tooltip={`${detail}. Open Services for controls.`}
       onClick={onOpen}
     >
@@ -2205,7 +2196,6 @@ function SidecarStatusIndicator({
       type="button"
       className={`sidecar-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label={`Open ${label} status`}
-      title={detail}
       data-tooltip={detail}
       onClick={onOpen}
     >

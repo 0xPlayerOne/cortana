@@ -103,7 +103,8 @@ test('Context panel copy action confirms successful copy', async () => {
 
   renderPanel()
   const button = screen.getByRole('button', { name: 'Copy agent context' })
-  expect(button.getAttribute('title')).toBe('Copy agent context')
+  expect(button.getAttribute('title')).toBeNull()
+  expect(button.getAttribute('data-tooltip')).toBe('Copy agent context')
   fireEvent.click(button)
   await waitFor(() => expect(screen.getByText('Context copied')).toBeTruthy())
   expect(copiedText).toBe('server-context')

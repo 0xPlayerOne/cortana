@@ -135,7 +135,6 @@ export function SourcePanel({
           type="button"
           className="mobile-close quick-tooltip"
           aria-label="Close sources"
-          title="Close sources"
           data-tooltip="Close sources"
           onClick={onClose}
         >
@@ -145,7 +144,6 @@ export function SourcePanel({
           type="button"
           className="quick-tooltip"
           aria-label="Add source"
-          title="Add source"
           data-tooltip="Add source"
           onClick={onOpenSourcesSettings}
         >
@@ -155,7 +153,6 @@ export function SourcePanel({
           type="button"
           className="quick-tooltip"
           aria-label="Source settings"
-          title="Source settings"
           data-tooltip="Source settings"
           onClick={onOpenSourcesSettings}
         >
@@ -197,7 +194,6 @@ export function SourcePanel({
                   type="button"
                   className="source-job-cancel quick-tooltip"
                   aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
-                  title={`Cancel ${job.project} ${job.source} ${job.operation}`}
                   data-tooltip={`Cancel ${job.project} ${job.source} ${job.operation}`}
                   disabled={job.status === 'cancelling'}
                   onClick={() => onCancelSourceJob(job.id)}
@@ -294,7 +290,6 @@ export function SourcePanel({
                         type="button"
                         className="tree-toggle quick-tooltip"
                         aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
-                        title={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
                         data-tooltip={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
                         aria-expanded={!isCollapsed}
                         onClick={() => {
@@ -326,17 +321,6 @@ export function SourcePanel({
                           type="button"
                           className="source-action quick-tooltip"
                           aria-label={`Open ${item.name} setup`}
-                          title={
-                            sourceJobActive
-                              ? 'Wait for the active source job to finish'
-                              : auth?.method === 'google_oauth'
-                                ? 'Open Google source settings'
-                                : auth?.method === 'github_oauth'
-                                  ? 'Open GitHub source settings'
-                                  : auth?.method === 'discord_rpc'
-                                    ? 'Open Discord source settings'
-                                    : 'Open the provider setup page'
-                          }
                           data-tooltip={
                             sourceJobActive
                               ? 'Wait for the active source job to finish'
@@ -364,15 +348,6 @@ export function SourcePanel({
                           type="button"
                           className="source-action quick-tooltip"
                           aria-label={`Authorize ${item.name}`}
-                          title={
-                            sourceJobActive
-                              ? 'Wait for the active source job to finish'
-                              : auth?.method === 'github_oauth'
-                                ? 'Authorize this GitHub source in your browser'
-                                : auth?.method === 'discord_rpc'
-                                  ? 'Approve this Discord source in the running Discord Desktop client'
-                                  : 'Authorize this Google source in your browser'
-                          }
                           data-tooltip={
                             sourceJobActive
                               ? 'Wait for the active source job to finish'
@@ -401,15 +376,6 @@ export function SourcePanel({
                           aria-checked={item.enabled}
                           aria-busy={sourceToggleBusy === key}
                           aria-label={`${item.enabled ? 'Disable' : 'Enable'} ${item.name}`}
-                          title={
-                            sourceJobActive
-                              ? 'Wait for the active source job to finish'
-                              : sourceToggleBusy !== null
-                                ? 'Saving source setting…'
-                                : sourceToggleDisabled
-                                  ? 'Save or discard settings changes before toggling a source'
-                                  : `${item.enabled ? 'Disable' : 'Enable'} ${item.name}`
-                          }
                           data-tooltip={
                             sourceJobActive
                               ? 'Wait for the active source job to finish'
