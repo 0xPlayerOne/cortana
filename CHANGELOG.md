@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.8](https://github.com/0xPlayerOne/cortana/compare/v0.31.7...v0.31.8) (2026-08-13)
+
+
+### Bug Fixes
+
+* promote exact staging tree (bounded probes) ([#955](https://github.com/0xPlayerOne/cortana/issues/955)) ([b5f0d0a](https://github.com/0xPlayerOne/cortana/commit/b5f0d0a0fd6198a5b32962af93ce6db10eb33a2c))
+
 ## [0.31.7](https://github.com/0xPlayerOne/cortana/compare/v0.31.6...v0.31.7) (2026-08-12)
 
 
