@@ -83,6 +83,9 @@ addition to archive, checksum, updater-signature, and manifest checks.
 The v0.31.12 patch release carries this verification contract; it does not alter
 runtime behavior, credentials, or indexed data.
 
+The release signal is intentionally documentation-only so Release Please can
+publish the verification contract without changing the runtime or indexed data.
+
 ## Desktop release gates
 
 The desktop pipeline follows a staged audit policy:
