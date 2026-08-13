@@ -285,6 +285,19 @@ drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
 backup, restore, SQLite verify, and post-restore search). It does not exercise
 the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
 
+To verify a published macOS package without launching its GUI, run the static
+package smoke check on macOS:
+
+```bash
+GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.7
+```
+
+It checks the bundle version, executes only the bundled core's `--version`
+command, and performs strict code-sign verification. Gatekeeper rejection is
+reported as an expected Developer ID/notarization gap unless
+`CORTANA_REQUIRE_GATEKEEPER=1` is set. This command does not exercise OAuth,
+tray, native dialogs, updater installation, or other GUI behavior.
+
 A fresh validation-only `scripts/source-smoke.sh` run passed all 21 enabled
 sources at one document, 65,536 bytes, and 30 seconds per source. It performed
 no embedding, indexing, reconciliation, or scheduler changes; filesystem/code
