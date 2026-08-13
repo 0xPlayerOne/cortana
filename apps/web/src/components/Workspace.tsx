@@ -44,7 +44,9 @@ export function Workspace({
   documentLoading,
   graph,
   graphLoading,
+  graphAppendLoading = false,
   graphError,
+  onLoadMoreGraph,
   onRetryGraph,
   tab,
   onTabChange,
@@ -62,7 +64,9 @@ export function Workspace({
   documentLoading: boolean
   graph: BrainGraphPage | null
   graphLoading: boolean
+  graphAppendLoading?: boolean
   graphError: string
+  onLoadMoreGraph?: () => void
   onRetryGraph?: () => void
   tab: WorkspaceTab
   onTabChange: (tab: WorkspaceTab) => void
@@ -127,7 +131,9 @@ export function Workspace({
         <GraphView
           graph={graph}
           graphLoading={graphLoading}
+          graphAppendLoading={graphAppendLoading}
           graphError={graphError}
+          onLoadMore={onLoadMoreGraph}
           onRetry={onRetryGraph}
           evidence={evidence}
           onSelect={selectEvidenceByChunkId}
@@ -512,24 +518,32 @@ function AnswerView({
 function GraphView({
   graph,
   graphLoading,
+  graphAppendLoading = false,
   graphError,
   onRetry,
+  onLoadMore,
   evidence,
   onSelect,
   onSelectDocument,
 }: {
   graph: BrainGraphPage | null
   graphLoading: boolean
+  graphAppendLoading: boolean
   graphError: string
   onRetry?: () => void
+  onLoadMore?: () => void
   evidence: Evidence[]
   onSelect: (chunkId: string) => void
   onSelectDocument: (id: string) => void
 }) {
+  const [visibleCount, setVisibleCount] = useState(12)
   const graphDocuments = graph?.nodes.filter((node) => node.kind === 'document') ?? []
   const usingEvidenceFallback = graph === null
+  useEffect(() => {
+    setVisibleCount(12)
+  }, [graph?.nodes[0]?.id])
   const nodes = graphDocuments.length
-    ? graphDocuments.slice(0, 12)
+    ? graphDocuments.slice(0, visibleCount)
     : usingEvidenceFallback
       ? evidence.slice(0, 8).map((item) => ({
           id: item.chunk_id,
@@ -598,6 +612,31 @@ function GraphView({
           <button type="button" className="link-button" onClick={onRetry}>
             Retry graph
           </button>
+        </div>
+      )}
+      {graph?.next_cursor && onLoadMore && (
+        <div className="graph-pagination">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onLoadMore}
+            disabled={graphAppendLoading}
+          >
+            {graphAppendLoading ? 'Loading more nodes…' : 'Load more nodes'}
+          </button>
+          <span>More nodes remain outside this bounded view.</span>
+        </div>
+      )}
+      {!graph?.next_cursor && graphDocuments.length > visibleCount && (
+        <div className="graph-pagination">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setVisibleCount((count) => Math.min(count + 12, graphDocuments.length))}
+          >
+            Show more nodes
+          </button>
+          <span>Showing a bounded window for responsive rendering.</span>
         </div>
       )}
       {nodes.map((node, index) => (

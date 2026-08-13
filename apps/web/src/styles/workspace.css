@@ -493,6 +493,25 @@
   z-index: 2;
 }
 
+.graph-pagination {
+  position: absolute;
+  z-index: 2;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  gap: 9px;
+  color: var(--theme-content-subtle);
+  border: 1px solid var(--theme-content-border);
+  background: var(--theme-content-surface);
+  font-size: 11px;
+}
+
+.graph-pagination .secondary-button {
+  min-height: 30px;
+}
+
 .graph-view > button {
   --distance: min(29vw, calc(50% - 92px));
   position: absolute;
