@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use futures_util::future::join_all;
-use reqwest::{Client, StatusCode, header::RETRY_AFTER};
+use reqwest::{Client, StatusCode, header::RETRY_AFTER, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::{Mutex as AsyncMutex, watch};
@@ -253,6 +253,7 @@ impl OpenAiEmbedder {
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(config.request_timeout_seconds.max(1)))
+            .redirect(Policy::none())
             .build()?;
         Ok(Self {
             client,
@@ -435,7 +436,7 @@ fn normalize(mut values: Vec<f32>) -> Vec<f32> {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use axum::{Router, body::Body, routing::post};
+    use axum::{Router, body::Body, http::StatusCode, response::Response, routing::post};
     use tempfile::tempdir;
 
     use super::*;
@@ -618,5 +619,60 @@ mod tests {
             .await
             .expect_err("oversized response");
         assert!(error.to_string().contains("safety limit"));
+    }
+
+    #[tokio::test]
+    async fn embedding_provider_redirects_fail_closed_without_forwarding_requests() {
+        let forwarded = Arc::new(AtomicUsize::new(0));
+        let forwarded_target = forwarded.clone();
+        let app = Router::new()
+            .route(
+                "/v1/embeddings",
+                post(|| async {
+                    Response::builder()
+                        .status(StatusCode::TEMPORARY_REDIRECT)
+                        .header("location", "/v1/embeddings-target")
+                        .body(Body::empty())
+                        .expect("redirect response")
+                }),
+            )
+            .route(
+                "/v1/embeddings-target",
+                post(move || {
+                    let forwarded = forwarded_target.clone();
+                    async move {
+                        forwarded.fetch_add(1, Ordering::SeqCst);
+                        Body::from(r#"{"data":[{"embedding":[1.0]}]}"#)
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind embedding redirect server");
+        let address = listener.local_addr().expect("embedding redirect address");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve embedding redirect");
+        });
+
+        let embedder = OpenAiEmbedder::new(
+            EmbeddingConfig {
+                base_url: format!("http://{address}/v1"),
+                dimension: 1,
+                ..EmbeddingConfig::default()
+            },
+            Some("secret-that-must-not-follow".into()),
+        )
+        .expect("embedding config");
+        let error = embedder
+            .embed(&["redirected content".into()])
+            .await
+            .expect_err("redirect must not be followed");
+        assert!(
+            error.to_string().contains("EOF"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(forwarded.load(Ordering::SeqCst), 0);
     }
 }

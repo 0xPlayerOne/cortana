@@ -59,7 +59,10 @@ staging="$(mktemp -d "${TMPDIR:-/tmp}/cortana-release-assets.XXXXXX")"
 trap 'rm -rf "$staging"' EXIT
 
 minisign_bin="${CORTANA_MINISIGN_BIN:-minisign}"
-require_minisign="${CORTANA_REQUIRE_MINISIGN:-0}"
+# Published updater signatures are part of the production release contract.
+# Keep an explicit opt-out for offline fixture work, but fail closed by default
+# when the verifier is unavailable.
+require_minisign="${CORTANA_REQUIRE_MINISIGN:-1}"
 case "$require_minisign" in
     0|1) ;;
     *)

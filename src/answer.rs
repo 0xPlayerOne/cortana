@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use futures_util::future::join_all;
+use reqwest::redirect::Policy;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::sync::Semaphore;
@@ -101,6 +102,7 @@ impl OpenAiLanguageModel {
         Ok(Self {
             client: reqwest::Client::builder()
                 .timeout(Duration::from_secs(config.request_timeout_seconds.max(1)))
+                .redirect(Policy::none())
                 .build()?,
             base_url: config.base_url.trim_end_matches('/').to_string(),
             model: config.model.clone(),
@@ -817,7 +819,7 @@ pub fn validate_query_provider(config: &QueryConfig) -> Result<()> {
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use axum::{Json, Router, body::Body, routing::post};
+    use axum::{Json, Router, body::Body, http::StatusCode, response::Response, routing::post};
     use chrono::Utc;
     use tempfile::tempdir;
 
@@ -1073,6 +1075,62 @@ mod tests {
             .await
             .expect_err("oversized model response");
         assert!(error.to_string().contains("safety limit"));
+    }
+
+    #[tokio::test]
+    async fn query_provider_redirects_fail_closed_without_forwarding_prompts() {
+        let forwarded = Arc::new(AtomicUsize::new(0));
+        let forwarded_target = forwarded.clone();
+        let app = Router::new()
+            .route(
+                "/v1/chat/completions",
+                post(|| async {
+                    Response::builder()
+                        .status(StatusCode::TEMPORARY_REDIRECT)
+                        .header("location", "/v1/chat/completions-target")
+                        .body(Body::empty())
+                        .expect("redirect response")
+                }),
+            )
+            .route(
+                "/v1/chat/completions-target",
+                post(move || {
+                    let forwarded = forwarded_target.clone();
+                    async move {
+                        forwarded.fetch_add(1, Ordering::SeqCst);
+                        Json(serde_json::json!({
+                            "choices": [{"message": {"content": "must not be reached"}}]
+                        }))
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind query redirect server");
+        let address = listener.local_addr().expect("query redirect address");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve query redirect");
+        });
+
+        let model = OpenAiLanguageModel::new(
+            &QueryConfig {
+                base_url: format!("http://{address}/v1"),
+                ..QueryConfig::default()
+            },
+            Some("secret-that-must-not-follow".into()),
+        )
+        .expect("query config");
+        let error = model
+            .complete("system prompt", "private evidence", 32, "redirect-test")
+            .await
+            .expect_err("redirect must not be followed");
+        assert!(
+            error.to_string().contains("EOF"),
+            "unexpected error: {error}"
+        );
+        assert_eq!(forwarded.load(Ordering::SeqCst), 0);
     }
 
     fn row(chunk_id: &str, title: &str, content: &str, score: f32) -> Evidence {

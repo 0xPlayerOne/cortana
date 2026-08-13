@@ -47,7 +47,10 @@ fi
 gh release download "$tag" --repo "$repo" --pattern "$archive_name" --pattern "$signature_name" --dir "$staging"
 
 minisign_bin="${CORTANA_MINISIGN_BIN:-minisign}"
-require_minisign="${CORTANA_REQUIRE_MINISIGN:-0}"
+# Published updater signatures are part of the production package contract.
+# Keep an explicit opt-out for offline fixture work, but fail closed by default
+# when the verifier is unavailable.
+require_minisign="${CORTANA_REQUIRE_MINISIGN:-1}"
 case "$require_minisign" in
   0|1) ;;
   *)
