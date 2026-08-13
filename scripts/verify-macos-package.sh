@@ -135,6 +135,8 @@ core_version="$("$core" --version)"
   exit 1
 }
 
+"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/verify-packaged-core.sh" "$core"
+
 codesign --verify --deep --strict "$app"
 echo "strict codesign verification passed: $app"
 

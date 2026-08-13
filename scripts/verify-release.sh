@@ -77,7 +77,8 @@ for required in \
   "$package/install.sh" \
   "$package/share/cortana/web/index.html" \
   "$package/config.example.toml" \
-  "$package/skills/cortana/SKILL.md"; do
+  "$package/skills/cortana/SKILL.md" \
+  "$package/scripts/verify-packaged-core.sh"; do
   [[ -f "$required" ]] || {
     echo "release archive is missing: ${required#"$package/"}" >&2
     exit 1
@@ -107,6 +108,8 @@ if "$run_binary"; then
     exit 1
   fi
   echo "Verified packaged binary version ${expected_version} matches the archive name"
+  "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/verify-packaged-core.sh" \
+    "$package/bin/cortana"
 else
   echo "Verified archive structure and checksum; skipped cross-platform binary execution"
 fi

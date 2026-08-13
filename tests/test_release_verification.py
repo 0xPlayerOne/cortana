@@ -4,7 +4,9 @@ Covers the installed-vs-checkout version-skew gate: ``verify-release.sh`` must
 reject an archive whose packaged ``bin/cortana --version`` output does not
 match the version encoded in the archive name, and the published-asset gate
 (``verify-desktop-release.sh``) must execute the published Linux core binary
-and assert its version against the release tag on Linux hosts.
+and assert its version against the release tag on Linux hosts. Both gates also
+run the packaged core's deterministic offline evaluation in an isolated
+temporary configuration with a bounded timeout.
 
 The desktop verifier normally talks to GitHub through ``gh``; the tests
 substitute a fake ``gh`` and ``minisign`` on ``PATH`` that serve a synthetic
@@ -28,6 +30,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 VERIFY_RELEASE = ROOT / "scripts" / "verify-release.sh"
 VERIFY_DESKTOP = ROOT / "scripts" / "verify-desktop-release.sh"
+VERIFY_PACKAGED = ROOT / "scripts" / "verify-packaged-core.sh"
 UPDATER_PUBLIC_KEY = base64.b64decode(
     json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text())["plugins"]["updater"][
         "pubkey"
@@ -63,8 +66,18 @@ requires_shell = pytest.mark.skipif(
 )
 
 
-def fake_binary(reported_version: str) -> bytes:
-    return f'#!/bin/sh\necho "cortana {reported_version}"\n'.encode()
+def fake_binary(reported_version: str, eval_passed: bool = True) -> bytes:
+    evaluation = '{"passed":true}' if eval_passed else '{"passed":false}'
+    exit_code = 0 if eval_passed else 1
+    return f"""#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = "eval" ]; then
+    printf '%s\\n' '{evaluation}'
+    exit {exit_code}
+  fi
+done
+echo "cortana {reported_version}"
+""".encode()
 
 
 def write_executable(path: Path, content: bytes) -> None:
@@ -89,6 +102,7 @@ def build_core_tree(directory: Path, version: str, suffix: str | None = None) ->
     (root / "dist/cortana_brain-9.9.9-py3-none-any.whl").write_bytes(b"wheel")
     (root / "scripts/install-release.sh").write_text("#!/bin/sh\n")
     (root / "scripts/verify-release.sh").write_text("#!/bin/sh\n")
+    (root / "scripts/verify-packaged-core.sh").write_text("#!/bin/sh\n")
     return root
 
 
@@ -99,7 +113,11 @@ def sha256_of(path: Path) -> str:
 
 
 def build_core_archive(
-    directory: Path, version: str, binary_version: str, suffix: str | None = None
+    directory: Path,
+    version: str,
+    binary_version: str,
+    suffix: str | None = None,
+    eval_passed: bool = True,
 ) -> Path:
     """Build ``cortana-v{version}-{suffix}.tar.gz`` plus its sidecar.
 
@@ -109,7 +127,7 @@ def build_core_archive(
     root = build_core_tree(directory, version, suffix)
     for path in root.rglob("*"):
         if path.is_file() and path.name == "cortana" and path.parent.name == "bin":
-            write_executable(path, fake_binary(binary_version))
+            write_executable(path, fake_binary(binary_version, eval_passed))
     archive = directory / f"{root.name}.tar.gz"
     with tarfile.open(archive, "w:gz") as handle:
         handle.add(root, arcname=root.name)
@@ -396,6 +414,43 @@ def test_verify_release_rejects_installed_vs_checkout_version_skew(tmp_path: Pat
     assert result.returncode == 1
     assert "release binary version mismatch" in result.stderr
     assert "expected 'cortana 9.9.9', got 'cortana 1.0.0'" in result.stderr
+
+
+@requires_shell
+def test_verify_release_rejects_packaged_offline_evaluation_failure(tmp_path: Path) -> None:
+    archive = build_core_archive(tmp_path, VERSION, VERSION, eval_passed=False)
+
+    result = run_script(VERIFY_RELEASE, [str(archive)])
+
+    assert result.returncode == 1
+    assert "packaged core offline evaluation failed" in result.stderr
+
+
+@requires_shell
+def test_packaged_core_verifier_rejects_a_wedged_evaluation(tmp_path: Path) -> None:
+    binary = tmp_path / "cortana"
+    write_executable(
+        binary,
+        b"""#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = "eval" ]; then
+    sleep 2
+    printf '%s\\n' '{"passed":true}'
+    exit 0
+  fi
+done
+echo 'cortana 9.9.9'
+""",
+    )
+
+    result = run_script(
+        VERIFY_PACKAGED,
+        [str(binary)],
+        env_extra={"CORTANA_PACKAGED_EVAL_TIMEOUT_SECONDS": "1"},
+    )
+
+    assert result.returncode == 1
+    assert "timed out after 1s" in result.stderr
 
 
 @requires_shell
