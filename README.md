@@ -28,6 +28,10 @@ query-only mode: it does not authorize accounts, download model weights, index d
 recurring sync until you explicitly approve each step. A failed readiness or source-validation
 check is a safety stop, not an invitation to bypass the gate.
 
+If you remember only one thing: install Desktop, create one workspace, validate one source, run
+one small initial sync, and ask one cited question. The complete first-run checklist is in
+[Getting started](docs/getting-started.md).
+
 ## Download the latest release
 
 For normal use, download Cortana from the
@@ -55,11 +59,14 @@ The Desktop app can remain in the tray while Cortana's local services run in the
 same installation can be used by agents through the optional Cortana skill and MCP integration;
 agent configuration remains an explicit, one-time choice.
 
+If you only want to use Cortana, stop here. The terminal commands below are for operators,
+recovery, and contributors; they are not required for a normal Desktop installation.
+
 ### Choose the path that fits you
 
 | If you are...                         | Start here                                                                           | What it covers                                                               |
 | ------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| Installing Cortana for the first time | [Desktop first launch](#desktop-first-launch-recommended)                            | Download, setup approval, one source, validation, and a safe trial sync      |
+| Installing Cortana for the first time | [Getting started](docs/getting-started.md)                                           | Download, setup approval, one source, validation, and a safe trial sync      |
 | Operating an existing installation    | [Operations guide](docs/operations.md)                                               | Services, readiness, backups, authentication, audit, and recovery            |
 | Connecting an agent                   | [Agent integrations](docs/integrations.md)                                           | The portable skill, MCP, HTTP, CLI, and scoped principals                    |
 | Adding or validating sources          | [Ingestion guide](docs/ingestion.md)                                                 | Source contracts, cursors, ACLs, budgets, and reconciliation safety          |

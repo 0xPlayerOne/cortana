@@ -575,22 +575,32 @@ MCP process in the unrestricted local-owner profile and must not be used for a s
 
 ### Rotate a shared-agent token
 
-The current HTTP and stdio MCP processes load their bearer policy at startup. A
-credential rotation therefore requires a short, controlled restart of the
-affected API/MCP process; it is not a hot-reload operation. Use a new
-environment-variable name and overlap the principals so the agent can switch
-without losing access:
+The HTTP service can atomically reload its complete bearer policy without dropping requests. The
+stdio MCP process remains process-scoped and must reconnect. Use a new environment-variable name
+and overlap the principals so the agent can switch without losing access:
 
 1. Add the new secret value through **Settings → Access** (or the owner-only `secrets.env` file)
    and keep the old principal unchanged.
 2. Point a new principal at that variable with the same least-privilege scopes and ACL labels.
 3. Verify one bounded `status` or `context` request using the new token and confirm the audit event
    has the expected principal and scope. Do not put either token in shell history or a request body.
-4. Remove the old principal and secret, save, and restart only the affected API/MCP process. A
-   failed verification can be rolled back by restoring the previous principal from the local
-   configuration backup; token rotation never changes the canonical index. The running process
-   continues accepting its last-started policy until that controlled restart, so do not delete the
-   old principal before the new credential has been verified and the restart is ready.
+4. Remove the old principal and secret, save, and call the owner/admin-only HTTP reload endpoint:
+
+   ```bash
+   curl -sS -X POST http://127.0.0.1:7331/v1/auth/reload \
+     -H "Authorization: Bearer $CORTANA_ADMIN_AGENT_TOKEN"
+   ```
+
+   A failed verification can be rolled back by restoring the previous principal from the local
+   configuration backup; token rotation never changes the canonical index. The active HTTP policy
+   swaps atomically, so the old token is rejected immediately after a successful reload. Reconnect
+   MCP clients to load the same policy, and use the Desktop restart action when the managed service
+   set is intentionally being restarted together.
+
+The reload endpoint refuses to remove the last bearer policy from a non-loopback listener. It also
+preserves the last-good policy when the TOML, environment file, or token values are malformed or
+unreadable. Reload failures are audited only as metadata and never include parser diagnostics,
+secret values, or query content.
 
 Desktop removes secret values that are no longer referenced by any source, provider, or principal
 when settings are saved. Keep the old principal until the new credential has been tested, then

@@ -22,6 +22,12 @@ Agents must follow these rules before changing code:
 6. Run the applicable format, lint, type-check, build, unit, integration, E2E, smoke, and security checks.
 7. Report exact validation results, skipped checks, known limitations, and remaining risks.
 8. Never commit secrets, credentials, local environment files, generated artifacts, or machine-specific paths.
+9. Keep user-facing documentation synchronized with the change. For a feature or safety change,
+   update the relevant guide and check [the documentation index](../docs/README.md), the root
+   [README](../README.md), and any current-release evidence page that now describes the behavior.
+   For a release, update the current-release section in `docs/releases.md`, `docs/evaluation.md`,
+   `docs/operations.md`, and `docs/desktop-ux-audit.md`; preserve older measurements as explicitly
+   historical evidence.
 
 Agents must not:
 
