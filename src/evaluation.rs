@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::future::Future;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration as StdDuration, Instant};
@@ -24,6 +25,14 @@ use crate::answer::configured_model;
 /// 30-second whole-run ceiling rejected healthy providers solely because of
 /// those required checks. A provider outage still fails closed at this bound.
 pub const MODEL_EVALUATION_MAX_SECONDS: u64 = 55;
+
+/// Keep user-supplied fixtures from turning a quality check into an unbounded
+/// memory or temporary-index workload before validation can run.
+const MAX_FIXTURE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_FIXTURE_DOCUMENTS: usize = 2_000;
+const MAX_FIXTURE_CASES: usize = 500;
+const MAX_FIXTURE_DOCUMENT_CONTENT_BYTES: usize = 2 * 1024 * 1024;
+const MAX_FIXTURE_QUERY_BYTES: usize = 16 * 1024;
 
 // The fixture is deliberately tiny. Keep its prompts bounded independently
 // from a user's production context/output settings so a large personal
@@ -136,11 +145,7 @@ pub struct AnswerEvaluation {
 }
 
 pub async fn run(path: &Path) -> Result<EvaluationReport> {
-    let fixture: EvaluationFixture = serde_json::from_slice(
-        &std::fs::read(path)
-            .with_context(|| format!("failed to read evaluation fixture {}", path.display()))?,
-    )
-    .with_context(|| format!("invalid evaluation fixture {}", path.display()))?;
+    let fixture = parse_fixture_file(path)?;
     run_fixture(fixture, None).await
 }
 
@@ -155,12 +160,38 @@ pub async fn run_with_config(
     query: &QueryConfig,
     api_key: Option<String>,
 ) -> Result<EvaluationReport> {
-    let fixture: EvaluationFixture = serde_json::from_slice(
-        &std::fs::read(path)
-            .with_context(|| format!("failed to read evaluation fixture {}", path.display()))?,
-    )
-    .with_context(|| format!("invalid evaluation fixture {}", path.display()))?;
+    let fixture = parse_fixture_file(path)?;
     run_model_fixture(fixture, Some((bounded_model_config(query), api_key))).await
+}
+
+fn parse_fixture_file(path: &Path) -> Result<EvaluationFixture> {
+    let metadata = std::fs::metadata(path)
+        .with_context(|| format!("failed to inspect evaluation fixture {}", path.display()))?;
+    anyhow::ensure!(
+        metadata.is_file(),
+        "evaluation fixture is not a regular file: {}",
+        path.display()
+    );
+    anyhow::ensure!(
+        metadata.len() <= MAX_FIXTURE_BYTES,
+        "evaluation fixture exceeds the {} byte safety limit",
+        MAX_FIXTURE_BYTES
+    );
+    let file = std::fs::File::open(path)
+        .with_context(|| format!("failed to read evaluation fixture {}", path.display()))?;
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_FIXTURE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("failed to read evaluation fixture {}", path.display()))?;
+    anyhow::ensure!(
+        bytes.len() as u64 <= MAX_FIXTURE_BYTES,
+        "evaluation fixture exceeds the {} byte safety limit",
+        MAX_FIXTURE_BYTES
+    );
+    let fixture: EvaluationFixture = serde_json::from_slice(&bytes)
+        .with_context(|| format!("invalid evaluation fixture {}", path.display()))?;
+    validate_fixture(&fixture)?;
+    Ok(fixture)
 }
 
 pub async fn run_with_model_default(
@@ -496,8 +527,26 @@ fn validate_fixture(fixture: &EvaluationFixture) -> Result<()> {
     );
     anyhow::ensure!(!fixture.documents.is_empty(), "fixture has no documents");
     anyhow::ensure!(
+        fixture.documents.len() <= MAX_FIXTURE_DOCUMENTS,
+        "fixture exceeds the {} document safety limit",
+        MAX_FIXTURE_DOCUMENTS
+    );
+    anyhow::ensure!(
         !fixture.retrieval_cases.is_empty(),
         "fixture has no retrieval cases"
+    );
+    anyhow::ensure!(
+        fixture.retrieval_cases.len() <= MAX_FIXTURE_CASES,
+        "fixture exceeds the {} retrieval-case safety limit",
+        MAX_FIXTURE_CASES
+    );
+    anyhow::ensure!(
+        fixture
+            .documents
+            .iter()
+            .all(|document| document.content.len() <= MAX_FIXTURE_DOCUMENT_CONTENT_BYTES),
+        "fixture document content exceeds the {} byte safety limit",
+        MAX_FIXTURE_DOCUMENT_CONTENT_BYTES
     );
     anyhow::ensure!(
         fixture
@@ -505,8 +554,14 @@ fn validate_fixture(fixture: &EvaluationFixture) -> Result<()> {
             .iter()
             .all(|case| !case.name.trim().is_empty()
                 && !case.query.trim().is_empty()
+                && case.query.len() <= MAX_FIXTURE_QUERY_BYTES
                 && (1..=50).contains(&case.top_k)),
         "retrieval cases require names, queries, and top_k between 1 and 50"
+    );
+    anyhow::ensure!(
+        fixture.answer_case.query.len() <= MAX_FIXTURE_QUERY_BYTES,
+        "answer case query exceeds the {} byte safety limit",
+        MAX_FIXTURE_QUERY_BYTES
     );
     let source_ids = fixture
         .documents

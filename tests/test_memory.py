@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 import httpx
 import pytest
@@ -436,6 +437,7 @@ def test_outbox_telemetry_is_bounded_and_does_not_include_document_content(tmp_p
 
         outbox.mark_failed(
             outbox.enqueue_delete(project="work", source="gmail", source_id="thread/error"),
+            lease_owner=outbox.claim_due(limit=1)[0].leased_by or "",
             error="line one\n" + "x" * 2_000,
             retriable=False,
         )
@@ -484,6 +486,33 @@ def test_outbox_validation_for_limits_and_leases(tmp_path) -> None:
                 ),
                 max_attempts=True,
             )
+
+
+def test_expired_worker_cannot_acknowledge_a_reclaimed_lease(tmp_path) -> None:
+    path = tmp_path / "lease-fence.sqlite3"
+    document = MemoryDocument(
+        project="work", source="gmail", source_id="lease", title="Lease", content="alpha"
+    )
+    with Outbox(path) as outbox:
+        entry_id = outbox.enqueue_retain(document)
+        first = outbox.claim_due(limit=1, lease_seconds=0.01, worker="worker-a")[0]
+        assert first.leased_by is not None
+        time.sleep(0.02)
+        second = outbox.claim_due(limit=1, lease_seconds=1.0, worker="worker-b")[0]
+        assert second.leased_by is not None
+        assert second.leased_by != first.leased_by
+
+        assert not outbox.acknowledge(entry_id, lease_owner=first.leased_by)
+        assert not outbox.mark_failed(
+            entry_id,
+            lease_owner=first.leased_by,
+            error="stale worker",
+            retriable=False,
+        )
+        current = outbox.get_entry(document_id=document.document_id, operation="retain")
+        assert current is not None
+        assert current.state == "in_flight"
+        assert current.leased_by == second.leased_by
 
 
 def test_outbox_rejects_symlinked_paths_and_keeps_sqlite_private(tmp_path) -> None:
