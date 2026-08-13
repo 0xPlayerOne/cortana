@@ -16,12 +16,52 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 - planner → concurrent retrieval → synthesis for the human UI;
 - provenance, access scope, audit events, and observability as core data.
 
+## What Cortana is
+
+Cortana is a private, local-first knowledge system for people and the agents that work with them.
+It turns approved documents, messages, notes, calendars, and code into one searchable evidence
+store, then exposes the same cited context through the Desktop app, MCP, HTTP, and CLI. It is
+intended to become a durable second brain without sending a personal corpus to a hosted database.
+
+Cortana is not an automatic backup or an unrestricted crawler. A new installation starts in
+query-only mode: it does not authorize accounts, download model weights, index data, or install a
+recurring sync until you explicitly approve each step. A failed readiness or source-validation
+check is a safety stop, not an invitation to bypass the gate.
+
+## Download the latest release
+
+For normal use, download Cortana from the
+[latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
+package for your operating system and CPU. The current protected release is **v0.31.12**. The
+published release has verified archives, checksums, updater signatures, and the credential-free
+packaged-core evaluation. The Desktop app still has separate manual gates for macOS Developer ID
+notarization and first-run operating-system interactions; those limits are documented in the
+[Desktop audit](docs/desktop-ux-audit.md).
+
+### Desktop first launch (recommended)
+
+1. Download and install the matching Desktop package from the release page.
+2. Launch Cortana Desktop and approve only the tooling it offers to install (uv, Python, or the
+   local embedding runtime). Cloud embeddings do not require the local embedding runtime.
+3. In **Settings → Workspaces**, create or select a workspace, then configure one source and use
+   **Authorize** or **Open provider setup**.
+4. Run **Validate** with the small default budget. Validation is read-only and does not index or
+   reconcile anything.
+5. After the result is healthy, use the explicitly confirmed **Initial sync** action for a bounded
+   trial. Review the source status and a cited query before increasing its budget or enabling a
+   recurring schedule.
+
+The Desktop app can remain in the tray while Cortana's local services run in the background. The
+same installation can be used by agents through the optional Cortana skill and MCP integration;
+agent configuration remains an explicit, one-time choice.
+
 ## Quick start
 
-Use the numbered path below for a new local installation. The release installer installs the
-signed application bundle; the checkout installer builds the application and connector runtime
-from source. Neither path downloads embedding weights, authorizes a source, performs a first sync,
-or enables recurring ingestion automatically.
+Use the numbered CLI path below when you prefer terminal control, are recovering an installation,
+or are contributing from a checkout. The release installer installs the published application
+bundle; the checkout installer builds the application and connector runtime from source. Neither
+path downloads embedding weights, authorizes a source, performs a first sync, or enables recurring
+ingestion automatically.
 
 ### 1. Install the application
 
