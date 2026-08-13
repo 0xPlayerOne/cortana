@@ -2074,7 +2074,10 @@ fn provider_model_discovery_lists_advertised_models_from_loopback_provider() {
         .iter()
         .map(|model| model["id"].as_str().expect("model id"))
         .collect::<Vec<_>>();
-    assert_eq!(ids, vec!["provider-local-chat", "provider-local-completion"]);
+    assert_eq!(
+        ids,
+        vec!["provider-local-chat", "provider-local-completion"]
+    );
     assert_eq!(
         parsed["models"][1]["capabilities"],
         serde_json::json!(["completion"])
