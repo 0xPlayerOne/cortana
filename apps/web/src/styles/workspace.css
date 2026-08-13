@@ -512,6 +512,86 @@
   min-height: 30px;
 }
 
+.graph-toolbar {
+  position: absolute;
+  z-index: 3;
+  top: 18px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: min(280px, calc(100% - 36px));
+  padding: 7px 9px;
+  color: var(--theme-content-subtle);
+  border: 1px solid var(--theme-content-border);
+  background: var(--theme-content-surface);
+}
+
+.graph-toolbar input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  color: var(--theme-content-text);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+}
+
+.graph-selection {
+  position: absolute;
+  z-index: 3;
+  right: 18px;
+  top: 18px;
+  display: grid;
+  gap: 4px;
+  width: min(250px, calc(100% - 36px));
+  padding: 10px 12px;
+  color: var(--theme-content-text);
+  border: 1px solid var(--theme-content-border);
+  background: var(--theme-content-surface);
+  box-shadow: var(--theme-shadow);
+  font-size: 12px;
+}
+
+.graph-selection span,
+.graph-selection small {
+  color: var(--theme-content-subtle);
+}
+
+.graph-selection ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.graph-empty-filter {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  min-height: 100%;
+  color: var(--theme-content-subtle);
+  text-align: center;
+}
+
+.graph-empty-filter h1,
+.graph-empty-filter p {
+  margin: 0;
+}
+
+.graph-empty-filter h1 {
+  color: var(--theme-content-text);
+  font-size: 18px;
+}
+
+.graph-empty-filter button {
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--theme-content-text);
+  border: 1px solid var(--theme-content-border);
+  background: var(--theme-content-surface);
+}
+
 .graph-view > button {
   --distance: min(29vw, calc(50% - 92px));
   position: absolute;
