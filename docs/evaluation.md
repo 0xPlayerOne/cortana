@@ -24,7 +24,7 @@ The current protected source is `v0.31.12`, published through Release Please PR
 strict 18-asset verifier passed, including the packaged-core offline evaluator.
 The verified v0.31.12 archive is now installed at `/Users/amf/.local/bin/cortana`
 without a service restart. The current configured provider passed a model
-evaluation on 2026-08-13 in 9,413 ms under the 55-second bound, with planner and
+evaluation on 2026-08-13 in 12,319 ms under the 55-second bound, with planner and
 synthesis model use, valid citations, cache reuse, and revision invalidation.
 The v0.31.12 release gate separately verifies the packaged core offline without
 credentials.
