@@ -12,13 +12,13 @@ is not part of a visual/UI change.
   the strict verifier confirmed all 18 core, Desktop, signature, checksum,
   updater-manifest, and packaged-core offline-evaluation gates. Asset verification
   does not launch the packaged GUI or prove OS-level signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` remains `v0.31.7`; no
-  local install, GUI launch, service restart, source authorization, or recurring
-  sync was performed for v0.31.12. The packaged GUI, browser OAuth, tray/menu,
+- The installed core at `/Users/amf/.local/bin/cortana` is now `v0.31.12`; the
+  verified archive was installed without restarting services, authorizing
+  sources, or installing recurring sync. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
 - The current configured provider passed the persistent-provider fixture
-  evaluation on 2026-08-13 in 16,539 ms using the installed v0.31.7 CLI, with
+  evaluation on 2026-08-13 in 9,413 ms using the installed v0.31.12 CLI, with
   planner and synthesis model use, valid citations, cache reuse, and revision
   invalidation. The v0.31.12 release verifier separately passed the packaged
   core's credential-free offline evaluator within 60 seconds. The opt-in model
@@ -40,7 +40,7 @@ is not part of a visual/UI change.
   architecture (or an explicit `CORTANA_MAC_ARCH` override) and fails closed
   when the release does not publish a matching app archive; v0.31.12 publishes
   only the ARM64 macOS app, so Intel macOS remains an explicit packaging gap.
-- The installed v0.31.7 binary passed the disposable offline control-plane
+- The installed v0.31.12 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
   audit export, verified backup, restore into a second temporary data directory,
   SQLite verification, and post-restore search. The drill touched no live
@@ -94,7 +94,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the current configured provider passed the bounded
-   fixture gate on 2026-08-13 in 16,539 ms using the installed v0.31.7 CLI. The
+   fixture gate on 2026-08-13 in 9,413 ms using the installed v0.31.12 CLI. The
    published v0.31.12 release separately passed the credential-free packaged-core
    offline evaluator within 60 seconds (the v0.31.10-configured provider run
    passed in 24,491 ms; the published v0.31.8 archive's earlier 14,879 ms and the installed v0.31.7
