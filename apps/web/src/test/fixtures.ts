@@ -104,7 +104,7 @@ export const desktopSettings: DesktopSettings = {
     cache_max_entries: 250000,
     request_timeout_seconds: 180,
     request_concurrency: 4,
-    startup_timeout_seconds: 120,
+    startup_timeout_seconds: 300,
     memory_limit_mb: 4096,
   },
   query: {
