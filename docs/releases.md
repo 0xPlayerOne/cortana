@@ -80,6 +80,9 @@ does not alter runtime behavior, credentials, or trigger a corpus sync.
 The next release verification must include the packaged-core offline evaluator in
 addition to archive, checksum, updater-signature, and manifest checks.
 
+The v0.31.12 patch release carries this verification contract; it does not alter
+runtime behavior, credentials, or indexed data.
+
 ## Desktop release gates
 
 The desktop pipeline follows a staged audit policy:
