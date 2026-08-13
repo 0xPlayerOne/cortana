@@ -4271,7 +4271,6 @@ function SourcesSection({
                             type="button"
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose GitHub token destination"
-                            title="Choose GitHub token destination"
                             data-tooltip="Choose GitHub token destination"
                             className="quick-tooltip"
                             onClick={() => void choosePath(index, 'github-token', 'token_path')}
