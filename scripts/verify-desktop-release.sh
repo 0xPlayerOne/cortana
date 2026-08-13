@@ -254,6 +254,7 @@ for filename in core_archives:
             ("dist", "prefix"),
             ("scripts/install-release.sh", "file"),
             ("scripts/verify-release.sh", "file"),
+            ("scripts/verify-packaged-core.sh", "file"),
         ),
     )
 
@@ -411,6 +412,8 @@ if [[ "$(uname -s)" == "Linux" ]]; then
     exit 1
   fi
   echo "verified published Linux binary version matches ${tag}"
+  "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/verify-packaged-core.sh" \
+    "$binary"
 else
   echo "skipped published binary execution on non-Linux host"
 fi
