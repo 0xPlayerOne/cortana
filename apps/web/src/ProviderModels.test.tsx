@@ -145,16 +145,15 @@ function modelInput(): HTMLInputElement {
   return screen.getByLabelText('Model') as HTMLInputElement
 }
 
-test('refresh replaces the static catalog with provider-advertised models', async () => {
+test('refresh exposes provider-advertised models without stale cloud presets', async () => {
   // The current model is one the provider advertises, so the select stays.
   state.settings.embedding.model = 'text-embedding-3-small'
   renderEmbeddingSettings()
 
-  // Before any refresh the static cloud catalog is offered.
-  expect(Array.from(modelSelect().options).map((option) => option.value)).toContain('gpt-4o-mini')
-  expect(Array.from(modelSelect().options).map((option) => option.value)).not.toContain(
-    'text-embedding-3-large'
-  )
+  // Cloud models are not maintained as a stale static list; discovery is the
+  // source of truth and the current value is preserved as custom until then.
+  expect(screen.queryByLabelText('Model catalog')).toBeNull()
+  expect(modelInput().value).toBe('text-embedding-3-small')
 
   fireEvent.click(screen.getByRole('button', { name: /Refresh Embedding model models/ }))
 
@@ -162,7 +161,6 @@ test('refresh replaces the static catalog with provider-advertised models', asyn
     const values = Array.from(modelSelect().options).map((option) => option.value)
     expect(values).toContain('text-embedding-3-small')
     expect(values).toContain('text-embedding-3-large')
-    expect(values).not.toContain('gpt-4o-mini')
   })
   expect(state.refreshCalls).toEqual(['embedding'])
   expect(screen.getByText(/2 models advertised by the provider/)).toBeTruthy()
@@ -202,7 +200,7 @@ test('selecting an advertised model updates the provider settings', async () => 
   })
 })
 
-test('failed discovery keeps the static catalog and reports the error', async () => {
+test('failed discovery keeps the explicit model and reports the error', async () => {
   state.refreshError = new Error('provider /models request failed with status 404')
   renderEmbeddingSettings()
 
@@ -211,9 +209,8 @@ test('failed discovery keeps the static catalog and reports the error', async ()
   await waitFor(() => {
     expect(screen.getByText(/provider \/models request failed with status 404/)).toBeTruthy()
   })
-  const values = Array.from(modelSelect().options).map((option) => option.value)
-  expect(values).toContain('gpt-4o-mini')
-  expect(values).not.toContain('text-embedding-3-large')
+  expect(screen.queryByLabelText('Model catalog')).toBeNull()
+  expect(modelInput().value).toBe('gpt-4o-mini')
 })
 
 test('changing the endpoint invalidates the advertised catalog', async () => {
@@ -232,9 +229,8 @@ test('changing the endpoint invalidates the advertised catalog', async () => {
   fireEvent.change(endpoint, { target: { value: 'https://other.example.test/v1' } })
 
   await waitFor(() => {
-    const values = Array.from(modelSelect().options).map((option) => option.value)
-    expect(values).not.toContain('text-embedding-3-large')
-    expect(values).toContain('gpt-4o-mini')
+    expect(screen.queryByLabelText('Model catalog')).toBeNull()
+    expect(modelInput().value).toBe('text-embedding-3-small')
   })
 })
 
