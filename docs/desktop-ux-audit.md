@@ -7,21 +7,21 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-13)
 
-- `v0.31.8` is the current protected release, published through Release Please
-  PR #956 after the post-v0.31.7 metadata reconciliation merged through protected
-  main.
+- `v0.31.9` is the current protected release, published after exact-tree
+  promotion PR #960 and reconciliation PR #962. It is a metadata-only follow-up
+  to the fully verified v0.31.8 Desktop release.
 - Release-assets workflow `31667577467` completed all platform jobs and the
   strict verifier confirmed all 18 v0.31.8 core, Desktop, signature, checksum,
   and updater-manifest assets. Asset verification does not launch the packaged
   GUI or prove OS-level signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` remains `v0.31.7`; the
-  v0.31.8 archive was verified in a temporary directory only. No local install,
-  GUI launch, service restart, source authorization, or recurring sync was
-  performed. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater
-  interaction, Developer ID signing, and notarization remain manual gates.
-- The published v0.31.8 aarch64 core archive passed the provider-backed fixture
-  evaluation on 2026-08-13 in 14,879 ms with planner and synthesis model use,
-  valid citations, cache reuse, and revision invalidation. The opt-in evaluator
+- The installed core at `/Users/amf/.local/bin/cortana` remains `v0.31.7`; no
+  local install, GUI launch, service restart, source authorization, or recurring
+  sync was performed for v0.31.9. The packaged GUI, browser OAuth, tray/menu,
+  native dialogs, updater interaction, Developer ID signing, and notarization
+  remain manual gates.
+- The persistent-provider fixture evaluation passed on 2026-08-13 in 13,460 ms
+  with planner and synthesis model use, valid citations, cache reuse, and
+  revision invalidation. The opt-in evaluator
   remains fail-closed below one minute with a 55-second whole-run bound;
   extractive mode remains the production default and recurring sync remains
   uninstalled because enabled filesystem/code sources are still bounded samples
@@ -94,8 +94,9 @@ is not part of a visual/UI change.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the published v0.31.8 aarch64 archive passed the
-   bounded fixture gate on 2026-08-13 in 14,879 ms (the installed v0.31.7
+2. Model-backed provider gate: the v0.31.9-configured persistent provider passed
+   the bounded fixture gate on 2026-08-13 in 13,460 ms (the published v0.31.8
+   archive's earlier 14,879 ms and the installed v0.31.7
    runtime's earlier 14,258 ms, 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms,
    17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
    v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
@@ -138,7 +139,7 @@ is not part of a visual/UI change.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.8 release or the installed v0.31.7 core; use the
+does not describe the current v0.31.9 release or the installed v0.31.7 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -154,7 +155,7 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.31.8` binary or packaged Desktop behavior. The current
+  the current `v0.31.9` binary or packaged Desktop behavior. The current
   `v0.31.8` asset workflow and strict verifier are recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
