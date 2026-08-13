@@ -101,7 +101,8 @@ test('supported app source links keep an explicit open-source affordance', () =>
     render(<Workspace {...props} document={{ ...canonicalDocument, uri }} />)
     const link = screen.getByRole('link', { name: 'Open original source' })
     expect(link.getAttribute('href')).toBe(uri)
-    expect(link.getAttribute('title')).toBe('Open original source')
+    expect(link.getAttribute('title')).toBeNull()
+    expect(link.getAttribute('data-tooltip')).toBe('Open original source')
   }
 })
 
