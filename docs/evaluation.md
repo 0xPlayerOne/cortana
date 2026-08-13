@@ -22,12 +22,12 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 The current protected source is `v0.31.12`, published through Release Please PR
 #1030. Release-assets workflow `31699076439` completed all platform jobs and the
 strict 18-asset verifier passed, including the packaged-core offline evaluator.
-The installed CLI remains `v0.31.7`; no local install or service restart was
-performed for v0.31.12. The current configured provider passed a model evaluation
-on 2026-08-13 in 16,539 ms under the 55-second bound, with planner and synthesis
-model use, valid citations, cache reuse, and revision invalidation. This run used
-the installed v0.31.7 CLI; the v0.31.12 release gate separately verifies the
-packaged core offline without credentials.
+The verified v0.31.12 archive is now installed at `/Users/amf/.local/bin/cortana`
+without a service restart. The current configured provider passed a model
+evaluation on 2026-08-13 in 9,413 ms under the 55-second bound, with planner and
+synthesis model use, valid citations, cache reuse, and revision invalidation.
+The v0.31.12 release gate separately verifies the packaged core offline without
+credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
