@@ -7,31 +7,30 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-13)
 
-- `v0.31.9` is the current protected release, published after exact-tree
-  promotion PR #960 and reconciliation PR #962. It is a metadata-only follow-up
-  to the fully verified v0.31.8 Desktop release.
+- `v0.31.10` is the current protected release, published through Release Please
+  PR #967. It is a metadata-only follow-up to the fully verified v0.31.8
+  Desktop release; the v0.31.9 evidence promotion remains recorded below.
 - Release-assets workflow `31667577467` completed all platform jobs and the
   strict verifier confirmed all 18 v0.31.8 core, Desktop, signature, checksum,
   and updater-manifest assets. Asset verification does not launch the packaged
   GUI or prove OS-level signing/notarization.
 - The installed core at `/Users/amf/.local/bin/cortana` remains `v0.31.7`; no
   local install, GUI launch, service restart, source authorization, or recurring
-  sync was performed for v0.31.9. The packaged GUI, browser OAuth, tray/menu,
+  sync was performed for v0.31.10. The packaged GUI, browser OAuth, tray/menu,
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
-- The persistent-provider fixture evaluation passed on 2026-08-13 in 13,460 ms
+- The persistent-provider fixture evaluation passed on 2026-08-13 in 24,491 ms
   with planner and synthesis model use, valid citations, cache reuse, and
   revision invalidation. The opt-in evaluator
   remains fail-closed below one minute with a 55-second whole-run bound;
   extractive mode remains the production default and recurring sync remains
   uninstalled because enabled filesystem/code sources are still bounded samples
   or otherwise below their configured full-sync budgets.
-- The complete native Tauri suite passes 129 tests in 3.88 seconds after
-  compilation. The focused web App suite passes all 10 tests; a full web run
-  under the locally installed Bun 1.4 canary remains order-sensitive (255/258
-  passed, with three cross-file UI flakes), so it is not recorded as a green
-  release gate. The Python package gate passes 168 tests after restoring the
-  Release Please Cargo.lock marker. These are headless source checks and do not
+- The complete native Tauri suite passes 129 tests in 2.07 seconds after
+  compilation. The full web suite passes 258 tests across 22 files under the
+  CI-pinned Bun 1.3.14 and the local Bun 1.4 canary. The Python package gate
+  passes 168 tests, including the retired-model runtime guard. These are
+  headless source checks and do not
   substitute for the still-unverified interactive packaged GUI flows.
 - The published v0.31.8 macOS ARM archive was statically inspected on 2026-08-13:
   `Contents/MacOS/cortana --version` reports `cortana 0.31.8`, the bundle passes
