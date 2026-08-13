@@ -25,7 +25,7 @@ release-assets workflow `31597160527` completed all platform jobs; the strict
 18-asset verifier passed. The installed CLI is now `v0.31.7`;
 its doctor, query-only readiness, and disposable control-plane checks pass
 without starting services or sync. The latest installed v0.31.7 provider-backed fixture
-evaluation passed on 2026-08-13 in 15,542 ms (the earlier 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms
+evaluation passed on 2026-08-13 in 14,258 ms (the earlier 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms
 runs and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the
 v0.31.5 runtime-baseline run passed in 13,871 ms; prior verified
 runs passed in 19,524 ms, 15,774 ms,
