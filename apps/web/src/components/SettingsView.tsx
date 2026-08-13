@@ -1479,7 +1479,10 @@ function ServicesSection({
         </div>
       </div>
       {(error || scheduleError || actionMessage) && (
-        <div className={`safety-note ${serviceActivity?.status === 'failed' ? 'error' : ''}`}>
+        <div
+          className={`safety-note ${error || scheduleError || serviceActivity?.status === 'failed' ? 'error' : ''}`}
+          role={error || scheduleError || serviceActivity?.status === 'failed' ? 'alert' : 'status'}
+        >
           {error || scheduleError || actionMessage}
         </div>
       )}
@@ -1589,7 +1592,10 @@ function ServicesSection({
         </div>
       </div>
       {(databaseResult || databaseError) && (
-        <div className={`safety-note ${databaseError ? 'error' : ''}`} role="status">
+        <div
+          className={`safety-note ${databaseError ? 'error' : ''}`}
+          role={databaseError ? 'alert' : 'status'}
+        >
           {databaseError ? <AlertTriangle size={16} /> : <Check size={16} />}
           <span>
             {databaseError ||
@@ -5557,7 +5563,11 @@ function ProviderSection<T extends ProviderValue>({
           Refresh models
         </button>
       </div>
-      {modelsError && <p className="settings-inline-error">{modelsError}</p>}
+      {modelsError && (
+        <p className="settings-inline-error" role="alert">
+          {modelsError}
+        </p>
+      )}
       {advertisedModels && advertisedModels.length > 0 && (
         <small className="model-note">
           {advertisedModels.length} model{advertisedModels.length === 1 ? '' : 's'} advertised by
@@ -6006,7 +6016,10 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
         </div>
       </div>
       {(portableNotice || portableError) && (
-        <div className={`safety-note ${portableError ? 'error' : ''}`} role="status">
+        <div
+          className={`safety-note ${portableError ? 'error' : ''}`}
+          role={portableError ? 'alert' : 'status'}
+        >
           {portableError ? <AlertTriangle size={16} /> : <Check size={16} />}
           <span>{portableError || portableNotice}</span>
         </div>
