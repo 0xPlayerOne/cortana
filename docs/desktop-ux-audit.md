@@ -26,7 +26,7 @@ is not part of a visual/UI change.
   extractive mode remains the production default and recurring sync remains
   uninstalled because enabled filesystem/code sources are still bounded samples
   or otherwise below their configured full-sync budgets.
-- The complete native Tauri suite passes 129 tests in 2.07 seconds after
+- The complete native Tauri suite passes 130 tests in 2.45 seconds after
   compilation. The web-only suite currently passes 258 tests across 21 files;
   the root Bun run passes 262 tests across 23 files (including script tests)
   under the CI-pinned Bun 1.3.14 and the local Bun 1.4 canary. The Python
@@ -60,7 +60,8 @@ is not part of a visual/UI change.
 The current checkout is newer than the v0.31.12 artifact. Its post-release safety lane acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, fences optional-memory outbox leases, and serializes Desktop
-sidecar preparation with atomic publication. These source-tree protections are covered by focused
+sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
+a per-config cross-process lock. These source-tree protections are covered by focused
 regressions and must be verified again in a later packaged release; they do not authorize a source,
 enable recurring sync, or prove the unverified GUI/browser/tray/dialog/updater gates above.
 
@@ -306,7 +307,7 @@ current-release section above for sign-off status.
   SQLite verification, and cleanup. It also passed offline
   init, bounded fixture ingestion, search/context, metadata-only audit export, backup, restore, and
   post-restore search; neither drill touched indexed personal data.
-- The current source-native headless acceptance suite passes without starting Tauri: the 129 native
+- The current source-native headless acceptance suite passes without starting Tauri: the 130 native
   tests cover OAuth guards, tray/background lifecycle, updater guards, settings import/export,
   backup/restore, and source validation. They complement the 258 Bun tests and do not substitute for
   the still-unverified interactive packaged GUI flows.
