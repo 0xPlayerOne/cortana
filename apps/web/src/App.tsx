@@ -133,6 +133,7 @@ export function App() {
   const [contextLoading, setContextLoading] = useState(false)
   const [graph, setGraph] = useState<BrainGraphPage | null>(null)
   const [graphLoading, setGraphLoading] = useState(false)
+  const [graphAppendLoading, setGraphAppendLoading] = useState(false)
   const [graphError, setGraphError] = useState('')
   const [graphRetryNonce, setGraphRetryNonce] = useState(0)
   const [pageVisible, setPageVisible] = useState(
@@ -184,6 +185,7 @@ export function App() {
   const documentListRequestRef = useRef(0)
   const documentSelectRequestRef = useRef(0)
   const graphRequestRef = useRef(0)
+  const graphAppendRequestRef = useRef(0)
   const statusRequestRef = useRef(0)
   const statusRefreshRef = useRef<(() => void) | null>(null)
   const documentPageLoadingRef = useRef(false)
@@ -436,6 +438,8 @@ export function App() {
       setGraph(null)
       setGraphError('')
       setGraphLoading(false)
+      setGraphAppendLoading(false)
+      graphAppendRequestRef.current += 1
       return
     }
     const requestId = ++graphRequestRef.current
@@ -445,6 +449,8 @@ export function App() {
     setGraph(null)
     setGraphError('')
     setGraphLoading(true)
+    setGraphAppendLoading(false)
+    graphAppendRequestRef.current += 1
     void getGraph(
       effectiveWorkspace || undefined,
       source || undefined,
@@ -476,6 +482,46 @@ export function App() {
     effectiveWorkspace,
     workspaceTab,
   ])
+
+  function loadMoreGraph() {
+    const current = graph
+    const cursor = current?.next_cursor
+    if (!cursor || graphLoading || graphAppendLoading) return
+    const requestId = ++graphAppendRequestRef.current
+    setGraphAppendLoading(true)
+    void getGraph(
+      effectiveWorkspace || undefined,
+      source || undefined,
+      debouncedDocumentQuery || undefined,
+      cursor
+    )
+      .then((next) => {
+        if (graphAppendRequestRef.current !== requestId) return
+        setGraph((previous) => {
+          if (!previous) return next
+          const nodes = [...previous.nodes]
+          const nodeIds = new Set(nodes.map((node) => node.id))
+          for (const node of next.nodes) {
+            if (!nodeIds.has(node.id)) nodes.push(node)
+          }
+          const edges = [...previous.edges]
+          const edgeIds = new Set(edges.map((edge) => `${edge.source}:${edge.target}:${edge.kind}`))
+          for (const edge of next.edges) {
+            const edgeId = `${edge.source}:${edge.target}:${edge.kind}`
+            if (!edgeIds.has(edgeId)) edges.push(edge)
+          }
+          return { nodes, edges, next_cursor: next.next_cursor }
+        })
+      })
+      .catch((caught: unknown) => {
+        if (graphAppendRequestRef.current === requestId) {
+          setGraphError(caught instanceof Error ? caught.message : 'Graph data unavailable')
+        }
+      })
+      .finally(() => {
+        if (graphAppendRequestRef.current === requestId) setGraphAppendLoading(false)
+      })
+  }
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -1685,6 +1731,8 @@ export function App() {
             graph={graph}
             graphLoading={graphLoading}
             graphError={graphError}
+            graphAppendLoading={graphAppendLoading}
+            onLoadMoreGraph={loadMoreGraph}
             onRetryGraph={retryGraph}
             tab={workspaceTab}
             onTabChange={setWorkspaceTab}

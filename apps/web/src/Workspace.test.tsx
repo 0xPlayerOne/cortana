@@ -154,10 +154,42 @@ test('graph retries stay outside the live summary and document nodes describe th
   expect(summary.querySelector('button')).toBeNull()
   expect(screen.getByRole('button', { name: 'Retry graph' })).toBeTruthy()
   expect(screen.getByRole('button', { name: /Open document:/ })).toBeTruthy()
-  expect(screen.getByRole('button', { name: /Open document:/ }).getAttribute('title')).toBe(
+  expect(screen.getByRole('button', { name: /Open document:/ }).getAttribute('data-tooltip')).toBe(
     'Open document'
   )
   expect(document.querySelector('.graph-links line')).toBeTruthy()
+})
+
+test('graph exposes bounded pagination when another page is available', () => {
+  let loads = 0
+  render(
+    <Workspace
+      {...props}
+      document={null}
+      tab="graph"
+      graph={{
+        nodes: Array.from({ length: 13 }, (_, index) => ({
+          id: `document:${index}`,
+          kind: 'document' as const,
+          label: `Document ${index}`,
+          project: 'work',
+          source: 'notes',
+          document_id: String(index),
+        })),
+        edges: [],
+        next_cursor: 'next-page',
+      }}
+      onLoadMoreGraph={() => {
+        loads += 1
+      }}
+      onSelectDocument={() => {}}
+    />
+  )
+
+  expect(screen.getByText('Showing 12 of 13 documents · 0 links')).toBeTruthy()
+  const loadMore = screen.getByRole('button', { name: 'Load more nodes' })
+  fireEvent.click(loadMore)
+  expect(loads).toBe(1)
 })
 
 test('an empty graph page does not reuse unrelated retrieved evidence', () => {
@@ -186,6 +218,48 @@ test('an empty graph page does not reuse unrelated retrieved evidence', () => {
 
   expect(screen.getByRole('heading', { name: 'No graph data' })).toBeTruthy()
   expect(screen.queryByRole('button', { name: /Stale filtered result/ })).toBeNull()
+})
+
+test('graph supports bounded filtering and explains selected relationships', () => {
+  render(
+    <Workspace
+      {...props}
+      document={null}
+      tab="graph"
+      graph={{
+        nodes: [
+          {
+            id: 'document:one',
+            kind: 'document',
+            label: 'Release notes',
+            project: 'work',
+            source: 'code',
+            document_id: 'one',
+          },
+          {
+            id: 'document:two',
+            kind: 'document',
+            label: 'Personal journal',
+            project: 'personal',
+            source: 'notes',
+            document_id: 'two',
+          },
+        ],
+        edges: [{ source: 'source:code', target: 'document:one', kind: 'contains' }],
+        next_cursor: null,
+      }}
+      onSelectDocument={() => {}}
+    />
+  )
+
+  const filter = screen.getByRole('searchbox', { name: 'Filter graph nodes' })
+  fireEvent.change(filter, { target: { value: 'release' } })
+  expect(screen.getByRole('button', { name: /Open document: Release notes/ })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: /Open document: Personal journal/ })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: /Open document: Release notes/ }))
+  expect(screen.getByRole('complementary', { name: 'Selected graph node' })).toBeTruthy()
+  expect(screen.getByText('Contained by its workspace or source')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Open document' })).toBeTruthy()
 })
 
 const evidenceItem = {

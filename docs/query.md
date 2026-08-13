@@ -34,8 +34,10 @@ The Obsidian-style sidebar uses the canonical index rather than search results:
 - `GET /v1/graph` exposes the bounded, paginated graph contract used by the Desktop graph view. A
   page contains workspace, source, and document nodes plus `contains` edges; it accepts the same
   filters and cursor as the document list and never materializes the corpus at once. The Desktop
-  renders a bounded overview of the returned document nodes and keeps graph loading separate from
-  retrieval and embedding work.
+  renders a bounded overview of the returned document nodes, supports local filtering by document,
+  workspace, or source label, and exposes a selected-node relationship summary. Pagination remains
+  incremental and loading is separate from retrieval and embedding work; the UI never loads the
+  entire corpus into memory.
 - Every list and read is filtered by the authenticated principal's ACL labels and recorded in the
   metadata-only audit trail. Document content and query strings are never written to audit events.
 
