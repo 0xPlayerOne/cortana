@@ -114,6 +114,10 @@ or requested trial fails:
 scripts/source-smoke.sh --sync --max-documents 25 --max-bytes 5242880 --max-seconds 60
 ```
 
+Requested trials retry only transient transport, timeout, rate-limit, and 5xx failures once by
+default. `CORTANA_SOURCE_SMOKE_SYNC_ATTEMPTS=1` disables retries; values above `3` are rejected.
+Credential and configuration failures remain fail-fast.
+
 Credential failures are reported as `authorization denied` without exposing connector details;
 this includes Google OAuth refresh failures such as `invalid_grant` and a `400` response from the
 Google token endpoint. Re-authorize that source before enabling a recurring schedule.
@@ -268,7 +272,7 @@ completed all platform jobs and the strict v0.31.7 verifier passed. The
 installed core is now v0.31.7 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
 starting services or sync. Its latest installed v0.31.7 provider-backed fixture model
-gate passed on 2026-08-12 in 18,270 ms (the earlier 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs
+gate passed on 2026-08-12 in 22,015 ms (the earlier 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs
 and prior v0.31.6 runs passed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
 runtime-baseline run passed in
 13,871 ms; prior verified runs passed
