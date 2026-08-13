@@ -55,6 +55,22 @@ The Desktop app can remain in the tray while Cortana's local services run in the
 same installation can be used by agents through the optional Cortana skill and MCP integration;
 agent configuration remains an explicit, one-time choice.
 
+### Choose the path that fits you
+
+| If you are...                         | Start here                                                                           | What it covers                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Installing Cortana for the first time | [Desktop first launch](#desktop-first-launch-recommended)                            | Download, setup approval, one source, validation, and a safe trial sync      |
+| Operating an existing installation    | [Operations guide](docs/operations.md)                                               | Services, readiness, backups, authentication, audit, and recovery            |
+| Connecting an agent                   | [Agent integrations](docs/integrations.md)                                           | The portable skill, MCP, HTTP, CLI, and scoped principals                    |
+| Adding or validating sources          | [Ingestion guide](docs/ingestion.md)                                                 | Source contracts, cursors, ACLs, budgets, and reconciliation safety          |
+| Tuning retrieval or embeddings        | [Query guide](docs/query.md)                                                         | Hybrid retrieval, Qwen or cloud embeddings, synthesis, caching, and fallback |
+| Contributing to Cortana               | [Development](#development) and [Desktop architecture](docs/desktop-architecture.md) | Local builds, tests, Tauri boundaries, and release packaging                 |
+
+The safest first milestone is deliberately small: install the Desktop app, validate one source,
+run one bounded non-reconciling trial, and confirm a cited query. Do not enable recurring ingestion
+or a memory sidecar until the relevant production gates in the [evaluation guide](docs/evaluation.md)
+are complete.
+
 ## Quick start
 
 Use the numbered CLI path below when you prefer terminal control, are recovering an installation,
@@ -86,6 +102,7 @@ safe query-only state until the source checks in the next steps pass.
 From a checkout, use the built binary; from a release install, use the installed `cortana` command:
 
 ```bash
+# A release install normally needs only the installed `cortana` command:
 cortana init
 cortana doctor
 cortana readiness --max-backup-age-hours 48
@@ -189,6 +206,9 @@ release archive:
 CORTANA_CONFIG="$HOME/.config/cortana/config.toml" scripts/backup-restore-drill.sh
 ```
 
+The remaining commands below are contributor and recovery examples. New users should use the
+Desktop path above unless they specifically need terminal control.
+
 ```bash
 # From an extracted GitHub release archive (binary, UI, and connector wheel).
 ./install.sh
@@ -269,6 +289,7 @@ See the [desktop architecture](docs/desktop-architecture.md) for the Tauri trust
 background lifecycle, contributor builds, and native release packaging.
 See [release history](docs/releases.md) for the automated version-PR policy and transitional
 release notes.
+See the [documentation index](docs/README.md) for the complete guide map.
 
 ### Migrate an existing Hermes second brain
 
