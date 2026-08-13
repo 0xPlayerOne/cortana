@@ -88,6 +88,11 @@ The token value lives only in the agent process environment or the private `[run
   metadata-only audit events under the `local-cli` principal. Shared or narrowly scoped agents
   must use the MCP server with `--token-env` or the bearer-authenticated HTTP API.
 
+Bearer policies are loaded when the HTTP or MCP process starts. Adding, rotating, or revoking a
+shared principal therefore takes effect after restarting the affected process; the desktop marks
+these settings as restart-required and restarts core services in the background. Keep the previous
+principal until a bounded request with the replacement succeeds and the restart has completed.
+
 `serve` binds loopback by default. `--allow-remote` is refused unless bearer principals are configured
 via `[[auth.tokens]]`; terminate TLS upstream when exposing an authenticated endpoint beyond loopback.
 
