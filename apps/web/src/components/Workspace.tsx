@@ -1,5 +1,5 @@
-import { BookOpen, FileText, History, Link2, Network, Star } from 'lucide-react'
-import { type CSSProperties, useEffect, useState } from 'react'
+import { BookOpen, FileText, History, Link2, Network, Search, Star } from 'lucide-react'
+import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 
 import { isDesktopApp, openDesktopUrl } from '../api'
 import { isFavoriteDocument, toggleFavoriteDocument } from '../favoriteDocuments'
@@ -537,13 +537,28 @@ function GraphView({
   onSelectDocument: (id: string) => void
 }) {
   const [visibleCount, setVisibleCount] = useState(12)
+  const [filter, setFilter] = useState('')
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const graphDocuments = graph?.nodes.filter((node) => node.kind === 'document') ?? []
   const usingEvidenceFallback = graph === null
+  const normalizedFilter = filter.trim().toLocaleLowerCase()
+  const filteredDocuments = useMemo(
+    () =>
+      normalizedFilter
+        ? graphDocuments.filter((node) =>
+            [node.label, node.project, node.source ?? ''].some((value) =>
+              value.toLocaleLowerCase().includes(normalizedFilter)
+            )
+          )
+        : graphDocuments,
+    [graphDocuments, normalizedFilter]
+  )
   useEffect(() => {
     setVisibleCount(12)
-  }, [graph?.nodes[0]?.id])
-  const nodes = graphDocuments.length
-    ? graphDocuments.slice(0, visibleCount)
+    setSelectedNodeId(null)
+  }, [graph?.nodes[0]?.id, normalizedFilter])
+  const nodes = filteredDocuments.length
+    ? filteredDocuments.slice(0, visibleCount)
     : usingEvidenceFallback
       ? evidence.slice(0, 8).map((item) => ({
           id: item.chunk_id,
@@ -559,6 +574,12 @@ function GraphView({
     graph && !usingEvidenceFallback
       ? graph.edges.filter((edge) => visibleNodeIds.has(edge.target))
       : []
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
+  const selectedEdges = selectedNode
+    ? visibleEdges.filter(
+        (edge) => edge.source === selectedNode.id || edge.target === selectedNode.id
+      )
+    : []
   if (graphLoading && nodes.length === 0) {
     return (
       <EmptyState
@@ -569,6 +590,18 @@ function GraphView({
   }
   if (graphError && nodes.length === 0) {
     return <EmptyState title="Graph unavailable" detail={graphError} action={onRetry} />
+  }
+  if (!graphLoading && nodes.length === 0 && normalizedFilter) {
+    return (
+      <div className="graph-empty-filter">
+        <Search size={24} aria-hidden="true" />
+        <h1>No matching graph nodes</h1>
+        <p>Try a workspace, source, or document name.</p>
+        <button type="button" onClick={() => setFilter('')}>
+          Clear filter
+        </button>
+      </div>
+    )
   }
   if (!graphLoading && nodes.length === 0) {
     return (
@@ -597,10 +630,25 @@ function GraphView({
       <div className="graph-center">
         <AppIcon size={24} />
       </div>
+      <div className="graph-toolbar" role="search">
+        <Search size={14} aria-hidden="true" />
+        <input
+          type="search"
+          aria-label="Filter graph nodes"
+          placeholder="Filter nodes…"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+        />
+        {filter && (
+          <button type="button" className="link-button" onClick={() => setFilter('')}>
+            Clear
+          </button>
+        )}
+      </div>
       <div className="graph-summary" role="status">
         <span>
           {graph && !usingEvidenceFallback
-            ? `Showing ${nodes.length} of ${graphDocuments.length} document${graphDocuments.length === 1 ? '' : 's'} · ${visibleEdges.length} link${visibleEdges.length === 1 ? '' : 's'}`
+            ? `Showing ${nodes.length} of ${filteredDocuments.length}${normalizedFilter ? ` matching ${graphDocuments.length}` : ''} document${filteredDocuments.length === 1 ? '' : 's'} · ${visibleEdges.length} link${visibleEdges.length === 1 ? '' : 's'}`
             : graphLoading
               ? 'Loading indexed graph…'
               : 'Retrieved evidence'}
@@ -627,12 +675,14 @@ function GraphView({
           <span>More nodes remain outside this bounded view.</span>
         </div>
       )}
-      {!graph?.next_cursor && graphDocuments.length > visibleCount && (
+      {!graph?.next_cursor && filteredDocuments.length > visibleCount && (
         <div className="graph-pagination">
           <button
             type="button"
             className="secondary-button"
-            onClick={() => setVisibleCount((count) => Math.min(count + 12, graphDocuments.length))}
+            onClick={() =>
+              setVisibleCount((count) => Math.min(count + 12, filteredDocuments.length))
+            }
           >
             Show more nodes
           </button>
@@ -644,7 +694,6 @@ function GraphView({
           type="button"
           key={node.id}
           aria-label={`${node.document_id ? 'Open document' : 'Open evidence'}: ${node.label}`}
-          title={node.document_id ? 'Open document' : 'Open retrieved evidence'}
           data-tooltip={node.document_id ? 'Open document' : 'Open retrieved evidence'}
           className="quick-tooltip"
           style={
@@ -653,6 +702,7 @@ function GraphView({
             } as CSSProperties
           }
           onClick={() => {
+            setSelectedNodeId(node.id)
             if (node.document_id) onSelectDocument(node.document_id)
             else onSelect(node.id)
           }}
@@ -661,6 +711,26 @@ function GraphView({
           <span>{node.label}</span>
         </button>
       ))}
+      {selectedNode && (
+        <aside className="graph-selection" aria-label="Selected graph node">
+          <strong>{selectedNode.label}</strong>
+          <span>
+            {selectedNode.project || 'Unscoped'} · {selectedNode.source || 'Unknown source'}
+          </span>
+          <small>
+            {selectedEdges.length} related link{selectedEdges.length === 1 ? '' : 's'}
+          </small>
+          {selectedEdges.length > 0 && (
+            <ul>
+              {selectedEdges.map((edge) => (
+                <li key={`${edge.source}:${edge.target}:${edge.kind}`}>
+                  {edge.kind === 'contains' ? 'Contained by its workspace or source' : edge.kind}
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+      )}
     </div>
   )
 }
