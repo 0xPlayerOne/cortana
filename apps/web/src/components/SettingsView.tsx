@@ -4271,7 +4271,6 @@ function SourcesSection({
                             type="button"
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose GitHub token destination"
-                            title="Choose GitHub token destination"
                             data-tooltip="Choose GitHub token destination"
                             className="quick-tooltip"
                             onClick={() => void choosePath(index, 'github-token', 'token_path')}
@@ -4553,7 +4552,6 @@ function SourcesSection({
                                 type="button"
                                 disabled={sourceLocked || !source.editable}
                                 aria-label="Choose Discord RPC token destination"
-                                title="Choose Discord RPC token destination"
                                 data-tooltip="Choose Discord RPC token destination"
                                 className="quick-tooltip"
                                 onClick={() =>
@@ -4584,7 +4582,6 @@ function SourcesSection({
                                 type="button"
                                 disabled={sourceLocked || !source.editable}
                                 aria-label="Choose Discord RPC client JSON"
-                                title="Choose Discord RPC client JSON"
                                 data-tooltip="Choose Discord RPC client JSON"
                                 className="quick-tooltip"
                                 onClick={() =>
@@ -4668,7 +4665,6 @@ function SourcesSection({
                                 type="button"
                                 disabled={sourceLocked || !source.editable}
                                 aria-label="Choose Slack OAuth token destination"
-                                title="Choose Slack OAuth token destination"
                                 data-tooltip="Choose Slack OAuth token destination"
                                 className="quick-tooltip"
                                 onClick={() => void choosePath(index, 'slack-token', 'token_path')}
@@ -4697,7 +4693,6 @@ function SourcesSection({
                                 type="button"
                                 disabled={sourceLocked || !source.editable}
                                 aria-label="Choose Slack OAuth client JSON"
-                                title="Choose Slack OAuth client JSON"
                                 data-tooltip="Choose Slack OAuth client JSON"
                                 className="quick-tooltip"
                                 onClick={() =>
@@ -4935,7 +4930,6 @@ function InitialSyncFlow({
         <button
           type="button"
           aria-label="Close initial sync plan"
-          title="Close initial sync plan"
           data-tooltip="Close initial sync plan"
           className="quick-tooltip"
           onClick={onClose}
