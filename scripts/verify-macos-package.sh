@@ -13,9 +13,30 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 version="${tag#v}"
-archive_name="Cortana_${version}_aarch64.app.tar.gz"
+requested_arch="${CORTANA_MAC_ARCH:-$(uname -m)}"
+case "$requested_arch" in
+  arm64|aarch64)
+    release_arch="aarch64"
+    ;;
+  x86_64|amd64)
+    release_arch="x86_64"
+    ;;
+  *)
+    echo "unsupported macOS architecture: $requested_arch (use arm64/aarch64 or x86_64)" >&2
+    exit 2
+    ;;
+esac
+
+archive_name="Cortana_${version}_${release_arch}.app.tar.gz"
 staging="$(mktemp -d "${TMPDIR:-/tmp}/cortana-macos-package.XXXXXX")"
 trap 'rm -rf -- "$staging"' EXIT
+
+if ! gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name' \
+  | grep -Fxq "$archive_name"; then
+  echo "release $tag does not publish the requested macOS $release_arch app archive ($archive_name)" >&2
+  echo "set CORTANA_MAC_ARCH to a published architecture or add that release artifact" >&2
+  exit 1
+fi
 
 gh release download "$tag" --repo "$repo" --pattern "$archive_name" --dir "$staging"
 tar -xzf "$staging/$archive_name" -C "$staging"
@@ -50,4 +71,4 @@ else
   fi
 fi
 
-echo "verified macOS package core for $tag without launching the GUI"
+echo "verified macOS $release_arch package core for $tag without launching the GUI"
