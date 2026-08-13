@@ -40,6 +40,7 @@ const MAX_DOCUMENT_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_QUERY_LENGTH: usize = 256;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
 const READY_EMBEDDING_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+const READY_STORE_STATS_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Clone)]
 pub struct AppState {
@@ -740,7 +741,15 @@ async fn ready(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn ready_with_probe_timeout(state: AppState, probe_timeout: Duration) -> impl IntoResponse {
-    let result = match state.store.stats() {
+    ready_with_probe_timeouts(state, READY_STORE_STATS_TIMEOUT, probe_timeout).await
+}
+
+async fn ready_with_probe_timeouts(
+    state: AppState,
+    stats_timeout: Duration,
+    probe_timeout: Duration,
+) -> impl IntoResponse {
+    let result = match store_stats_with_timeout(state.store.clone(), stats_timeout).await {
         Ok(_) => probe_with_timeout(state.embedder.as_ref(), probe_timeout).await,
         Err(error) => Err(error),
     };
@@ -755,6 +764,22 @@ async fn ready_with_probe_timeout(state: AppState, probe_timeout: Duration) -> i
                 }),
             )
         }
+    }
+}
+
+async fn store_stats_with_timeout(store: Store, timeout: Duration) -> Result<StoreStats> {
+    blocking_stats_with_timeout(move || store.stats(), timeout).await
+}
+
+async fn blocking_stats_with_timeout<F>(stats: F, timeout: Duration) -> Result<StoreStats>
+where
+    F: FnOnce() -> Result<StoreStats> + Send + 'static,
+{
+    let task = tokio::task::spawn_blocking(stats);
+    match tokio::time::timeout(timeout, task).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => Err(anyhow!("readiness stats probe worker failed: {error}")),
+        Err(_) => Err(anyhow!("readiness stats probe timed out after {timeout:?}")),
     }
 }
 
@@ -1750,6 +1775,27 @@ mod tests {
             .into_response();
 
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[tokio::test]
+    async fn readiness_stats_probe_fails_closed_when_store_stats_stall() {
+        let started = Instant::now();
+        let result = blocking_stats_with_timeout(
+            || {
+                std::thread::sleep(Duration::from_millis(25));
+                Err(anyhow!("unexpected stats completion"))
+            },
+            Duration::from_millis(1),
+        )
+        .await;
+
+        let error = result.expect_err("stalled stats probe must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("readiness stats probe timed out")
+        );
         assert!(started.elapsed() < Duration::from_secs(1));
     }
 
