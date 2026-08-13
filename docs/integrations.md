@@ -88,10 +88,17 @@ The token value lives only in the agent process environment or the private `[run
   metadata-only audit events under the `local-cli` principal. Shared or narrowly scoped agents
   must use the MCP server with `--token-env` or the bearer-authenticated HTTP API.
 
-Bearer policies are loaded when the HTTP or MCP process starts. Adding, rotating, or revoking a
-shared principal therefore takes effect after restarting the affected process; the desktop marks
-these settings as restart-required and restarts core services in the background. Keep the previous
-principal until a bounded request with the replacement succeeds and the restart has completed.
+Bearer policies are loaded when the HTTP or MCP process starts. The HTTP service also exposes an
+owner/admin-only `POST /v1/auth/reload` operation for an atomic policy refresh from its configured
+TOML and private environment file. A successful refresh replaces the complete policy at once;
+malformed or unreadable credentials leave the last-good policy active. MCP remains process-scoped
+and picks up changes when its stdio process reconnects. The Desktop still marks access changes as
+restart-required because its managed service action restarts both transports deliberately.
+
+Never use a reload to remove the last policy from a non-loopback listener: remote listeners reject
+that transition. For a zero-downtime rotation, add and verify the replacement principal first, then
+remove the old principal and call the reload endpoint with the current admin credential. The old
+token is rejected immediately after the successful swap.
 
 `serve` binds loopback by default. `--allow-remote` is refused unless bearer principals are configured
 via `[[auth.tokens]]`; terminate TLS upstream when exposing an authenticated endpoint beyond loopback.
@@ -184,6 +191,22 @@ is:
 ```bash
 cortana context "the concrete question" --project optional-project --max-tokens 4000
 ```
+
+### Rotate or revoke an HTTP principal without restarting
+
+The reload endpoint is intentionally narrow and does not accept a token or policy in the request
+body. It rereads the configured TOML plus its `0600` environment file and requires the current
+principal to have `admin` scope:
+
+```bash
+curl -sS -X POST http://127.0.0.1:7331/v1/auth/reload \
+  -H "Authorization: Bearer $CORTANA_ADMIN_AGENT_TOKEN"
+```
+
+The response is metadata-only. A failed parse, missing secret, invalid scope, or duplicate token
+never replaces the active policy; the failure is recorded as an `auth.reload` audit event without
+including the error text or credential value. A successful swap records the same action and
+immediately invalidates removed token values. MCP processes must reconnect to load the same change.
 
 ## Secret handling
 
