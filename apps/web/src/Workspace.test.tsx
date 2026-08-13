@@ -160,6 +160,38 @@ test('graph retries stay outside the live summary and document nodes describe th
   expect(document.querySelector('.graph-links line')).toBeTruthy()
 })
 
+test('graph exposes bounded pagination when another page is available', () => {
+  let loads = 0
+  render(
+    <Workspace
+      {...props}
+      document={null}
+      tab="graph"
+      graph={{
+        nodes: Array.from({ length: 13 }, (_, index) => ({
+          id: `document:${index}`,
+          kind: 'document' as const,
+          label: `Document ${index}`,
+          project: 'work',
+          source: 'notes',
+          document_id: String(index),
+        })),
+        edges: [],
+        next_cursor: 'next-page',
+      }}
+      onLoadMoreGraph={() => {
+        loads += 1
+      }}
+      onSelectDocument={() => {}}
+    />
+  )
+
+  expect(screen.getByText('Showing 12 of 13 documents · 0 links')).toBeTruthy()
+  const loadMore = screen.getByRole('button', { name: 'Load more nodes' })
+  fireEvent.click(loadMore)
+  expect(loads).toBe(1)
+})
+
 test('an empty graph page does not reuse unrelated retrieved evidence', () => {
   render(
     <Workspace
