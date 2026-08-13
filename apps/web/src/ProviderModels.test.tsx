@@ -42,14 +42,14 @@ function cloudSettings(): DesktopSettings {
       ...desktopSettings.embedding,
       provider: 'cloud',
       base_url: 'https://api.openai.com/v1',
-      model: 'gpt-4o-mini',
+      model: 'provider-custom-embedding',
       api_key_env: 'CORTANA_OPENAI_API_KEY',
     },
     query: {
       ...desktopSettings.query,
       provider: 'cloud',
       base_url: 'https://api.openai.com/v1',
-      model: 'gpt-4o-mini',
+      model: 'provider-custom-embedding',
       api_key_env: 'CORTANA_OPENAI_API_KEY',
     },
   }
@@ -167,7 +167,7 @@ test('refresh exposes provider-advertised models without stale cloud presets', a
 })
 
 test('a current model that is not advertised falls back to the custom field unchanged', async () => {
-  state.settings.embedding.model = 'gpt-4o-mini'
+  state.settings.embedding.model = 'provider-custom-embedding'
   renderEmbeddingSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Refresh Embedding model models/ }))
@@ -178,7 +178,7 @@ test('a current model that is not advertised falls back to the custom field unch
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
   expect(screen.queryByLabelText('Model catalog')).toBeNull()
-  expect(modelInput().value).toBe('gpt-4o-mini')
+  expect(modelInput().value).toBe('provider-custom-embedding')
 })
 
 test('selecting an advertised model updates the provider settings', async () => {
@@ -210,7 +210,7 @@ test('failed discovery keeps the explicit model and reports the error', async ()
     expect(screen.getByText(/provider \/models request failed with status 404/)).toBeTruthy()
   })
   expect(screen.queryByLabelText('Model catalog')).toBeNull()
-  expect(modelInput().value).toBe('gpt-4o-mini')
+  expect(modelInput().value).toBe('provider-custom-embedding')
 })
 
 test('changing the endpoint invalidates the advertised catalog', async () => {
@@ -240,8 +240,20 @@ test('query section refreshes the query provider separately', async () => {
     provider: 'https://api.openai.com/v1',
     truncated: true,
     models: [
-      { id: 'gpt-4o', object: 'model', owned_by: 'openai', created: null, capabilities: null },
-      { id: 'gpt-4o-mini', object: 'model', owned_by: 'openai', created: null, capabilities: null },
+      {
+        id: 'provider-chat-large',
+        object: 'model',
+        owned_by: 'openai',
+        created: null,
+        capabilities: null,
+      },
+      {
+        id: 'provider-custom-embedding',
+        object: 'model',
+        owned_by: 'openai',
+        created: null,
+        capabilities: null,
+      },
       { id: 'o3-mini', object: 'model', owned_by: 'openai', created: null, capabilities: null },
     ],
   }
@@ -260,7 +272,7 @@ test('query section refreshes the query provider separately', async () => {
   await waitFor(() => {
     const values = Array.from(modelSelect().options).map((option) => option.value)
     expect(values).toContain('o3-mini')
-    expect(values).toContain('gpt-4o')
+    expect(values).toContain('provider-chat-large')
   })
   expect(state.refreshCalls).toEqual(['query'])
   expect(screen.getByText(/first 512 shown/)).toBeTruthy()
