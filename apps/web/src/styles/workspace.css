@@ -550,7 +550,7 @@
   color: var(--theme-content-text);
   border: 1px solid var(--theme-content-border);
   background: var(--theme-content-surface);
-  box-shadow: var(--theme-shadow);
+  box-shadow: 0 8px 24px rgb(15 22 36 / 18%);
   font-size: 12px;
 }
 
