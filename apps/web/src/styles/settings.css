@@ -363,6 +363,7 @@
 
 .workspace-advanced-fields {
   margin-top: 9px;
+  margin-bottom: 15px;
   display: grid;
   gap: 10px;
 }
@@ -1228,6 +1229,14 @@
   background: #262116;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.safety-note.error,
+.safety-note[role='alert'],
+.settings-inline-error {
+  color: var(--theme-error-fg);
+  border-color: var(--theme-error-border);
+  background: var(--theme-error-bg);
 }
 
 .readiness-actions {

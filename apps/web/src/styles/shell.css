@@ -716,7 +716,9 @@
 }
 
 .document-list-error {
-  color: #d69a80;
+  color: var(--theme-error-fg);
+  border: 1px solid var(--theme-error-border);
+  background: var(--theme-error-bg);
 }
 
 .load-more-documents {

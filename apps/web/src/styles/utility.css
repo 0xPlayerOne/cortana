@@ -289,10 +289,10 @@
 .utility-error {
   margin: 12px 0 0;
   padding: 9px 12px;
-  color: #d69a80;
-  border: 1px solid #4d3527;
+  color: var(--theme-error-fg);
+  border: 1px solid var(--theme-error-border);
   border-radius: 8px;
-  background: #241c17;
+  background: var(--theme-error-bg);
   font-size: 12px;
 }
 
