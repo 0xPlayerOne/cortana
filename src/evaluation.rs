@@ -174,8 +174,7 @@ fn parse_fixture_file(path: &Path) -> Result<EvaluationFixture> {
     );
     anyhow::ensure!(
         metadata.len() <= MAX_FIXTURE_BYTES,
-        "evaluation fixture exceeds the {} byte safety limit",
-        MAX_FIXTURE_BYTES
+        "evaluation fixture exceeds the {MAX_FIXTURE_BYTES} byte safety limit"
     );
     let file = std::fs::File::open(path)
         .with_context(|| format!("failed to read evaluation fixture {}", path.display()))?;
@@ -528,8 +527,7 @@ fn validate_fixture(fixture: &EvaluationFixture) -> Result<()> {
     anyhow::ensure!(!fixture.documents.is_empty(), "fixture has no documents");
     anyhow::ensure!(
         fixture.documents.len() <= MAX_FIXTURE_DOCUMENTS,
-        "fixture exceeds the {} document safety limit",
-        MAX_FIXTURE_DOCUMENTS
+        "fixture exceeds the {MAX_FIXTURE_DOCUMENTS} document safety limit"
     );
     anyhow::ensure!(
         !fixture.retrieval_cases.is_empty(),
@@ -537,16 +535,14 @@ fn validate_fixture(fixture: &EvaluationFixture) -> Result<()> {
     );
     anyhow::ensure!(
         fixture.retrieval_cases.len() <= MAX_FIXTURE_CASES,
-        "fixture exceeds the {} retrieval-case safety limit",
-        MAX_FIXTURE_CASES
+        "fixture exceeds the {MAX_FIXTURE_CASES} retrieval-case safety limit"
     );
     anyhow::ensure!(
         fixture
             .documents
             .iter()
             .all(|document| document.content.len() <= MAX_FIXTURE_DOCUMENT_CONTENT_BYTES),
-        "fixture document content exceeds the {} byte safety limit",
-        MAX_FIXTURE_DOCUMENT_CONTENT_BYTES
+        "fixture document content exceeds the {MAX_FIXTURE_DOCUMENT_CONTENT_BYTES} byte safety limit"
     );
     anyhow::ensure!(
         fixture
@@ -560,8 +556,7 @@ fn validate_fixture(fixture: &EvaluationFixture) -> Result<()> {
     );
     anyhow::ensure!(
         fixture.answer_case.query.len() <= MAX_FIXTURE_QUERY_BYTES,
-        "answer case query exceeds the {} byte safety limit",
-        MAX_FIXTURE_QUERY_BYTES
+        "answer case query exceeds the {MAX_FIXTURE_QUERY_BYTES} byte safety limit"
     );
     let source_ids = fixture
         .documents
