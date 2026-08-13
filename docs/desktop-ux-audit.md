@@ -30,7 +30,7 @@ is not part of a visual/UI change.
   compilation. The web-only suite currently passes 258 tests across 21 files;
   the root Bun run passes 262 tests across 23 files (including script tests)
   under the CI-pinned Bun 1.3.14 and the local Bun 1.4 canary. The Python
-  package gate passes 171 tests, including the retired-model runtime guard. These are
+  package gate passes 172 tests, including the retired-model runtime guard. These are
   headless source checks and do not
   substitute for the still-unverified interactive packaged GUI flows.
 - The published v0.31.12 macOS ARM archive was statically inspected on 2026-08-13:
