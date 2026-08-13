@@ -40,16 +40,60 @@ test('workspace logo data URLs reject non-raster or malformed payloads', () => {
   expect(isWorkspaceLogoDataUrl('not-a-data-url')).toBe(false)
 })
 
-test('workspace logo files reject unsupported types and files over the byte contract', async () => {
+test('workspace logo files reject unsupported types', async () => {
   const svg = new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' })
   await expect(readWorkspaceLogoFile(svg)).rejects.toThrow(
     'Choose a PNG, JPEG, WebP, or GIF image.'
   )
-  // One byte over the 200 KB contract is rejected at the file gate.
-  const oneByteOver = new File([new Uint8Array(200_001)], 'big.png', { type: 'image/png' })
-  await expect(readWorkspaceLogoFile(oneByteOver)).rejects.toThrow(
-    'Workspace logos must be 200 KB or smaller.'
-  )
+})
+
+test('workspace logo files over 200 KB are resized and compressed to a valid JPEG', async () => {
+  const previousImage = globalThis.Image
+  const previousGetContext = HTMLCanvasElement.prototype.getContext
+  const previousToBlob = HTMLCanvasElement.prototype.toBlob
+  const previousCreateObjectURL = URL.createObjectURL
+  const previousRevokeObjectURL = URL.revokeObjectURL
+  let drawCalls = 0
+  const context = {
+    clearRect() {},
+    drawImage() {
+      drawCalls += 1
+    },
+  } as unknown as CanvasRenderingContext2D
+
+  class FakeImage {
+    naturalWidth = 1600
+    naturalHeight = 900
+    onload: (() => void) | null = null
+    onerror: (() => void) | null = null
+
+    set src(_value: string) {
+      queueMicrotask(() => this.onload?.())
+    }
+  }
+
+  try {
+    globalThis.Image = FakeImage as unknown as typeof Image
+    URL.createObjectURL = (() => 'blob:workspace-logo') as typeof URL.createObjectURL
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL
+    HTMLCanvasElement.prototype.getContext = (() =>
+      context) as unknown as typeof HTMLCanvasElement.prototype.getContext
+    HTMLCanvasElement.prototype.toBlob = ((callback) => {
+      callback(new Blob([new Uint8Array(1_024)], { type: 'image/jpeg' }))
+    }) as typeof HTMLCanvasElement.prototype.toBlob
+
+    const source = new File([new Uint8Array(200_001)], 'big.png', { type: 'image/png' })
+    const dataUrl = await readWorkspaceLogoFile(source)
+    expect(dataUrl.startsWith('data:image/jpeg;base64,')).toBe(true)
+    expect(isWorkspaceLogoDataUrl(dataUrl)).toBe(true)
+    expect(drawCalls).toBe(1)
+  } finally {
+    globalThis.Image = previousImage
+    HTMLCanvasElement.prototype.getContext = previousGetContext
+    HTMLCanvasElement.prototype.toBlob = previousToBlob
+    URL.createObjectURL = previousCreateObjectURL
+    URL.revokeObjectURL = previousRevokeObjectURL
+  }
 })
 
 test('workspace logo files within the size bound produce a valid data URL', async () => {

@@ -145,7 +145,10 @@
 }
 
 .server-context .context-error {
-  color: #d69a80;
+  padding: 9px 12px;
+  color: var(--theme-error-fg);
+  border: 1px solid var(--theme-error-border);
+  background: var(--theme-error-bg);
 }
 
 .copy-area {

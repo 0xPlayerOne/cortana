@@ -137,14 +137,18 @@ test('every rail button is enabled and Search focuses the query input', async ()
     if (label === 'Timeline') continue
     const button = railButton(label)
     expect(button.hasAttribute('disabled')).toBe(false)
-    expect(button.getAttribute('title')).toBe(label)
+    expect(button.getAttribute('title')).toBeNull()
+    expect(button.getAttribute('data-tooltip')).toBe(label)
   }
 
   // Timeline is result-only: without a search answer/evidence it stays
   // disabled with an honest tooltip instead of opening an empty timeline.
   const timeline = railButton('Timeline')
   expect(timeline.hasAttribute('disabled')).toBe(true)
-  expect(timeline.getAttribute('title')).toBe('Timeline: available once a search returns evidence')
+  expect(timeline.getAttribute('title')).toBeNull()
+  expect(timeline.getAttribute('data-tooltip')).toBe(
+    'Timeline: available once a search returns evidence'
+  )
 
   fireEvent.click(railButton('Search'))
   await waitFor(() =>
