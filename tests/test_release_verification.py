@@ -605,3 +605,14 @@ def test_desktop_verify_fails_closed_when_minisign_is_required_but_unavailable(
     assert result.returncode == 1
     assert "CORTANA_REQUIRE_MINISIGN=1" in result.stderr
     assert "unavailable" in result.stderr
+
+
+@requires_shell
+def test_desktop_verify_requires_minisign_by_default(tmp_path: Path) -> None:
+    assets = build_desktop_assets(tmp_path, VERSION)
+
+    result = run_desktop_verify(tmp_path, assets, minisign_mode=None)
+
+    assert result.returncode == 1
+    assert "CORTANA_REQUIRE_MINISIGN=1" in result.stderr
+    assert "unavailable" in result.stderr
