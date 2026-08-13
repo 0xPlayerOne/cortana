@@ -32,6 +32,21 @@ If you remember only one thing: install Desktop, create one workspace, validate 
 one small initial sync, and ask one cited question. The complete first-run checklist is in
 [Getting started](docs/getting-started.md).
 
+### Project purpose and current safety boundary
+
+Cortana exists to give people and their agents one private, cited memory across notes, messages,
+documents, calendars, and code. The canonical store, permissions, provenance, retrieval, MCP
+tools, Desktop workspace, and CLI are one system; connectors are replaceable input adapters, not
+separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
+contract, while content-addressed caching avoids repeating work when source content is unchanged.
+
+The published v0.31.12 package is the latest downloadable release. This checkout also contains
+post-release hardening being promoted through the protected `staging` to `main` flow: mutating
+CLI startup and direct JSONL imports serialize on the global lock, imports and evaluation fixtures
+have explicit resource ceilings, remote `/readyz` requires scoped bearer access, optional memory
+outbox leases are fenced, and Desktop sidecars publish atomically. These source-tree changes must
+not be represented as v0.31.12 package behavior until a later release is verified.
+
 ## Download the latest release
 
 For normal use, download Cortana from the

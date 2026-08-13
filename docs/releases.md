@@ -135,6 +135,20 @@ The post-release source also serializes direct JSONL ingestion and source valida
 global `sync.lock`, and requires a bearer principal for `/readyz` on remote listeners while keeping
 `/healthz` public liveness. These changes are not retroactively claimed for the v0.31.12 artifact.
 
+The same source-tree lane now also:
+
+- acquires the mutation lock before opening the store for mutating CLI commands, so startup
+  migrations and fingerprint writes cannot race a concurrent sync;
+- bounds direct JSONL imports to 2,000 documents, 128 MiB of content, 15 minutes, and 8 MiB per
+  line, and bounds custom evaluation fixtures before deserialization;
+- fences Hindsight/Honcho outbox acknowledgements and failures to the specific lease that claimed
+  the row, preventing an expired worker from changing a newer worker's result; and
+- serializes Desktop sidecar preparation and atomically renames completed sidecars into place.
+
+These are source-tree safety contracts, not evidence that a large personal sync or optional memory
+provider is enabled. The next release must rerun the full package, signature, packaged-core, and
+manual Desktop gates before these changes are called downloadable-release behavior.
+
 ## Desktop release gates
 
 The desktop pipeline follows a staged audit policy:

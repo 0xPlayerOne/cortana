@@ -31,6 +31,11 @@ evidence is required.
 Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
 8 MiB maximum line. Use separate reviewed batches for larger migrations.
 
+On the current post-v0.31.12 source tree, mutating CLI startup acquires the same global `sync.lock`
+before opening the store. This covers schema/backfill/fingerprint work as well as the later import
+or sync operation. It is source-tree hardening and is not claimed for the v0.31.12 binary until a
+later release is published and verified.
+
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
 `RUST_LOG=cortana=debug,tower_http=info`, to change verbosity. Request headers and evidence content
 are never logged.
@@ -245,6 +250,11 @@ published macOS, Linux, and Windows updater archives against the updater public 
 closed when `minisign` is unavailable. The published-release workflow also sets
 `CORTANA_REQUIRE_MINISIGN=1`; use the explicit `CORTANA_REQUIRE_MINISIGN=0` opt-out only for
 offline fixture work, never for a release decision.
+
+Desktop sidecar preparation is also single-writer on the current source tree: a bounded lock
+serializes Cargo/build and publication, and the completed sidecar is staged and atomically renamed
+into the bundle directory. A partially copied sidecar is never treated as a successful build. This
+is separate from the published package's signature and GUI acceptance gates.
 
 Each release-asset download uses a bounded three-attempt retry for transient transport failures;
 the attempt budget is capped at five and the retry delay at 60 seconds. Set
