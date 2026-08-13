@@ -35,6 +35,12 @@ is not part of a visual/UI change.
   after compilation. The broader recorded Bun and native suites remain historical;
   both harnesses are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
+- A fresh v0.31.7 source-tree verification on 2026-08-13 also passed the complete
+  Bun suite (258 tests across 22 files, 1,262 assertions, 56.30 seconds), the
+  complete native Tauri suite (129 tests, 4.58 seconds after compilation), and
+  the Python suite (168 tests, 58.19 seconds). These are current headless
+  source checks; they do not convert the packaged GUI/manual gates below into
+  automated evidence.
 - The installed v0.31.7 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
   audit export, verified backup, restore into a second temporary data directory,
