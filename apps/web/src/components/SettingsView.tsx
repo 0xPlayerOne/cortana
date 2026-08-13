@@ -2282,7 +2282,6 @@ function AccessSection({
                   type="button"
                   className="quick-tooltip"
                   aria-label={`Remove ${principal.principal}`}
-                  title={`Remove ${principal.principal}`}
                   data-tooltip={`Remove ${principal.principal}`}
                   onClick={() =>
                     update((current) => ({
@@ -2932,7 +2931,6 @@ function WorkspaceSection({
               </div>
               <label
                 className="workspace-logo-upload quick-tooltip"
-                title="Upload workspace logo"
                 data-tooltip="Upload workspace logo"
               >
                 <Upload size={14} />
@@ -2952,11 +2950,6 @@ function WorkspaceSection({
                   className="quick-tooltip"
                   aria-label={`Remove ${workspace.name}`}
                   disabled={hasWorkspaceSources(workspace.id)}
-                  title={
-                    hasWorkspaceSources(workspace.id)
-                      ? 'Move assigned sources before removing this workspace'
-                      : 'Remove workspace'
-                  }
                   data-tooltip={
                     hasWorkspaceSources(workspace.id)
                       ? 'Move assigned sources before removing this workspace'
@@ -3815,7 +3808,6 @@ function SourcesSection({
                       aria-label="Setup"
                       data-tooltip="Setup"
                       disabled={!canValidate || sourceLocked}
-                      title="Open the official provider setup page"
                       onClick={() => void openSetup(source)}
                     >
                       <ExternalLink size={14} />
@@ -3838,7 +3830,6 @@ function SourcesSection({
                         !source.oauth_client_path ||
                         Boolean(activeJob)
                       }
-                      title={`Authorize read-only ${source.kind === 'github' ? 'GitHub' : source.kind === 'discord' ? 'Discord Desktop' : source.kind === 'slack' ? 'Slack' : 'Google'} access`}
                       onClick={() => void authorizeSource(source)}
                     >
                       {runningThis && activeJob?.operation === 'authorization' ? (
@@ -3854,7 +3845,6 @@ function SourcesSection({
                     aria-label="Validate"
                     data-tooltip="Validate"
                     disabled={!canValidate || Boolean(activeJob) || !workspaceAssigned}
-                    title={canValidate ? 'Read-only bounded validation' : 'Save changes first'}
                     onClick={() => void validateSource(source)}
                   >
                     {runningThis && activeJob?.operation === 'validation' ? (
@@ -3871,7 +3861,6 @@ function SourcesSection({
                     disabled={
                       !canValidate || !source.enabled || Boolean(activeJob) || !workspaceAssigned
                     }
-                    title="Validation-gated trial sync; max 25 documents, 5 MiB, no reconciliation"
                     onClick={() => void trialSyncSource(source)}
                   >
                     {runningThis && activeJob?.operation === 'trial-sync' ? (
@@ -3888,7 +3877,6 @@ function SourcesSection({
                     disabled={
                       !canValidate || !source.enabled || Boolean(activeJob) || !workspaceAssigned
                     }
-                    title="Guided initial sync; fixed budget, validation-gated, no reconciliation"
                     onClick={() => openInitialSync(source)}
                   >
                     {runningThis && activeJob?.operation === 'initial-sync' ? (
@@ -3903,7 +3891,6 @@ function SourcesSection({
                     aria-label={`Remove ${source.name}`}
                     data-tooltip={`Remove ${source.name}`}
                     disabled={sourceLocked}
-                    title={`Remove ${source.name}`}
                     onClick={() => {
                       if (
                         window.confirm(
@@ -4013,7 +4000,6 @@ function SourcesSection({
                           type="button"
                           disabled={sourceLocked || !source.editable}
                           aria-label="Choose source directory"
-                          title="Choose source directory"
                           data-tooltip="Choose source directory"
                           className="quick-tooltip"
                           onClick={() => void choosePath(index, 'directory', 'root')}
@@ -4118,7 +4104,6 @@ function SourcesSection({
                             type="button"
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose Google token destination"
-                            title="Choose Google token destination"
                             data-tooltip="Choose Google token destination"
                             className="quick-tooltip"
                             onClick={() => void choosePath(index, 'google-token', 'token_path')}
@@ -4147,7 +4132,6 @@ function SourcesSection({
                             type="button"
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose Google OAuth client JSON"
-                            title="Choose Google OAuth client JSON"
                             data-tooltip="Choose Google OAuth client JSON"
                             className="quick-tooltip"
                             onClick={() =>

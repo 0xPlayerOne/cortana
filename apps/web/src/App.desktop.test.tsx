@@ -1038,9 +1038,9 @@ test('desktop shell does not present a stale service report after refresh failur
   )
 
   expect(screen.getByText('Services: unavailable')).toBeTruthy()
-  expect(
-    screen.getByRole('button', { name: 'Open service health' }).getAttribute('title')
-  ).toContain('service status transport failed')
+  const health = screen.getByRole('button', { name: 'Open service health' })
+  expect(health.getAttribute('title')).toBeNull()
+  expect(health.getAttribute('data-tooltip')).toContain('service status transport failed')
 })
 
 test('desktop shell does not require the local embedding service for cloud embeddings', () => {
@@ -2751,7 +2751,8 @@ test('running source jobs stay visible in the shell after leaving the settings v
     expect(screen.getByText('1 active source job')).toBeTruthy()
     const activeJobs = screen.getByRole('button', { name: 'Open active source jobs' })
     expect(activeJobs).toBeTruthy()
-    expect(activeJobs.getAttribute('title')).toContain('work-code · validation')
+    expect(activeJobs.getAttribute('title')).toBeNull()
+    expect(activeJobs.getAttribute('data-tooltip')).toContain('work-code · validation')
 
     fireEvent.click(activeJobs)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Inbox' })).toBeTruthy())
