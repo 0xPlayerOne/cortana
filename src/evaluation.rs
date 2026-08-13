@@ -184,8 +184,7 @@ fn parse_fixture_file(path: &Path) -> Result<EvaluationFixture> {
         .with_context(|| format!("failed to read evaluation fixture {}", path.display()))?;
     anyhow::ensure!(
         bytes.len() as u64 <= MAX_FIXTURE_BYTES,
-        "evaluation fixture exceeds the {} byte safety limit",
-        MAX_FIXTURE_BYTES
+        "evaluation fixture exceeds the {MAX_FIXTURE_BYTES} byte safety limit"
     );
     let fixture: EvaluationFixture = serde_json::from_slice(&bytes)
         .with_context(|| format!("invalid evaluation fixture {}", path.display()))?;
