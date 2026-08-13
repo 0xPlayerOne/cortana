@@ -278,7 +278,7 @@ verifier passed. Release v0.31.9 was subsequently published after exact-tree
 promotion PR #960 and reconciliation PR #962. Release v0.31.10 was then
 published through Release Please PR #967. Release v0.31.11 followed through
 Release Please PR #979; release-assets workflow `31675820099` completed all
-platform jobs and the strict 18-asset verifier passed. The installed core remains
+platform jobs and the strict 18-asset verifier passed. The then-installed core was
 v0.31.7 and its
 doctor, query-only readiness, and disposable control-plane checks pass without
 starting services or sync. The published v0.31.11 core archive's persistent-provider
