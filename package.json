@@ -15,6 +15,7 @@
     "desktop:build": "bun run --cwd apps/desktop build",
     "desktop:build:release": "bun run --cwd apps/desktop build:release",
     "desktop:bundle:mac": "bun run --cwd apps/desktop bundle:mac",
+    "desktop:verify:mac": "scripts/verify-macos-package.sh",
     "desktop:check": "bun run --cwd apps/desktop check",
     "desktop:dev": "bun run --cwd apps/desktop dev",
     "desktop:info": "bun run --cwd apps/desktop info",
