@@ -30,13 +30,13 @@ is not part of a visual/UI change.
   passes 168 tests, including the retired-model runtime guard. These are
   headless source checks and do not
   substitute for the still-unverified interactive packaged GUI flows.
-- The published v0.31.8 macOS ARM archive was statically inspected on 2026-08-13:
-  `Contents/MacOS/cortana --version` reports `cortana 0.31.8`, the bundle passes
+- The published v0.31.11 macOS ARM archive was statically inspected on 2026-08-13:
+  `Contents/MacOS/cortana --version` reports `cortana 0.31.11`, the bundle passes
   strict `codesign --verify --deep --strict`, and `spctl --assess` still rejects
   it because Developer ID signing and notarization are not configured. The
   archive was not launched. The static verifier now selects the host
   architecture (or an explicit `CORTANA_MAC_ARCH` override) and fails closed
-  when the release does not publish a matching app archive; v0.31.8 publishes
+  when the release does not publish a matching app archive; v0.31.11 publishes
   only the ARM64 macOS app, so Intel macOS remains an explicit packaging gap.
 - The installed v0.31.7 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
