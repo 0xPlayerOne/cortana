@@ -297,7 +297,7 @@ Release v0.31.12 followed through Release Please PR #1030; release-assets
 workflow `31699076439` completed all platform jobs and the strict 18-asset
 verifier passed, including the packaged-core offline evaluator. The verified
 v0.31.12 archive is now installed locally without a service restart; the
-provider-backed 9,413 ms fixture result above is installed-core evidence. No
+provider-backed 12,319 ms fixture result above is installed-core evidence. No
 packaged-GUI evaluation is claimed.
 
 The installed v0.31.12 binary also passed the disposable offline control-plane
