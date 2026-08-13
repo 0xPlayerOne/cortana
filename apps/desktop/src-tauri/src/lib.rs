@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use reqwest::{Client, Method, Url};
+use reqwest::{Client, Method, Url, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{
@@ -51,6 +51,10 @@ impl BackendClient {
             http: Client::builder()
                 .connect_timeout(Duration::from_secs(3))
                 .timeout(Duration::from_secs(65))
+                // The backend is fixed to loopback. Never follow a redirect
+                // that could forward scoped bearer credentials to another
+                // origin if a local service is compromised or misconfigured.
+                .redirect(Policy::none())
                 .build()?,
         })
     }
