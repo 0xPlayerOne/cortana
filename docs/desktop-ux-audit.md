@@ -100,7 +100,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.31.7 runtime passed the bounded
-  fixture gate on 2026-08-13 in 14,258 ms (the earlier 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
+   fixture gate on 2026-08-13 in 14,258 ms (the earlier 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
    v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
    the v0.31.5 runtime-baseline
    run completed in 13,871 ms; prior
