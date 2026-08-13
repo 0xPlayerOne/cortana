@@ -26,6 +26,11 @@ then use the confirmation-gated **Initial sync** for a small trial. The reposito
 [README](../../README.md#desktop-first-launch-recommended) is the short user path; this file covers
 the native control-plane boundary and contributor setup.
 
+For the complete, plain-language checklist, use [Getting started](../../docs/getting-started.md).
+The normal user journey is intentionally only six actions: install Desktop, approve optional
+tooling, create one workspace, configure one source, validate it, and confirm one bounded initial
+sync. Everything else in this file is an operational or contributor reference.
+
 ## Development
 
 Start the installed Cortana services, then run:
