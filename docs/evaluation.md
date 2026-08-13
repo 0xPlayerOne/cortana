@@ -23,7 +23,7 @@ The current protected source is `v0.31.10`, published through Release Please PR
 #967. It is a metadata-only follow-up to the fully
 verified v0.31.8 Desktop release; release-assets workflow `31667577467` completed
 all platform jobs and the strict 18-asset verifier passed. The installed CLI
-remains `v0.31.7`; no local install or service restart was performed for v0.31.9.
+remains `v0.31.7`; no local install or service restart was performed for v0.31.10.
 A fresh v0.31.10-configured model evaluation against the persistent query provider
 passed on 2026-08-13 in 24,491 ms under the 55-second bound, with planner and
 synthesis model use, valid citations, cache reuse, and revision invalidation.
