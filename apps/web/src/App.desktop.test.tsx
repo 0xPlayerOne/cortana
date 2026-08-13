@@ -1142,7 +1142,7 @@ test('query model field preserves custom text until provider discovery', async (
     query: {
       ...desktopSettings.query,
       provider: 'cloud',
-      model: 'gpt-4o-mini',
+      model: 'provider-custom-embedding',
       base_url: 'https://api.openai.com/v1',
     },
   }
