@@ -1,7 +1,9 @@
 use std::fs;
+use std::fs::OpenOptions;
 
 use assert_cmd::Command;
 use cortana::retrieval;
+use fs2::FileExt;
 use predicates::prelude::*;
 use rusqlite::Connection;
 use tempfile::tempdir;
@@ -532,6 +534,101 @@ fn offline_ingest_and_search_round_trip() {
         .assert()
         .success()
         .stdout(predicate::str::contains("\"title\": \"Runbook\""));
+}
+
+#[test]
+fn direct_ingest_rejects_over_budget_documents() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 256\nbase_url = \"http://127.0.0.1:6999/v1\"\nmodel = \"Qwen/Qwen3-Embedding-0.6B\"\n"
+        ),
+    )
+    .expect("write config");
+    let document = serde_json::json!({
+        "source": "test",
+        "source_id": "oversized",
+        "title": "Oversized",
+        "content": "x".repeat(8 * 1024 * 1024 + 1),
+        "project": "demo"
+    });
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(format!("{document}\n"))
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("JSONL line exceeds"));
+}
+
+#[test]
+fn ingest_refuses_to_race_an_existing_sync_lock() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::create_dir_all(&data).expect("data directory");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\nbase_url = \"http://127.0.0.1:6999/v1\"\nmodel = \"Qwen/Qwen3-Embedding-0.6B\"\n"
+        ),
+    )
+    .expect("write config");
+    let lock_path = data.join("sync.lock");
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(lock_path)
+        .expect("open sync lock");
+    lock.lock_exclusive().expect("hold sync lock");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(
+            r#"{"source":"test","source_id":"locked","title":"Locked","content":"locked","project":"demo"}"#,
+        )
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("another Cortana sync is already active"));
+}
+
+#[test]
+fn validate_source_refuses_to_race_an_existing_sync_lock() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::create_dir_all(&data).expect("data directory");
+    fs::write(&config, format!("data_dir = {data:?}\n")).expect("write config");
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(data.join("sync.lock"))
+        .expect("open sync lock");
+    lock.lock_exclusive().expect("hold sync lock");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["validate-source", "missing-source", "--sample"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "another Cortana sync is already active",
+        ));
 }
 
 #[test]

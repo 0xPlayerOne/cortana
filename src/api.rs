@@ -471,10 +471,14 @@ async fn authorize(
     next: Next,
 ) -> Response {
     let path = request.uri().path();
-    if matches!(path, "/healthz" | "/readyz") {
+    let auth = state.auth_snapshot();
+    // Liveness is intentionally public so local service managers can probe it.
+    // Readiness performs bounded store/provider work and must not be an
+    // unauthenticated remote probe; `remote_listener` is carried with the
+    // policy snapshot so loopback Desktop checks remain frictionless.
+    if path == "/healthz" || (path == "/readyz" && !auth.remote_listener) {
         return next.run(request).await;
     }
-    let auth = state.auth_snapshot();
     let principal = if auth.policy.requires_token() {
         request
             .headers()
@@ -495,7 +499,7 @@ async fn authorize(
     };
     let required_scope = match path {
         "/metrics" | "/v1/audit" | "/v1/auth/reload" => ADMIN_SCOPE,
-        "/v1/status" => STATUS_SCOPE,
+        "/v1/status" | "/readyz" => STATUS_SCOPE,
         _ => QUERY_SCOPE,
     };
     if !principal.has_scope(required_scope) {
@@ -1944,6 +1948,59 @@ mod tests {
             .await
             .expect("metrics response");
         assert_eq!(authorized.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn remote_readiness_requires_bearer_but_liveness_stays_public() {
+        let (_directory, state) = test_state();
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("REMOTE_TOKEN".into(), "remote-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "remote-agent".into(),
+            token_env: "REMOTE_TOKEN".into(),
+            scopes: vec![QUERY_SCOPE.into(), STATUS_SCOPE.into()],
+            acl: Vec::new(),
+        }];
+        let policy = AuthPolicy::from_config(&config).expect("auth policy");
+        let app = router(state.with_auth_policy_for_listener(policy, true));
+
+        let health = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/healthz")
+                    .body(Body::empty())
+                    .expect("health request"),
+            )
+            .await
+            .expect("health response");
+        assert_eq!(health.status(), StatusCode::OK);
+
+        let denied = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/readyz")
+                    .body(Body::empty())
+                    .expect("readiness request"),
+            )
+            .await
+            .expect("readiness response");
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+
+        let authorized = app
+            .oneshot(
+                Request::builder()
+                    .uri("/readyz")
+                    .header(header::AUTHORIZATION, "Bearer remote-secret")
+                    .body(Body::empty())
+                    .expect("authorized readiness request"),
+            )
+            .await
+            .expect("authorized readiness response");
+        assert_ne!(authorized.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]

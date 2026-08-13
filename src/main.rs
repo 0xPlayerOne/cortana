@@ -33,6 +33,10 @@ const DEFAULT_CONTEXT_LIMIT: usize = 10;
 const VALIDATION_MAX_DOCUMENTS: usize = 25;
 const VALIDATION_MAX_BYTES: u64 = 5 * 1024 * 1024;
 const VALIDATION_MAX_SECONDS: u64 = 60;
+const DIRECT_INGEST_MAX_DOCUMENTS: usize = 2_000;
+const DIRECT_INGEST_MAX_BYTES: u64 = 128 * 1024 * 1024;
+const DIRECT_INGEST_MAX_SECONDS: u64 = 15 * 60;
+const MAX_JSONL_LINE_BYTES: usize = 8 * 1024 * 1024;
 const QUARANTINE_ACL_LABEL: &str = "__quarantine__";
 
 #[derive(Debug, Parser)]
@@ -148,6 +152,8 @@ enum Command {
         force: bool,
     },
     /// Ingest normalized Document records from a JSON Lines file or stdin.
+    /// The input is bounded to the normal 2,000-document/128 MiB/15-minute
+    /// ingestion safety limits; split larger imports into reviewed batches.
     Ingest {
         #[arg(default_value = "-")]
         input: String,
@@ -594,6 +600,10 @@ async fn main() -> Result<()> {
         sample,
     }) = cli.command.as_ref()
     {
+        // Validation launches connector helpers and cleans their temporary
+        // spools. Serialize it with ingestion/sync so a read-only preflight
+        // cannot remove an active connector's output.
+        let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
         return validate_configured_source(
             &config,
             source,
@@ -695,8 +705,32 @@ async fn main() -> Result<()> {
         }
         _ => {}
     }
+    // Store::open may run schema/backfill migrations and ensure_fingerprint
+    // below may write metadata. Acquire the same process-wide lock before
+    // opening the store for commands that mutate the index so startup work
+    // cannot overlap another sync, backup, or restore.
+    let startup_lock = if matches!(
+        cli.command.as_ref(),
+        Some(
+            Command::Ingest { .. }
+                | Command::ImportEmbeddings { .. }
+                | Command::SyncFiles { plan: false, .. }
+                | Command::Sync { plan: false, .. }
+                | Command::Acl {
+                    action: AclAction::Apply { .. },
+                }
+        )
+    ) {
+        Some(SyncLock::acquire(&config.data_dir.join("sync.lock"))?)
+    } else {
+        None
+    };
     let store = Store::open(&config.database_path())?;
     if let Some(Command::Acl { action }) = cli.command.as_ref() {
+        let _lock = startup_lock.as_ref();
+        if matches!(action, AclAction::Apply { .. }) {
+            anyhow::ensure!(_lock.is_some(), "missing startup sync lock for ACL apply");
+        }
         return manage_acl(&config, &store, action);
     }
     if let Some(Command::Audit { action }) = cli.command.as_ref() {
@@ -779,12 +813,23 @@ async fn main() -> Result<()> {
         ) => {
             unreachable!()
         }
-        Some(Command::Ingest { input }) => ingest(&store, embedder.as_ref(), &input).await,
+        Some(Command::Ingest { input }) => {
+            // JSONL ingestion mutates the same index and operational metadata as
+            // configured syncs. Serialize it with sync, backup, restore, and
+            // embedding operations so a direct CLI ingest cannot race a
+            // snapshot or leave partially updated sync state behind.
+            let _lock = startup_lock
+                .as_ref()
+                .context("missing startup sync lock for ingest")?;
+            ingest(&store, embedder.as_ref(), &input).await
+        }
         Some(Command::ImportEmbeddings {
             input,
             no_reconcile,
         }) => {
-            let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+            let _lock = startup_lock
+                .as_ref()
+                .context("missing startup sync lock for embedded import")?;
             import_embeddings(
                 &store,
                 embedder.as_ref(),
@@ -804,7 +849,9 @@ async fn main() -> Result<()> {
             max_seconds,
             exclude,
         }) => {
-            let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+            let _lock = startup_lock
+                .as_ref()
+                .context("missing startup sync lock for filesystem sync")?;
             let recovered = store.recover_interrupted_syncs()?;
             if recovered > 0 {
                 tracing::info!(
@@ -867,7 +914,9 @@ async fn main() -> Result<()> {
             max_seconds,
             require_validation: _,
         }) => {
-            let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+            let _lock = startup_lock
+                .as_ref()
+                .context("missing startup sync lock for configured sync")?;
             let recovered = store.recover_interrupted_syncs()?;
             if recovered > 0 {
                 tracing::info!(
@@ -2240,20 +2289,62 @@ async fn ingest(store: &Store, embedder: &dyn Embedder, input: &str) -> Result<(
             std::fs::File::open(input).with_context(|| format!("failed to open {input}"))?,
         ))
     };
+    let cancellation = Cancellation::inert();
+    let control = SourceControl {
+        limits: SourceLimits {
+            max_documents: DIRECT_INGEST_MAX_DOCUMENTS,
+            max_bytes: DIRECT_INGEST_MAX_BYTES,
+            max_seconds: DIRECT_INGEST_MAX_SECONDS,
+            document_batch_size: 64,
+            request_concurrency: embedder.request_concurrency().max(1),
+        },
+        started: Instant::now(),
+        cancellation: &cancellation,
+    };
     let mut documents = Vec::with_capacity(64);
+    let started = Instant::now();
+    let mut document_count = 0usize;
+    let mut content_bytes = 0u64;
     for line in reader.lines() {
         let line = line?;
         if line.trim().is_empty() {
             continue;
         }
-        documents.push(serde_json::from_str(&line).context("invalid Document JSONL")?);
+        anyhow::ensure!(
+            line.len() <= MAX_JSONL_LINE_BYTES,
+            "direct ingest JSONL line exceeds the {MAX_JSONL_LINE_BYTES} byte safety limit"
+        );
+        let document: Document = serde_json::from_str(&line).context("invalid Document JSONL")?;
+        document_count = document_count.saturating_add(1);
+        anyhow::ensure!(
+            document_count <= DIRECT_INGEST_MAX_DOCUMENTS,
+            "direct ingest exceeds the {DIRECT_INGEST_MAX_DOCUMENTS} document safety limit"
+        );
+        content_bytes = content_bytes.saturating_add(document.content.len() as u64);
+        anyhow::ensure!(
+            content_bytes <= DIRECT_INGEST_MAX_BYTES,
+            "direct ingest exceeds the {DIRECT_INGEST_MAX_BYTES} byte safety limit"
+        );
+        anyhow::ensure!(
+            started.elapsed() <= Duration::from_secs(DIRECT_INGEST_MAX_SECONDS),
+            "direct ingest exceeded the {DIRECT_INGEST_MAX_SECONDS} second safety limit"
+        );
+        documents.push(document);
         if documents.len() == 64 {
-            ingest_documents(store, embedder, std::mem::take(&mut documents)).await?;
+            ingest_documents_controlled(
+                store,
+                embedder,
+                std::mem::take(&mut documents),
+                "direct-ingest",
+                &control,
+            )
+            .await?;
         }
     }
     if !documents.is_empty() {
-        ingest_documents(store, embedder, documents).await?;
+        ingest_documents_controlled(store, embedder, documents, "direct-ingest", &control).await?;
     }
+    cancellation.stop();
     Ok(())
 }
 
@@ -2386,6 +2477,7 @@ fn import_embeddings(
     Ok(())
 }
 
+#[cfg(test)]
 async fn ingest_documents(
     store: &Store,
     embedder: &dyn Embedder,
