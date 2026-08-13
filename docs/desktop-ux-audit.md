@@ -45,7 +45,10 @@ is not part of a visual/UI change.
   `Contents/MacOS/cortana --version` reports `cortana 0.31.7`, the bundle passes
   strict `codesign --verify --deep --strict`, and `spctl --assess` still rejects
   it because Developer ID signing and notarization are not configured. The
-  archive was not launched.
+  archive was not launched. The static verifier now selects the host
+  architecture (or an explicit `CORTANA_MAC_ARCH` override) and fails closed
+  when the release does not publish a matching app archive; v0.31.7 publishes
+  only the ARM64 macOS app, so Intel macOS remains an explicit packaging gap.
 - The installed v0.31.7 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
   audit export, verified backup, restore into a second temporary data directory,
