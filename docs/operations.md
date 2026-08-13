@@ -13,6 +13,8 @@ that bearer token only in browser session storage.
   through a bounded database-stats probe; a stalled SQLite read fails closed instead of hanging.
 - `POST /v1/answer` runs the bounded human-facing query pipeline.
 - `GET /metrics` exports low-cardinality Prometheus metrics through the same bounded stats probe.
+- MCP `brain_status` uses the same bounded stats probe so agent status requests fail closed rather
+  than waiting indefinitely on a contended SQLite read.
 
 `/healthz` only answers whether the process is alive; it does not perform the database or backup
 integrity work used by the CLI's full readiness check. A recent read-only readiness run scanned
