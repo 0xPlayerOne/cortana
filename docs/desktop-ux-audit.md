@@ -57,6 +57,13 @@ is not part of a visual/UI change.
   indexing, reconciliation, or scheduler changes. Filesystem and code sources
   remain sampled by design, so this is authorization/reachability evidence only.
 
+The current checkout is newer than the v0.31.12 artifact. Its post-release safety lane acquires
+the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
+parsing before resource-heavy work, fences optional-memory outbox leases, and serializes Desktop
+sidecar preparation with atomic publication. These source-tree protections are covered by focused
+regressions and must be verified again in a later packaged release; they do not authorize a source,
+enable recurring sync, or prove the unverified GUI/browser/tray/dialog/updater gates above.
+
 ## Requirement matrix
 
 | Area                                                   | Current evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Status            | Follow-up                                                                                                                                                      |
