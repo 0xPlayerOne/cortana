@@ -2028,8 +2028,8 @@ fn provider_model_discovery_lists_advertised_models_from_loopback_provider() {
             }
         }
         let body = br#"{"object":"list","data":[
-            {"id":"qwen2.5-72b-instruct","object":"model","owned_by":"local"},
-            {"id":"gemma2-27b-it","object":"model","capabilities":["completion"]}
+            {"id":"provider-local-chat","object":"model","owned_by":"local"},
+            {"id":"provider-local-completion","object":"model","capabilities":["completion"]}
         ]}"#;
         let headers = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -2074,7 +2074,7 @@ fn provider_model_discovery_lists_advertised_models_from_loopback_provider() {
         .iter()
         .map(|model| model["id"].as_str().expect("model id"))
         .collect::<Vec<_>>();
-    assert_eq!(ids, vec!["qwen2.5-72b-instruct", "gemma2-27b-it"]);
+    assert_eq!(ids, vec!["provider-local-chat", "provider-local-completion"]);
     assert_eq!(
         parsed["models"][1]["capabilities"],
         serde_json::json!(["completion"])
