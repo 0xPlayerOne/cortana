@@ -771,9 +771,19 @@ async fn store_stats_with_timeout(store: Store, timeout: Duration) -> Result<Sto
     blocking_stats_with_timeout(move || store.stats(), timeout).await
 }
 
-async fn blocking_stats_with_timeout<F>(stats: F, timeout: Duration) -> Result<StoreStats>
+async fn store_stats_scoped_with_timeout(
+    store: Store,
+    acl: Vec<String>,
+    source_keys: HashSet<(String, String)>,
+    timeout: Duration,
+) -> Result<StoreStats> {
+    blocking_stats_with_timeout(move || store.stats_scoped(&acl, &source_keys), timeout).await
+}
+
+async fn blocking_stats_with_timeout<F, T>(stats: F, timeout: Duration) -> Result<T>
 where
-    F: FnOnce() -> Result<StoreStats> + Send + 'static,
+    F: FnOnce() -> Result<T> + Send + 'static,
+    T: Send + 'static,
 {
     let task = tokio::task::spawn_blocking(stats);
     match tokio::time::timeout(timeout, task).await {
@@ -800,11 +810,15 @@ async fn status(
     let owner = principal.is_owner();
     let ingestion = state.ingestion.refreshed().visible_to(&principal);
     let stats = if owner {
-        state.store.stats()
+        store_stats_with_timeout(state.store.clone(), READY_STORE_STATS_TIMEOUT).await
     } else {
-        state
-            .store
-            .stats_scoped(&acl, &ingestion.visible_sync_source_keys())
+        store_stats_scoped_with_timeout(
+            state.store.clone(),
+            acl,
+            ingestion.visible_sync_source_keys(),
+            READY_STORE_STATS_TIMEOUT,
+        )
+        .await
     }
     .map_err(internal_error)?;
     let source_projects = if owner {
@@ -1149,7 +1163,9 @@ async fn metrics(
     State(state): State<AppState>,
     Extension(_principal): Extension<Principal>,
 ) -> Result<impl IntoResponse, (StatusCode, String)> {
-    let stats = state.store.stats().map_err(internal_error)?;
+    let stats = store_stats_with_timeout(state.store.clone(), READY_STORE_STATS_TIMEOUT)
+        .await
+        .map_err(internal_error)?;
     let body = format!(
         "# HELP cortana_uptime_seconds Process uptime in seconds.\n\
          # TYPE cortana_uptime_seconds gauge\n\
@@ -1784,7 +1800,7 @@ mod tests {
         let result = blocking_stats_with_timeout(
             || {
                 std::thread::sleep(Duration::from_millis(25));
-                Err(anyhow!("unexpected stats completion"))
+                Err::<StoreStats, _>(anyhow!("unexpected stats completion"))
             },
             Duration::from_millis(1),
         )

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 use std::time::Instant;
 
 use rmcp::{
@@ -21,6 +22,7 @@ use crate::{
 };
 
 const MAX_SCOPE_BYTES: usize = 256;
+const STATS_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -314,15 +316,21 @@ impl BrainServer {
         }
         let acl = self.principal.visible_acl();
         match if self.principal.is_owner() {
-            self.store.stats()
+            let store = self.store.clone();
+            stats_with_timeout(STATS_TIMEOUT, move || store.stats()).await
         } else {
+            let store = self.store.clone();
+            let stats_acl = acl.clone();
             let allowed_sync_sources = self
                 .configured_sources
                 .iter()
                 .filter(|source| acl_allows(&source.acl, &acl))
                 .map(|source| (source.source.clone(), source.project.clone()))
                 .collect::<HashSet<_>>();
-            self.store.stats_scoped(&acl, &allowed_sync_sources)
+            stats_with_timeout(STATS_TIMEOUT, move || {
+                store.stats_scoped(&stats_acl, &allowed_sync_sources)
+            })
+            .await
         } {
             Ok(stats) => {
                 let count = usize::try_from(stats.documents).ok();
@@ -352,6 +360,23 @@ impl BrainServer {
                 format!("status error: {error}")
             }
         }
+    }
+}
+
+async fn stats_with_timeout<F>(
+    timeout: Duration,
+    stats: F,
+) -> anyhow::Result<crate::store::StoreStats>
+where
+    F: FnOnce() -> anyhow::Result<crate::store::StoreStats> + Send + 'static,
+{
+    let task = tokio::task::spawn_blocking(stats);
+    match tokio::time::timeout(timeout, task).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => Err(anyhow::anyhow!("MCP stats probe worker failed: {error}")),
+        Err(_) => Err(anyhow::anyhow!(
+            "MCP stats probe timed out after {timeout:?}"
+        )),
     }
 }
 
