@@ -27,7 +27,7 @@ is not part of a visual/UI change.
 - The complete native Tauri suite passes 129 tests in 2.07 seconds after
   compilation. The full web suite passes 258 tests across 22 files under the
   CI-pinned Bun 1.3.14 and the local Bun 1.4 canary. The Python package gate
-  passes 168 tests, including the retired-model runtime guard. These are
+  passes 171 tests, including the retired-model runtime guard. These are
   headless source checks and do not
   substitute for the still-unverified interactive packaged GUI flows.
 - The published v0.31.11 macOS ARM archive was statically inspected on 2026-08-13:
