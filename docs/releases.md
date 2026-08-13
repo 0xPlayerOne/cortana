@@ -77,6 +77,9 @@ those changes to Release Please's conventional-commit history after the protecte
 promotion flattened their source commits. It changes release metadata only; it
 does not alter runtime behavior, credentials, or trigger a corpus sync.
 
+The next release verification must include the packaged-core offline evaluator in
+addition to archive, checksum, updater-signature, and manifest checks.
+
 ## Desktop release gates
 
 The desktop pipeline follows a staged audit policy:
