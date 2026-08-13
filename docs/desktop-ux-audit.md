@@ -5,7 +5,7 @@ intentionally separate from runtime migration work:
 legacy scope quarantine remains in place, so changing or deleting indexed data
 is not part of a visual/UI change.
 
-## Current release evidence (2026-08-12)
+## Current release evidence (2026-08-13)
 
 - `v0.31.7` is the current protected release, published through Release Please
   PR #895 after the post-v0.31.6 Apple Notes executable and Buzz source guards
@@ -21,7 +21,7 @@ is not part of a visual/UI change.
   native dialogs, updater interaction, Developer ID signing, and notarization
   remain manual gates.
 - The latest installed v0.31.7 provider-backed fixture evaluation completed on
-  2026-08-12 in 22,015 ms (the earlier 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
+  2026-08-13 in 15,542 ms (the earlier 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
   v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
   runtime-baseline run completed in 13,871 ms; prior verified runs
   completed in 19,524 ms, 15,774 ms, and
@@ -31,9 +31,9 @@ is not part of a visual/UI change.
   and recurring sync remains uninstalled because enabled filesystem/code sources
   are still bounded samples or otherwise below their
   configured full-sync budgets.
-- The latest full Bun suite passes 258 tests across 22 files with 1,273
-  assertions in 78.47 seconds. The native Tauri suite passes 129 tests; the
-  latest run took 5.31 seconds after compilation. Both suites are headless and do not substitute
+- The latest focused native Tauri acceptance suite passes 24 tests in 5.12 seconds
+  after compilation. The broader recorded Bun and native suites remain historical;
+  both harnesses are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
 - The installed v0.31.7 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
@@ -46,7 +46,7 @@ is not part of a visual/UI change.
   All three trials were non-reconciling and did not install recurring sync. This
   proves the selected connector-to-embedding-to-index path, not full-corpus
   readiness.
-- A fresh validation-only source smoke on 2026-08-12 passed all 21 enabled
+- A fresh validation-only source smoke on 2026-08-13 passed all 21 enabled
   sources at the same one-document/64 KiB/30-second bounds, without embedding,
   indexing, reconciliation, or scheduler changes. Filesystem and code sources
   remain sampled by design, so this is authorization/reachability evidence only.
@@ -89,7 +89,7 @@ is not part of a visual/UI change.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.31.7 runtime passed the bounded
-   fixture gate on 2026-08-12 in 22,015 ms (the earlier 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
+   fixture gate on 2026-08-13 in 15,542 ms (the earlier 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
    v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
    the v0.31.5 runtime-baseline
    run completed in 13,871 ms; prior
