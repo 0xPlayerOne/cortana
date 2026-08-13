@@ -13,7 +13,8 @@ for service state, backups, authentication, sync safety, and release evidence.
 ## Health and telemetry
 
 - `GET /healthz` is an unauthenticated process-liveness check.
-- `GET /readyz` verifies both the SQLite index and a real embedding request.
+- `GET /readyz` verifies both the SQLite index and a real embedding request. It is public on
+  loopback, but requires a bearer principal with `status` scope on remote listeners.
 - `GET /v1/status` reports source freshness, index counts, runtime counters, and cache telemetry
   through a bounded database-stats probe; a stalled SQLite read fails closed instead of hanging.
 - `POST /v1/answer` runs the bounded human-facing query pipeline.
@@ -26,6 +27,14 @@ integrity work used by the CLI's full readiness check. A recent read-only readin
 roughly 1 GB and took about 130 seconds for database integrity plus about 80 seconds for the backup
 scan, so use `/healthz` for a quick liveness probe and `cortana readiness` when comprehensive
 evidence is required.
+
+Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
+8 MiB maximum line. Use separate reviewed batches for larger migrations.
+
+On the current post-v0.31.12 source tree, mutating CLI startup acquires the same global `sync.lock`
+before opening the store. This covers schema/backfill/fingerprint work as well as the later import
+or sync operation. It is source-tree hardening and is not claimed for the v0.31.12 binary until a
+later release is published and verified.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
 `RUST_LOG=cortana=debug,tower_http=info`, to change verbosity. Request headers and evidence content
@@ -242,6 +251,11 @@ closed when `minisign` is unavailable. The published-release workflow also sets
 `CORTANA_REQUIRE_MINISIGN=1`; use the explicit `CORTANA_REQUIRE_MINISIGN=0` opt-out only for
 offline fixture work, never for a release decision.
 
+Desktop sidecar preparation is also single-writer on the current source tree: a bounded lock
+serializes Cargo/build and publication, and the completed sidecar is staged and atomically renamed
+into the bundle directory. A partially copied sidecar is never treated as a successful build. This
+is separate from the published package's signature and GUI acceptance gates.
+
 Each release-asset download uses a bounded three-attempt retry for transient transport failures;
 the attempt budget is capped at five and the retry delay at 60 seconds. Set
 `CORTANA_DOWNLOAD_RETRY_DELAY=0` for fast offline tests. Every attempt also has a hard timeout,
@@ -309,6 +323,13 @@ The installed v0.31.12 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
 backup, restore, SQLite verify, and post-restore search). It does not exercise
 the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
+
+The current checkout also contains post-v0.31.12 hardening that is not part of
+that published artifact until a later protected release: direct ingestion and
+source validation share the global `sync.lock`, and remote `/readyz` requests
+require a bearer principal with `status` scope while `/healthz` remains public
+liveness. Keep the published-release evidence above separate from these
+source-tree changes.
 
 To verify a published macOS package without launching its GUI, run the static
 package smoke check on macOS. It selects the host architecture automatically;

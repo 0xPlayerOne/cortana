@@ -9,6 +9,19 @@ not sign in to an account, download model weights, read a source, index content,
 recurring sync until you approve that action. A failed readiness or validation check is a stop
 condition, not something to bypass.
 
+## Choose your installation path
+
+- **Desktop release (recommended):** download the matching installer from the [latest GitHub
+  release](https://github.com/0xPlayerOne/cortana/releases/latest). This is the simplest path for
+  workspace, source, service, and update settings.
+- **Core archive:** use the matching platform archive when you want the CLI, MCP, or HTTP service
+  without the Desktop shell.
+- **Checkout:** use the [contributor setup](../.github/CONTRIBUTING.md) for unreleased source-tree
+  work. A checkout may contain hardening that is not present in the latest published package.
+
+The installer preserves an existing configuration, index, backups, and secrets. It does not
+authorize an account, download a connector corpus, start a sync, or enable a scheduler by itself.
+
 ## The shortest path to a first result
 
 1. **Download Cortana Desktop.** Open the [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest)
@@ -32,6 +45,10 @@ condition, not something to bypass.
 Stop after step 6 if you only need a local searchable brain. Recurring sync, shared-agent access,
 cloud model use, and optional Hindsight/Honcho memory adapters are separate decisions with their
 own safety and evidence gates.
+
+For a first trial, keep the default source budget and stop after one known cited question. Do not
+use a full-corpus budget to make a validation pass, and do not treat a sampled filesystem/code
+validation as permission for reconciliation or recurring sync.
 
 ## What you get
 
@@ -66,6 +83,11 @@ own safety and evidence gates.
 - [Agent integrations](integrations.md) — install the skill and connect MCP, HTTP, or CLI clients.
 - [Operations guide](operations.md) — readiness, backups, recovery, authentication, and service
   management.
+
+The shortest safe success criterion is: the app launches, one source validates, one bounded
+non-reconciling trial completes, and a cited query returns the expected document. GUI OAuth,
+native dialogs, tray/autostart, updater installation, and macOS Developer ID/notarization remain
+separate host-acceptance checks even when headless tests and static package verification pass.
 
 ## If something is not ready
 

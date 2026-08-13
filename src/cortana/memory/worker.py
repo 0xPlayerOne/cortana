@@ -55,14 +55,26 @@ class MemorySyncWorker:
                 self._provider.delete(entry.document_id)
             else:
                 raise ValueError(f"unsupported operation {entry.operation}")
-            self._outbox.acknowledge(entry.id)
+            if entry.leased_by is not None:
+                self._outbox.acknowledge(entry.id, lease_owner=entry.leased_by)
         except ProviderError as error:
-            self._outbox.mark_failed(entry.id, error=str(error), retriable=error.retriable)
+            if entry.leased_by is not None:
+                self._outbox.mark_failed(
+                    entry.id,
+                    lease_owner=entry.leased_by,
+                    error=str(error),
+                    retriable=error.retriable,
+                )
         except MemoryArgumentError as error:
-            self._outbox.mark_failed(entry.id, error=str(error), retriable=False)
+            if entry.leased_by is not None:
+                self._outbox.mark_failed(
+                    entry.id, lease_owner=entry.leased_by, error=str(error), retriable=False
+                )
         except Exception as error:
-            self._outbox.mark_failed(
-                entry.id,
-                error=f"{type(error).__name__}: {error}",
-                retriable=False,
-            )
+            if entry.leased_by is not None:
+                self._outbox.mark_failed(
+                    entry.id,
+                    lease_owner=entry.leased_by,
+                    error=f"{type(error).__name__}: {error}",
+                    retriable=False,
+                )
