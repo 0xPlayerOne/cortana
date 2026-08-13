@@ -537,6 +537,37 @@ fn offline_ingest_and_search_round_trip() {
 }
 
 #[test]
+fn direct_ingest_rejects_over_budget_documents() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 256\nbase_url = \"http://127.0.0.1:6999/v1\"\nmodel = \"Qwen/Qwen3-Embedding-0.6B\"\n"
+        ),
+    )
+    .expect("write config");
+    let document = serde_json::json!({
+        "source": "test",
+        "source_id": "oversized",
+        "title": "Oversized",
+        "content": "x".repeat(8 * 1024 * 1024 + 1),
+        "project": "demo"
+    });
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(format!("{}\n", document))
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("JSONL line exceeds"));
+}
+
+#[test]
 fn ingest_refuses_to_race_an_existing_sync_lock() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");

@@ -238,6 +238,8 @@ bun run build
 ./target/release/cortana doctor
 
 # Plan and then run bounded ingestion; recurring background sync is opt-in.
+# Direct JSONL ingest is capped at 2,000 documents, 128 MiB, and 15 minutes.
+# Split larger reviewed imports into separate batches.
 ./target/release/cortana ingest documents.jsonl
 ./target/release/cortana sync --source SOURCE --plan
 # Fetch and validate one source without embedding, indexing, or reconciliation.

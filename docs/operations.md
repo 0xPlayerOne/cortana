@@ -28,6 +28,9 @@ roughly 1 GB and took about 130 seconds for database integrity plus about 80 sec
 scan, so use `/healthz` for a quick liveness probe and `cortana readiness` when comprehensive
 evidence is required.
 
+Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
+8 MiB maximum line. Use separate reviewed batches for larger migrations.
+
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
 `RUST_LOG=cortana=debug,tower_http=info`, to change verbosity. Request headers and evidence content
 are never logged.
