@@ -382,7 +382,7 @@ mod tests {
         let base_url = serve(json_body(json!({
             "data": [
                 { "id": "text-embedding-3-small" },
-                { "id": "gpt-4o-mini", "owned_by": "openai" }
+                { "id": "provider-custom-embedding", "owned_by": "openai" }
             ]
         })))
         .await;
