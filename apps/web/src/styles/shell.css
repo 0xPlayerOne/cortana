@@ -251,22 +251,22 @@
 }
 
 .workspace-logo--small {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: 6px;
   font-size: 9px;
 }
 
 .workspace-logo--medium {
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
 }
 
 .workspace-logo--large {
-  width: 38px;
-  height: 38px;
+  width: 48px;
+  height: 48px;
   border-radius: var(--radius-sm);
-  font-size: 15px;
+  font-size: 18px;
 }
 
 /* The small picker logo keeps a panel-colored ring so it blends with the
