@@ -6,6 +6,7 @@ import os
 import sqlite3
 import stat
 import time
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -307,22 +308,26 @@ class Outbox:
         lease_until = now + float(lease_seconds)
         for row in rows:
             row_id = int(row[0])
+            # A worker name identifies a process, not a specific lease. Add a
+            # claim nonce so a slow worker cannot complete a claim that another
+            # worker acquired after the original lease expired.
+            lease_owner = f"{worker}:{uuid.uuid4().hex}"
             cursor = self._connection.execute(
                 """
                 UPDATE memory_outbox
                    SET state='in_flight', lease_until=?, leased_by=?, updated_at=?
                  WHERE id = ? AND state='pending' AND available_after <= ?
                 """,
-                (lease_until, worker, now, row_id, now),
+                (lease_until, lease_owner, now, row_id, now),
             )
             if cursor.rowcount == 1:
                 claimed_ids.append(row_id)
         self._connection.commit()
         return [self._load_entry(entry_id) for entry_id in claimed_ids]
 
-    def acknowledge(self, entry_id: int) -> None:
+    def acknowledge(self, entry_id: int, *, lease_owner: str) -> bool:
         now = time.time()
-        self._connection.execute(
+        cursor = self._connection.execute(
             """
             UPDATE memory_outbox
                SET state='succeeded',
@@ -330,20 +335,30 @@ class Outbox:
                    leased_by=NULL,
                    updated_at=?,
                    last_error=NULL
-             WHERE id = ?
+             WHERE id = ? AND state='in_flight' AND leased_by = ?
+                   AND lease_until IS NOT NULL AND lease_until > ?
             """,
-            (now, entry_id),
+            (now, entry_id, lease_owner, now),
         )
+        if cursor.rowcount != 1:
+            self._connection.rollback()
+            return False
         self._set_telemetry("last_success_at", str(now), now)
         self._connection.commit()
+        return True
 
-    def mark_failed(self, entry_id: int, *, error: str, retriable: bool) -> None:
+    def mark_failed(self, entry_id: int, *, lease_owner: str, error: str, retriable: bool) -> bool:
         row = self._connection.execute(
-            "SELECT attempts, max_attempts FROM memory_outbox WHERE id = ?",
-            (entry_id,),
+            """
+            SELECT attempts, max_attempts FROM memory_outbox
+             WHERE id = ? AND state='in_flight' AND leased_by = ?
+                   AND lease_until IS NOT NULL AND lease_until > ?
+            """,
+            (entry_id, lease_owner, time.time()),
         ).fetchone()
         if row is None:
-            return
+            self._connection.rollback()
+            return False
 
         attempts = int(row[0]) + 1
         max_attempts = int(row[1])
@@ -351,7 +366,7 @@ class Outbox:
         bounded_error = _bounded_error(error)
 
         if not retriable or attempts >= max_attempts:
-            self._connection.execute(
+            cursor = self._connection.execute(
                 """
                 UPDATE memory_outbox
                    SET state='dead_letter',
@@ -361,13 +376,14 @@ class Outbox:
                        updated_at=?,
                        available_after=?,
                        last_error=?
-                 WHERE id = ?
+                 WHERE id = ? AND state='in_flight' AND leased_by = ?
+                       AND lease_until IS NOT NULL AND lease_until > ?
                 """,
-                (attempts, now, now, bounded_error, entry_id),
+                (attempts, now, now, bounded_error, entry_id, lease_owner, now),
             )
         else:
             delay = min(30.0, 2.0**attempts)
-            self._connection.execute(
+            cursor = self._connection.execute(
                 """
                 UPDATE memory_outbox
                    SET state='pending',
@@ -377,13 +393,26 @@ class Outbox:
                        leased_by=NULL,
                        updated_at=?,
                        last_error=?
-                 WHERE id = ?
+                 WHERE id = ? AND state='in_flight' AND leased_by = ?
+                       AND lease_until IS NOT NULL AND lease_until > ?
                 """,
-                (attempts, now + delay, now, bounded_error, entry_id),
+                (
+                    attempts,
+                    now + delay,
+                    now,
+                    bounded_error,
+                    entry_id,
+                    lease_owner,
+                    now,
+                ),
             )
+        if cursor.rowcount != 1:
+            self._connection.rollback()
+            return False
         self._set_telemetry("last_error", bounded_error, now)
         self._set_telemetry("last_error_at", str(now), now)
         self._connection.commit()
+        return True
 
     def export_rows(
         self,

@@ -13,6 +13,12 @@ If one configured source fails, Cortana records the failure, continues syncing t
 sources, and exits nonzero after the run so supervisors still detect the partial failure.
 Connector subprocesses also have a configurable wall-clock timeout (six hours by default), which
 prevents a wedged upstream API from holding the cross-process sync lock indefinitely.
+Direct `cortana ingest` and `validate-source` commands take that same `sync.lock` before doing
+index or connector work. This prevents a direct JSONL import or validation spool cleanup from
+racing a configured sync, backup, restore, or another bounded ingestion job.
+Direct JSONL input uses the normal safety ceiling of 2,000 documents, 128 MiB of document
+content, 15 minutes, and an 8 MiB maximum line. Treat it as a bounded reviewed import; split a
+larger migration into separate batches rather than bypassing the limits.
 
 Every source also has a fail-closed safety preflight. The default ceiling is 2,000 documents,
 128 MiB of searchable content, and 15 minutes per source. Filesystem preflight walks metadata
