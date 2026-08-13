@@ -7,35 +7,30 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-13)
 
-- `v0.31.7` is the current protected release, published through Release Please
-  PR #895 after the post-v0.31.6 Apple Notes executable and Buzz source guards
-  merged through protected main.
-- Release-assets workflow `31597160527` completed all platform jobs and the
-  strict verifier confirmed all 18 v0.31.7 core, Desktop, signature, checksum,
+- `v0.31.8` is the current protected release, published through Release Please
+  PR #956 after the post-v0.31.7 metadata reconciliation merged through protected
+  main.
+- Release-assets workflow `31667577467` completed all platform jobs and the
+  strict verifier confirmed all 18 v0.31.8 core, Desktop, signature, checksum,
   and updater-manifest assets. Asset verification does not launch the packaged
   GUI or prove OS-level signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` is now `v0.31.7`, installed
-  from the verified aarch64 archive with services disabled. The install did
-  not launch the GUI, restart the existing background process, authorize a
-  source, or enable recurring sync. The packaged GUI, browser OAuth, tray/menu,
-  native dialogs, updater interaction, Developer ID signing, and notarization
-  remain manual gates.
-- The latest installed v0.31.7 provider-backed fixture evaluation completed on
-  2026-08-13 in 14,258 ms (the earlier 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms, 17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
-  v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms; the v0.31.5
-  runtime-baseline run completed in 13,871 ms; prior verified runs
-  completed in 19,524 ms, 15,774 ms, and
-  13,237 ms) with planner and synthesis model use, valid citations, cache reuse,
-  and revision invalidation. The opt-in evaluator remains fail-closed below one minute with
-  a 55-second whole-run bound; extractive mode remains the production default
-  and recurring sync remains uninstalled because enabled filesystem/code sources
-  are still bounded samples or otherwise below their
-  configured full-sync budgets.
+- The installed core at `/Users/amf/.local/bin/cortana` remains `v0.31.7`; the
+  v0.31.8 archive was verified in a temporary directory only. No local install,
+  GUI launch, service restart, source authorization, or recurring sync was
+  performed. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater
+  interaction, Developer ID signing, and notarization remain manual gates.
+- The published v0.31.8 aarch64 core archive passed the provider-backed fixture
+  evaluation on 2026-08-13 in 14,879 ms with planner and synthesis model use,
+  valid citations, cache reuse, and revision invalidation. The opt-in evaluator
+  remains fail-closed below one minute with a 55-second whole-run bound;
+  extractive mode remains the production default and recurring sync remains
+  uninstalled because enabled filesystem/code sources are still bounded samples
+  or otherwise below their configured full-sync budgets.
 - The latest focused native Tauri acceptance suite passes 24 tests in 5.12 seconds
   after compilation. The broader recorded Bun and native suites remain historical;
   both harnesses are headless and do not substitute
   for the still-unverified interactive packaged GUI flows.
-- A fresh v0.31.7 source-tree verification on 2026-08-13 also passed the complete
+- A fresh v0.31.8 source-tree verification on 2026-08-13 also passed the complete
   Bun suite (258 tests across 22 files, 1,262 assertions, 56.30 seconds), the
   complete native Tauri suite (129 tests, 4.58 seconds after compilation), and
   the Python suite (168 tests, 58.19 seconds). These are current headless
