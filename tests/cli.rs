@@ -561,7 +561,7 @@ fn direct_ingest_rejects_over_budget_documents() {
         .args(["--offline", "--config"])
         .arg(&config)
         .args(["ingest", "-"])
-        .write_stdin(format!("{}\n", document))
+        .write_stdin(format!("{document}\n"))
         .assert()
         .failure()
         .stderr(predicate::str::contains("JSONL line exceeds"));
@@ -585,6 +585,7 @@ fn ingest_refuses_to_race_an_existing_sync_lock() {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(true)
         .open(lock_path)
         .expect("open sync lock");
     lock.lock_exclusive().expect("hold sync lock");
@@ -613,6 +614,7 @@ fn validate_source_refuses_to_race_an_existing_sync_lock() {
         .read(true)
         .write(true)
         .create(true)
+        .truncate(true)
         .open(data.join("sync.lock"))
         .expect("open sync lock");
     lock.lock_exclusive().expect("hold sync lock");
