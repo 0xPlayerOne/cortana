@@ -326,6 +326,11 @@ minisign verification covers the Tauri updater archives only and fails closed in
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
 ID notarization), so `spctl --assess` still rejects it and notarization remains a release blocker.
 
+Release verifiers also execute the exact packaged `cortana` core's deterministic `--offline eval`
+against a temporary configuration, with a hard 60-second timeout and a required JSON `passed: true`.
+This is a credential-free packaged-core regression gate; it does not open the live index, launch the
+GUI, exercise OAuth/tray/dialog/updater interactions, or authorize ingestion.
+
 Re-run the read-only verifier for the current release with:
 
 ```bash

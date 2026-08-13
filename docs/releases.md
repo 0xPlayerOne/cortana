@@ -126,8 +126,13 @@ archive name (`cortana-vX.Y.Z-<target>.tar.gz`). An archive whose name does not
 embed a plain semver version, or whose packaged `bin/cortana` reports a
 different version, fails the gate so a stale-checkout build or mislabeled
 upload can never ship as a release. The final published-asset gate
-(`scripts/verify-desktop-release.sh`) repeats the same assertion on the
-downloaded Linux core archive. To verify a downloaded archive locally:
+(`scripts/verify-desktop-release.sh`) repeats the version and offline-evaluation
+assertions on the downloaded Linux core archive when running on Linux. When the
+host can execute the packaged target, both verifiers run `cortana --offline eval`
+with an isolated temporary configuration and a hard 60-second timeout, requiring
+JSON `passed: true`. The macOS package verifier applies the same check to the
+bundled core. These checks prove the shipped core only; they do not launch the
+GUI or authorize sync. To verify a downloaded archive locally:
 
 ```bash
 ./scripts/verify-release.sh \
