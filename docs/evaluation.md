@@ -19,19 +19,19 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.9`, published after exact-tree promotion
-PR #960 and reconciliation PR #962. It is a metadata-only follow-up to the fully
+The current protected source is `v0.31.10`, published through Release Please PR
+#967. It is a metadata-only follow-up to the fully
 verified v0.31.8 Desktop release; release-assets workflow `31667577467` completed
 all platform jobs and the strict 18-asset verifier passed. The installed CLI
-remains `v0.31.7`; no local install or service restart was performed for v0.31.9.
-A fresh v0.31.9-configured model evaluation against the persistent query provider
-passed on 2026-08-13 in 13,460 ms under the 55-second bound, with planner and
+remains `v0.31.7`; no local install or service restart was performed for v0.31.10.
+A fresh v0.31.10-configured model evaluation against the persistent query provider
+passed on 2026-08-13 in 24,491 ms under the 55-second bound, with planner and
 synthesis model use, valid citations, cache reuse, and revision invalidation.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The v0.31.9 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.31.10 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
@@ -110,7 +110,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.31.7 sign-off state.
+release evidence; use **Current release boundary** above for the v0.31.10 sign-off state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33

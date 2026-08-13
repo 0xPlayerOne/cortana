@@ -902,7 +902,7 @@ fn snapshot(
                 "embedding",
                 "service",
                 "startup_timeout_seconds",
-                120,
+                300,
             ),
             memory_limit_mb: nested_u64(root, "embedding", "service", "memory_limit_mb", 4096),
         },
@@ -2984,7 +2984,7 @@ mod tests {
                 cache_max_entries: 250_000,
                 request_timeout_seconds: 180,
                 request_concurrency: 4,
-                startup_timeout_seconds: 120,
+                startup_timeout_seconds: 300,
                 memory_limit_mb: 4096,
             },
             query: QuerySettings {
