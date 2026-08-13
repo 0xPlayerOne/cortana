@@ -240,8 +240,20 @@ test('query section refreshes the query provider separately', async () => {
     provider: 'https://api.openai.com/v1',
     truncated: true,
     models: [
-      { id: 'provider-chat-large', object: 'model', owned_by: 'openai', created: null, capabilities: null },
-      { id: 'provider-custom-embedding', object: 'model', owned_by: 'openai', created: null, capabilities: null },
+      {
+        id: 'provider-chat-large',
+        object: 'model',
+        owned_by: 'openai',
+        created: null,
+        capabilities: null,
+      },
+      {
+        id: 'provider-custom-embedding',
+        object: 'model',
+        owned_by: 'openai',
+        created: null,
+        capabilities: null,
+      },
       { id: 'o3-mini', object: 'model', owned_by: 'openai', created: null, capabilities: null },
     ],
   }
