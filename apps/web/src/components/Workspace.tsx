@@ -703,8 +703,7 @@ function GraphView({
           }
           onClick={() => {
             setSelectedNodeId(node.id)
-            if (node.document_id) onSelectDocument(node.document_id)
-            else onSelect(node.id)
+            if (!node.document_id) onSelect(node.id)
           }}
         >
           <FileText size={17} />
@@ -728,6 +727,15 @@ function GraphView({
                 </li>
               ))}
             </ul>
+          )}
+          {selectedNode.document_id && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => onSelectDocument(selectedNode.document_id!)}
+            >
+              Open document
+            </button>
           )}
         </aside>
       )}

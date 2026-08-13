@@ -259,6 +259,7 @@ test('graph supports bounded filtering and explains selected relationships', () 
   fireEvent.click(screen.getByRole('button', { name: /Open document: Release notes/ }))
   expect(screen.getByRole('complementary', { name: 'Selected graph node' })).toBeTruthy()
   expect(screen.getByText('Contained by its workspace or source')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Open document' })).toBeTruthy()
 })
 
 const evidenceItem = {
