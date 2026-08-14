@@ -54,7 +54,7 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The published v0.31.14 package is the latest downloadable release. It includes the production
+The published v0.31.15 package is the latest downloadable release. It includes the production
 safety hardening carried through the protected `staging` → `main` flow: mutating CLI startup and
 direct JSONL imports serialize on the global lock, imports and evaluation fixtures have explicit
 resource ceilings, remote `/readyz` requires scoped bearer access, optional memory outbox leases
@@ -71,7 +71,7 @@ just to make the version strings match.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current protected release is **v0.31.14**. The
+package for your operating system and CPU. The current protected release is **v0.31.15**. The
 published release has verified archives, checksums, updater signatures, and the credential-free
 packaged-core evaluation. The Desktop app still has separate manual gates for macOS Developer ID
 notarization and first-run operating-system interactions; those limits are documented in the
