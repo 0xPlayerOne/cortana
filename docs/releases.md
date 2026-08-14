@@ -136,6 +136,12 @@ The post-release source also serializes direct JSONL ingestion and source valida
 global `sync.lock`, and requires a bearer principal for `/readyz` on remote listeners while keeping
 `/healthz` public liveness. These changes are not retroactively claimed for the v0.31.12 artifact.
 
+Bearer-policy reloads now prefer the private `0600` environment file for HTTP and file-backed MCP
+principals, while connector and provider API-key lookups retain process-environment precedence.
+Process-environment-only bearer clients remain startup-scoped and must reconnect after rotation.
+The macOS package verifier also rejects malformed `CORTANA_REQUIRE_GATEKEEPER` values instead of
+silently treating them as an optional check; only `0` or `1` is accepted.
+
 The same source-tree lane now also:
 
 - acquires the mutation lock before opening the store for mutating CLI commands, so startup
