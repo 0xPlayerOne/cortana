@@ -3953,12 +3953,16 @@ function SourcesSection({
                     <select
                       value={source.kind}
                       disabled={sourceLocked || !source.editable}
-                      onChange={(event) =>
+                      onChange={(event) => {
+                        const kind = event.target.value as SourceKind
                         changeSource(index, {
-                          kind: event.target.value as SourceKind,
-                          token_env: defaultTokenEnv(event.target.value as SourceKind),
+                          kind,
+                          token_env: defaultTokenEnv(kind),
+                          ...(kind === 'apple-notes'
+                            ? {}
+                            : { folders: [], exclude_folders: [] }),
                         })
-                      }
+                      }}
                     >
                       {source.kind === 'external' && (
                         <option value="external">External command</option>
@@ -3986,6 +3990,42 @@ function SourcesSection({
                       ))}
                     </select>
                   </Field>
+                  {source.kind === 'apple-notes' && (
+                    <>
+                      <Field
+                        label="Include Apple Notes folders"
+                        hint="one exact folder name per line; leave empty to include every folder"
+                        wide
+                      >
+                        <textarea
+                          aria-label="Include Apple Notes folders"
+                          rows={3}
+                          value={(source.folders ?? []).join('\n')}
+                          disabled={sourceLocked || !source.editable}
+                          onChange={(event) =>
+                            changeSource(index, { folders: splitList(event.target.value) })
+                          }
+                        />
+                      </Field>
+                      <Field
+                        label="Exclude Apple Notes folders"
+                        hint="one exact folder name per line; exclusions win when both lists match"
+                        wide
+                      >
+                        <textarea
+                          aria-label="Exclude Apple Notes folders"
+                          rows={3}
+                          value={(source.exclude_folders ?? []).join('\n')}
+                          disabled={sourceLocked || !source.editable}
+                          onChange={(event) =>
+                            changeSource(index, {
+                              exclude_folders: splitList(event.target.value),
+                            })
+                          }
+                        />
+                      </Field>
+                    </>
+                  )}
                   {(source.kind === 'filesystem' || source.kind === 'buzz') && (
                     <Field
                       label={source.kind === 'buzz' ? 'Buzz data directory' : 'Root directory'}
@@ -5051,6 +5091,8 @@ function newSource(settings: DesktopSettings, project?: string): SourceSettings 
     root: null,
     source: null,
     channels: [],
+    folders: [],
+    exclude_folders: [],
     repositories: [],
     servers: [],
     teams: [],

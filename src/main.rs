@@ -1701,6 +1701,8 @@ fn ad_hoc_filesystem_source(
         root: Some(root),
         source: Some(source),
         channels: Vec::new(),
+        folders: Vec::new(),
+        exclude_folders: Vec::new(),
         servers: Vec::new(),
         teams: Vec::new(),
         team_names: Vec::new(),
@@ -3227,6 +3229,14 @@ fn connector_arguments(command: &mut Vec<String>, source: &SourceConfig) -> Resu
     if let Some(root) = &source.root {
         command.extend(["--root".into(), root.display().to_string()]);
     }
+    if source.kind == "apple-notes" {
+        for folder in &source.folders {
+            command.extend(["--folder".into(), folder.clone()]);
+        }
+        for folder in &source.exclude_folders {
+            command.extend(["--exclude-folder".into(), folder.clone()]);
+        }
+    }
     for channel in &source.channels {
         command.extend(["--channel".into(), channel.clone()]);
     }
@@ -3562,6 +3572,8 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -3615,6 +3627,8 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -3666,6 +3680,8 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -3724,6 +3740,8 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -3774,6 +3792,8 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -3821,6 +3841,8 @@ mod tests {
             root: Some(directory.path().join("code")),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -3894,6 +3916,8 @@ mod tests {
             root: Some(directory.path().join("code")),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -3957,6 +3981,8 @@ mod tests {
             root: Some(std::env::temp_dir()),
             source: Some(name.into()),
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -4148,6 +4174,8 @@ mod tests {
             root: Some(root),
             source: Some("work-code".into()),
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -4352,6 +4380,8 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),

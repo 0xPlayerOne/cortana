@@ -194,7 +194,10 @@ configured document cap and never reconcile deletions.
 - A Google source may use `token_env` instead of `token` when the named environment value contains
   an absolute OAuth token JSON path. The Desktop editor stores that path value write-only in its
   managed secret file; it does not accept inline token JSON.
-- Apple Notes uses the local macOS Notes automation permission and stores no credential.
+- Apple Notes uses the local macOS Notes automation permission and stores no credential. Each
+  Apple Notes source may set exact `folders` to include or `exclude_folders` to omit. Use separate
+  sources when folders belong to different workspaces; an empty include list means all folders
+  unless exclusions are present. Folder metadata is retained on every indexed note.
 - Buzz opens the retention database read-only. Community identity comes from the
   read-only `agents/teams.json` file; see `cortana buzz-communities SOURCE` above.
 
