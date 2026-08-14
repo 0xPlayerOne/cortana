@@ -272,6 +272,12 @@ test('keyset pagination appends the next page and document selection opens the c
   await waitFor(() =>
     expect(screen.getByRole('option', { name: /How do releases work/ })).toBeTruthy()
   )
+  // The first status snapshot can replace the initial empty workspace scope
+  // with the primary workspace. Wait for that scoped request to settle before
+  // exercising pagination; otherwise a click can race the scope refresh and
+  // its response is correctly discarded as stale.
+  await waitFor(() => expect(state.documentsCalls.at(-1)?.cursor).toBeUndefined())
+  await waitFor(() => expect(screen.queryByText('Loading documents…')).toBeNull())
   expect(screen.getByRole('option', { name: /Deployment playbook/ })).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Load next page' })).toBeTruthy()
   expect(screen.getByText('2 loaded')).toBeTruthy()
