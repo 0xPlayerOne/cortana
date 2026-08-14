@@ -32,8 +32,10 @@ source action is explicitly approved and makes every destructive step recoverabl
    verified release archive, and run the readiness check below. Never replace an installed
    release with an unverified checkout.
 2. **Operate safely.** Check `cortana service status --json`, `GET /healthz`, and
-   `cortana readiness --max-backup-age-hours 48`. Keep recurring sync uninstalled unless the
-   complete source-validation gate passes; a readiness failure is a stop condition.
+   `cortana readiness --max-backup-age-hours 48`. `/healthz` is a liveness-only probe; the
+   lightweight HTTP `/readyz` provider check is also public on loopback but requires a scoped
+   bearer token on non-loopback listeners. Keep recurring sync uninstalled unless the complete
+   source-validation gate passes; a readiness failure is a stop condition.
 3. **Back up before changes.** Run `cortana backup`, then verify the resulting snapshot with
    `cortana verify /path/to/snapshot.sqlite3`. Keep at least one verified snapshot outside the
    live data directory.
@@ -428,6 +430,13 @@ The current source release verifiers also execute the exact packaged `cortana` c
 archive/signature/checksum/updater-manifest checks.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
+
+Before opening a protected promotion PR, run `uv run python scripts/check-docs-consistency.py` (or
+`bun run docs:check`). It treats the `## Current release` heading in `docs/releases.md` as the
+documentation boundary and verifies the bounded current sections in `README.md`, `docs/README.md`,
+`docs/getting-started.md`, `docs/project-goal.md`, `docs/releases.md`, `docs/evaluation.md`,
+`docs/desktop-ux-audit.md`, and `docs/operations.md`. Historical evidence may continue to mention
+older releases, but current entry points must not silently drift.
 
 Re-run the read-only verifier for the current release with:
 
