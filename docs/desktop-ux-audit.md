@@ -21,8 +21,9 @@ is not part of a visual/UI change.
   It remains synthetic fixture evidence, not a personal-index or packaged-GUI benchmark. The
   opt-in model evaluator remains fail-closed below one minute with a 55-second
   whole-run bound; extractive mode remains the production default and recurring sync
-  remains uninstalled because enabled filesystem/code sources are still bounded samples
-  or otherwise below their configured full-sync budgets.
+  remains uninstalled because an explicit `readiness --allow-sync-service` check failed closed:
+  enabled filesystem/code sources are still bounded samples and connector records are below
+  their configured full-sync budgets.
 - The complete native Tauri suite passes 130 tests in 2.45 seconds after
   compilation. The current `bun run test` gate passes 263 tests across 24 files
   under the CI-pinned Bun 1.3.14, including the script tests. Its runner groups

@@ -350,7 +350,9 @@ exercises the packaged GUI, browser OAuth, tray events, native dialogs, or signe
 Release v0.31.15 followed through Release Please PR #1140 and the protected staging
 reconciliation. Release-assets workflow `31774425020` completed all platform jobs and the strict
 18-asset verifier passed. The installed v0.31.15 core passed query-only readiness and the
-provider-backed fixture evaluator in 16,946 ms; no packaged-GUI evaluation is claimed.
+provider-backed fixture evaluator in 16,946 ms. An explicit `readiness --allow-sync-service`
+check failed closed on bounded/incomplete source validation, so recurring sync remains
+uninstalled; no packaged-GUI evaluation is claimed.
 
 The v0.31.15 package includes the hardening described above: direct ingestion and
 source validation share the global `sync.lock`, and remote `/readyz` requests

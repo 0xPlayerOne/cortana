@@ -27,6 +27,9 @@ the local host with services enabled but recurring sync disabled. Query-only rea
 passed, and the installed v0.31.15 model-backed fixture run passed in 16,946 ms with
 planner and synthesis model use, valid citations, cache reuse, and revision invalidation.
 This is bounded fixture evidence, not a personal-index benchmark or packaged-GUI proof.
+An explicit `readiness --allow-sync-service` check correctly failed closed because the
+enabled sources have bounded or under-budget validation records; the recurring sync service
+remains uninstalled.
 The v0.31.15 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
