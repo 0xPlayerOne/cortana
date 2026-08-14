@@ -281,6 +281,8 @@ fn source(
         root: root.map(Path::to_path_buf),
         source: canonical_source.map(str::to_string),
         channels: Vec::new(),
+        folders: Vec::new(),
+        exclude_folders: Vec::new(),
         servers: Vec::new(),
         teams: Vec::new(),
         team_names: Vec::new(),

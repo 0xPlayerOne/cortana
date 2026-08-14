@@ -40,7 +40,19 @@ def parser() -> argparse.ArgumentParser:
     )
     commands = root.add_subparsers(dest="connector", required=False)
 
-    commands.add_parser("apple-notes")
+    apple_notes = commands.add_parser("apple-notes")
+    apple_notes.add_argument(
+        "--folder",
+        action="append",
+        dest="folders",
+        help="include only this Apple Notes folder (repeat for multiple folders)",
+    )
+    apple_notes.add_argument(
+        "--exclude-folder",
+        action="append",
+        dest="exclude_folders",
+        help="exclude this Apple Notes folder (repeat for multiple folders)",
+    )
 
     buzz = commands.add_parser("buzz")
     buzz.add_argument(
@@ -101,7 +113,12 @@ def main(argv: list[str] | None = None) -> int:
 
 def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
     if arguments.connector == "apple-notes":
-        return fetch_apple_notes(arguments.project, max_documents=arguments.max_documents)
+        return fetch_apple_notes(
+            arguments.project,
+            max_documents=arguments.max_documents,
+            folders=arguments.folders,
+            exclude_folders=arguments.exclude_folders,
+        )
     if arguments.connector == "buzz":
         return fetch_buzz(arguments.root, arguments.project, arguments.max_documents)
     if arguments.connector == "slack":

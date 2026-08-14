@@ -68,8 +68,9 @@ it is enabled.
 
 `SIGINT` and `SIGTERM` cancel an active source before reconciliation. In-flight connector
 subprocesses are terminated, and embedding work is interrupted at a bounded polling interval.
-Already committed incremental batches remain valid searchable data, but a cancelled or
-budget-exceeded snapshot never deletes records from the prior complete snapshot.
+Each completed document is committed as soon as its embedding vectors arrive, so a cancelled
+or budget-exceeded run keeps the completed prefix and retries only the unfinished tail on the
+next run. A partial snapshot never deletes records from the prior complete snapshot.
 
 The Python adapter process writes only normalized JSON Lines to stdout. Counts and diagnostics go
 to stderr, which makes the boundary safe to pipe into `cortana ingest` or supervise independently.
@@ -194,7 +195,10 @@ configured document cap and never reconcile deletions.
 - A Google source may use `token_env` instead of `token` when the named environment value contains
   an absolute OAuth token JSON path. The Desktop editor stores that path value write-only in its
   managed secret file; it does not accept inline token JSON.
-- Apple Notes uses the local macOS Notes automation permission and stores no credential.
+- Apple Notes uses the local macOS Notes automation permission and stores no credential. Each
+  Apple Notes source may set exact `folders` to include or `exclude_folders` to omit. Use separate
+  sources when folders belong to different workspaces; an empty include list means all folders
+  unless exclusions are present. Folder metadata is retained on every indexed note.
 - Buzz opens the retention database read-only. Community identity comes from the
   read-only `agents/teams.json` file; see `cortana buzz-communities SOURCE` above.
 
