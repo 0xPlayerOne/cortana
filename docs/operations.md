@@ -32,8 +32,10 @@ source action is explicitly approved and makes every destructive step recoverabl
    verified release archive, and run the readiness check below. Never replace an installed
    release with an unverified checkout.
 2. **Operate safely.** Check `cortana service status --json`, `GET /healthz`, and
-   `cortana readiness --max-backup-age-hours 48`. Keep recurring sync uninstalled unless the
-   complete source-validation gate passes; a readiness failure is a stop condition.
+   `cortana readiness --max-backup-age-hours 48`. `/healthz` is a liveness-only probe; the
+   lightweight HTTP `/readyz` provider check is also public on loopback but requires a scoped
+   bearer token on non-loopback listeners. Keep recurring sync uninstalled unless the complete
+   source-validation gate passes; a readiness failure is a stop condition.
 3. **Back up before changes.** Run `cortana backup`, then verify the resulting snapshot with
    `cortana verify /path/to/snapshot.sqlite3`. Keep at least one verified snapshot outside the
    live data directory.
