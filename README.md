@@ -14,6 +14,8 @@ The project follows the production lessons in Cerebras' “How We Built Our Know
 - project-scoped retrieval instead of unbounded “search everything”;
 - small, low-latency MCP primitives that leave orchestration to the calling agent;
 - planner → concurrent retrieval → synthesis for the human UI;
+- an Obsidian-inspired browser with workspace/source/document navigation and a bounded hierarchical
+  knowledge graph;
 - provenance, access scope, audit events, and observability as core data.
 
 ## What Cortana is

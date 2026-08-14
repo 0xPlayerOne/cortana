@@ -13,6 +13,8 @@ and contributor path.
 | Source checkout                | Matches the verified `v0.31.15` release boundary; future source changes require a new protected release verification                              |
 | Default runtime                | Query-only; no source authorization, full sync, recurring schedule, or optional memory sidecar is enabled automatically                           |
 | Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                     |
+| Knowledge browser              | Obsidian-style workspace/source/document navigation with bounded hierarchical graph pages and local type filters                                  |
+| Operational visibility         | Query-only service status, health/readiness probes, source progress, and explicit stale-stat warnings during temporary SQLite contention          |
 | Still requires host acceptance | Packaged GUI/browser OAuth, tray and native dialogs, updater install, macOS Developer ID/notarization, and complete full-budget source validation |
 
 This table is the documentation boundary for the project. Update it whenever a release, safety gate,
@@ -37,7 +39,7 @@ instead of silently rewriting them.
 - [Source rollout plan](source-rollout.md) — per-source authorization, bounded trials, production
   validation, and the explicit recurring-sync gate.
 - [Query](query.md) — hybrid retrieval, local Qwen or cloud embeddings, synthesis, cache behavior,
-  and degraded operation.
+  degraded operation, and the bounded hierarchical knowledge graph.
 - [Evaluation](evaluation.md) — the bounded model, release, readiness, and evidence requirements.
 - [Configuration example](../config.example.toml) — a redacted starting point for local, cloud,
   multi-workspace, and optional sidecar settings.
@@ -74,4 +76,6 @@ When a user-facing feature, source, release, safety gate, or operating procedure
 the smallest relevant guide and then refresh this index and the root README links if the first-run
 path changed. Current-release evidence belongs in [Release history](releases.md),
 [Evaluation](evaluation.md), and the [Desktop UX audit](desktop-ux-audit.md); historical evidence
-must be labeled historical rather than silently overwritten.
+must be labeled historical rather than silently overwritten. The graph contract belongs in
+[Query](query.md), and status/readiness semantics belong in [Operations](operations.md), so a
+feature should not be documented only in a changelog or UI audit.
