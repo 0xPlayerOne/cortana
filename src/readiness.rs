@@ -821,6 +821,8 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),

@@ -150,6 +150,12 @@ pub struct SourceSettings {
     pub root: Option<String>,
     pub source: Option<String>,
     pub channels: Vec<String>,
+    /// Exact Apple Notes folder names included by this source.
+    #[serde(default)]
+    pub folders: Vec<String>,
+    /// Exact Apple Notes folder names excluded by this source.
+    #[serde(default)]
+    pub exclude_folders: Vec<String>,
     #[serde(default)]
     pub repositories: Vec<String>,
     /// Discord servers (guilds) assigned to this source's workspace through
@@ -1037,6 +1043,8 @@ fn configured_sources(root: &Table) -> Vec<SourceSettings> {
                         root: table_optional_string(item, "root"),
                         source: table_optional_string(item, "source"),
                         channels: table_string_array(item, "channels"),
+                        folders: table_string_array(item, "folders"),
+                        exclude_folders: table_string_array(item, "exclude_folders"),
                         repositories: table_string_array(item, "repositories"),
                         servers: table_string_array(item, "servers"),
                         teams: table_string_array(item, "teams"),
@@ -1753,6 +1761,8 @@ fn apply_sources(root: &mut Table, sources: &[SourceSettings]) {
                 set_table_optional_string(&mut table, "root", &source.root);
                 set_table_optional_string(&mut table, "source", &source.source);
                 set_table_string_array(&mut table, "channels", &source.channels);
+                set_table_string_array(&mut table, "folders", &source.folders);
+                set_table_string_array(&mut table, "exclude_folders", &source.exclude_folders);
                 set_table_string_array(&mut table, "repositories", &source.repositories);
                 set_table_string_array(&mut table, "servers", &source.servers);
                 set_table_string_array(&mut table, "teams", &source.teams);
@@ -2003,6 +2013,21 @@ fn validate_sources(
             }
         }
         normalize_string_list("source channel", &mut source.channels, 100, 128)?;
+        normalize_string_list("Apple Notes folder", &mut source.folders, 100, 128)?;
+        normalize_string_list(
+            "Apple Notes excluded folder",
+            &mut source.exclude_folders,
+            100,
+            128,
+        )?;
+        if (!source.folders.is_empty() || !source.exclude_folders.is_empty())
+            && source.kind != "apple-notes"
+        {
+            return Err(format!(
+                "source `{}` may configure folders only for Apple Notes sources",
+                source.name
+            ));
+        }
         normalize_string_list("source repository", &mut source.repositories, 32, 256)?;
         normalize_string_list("source server", &mut source.servers, 100, 128)?;
         normalize_string_list("source team", &mut source.teams, 1, 12)?;
@@ -2990,6 +3015,8 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             repositories: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
@@ -3712,6 +3739,8 @@ mod tests {
             root: None,
             source: None,
             channels: vec!["C012345".into()],
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             repositories: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
@@ -3749,6 +3778,8 @@ mod tests {
             root: None,
             source: None,
             channels: vec!["123456789012345678".into()],
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             repositories: Vec::new(),
             servers: vec!["987654321098765432".into()],
             teams: Vec::new(),

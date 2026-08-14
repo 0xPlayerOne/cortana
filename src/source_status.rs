@@ -640,6 +640,8 @@ mod tests {
             root: None,
             source: None,
             channels: vec!["175928847299117064".into()],
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
