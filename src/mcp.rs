@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -14,7 +15,8 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auth::{Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
+    auth::{AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
+    config::Config,
     context,
     embed::Embedder,
     retrieval,
@@ -70,11 +72,46 @@ pub struct BrainServer {
     embedder: Arc<dyn Embedder>,
     tool_router: ToolRouter<Self>,
     audit_max_events: usize,
-    principal: Principal,
+    principal: PrincipalSource,
     code_sources: Vec<String>,
     message_sources: Vec<String>,
     configured_sources: Vec<ConfiguredSourceStatus>,
     retrieval_fallbacks: Arc<AtomicU64>,
+}
+
+#[derive(Clone)]
+enum PrincipalSource {
+    Static(Principal),
+    Reloadable {
+        config_path: PathBuf,
+        token_env: String,
+    },
+}
+
+impl PrincipalSource {
+    fn resolve(&self) -> anyhow::Result<Principal> {
+        match self {
+            Self::Static(principal) => Ok(principal.clone()),
+            Self::Reloadable {
+                config_path,
+                token_env,
+            } => {
+                let mut config = Config::load(Some(config_path))?;
+                config.load_environment()?;
+                let token = config
+                    .environment
+                    .get(token_env)
+                    .cloned()
+                    .or_else(|| std::env::var(token_env).ok())
+                    .ok_or_else(|| anyhow::anyhow!("MCP token environment variable is not set"))?;
+                AuthPolicy::from_config_file_preferred(&config)?
+                    .authenticate(&token)
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("MCP token does not match a configured principal")
+                    })
+            }
+        }
+    }
 }
 
 #[tool_router]
@@ -85,7 +122,7 @@ impl BrainServer {
             embedder,
             tool_router: Self::tool_router(),
             audit_max_events: 10_000,
-            principal: Principal::local("local-mcp"),
+            principal: PrincipalSource::Static(Principal::local("local-mcp")),
             code_sources: Vec::new(),
             message_sources: Vec::new(),
             configured_sources: Vec::new(),
@@ -94,8 +131,28 @@ impl BrainServer {
     }
 
     pub fn with_principal(mut self, principal: Principal) -> Self {
-        self.principal = principal;
+        self.principal = PrincipalSource::Static(principal);
         self
+    }
+
+    /// Resolve the MCP bearer principal from the file-backed configuration for
+    /// every tool call. This makes token rotation and revocation effective
+    /// without restarting the stdio process; malformed or unreadable policy
+    /// fails closed for that call.
+    pub fn with_reloadable_principal(
+        mut self,
+        config_path: impl Into<PathBuf>,
+        token_env: impl Into<String>,
+    ) -> Self {
+        self.principal = PrincipalSource::Reloadable {
+            config_path: config_path.into(),
+            token_env: token_env.into(),
+        };
+        self
+    }
+
+    fn resolve_principal(&self) -> anyhow::Result<Principal> {
+        self.principal.resolve()
     }
 
     pub fn with_audit_limit(mut self, max_events: usize) -> Self {
@@ -123,8 +180,24 @@ impl BrainServer {
     )]
     async fn search(&self, Parameters(params): Parameters<SearchParams>) -> String {
         let started = Instant::now();
-        if !self.principal.has_scope(QUERY_SCOPE) {
-            self.audit(
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.search",
+                    params.project.as_deref(),
+                    params.source.as_deref(),
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                return format!("authorization error: {error}");
+            }
+        };
+        if !principal.has_scope(QUERY_SCOPE) {
+            self.audit_principal(
+                &principal,
                 "mcp.search",
                 params.project.as_deref(),
                 params.source.as_deref(),
@@ -139,7 +212,8 @@ impl BrainServer {
             params.project.as_deref(),
             params.source.as_deref(),
         ) {
-            self.audit(
+            self.audit_principal(
+                &principal,
                 "mcp.search",
                 params.project.as_deref(),
                 params.source.as_deref(),
@@ -149,7 +223,7 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
-        let acl = self.principal.visible_acl();
+        let acl = principal.visible_acl();
         match retrieval::retrieve_scoped_with_status(
             &self.store,
             &self.embedder,
@@ -168,7 +242,8 @@ impl BrainServer {
                 if retrieval.degraded() {
                     self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed);
                 }
-                self.audit(
+                self.audit_principal(
+                    &principal,
                     "mcp.search",
                     params.project.as_deref(),
                     params.source.as_deref(),
@@ -183,7 +258,8 @@ impl BrainServer {
                 serde_json::to_string(&retrieval.evidence).unwrap_or_else(|error| error.to_string())
             }
             Err(error) => {
-                self.audit(
+                self.audit_principal(
+                    &principal,
                     "mcp.search",
                     params.project.as_deref(),
                     params.source.as_deref(),
@@ -201,8 +277,24 @@ impl BrainServer {
     )]
     async fn context(&self, Parameters(params): Parameters<ContextParams>) -> String {
         let started = Instant::now();
-        if !self.principal.has_scope(QUERY_SCOPE) {
-            self.audit(
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.context",
+                    params.project.as_deref(),
+                    params.source.as_deref(),
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                return format!("authorization error: {error}");
+            }
+        };
+        if !principal.has_scope(QUERY_SCOPE) {
+            self.audit_principal(
+                &principal,
                 "mcp.context",
                 params.project.as_deref(),
                 params.source.as_deref(),
@@ -217,7 +309,8 @@ impl BrainServer {
             params.project.as_deref(),
             params.source.as_deref(),
         ) {
-            self.audit(
+            self.audit_principal(
+                &principal,
                 "mcp.context",
                 params.project.as_deref(),
                 params.source.as_deref(),
@@ -227,7 +320,7 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
-        let acl = self.principal.visible_acl();
+        let acl = principal.visible_acl();
         match retrieval::retrieve_scoped_with_status(
             &self.store,
             &self.embedder,
@@ -246,7 +339,8 @@ impl BrainServer {
                 if retrieval.degraded() {
                     self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed);
                 }
-                self.audit(
+                self.audit_principal(
+                    &principal,
                     "mcp.context",
                     params.project.as_deref(),
                     params.source.as_deref(),
@@ -268,7 +362,8 @@ impl BrainServer {
                 .unwrap_or_else(|error| error.to_string())
             }
             Err(error) => {
-                self.audit(
+                self.audit_principal(
+                    &principal,
                     "mcp.context",
                     params.project.as_deref(),
                     params.source.as_deref(),
@@ -310,12 +405,35 @@ impl BrainServer {
     )]
     async fn brain_status(&self) -> String {
         let started = Instant::now();
-        if !self.principal.has_scope(STATUS_SCOPE) {
-            self.audit("mcp.brain_status", None, None, "forbidden", None, started);
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.brain_status",
+                    None,
+                    None,
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                return format!("authorization error: {error}");
+            }
+        };
+        if !principal.has_scope(STATUS_SCOPE) {
+            self.audit_principal(
+                &principal,
+                "mcp.brain_status",
+                None,
+                None,
+                "forbidden",
+                None,
+                started,
+            );
             return "authorization error: status scope required".into();
         }
-        let acl = self.principal.visible_acl();
-        match if self.principal.is_owner() {
+        let acl = principal.visible_acl();
+        match if principal.is_owner() {
             let store = self.store.clone();
             stats_with_timeout(STATS_TIMEOUT, move || store.stats()).await
         } else {
@@ -346,17 +464,41 @@ impl BrainServer {
                 });
                 match result {
                     Ok(payload) => {
-                        self.audit("mcp.brain_status", None, None, "succeeded", count, started);
+                        self.audit_principal(
+                            &principal,
+                            "mcp.brain_status",
+                            None,
+                            None,
+                            "succeeded",
+                            count,
+                            started,
+                        );
                         payload
                     }
                     Err(error) => {
-                        self.audit("mcp.brain_status", None, None, "failed", None, started);
+                        self.audit_principal(
+                            &principal,
+                            "mcp.brain_status",
+                            None,
+                            None,
+                            "failed",
+                            None,
+                            started,
+                        );
                         error.to_string()
                     }
                 }
             }
             Err(error) => {
-                self.audit("mcp.brain_status", None, None, "failed", None, started);
+                self.audit_principal(
+                    &principal,
+                    "mcp.brain_status",
+                    None,
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
                 format!("status error: {error}")
             }
         }
@@ -388,8 +530,24 @@ impl BrainServer {
         params: DomainSearchParams,
     ) -> String {
         let started = Instant::now();
-        if !self.principal.has_scope(QUERY_SCOPE) {
-            self.audit(
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    action,
+                    params.project.as_deref(),
+                    None,
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                return format!("authorization error: {error}");
+            }
+        };
+        if !principal.has_scope(QUERY_SCOPE) {
+            self.audit_principal(
+                &principal,
                 action,
                 params.project.as_deref(),
                 None,
@@ -400,7 +558,8 @@ impl BrainServer {
             return "authorization error: query scope required".into();
         }
         if let Err(error) = validate_request(&params.query, params.project.as_deref(), None) {
-            self.audit(
+            self.audit_principal(
+                &principal,
                 action,
                 params.project.as_deref(),
                 None,
@@ -410,7 +569,7 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
-        let acl = self.principal.visible_acl();
+        let acl = principal.visible_acl();
         match retrieval::retrieve_sources_scoped_with_status(
             &self.store,
             &self.embedder,
@@ -426,7 +585,8 @@ impl BrainServer {
                 if retrieval.degraded() {
                     self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed);
                 }
-                self.audit(
+                self.audit_principal(
+                    &principal,
                     action,
                     params.project.as_deref(),
                     None,
@@ -441,7 +601,8 @@ impl BrainServer {
                 serde_json::to_string(&retrieval.evidence).unwrap_or_else(|error| error.to_string())
             }
             Err(error) => {
-                self.audit(
+                self.audit_principal(
+                    &principal,
                     action,
                     params.project.as_deref(),
                     None,
@@ -455,8 +616,9 @@ impl BrainServer {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn audit(
+    fn audit_as(
         &self,
+        principal: &str,
         action: &str,
         project: Option<&str>,
         source: Option<&str>,
@@ -465,7 +627,32 @@ impl BrainServer {
         started: Instant,
     ) {
         if let Err(error) = self.store.record_audit(
-            &self.principal.name,
+            principal,
+            action,
+            project,
+            source,
+            outcome,
+            count,
+            u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            self.audit_max_events,
+        ) {
+            tracing::warn!(%error, "MCP audit write failed");
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn audit_principal(
+        &self,
+        principal: &Principal,
+        action: &str,
+        project: Option<&str>,
+        source: Option<&str>,
+        outcome: &str,
+        count: Option<usize>,
+        started: Instant,
+    ) {
+        if let Err(error) = self.store.record_audit(
+            &principal.name,
             action,
             project,
             source,
@@ -642,6 +829,66 @@ mod tests {
         assert_eq!(audit[0].principal, "work-agent");
         assert_eq!(audit[0].action, "mcp.brain_status");
         assert_eq!(audit[1].action, "mcp.search");
+    }
+
+    #[tokio::test]
+    async fn reloadable_mcp_principal_tracks_file_rotation_and_fails_closed() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        let config_path = directory.path().join("config.toml");
+        let secrets_path = directory.path().join("secrets.env");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        config.runtime.env_file = Some(secrets_path.clone());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "old-agent".into(),
+            token_env: "MCP_TOKEN".into(),
+            scopes: vec![STATUS_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        std::fs::write(
+            &config_path,
+            toml::to_string(&config).expect("serialize config"),
+        )
+        .expect("write config");
+        write_private_fixture(&secrets_path, "MCP_TOKEN=old-secret\n");
+
+        let server = BrainServer::new(store.clone(), embedder)
+            .with_reloadable_principal(&config_path, "MCP_TOKEN")
+            .with_audit_limit(10);
+        assert!(server.brain_status().await.contains("configured_sources"));
+        assert_eq!(
+            store.audit_events(1).expect("audit")[0].principal,
+            "old-agent"
+        );
+
+        config.auth.tokens[0].principal = "replacement-agent".into();
+        std::fs::write(
+            &config_path,
+            toml::to_string(&config).expect("serialize rotation"),
+        )
+        .expect("rotate config");
+        write_private_fixture(&secrets_path, "MCP_TOKEN=replacement-secret\n");
+        assert!(server.brain_status().await.contains("configured_sources"));
+        assert_eq!(
+            store.audit_events(1).expect("audit")[0].principal,
+            "replacement-agent"
+        );
+
+        write_private_fixture(&secrets_path, "MCP_TOKEN=\n");
+        assert!(
+            server
+                .brain_status()
+                .await
+                .starts_with("authorization error:")
+        );
+        assert_eq!(
+            store.audit_events(1).expect("audit")[0].principal,
+            "mcp-unauthenticated"
+        );
     }
 
     #[tokio::test]
