@@ -481,20 +481,20 @@ native-dialog/updater acceptance.
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). Apple
 Notes is the completed first rollout: the three folder-scoped sources have complete validation and
-initial no-reconcile snapshots for `work`/`Nifty League` (28 documents), `special`/`The Pink Binder`
-(8), and the personal source (65 documents after excluding those folders). Calendar validation is
-complete for work (2,208 events), personal (1,839), and special (0). 100-event Work and Personal
-Calendar no-reconcile resumes completed with 0 deletions; Special remains validation-only after
-earlier budget-limited indexing attempts. Buzz validation covers
-45 records; its bounded resume committed 35 records before the provider exceeded its 300-second
-embedding budget, so the remaining tail is still resumable. All six Drive/Gmail sources
-now have bounded 25-document/5 MiB validation (60 seconds for the initial work trials and
-300 seconds for the resumed personal/special trials). Work Drive and Work Gmail completed
-bounded no-reconcile syncs. The Personal Drive retry used a 300-second embedding budget and
-committed 25 documents with 0 deletions through the resumable path; the Personal Gmail, Special
-Drive, and Special Gmail trials also completed with 0 deletions. Production-budget validation is
-still required. Discord and all code
-roots are disabled by operator choice; Slack remains an optional, unconfigured connector.
+no-reconcile snapshots for `work`/`Nifty League` (28 documents), `special`/`The Pink Binder`
+(8), and the personal source (65 documents after excluding those folders); the latest run deleted
+nothing. Calendar validation is complete for work (2,208 events), personal (1,839), and special
+(0). 100-event Work and Personal Calendar no-reconcile resumes completed with 0 deletions;
+Special remains validation-only after earlier budget-limited indexing attempts. Buzz validation
+covers 45 records; its first 60-second trial failed closed at the embedding deadline, then the
+bounded 300-second retry completed all 45 records with 0 deletions. All six Drive/Gmail sources
+have bounded 25-document/5 MiB validation (60 seconds for the initial work trials and 300 seconds
+for the resumed personal/special trials). Work Drive and Work Gmail completed bounded
+no-reconcile syncs. The Personal Drive retry used a 300-second embedding budget and committed 25
+documents with 0 deletions through the resumable path; the Personal Gmail, Special Drive, and
+Special Gmail trials also completed with 0 deletions. Production-budget validation is still
+required. Discord and all code roots are disabled by operator choice; Slack remains an optional,
+unconfigured connector.
 
 Do not infer recurring-sync readiness from this snapshot. Re-run `readiness --allow-sync-service`
 after the next source-scoped validation pass; it must remain fail-closed until every enabled source
