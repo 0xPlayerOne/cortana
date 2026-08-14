@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.0](https://github.com/0xPlayerOne/cortana/compare/v0.31.16...v0.32.0) (2026-08-14)
+
+
+### Features
+
+* **evaluation:** publish live-index evaluation harness ([250b5d6](https://github.com/0xPlayerOne/cortana/commit/250b5d633d59c39103bc1edbb0a5ee6bc07a93d1))
+
 ## [0.31.16](https://github.com/0xPlayerOne/cortana/compare/v0.31.15...v0.31.16) (2026-08-14)
 
 
