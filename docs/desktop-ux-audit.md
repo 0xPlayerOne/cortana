@@ -7,17 +7,17 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-14)
 
-- `v0.31.13` is the current protected release, published through Release Please
-  PR #1124. Release-assets workflow `31764807122` completed all platform jobs and
+- `v0.31.14` is the current protected release, published through Release Please
+  PR #1130. Release-assets workflow `31767490416` completed all platform jobs and
   the strict verifier confirmed all 18 core, Desktop, signature, checksum,
   updater-manifest, and packaged-core offline-evaluation gates. Asset verification
   does not launch the packaged GUI or prove OS-level signing/notarization.
-- The v0.31.13 archive passed the credential-free packaged-core gate without being
+- The v0.31.14 archive passed the credential-free packaged-core gate without being
   installed over the existing local binary, authorizing sources, or installing
   recurring sync. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
 - The latest configured-provider fixture evaluation (12,319 ms) used the then-installed
-  v0.31.12 CLI and is historical evidence, not a v0.31.13-specific model run. The
+  v0.31.12 CLI and is historical evidence, not a v0.31.14-specific model run. The
   opt-in model evaluator remains fail-closed below one minute with a 55-second
   whole-run bound; extractive mode remains the production default and recurring sync
   remains uninstalled because enabled filesystem/code sources are still bounded samples
@@ -53,7 +53,7 @@ is not part of a visual/UI change.
   indexing, reconciliation, or scheduler changes. Filesystem and code sources
   remain sampled by design, so this is authorization/reachability evidence only.
 
-The current v0.31.13 source and package include the post-v0.31.12 safety lane, which acquires
+The current v0.31.14 source and package include the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, fences optional-memory outbox leases, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -101,7 +101,7 @@ GUI/browser/tray/dialog/updater gates above.
    session is available here.
 2. Model-backed provider gate: the current configured provider passed the bounded
    fixture gate on 2026-08-13 in 12,319 ms using the then-installed v0.31.12 CLI.
-   The published v0.31.13 release separately passed the credential-free packaged-core
+   The published v0.31.14 release separately passed the credential-free packaged-core
    offline evaluator within 60 seconds (the v0.31.10-configured provider run
    passed in 24,491 ms; the published v0.31.8 archive's earlier 14,879 ms and the installed v0.31.7
    runtime's earlier 14,258 ms, 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms,
@@ -146,7 +146,7 @@ GUI/browser/tray/dialog/updater gates above.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.13 release or the installed v0.31.7 core; use the
+does not describe the current v0.31.14 release or the installed v0.31.7 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -162,8 +162,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.31.13` binary or packaged Desktop behavior. The current
-  `v0.31.13` asset workflow and strict verifier are recorded in the release section above.
+  the current `v0.31.14` binary or packaged Desktop behavior. The current
+  `v0.31.14` asset workflow and strict verifier are recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
