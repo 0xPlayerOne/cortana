@@ -43,5 +43,6 @@ versioned JSON Lines so Python cannot leak into the core runtime.
 - Agents receive fast, structured evidence without forcing an extra synthesis call.
 - Human answers and agent retrieval share ranking behavior.
 - Provider changes require a new index generation, not an unsafe in-place model swap.
-- Operational complexity includes Postgres in the production profile, migrations, backups, and
-  explicit access filtering.
+- Operational complexity includes SQLite migrations, verified backups, index-generation changes,
+  and explicit access filtering; a future hosted Postgres profile would add its own migration and
+  deployment gates.
