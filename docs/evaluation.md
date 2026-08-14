@@ -22,10 +22,9 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 The current protected source is `v0.32.0`, published through Release Please PR
 #1182. Release-assets workflow `31795311797` completed all platform jobs and the
 strict 18-asset verifier, including the credential-free packaged-core evaluator.
-The v0.32.0 release includes the bounded read-only live-index evaluator, but that
-harness still requires an operator-approved manifest and a successful run against an
-approved corpus. This is separate from the deterministic fixture gate and is not a
-packaged-GUI proof.
+The v0.32.0 release includes the bounded read-only live-index evaluator. A first
+operator-approved retrieval manifest has now passed against the running local work index;
+approved-corpus answer/synthesis evaluation remains separate and is not a packaged-GUI proof.
 An explicit `readiness --allow-sync-service` check correctly failed closed because the
 enabled sources have bounded or under-budget validation records; the recurring sync service
 remains uninstalled.
@@ -56,6 +55,17 @@ The current source tree also serializes Desktop settings and service-schedule wr
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
 This protects concurrent Desktop windows/processes in the v0.32.0 source and package; it does
 not authorize source ingestion or recurring sync.
+
+### Current approved-index retrieval evidence (2026-08-14)
+
+A private, one-case manifest was run against the local query API using the approved `work` /
+`work-gmail` index scope. The harness passed with hybrid retrieval, recall@k 1.0, MRR 1.0,
+retrieval pass rate 1.0, zero retrieval degradation, zero forbidden-source leaks, a repeated
+query cache-hit rate of 1.0, and a 1,750 ms maximum request latency. The report contained only
+bounded metrics and source IDs; the manifest and query text were not committed. This is
+read-only live-index retrieval evidence. It does not authorize sync, prove full-corpus source
+validation, or close the separate provider-backed answer/synthesis, shared-agent, or packaged-GUI
+gates.
 
 The current source-tree evaluator also rejects oversized custom fixtures before parsing: the file,
 document count, case count, document content, and query sizes are bounded. The direct JSONL import

@@ -47,8 +47,9 @@ The project is ready for a production claim only when all of these are true:
 5. Provider-backed retrieval evaluation covers the packaged core and representative approved data;
    fixture-only evaluation remains a useful regression gate, not a production proof. The repository
    ships a bounded read-only live-index harness (`scripts/evaluate-live-index.py`) for this
-   operator-controlled evidence; a manifest and successful run are still required before claiming
-   the gate is closed.
+   operator-controlled evidence; the first retrieval-only run is recorded in the evaluation
+   guide, while approved-corpus answer/synthesis evidence is still required before claiming this
+   gate fully closed.
 6. Hindsight and Honcho remain disabled unless live retention, deletion, ACL, idempotence, export,
    and packaged-UI evidence justifies enabling one.
 7. Hermes migration compatibility remains available for explicit imports, but the live installation

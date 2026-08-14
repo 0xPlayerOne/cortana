@@ -302,6 +302,13 @@ uv run python scripts/evaluate-live-index.py \
 The flag does not change the running configuration; synthesis must already be enabled in the
 approved evaluation environment. Omit it to measure the safe extractive path.
 
+The current host has one recorded read-only retrieval run for the approved `work` /
+`work-gmail` scope (2026-08-14): recall@k 1.0, MRR 1.0, hybrid retrieval, zero retrieval
+degradation, zero forbidden-source leaks, 1.0 repeated-query cache-hit rate, and 1,750 ms
+maximum latency. The private manifest and query text were not committed. Treat this as live
+retrieval evidence only; answer/synthesis, full-budget source validation, shared-agent ACL, and
+packaged-GUI gates remain independent.
+
 For a shared agent, pass a scoped bearer token through `--token-env`. Run one manifest per ACL
 principal/workspace and include forbidden IDs to test isolation. This harness is read-only: it does
 not sync, reconcile, mutate the index, or test cache invalidation by editing corpus data. Keep the
@@ -462,12 +469,17 @@ The operator installation is still manual/query-only (`ai.cortana.sync` is not i
 Notes is the completed first rollout: the three folder-scoped sources have complete validation and
 initial no-reconcile snapshots for `work`/`Nifty League` (28 documents), `special`/`The Pink Binder`
 (8), and the personal source (65 documents after excluding those folders). Calendar validation is
-complete for work (2,208 events), personal (1,839), and special (0), but earlier indexing attempts
-hit the bounded wall-clock budget before a complete snapshot was recorded. Buzz validation covers
-45 records; its first embedding run was interrupted and is resumable. All six Drive/Gmail sources
-now have bounded 25-document/5 MiB/60-second validation. Work Drive and Work Gmail completed
-bounded no-reconcile syncs; the Personal Drive trial reached its embedding deadline and is queued
-for resumable continuation. Production-budget validation is still required. Discord and all code
+complete for work (2,208 events), personal (1,839), and special (0). 100-event Work and Personal
+Calendar no-reconcile resumes completed with 0 deletions; Special remains validation-only after
+earlier budget-limited indexing attempts. Buzz validation covers
+45 records; its bounded resume committed 35 records before the provider exceeded its 300-second
+embedding budget, so the remaining tail is still resumable. All six Drive/Gmail sources
+now have bounded 25-document/5 MiB validation (60 seconds for the initial work trials and
+300 seconds for the resumed personal/special trials). Work Drive and Work Gmail completed
+bounded no-reconcile syncs. The Personal Drive retry used a 300-second embedding budget and
+committed 25 documents with 0 deletions through the resumable path; the Personal Gmail, Special
+Drive, and Special Gmail trials also completed with 0 deletions. Production-budget validation is
+still required. Discord and all code
 roots are disabled by operator choice; Slack remains an optional, unconfigured connector.
 
 Do not infer recurring-sync readiness from this snapshot. Re-run `readiness --allow-sync-service`
