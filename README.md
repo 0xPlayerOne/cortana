@@ -54,13 +54,13 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The published v0.31.12 package is the latest downloadable release. This checkout also contains
-post-release hardening being promoted through the protected `staging` to `main` flow: mutating
-CLI startup and direct JSONL imports serialize on the global lock, imports and evaluation fixtures
-have explicit resource ceilings, remote `/readyz` requires scoped bearer access, optional memory
-outbox leases are fenced, Desktop settings and schedules serialize through a shared per-config
-lock, and Desktop sidecars publish atomically. These source-tree changes must
-not be represented as v0.31.12 package behavior until a later release is verified.
+The published v0.31.13 package is the latest downloadable release. It includes the production
+safety hardening carried through the protected `staging` → `main` flow: mutating CLI startup and
+direct JSONL imports serialize on the global lock, imports and evaluation fixtures have explicit
+resource ceilings, remote `/readyz` requires scoped bearer access, optional memory outbox leases
+are fenced, Desktop settings and schedules serialize through a shared per-config lock, and
+Desktop sidecars publish atomically. The release-assets workflow and strict 18-asset verifier
+completed successfully for this package.
 
 When the checkout and the downloaded application report different versions, trust the application
 version for end-user behavior and use [Release history](docs/releases.md) to determine which
@@ -71,7 +71,7 @@ just to make the version strings match.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current protected release is **v0.31.12**. The
+package for your operating system and CPU. The current protected release is **v0.31.13**. The
 published release has verified archives, checksums, updater signatures, and the credential-free
 packaged-core evaluation. The Desktop app still has separate manual gates for macOS Developer ID
 notarization and first-run operating-system interactions; those limits are documented in the
