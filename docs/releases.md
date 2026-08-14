@@ -48,6 +48,17 @@ provider behavior.
 
 The previous v0.31.15 package and workflow `31774425020` remain historical evidence.
 
+## v0.31.17 staged release boundary (pending publication)
+
+The validated staging tree contains the bounded, read-only live-index evaluation harness
+(`scripts/evaluate-live-index.py` and `eval/live-manifest.example.json`). It measures retrieval
+recall/MRR, citation validity, bounded provider-backed synthesis, fallback behavior, latency, and
+repeated-query cache hits against an operator-approved corpus without syncing, reconciling,
+changing the index, or printing query content. This section is provisional: the harness becomes
+downloadable-release evidence only after the protected promotion, Release Please version PR, and
+strict 18-asset verifier publish v0.31.17. Until then, v0.31.16 remains the current downloadable
+release and extractive query mode remains the safe production default.
+
 ## v0.31.16 release-history recovery
 
 The graph hierarchy, truthful status fallback, and Desktop-first project documentation were
