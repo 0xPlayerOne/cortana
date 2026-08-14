@@ -3958,9 +3958,7 @@ function SourcesSection({
                         changeSource(index, {
                           kind,
                           token_env: defaultTokenEnv(kind),
-                          ...(kind === 'apple-notes'
-                            ? {}
-                            : { folders: [], exclude_folders: [] }),
+                          ...(kind === 'apple-notes' ? {} : { folders: [], exclude_folders: [] }),
                         })
                       }}
                     >
