@@ -51,8 +51,10 @@ The project is ready for a production claim only when all of these are true:
    the gate is closed.
 6. Hindsight and Honcho remain disabled unless live retention, deletion, ACL, idempotence, export,
    and packaged-UI evidence justifies enabling one.
-7. Hermes legacy data is retained until Cortana import/rebuild, recovery, and verification are
-   complete; cleanup is a separate deliberate operation.
+7. Hermes migration compatibility remains available for explicit imports, but the live installation
+   must not run a parallel legacy stack. Active legacy rows, launch agents, and machine-level
+   directories are removed only after import/rebuild and a verified rollback backup; the migration
+   helpers remain in the source tree for controlled recovery of older installations.
 
 The authoritative current release and open gates live in [Release history](releases.md),
 [Evaluation](evaluation.md), [Operations](operations.md), and the [Desktop UX audit](desktop-ux-audit.md).

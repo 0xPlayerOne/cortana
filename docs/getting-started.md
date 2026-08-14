@@ -49,6 +49,11 @@ or follow the host-acceptance notes in the [Desktop audit](desktop-ux-audit.md).
    smallest budget. Review the progress and source status, then ask a known question and confirm
    that the answer includes citations.
 
+Apple Notes can be split cleanly across workspaces with exact folder filters. For example, create
+one `work` source that includes `Nifty League`, one `special` source that includes `The Pink Binder`,
+and a personal source that excludes both folders. If an embedding run is interrupted, Cortana
+persists completed documents and resumes only the unfinished tail on the next bounded run.
+
 If you are using the CLI instead of Desktop, confirm the installed version before changing any
 configuration:
 
