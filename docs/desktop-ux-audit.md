@@ -105,8 +105,9 @@ GUI/browser/tray/dialog/updater gates above.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the preceding installed v0.31.16 configured provider passed the bounded
-   fixture gate on 2026-08-14 in 14,660 ms using the installed v0.31.16 CLI.
+2. Model-backed provider gate: the installed v0.32.0 CLI passed the bounded provider-backed
+   fixture gate on 2026-08-14 in 16,649 ms, with planner/synthesis, valid citations, cache reuse,
+   and revision invalidation. The preceding installed v0.31.16 run passed in 14,660 ms.
    The published v0.32.0 release separately passed the credential-free packaged-core
    offline evaluator within 60 seconds (the v0.31.10-configured provider run
    passed in 24,491 ms; the published v0.31.8 archive's earlier 14,879 ms and the installed v0.31.7

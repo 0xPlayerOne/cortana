@@ -39,6 +39,11 @@ Python package both report `0.32.0`, while the embedding and HTTP services are r
 recurring sync uninstalled. This is local installation evidence, not proof of native GUI,
 browser OAuth, updater, or operating-system trust behavior.
 
+The same installed `0.32.0` core passed `eval --model` on 2026-08-14 in 16,649 ms with planner
+and synthesis enabled, valid citations, cache reuse, revision invalidation, and no provider
+fallback. This remains provider-backed fixture evidence: it does not query the personal index or
+prove packaged GUI behavior.
+
 The v0.32.0 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
