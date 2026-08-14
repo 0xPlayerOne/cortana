@@ -74,7 +74,7 @@ for (const group of groups) {
     stdio: 'inherit',
   })
   if (result.error) {
-    console.error(`Failed to start Bun for ${label}: ${result.error.message}`)
+    console.error(`Failed to start Bun for ${labels.join(', ')}: ${result.error.message}`)
     process.exit(1)
   }
   if (result.status !== 0) {
@@ -83,4 +83,4 @@ for (const group of groups) {
   }
 }
 
-console.log(`\nPassed ${tests.length} isolated JavaScript test files.`)
+console.log(`\nPassed ${tests.length} JavaScript test files; API-mock suites ran in isolated processes.`)
