@@ -56,10 +56,9 @@ The authoritative current release and open gates live in [Release history](relea
 
 ## Release boundary
 
-The published `v0.31.15` package is the current downloadable evidence boundary while the next
-patch release is prepared. A source checkout can contain validated changes that are not yet in
-the installer; only a published tag with a passing 18-asset verifier should be presented as
-downloadable release behavior.
+The published `v0.31.16` package is the current downloadable evidence boundary. A source checkout
+can contain validated changes that are not yet in the installer; only a published tag with a
+passing 18-asset verifier should be presented as downloadable release behavior.
 
 ## Where to start
 

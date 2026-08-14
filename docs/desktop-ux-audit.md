@@ -7,16 +7,16 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-14)
 
-- `v0.31.15` is the current protected release, published through Release Please
-  PR #1140. Release-assets workflow `31774425020` completed all platform jobs and
+- `v0.31.16` is the current protected release, published through Release Please
+  PR #1163. Release-assets workflow `31783540306` completed all platform jobs and
   the strict verifier confirmed all 18 core, Desktop, signature, checksum,
   updater-manifest, and packaged-core offline-evaluation gates. Asset verification
   does not launch the packaged GUI or prove OS-level signing/notarization.
-- The v0.31.15 archive passed the credential-free packaged-core gate and was installed
+- The v0.31.16 archive passed the credential-free packaged-core gate and was installed
   on the local host with recurring sync still disabled. Query-only readiness passed;
   source authorization and full-corpus sync were not started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The installed v0.31.15 configured-provider fixture evaluation passed in 16,946 ms with
+- The installed v0.31.16 configured-provider fixture evaluation passed in 14,660 ms with
   planner and synthesis model use, valid citations, cache reuse, and revision invalidation.
   It remains synthetic fixture evidence, not a personal-index or packaged-GUI benchmark. The
   opt-in model evaluator remains fail-closed below one minute with a 55-second
@@ -56,7 +56,7 @@ is not part of a visual/UI change.
   indexing, reconciliation, or scheduler changes. Filesystem and code sources
   remain sampled by design, so this is authorization/reachability evidence only.
 
-The current v0.31.15 source and package include the post-v0.31.12 safety lane, which acquires
+The current v0.31.16 source and package include the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, fences optional-memory outbox leases, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -104,8 +104,8 @@ GUI/browser/tray/dialog/updater gates above.
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the current configured provider passed the bounded
-   fixture gate on 2026-08-14 in 16,946 ms using the installed v0.31.15 CLI.
-   The published v0.31.15 release separately passed the credential-free packaged-core
+   fixture gate on 2026-08-14 in 14,660 ms using the installed v0.31.16 CLI.
+   The published v0.31.16 release separately passed the credential-free packaged-core
    offline evaluator within 60 seconds (the v0.31.10-configured provider run
    passed in 24,491 ms; the published v0.31.8 archive's earlier 14,879 ms and the installed v0.31.7
    runtime's earlier 14,258 ms, 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms,
@@ -150,7 +150,7 @@ GUI/browser/tray/dialog/updater gates above.
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.15 release or the installed v0.31.15 core; use the
+does not describe the current v0.31.16 release or the installed v0.31.16 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -166,8 +166,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.31.15` binary or packaged Desktop behavior. The current
-  `v0.31.15` asset workflow and strict verifier are recorded in the release section above.
+  the current `v0.31.16` binary or packaged Desktop behavior. The current
+  `v0.31.16` asset workflow and strict verifier are recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
