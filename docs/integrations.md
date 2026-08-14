@@ -93,14 +93,19 @@ The token value lives only in the agent process environment or the private `[run
 Bearer policies are loaded when the HTTP or MCP process starts. The HTTP service also exposes an
 owner/admin-only `POST /v1/auth/reload` operation for an atomic policy refresh from its configured
 TOML and private environment file. A successful refresh replaces the complete policy at once;
-malformed or unreadable credentials leave the last-good policy active. MCP remains process-scoped
-and picks up changes when its stdio process reconnects. The Desktop still marks access changes as
-restart-required because its managed service action restarts both transports deliberately.
+malformed or unreadable credentials leave the last-good HTTP policy active. An MCP process launched
+with `--token-env` backed by the private `0600` env file resolves that principal for each tool call,
+so replacing or revoking the stable variable takes effect without restarting the stdio process;
+malformed or unreadable policy fails closed for that call. A process-environment-only credential is
+startup-scoped and must reconnect after its value or variable name changes. The Desktop still marks
+access changes as restart-required because its managed service action restarts both transports
+deliberately.
 
 Never use a reload to remove the last policy from a non-loopback listener: remote listeners reject
-that transition. For a zero-downtime rotation, add and verify the replacement principal first, then
-remove the old principal and call the reload endpoint with the current admin credential. The old
-token is rejected immediately after the successful swap.
+that transition. For a zero-downtime rotation, keep the principal and `token_env` mapping stable,
+replace its value in the private env file, and call the reload endpoint with a separate current
+admin credential. The old token is rejected immediately after the successful swap; requests already
+in flight are not interrupted.
 
 `serve` binds loopback by default. `--allow-remote` is refused unless bearer principals are configured
 via `[[auth.tokens]]`; terminate TLS upstream when exposing an authenticated endpoint beyond loopback.
@@ -208,13 +213,18 @@ curl -sS -X POST http://127.0.0.1:7331/v1/auth/reload \
 The response is metadata-only. A failed parse, missing secret, invalid scope, or duplicate token
 never replaces the active policy; the failure is recorded as an `auth.reload` audit event without
 including the error text or credential value. A successful swap records the same action and
-immediately invalidates removed token values. MCP processes must reconnect to load the same change.
+immediately invalidates removed token values. MCP processes launched with `--token-env` and a private
+env file resolve the new policy on their next tool call; process-environment-only clients must
+reconnect after changing the variable or its name.
 
 ## Secret handling
 
 - Token and API-key values are read only from the process environment or the private
   `[runtime].env_file` (a `KEY=VALUE` file that Cortana refuses unless its Unix mode is `0600`).
-  Process environment variables take precedence over the env file.
+  For connector and provider values such as `api_key_env`, process environment variables take
+  precedence over the env file. Bearer policies are intentionally different: `[[auth.tokens]]`
+  values prefer the private env file, so a stable `token_env` can be rotated without inheriting a
+  stale value from the long-running service environment.
 - The TOML config stores only environment variable names (`token_env`, `api_key_env`), never
   values. Reference `CORTANA_EMBEDDING_API_KEY` and `CORTANA_QUERY_API_KEY` the same way for
   embedding and query model endpoints.

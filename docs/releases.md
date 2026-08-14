@@ -129,11 +129,18 @@ recurring sync, alter credentials, or change indexed data.
 
 The next release verification must retain the v0.31.12 archive, checksum, updater-signature,
 manifest, and packaged-core gates. The HTTP reload behavior is covered by rotation, invalid-policy,
-remote-listener, and metadata-only audit tests; MCP remains process-scoped and must reconnect.
+remote-listener, and metadata-only audit tests; source-tree MCP bearer sessions reread the file-backed
+policy on each tool call and fail closed on malformed or revoked credentials.
 
 The post-release source also serializes direct JSONL ingestion and source validation with the
 global `sync.lock`, and requires a bearer principal for `/readyz` on remote listeners while keeping
 `/healthz` public liveness. These changes are not retroactively claimed for the v0.31.12 artifact.
+
+Bearer-policy reloads now prefer the private `0600` environment file for HTTP and file-backed MCP
+principals, while connector and provider API-key lookups retain process-environment precedence.
+Process-environment-only bearer clients remain startup-scoped and must reconnect after rotation.
+The macOS package verifier also rejects malformed `CORTANA_REQUIRE_GATEKEEPER` values instead of
+silently treating them as an optional check; only `0` or `1` is accepted.
 
 The same source-tree lane now also:
 

@@ -20,6 +20,8 @@ and contributor path.
 
 - [Ingestion](ingestion.md) — source adapters, workspaces, budgets, cursors, ACLs, deletion
   reconciliation, and validation gates.
+- [Source rollout plan](source-rollout.md) — per-source authorization, bounded trials, production
+  validation, and the explicit recurring-sync gate.
 - [Query](query.md) — hybrid retrieval, local Qwen or cloud embeddings, synthesis, cache behavior,
   and degraded operation.
 - [Evaluation](evaluation.md) — the bounded model, release, readiness, and evidence requirements.
