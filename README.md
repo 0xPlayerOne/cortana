@@ -32,6 +32,20 @@ If you remember only one thing: install Desktop, create one workspace, validate 
 one small initial sync, and ask one cited question. The complete first-run checklist is in
 [Getting started](docs/getting-started.md).
 
+### The simple user path
+
+If you are new to Cortana, you do not need to understand connectors, embeddings, MCP, or service
+files before trying it:
+
+1. Download the Desktop installer from the [latest release](https://github.com/0xPlayerOne/cortana/releases/latest).
+2. Approve the optional local tooling, or choose a cloud embedding provider.
+3. Create one workspace and configure one source.
+4. Run **Validate**, then confirm one small **Initial sync**.
+5. Ask a question and check that the answer includes citations.
+
+Everything else is an operator or contributor concern. Cortana remains query-only until each
+source, service, and recurring-sync action is explicitly approved.
+
 ### Project purpose and current safety boundary
 
 Cortana exists to give people and their agents one private, cited memory across notes, messages,
@@ -47,6 +61,11 @@ have explicit resource ceilings, remote `/readyz` requires scoped bearer access,
 outbox leases are fenced, Desktop settings and schedules serialize through a shared per-config
 lock, and Desktop sidecars publish atomically. These source-tree changes must
 not be represented as v0.31.12 package behavior until a later release is verified.
+
+When the checkout and the downloaded application report different versions, trust the application
+version for end-user behavior and use [Release history](docs/releases.md) to determine which
+source-tree hardening has shipped. Do not install a source checkout over a working installation
+just to make the version strings match.
 
 ## Download the latest release
 
@@ -126,6 +145,7 @@ From a checkout, use the built binary; from a release install, use the installed
 
 ```bash
 # A release install normally needs only the installed `cortana` command:
+cortana --version
 cortana init
 cortana doctor
 cortana readiness --max-backup-age-hours 48

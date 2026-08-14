@@ -10,6 +10,17 @@ or the CLI steps in the [README](../README.md#quick-start). Keep the runtime que
 readiness and a deliberately bounded source validation pass; this guide is the operator reference
 for service state, backups, authentication, sync safety, and release evidence.
 
+Always record the running version before diagnosing a package or service:
+
+```bash
+cortana --version
+cortana service status --json
+```
+
+Compare that version with [Release history](releases.md). A source checkout can contain safety
+hardening that is intentionally absent from the latest published package, so do not use a checkout
+to certify an installed release.
+
 ## Health and telemetry
 
 - `GET /healthz` is an unauthenticated process-liveness check.
