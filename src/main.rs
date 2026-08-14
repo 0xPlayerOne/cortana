@@ -1065,24 +1065,31 @@ async fn main() -> Result<()> {
             ) {
                 tracing::warn!(%message, "failed to load source validation state for MCP status");
             }
+            let reloadable_token_env = token_env.clone();
             let principal = if let Some(name) = token_env {
                 let token = config
-                    .environment_value(&name)
+                    .environment
+                    .get(&name)
+                    .cloned()
+                    .or_else(|| std::env::var(&name).ok())
                     .with_context(|| format!("MCP token environment variable {name} is not set"))?;
-                let auth = cortana::auth::AuthPolicy::from_config(&config)?;
+                let auth = cortana::auth::AuthPolicy::from_config_file_preferred(&config)?;
                 auth.authenticate(&token)
                     .context("MCP token does not match a configured [[auth.tokens]] principal")?
             } else {
                 cortana::auth::Principal::local("local-mcp")
             };
-            mcp::serve(
-                mcp::BrainServer::new(store, embedder)
-                    .with_principal(principal)
-                    .with_audit_limit(config.auth.audit_max_events)
-                    .with_source_groups(code_sources, message_sources)
-                    .with_configured_sources(configured_sources),
-            )
-            .await
+            let server = mcp::BrainServer::new(store, embedder)
+                .with_principal(principal)
+                .with_audit_limit(config.auth.audit_max_events)
+                .with_source_groups(code_sources, message_sources)
+                .with_configured_sources(configured_sources);
+            let server = if let Some(token_env) = reloadable_token_env {
+                server.with_reloadable_principal(config_path.clone(), token_env)
+            } else {
+                server
+            };
+            mcp::serve(server).await
         }
         Some(
             Command::Init { .. }

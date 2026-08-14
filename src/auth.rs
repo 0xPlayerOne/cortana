@@ -78,6 +78,27 @@ impl Default for AuthPolicy {
 
 impl AuthPolicy {
     pub fn from_config(config: &Config) -> Result<Self> {
+        Self::from_config_with_value(config, |config, name| config.environment_value(name))
+    }
+
+    /// Build a policy using the private env file before the inherited process
+    /// environment. Long-lived MCP sessions use this variant so replacing a
+    /// stable `token_env` value in the 0600 file takes effect without a
+    /// reconnect; process-environment-only credentials remain startup-scoped.
+    pub fn from_config_file_preferred(config: &Config) -> Result<Self> {
+        Self::from_config_with_value(config, |config, name| {
+            config
+                .environment
+                .get(name)
+                .cloned()
+                .or_else(|| std::env::var(name).ok())
+        })
+    }
+
+    fn from_config_with_value(
+        config: &Config,
+        value_for: impl Fn(&Config, &str) -> Option<String>,
+    ) -> Result<Self> {
         let mut credentials = Vec::new();
         let mut principals = HashSet::new();
         for token in &config.auth.tokens {
@@ -106,14 +127,12 @@ impl AuthPolicy {
                 "auth principal {} cannot use reserved acl \"*\"",
                 token.principal
             );
-            let value = config
-                .environment_value(&token.token_env)
-                .with_context(|| {
-                    format!(
-                        "auth token environment variable {} is not set",
-                        token.token_env
-                    )
-                })?;
+            let value = value_for(config, &token.token_env).with_context(|| {
+                format!(
+                    "auth token environment variable {} is not set",
+                    token.token_env
+                )
+            })?;
             anyhow::ensure!(!value.is_empty(), "auth bearer token must not be empty");
             credentials.push(Credential {
                 digest: Sha256::digest(value.as_bytes()).into(),
