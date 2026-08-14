@@ -221,7 +221,10 @@ reconnect after changing the variable or its name.
 
 - Token and API-key values are read only from the process environment or the private
   `[runtime].env_file` (a `KEY=VALUE` file that Cortana refuses unless its Unix mode is `0600`).
-  Process environment variables take precedence over the env file.
+  For connector and provider values such as `api_key_env`, process environment variables take
+  precedence over the env file. Bearer policies are intentionally different: `[[auth.tokens]]`
+  values prefer the private env file, so a stable `token_env` can be rotated without inheriting a
+  stale value from the long-running service environment.
 - The TOML config stores only environment variable names (`token_env`, `api_key_env`), never
   values. Reference `CORTANA_EMBEDDING_API_KEY` and `CORTANA_QUERY_API_KEY` the same way for
   embedding and query model endpoints.
