@@ -1014,7 +1014,7 @@ async fn main() -> Result<()> {
             no_web,
             allow_remote,
         }) => {
-            let auth = cortana::auth::AuthPolicy::from_config(&config)?;
+            let auth = cortana::auth::AuthPolicy::from_config_file_preferred(&config)?;
             anyhow::ensure!(
                 !allow_remote || auth.requires_token(),
                 "--allow-remote requires configured [[auth.tokens]]"
