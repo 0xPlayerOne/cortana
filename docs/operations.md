@@ -469,8 +469,8 @@ The operator installation is still manual/query-only (`ai.cortana.sync` is not i
 Notes is the completed first rollout: the three folder-scoped sources have complete validation and
 initial no-reconcile snapshots for `work`/`Nifty League` (28 documents), `special`/`The Pink Binder`
 (8), and the personal source (65 documents after excluding those folders). Calendar validation is
-complete for work (2,208 events), personal (1,839), and special (0). A 100-event Work Calendar
-no-reconcile resume completed with 0 deletions; Personal and Special remain validation-only after
+complete for work (2,208 events), personal (1,839), and special (0). 100-event Work and Personal
+Calendar no-reconcile resumes completed with 0 deletions; Special remains validation-only after
 earlier budget-limited indexing attempts. Buzz validation covers
 45 records; its bounded resume committed 35 records before the provider exceeded its 300-second
 embedding budget, so the remaining tail is still resumable. All six Drive/Gmail sources
