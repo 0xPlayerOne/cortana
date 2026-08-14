@@ -73,7 +73,7 @@ jobs:
           cp -R apps/web/dist "${archive}/share/cortana/web"
           cp dist/*.whl "${archive}/dist/"
           cp scripts/install-release.sh "${archive}/install.sh"
-          cp -R config.example.toml skills packaging scripts README.md LICENSE "${archive}/"
+          cp -R config.example.toml eval skills packaging scripts README.md LICENSE "${archive}/"
           test -x "${archive}/install.sh"
           test -f "${archive}/share/cortana/web/index.html"
           test -n "$(find "${archive}/dist" -maxdepth 1 -name '*.whl' -print -quit)"

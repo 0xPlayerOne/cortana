@@ -55,6 +55,54 @@ The built-in thresholds and data live in `eval/fixtures.json`. Use
 `cortana eval --fixture /path/to/synthetic.json` for a versioned project-specific fixture. Never
 put personal or production content into committed evaluation data.
 
+## Read-only approved-index evaluation
+
+The fixture gates above prove deterministic behavior and the bounded provider path, but they do
+not measure retrieval quality on a real approved corpus. Cortana therefore ships
+`scripts/evaluate-live-index.py`, a read-only HTTP harness for an operator-authored manifest of
+queries and expected source IDs. It measures retrieval recall/MRR, ACL-safe source filtering,
+answer citation validity, optional synthesized-mode use, latency, and a repeated-query cache hit.
+It also reports embedding-retrieval degradation and provider-unavailable fallback rates so a
+passing quality report cannot quietly treat a fallback path as provider-backed evidence.
+It never calls ingestion, reconciliation, service management, backup/restore, or a source
+connector. Reports contain only bounded metrics and source IDs; they do not echo queries, answers,
+tokens, or provider error bodies.
+
+Copy `eval/live-manifest.example.json` to a private, untracked file and replace its placeholders
+with queries and expected IDs from an explicitly approved representative corpus. Run it against a
+running query API with the smallest useful manifest:
+
+```bash
+cp eval/live-manifest.example.json /private/path/cortana-live-manifest.json
+# Edit the private manifest with approved queries and expected/forbidden source IDs.
+uv run python scripts/evaluate-live-index.py \
+  /private/path/cortana-live-manifest.json \
+  --base-url http://127.0.0.1:7331 \
+  --require-synthesis
+```
+
+`--require-synthesis` expects the running API's query configuration to have synthesis explicitly
+enabled; it does not modify configuration. Leave it off when evaluating the safe extractive
+default, or use a separately approved temporary query configuration for provider-backed synthesis.
+
+For a shared principal, pass its token through an environment variable rather than putting a
+credential in the manifest or command history:
+
+```bash
+export CORTANA_EVAL_TOKEN='…'
+uv run python scripts/evaluate-live-index.py \
+  /private/path/cortana-live-manifest.json \
+  --token-env CORTANA_EVAL_TOKEN
+```
+
+The harness bounds each request to 60 seconds, the complete run to five minutes, the manifest to
+1 MiB, and the total case count to 100. A successful repeated query proves a cache hit only; live
+cache invalidation is intentionally not attempted because mutating the approved corpus would
+violate the read-only safety boundary. Keep the deterministic fixture's cache-revision test as
+the invalidation gate, and record this live report separately for the approved principal and
+workspace. A passing report is provider- and corpus-specific evidence, not permission to enable
+recurring sync or optional Hindsight/Honcho memory.
+
 ## Bounded disposable load benchmark
 
 Use the benchmark when you need repeatable latency or concurrency evidence without touching a
