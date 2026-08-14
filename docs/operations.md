@@ -464,9 +464,11 @@ initial no-reconcile snapshots for `work`/`Nifty League` (28 documents), `specia
 (8), and the personal source (65 documents after excluding those folders). Calendar validation is
 complete for work (2,208 events), personal (1,839), and special (0), but earlier indexing attempts
 hit the bounded wall-clock budget before a complete snapshot was recorded. Buzz validation covers
-45 records; its first embedding run was interrupted and is resumable. Drive and Gmail still need
-production-budget validation and bounded trials. Discord and all code roots are disabled by operator
-choice; Slack remains an optional, unconfigured connector.
+45 records; its first embedding run was interrupted and is resumable. All six Drive/Gmail sources
+now have bounded 25-document/5 MiB/60-second validation. Work Drive and Work Gmail completed
+bounded no-reconcile syncs; the Personal Drive trial reached its embedding deadline and is queued
+for resumable continuation. Production-budget validation is still required. Discord and all code
+roots are disabled by operator choice; Slack remains an optional, unconfigured connector.
 
 Do not infer recurring-sync readiness from this snapshot. Re-run `readiness --allow-sync-service`
 after the next source-scoped validation pass; it must remain fail-closed until every enabled source
