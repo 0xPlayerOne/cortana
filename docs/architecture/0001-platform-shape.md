@@ -20,7 +20,11 @@ Retrieval combines lexical, semantic, rare-token, and recency rankings with reci
 then applies source diversity, optional reranking, and neighboring-context expansion. MCP tools
 expose retrieval primitives rather than an opaque answer endpoint.
 
-Postgres and pgvector are the production store. Local/cloud embedding providers implement the same
+SQLite is the current production store for the local-first Desktop and agent installation. It keeps
+the canonical documents, chunks, provenance, ACL metadata, audit events, and embedding generations
+in one owner-controlled data directory with verified backups. A future hosted or multi-user profile
+may add Postgres/pgvector behind the same store contract; that deployment is not required by the
+current release and is not silently provisioned. Local/cloud embedding providers implement the same
 OpenAI-compatible contract. A provider-endpoint/model/dimension fingerprint defines an index
 generation, preventing vectors from different services or models from being compared or mixed.
 
