@@ -296,6 +296,17 @@
   font-size: 12px;
 }
 
+.utility-warning {
+  margin: 0 0 16px;
+  padding: 9px 12px;
+  color: var(--theme-warning-fg);
+  border: 1px solid var(--theme-warning-border);
+  border-radius: 8px;
+  background: var(--theme-warning-bg);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .utility-line {
   display: grid;
   align-items: baseline;

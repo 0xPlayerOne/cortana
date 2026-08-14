@@ -57,7 +57,10 @@ source action is explicitly approved and makes every destructive step recoverabl
 - `GET /readyz` verifies both the SQLite index and a real embedding request. It is public on
   loopback, but requires a bearer principal with `status` scope on remote listeners.
 - `GET /v1/status` reports source freshness, index counts, runtime counters, and cache telemetry
-  through a bounded database-stats probe; a stalled SQLite read fails closed instead of hanging.
+  through a bounded database-stats probe. If SQLite is temporarily contended after a successful
+  snapshot, it returns the last ACL-scoped snapshot with `stats_stale=true` and an age so the
+  Desktop can remain truthful without turning a transient read timeout into a blank dashboard;
+  a first probe with no safe snapshot still fails closed instead of guessing.
 - `POST /v1/answer` runs the bounded human-facing query pipeline.
 - `GET /metrics` exports low-cardinality Prometheus metrics through the same bounded stats probe.
 - MCP `brain_status` uses the same bounded stats probe so agent status requests fail closed rather

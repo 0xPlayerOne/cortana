@@ -257,6 +257,9 @@ export type SourceSettings = {
 
 export type BrainStatus = {
   status: string
+  stats_stale?: boolean
+  stats_age_seconds?: number
+  stats_warning?: string
   embedding_fingerprint: string | null
   embedding_cache_entries: number
   embedding_cache_hits: number

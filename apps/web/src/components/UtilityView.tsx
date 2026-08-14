@@ -618,6 +618,14 @@ function IndexView({
   }
   return (
     <>
+      {status.stats_stale && (
+        <p className="utility-warning" role="status">
+          {status.stats_warning ?? 'Live database statistics are temporarily stale.'}
+          {typeof status.stats_age_seconds === 'number'
+            ? ` Snapshot age: ${status.stats_age_seconds.toLocaleString()} seconds.`
+            : ''}
+        </p>
+      )}
       <section className="utility-section">
         <h2>Live metrics</h2>
         <div className="utility-metrics">
