@@ -46,6 +46,16 @@ readiness and a bounded provider-backed fixture evaluation in 16,946 ms. These c
 packaged GUI behavior, operating-system signing, full-corpus source readiness, or optional memory
 provider behavior.
 
+## v0.31.16 release-history recovery
+
+The graph hierarchy, truthful status fallback, and Desktop-first project documentation were
+validated on `staging` and promoted to `main` through the protected exact-tree flow. This
+metadata-only marker restores those already-published changes to Release Please's conventional
+commit history after the promotion was flattened; it does not change runtime behavior, authorize
+sources, enable recurring sync, alter credentials, or trigger a memory provider. The v0.31.16
+release remains provisional until its version PR, published assets, and strict 18-asset verifier
+complete.
+
 Generated version pull requests are restricted to changelog and configured
 version files, then merged automatically without running the code-change test
 matrix. Topic pull requests target the protected `staging` branch and run the
