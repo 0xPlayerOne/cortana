@@ -131,13 +131,14 @@ GUI/browser/tray/dialog/updater gates above.
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
 4. Discord Desktop RPC authorization/server discovery and per-workspace server/channel
-   persistence landed in this pass. Slack workspace discovery and per-workspace
-   team assignment landed alongside it (the `SLACK_BOT_TOKEN` path for channel
-   selection and message sync is preserved and never interpreted as a path).
-   Buzz community assignment landed in the following pass: `cortana buzz-communities SOURCE`
-   reads the read-only `agents/teams.json` identity
-   file with bounded, fail-closed validation, and the Desktop chooser persists
-   per-workspace `communities`/`community_names`.
+   persistence are implemented, but live Discord authorization is currently disabled by
+   operator choice while the previous bot/RPC credential is unavailable. Slack workspace
+   discovery and per-workspace team assignment are implemented as an optional connector (the
+   `SLACK_BOT_TOKEN` path for channel selection and message sync is preserved and never
+   interpreted as a path). Buzz community assignment is also implemented: `cortana
+   buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file with bounded,
+   fail-closed validation, and the Desktop chooser persists per-workspace
+   `communities`/`community_names`.
 5. The memory-provider decision is recorded: keep Hindsight and Honcho as
    disabled-by-default optional adapters. Cortana's canonical store remains the
    source of truth; Hindsight is the replacement-capable sidecar and Honcho is
@@ -145,14 +146,15 @@ GUI/browser/tray/dialog/updater gates above.
    provider ACL, deletion, export, and packaged-UI gates are explicitly proven. The fresh offline
    comparative fixture (`uv run cortana-memory-eval`) reports `material_gain=true`, with recall and
    MRR gains of `0.375`; that is useful evidence for a future opt-in review, not live-provider proof.
-6. Complete source authorization and full validation coverage before recurring sync: the three
-   enabled Discord sources now have owner-authorized Desktop RPC credentials and fresh validation-only
-   smoke coverage capped at one document, 65,536 bytes, and 30 seconds per source. Their latest bounded
-   non-reconciling sync trials also pass within that 30-second cap; the personal AMF
-   Discord source is disabled. The bounded checks prove connector access, not full-corpus readiness. Filesystem/code sources are
-   either bounded samples (`complete=false`) or legacy records without an explicit completeness
-   marker. Both states fail closed; recurring sync must remain uninstalled until every enabled
-   source has a current `complete=true` validation at its configured budget.
+6. Complete source authorization and full validation coverage before recurring sync. The current
+   operator installation has 13 enabled sources: Apple Notes, Drive, Gmail, Calendar, and Buzz;
+   Discord and all code/filesystem roots are disabled by operator choice, and Slack is not
+   configured. Apple Notes has complete folder-scoped validation and bounded snapshots; Drive and
+   Gmail have bounded, under-budget validation and non-reconciling trials; Calendar has complete
+   validation with only bounded Work/Personal trials; Buzz has a resumable bounded snapshot.
+   These records prove selected connector behavior, not full-corpus readiness. Recurring sync must
+   remain uninstalled until every enabled source has a fresh `complete=true` validation at its
+   configured production budget.
 
 ## Evidence limits
 
