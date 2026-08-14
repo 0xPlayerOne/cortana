@@ -118,7 +118,7 @@ publish the verification contract without changing the runtime or indexed data.
 
 This marker is the v0.31.12 release boundary for the protected promotion flow.
 
-## Post-v0.31.12 onboarding and auth hardening (source-tree, not yet a release)
+## Post-v0.31.12 onboarding and auth hardening (queued for v0.31.13)
 
 The protected promotion after `v0.31.12` carries the Desktop-first getting-started guide,
 documentation synchronization rules, and atomic HTTP bearer-policy reload with fail-closed

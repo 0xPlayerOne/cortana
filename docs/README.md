@@ -5,6 +5,20 @@ shortest path from download to a first bounded query; this index routes you to t
 after installation. The [root README](../README.md) explains the project purpose, architecture,
 and contributor path.
 
+## Current status
+
+| Area                           | Current boundary                                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Downloadable package           | `v0.31.12`, with verified archives, checksums, updater signatures, manifest, and packaged-core offline evaluation                                 |
+| Source checkout                | Includes post-`v0.31.12` safety hardening; it is not downloadable-release evidence until a later release is verified                              |
+| Default runtime                | Query-only; no source authorization, full sync, recurring schedule, or optional memory sidecar is enabled automatically                           |
+| Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                     |
+| Still requires host acceptance | Packaged GUI/browser OAuth, tray and native dialogs, updater install, macOS Developer ID/notarization, and complete full-budget source validation |
+
+This table is the documentation boundary for the project. Update it whenever a release, safety gate,
+or first-run workflow changes; keep historical measurements in the linked audit and release pages
+instead of silently rewriting them.
+
 ## Start here
 
 - [Getting started](getting-started.md) — the simple Desktop-first path from download to a cited

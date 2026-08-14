@@ -31,6 +31,11 @@ The normal user journey is intentionally only six actions: install Desktop, appr
 tooling, create one workspace, configure one source, validate it, and confirm one bounded initial
 sync. Everything else in this file is an operational or contributor reference.
 
+The published package and the source checkout are intentionally versioned separately. Check
+`cortana --version` (or the Desktop About panel) before comparing behavior with the
+[release history](../../docs/releases.md); source-tree hardening is not downloadable-release
+evidence until its package, signatures, and packaged-core checks have been verified.
+
 ## Development
 
 Start the installed Cortana services, then run:
