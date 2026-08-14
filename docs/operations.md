@@ -474,7 +474,8 @@ Calendar no-reconcile resumes completed with 0 deletions; Special remains valida
 earlier budget-limited indexing attempts. Buzz validation covers
 45 records; its bounded resume committed 35 records before the provider exceeded its 300-second
 embedding budget, so the remaining tail is still resumable. All six Drive/Gmail sources
-now have bounded 25-document/5 MiB/60-second validation. Work Drive and Work Gmail completed
+now have bounded 25-document/5 MiB validation (60 seconds for the initial work trials and
+300 seconds for the resumed personal/special trials). Work Drive and Work Gmail completed
 bounded no-reconcile syncs. The Personal Drive retry used a 300-second embedding budget and
 committed 25 documents with 0 deletions through the resumable path; the Personal Gmail, Special
 Drive, and Special Gmail trials also completed with 0 deletions. Production-budget validation is
