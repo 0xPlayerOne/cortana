@@ -283,6 +283,31 @@ freshly-created drill directory. Set `CORTANA_KEEP_DRILL=1` to retain the exact 
 The drill proves the offline CLI control plane only; it is not a proof of the Desktop GUI, OAuth
 flows, tray integration, or updater behavior, none of which it exercises.
 
+## Approved-index evaluation
+
+When a representative corpus has been explicitly approved for evaluation, use the read-only live
+harness in `scripts/evaluate-live-index.py` with a private manifest copied from
+`eval/live-manifest.example.json`. It calls only `/v1/search` and `/v1/answer`, bounds each request
+to 60 seconds and the complete run to five minutes, and reports source IDs plus aggregate metrics
+including retrieval/provider fallback rates without printing query text, answers, credentials, or
+provider error bodies:
+
+```bash
+uv run python scripts/evaluate-live-index.py \
+  /private/path/cortana-live-manifest.json \
+  --base-url http://127.0.0.1:7331 \
+  --require-synthesis
+```
+
+The flag does not change the running configuration; synthesis must already be enabled in the
+approved evaluation environment. Omit it to measure the safe extractive path.
+
+For a shared agent, pass a scoped bearer token through `--token-env`. Run one manifest per ACL
+principal/workspace and include forbidden IDs to test isolation. This harness is read-only: it does
+not sync, reconcile, mutate the index, or test cache invalidation by editing corpus data. Keep the
+deterministic fixture gate for invalidation and run this harness only after readiness is healthy.
+Do not interpret a passing report as permission to install recurring sync or enable Hindsight/Honcho.
+
 ## Release verification
 
 Published releases have a final cross-platform asset gate. It checks that the core archives,
