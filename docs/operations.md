@@ -456,6 +456,24 @@ archive/signature/checksum/updater-manifest checks.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
 
+### Current local source rollout snapshot (2026-08-14)
+
+The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). Apple
+Notes is the completed first rollout: the three folder-scoped sources have complete validation and
+initial no-reconcile snapshots for `work`/`Nifty League` (28 documents), `special`/`The Pink Binder`
+(8), and the personal source (65 documents after excluding those folders). Calendar validation is
+complete for work (2,208 events), personal (1,839), and special (0), but earlier indexing attempts
+hit the bounded wall-clock budget before a complete snapshot was recorded. Buzz validation covers
+45 records; its first embedding run was interrupted and is resumable. All six Drive/Gmail sources
+now have bounded 25-document/5 MiB/60-second validation. Work Drive and Work Gmail completed
+bounded no-reconcile syncs; the Personal Drive trial reached its embedding deadline and is queued
+for resumable continuation. Production-budget validation is still required. Discord and all code
+roots are disabled by operator choice; Slack remains an optional, unconfigured connector.
+
+Do not infer recurring-sync readiness from this snapshot. Re-run `readiness --allow-sync-service`
+after the next source-scoped validation pass; it must remain fail-closed until every enabled source
+has a fresh, complete record at its configured budget.
+
 Before opening a protected promotion PR, run `uv run python scripts/check-docs-consistency.py` (or
 `bun run docs:check`). It treats the `## Current release` heading in `docs/releases.md` as the
 documentation boundary and verifies the bounded current sections in `README.md`, `docs/README.md`,
