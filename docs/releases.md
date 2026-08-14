@@ -9,11 +9,11 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.31.13
+## Current release: v0.31.14
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.31.13` release contains the current Rust runtime, web workspace, connector package, Desktop
+`v0.31.14` release contains the current Rust runtime, web workspace, connector package, Desktop
 bundles, example configuration, and Cortana agent skill. Its published 18-asset set passed the
 archive, checksum, updater-signature, manifest, and credential-free packaged-core verification
 gates.
@@ -28,13 +28,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.31.13
+  scripts/verify-desktop-release.sh v0.31.14
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.31.13 package is the release boundary for the post-v0.31.12 hardening described below.
+The v0.31.14 package is the release boundary for the post-v0.31.12 hardening described below.
 Future source-tree changes must still use the protected staging and promotion flow, followed by
 the release verifier, before being called downloadable-release behavior.
 
@@ -117,7 +117,7 @@ publish the verification contract without changing the runtime or indexed data.
 
 This marker is the v0.31.12 release boundary for the protected promotion flow.
 
-## v0.31.13 onboarding and auth hardening
+## v0.31.13 onboarding and auth hardening (historical release contents)
 
 The protected promotion after `v0.31.12`, released as `v0.31.13`, carries the Desktop-first getting-started guide,
 documentation synchronization rules, and atomic HTTP bearer-policy reload with fail-closed
@@ -153,7 +153,7 @@ The same source-tree lane now also:
 - serializes Desktop settings and schedule writes through one per-config cross-process lock.
 
 These are shipped safety contracts, not evidence that a large personal sync or optional memory
-provider is enabled. The v0.31.13 package, signatures, and packaged-core gate are verified; the
+provider is enabled. The v0.31.14 package, signatures, and packaged-core gate are verified; the
 manual Desktop, source-authorization, and optional-memory gates remain separate.
 
 ## Desktop release gates

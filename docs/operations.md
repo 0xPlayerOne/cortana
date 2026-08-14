@@ -42,9 +42,9 @@ evidence is required.
 Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
 8 MiB maximum line. Use separate reviewed batches for larger migrations.
 
-On the current v0.31.13 source tree, mutating CLI startup acquires the same global `sync.lock`
+On the current v0.31.14 source tree, mutating CLI startup acquires the same global `sync.lock`
 before opening the store. This covers schema/backfill/fingerprint work as well as the later import
-or sync operation. This is included in the verified v0.31.13 package.
+or sync operation. This is included in the verified v0.31.14 package.
 
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
@@ -332,19 +332,22 @@ workflow `31699076439` and strict 18-asset verifier are historical evidence.
 The provider-backed 12,319 ms fixture result above is historical installed-core
 evidence. No packaged-GUI evaluation is claimed.
 
-Release v0.31.13 followed through Release Please PR #1124; release-assets
-workflow `31764807122` completed all platform jobs and the strict 18-asset
+Release v0.31.13 followed through Release Please PR #1124; its release-assets
+workflow `31764807122` and strict verifier are historical evidence.
+
+Release v0.31.14 followed through Release Please PR #1130; release-assets
+workflow `31767490416` completed all platform jobs and the strict 18-asset
 verifier passed, including the packaged-core offline evaluator. The verified
-v0.31.13 archive was checked without replacing the local binary or restarting
+v0.31.14 archive was checked without replacing the local binary or restarting
 services. No packaged-GUI evaluation is claimed.
 
 The then-installed v0.31.12 binary also passed the disposable offline control-plane
 drill (bounded ingest, hybrid retrieval/context, metadata-only audit, verified
-backup, restore, SQLite verify, and post-restore search). The v0.31.13 release
+backup, restore, SQLite verify, and post-restore search). The v0.31.14 release
 verifier's packaged-core gate is the current archive evidence; neither check
 exercises the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
 
-The v0.31.13 package includes the hardening described above: direct ingestion and
+The v0.31.14 package includes the hardening described above: direct ingestion and
 source validation share the global `sync.lock`, and remote `/readyz` requests
 require a bearer principal with `status` scope while `/healthz` remains public
 liveness. Keep this release evidence separate from the still-open source,
@@ -360,7 +363,7 @@ verification is mandatory by default; set `CORTANA_REQUIRE_MINISIGN=0` only for 
 work where `minisign` is intentionally unavailable.
 
 ```bash
-GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.13
+GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.14
 ```
 
 It checks the bundle version, executes only the bundled core's `--version`
@@ -380,7 +383,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The published v0.31.13 verifier passed this packaged-core gate in addition to the
+`passed: true`. The published v0.31.14 verifier passed this packaged-core gate in addition to the
 archive/signature/checksum/updater-manifest checks.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
@@ -388,7 +391,7 @@ OAuth/tray/dialog/updater interactions, or authorize ingestion.
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.13
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.14
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
