@@ -429,6 +429,13 @@ archive/signature/checksum/updater-manifest checks.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
 
+Before opening a protected promotion PR, run `uv run python scripts/check-docs-consistency.py` (or
+`bun run docs:check`). It treats the `## Current release` heading in `docs/releases.md` as the
+documentation boundary and verifies the bounded current sections in `README.md`, `docs/README.md`,
+`docs/getting-started.md`, `docs/project-goal.md`, `docs/releases.md`, `docs/evaluation.md`,
+`docs/desktop-ux-audit.md`, and `docs/operations.md`. Historical evidence may continue to mention
+older releases, but current entry points must not silently drift.
+
 Re-run the read-only verifier for the current release with:
 
 ```bash
