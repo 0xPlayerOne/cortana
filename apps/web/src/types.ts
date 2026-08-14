@@ -230,6 +230,10 @@ export type SourceSettings = {
   root: string | null
   source: string | null
   channels: string[]
+  /** Exact Apple Notes folder names included by this source. */
+  folders?: string[]
+  /** Exact Apple Notes folder names excluded by this source. */
+  exclude_folders?: string[]
   repositories: string[]
   /** Discord servers (guilds) assigned to this source's workspace via Desktop RPC authorization. */
   servers: string[]

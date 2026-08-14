@@ -39,8 +39,10 @@ or follow the host-acceptance notes in the [Desktop audit](desktop-ux-audit.md).
    `special`. Workspaces keep source accounts and retrieval scopes understandable; you can add
    more later.
 4. **Configure one source.** In **Settings → Sources**, choose a source, assign it to the
-   workspace, and use **Authorize** or **Open provider setup**. Credentials stay outside the
-   renderer and are never written into the index.
+   workspace, and use **Authorize** or **Open provider setup**. For Apple Notes, enter exact
+   folder names in **Include Apple Notes folders** or **Exclude Apple Notes folders**; create
+   separate Apple Notes sources when folders belong to different workspaces. Credentials stay
+   outside the renderer and are never written into the index.
 5. **Validate before syncing.** Select **Validate** with the default small budget. Validation is
    read-only: it does not embed, index, reconcile, or delete anything.
 6. **Run one bounded initial sync.** After validation succeeds, confirm **Initial sync** with the
