@@ -487,13 +487,14 @@ nothing. Calendar validation is complete for work (2,208 events), personal (1,83
 (0). 100-event Work and Personal Calendar no-reconcile resumes completed with 0 deletions;
 Special remains validation-only after earlier budget-limited indexing attempts. Buzz validation
 covers 45 records; its first 60-second trial failed closed at the embedding deadline, then the
-bounded 300-second retry completed all 45 records with 0 deletions. All six Drive/Gmail sources
-have bounded 25-document/5 MiB validation (60 seconds for the initial work trials and 300 seconds
-for the resumed personal/special trials). Work Drive and Work Gmail completed bounded
-no-reconcile syncs. The Personal Drive retry used a 300-second embedding budget and committed 25
-documents with 0 deletions through the resumable path; the Personal Gmail, Special Drive, and
-Special Gmail trials also completed with 0 deletions. Production-budget validation is still
-required. Discord and all code roots are disabled by operator choice; Slack remains an optional,
+bounded 300-second retry completed all 45 records with 0 deletions. Work Drive, Work Gmail,
+Personal Drive, Personal Gmail, and Special Gmail still have bounded validation records below
+their configured production budgets;
+their bounded no-reconcile trials completed without deletions. Special Drive is the first cloud
+source to complete the production-budget gate: the 2026-08-14 validation covered 97 documents and
+290,353 bytes, followed by a bounded no-reconcile trial that indexed all 97 documents with 0
+deletions. Production-budget validation remains required for the five remaining Drive/Gmail
+sources. Discord and all code roots are disabled by operator choice; Slack remains an optional,
 unconfigured connector.
 
 Do not infer recurring-sync readiness from this snapshot. Re-run `readiness --allow-sync-service`

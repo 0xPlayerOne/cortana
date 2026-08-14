@@ -153,12 +153,14 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    operator installation has 13 enabled sources: Apple Notes, Drive, Gmail, Calendar, and Buzz;
    Discord and all code/filesystem roots are disabled by operator choice, and Slack is not
    configured. Apple Notes has complete folder-scoped validation and bounded no-reconcile
-   snapshots; Drive and Gmail have bounded, under-budget validation and non-reconciling trials;
-   Calendar has complete validation with only bounded Work/Personal trials; Buzz has a completed
-   bounded no-reconcile snapshot. These records prove selected connector behavior, not
-   full-corpus readiness. Recurring sync must
-   remain uninstalled until every enabled source has a fresh `complete=true` validation at its
-   configured production budget.
+   snapshots; Calendar has complete validation with only bounded Work/Personal trials; Buzz has a
+   completed bounded no-reconcile snapshot. Special Drive now has a production-budget validation
+   (97 documents, 290,353 bytes) and a completed 97-document non-reconciling trial with zero
+   deletions. Work Drive, Work Gmail, Personal Drive, Personal Gmail, and Special Gmail remain
+   under-budget and still require production-budget validation. These records prove selected
+   connector behavior, not full-corpus readiness. Recurring sync must remain uninstalled until
+   every enabled source has a fresh `complete=true` validation at its configured production
+   budget.
 
 ## Evidence limits
 
