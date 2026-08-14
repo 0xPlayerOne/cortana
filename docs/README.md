@@ -9,8 +9,8 @@ and contributor path.
 
 | Area                           | Current boundary                                                                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Downloadable package           | `v0.31.12`, with verified archives, checksums, updater signatures, manifest, and packaged-core offline evaluation                                 |
-| Source checkout                | Includes post-`v0.31.12` safety hardening; it is not downloadable-release evidence until a later release is verified                              |
+| Downloadable package           | `v0.31.13`, with verified archives, checksums, updater signatures, manifest, and packaged-core offline evaluation                                 |
+| Source checkout                | Matches the verified `v0.31.13` release boundary; future source changes require a new protected release verification                              |
 | Default runtime                | Query-only; no source authorization, full sync, recurring schedule, or optional memory sidecar is enabled automatically                           |
 | Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                     |
 | Still requires host acceptance | Packaged GUI/browser OAuth, tray and native dialogs, updater install, macOS Developer ID/notarization, and complete full-budget source validation |
