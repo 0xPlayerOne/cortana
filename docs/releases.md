@@ -9,11 +9,11 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.31.12
+## Current release: v0.31.13
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.31.12` release contains the current Rust runtime, web workspace, connector package, Desktop
+`v0.31.13` release contains the current Rust runtime, web workspace, connector package, Desktop
 bundles, example configuration, and Cortana agent skill. Its published 18-asset set passed the
 archive, checksum, updater-signature, manifest, and credential-free packaged-core verification
 gates.
@@ -28,16 +28,15 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.31.12
+  scripts/verify-desktop-release.sh v0.31.13
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The checkout may contain post-v0.31.12 hardening that has not yet been published as a release.
-Unreleased source-tree behavior must not be represented as v0.31.12 package evidence; use the
-protected staging and promotion flow, followed by the release verifier, before calling it part of
-the downloadable release.
+The v0.31.13 package is the release boundary for the post-v0.31.12 hardening described below.
+Future source-tree changes must still use the protected staging and promotion flow, followed by
+the release verifier, before being called downloadable-release behavior.
 
 Generated version pull requests are restricted to changelog and configured
 version files, then merged automatically without running the code-change test
@@ -118,17 +117,17 @@ publish the verification contract without changing the runtime or indexed data.
 
 This marker is the v0.31.12 release boundary for the protected promotion flow.
 
-## Post-v0.31.12 onboarding and auth hardening (queued for v0.31.13)
+## v0.31.13 onboarding and auth hardening
 
-The protected promotion after `v0.31.12` carries the Desktop-first getting-started guide,
+The protected promotion after `v0.31.12`, released as `v0.31.13`, carries the Desktop-first getting-started guide,
 documentation synchronization rules, and atomic HTTP bearer-policy reload with fail-closed
 remote-listener protection. This metadata-only marker restores those already-validated staging
 capabilities to Release Please's conventional-commit history after exact-tree promotion flattened
 their topic commits. It changes release metadata only; it does not authorize sources, enable
 recurring sync, alter credentials, or change indexed data.
 
-The next release verification must retain the v0.31.12 archive, checksum, updater-signature,
-manifest, and packaged-core gates. The HTTP reload behavior is covered by rotation, invalid-policy,
+The v0.31.13 release verification retained the archive, checksum, updater-signature, manifest,
+and packaged-core gates from v0.31.12. The HTTP reload behavior is covered by rotation, invalid-policy,
 remote-listener, and metadata-only audit tests; source-tree MCP bearer sessions reread the file-backed
 policy on each tool call and fail closed on malformed or revoked credentials.
 
@@ -153,9 +152,9 @@ The same source-tree lane now also:
 - serializes Desktop sidecar preparation and atomically renames completed sidecars into place.
 - serializes Desktop settings and schedule writes through one per-config cross-process lock.
 
-These are source-tree safety contracts, not evidence that a large personal sync or optional memory
-provider is enabled. The next release must rerun the full package, signature, packaged-core, and
-manual Desktop gates before these changes are called downloadable-release behavior.
+These are shipped safety contracts, not evidence that a large personal sync or optional memory
+provider is enabled. The v0.31.13 package, signatures, and packaged-core gate are verified; the
+manual Desktop, source-authorization, and optional-memory gates remain separate.
 
 ## Desktop release gates
 
