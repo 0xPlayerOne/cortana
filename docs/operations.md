@@ -473,8 +473,9 @@ complete for work (2,208 events), personal (1,839), and special (0), but earlier
 hit the bounded wall-clock budget before a complete snapshot was recorded. Buzz validation covers
 45 records; its first embedding run was interrupted and is resumable. All six Drive/Gmail sources
 now have bounded 25-document/5 MiB/60-second validation. Work Drive and Work Gmail completed
-bounded no-reconcile syncs; the Personal Drive trial reached its embedding deadline and is queued
-for resumable continuation. Production-budget validation is still required. Discord and all code
+bounded no-reconcile syncs. The Personal Drive retry used a 300-second embedding budget and
+committed 25 documents with 0 deletions through the resumable path. Production-budget validation
+is still required. Discord and all code
 roots are disabled by operator choice; Slack remains an optional, unconfigured connector.
 
 Do not infer recurring-sync readiness from this snapshot. Re-run `readiness --allow-sync-service`
