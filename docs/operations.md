@@ -468,6 +468,14 @@ archive/signature/checksum/updater-manifest checks.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
 
+On 2026-08-14 the installed v0.32.0 CLI also passed
+`scripts/desktop-control-plane-drill.sh`. The disposable drill initialized a temporary index,
+ingested two bounded documents, exercised hybrid search/context and metadata-only audit export,
+created and verified a backup, restored into a second temporary data directory, verified SQLite,
+and searched the restored index. It never touched the live index, credentials, configured sources,
+or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
+native-dialog/updater acceptance.
+
 ### Current local source rollout snapshot (2026-08-14)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). Apple
