@@ -54,6 +54,13 @@ pub struct AppState {
     answer: AnswerEngine,
     audit_max_events: usize,
     auth_config_path: Option<std::path::PathBuf>,
+    status_stats_cache: Arc<Mutex<HashMap<String, CachedStatusStats>>>,
+}
+
+#[derive(Clone)]
+struct CachedStatusStats {
+    captured_at: Instant,
+    stats: StoreStats,
 }
 
 #[derive(Clone)]
@@ -91,6 +98,7 @@ impl AppState {
             answer,
             audit_max_events: crate::config::AuthConfig::default().audit_max_events,
             auth_config_path: None,
+            status_stats_cache: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -134,6 +142,41 @@ impl AppState {
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
+    }
+
+    fn cache_status_stats(&self, key: String, stats: StoreStats) {
+        let mut cache = self
+            .status_stats_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // A bounded cache keeps a rotating set of scoped principals from
+        // becoming an unbounded memory consumer. The oldest entry is not
+        // required for correctness; any entry is safe to evict because a
+        // cache miss still fails closed when a fresh probe is unavailable.
+        if cache.len() >= 32 && !cache.contains_key(&key) {
+            if let Some(oldest_key) = cache
+                .iter()
+                .min_by_key(|(_, value)| value.captured_at)
+                .map(|(key, _)| key.clone())
+            {
+                cache.remove(&oldest_key);
+            }
+        }
+        cache.insert(
+            key,
+            CachedStatusStats {
+                captured_at: Instant::now(),
+                stats,
+            },
+        );
+    }
+
+    fn cached_status_stats(&self, key: &str) -> Option<CachedStatusStats> {
+        self.status_stats_cache
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(key)
+            .cloned()
     }
 
     fn replace_auth_policy(&self, policy: AuthPolicy) -> Result<()> {
@@ -280,9 +323,19 @@ struct Health {
     status: &'static str,
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Debug, Serialize)]
 struct Status {
     status: &'static str,
+    #[serde(skip_serializing_if = "is_false")]
+    stats_stale: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stats_age_seconds: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stats_warning: Option<&'static str>,
     uptime_seconds: u64,
     searches_total: u64,
     contexts_total: u64,
@@ -967,18 +1020,43 @@ async fn status(
     let acl = principal.acl_labels();
     let owner = principal.is_owner();
     let ingestion = state.ingestion.refreshed().visible_to(&principal);
-    let stats = if owner {
+    let visible_sync_sources = ingestion.visible_sync_source_keys();
+    let cache_key = if owner {
+        "owner".to_string()
+    } else {
+        let mut source_keys = visible_sync_sources.iter().cloned().collect::<Vec<_>>();
+        source_keys.sort();
+        let fallback_key = format!("scoped:{acl:?}:{source_keys:?}");
+        serde_json::to_string(&(acl.clone(), source_keys)).unwrap_or(fallback_key)
+    };
+    let fresh_stats = if owner {
         store_stats_with_timeout(state.store.clone(), READY_STORE_STATS_TIMEOUT).await
     } else {
         store_stats_scoped_with_timeout(
             state.store.clone(),
             acl,
-            ingestion.visible_sync_source_keys(),
+            visible_sync_sources,
             READY_STORE_STATS_TIMEOUT,
         )
         .await
-    }
-    .map_err(internal_error)?;
+    };
+    let (stats, stats_stale, stats_age_seconds, stats_warning) = match fresh_stats {
+        Ok(stats) => {
+            state.cache_status_stats(cache_key.clone(), stats.clone());
+            (stats, false, None, None)
+        }
+        Err(error) => match state.cached_status_stats(&cache_key) {
+            Some(cached) => (
+                cached.stats,
+                true,
+                Some(cached.captured_at.elapsed().as_secs()),
+                Some(
+                    "database statistics are temporarily stale; showing the last successful snapshot",
+                ),
+            ),
+            None => return Err(internal_error(error)),
+        },
+    };
     let source_projects = if owner {
         stats
             .sources
@@ -1012,6 +1090,9 @@ async fn status(
     let counters = state.metrics.counters_for(&principal, owner);
     Ok(Json(Status {
         status: "ok",
+        stats_stale,
+        stats_age_seconds,
+        stats_warning,
         uptime_seconds: state.metrics.uptime_seconds(),
         searches_total: counters.searches,
         contexts_total: counters.contexts,
@@ -1543,6 +1624,23 @@ mod tests {
             .expect("fingerprint");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
         (directory, AppState::new(store, embedder))
+    }
+
+    #[test]
+    fn status_snapshot_cache_is_bounded_and_returns_cloned_stats() {
+        let (_directory, state) = test_state();
+        let stats = state.store.stats().expect("empty stats");
+        for index in 0..40 {
+            state.cache_status_stats(format!("principal-{index}"), stats.clone());
+        }
+
+        let cache = state.status_stats_cache.lock().expect("status cache lock");
+        assert_eq!(cache.len(), 32);
+        drop(cache);
+        let cached = state
+            .cached_status_stats("principal-39")
+            .expect("latest snapshot");
+        assert_eq!(cached.stats.documents, stats.documents);
     }
 
     struct UnavailableEmbedder;

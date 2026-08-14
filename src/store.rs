@@ -33,7 +33,7 @@ pub struct Store {
     read_connection: Arc<Mutex<Connection>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StoreStats {
     pub documents: i64,
     pub chunks: i64,
@@ -52,7 +52,7 @@ pub struct PublicAclSummary {
     pub documents: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct SourceStats {
     pub source: String,
     pub project: String,
@@ -61,7 +61,7 @@ pub struct SourceStats {
     pub latest_updated_at: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct SourceSyncStats {
     pub source: String,
     pub project: String,
