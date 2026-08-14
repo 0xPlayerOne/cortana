@@ -75,14 +75,15 @@ evidence is required.
 Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
 8 MiB maximum line. Use separate reviewed batches for larger migrations.
 
-On the current v0.31.15 source tree, mutating CLI startup acquires the same global `sync.lock`
+On the current v0.31.16 source tree, mutating CLI startup acquires the same global `sync.lock`
 before opening the store. This covers schema/backfill/fingerprint work as well as the later import
-or sync operation. This is included in the verified v0.31.15 package.
+or sync operation. This is included in the verified v0.31.16 package.
 
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
 so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
-also source-tree hardening until a later packaged release includes and verifies it.
+included in the verified v0.31.16 package; keep the same lock requirement when running a newer
+source checkout or development build.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
 `RUST_LOG=cortana=debug,tower_http=info`, to change verbosity. Request headers and evidence content
@@ -380,14 +381,14 @@ backup, restore, SQLite verify, and post-restore search). The v0.31.14 release
 verifier's packaged-core gate is historical evidence; neither check
 exercises the packaged GUI, browser OAuth, tray events, native dialogs, or signed updater.
 
-Release v0.31.15 followed through Release Please PR #1140 and the protected staging
-reconciliation. Release-assets workflow `31774425020` completed all platform jobs and the strict
-18-asset verifier passed. The installed v0.31.15 core passed query-only readiness and the
-provider-backed fixture evaluator in 16,946 ms. An explicit `readiness --allow-sync-service`
+Release v0.31.16 followed through Release Please PR #1163 and the protected staging
+reconciliation. Release-assets workflow `31783540306` completed all platform jobs and the strict
+18-asset verifier passed. The installed v0.31.16 core passed query-only readiness and the
+provider-backed fixture evaluator in 14,660 ms. An explicit `readiness --allow-sync-service`
 check failed closed on bounded/incomplete source validation, so recurring sync remains
 uninstalled; no packaged-GUI evaluation is claimed.
 
-The v0.31.15 package includes the hardening described above: direct ingestion and
+The v0.31.16 package includes the hardening described above: direct ingestion and
 source validation share the global `sync.lock`, and remote `/readyz` requests
 require a bearer principal with `status` scope while `/healthz` remains public
 liveness. Keep this release evidence separate from the still-open source,
@@ -403,7 +404,7 @@ verification is mandatory by default; set `CORTANA_REQUIRE_MINISIGN=0` only for 
 work where `minisign` is intentionally unavailable.
 
 ```bash
-GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.15
+GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.16
 ```
 
 It checks the bundle version, executes only the bundled core's `--version`
@@ -423,7 +424,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The published v0.31.15 verifier passed this packaged-core gate in addition to the
+`passed: true`. The published v0.31.16 verifier passed this packaged-core gate in addition to the
 archive/signature/checksum/updater-manifest checks.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
@@ -431,7 +432,7 @@ OAuth/tray/dialog/updater interactions, or authorize ingestion.
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.15
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.31.16
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
