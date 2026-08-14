@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.13](https://github.com/0xPlayerOne/cortana/compare/v0.31.12...v0.31.13) (2026-08-14)
+
+
+### Bug Fixes
+
+* **release:** publish post-v0.31.12 hardening ([d4225e8](https://github.com/0xPlayerOne/cortana/commit/d4225e821edb5afe445056b06fe9b1b2a3a2a5ea))
+
 ## [0.31.12](https://github.com/0xPlayerOne/cortana/compare/v0.31.11...v0.31.12) (2026-08-13)
 
 
