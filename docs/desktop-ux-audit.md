@@ -12,9 +12,10 @@ is not part of a visual/UI change.
   strict verifier confirmed all 18 core, Desktop, signature, checksum, updater-manifest,
   and packaged-core offline-evaluation gates. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The v0.32.0 archive is the current packaged evidence boundary; the local installed
-  CLI remains a separate version and recurring sync is still disabled. Query-only readiness
-  and source authorization are separate host checks;
+- The v0.32.0 archive is the current packaged evidence boundary. The audited host now has the
+  matching v0.32.0 CLI and managed Python package installed, with embedding and server services
+  running in query-only mode; recurring sync remains disabled. Query-only readiness and source
+  authorization are separate host checks;
   source authorization and full-corpus sync were not started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
 - The preceding installed v0.31.16 configured-provider fixture evaluation passed in 14,660 ms with

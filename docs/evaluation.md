@@ -34,6 +34,11 @@ This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
+The audited host is now version-aligned as well: `/Users/amf/.local/bin/cortana` and its managed
+Python package both report `0.32.0`, while the embedding and HTTP services are running with
+recurring sync uninstalled. This is local installation evidence, not proof of native GUI,
+browser OAuth, updater, or operating-system trust behavior.
+
 The v0.32.0 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
