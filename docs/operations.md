@@ -302,6 +302,13 @@ uv run python scripts/evaluate-live-index.py \
 The flag does not change the running configuration; synthesis must already be enabled in the
 approved evaluation environment. Omit it to measure the safe extractive path.
 
+The current host has one recorded read-only retrieval run for the approved `work` /
+`work-gmail` scope (2026-08-14): recall@k 1.0, MRR 1.0, hybrid retrieval, zero retrieval
+degradation, zero forbidden-source leaks, 1.0 repeated-query cache-hit rate, and 1,750 ms
+maximum latency. The private manifest and query text were not committed. Treat this as live
+retrieval evidence only; answer/synthesis, full-budget source validation, shared-agent ACL, and
+packaged-GUI gates remain independent.
+
 For a shared agent, pass a scoped bearer token through `--token-env`. Run one manifest per ACL
 principal/workspace and include forbidden IDs to test isolation. This harness is read-only: it does
 not sync, reconcile, mutate the index, or test cache invalidation by editing corpus data. Keep the
