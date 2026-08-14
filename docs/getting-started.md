@@ -22,6 +22,11 @@ condition, not something to bypass.
 The installer preserves an existing configuration, index, backups, and secrets. It does not
 authorize an account, download a connector corpus, start a sync, or enable a scheduler by itself.
 
+Before you begin, use a supported release package for your operating system and CPU and keep at
+least one backup location available. No account credentials are required for the first launch. On
+macOS, an unsigned or non-notarized build may be rejected by Gatekeeper; use the published package
+or follow the host-acceptance notes in the [Desktop audit](desktop-ux-audit.md).
+
 ## The shortest path to a first result
 
 1. **Download Cortana Desktop.** Open the [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest)
@@ -41,6 +46,18 @@ authorize an account, download a connector corpus, start a sync, or enable a sch
 6. **Run one bounded initial sync.** After validation succeeds, confirm **Initial sync** with the
    smallest budget. Review the progress and source status, then ask a known question and confirm
    that the answer includes citations.
+
+If you are using the CLI instead of Desktop, confirm the installed version before changing any
+configuration:
+
+```bash
+cortana --version
+cortana doctor
+cortana readiness --max-backup-age-hours 48
+```
+
+Readiness is read-only. A failure means stop and correct the reported issue; do not increase source
+limits, enable a scheduler, or delete the index to force a green result.
 
 Stop after step 6 if you only need a local searchable brain. Recurring sync, shared-agent access,
 cloud model use, and optional Hindsight/Honcho memory adapters are separate decisions with their
