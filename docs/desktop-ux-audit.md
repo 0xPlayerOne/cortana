@@ -58,10 +58,13 @@ is not part of a visual/UI change.
   All three trials were non-reconciling and did not install recurring sync. This
   proves the selected connector-to-embedding-to-index path, not full-corpus
   readiness.
-- A fresh validation-only source smoke on 2026-08-13 passed all 21 enabled
-  sources at the same one-document/64 KiB/30-second bounds, without embedding,
-  indexing, reconciliation, or scheduler changes. Filesystem and code sources
-  remain sampled by design, so this is authorization/reachability evidence only.
+- A historical validation-only source smoke on 2026-08-13 passed the 21 sources
+  that were enabled at that time at the same one-document/64 KiB/30-second bounds,
+  without embedding, indexing, reconciliation, or scheduler changes. The current
+  operator inventory is narrower: 13 sources are enabled (Apple Notes, Drive,
+  Gmail, Calendar, and Buzz), while Discord and code/filesystem roots are disabled
+  and Slack is unconfigured. The historical sweep is authorization/reachability
+  evidence only and must not be read as current source authorization.
 
 The current v0.32.0 source and package include the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
@@ -291,23 +294,23 @@ current-release section above for sign-off status.
   provider-unavailable attempts remain historical fail-closed evidence, and extractive mode
   remains the safe production default because synthesis is still an explicit opt-in.
 - The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
-  sync service is not installed, and the configured inventory has 22 sources (21 enabled; the
-  personal AMF Discord source is disabled). The latest bounded smoke reports successful validation
-  for all 21 enabled sources, including all three authorized Discord sources; seven filesystem/code
-  sources remain bounded samples (`complete=false`). These bounded records do not cover the
-  configured recurring-sync budgets, so neither sampled nor under-budget state authorizes a
-  full-corpus or recurring run without fresh validation at the configured limits.
+  sync service is not installed, and the configured inventory has 22 sources with 13 enabled.
+  The enabled set is Apple Notes, Drive, Gmail, Calendar, and Buzz; Discord and all code/filesystem
+  roots are disabled, and Slack is unconfigured. The enabled records are fresh bounded evidence,
+  but eight Drive/Gmail/Calendar records remain below their configured production budgets. These
+  records do not authorize a full-corpus or recurring run without fresh validation at the configured
+  limits.
 - A current query-only readiness probe passes database integrity, embedding/index/provider health,
   ACL, API liveness, fresh verified backup, extractive mode, and confirms sync is not installed.
   The matching `readiness --allow-sync-service` probe fails closed because every enabled connector
   is below its configured full-sync budget and filesystem/code records are bounded samples; no
   sync service was installed or started. Recurring mode must stay fail-closed until every enabled
   source covers its configured full-sync budget.
-- A current validation-only `scripts/source-smoke.sh` run on 2026-08-12 passed all 21 enabled
-  sources at the bounded one-document/65,536-byte/30-second budget, including the three Discord
-  sources, with no trial sync, embeddings, or reconciliation. This confirms authorization and
-  connector reachability only; the seven filesystem/code sources remain sampled and every source
-  is below the configured recurring-sync budget.
+- The 2026-08-12 validation-only `scripts/source-smoke.sh` run is historical: it passed the 21
+  sources enabled at that time at the bounded one-document/65,536-byte/30-second budget, including
+  the then-authorized Discord sources, with no trial sync, embeddings, or reconciliation. It confirms
+  only the authorization and connector reachability of that earlier inventory; it does not authorize
+  the current source set or recurring sync.
 - A subsequent one-document/65,536-byte non-reconciling trial showed the full connector-to-index
   path is sensitive to the per-source wall-clock budget: Personal Drive and Personal Gmail both
   completed after their validation and trial windows were raised to 180 seconds, while the same
