@@ -260,3 +260,5 @@ a downloaded archive locally:
   cortana-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz \
   cortana-vX.Y.Z-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
+
+The protected promotion carries the terminal `Release-As: 0.31.17` footer so Release Please publishes this patch without inferring a minor feature release.
