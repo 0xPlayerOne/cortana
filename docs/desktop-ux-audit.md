@@ -18,6 +18,11 @@ is not part of a visual/UI change.
   authorization are separate host checks;
   source authorization and full-corpus sync were not started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
+- The installed v0.32.0 CLI passed the disposable offline control-plane drill on 2026-08-14:
+  initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
+  verified backup, restore into a second temporary data directory, SQLite verification, and
+  post-restore search. The drill used only temporary data and does not prove packaged GUI, OAuth,
+  tray, native-dialog, updater, or operating-system trust behavior.
 - The preceding installed v0.31.16 configured-provider fixture evaluation passed in 14,660 ms with
   planner and synthesis model use, valid citations, cache reuse, and revision invalidation.
   It remains historical synthetic fixture evidence, not a personal-index or packaged-GUI benchmark. The
