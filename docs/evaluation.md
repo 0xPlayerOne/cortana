@@ -67,6 +67,12 @@ read-only live-index retrieval evidence. It does not authorize sync, prove full-
 validation, or close the separate provider-backed answer/synthesis, shared-agent, or packaged-GUI
 gates.
 
+A separate temporary synthesis-enabled API attempt against the same approved scope failed closed at
+the 45,000 ms request ceiling: no synthesized answer or citations were returned, no forbidden
+source IDs leaked, and the provider-unavailable fallback flag remained false. This is a bounded
+provider-latency failure record, not provider-backed quality evidence. Production synthesis remains
+disabled and extractive mode remains the safe default until a repeatable cited-answer run passes.
+
 The current source-tree evaluator also rejects oversized custom fixtures before parsing: the file,
 document count, case count, document content, and query sizes are bounded. The direct JSONL import
 path has its own bounded document, byte, wall-clock, and line-size limits. These protections are

@@ -309,6 +309,11 @@ maximum latency. The private manifest and query text were not committed. Treat t
 retrieval evidence only; answer/synthesis, full-budget source validation, shared-agent ACL, and
 packaged-GUI gates remain independent.
 
+A temporary synthesis-enabled retry against that same scope failed closed at its 45-second request
+ceiling without a cited answer. No source leakage or provider-unavailable fallback was reported;
+the result is retained as latency/failure evidence only. Keep production synthesis disabled until
+a bounded provider-backed answer run passes.
+
 For a shared agent, pass a scoped bearer token through `--token-env`. Run one manifest per ACL
 principal/workspace and include forbidden IDs to test isolation. This harness is read-only: it does
 not sync, reconcile, mutate the index, or test cache invalidation by editing corpus data. Keep the
