@@ -87,7 +87,7 @@ bunx code-foundry doctor
 bun run format
 bun run lint
 bun run type-check
-bun test
+bun run test
 Security and dependency audits run through the GitHub Security workflow.
 ```
 

@@ -420,7 +420,7 @@ bun install --frozen-lockfile
 bun run format
 bun run lint
 bun run type-check
-bun test
+bun run test
 bun run build
 
 # Tauri 2 desktop
