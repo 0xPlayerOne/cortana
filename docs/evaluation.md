@@ -28,6 +28,10 @@ approved-corpus answer/synthesis evaluation remains separate and is not a packag
 An explicit `readiness --allow-sync-service` check correctly failed closed because the
 enabled sources have bounded or under-budget validation records; the recurring sync service
 remains uninstalled.
+Since that release evidence was recorded, Special Drive completed a production-budget validation
+covering 97 documents and 290,353 bytes, followed by a bounded non-reconciling trial with 0
+deletions. Five Drive/Gmail sources remain below their configured production budgets, so the
+recurring gate remains correctly closed.
 The v0.32.0 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
