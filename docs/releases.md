@@ -9,11 +9,11 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.31.14
+## Current release: v0.31.15
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.31.14` release contains the current Rust runtime, web workspace, connector package, Desktop
+`v0.31.15` release contains the current Rust runtime, web workspace, connector package, Desktop
 bundles, example configuration, and Cortana agent skill. Its published 18-asset set passed the
 archive, checksum, updater-signature, manifest, and credential-free packaged-core verification
 gates.
@@ -28,15 +28,23 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.31.14
+  scripts/verify-desktop-release.sh v0.31.15
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.31.14 package is the release boundary for the post-v0.31.12 hardening described below.
+The v0.31.15 package is the release boundary for the post-v0.31.12 hardening described below.
 Future source-tree changes must still use the protected staging and promotion flow, followed by
 the release verifier, before being called downloadable-release behavior.
+
+Release Please PR #1140 published v0.31.15 after the protected promotion and staging
+reconciliation. Release-assets workflow `31774425020` completed all platform jobs and the strict
+18-asset verifier, including archive checksums, six updater signatures, the updater manifest, and
+the credential-free packaged-core evaluator. The installed v0.31.15 core also passed query-only
+readiness and a bounded provider-backed fixture evaluation in 16,946 ms. These checks do not prove
+packaged GUI behavior, operating-system signing, full-corpus source readiness, or optional memory
+provider behavior.
 
 Generated version pull requests are restricted to changelog and configured
 version files, then merged automatically without running the code-change test
@@ -153,7 +161,7 @@ The same source-tree lane now also:
 - serializes Desktop settings and schedule writes through one per-config cross-process lock.
 
 These are shipped safety contracts, not evidence that a large personal sync or optional memory
-provider is enabled. The v0.31.14 package, signatures, and packaged-core gate are verified; the
+provider is enabled. The v0.31.15 package, signatures, and packaged-core gate are verified; the
 manual Desktop, source-authorization, and optional-memory gates remain separate.
 
 ## Desktop release gates
