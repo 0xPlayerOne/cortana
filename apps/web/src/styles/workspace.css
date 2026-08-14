@@ -538,6 +538,40 @@
   font-size: 12px;
 }
 
+.graph-kind-filter {
+  position: absolute;
+  z-index: 3;
+  top: 62px;
+  left: 18px;
+  display: flex;
+  max-width: calc(100% - 36px);
+  overflow-x: auto;
+  border: 1px solid var(--theme-content-border);
+  background: var(--theme-content-surface);
+}
+
+.graph-kind-filter button {
+  min-height: 28px;
+  padding: 0 9px;
+  color: var(--theme-content-subtle);
+  border: 0;
+  border-right: 1px solid var(--theme-content-border);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.graph-kind-filter button:last-child {
+  border-right: 0;
+}
+
+.graph-kind-filter button:hover,
+.graph-kind-filter button.active {
+  color: var(--theme-content-text);
+  background: var(--theme-content-muted);
+}
+
 .graph-selection {
   position: absolute;
   z-index: 3;
@@ -611,6 +645,16 @@
   cursor: pointer;
   transform: translate(-50%, -50%) rotate(var(--angle)) translateX(var(--distance))
     rotate(calc(-1 * var(--angle)));
+}
+
+.graph-node--workspace {
+  border-color: var(--amber);
+  background: var(--theme-content-surface);
+}
+
+.graph-node--source {
+  border-color: var(--theme-content-border);
+  background: var(--theme-content-surface);
 }
 
 .graph-view > button span {

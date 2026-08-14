@@ -1,10 +1,26 @@
-import { BookOpen, FileText, History, Link2, Network, Search, Star } from 'lucide-react'
+import {
+  BookOpen,
+  Database,
+  FileText,
+  FolderTree,
+  History,
+  Link2,
+  Network,
+  Search,
+  Star,
+} from 'lucide-react'
 import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 
 import { isDesktopApp, openDesktopUrl } from '../api'
 import { isFavoriteDocument, toggleFavoriteDocument } from '../favoriteDocuments'
 import { safeSourceLink } from '../sourceLinks'
-import type { AnswerResponse, BrainDocument, BrainGraphPage, Evidence } from '../types'
+import type {
+  AnswerResponse,
+  BrainDocument,
+  BrainGraphNode,
+  BrainGraphPage,
+  Evidence,
+} from '../types'
 
 const tabs = [
   { id: 'answer', label: 'Answer', icon: AppIcon },
@@ -534,27 +550,30 @@ function GraphView({
 }) {
   const [visibleCount, setVisibleCount] = useState(12)
   const [filter, setFilter] = useState('')
+  const [kindFilter, setKindFilter] = useState<BrainGraphNode['kind'] | 'all'>('all')
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const graphDocuments = graph?.nodes.filter((node) => node.kind === 'document') ?? []
+  const graphNodes = graph?.nodes ?? []
   const usingEvidenceFallback = graph === null
   const normalizedFilter = filter.trim().toLocaleLowerCase()
-  const filteredDocuments = useMemo(
+  const filteredNodes = useMemo(
     () =>
       normalizedFilter
-        ? graphDocuments.filter((node) =>
-            [node.label, node.project, node.source ?? ''].some((value) =>
-              value.toLocaleLowerCase().includes(normalizedFilter)
-            )
+        ? graphNodes.filter(
+            (node) =>
+              (kindFilter === 'all' || node.kind === kindFilter) &&
+              [node.label, node.project, node.source ?? '', node.kind].some((value) =>
+                value.toLocaleLowerCase().includes(normalizedFilter)
+              )
           )
-        : graphDocuments,
-    [graphDocuments, normalizedFilter]
+        : graphNodes.filter((node) => kindFilter === 'all' || node.kind === kindFilter),
+    [graphNodes, kindFilter, normalizedFilter]
   )
   useEffect(() => {
     setVisibleCount(12)
     setSelectedNodeId(null)
-  }, [graph?.nodes[0]?.id, normalizedFilter])
-  const nodes = filteredDocuments.length
-    ? filteredDocuments.slice(0, visibleCount)
+  }, [graph?.nodes[0]?.id, kindFilter, normalizedFilter])
+  const nodes = filteredNodes.length
+    ? filteredNodes.slice(0, visibleCount)
     : usingEvidenceFallback
       ? evidence.slice(0, 8).map((item) => ({
           id: item.chunk_id,
@@ -568,7 +587,9 @@ function GraphView({
   const visibleNodeIds = new Set(nodes.map((node) => node.id))
   const visibleEdges =
     graph && !usingEvidenceFallback
-      ? graph.edges.filter((edge) => visibleNodeIds.has(edge.target))
+      ? graph.edges.filter(
+          (edge) => visibleNodeIds.has(edge.target) || visibleNodeIds.has(edge.source)
+        )
       : []
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
   const selectedEdges = selectedNode
@@ -641,10 +662,33 @@ function GraphView({
           </button>
         )}
       </div>
+      {graph && !usingEvidenceFallback && (
+        <div className="graph-kind-filter" role="group" aria-label="Filter graph node types">
+          {(['all', 'workspace', 'source', 'document'] as const).map((kind) => (
+            <button
+              type="button"
+              key={kind}
+              className={kindFilter === kind ? 'active' : ''}
+              aria-pressed={kindFilter === kind}
+              onClick={() => setKindFilter(kind)}
+            >
+              {kind === 'all'
+                ? 'All'
+                : kind === 'workspace'
+                  ? 'Workspaces'
+                  : kind === 'source'
+                    ? 'Sources'
+                    : 'Documents'}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="graph-summary" role="status">
         <span>
           {graph && !usingEvidenceFallback
-            ? `Showing ${nodes.length} of ${filteredDocuments.length}${normalizedFilter ? ` matching ${graphDocuments.length}` : ''} document${filteredDocuments.length === 1 ? '' : 's'} · ${visibleEdges.length} link${visibleEdges.length === 1 ? '' : 's'}`
+            ? graphNodes.every((node) => node.kind === 'document')
+              ? `Showing ${nodes.length} of ${filteredNodes.length}${normalizedFilter ? ` matching ${graphNodes.length}` : ''} document${filteredNodes.length === 1 ? '' : 's'} · ${visibleEdges.length} link${visibleEdges.length === 1 ? '' : 's'}`
+              : `Showing ${nodes.length} of ${filteredNodes.length}${normalizedFilter ? ` matching ${graphNodes.length}` : ''} node${filteredNodes.length === 1 ? '' : 's'} · ${visibleEdges.length} link${visibleEdges.length === 1 ? '' : 's'}`
             : graphLoading
               ? 'Loading indexed graph…'
               : 'Retrieved evidence'}
@@ -671,14 +715,12 @@ function GraphView({
           <span>More nodes remain outside this bounded view.</span>
         </div>
       )}
-      {!graph?.next_cursor && filteredDocuments.length > visibleCount && (
+      {!graph?.next_cursor && filteredNodes.length > visibleCount && (
         <div className="graph-pagination">
           <button
             type="button"
             className="secondary-button"
-            onClick={() =>
-              setVisibleCount((count) => Math.min(count + 12, filteredDocuments.length))
-            }
+            onClick={() => setVisibleCount((count) => Math.min(count + 12, filteredNodes.length))}
           >
             Show more nodes
           </button>
@@ -689,9 +731,18 @@ function GraphView({
         <button
           type="button"
           key={node.id}
-          aria-label={`${node.document_id ? 'Open document' : 'Open evidence'}: ${node.label}`}
-          data-tooltip={node.document_id ? 'Open document' : 'Open retrieved evidence'}
-          className="quick-tooltip"
+          aria-label={`${node.document_id ? 'Open document' : node.kind === 'workspace' ? 'Focus workspace' : node.kind === 'source' ? 'Focus source' : 'Open evidence'}: ${node.label}`}
+          data-tooltip={
+            node.document_id
+              ? 'Open document'
+              : node.kind === 'workspace'
+                ? 'Focus workspace'
+                : node.kind === 'source'
+                  ? 'Focus source'
+                  : 'Open retrieved evidence'
+          }
+          className={`quick-tooltip graph-node graph-node--${node.kind}`}
+          data-kind={node.kind}
           style={
             {
               '--angle': `${(index / Math.max(nodes.length, 1)) * Math.PI * 2}rad`,
@@ -702,7 +753,13 @@ function GraphView({
             if (!node.document_id) onSelect(node.id)
           }}
         >
-          <FileText size={17} />
+          {node.kind === 'workspace' ? (
+            <FolderTree size={17} aria-hidden="true" />
+          ) : node.kind === 'source' ? (
+            <Database size={17} aria-hidden="true" />
+          ) : (
+            <FileText size={17} aria-hidden="true" />
+          )}
           <span>{node.label}</span>
         </button>
       ))}
@@ -710,7 +767,11 @@ function GraphView({
         <aside className="graph-selection" aria-label="Selected graph node">
           <strong>{selectedNode.label}</strong>
           <span>
-            {selectedNode.project || 'Unscoped'} · {selectedNode.source || 'Unknown source'}
+            {selectedNode.kind === 'workspace'
+              ? 'Workspace'
+              : selectedNode.kind === 'source'
+                ? `Source in ${selectedNode.project || 'Unscoped'}`
+                : `${selectedNode.project || 'Unscoped'} · ${selectedNode.source || 'Unknown source'}`}
           </span>
           <small>
             {selectedEdges.length} related link{selectedEdges.length === 1 ? '' : 's'}
