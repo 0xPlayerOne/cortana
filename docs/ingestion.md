@@ -68,8 +68,9 @@ it is enabled.
 
 `SIGINT` and `SIGTERM` cancel an active source before reconciliation. In-flight connector
 subprocesses are terminated, and embedding work is interrupted at a bounded polling interval.
-Already committed incremental batches remain valid searchable data, but a cancelled or
-budget-exceeded snapshot never deletes records from the prior complete snapshot.
+Each completed document is committed as soon as its embedding vectors arrive, so a cancelled
+or budget-exceeded run keeps the completed prefix and retries only the unfinished tail on the
+next run. A partial snapshot never deletes records from the prior complete snapshot.
 
 The Python adapter process writes only normalized JSON Lines to stdout. Counts and diagnostics go
 to stderr, which makes the boundary safe to pipe into `cortana ingest` or supervise independently.

@@ -2572,53 +2572,114 @@ async fn flush_ingest_batch(
         return Ok(());
     }
     control.check(source)?;
-    let input = pending
+    // Move the batch out while embedding. This lets us commit documents as
+    // soon as all of their chunks are available and put only the unfinished
+    // tail back into `pending` when a provider timeout/cancellation occurs.
+    // A retry can then use `needs_update` to skip the already-committed prefix
+    // instead of re-embedding the entire batch.
+    let documents = std::mem::take(pending);
+    let input = documents
         .iter()
         .flat_map(|(_, texts)| texts.iter().cloned())
         .collect::<Vec<_>>();
-    let embedding_requests = stream::iter(input.chunks(EMBEDDING_REQUEST_SIZE))
-        .map(|request| embedder.embed(request))
-        .buffered(control.limits.request_concurrency)
-        .try_collect::<Vec<_>>();
+    let mut vectors = vec![None; input.len()];
+    let mut committed_documents = 0usize;
+    let mut vector_offset = 0usize;
+    let embedding_requests = stream::iter(input.chunks(EMBEDDING_REQUEST_SIZE).enumerate())
+        .map(|(request_index, request)| async move {
+            let start = request_index * EMBEDDING_REQUEST_SIZE;
+            let expected = request.len();
+            let vectors = embedder.embed(request).await?;
+            anyhow::ensure!(
+                vectors.len() == expected,
+                "embedding provider returned {} vectors for a request containing {} inputs",
+                vectors.len(),
+                expected
+            );
+            Ok::<_, anyhow::Error>((start, vectors))
+        })
+        .buffer_unordered(control.limits.request_concurrency);
+    let embed_and_commit = async {
+        tokio::pin!(embedding_requests);
+        // Empty documents do not produce embedding requests, but they still
+        // need to replace any previously indexed chunks. Commit that prefix
+        // before waiting on the provider so an all-empty batch is valid too.
+        while committed_documents < documents.len() && documents[committed_documents].1.is_empty() {
+            let chunks = Vec::new();
+            if store.upsert(&documents[committed_documents].0, &chunks)? {
+                *changed += 1;
+            } else {
+                *unchanged += 1;
+            }
+            committed_documents += 1;
+        }
+        while let Some((start, request_vectors)) = embedding_requests.try_next().await? {
+            for (offset, vector) in request_vectors.into_iter().enumerate() {
+                vectors[start + offset] = Some(vector);
+            }
+
+            while committed_documents < documents.len() {
+                let texts = &documents[committed_documents].1;
+                let end = vector_offset + texts.len();
+                anyhow::ensure!(
+                    end <= vectors.len(),
+                    "embedding provider returned vectors outside the input range"
+                );
+                if vectors[vector_offset..end].iter().any(Option::is_none) {
+                    break;
+                }
+                let chunks = texts
+                    .iter()
+                    .enumerate()
+                    .map(|(offset, text)| {
+                        Ok::<_, anyhow::Error>((
+                            text.clone(),
+                            vectors[vector_offset + offset]
+                                .take()
+                                .context("embedding vector disappeared before commit")?,
+                        ))
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                if store.upsert(&documents[committed_documents].0, &chunks)? {
+                    *changed += 1;
+                } else {
+                    *unchanged += 1;
+                }
+                committed_documents += 1;
+                vector_offset = end;
+                if committed_documents.is_multiple_of(100) || committed_documents == documents.len()
+                {
+                    tracing::info!(
+                        committed_documents,
+                        remaining_documents = documents.len().saturating_sub(committed_documents),
+                        "ingestion progress"
+                    );
+                }
+            }
+        }
+        anyhow::ensure!(
+            committed_documents == documents.len(),
+            "embedding provider completed without enough vectors for every document"
+        );
+        Ok::<_, anyhow::Error>(())
+    };
     let remaining = control.remaining(source)?;
     let cancellation = wait_for_cancellation(control.cancellation);
-    let batches = tokio::select! {
-        result = tokio::time::timeout(remaining, embedding_requests) => {
+    let result: Result<()> = tokio::select! {
+        result = tokio::time::timeout(remaining, embed_and_commit) => {
             result
-                .with_context(|| format!("source {source} exceeded its duration budget during embedding"))??
+                .with_context(|| format!("source {source} exceeded its duration budget during embedding"))??;
+            Ok(())
         }
         () = cancellation => {
-            anyhow::bail!("source {source} cancelled during embedding before reconciliation")
+            Err(anyhow::anyhow!("source {source} cancelled during embedding before reconciliation"))
         }
     };
-    control.check(source)?;
-    let all_vectors = batches.into_iter().flatten().collect::<Vec<_>>();
-    let mut vectors = all_vectors.into_iter();
-    for (document, texts) in pending.drain(..) {
-        let chunks = texts
-            .into_iter()
-            .map(|text| {
-                let vector = vectors
-                    .next()
-                    .context("embedding provider returned too few vectors")?;
-                Ok((text, vector))
-            })
-            .collect::<Result<Vec<_>>>()?;
-        if store.upsert(&document, &chunks)? {
-            *changed += 1;
-        } else {
-            *unchanged += 1;
-        }
+    if let Err(error) = result {
+        pending.extend(documents.into_iter().skip(committed_documents));
+        return Err(error);
     }
-    anyhow::ensure!(
-        vectors.next().is_none(),
-        "embedding provider returned too many vectors"
-    );
-    tracing::info!(
-        changed = *changed,
-        unchanged = *unchanged,
-        "ingestion batch committed"
-    );
+    control.check(source)?;
     Ok(())
 }
 
@@ -3408,8 +3469,8 @@ fn chunk(content: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::time::Duration;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
 
     use anyhow::Result;
     use async_trait::async_trait;
@@ -3420,7 +3481,7 @@ mod tests {
         AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits,
         SyncLock, SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
         configured_connector_command, context_bundle, ensure_recurring_sync_validated,
-        failure_status, ingest_documents, is_budget_exceeded, private_file,
+        failure_status, flush_ingest_batch, ingest_documents, is_budget_exceeded, private_file,
         require_sync_validation, run_connector_to_spool, validate_configured_source,
         validate_connector_spool, validation_overrides,
     };
@@ -4266,6 +4327,11 @@ mod tests {
         maximum: AtomicUsize,
     }
 
+    struct CancellingEmbedder {
+        calls: AtomicUsize,
+        cancellation: Arc<AtomicBool>,
+    }
+
     #[async_trait]
     impl Embedder for BatchRecordingEmbedder {
         async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
@@ -4290,6 +4356,29 @@ mod tests {
 
         fn fingerprint(&self) -> String {
             "concurrency-recording:1".into()
+        }
+
+        fn request_concurrency(&self) -> usize {
+            4
+        }
+    }
+
+    #[async_trait]
+    impl Embedder for CancellingEmbedder {
+        async fn embed(&self, input: &[String]) -> Result<Vec<Vec<f32>>> {
+            if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                self.cancellation.store(true, Ordering::Release);
+            } else {
+                // Keep the second request in flight long enough for the
+                // cancellation watcher to interrupt the batch after the
+                // first request has committed its documents.
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            Ok(input.iter().map(|_| vec![1.0]).collect())
+        }
+
+        fn fingerprint(&self) -> String {
+            "cancelling:1".into()
         }
 
         fn request_concurrency(&self) -> usize {
@@ -4462,6 +4551,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn empty_documents_commit_without_an_embedding_request() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder = BatchRecordingEmbedder {
+            maximum: AtomicUsize::new(0),
+        };
+        let document = Document {
+            source: "test".into(),
+            source_id: "empty".into(),
+            title: "Empty".into(),
+            content: String::new(),
+            uri: None,
+            updated_at: Utc::now(),
+            project: "test".into(),
+            acl: Vec::new(),
+            metadata: serde_json::json!({}),
+        };
+
+        ingest_documents(&store, &embedder, vec![document])
+            .await
+            .expect("ingest");
+
+        assert_eq!(store.stats().expect("stats").documents, 1);
+        assert_eq!(embedder.maximum.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn ingestion_uses_bounded_embedding_request_concurrency() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
@@ -4486,6 +4602,69 @@ mod tests {
             .expect("ingest");
 
         assert_eq!(embedder.maximum.load(Ordering::SeqCst), 4);
+    }
+
+    #[tokio::test]
+    async fn interrupted_embedding_batch_preserves_committed_prefix_for_resume() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let cancellation = Cancellation::inert();
+        let embedder = CancellingEmbedder {
+            calls: AtomicUsize::new(0),
+            cancellation: Arc::clone(&cancellation.requested),
+        };
+        let documents = (0..10)
+            .map(|index| Document {
+                source: "test".into(),
+                source_id: format!("resume-{index}"),
+                title: format!("Resume {index}"),
+                content: format!("resume document {index}"),
+                uri: None,
+                updated_at: Utc::now(),
+                project: "test".into(),
+                acl: Vec::new(),
+                metadata: serde_json::json!({}),
+            })
+            .map(|document| {
+                let texts = chunk(&document.content);
+                (document, texts)
+            })
+            .collect::<Vec<_>>();
+        let mut pending = documents;
+        let control = SourceControl {
+            limits: SourceLimits {
+                max_documents: 10,
+                max_bytes: 10_000,
+                max_seconds: 30,
+                document_batch_size: 16,
+                request_concurrency: 4,
+            },
+            started: Instant::now(),
+            cancellation: &cancellation,
+        };
+        let mut changed = 0;
+        let mut unchanged = 0;
+
+        let result = flush_ingest_batch(
+            &store,
+            &embedder,
+            &mut pending,
+            &mut changed,
+            &mut unchanged,
+            "test",
+            &control,
+        )
+        .await;
+        cancellation.stop();
+
+        assert!(result.is_err(), "cancellation should interrupt the batch");
+        assert_eq!(changed, 8, "the completed request should be durable");
+        assert_eq!(
+            pending.len(),
+            2,
+            "only the unfinished tail should be retried"
+        );
+        assert_eq!(store.stats().expect("stats").documents, 8);
     }
 
     #[test]
