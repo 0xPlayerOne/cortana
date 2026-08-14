@@ -19,32 +19,28 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.12`, published through Release Please PR
-#1030. Release-assets workflow `31699076439` completed all platform jobs and the
+The current protected source is `v0.31.13`, published through Release Please PR
+#1124. Release-assets workflow `31764807122` completed all platform jobs and the
 strict 18-asset verifier passed, including the packaged-core offline evaluator.
-The verified v0.31.12 archive is now installed at `/Users/amf/.local/bin/cortana`
-without a service restart. The current configured provider passed a model
-evaluation on 2026-08-13 in 12,319 ms under the 55-second bound, with planner and
-synthesis model use, valid citations, cache reuse, and revision invalidation.
-The v0.31.12 release gate separately verifies the packaged core offline without
-credentials.
+The v0.31.13 archive passed the credential-free packaged-core gate; it has not been
+installed over the existing local binary as part of this release verification. The
+latest provider-backed fixture result (12,319 ms) was run against the v0.31.12-installed
+CLI and remains historical evidence, not a v0.31.13-specific model run.
+The v0.31.13 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The v0.31.12 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.31.13 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
-The checkout may include post-v0.31.12 hardening that has not shipped in a
-published artifact. Run the release verifier against the eventual patch release
-before using source-tree results as downloadable-release evidence; the model
-fixture remains synthetic and does not authorize sources or recurring sync.
+The model fixture remains synthetic and does not authorize sources or recurring sync.
 
 The current source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes but is not claimed for the published v0.31.12
-binary until a later package includes and verifies the change.
+This protects concurrent Desktop windows/processes in the v0.31.13 source and package; it does
+not authorize source ingestion or recurring sync.
 
 The current source-tree evaluator also rejects oversized custom fixtures before parsing: the file,
 document count, case count, document content, and query sizes are bounded. The direct JSONL import
@@ -126,7 +122,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.31.12 sign-off state.
+release evidence; use **Current release boundary** above for the v0.31.13 sign-off state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33

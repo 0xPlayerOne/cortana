@@ -5,26 +5,22 @@ intentionally separate from runtime migration work:
 legacy scope quarantine remains in place, so changing or deleting indexed data
 is not part of a visual/UI change.
 
-## Current release evidence (2026-08-13)
+## Current release evidence (2026-08-14)
 
-- `v0.31.12` is the current protected release, published through Release Please
-  PR #1030. Release-assets workflow `31699076439` completed all platform jobs and
+- `v0.31.13` is the current protected release, published through Release Please
+  PR #1124. Release-assets workflow `31764807122` completed all platform jobs and
   the strict verifier confirmed all 18 core, Desktop, signature, checksum,
   updater-manifest, and packaged-core offline-evaluation gates. Asset verification
   does not launch the packaged GUI or prove OS-level signing/notarization.
-- The installed core at `/Users/amf/.local/bin/cortana` is now `v0.31.12`; the
-  verified archive was installed without restarting services, authorizing
-  sources, or installing recurring sync. The packaged GUI, browser OAuth, tray/menu,
-  native dialogs, updater interaction, Developer ID signing, and notarization
-  remain manual gates.
-- The current configured provider passed the persistent-provider fixture
-  evaluation on 2026-08-13 in 12,319 ms using the installed v0.31.12 CLI, with
-  planner and synthesis model use, valid citations, cache reuse, and revision
-  invalidation. The v0.31.12 release verifier separately passed the packaged
-  core's credential-free offline evaluator within 60 seconds. The opt-in model
-  evaluator remains fail-closed below one minute with a 55-second whole-run bound;
-  extractive mode remains the production default and recurring sync remains
-  uninstalled because enabled filesystem/code sources are still bounded samples
+- The v0.31.13 archive passed the credential-free packaged-core gate without being
+  installed over the existing local binary, authorizing sources, or installing
+  recurring sync. The packaged GUI, browser OAuth, tray/menu, native dialogs,
+  updater interaction, Developer ID signing, and notarization remain manual gates.
+- The latest configured-provider fixture evaluation (12,319 ms) used the then-installed
+  v0.31.12 CLI and is historical evidence, not a v0.31.13-specific model run. The
+  opt-in model evaluator remains fail-closed below one minute with a 55-second
+  whole-run bound; extractive mode remains the production default and recurring sync
+  remains uninstalled because enabled filesystem/code sources are still bounded samples
   or otherwise below their configured full-sync budgets.
 - The complete native Tauri suite passes 130 tests in 2.45 seconds after
   compilation. The web-only suite currently passes 258 tests across 21 files;
@@ -33,7 +29,7 @@ is not part of a visual/UI change.
   package gate passes 172 tests, including the retired-model runtime guard. These are
   headless source checks and do not
   substitute for the still-unverified interactive packaged GUI flows.
-- The published v0.31.12 macOS ARM archive was statically inspected on 2026-08-13:
+- The published v0.31.12 macOS ARM archive was statically inspected on 2026-08-13 (historical):
   `Contents/MacOS/cortana --version` reports `cortana 0.31.12`, the bundle passes
   strict `codesign --verify --deep --strict`, and `spctl --assess` still rejects
   it because Developer ID signing and notarization are not configured. The
@@ -41,7 +37,7 @@ is not part of a visual/UI change.
   architecture (or an explicit `CORTANA_MAC_ARCH` override) and fails closed
   when the release does not publish a matching app archive; v0.31.12 publishes
   only the ARM64 macOS app, so Intel macOS remains an explicit packaging gap.
-- The installed v0.31.12 binary passed the disposable offline control-plane
+- The then-installed v0.31.12 binary passed the disposable offline control-plane
   drill: init, bounded fixture ingest, hybrid search/context, metadata-only
   audit export, verified backup, restore into a second temporary data directory,
   SQLite verification, and post-restore search. The drill touched no live
@@ -57,13 +53,13 @@ is not part of a visual/UI change.
   indexing, reconciliation, or scheduler changes. Filesystem and code sources
   remain sampled by design, so this is authorization/reachability evidence only.
 
-The current checkout is newer than the v0.31.12 artifact. Its post-release safety lane acquires
+The current v0.31.13 source and package include the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, fences optional-memory outbox leases, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
 a per-config cross-process lock. These source-tree protections are covered by focused
-regressions and must be verified again in a later packaged release; they do not authorize a source,
-enable recurring sync, or prove the unverified GUI/browser/tray/dialog/updater gates above.
+regressions; they do not authorize a source, enable recurring sync, or prove the unverified
+GUI/browser/tray/dialog/updater gates above.
 
 ## Requirement matrix
 
@@ -104,8 +100,8 @@ enable recurring sync, or prove the unverified GUI/browser/tray/dialog/updater g
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the current configured provider passed the bounded
-   fixture gate on 2026-08-13 in 12,319 ms using the installed v0.31.12 CLI. The
-   published v0.31.12 release separately passed the credential-free packaged-core
+   fixture gate on 2026-08-13 in 12,319 ms using the then-installed v0.31.12 CLI.
+   The published v0.31.13 release separately passed the credential-free packaged-core
    offline evaluator within 60 seconds (the v0.31.10-configured provider run
    passed in 24,491 ms; the published v0.31.8 archive's earlier 14,879 ms and the installed v0.31.7
    runtime's earlier 14,258 ms, 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms,
@@ -150,7 +146,7 @@ enable recurring sync, or prove the unverified GUI/browser/tray/dialog/updater g
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.31.12 release or the installed v0.31.7 core; use the
+does not describe the current v0.31.13 release or the installed v0.31.7 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -166,8 +162,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.31.12` binary or packaged Desktop behavior. The current
-  `v0.31.12` asset workflow and strict verifier are recorded in the release section above.
+  the current `v0.31.13` binary or packaged Desktop behavior. The current
+  `v0.31.13` asset workflow and strict verifier are recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
