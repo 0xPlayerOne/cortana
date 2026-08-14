@@ -136,7 +136,7 @@ GUI/browser/tray/dialog/updater gates above.
    discovery and per-workspace team assignment are implemented as an optional connector (the
    `SLACK_BOT_TOKEN` path for channel selection and message sync is preserved and never
    interpreted as a path). Buzz community assignment is also implemented: `cortana
-   buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file with bounded,
+buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file with bounded,
    fail-closed validation, and the Desktop chooser persists per-workspace
    `communities`/`community_names`.
 5. The memory-provider decision is recorded: keep Hindsight and Honcho as
