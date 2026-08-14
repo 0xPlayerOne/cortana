@@ -452,10 +452,11 @@ reported as an expected Developer ID/notarization gap unless
 `CORTANA_REQUIRE_GATEKEEPER=1` is set; the variable must be `0` or `1`. This command does not exercise OAuth,
 tray, native dialogs, updater installation, or other GUI behavior.
 
-A fresh validation-only `scripts/source-smoke.sh` run passed all 21 enabled
-sources at one document, 65,536 bytes, and 30 seconds per source. It performed
-no embedding, indexing, reconciliation, or scheduler changes; filesystem/code
-records remain sampled and cannot authorize recurring full-corpus sync.
+The 2026-08-12 validation-only `scripts/source-smoke.sh` run is historical: it
+passed the 21 sources enabled at that time at one document, 65,536 bytes, and 30
+seconds per source. It performed no embedding, indexing, reconciliation, or
+scheduler changes and cannot authorize the current source inventory or recurring
+full-corpus sync.
 
 minisign verification covers the Tauri updater archives only and fails closed in CI. The packaged
 macOS Desktop app passes `codesign --verify --deep --strict` but remains ad-hoc signed (no Developer
