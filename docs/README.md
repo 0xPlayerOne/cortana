@@ -23,6 +23,8 @@ instead of silently rewriting them.
 
 ## Start here
 
+- [Project goal](project-goal.md) — the product purpose, user promise, and evidence-based
+  definition of production readiness.
 - [Getting started](getting-started.md) — the simple Desktop-first path from download to a cited
   first result.
 - [Download and first launch](../README.md#desktop-first-launch-recommended) — the same path in

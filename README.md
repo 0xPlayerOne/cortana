@@ -34,6 +34,10 @@ If you remember only one thing: install Desktop, create one workspace, validate 
 one small initial sync, and ask one cited question. The complete first-run checklist is in
 [Getting started](docs/getting-started.md).
 
+The product purpose and evidence-based definition of “production ready” are kept in the
+[Project goal](docs/project-goal.md); release-specific proof and open gates remain in the linked
+release, evaluation, operations, and Desktop audit pages.
+
 ### The simple user path
 
 If you are new to Cortana, you do not need to understand connectors, embeddings, MCP, or service
