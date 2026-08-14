@@ -604,13 +604,17 @@ async fn main() -> Result<()> {
         // spools. Serialize it with ingestion/sync so a read-only preflight
         // cannot remove an active connector's output.
         let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
-        return validate_configured_source(
+        let cancellation = Cancellation::install();
+        let result = validate_configured_source(
             &config,
             source,
             validation_overrides(*max_documents, *max_bytes, *max_seconds),
             *sample,
+            &cancellation,
         )
         .await;
+        cancellation.stop();
+        return result;
     }
     if let Some(Command::AuthorizeGoogle { source }) = cli.command.as_ref() {
         let outcome = google_oauth::authorize(&config, source).await?;
@@ -1523,6 +1527,7 @@ async fn validate_configured_source(
     selected: &str,
     overrides: SyncOverrides,
     sample: bool,
+    cancellation: &Cancellation,
 ) -> Result<()> {
     let source = config
         .sources
@@ -1536,11 +1541,10 @@ async fn validate_configured_source(
         source.name,
         source.kind
     );
-    let cancellation = Cancellation::inert();
     let control = SourceControl {
         limits,
         started: Instant::now(),
-        cancellation: &cancellation,
+        cancellation,
     };
     let validation: Result<serde_json::Value> = async {
         if source.kind == "filesystem" {
@@ -1588,7 +1592,6 @@ async fn validate_configured_source(
         }))
     }
     .await;
-    cancellation.stop();
     let validated_at = chrono::Utc::now();
     let result = match validation {
         Ok(result) => result,
@@ -4256,6 +4259,7 @@ mod tests {
             command: Vec::new(),
             acl: Vec::new(),
         });
+        let cancellation = Cancellation::inert();
 
         // A root larger than the budget fails closed without --sample.
         let error = validate_configured_source(
@@ -4263,6 +4267,7 @@ mod tests {
             "work-code",
             validation_overrides(Some(1), None, None),
             false,
+            &cancellation,
         )
         .await
         .expect_err("an oversized root must fail a plain validation");
@@ -4274,6 +4279,7 @@ mod tests {
             "work-code",
             validation_overrides(Some(1), None, None),
             true,
+            &cancellation,
         )
         .await
         .expect("a sampled validation accepts an oversized root");
@@ -4292,6 +4298,7 @@ mod tests {
             "work-code",
             validation_overrides(Some(10), None, None),
             true,
+            &cancellation,
         )
         .await
         .expect("a sample covering the whole corpus succeeds");
@@ -4312,10 +4319,84 @@ mod tests {
             "drive",
             validation_overrides(None, None, None),
             true,
+            &cancellation,
         )
         .await
         .expect_err("--sample must be rejected for connector sources");
         assert!(format!("{error:#}").contains("does not support --sample"));
+        cancellation.stop();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn validate_source_cancellation_terminates_connector() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        config.connectors.timeout_seconds = 30;
+        config.sources.push(SourceConfig {
+            name: "slow-validation".into(),
+            kind: "external".into(),
+            enabled: true,
+            project: "work".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
+            servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
+            repositories: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: Some(1),
+            max_bytes: Some(1024),
+            max_duration_seconds: Some(30),
+            exclude: Vec::new(),
+            command: vec!["sh".into(), "-c".into(), "sleep 30".into()],
+            acl: Vec::new(),
+        });
+        let cancellation = Cancellation::inert();
+        let mut validation = Box::pin(validate_configured_source(
+            &config,
+            "slow-validation",
+            validation_overrides(None, None, None),
+            false,
+            &cancellation,
+        ));
+
+        tokio::select! {
+            result = &mut validation => panic!("validation completed before cancellation: {result:?}"),
+            _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                cancellation.requested.store(true, Ordering::Release);
+            }
+        }
+        let error = tokio::time::timeout(Duration::from_secs(2), validation)
+            .await
+            .expect("connector cancellation should not hang")
+            .expect_err("cancelled validation must fail closed");
+        assert!(format!("{error:#}").contains("cancelled"));
+        cancellation.stop();
+
+        let staging = directory.path().join("staging");
+        if staging.exists() {
+            assert_eq!(
+                std::fs::read_dir(staging)
+                    .expect("staging directory")
+                    .count(),
+                0,
+                "cancelled connector artifacts must be cleaned up"
+            );
+        }
     }
 
     struct BatchRecordingEmbedder {
