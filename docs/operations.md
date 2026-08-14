@@ -352,7 +352,7 @@ GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.12
 It checks the bundle version, executes only the bundled core's `--version`
 command, and performs strict code-sign verification. Gatekeeper rejection is
 reported as an expected Developer ID/notarization gap unless
-`CORTANA_REQUIRE_GATEKEEPER=1` is set. This command does not exercise OAuth,
+`CORTANA_REQUIRE_GATEKEEPER=1` is set; the variable must be `0` or `1`. This command does not exercise OAuth,
 tray, native dialogs, updater installation, or other GUI behavior.
 
 A fresh validation-only `scripts/source-smoke.sh` run passed all 21 enabled
