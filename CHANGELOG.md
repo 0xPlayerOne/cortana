@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.31.16](https://github.com/0xPlayerOne/cortana/compare/v0.31.15...v0.31.16) (2026-08-14)
+
+
+### Bug Fixes
+
+* **release:** restore v0.31.16 release history ([a8a91ff](https://github.com/0xPlayerOne/cortana/commit/a8a91ff158f4594556c699e9b1bd530f34d61871))
+
 ## [0.31.15](https://github.com/0xPlayerOne/cortana/compare/v0.31.14...v0.31.15) (2026-08-14)
 
 
