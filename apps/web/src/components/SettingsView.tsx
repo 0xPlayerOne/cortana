@@ -1828,7 +1828,7 @@ function UpdatesSection({
         </div>
       )}
       {(error || update?.error) && (
-        <div className="safety-note" role="alert">
+        <div className="safety-note error" role="alert">
           <AlertTriangle size={16} /> <span>{error || update?.error}</span>
         </div>
       )}
@@ -2466,7 +2466,7 @@ function AuditSection() {
         </div>
       </div>
       {error && (
-        <div className="safety-note" role="alert">
+        <div className="safety-note error" role="alert">
           {error}
         </div>
       )}
@@ -2719,7 +2719,7 @@ function ReadinessSection({
         )}
       </div>
       {(error || readinessActivityError) && (
-        <div className="safety-note" role="alert">
+        <div className="safety-note error" role="alert">
           <AlertTriangle size={16} /> <span>{error || readinessActivityError}</span>
         </div>
       )}
@@ -4277,7 +4277,6 @@ function SourcesSection({
                             type="button"
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose GitHub token destination"
-                            title="Choose GitHub token destination"
                             data-tooltip="Choose GitHub token destination"
                             className="quick-tooltip"
                             onClick={() => void choosePath(index, 'github-token', 'token_path')}
@@ -4817,7 +4816,7 @@ function SourcesSection({
       )}
 
       {error && (
-        <div className="safety-note" role="alert">
+        <div className="safety-note error" role="alert">
           {error}
         </div>
       )}
@@ -4964,7 +4963,7 @@ function InitialSyncFlow({
       </div>
       {flow.planning && <p className="initial-sync-state">Requesting a native plan…</p>}
       {flow.flowError && (
-        <div className="safety-note" role="alert">
+        <div className="safety-note error" role="alert">
           {flow.flowError}
         </div>
       )}
