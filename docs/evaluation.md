@@ -19,19 +19,20 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.14`, published through Release Please PR
-#1130. Release-assets workflow `31767490416` completed all platform jobs and the
+The current protected source is `v0.31.15`, published through Release Please PR
+#1140. Release-assets workflow `31774425020` completed all platform jobs and the
 strict 18-asset verifier passed, including the packaged-core offline evaluator.
-The v0.31.14 archive passed the credential-free packaged-core gate; it has not been
-installed over the existing local binary as part of this release verification. The
-latest provider-backed fixture result (12,319 ms) was run against the v0.31.12-installed
-CLI and remains historical evidence, not a v0.31.14-specific model run.
-The v0.31.14 release gate verifies the packaged core offline without credentials.
+The v0.31.15 archive passed the credential-free packaged-core gate and was installed on
+the local host with services enabled but recurring sync disabled. Query-only readiness
+passed, and the installed v0.31.15 model-backed fixture run passed in 16,946 ms with
+planner and synthesis model use, valid citations, cache reuse, and revision invalidation.
+This is bounded fixture evidence, not a personal-index benchmark or packaged-GUI proof.
+The v0.31.15 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The v0.31.14 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.31.15 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
@@ -39,7 +40,7 @@ The model fixture remains synthetic and does not authorize sources or recurring 
 
 The current source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.31.14 source and package; it does
+This protects concurrent Desktop windows/processes in the v0.31.15 source and package; it does
 not authorize source ingestion or recurring sync.
 
 The current source-tree evaluator also rejects oversized custom fixtures before parsing: the file,
@@ -122,7 +123,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.31.14 sign-off state.
+release evidence; use **Current release boundary** above for the v0.31.15 sign-off state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33
