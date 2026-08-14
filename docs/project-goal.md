@@ -54,6 +54,13 @@ The project is ready for a production claim only when all of these are true:
 The authoritative current release and open gates live in [Release history](releases.md),
 [Evaluation](evaluation.md), [Operations](operations.md), and the [Desktop UX audit](desktop-ux-audit.md).
 
+## Release boundary
+
+The published `v0.31.15` package is the current downloadable evidence boundary while the next
+patch release is prepared. A source checkout can contain validated changes that are not yet in
+the installer; only a published tag with a passing 18-asset verifier should be presented as
+downloadable release behavior.
+
 ## Where to start
 
 - End users: [Getting started](getting-started.md).
