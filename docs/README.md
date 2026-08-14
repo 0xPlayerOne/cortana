@@ -9,8 +9,8 @@ and contributor path.
 
 | Area                           | Current boundary                                                                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Downloadable package           | `v0.31.16`, with verified archives, checksums, updater signatures, manifest, and packaged-core offline evaluation                                 |
-| Source checkout                | May be ahead of the verified `v0.31.16` package; use the checked-out commit for development and the tagged release for end-user evidence          |
+| Downloadable package           | `v0.32.0`, with verified archives, checksums, updater signatures, manifest, and packaged-core offline evaluation                                  |
+| Source checkout                | May be ahead of the verified `v0.32.0` package; use the checked-out commit for development and the tagged release for end-user evidence           |
 | Default runtime                | Query-only; no source authorization, full sync, recurring schedule, or optional memory sidecar is enabled automatically                           |
 | Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                     |
 | Knowledge browser              | Obsidian-style workspace/source/document navigation with bounded hierarchical graph pages and local type filters                                  |
