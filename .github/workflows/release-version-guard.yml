@@ -1,0 +1,32 @@
+name: Release Version Guard
+
+on:
+  pull_request:
+    branches: [main, staging]
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-version-guard:
+    name: Release Version Guard
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Reject release downgrades
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        run: python3 scripts/check-release-version.py --base "$BASE_SHA" --head "$HEAD_SHA" --head-ref "$HEAD_REF"
