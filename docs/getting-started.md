@@ -31,7 +31,7 @@ or follow the host-acceptance notes in the [Desktop audit](desktop-ux-audit.md).
 
 1. **Download Cortana Desktop.** Open the [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest)
    and choose the installer for your operating system and CPU. The current protected release is
-   **v0.31.15**; [Release history](releases.md) records its verification and any later patch.
+   **v0.31.16**; [Release history](releases.md) records its verification and any later patch.
 2. **Install and launch.** Approve the optional tooling that Cortana offers to install. Choose a
    local Qwen-compatible embedding runtime if you want local embeddings; choose a cloud provider
    if you do not want local model tooling.
