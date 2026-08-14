@@ -21,6 +21,36 @@ Compare that version with [Release history](releases.md). A source checkout can 
 hardening that is intentionally absent from the latest published package, so do not use a checkout
 to certify an installed release.
 
+## Operator quick path
+
+Use this numbered path for the common lifecycle. It keeps the installation query-only until a
+source action is explicitly approved and makes every destructive step recoverable.
+
+1. **Install or update.** Download the matching package from the [latest verified
+   release](releases.md), install it, then confirm `cortana --version` and run `cortana doctor`.
+   To roll back a failed application update, stop Cortana services, reinstall the previously
+   verified release archive, and run the readiness check below. Never replace an installed
+   release with an unverified checkout.
+2. **Operate safely.** Check `cortana service status --json`, `GET /healthz`, and
+   `cortana readiness --max-backup-age-hours 48`. Keep recurring sync uninstalled unless the
+   complete source-validation gate passes; a readiness failure is a stop condition.
+3. **Back up before changes.** Run `cortana backup`, then verify the resulting snapshot with
+   `cortana verify /path/to/snapshot.sqlite3`. Keep at least one verified snapshot outside the
+   live data directory.
+4. **Roll back data or configuration.** Stop and uninstall the per-user jobs, restore a verified
+   snapshot with `cortana restore /path/to/snapshot.sqlite3 --force`, and reinstall the query-only
+   services. Restore automatically preserves a verified `pre-restore-*.sqlite3` snapshot. Desktop
+   settings import is preview-only until **Save changes**, which creates its rollback copy; do not
+   edit the live TOML or secret files by hand.
+5. **Uninstall without deleting data.** Run `cortana service uninstall`, then remove the Desktop
+   application through the operating system's normal app removal flow. This removes Cortana's
+   per-user jobs but preserves configuration, secrets, logs, backups, and the index. Take and
+   verify a backup before separately removing those data directories.
+6. **Exercise recovery.** Before relying on a backup, run the disposable
+   `scripts/backup-restore-drill.sh` with `CORTANA_CONFIG` set. It restores into a temporary
+   directory and never replaces the live index or starts a connector. Set `CORTANA_KEEP_DRILL=1`
+   only when retaining the incident record is intentional.
+
 ## Health and telemetry
 
 - `GET /healthz` is an unauthenticated process-liveness check.
@@ -97,8 +127,8 @@ admin-scoped principal may inspect the complete operational view. Sync outcomes 
 ACL-visible configured source stay visible to that principal even when the source has not
 indexed any documents yet, so a failed, interrupted, or budget-exceeded run is not hidden from
 the principals allowed to view that source. The
-authorization summary reports only the connector method (`none`, `token`, or
-(`google_oauth` or `github_oauth`) plus setup and authorization booleans; it never exposes token values, paths, OAuth
+authorization summary reports only the connector method (`none`, `token`, `google_oauth`, or
+`github_oauth`) plus setup and authorization booleans; it never exposes token values, paths, OAuth
 client paths, or environment contents. Validation proves bounded connector
 access without mutating the corpus and is shown separately from synchronization health. Public
 status exposes only a generic validation-failure marker; raw connector diagnostics remain in the
