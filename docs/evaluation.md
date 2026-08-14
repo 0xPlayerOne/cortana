@@ -19,23 +19,22 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.31.16`, published through Release Please PR
-#1163. Release-assets workflow `31783540306` completed all platform jobs and the
-strict 18-asset verifier passed, including the packaged-core offline evaluator.
-The v0.31.16 archive passed the credential-free packaged-core gate and was installed on
-the local host with services enabled but recurring sync disabled. Query-only readiness
-passed, and the installed v0.31.16 model-backed fixture run passed in 14,660 ms with
-planner and synthesis model use, valid citations, cache reuse, and revision invalidation.
-This is bounded fixture evidence, not a personal-index benchmark or packaged-GUI proof.
+The current protected source is `v0.32.0`, published through Release Please PR
+#1182. Release-assets workflow `31795311797` completed all platform jobs and the
+strict 18-asset verifier, including the credential-free packaged-core evaluator.
+The v0.32.0 release includes the bounded read-only live-index evaluator, but that
+harness still requires an operator-approved manifest and a successful run against an
+approved corpus. This is separate from the deterministic fixture gate and is not a
+packaged-GUI proof.
 An explicit `readiness --allow-sync-service` check correctly failed closed because the
 enabled sources have bounded or under-budget validation records; the recurring sync service
 remains uninstalled.
-The v0.31.16 release gate verifies the packaged core offline without credentials.
+The v0.32.0 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The v0.31.16 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.32.0 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
@@ -43,7 +42,7 @@ The model fixture remains synthetic and does not authorize sources or recurring 
 
 The current source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.31.16 source and package; it does
+This protects concurrent Desktop windows/processes in the v0.32.0 source and package; it does
 not authorize source ingestion or recurring sync.
 
 The current source-tree evaluator also rejects oversized custom fixtures before parsing: the file,
@@ -174,7 +173,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.31.16 sign-off state.
+release evidence; use **Current release boundary** above for the v0.32.0 sign-off state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33

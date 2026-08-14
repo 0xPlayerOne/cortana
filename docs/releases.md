@@ -9,11 +9,11 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.31.16
+## Current release: v0.32.0
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.31.16` release contains the current Rust runtime, web workspace, connector package, Desktop
+`v0.32.0` release contains the current Rust runtime, web workspace, connector package, Desktop
 bundles, example configuration, and Cortana agent skill. Its published 18-asset set passed the
 archive, checksum, updater-signature, manifest, and credential-free packaged-core verification
 gates.
@@ -28,36 +28,32 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.31.16
+  scripts/verify-desktop-release.sh v0.32.0
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.31.16 package is the release boundary for the post-v0.31.12 hardening described below.
+The v0.32.0 package is the release boundary for the post-v0.31.12 hardening and bounded
+live-index evaluation harness described below.
 Future source-tree changes must still use the protected staging and promotion flow, followed by
 the release verifier, before being called downloadable-release behavior.
 
-Release Please PR #1163 published v0.31.16 after the protected promotion and staging
-reconciliation. Release-assets workflow `31783540306` completed all platform jobs and the strict
+Release Please PR #1182 published v0.32.0 after the protected promotion and staging
+reconciliation. Release-assets workflow `31795311797` completed all platform jobs and the strict
 18-asset verifier, including archive checksums, six updater signatures, the updater manifest, and
-the credential-free packaged-core evaluator. The installed v0.31.16 core also passed query-only
-readiness and a bounded provider-backed fixture evaluation in 14,660 ms. These checks do not prove
-packaged GUI behavior, operating-system signing, full-corpus source readiness, or optional memory
-provider behavior.
+the credential-free packaged-core offline evaluator. These checks do not prove packaged GUI
+behavior, operating-system signing, full-corpus source readiness, or optional memory provider
+behavior.
 
 The previous v0.31.15 package and workflow `31774425020` remain historical evidence.
 
-## v0.31.17 staged release boundary (pending publication)
-
-The validated staging tree contains the bounded, read-only live-index evaluation harness
+The v0.32.0 package also includes the bounded, read-only live-index evaluation harness
 (`scripts/evaluate-live-index.py` and `eval/live-manifest.example.json`). It measures retrieval
 recall/MRR, citation validity, bounded provider-backed synthesis, fallback behavior, latency, and
 repeated-query cache hits against an operator-approved corpus without syncing, reconciling,
-changing the index, or printing query content. This section is provisional: the harness becomes
-downloadable-release evidence only after the protected promotion, Release Please version PR, and
-strict 18-asset verifier publish v0.31.17. Until then, v0.31.16 remains the current downloadable
-release and extractive query mode remains the safe production default.
+changing the index, or printing query content. A private manifest and successful run are still
+required before claiming the approved-corpus evaluation gate is closed.
 
 ## v0.31.16 release-history recovery
 
@@ -183,7 +179,7 @@ The same source-tree lane now also:
 - serializes Desktop settings and schedule writes through one per-config cross-process lock.
 
 These are shipped safety contracts, not evidence that a large personal sync or optional memory
-provider is enabled. The v0.31.16 package, signatures, and packaged-core gate are verified; the
+provider is enabled. The v0.32.0 package, signatures, and packaged-core gate are verified; the
 manual Desktop, source-authorization, and optional-memory gates remain separate.
 
 ## Desktop release gates
