@@ -260,7 +260,9 @@ bun run build
 ./target/release/cortana sync --source SOURCE --plan
 # Fetch and validate one source without embedding, indexing, or reconciliation.
 ./target/release/cortana validate-source SOURCE --max-documents 25 --max-bytes 10485760 --max-seconds 60
-./target/release/cortana sync --source SOURCE
+# Run only the explicitly bounded, non-reconciling trial covered by that validation.
+./target/release/cortana sync --source SOURCE --require-validation --no-reconcile \
+  --max-documents 25 --max-bytes 5242880 --max-seconds 60
 ./target/release/cortana search "how do releases work?" --project engineering
 # Same citation-ready, token-bounded bundle as MCP/HTTP, without a running server.
 ./target/release/cortana context "how do releases work?" --project engineering

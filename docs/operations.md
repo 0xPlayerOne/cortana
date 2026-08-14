@@ -352,7 +352,7 @@ GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.31.12
 It checks the bundle version, executes only the bundled core's `--version`
 command, and performs strict code-sign verification. Gatekeeper rejection is
 reported as an expected Developer ID/notarization gap unless
-`CORTANA_REQUIRE_GATEKEEPER=1` is set. This command does not exercise OAuth,
+`CORTANA_REQUIRE_GATEKEEPER=1` is set; the variable must be `0` or `1`. This command does not exercise OAuth,
 tray, native dialogs, updater installation, or other GUI behavior.
 
 A fresh validation-only `scripts/source-smoke.sh` run passed all 21 enabled
@@ -584,7 +584,9 @@ An optional `[runtime].env_file` supplies connector, cloud-provider, and HTTP-to
 variables without putting values in launchd or systemd definitions. On Unix, Cortana refuses to
 read this file if any group or other permission bit is set. Relative paths are resolved from the
 directory containing `config.toml`, so service working directories do not change which secrets are
-loaded. Use mode `0600`; process environment variables take precedence.
+loaded. Use mode `0600`. Connector and provider settings use process-environment precedence; bearer
+policies prefer the private file so a stable `token_env` can be rotated without restarting the
+service or inheriting a stale process value.
 
 For shared agents, configure one bearer principal per environment variable under `[[auth.tokens]]`.
 `query`, `status`, and `admin` scopes are enforced independently. New source records inherit their
@@ -602,12 +604,14 @@ MCP process in the unrestricted local-owner profile and must not be used for a s
 ### Rotate a shared-agent token
 
 The HTTP service can atomically reload its complete bearer policy without dropping requests. The
-stdio MCP process remains process-scoped and must reconnect. Use a new environment-variable name
-and overlap the principals so the agent can switch without losing access:
+stdio MCP process rereads a stable file-backed principal for each tool call. Replace that principal's
+value in the private env file, then reload; changing a process-only variable or its name requires
+reconnect.
 
 1. Add the new secret value through **Settings → Access** (or the owner-only `secrets.env` file)
    and keep the old principal unchanged.
-2. Point a new principal at that variable with the same least-privilege scopes and ACL labels.
+2. Keep the existing principal's least-privilege scopes and ACL labels unchanged while the new
+   value is written to the same `token_env` in the private env file.
 3. Verify one bounded `status` or `context` request using the new token and confirm the audit event
    has the expected principal and scope. Do not put either token in shell history or a request body.
 4. Remove the old principal and secret, save, and call the owner/admin-only HTTP reload endpoint:
@@ -619,9 +623,10 @@ and overlap the principals so the agent can switch without losing access:
 
    A failed verification can be rolled back by restoring the previous principal from the local
    configuration backup; token rotation never changes the canonical index. The active HTTP policy
-   swaps atomically, so the old token is rejected immediately after a successful reload. Reconnect
-   MCP clients to load the same policy, and use the Desktop restart action when the managed service
-   set is intentionally being restarted together.
+   swaps atomically, so the old token is rejected immediately after a successful reload. Existing
+   MCP clients using the private env file load the same policy on their next tool call; process-only
+   clients must reconnect. Use the Desktop restart action only when the managed service set is
+   intentionally being restarted together.
 
 The reload endpoint refuses to remove the last bearer policy from a non-loopback listener. It also
 preserves the last-good policy when the TOML, environment file, or token values are malformed or

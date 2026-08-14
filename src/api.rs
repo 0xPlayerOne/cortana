@@ -604,7 +604,7 @@ async fn reload_auth(
     let result = (|| -> Result<AuthPolicy> {
         let mut config = Config::load(Some(path))?;
         config.load_environment()?;
-        AuthPolicy::from_config(&config)
+        AuthPolicy::from_config_file_preferred(&config)
     })();
     let policy = match result {
         Ok(policy) => policy,

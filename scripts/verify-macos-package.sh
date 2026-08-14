@@ -140,11 +140,20 @@ core_version="$("$core" --version)"
 codesign --verify --deep --strict "$app"
 echo "strict codesign verification passed: $app"
 
+require_gatekeeper="${CORTANA_REQUIRE_GATEKEEPER:-0}"
+case "$require_gatekeeper" in
+  0|1) ;;
+  *)
+    echo "CORTANA_REQUIRE_GATEKEEPER must be 0 or 1" >&2
+    exit 2
+    ;;
+esac
+
 if spctl --assess --type execute "$app"; then
   echo "Gatekeeper assessment passed: Developer ID/notarization trust is available"
 else
   echo "Gatekeeper assessment rejected: Developer ID/notarization is not configured" >&2
-  if [[ "${CORTANA_REQUIRE_GATEKEEPER:-0}" == "1" ]]; then
+  if [[ "$require_gatekeeper" == "1" ]]; then
     exit 1
   fi
 fi
