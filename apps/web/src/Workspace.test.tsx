@@ -263,6 +263,59 @@ test('graph supports bounded filtering and explains selected relationships', () 
   expect(screen.getByRole('button', { name: 'Open document' })).toBeTruthy()
 })
 
+test('graph exposes workspace and source nodes with bounded type filters', () => {
+  render(
+    <Workspace
+      {...props}
+      document={null}
+      tab="graph"
+      graph={{
+        nodes: [
+          {
+            id: 'workspace:work',
+            kind: 'workspace',
+            label: 'work',
+            project: 'work',
+            source: null,
+            document_id: null,
+          },
+          {
+            id: 'source:work:notes',
+            kind: 'source',
+            label: 'notes',
+            project: 'work',
+            source: 'notes',
+            document_id: null,
+          },
+          {
+            id: 'document:one',
+            kind: 'document',
+            label: 'Release notes',
+            project: 'work',
+            source: 'notes',
+            document_id: 'one',
+          },
+        ],
+        edges: [
+          { source: 'workspace:work', target: 'source:work:notes', kind: 'contains' },
+          { source: 'source:work:notes', target: 'document:one', kind: 'contains' },
+        ],
+        next_cursor: null,
+      }}
+    />
+  )
+
+  expect(screen.getByRole('button', { name: 'Focus workspace: work' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Focus source: notes' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Open document: Release notes' })).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+  expect(screen.getByRole('button', { name: 'Focus source: notes' })).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Focus workspace: work' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Open document: Release notes' })).toBeNull()
+  expect(screen.getByText('Showing 1 of 1 node · 2 links')).toBeTruthy()
+})
+
 const evidenceItem = {
   chunk_id: 'release-notes',
   source: 'work-code',
