@@ -82,7 +82,8 @@ or sync operation. This is included in the verified v0.31.16 package.
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
 so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
-also source-tree hardening until a later packaged release includes and verifies it.
+included in the verified v0.31.16 package; keep the same lock requirement when running a newer
+source checkout or development build.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
 `RUST_LOG=cortana=debug,tower_http=info`, to change verbosity. Request headers and evidence content
