@@ -77,6 +77,7 @@ for required in \
   "$package/install.sh" \
   "$package/share/cortana/web/index.html" \
   "$package/config.example.toml" \
+  "$package/eval/live-manifest.example.json" \
   "$package/skills/cortana/SKILL.md" \
   "$package/scripts/verify-packaged-core.sh"; do
   [[ -f "$required" ]] || {

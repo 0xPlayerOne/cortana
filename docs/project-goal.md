@@ -45,7 +45,10 @@ The project is ready for a production claim only when all of these are true:
 4. Shared-agent principals have explicit scopes, ACL tests, rotation/revocation procedures, audit
    evidence, and no cross-workspace leakage.
 5. Provider-backed retrieval evaluation covers the packaged core and representative approved data;
-   fixture-only evaluation remains a useful regression gate, not a production proof.
+   fixture-only evaluation remains a useful regression gate, not a production proof. The repository
+   ships a bounded read-only live-index harness (`scripts/evaluate-live-index.py`) for this
+   operator-controlled evidence; a manifest and successful run are still required before claiming
+   the gate is closed.
 6. Hindsight and Honcho remain disabled unless live retention, deletion, ACL, idempotence, export,
    and packaged-UI evidence justifies enabling one.
 7. Hermes legacy data is retained until Cortana import/rebuild, recovery, and verification are
