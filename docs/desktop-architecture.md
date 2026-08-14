@@ -174,6 +174,10 @@ Google token files and OAuth client files and local roots must be absolute non-r
 requires explicit channels and a validated bot-token environment name.
 Discord requires explicit channels plus private Desktop RPC token and OAuth-client paths (never an
 environment variable).
+Apple Notes sources can be split across workspaces with exact folder allowlists (`folders`) and
+exclusions (`exclude_folders`); an empty allowlist means all folders except explicit exclusions.
+The connector keeps the originating account and folder in document metadata, while the Desktop
+editor exposes both lists as repeatable line-separated fields.
 Canonical source
 labels are unique within each workspace, must not be padded with whitespace or contain control
 characters, and cannot merge connectors' indexed scope or health history. Saving or authorizing source

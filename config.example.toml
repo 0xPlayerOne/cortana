@@ -150,6 +150,9 @@ exclude = ["second-brain"]
 name = "personal-notes"
 kind = "apple-notes"
 project = "personal"
+# Apple Notes folder names are exact. Leave `folders` empty to include every
+# folder, or use `exclude_folders` to keep selected folders in another source.
+exclude_folders = ["Nifty League", "The Pink Binder"]
 
 [[sources]]
 name = "personal-drive"

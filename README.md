@@ -177,8 +177,11 @@ configured OAuth client JSON and private user-token destination to assign worksp
 workspace (`cortana slack-workspaces SOURCE` lists the assigned workspace); Buzz uses
 `cortana buzz-communities SOURCE` to list the bounded communities recorded in its read-only
 `agents/teams.json` identity file for per-workspace assignment; Apple Notes uses the host
-permission; token-backed sources read only the configured environment variable. Validation never embeds, indexes, or
-reconciles data:
+permission; token-backed sources read only the configured environment variable. Apple Notes
+sources can be split across workspaces with exact `folders` and `exclude_folders` lists. For
+example, create one Apple Notes source for `Nifty League` in `work`, one for `The Pink Binder`
+in `special`, and a personal source with those folders excluded. Validation never embeds,
+indexes, or reconciles data:
 
 ```bash
 cortana validate-source SOURCE \

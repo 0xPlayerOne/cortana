@@ -14,12 +14,20 @@ SCRIPT = r"""
 const Notes = Application("Notes");
 const rows = [];
 const maxDocuments = undefined;
+const includeFolders = [];
+const excludeFolders = [];
 outer:
 for (const account of Notes.accounts()) {
   if (maxDocuments !== undefined && rows.length >= maxDocuments) {
     break outer;
   }
   for (const folder of account.folders()) {
+    const folderName = folder.name();
+    const included = includeFolders.length === 0 || includeFolders.indexOf(folderName) !== -1;
+    const excluded = excludeFolders.indexOf(folderName) !== -1;
+    if (!included || excluded) {
+      continue;
+    }
     if (maxDocuments !== undefined && rows.length >= maxDocuments) {
       break outer;
     }
@@ -33,7 +41,7 @@ for (const account of Notes.accounts()) {
         body: note.plaintext(),
         modified: note.modificationDate().toISOString(),
         account: account.name(),
-        folder: folder.name()
+        folder: folderName
       });
     }
   }
@@ -44,11 +52,23 @@ MAX_EXPORT_BYTES = 64 * 1024 * 1024
 OSASCRIPT = "/usr/bin/osascript"
 
 
-def _build_script(max_documents: int | None) -> str:
-    if max_documents is None:
-        return SCRIPT
-    return SCRIPT.replace(
-        "const maxDocuments = undefined;", f"const maxDocuments = {max_documents};"
+def _build_script(
+    max_documents: int | None,
+    folders: Iterable[str] | None = None,
+    exclude_folders: Iterable[str] | None = None,
+) -> str:
+    script = SCRIPT
+    if max_documents is not None:
+        script = script.replace(
+            "const maxDocuments = undefined;", f"const maxDocuments = {max_documents};"
+        )
+    script = script.replace(
+        "const includeFolders = [];",
+        f"const includeFolders = {json.dumps(list(folders or []), ensure_ascii=False)};",
+    )
+    return script.replace(
+        "const excludeFolders = [];",
+        f"const excludeFolders = {json.dumps(list(exclude_folders or []), ensure_ascii=False)};",
     )
 
 
@@ -56,10 +76,18 @@ def fetch(
     project: str = "personal",
     timeout: int = 120,
     max_documents: int | None = None,
+    folders: Iterable[str] | None = None,
+    exclude_folders: Iterable[str] | None = None,
 ) -> Iterable[Document]:
     try:
         result = subprocess.run(  # noqa: S603 - fixed system executable; no shell
-            [OSASCRIPT, "-l", "JavaScript", "-e", _build_script(max_documents)],
+            [
+                OSASCRIPT,
+                "-l",
+                "JavaScript",
+                "-e",
+                _build_script(max_documents, folders, exclude_folders),
+            ],
             check=True,
             capture_output=True,
             text=True,

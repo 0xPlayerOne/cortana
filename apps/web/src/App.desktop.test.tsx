@@ -1499,6 +1499,41 @@ test('source settings show a compact workspace-first row with collapsed advanced
   }
 })
 
+test('Apple Notes sources expose exact include and exclude folder filters', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    sources: [
+      {
+        ...workSource,
+        name: 'work-notes',
+        kind: 'apple-notes',
+        folders: ['Nifty League'],
+        exclude_folders: ['The Pink Binder'],
+      },
+    ],
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    fireEvent.click(screen.getByText('Advanced source settings'))
+
+    expect(
+      (screen.getByRole('textbox', { name: 'Include Apple Notes folders' }) as HTMLTextAreaElement)
+        .value
+    ).toBe('Nifty League')
+    expect(
+      (screen.getByRole('textbox', { name: 'Exclude Apple Notes folders' }) as HTMLTextAreaElement)
+        .value
+    ).toBe('The Pink Binder')
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
 test('source settings quarantine legacy scopes until they are assigned to a workspace', async () => {
   const originalSettings = state.settings
   state.settings = {

@@ -2121,6 +2121,8 @@ mod tests {
             root: Some("/Users/example/docs".into()),
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             repositories: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),

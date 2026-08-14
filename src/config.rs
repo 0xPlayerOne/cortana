@@ -11,6 +11,8 @@ const MAX_CONFIGURED_SOURCES: usize = 128;
 const MAX_BUZZ_COMMUNITIES: usize = 100;
 const MAX_BUZZ_COMMUNITY_ID_CHARS: usize = 128;
 const MAX_BUZZ_COMMUNITY_NAME_CHARS: usize = 128;
+const MAX_APPLE_NOTES_FOLDERS: usize = 100;
+const MAX_APPLE_NOTES_FOLDER_NAME_CHARS: usize = 128;
 // `chrono::Duration::hours` accepts a signed hour count. Reject values that
 // cannot be represented before the freshness bound is converted at runtime.
 const MAX_VALIDATION_MAX_AGE_HOURS: u64 = (i64::MAX as u64) / 3_600;
@@ -190,6 +192,14 @@ pub struct SourceConfig {
     pub source: Option<String>,
     #[serde(default)]
     pub channels: Vec<String>,
+    /// Exact Apple Notes folder names included by this source. An empty list
+    /// means all folders unless `exclude_folders` removes specific names.
+    #[serde(default)]
+    pub folders: Vec<String>,
+    /// Exact Apple Notes folder names excluded from this source after the
+    /// include list is applied.
+    #[serde(default)]
+    pub exclude_folders: Vec<String>,
     /// Explicit Discord server (guild) allowlist assigned to this source's
     /// workspace. Channels selected for indexing remain in `channels`; the
     /// server list records which servers browser authorization assigned to
@@ -511,6 +521,35 @@ fn validate_source_definitions(config: &Config) -> Result<()> {
             source.name,
             source.kind
         );
+        if !source.folders.is_empty() || !source.exclude_folders.is_empty() {
+            anyhow::ensure!(
+                source.kind == "apple-notes",
+                "source `{}` may configure folders only for Apple Notes sources",
+                source.name
+            );
+        }
+        for (label, folders) in [
+            ("Apple Notes folder", &source.folders),
+            ("Apple Notes excluded folder", &source.exclude_folders),
+        ] {
+            anyhow::ensure!(
+                folders.len() <= MAX_APPLE_NOTES_FOLDERS,
+                "source `{}` configures more than {MAX_APPLE_NOTES_FOLDERS} {label}s",
+                source.name
+            );
+            let mut names = HashSet::new();
+            for folder in folders {
+                anyhow::ensure!(
+                    !folder.trim().is_empty()
+                        && folder == folder.trim()
+                        && folder.len() <= MAX_APPLE_NOTES_FOLDER_NAME_CHARS
+                        && !folder.chars().any(char::is_control)
+                        && names.insert(folder.as_str()),
+                    "source `{}` has an invalid or duplicate {label} name",
+                    source.name
+                );
+            }
+        }
         anyhow::ensure!(
             !source.project.trim().is_empty(),
             "source `{}` requires a non-empty project",
@@ -953,6 +992,8 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -997,6 +1038,8 @@ mod tests {
             root: None,
             source: None,
             channels: vec!["123456789".into()],
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -1221,6 +1264,8 @@ mod tests {
             )),
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -1286,6 +1331,8 @@ mod tests {
             root: None,
             source: None,
             channels: Vec::new(),
+            folders: Vec::new(),
+            exclude_folders: Vec::new(),
             servers: Vec::new(),
             teams: Vec::new(),
             team_names: Vec::new(),
@@ -1309,6 +1356,47 @@ mod tests {
 
         source.acl = vec!["shared".into(), "personal".into(), "shared".into()];
         assert_eq!(source.effective_acl(), vec!["shared", "personal"]);
+    }
+
+    #[test]
+    fn apple_notes_folder_filters_are_exact_and_kind_scoped() {
+        let mut config = Config::default();
+        let mut source = SourceConfig {
+            name: "personal-notes".into(),
+            kind: "apple-notes".into(),
+            enabled: true,
+            project: "personal".into(),
+            root: None,
+            source: None,
+            channels: Vec::new(),
+            folders: vec!["Nifty League".into()],
+            exclude_folders: vec!["The Pink Binder".into()],
+            servers: Vec::new(),
+            teams: Vec::new(),
+            team_names: Vec::new(),
+            communities: Vec::new(),
+            community_names: Vec::new(),
+            repositories: Vec::new(),
+            token_env: None,
+            token: None,
+            oauth_client: None,
+            query: None,
+            labels: Vec::new(),
+            max_content_chars: None,
+            max_documents: None,
+            max_bytes: None,
+            max_duration_seconds: None,
+            exclude: Vec::new(),
+            command: Vec::new(),
+            acl: Vec::new(),
+        };
+        config.sources.push(source.clone());
+        validate_source_definitions(&config).expect("Apple Notes folder filters are valid");
+
+        source.kind = "filesystem".into();
+        config.sources[0] = source;
+        let error = validate_source_definitions(&config).expect_err("folders are Apple Notes-only");
+        assert!(error.to_string().contains("only for Apple Notes"));
     }
 
     #[cfg(unix)]

@@ -559,8 +559,9 @@ The generated Qwen/TEI profile keeps `max-batch-tokens=512`, which was faster th
 in the macOS Metal benchmark, and admits up to 128 queued inputs so background ingestion can share
 the provider with interactive agents without avoidable 429 responses. Cortana itself sends at most
 eight inputs per request and applies bounded retry/backoff for transient provider pressure.
-Up to four ordered requests run concurrently by default; lower `request_concurrency` when a cloud
-provider has a stricter rate limit.
+Up to four requests run concurrently by default; lower `request_concurrency` when a cloud provider
+has a stricter rate limit. Completed documents are persisted immediately, so cancellation or a
+duration budget leaves a resumable tail instead of discarding the whole in-flight batch.
 
 ## Linux systemd
 

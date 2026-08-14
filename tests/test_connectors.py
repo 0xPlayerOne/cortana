@@ -165,6 +165,31 @@ def test_apple_notes_bounds_script_when_max_documents_is_set(
     assert "break outer;" in script
 
 
+def test_apple_notes_passes_exact_folder_filters_to_jxa(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, list[str]] = {}
+
+    def run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["args"] = args
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    list(
+        apple_notes.fetch(
+            project="work",
+            folders=["Nifty League"],
+            exclude_folders=["The Pink Binder"],
+        )
+    )
+
+    script = captured["args"][4]
+    assert 'const includeFolders = ["Nifty League"];' in script
+    assert 'const excludeFolders = ["The Pink Binder"];' in script
+    assert "folderName = folder.name()" in script
+
+
 def test_apple_notes_uses_unbounded_script_when_not_capped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
