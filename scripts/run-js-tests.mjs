@@ -83,4 +83,6 @@ for (const group of groups) {
   }
 }
 
-console.log(`\nPassed ${tests.length} JavaScript test files; API-mock suites ran in isolated processes.`)
+console.log(
+  `\nPassed ${tests.length} JavaScript test files; API-mock suites ran in isolated processes.`
+)
