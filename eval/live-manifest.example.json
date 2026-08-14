@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "thresholds": {
+    "min_recall_at_k": 0.8,
+    "min_mrr": 0.6,
+    "min_retrieval_pass_rate": 0.8,
+    "min_answer_pass_rate": 0.8,
+    "min_citation_validity": 1.0,
+    "max_retrieval_fallback_rate": 0.0,
+    "max_provider_fallback_rate": 0.0,
+    "max_latency_ms": 30000
+  },
+  "retrieval_cases": [
+    {
+      "name": "replace-with-an-approved-work-query",
+      "query": "REPLACE_WITH_A_QUERY",
+      "project": "work",
+      "source": "REPLACE_WITH_SOURCE",
+      "top_k": 5,
+      "expected_source_ids": ["REPLACE_WITH_EXPECTED_SOURCE_ID"],
+      "forbidden_source_ids": ["REPLACE_WITH_FORBIDDEN_SOURCE_ID"]
+    }
+  ],
+  "answer_cases": [
+    {
+      "name": "replace-with-an-approved-cited-answer",
+      "query": "REPLACE_WITH_A_QUERY",
+      "project": "work",
+      "source": "REPLACE_WITH_SOURCE",
+      "top_k": 5,
+      "expected_source_ids": ["REPLACE_WITH_EXPECTED_SOURCE_ID"],
+      "forbidden_source_ids": ["REPLACE_WITH_FORBIDDEN_SOURCE_ID"]
+    }
+  ]
+}

@@ -97,6 +97,8 @@ def build_core_tree(directory: Path, version: str, suffix: str | None = None) ->
     write_executable(root / "bin/cortana", fake_binary(version))
     write_executable(root / "install.sh", b"#!/bin/sh\n")
     (root / "share/cortana/web/index.html").write_text("<html></html>\n")
+    (root / "eval").mkdir()
+    (root / "eval/live-manifest.example.json").write_text('{"version":1}\n')
     (root / "config.example.toml").write_text("[query]\n")
     (root / "skills/cortana/SKILL.md").write_text("skill\n")
     (root / "dist/cortana_brain-9.9.9-py3-none-any.whl").write_bytes(b"wheel")
