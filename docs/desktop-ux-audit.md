@@ -93,14 +93,20 @@ cancelled after that older supervisor stalled. After v0.32.2 installation, a for
 trial progressed through bounded unchanged batches before the local embedding health probe timed
 out while queued embedding work was still completing; it was cancelled after roughly seven minutes.
 The service recovered afterward, and the trial made no deletions or reconciliation. Work
-Drive (478 documents/4,527,663 bytes) and Work Gmail (7,395 documents/34,494,647 bytes) now have
-complete production-budget validation records. Work Drive has a successful bounded 100-document
+Historical records show Work Drive (478 documents/4,527,663 bytes) and Work Gmail
+(7,395 documents/34,494,647 bytes) completing production-budget validation. Work Drive has a successful bounded 100-document
 retry, and Work Gmail now has a bounded 100-message pass (`changed=75`, `unchanged=25`,
 `deleted=0`); neither source has a complete production-budget trial approved for reconciliation or
 recurring sync.
 Personal Drive failed its 2,000-document/128 MiB/900-second validation at the 899-second connector
 timeout. A follow-up 25-document/5 MiB/60-second validation and non-reconciling trial succeeded
 (`changed=1`, `unchanged=24`, `deleted=0`), but that bounded prefix remains below the production gate.
+
+The current validation metadata was subsequently refreshed by a bounded source-smoke pass: all 13
+enabled sources are fresh and `complete=true`, but each record is capped at 25 documents, 5 MiB,
+and 60 seconds (or the source's smaller natural result). These current records are below the
+configured production budgets, so recurring sync remains uninstalled and the historical larger
+records above do not authorize reconciliation.
 
 On 2026-08-15 a second bounded Work Drive retry emitted the complete 478-document connector
 snapshot, then failed closed when the local embedding connection closed during ingestion. The run
@@ -192,10 +198,10 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    configured. Apple Notes has complete folder-scoped validation and bounded no-reconcile
    snapshots; Calendar has complete validation with bounded 100-event Work, Personal, and Special
    trials; Buzz has a
-   completed bounded no-reconcile snapshot. Special Drive now has a production-budget validation
-   (97 documents, 290,353 bytes) and a completed 97-document non-reconciling trial with zero
-   deletions. Work Drive and Work Gmail now have production-budget validation (478/4,527,663 bytes
-   and 7,395/34,494,647 bytes respectively). The earlier v0.32.2 Work Drive trial was cancelled
+   completed bounded no-reconcile snapshot. Historical records show Special Drive with a
+   production-budget validation (97 documents, 290,353 bytes) and a completed 97-document
+   non-reconciling trial with zero deletions. Historical Work Drive and Work Gmail records show
+   production-budget validation (478/4,527,663 bytes and 7,395/34,494,647 bytes respectively). The earlier v0.32.2 Work Drive trial was cancelled
    while queued embedding work was still completing, but a later 100-document no-reconcile retry
    completed successfully; the complete 478-document production-budget trial remains open.
    The earlier Personal Drive production-budget validation failed closed at its 899-second
@@ -203,9 +209,8 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    succeeded but remains below the configured production budget. Personal Gmail now has
    production-budget validation
    (430 documents/1,563,456 bytes) plus a bounded 100-document-cap trial with zero deletions,
-   and Special Gmail has
-   production-budget validation (214 documents/995,335 bytes) plus the same bounded trial result.
-   These capped prefixes prove selected
+   and Special Gmail has historical production-budget validation (214 documents/995,335 bytes)
+   plus the same bounded trial result. These capped prefixes prove selected
    connector behavior, not full-corpus readiness. Recurring sync must remain uninstalled until
    every enabled source has a fresh `complete=true` validation at its configured production
    budget.

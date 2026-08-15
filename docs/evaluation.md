@@ -29,8 +29,13 @@ approved-corpus answer/synthesis evaluation remains separate and is not a packag
 An explicit `readiness --allow-sync-service` check on 2026-08-15 correctly failed closed because
 `personal-drive` timed out during its 2,000-document/128 MiB/900-second production-budget
 validation. A follow-up 25-document/5 MiB/60-second validation succeeded, but that bounded prefix
-is still below the configured production budget; the other 12 enabled sources currently meet their
-configured validation limits. The recurring sync service remains uninstalled.
+is still below the configured production budget. The latest bounded source-smoke refresh also
+replaced the on-disk validation records for all 13 enabled sources with fresh `complete=true`
+records capped at 25 documents, 5 MiB, and 60 seconds (sources with fewer records naturally
+returned fewer documents). Those records are valid for bounded non-reconciling work only; they do
+not meet the configured production budgets, so `readiness --allow-sync-service` remains failed
+closed and the recurring sync service remains uninstalled. Earlier production-budget results below
+are retained as historical evidence, not current authorization.
 Since that release evidence was recorded, Special Drive completed a production-budget validation
 covering 97 documents and 290,353 bytes, followed by a bounded non-reconciling trial with 0
 deletions. Work Drive subsequently completed production-budget validation with 478 documents and
