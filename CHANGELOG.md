@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.2](https://github.com/0xPlayerOne/cortana/compare/v0.32.1...v0.32.2) (2026-08-15)
+
+
+### Bug Fixes
+
+* **embedding:** release supervisor liveness recovery ([eca1bf2](https://github.com/0xPlayerOne/cortana/commit/eca1bf2ea1c6d8cadcec4a3464a973d0a1dcd2f2))
+
 ## [0.32.1](https://github.com/0xPlayerOne/cortana/compare/v0.32.0...v0.32.1) (2026-08-15)
 
 
