@@ -169,24 +169,13 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.32.6 CLI (the prior installed package) passed the
-   bounded provider-backed fixture gate on 2026-08-15 in 18,178 ms, with planner/synthesis, valid
-   citations, cache reuse, and revision invalidation. The current v0.32.8 package passed the
-   credential-free offline evaluator and query-only readiness after installation; no new
-   provider-backed personal-index or packaged-GUI evaluation is claimed. The preceding installed
-   v0.32.5 run passed in 7,892 ms and the installed v0.31.16 run passed in 14,660 ms.
-   The published v0.32.1 release separately passed the credential-free packaged-core
-   offline evaluator within 60 seconds (the v0.31.10-configured provider run
-   passed in 24,491 ms; the published v0.31.8 archive's earlier 14,879 ms and the installed v0.31.7
-   runtime's earlier 14,258 ms, 15,542 ms, 22,015 ms, 18,270 ms, 10,083 ms,
-   17,734 ms, 20,027 ms, 13,416 ms, 17,145 ms, and 12,613 ms runs and prior
-   v0.31.6 runs completed in 25,789 ms, 21,409 ms, 15,728 ms, and 22,269 ms;
-   the v0.31.5 runtime-baseline run completed in 13,871 ms; prior verified runs
-   completed in 19,524 ms, 15,774 ms, and 13,237 ms) with planner/synthesis, citations, cache reuse, and
-   revision invalidation. This remains fixture-only evidence, not packaged-app
-   proof; provider outages or slow responses still fail closed, and extractive
-   mode remains the safe production default. The installed core also passes
-   `doctor`, query-only readiness, and the disposable control-plane and recovery
+2. Model-backed provider gate: the verified v0.32.8 package passed the credential-free packaged-core
+   evaluator and query-only readiness after installation. The latest provider-backed run was made
+   with the then-installed v0.32.7 CLI on 2026-08-15 and completed in 14,045 ms with planner/synthesis,
+   valid citations, cache reuse, and revision invalidation. That run used synthetic fixtures only;
+   no provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider
+   outages or slow responses still fail closed, and extractive mode remains the safe production
+   default. The current package also passes `doctor` and the disposable control-plane/recovery
    drills, while the GUI remains unlaunched.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
@@ -235,7 +224,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.32.8 source or the last-verified v0.32.6 core; use the
+does not describe the current v0.32.8 source or the historical v0.32.6 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
