@@ -750,7 +750,9 @@ defaults behind an override-less source — or its validation lapsed past
 read-only/manual checks). Recurring sync rejects `0`. The installed recurring job re-checks the
 same gate on every scheduled run, so an operator who changed a source after installing the sync schedule
 sees the mismatch in `cortana readiness` before the next scheduled run fails fast with the same
-reason. Without the flag, source validation is not required for query-only readiness; per-source
+reason. Budget failures include the validated and required document/byte/second values so the
+next validation can be sized without inspecting the raw validation-state file. Without the flag,
+source validation is not required for query-only readiness; per-source
 validation state remains visible in `/v1/status` at any time.
 
 ## Secrets
