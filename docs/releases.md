@@ -9,18 +9,19 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.32.6
+## Current release: v0.32.7
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.6` release contains the current Rust runtime, web workspace, connector package, Desktop
-bundles, example configuration, and Cortana agent skill. Release-assets workflow `31880502344`
-completed all 18 archive, checksum, updater-signature, manifest, and credential-free packaged-core
-verification gates; v0.32.5 remains historical evidence.
+`v0.32.7` is the current protected source and published tag. Its release-assets workflow
+`31896801633` is still building the platform packages, so `v0.32.6` remains the latest fully
+verified release with all 18 archive, checksum, updater-signature, manifest, and credential-free
+packaged-core gates complete. Do not present v0.32.7 as a verified installer until that workflow
+finishes successfully; v0.32.5 and earlier remain historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.32.6 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.32.7 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -36,13 +37,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.32.6
+  scripts/verify-desktop-release.sh v0.32.7
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.32.6 package is the release boundary for the post-v0.31.12 hardening, bounded live-index
+The v0.32.7 source is the release boundary for the post-v0.31.12 hardening, bounded live-index
 evaluation harness, and readiness-budget diagnostics described below. Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
 being called downloadable-release behavior.
@@ -53,6 +54,15 @@ uses synthetic data only and is not a substitute for the packaged GUI/MCP/manual
 The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP stdio subprocess,
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
+
+## v0.32.7 release intent (published; asset verification pending)
+
+This patch records the latest bounded live-source evidence and the protected promotion that
+reconciled the staging and main trees. Release Please published the v0.32.7 tag, and release-assets
+workflow `31896801633` is building the platform packages. Until its strict verifier reports all 18
+assets, checksums, updater signatures, manifest, and packaged-core evaluation, v0.32.6 remains the
+latest verified installer. This release intent changes no credentials, source authorization,
+recurring-sync state, or optional memory-provider state.
 
 ## v0.32.6 release intent (published)
 
