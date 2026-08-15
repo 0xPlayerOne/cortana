@@ -17,7 +17,7 @@ is not part of a visual/UI change.
   authorization are separate host checks;
   source authorization and full-corpus sync were not started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The installed v0.32.1 CLI passed the disposable offline control-plane drill on 2026-08-14:
+- The installed v0.32.2 CLI passed the disposable offline control-plane drill on 2026-08-15:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
   verified backup, restore into a second temporary data directory, SQLite verification, and
   post-restore search. The drill used only temporary data and does not prove packaged GUI, OAuth,
@@ -75,8 +75,11 @@ GUI/browser/tray/dialog/updater gates above.
 
 The v0.32.2 source and package add one operational recovery change for the local embedding supervisor:
 steady-state checks use the lightweight `/health` endpoint so queued ingestion work cannot look dead;
-startup and restart still require a real vector probe. On 2026-08-15 the installed v0.32.1 Work Drive trial was cancelled twice after that older
-supervisor stalled; the bounded runs made no deletions and did not enable reconciliation. Work
+startup and restart still require a real vector probe. The earlier v0.32.1 Work Drive trials were
+cancelled after that older supervisor stalled. After v0.32.2 installation, a foreground Work Drive
+trial progressed through bounded unchanged batches before the local embedding health probe timed
+out while queued embedding work was still completing; it was cancelled after roughly seven minutes.
+The service recovered afterward, and the trial made no deletions or reconciliation. Work
 Drive (478 documents/4,527,663 bytes) and Work Gmail (7,395 documents/34,494,647 bytes) now have
 complete production-budget validation records, but their successful post-fix trials remain open.
 Personal Drive validation failed closed at the 899-second connector timeout and remains below the
@@ -122,8 +125,8 @@ production gate.
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.32.1 CLI passed the bounded provider-backed
-   fixture gate on 2026-08-14 in 16,649 ms, with planner/synthesis, valid citations, cache reuse,
+2. Model-backed provider gate: the installed v0.32.2 CLI passed the bounded provider-backed
+   fixture gate on 2026-08-15 in 17,103 ms, with planner/synthesis, valid citations, cache reuse,
    and revision invalidation. The preceding installed v0.31.16 run passed in 14,660 ms.
    The published v0.32.1 release separately passed the credential-free packaged-core
    offline evaluator within 60 seconds (the v0.31.10-configured provider run
@@ -165,8 +168,9 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    completed bounded no-reconcile snapshot. Special Drive now has a production-budget validation
    (97 documents, 290,353 bytes) and a completed 97-document non-reconciling trial with zero
    deletions. Work Drive and Work Gmail now have production-budget validation (478/4,527,663 bytes
-   and 7,395/34,494,647 bytes respectively), but Work Drive's pre-fix trial was cancelled and must
-   be retried after v0.32.1 is installed. Personal Drive failed closed at its 899-second connector
+   and 7,395/34,494,647 bytes respectively), but the v0.32.2 Work Drive trial was cancelled while
+   queued embedding work was still completing and must be retried with a longer bounded window.
+   Personal Drive failed closed at its 899-second connector
    timeout; Personal Gmail now has production-budget validation (430 documents/1,563,456 bytes),
    and Special Gmail has production-budget validation (214 documents/995,335 bytes); both still
    need bounded trials. These records prove selected
@@ -179,7 +183,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.32.1 release or the installed v0.32.1 core; use the
+does not describe the current v0.32.2 release or the installed v0.32.2 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -195,8 +199,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.32.1` binary or packaged Desktop behavior. The current
-  `v0.32.1` asset workflow and strict verifier are recorded in the release section above.
+  the current `v0.32.2` binary or packaged Desktop behavior. The current
+  `v0.32.2` asset workflow and strict verifier are recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
