@@ -66,9 +66,11 @@ The 2026-08-15 operator rollout added production-budget validation evidence with
 recurring sync or reconciliation. Work Drive validated 478 documents and 4,527,663 bytes at the
 2,000-document/128 MiB/900-second budget. Work Gmail validated 7,395 documents and 34,494,647
 bytes at its 10,000-document/64 MiB/600-second budget. A Work Drive non-reconciling trial was
-intentionally cancelled twice after the installed v0.32.1 embedding service stalled; it made no
-deletions and did not authorize a full index. The retry is now bounded behind installation of the
-verified v0.32.2 core. The Personal Drive production validation then failed closed at its
+intentionally cancelled twice under the installed v0.32.1 binary after its embedding service
+stalled; it made no deletions and did not authorize a full index. After v0.32.2 installation, a
+foreground retry progressed through bounded unchanged batches before the local embedding health
+probe timed out behind queued Qwen work; it was cancelled after roughly seven minutes, and the
+service recovered afterward. It made no deletions and remains pending a longer bounded trial. The Personal Drive production validation then failed closed at its
 899-second connector timeout; it produced no validation record and did not authorize a sync.
 Special Gmail completed production-budget validation with 214 documents and 995,335 bytes; its
 post-validation trial remains pending. Personal Gmail completed production-budget validation with

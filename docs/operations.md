@@ -490,10 +490,13 @@ covers 45 records; its first 60-second trial failed closed at the embedding dead
 bounded 300-second retry completed all 45 records with 0 deletions. Work Drive has now completed
 production-budget validation (478 documents, 4,527,663 bytes at 2,000/128 MiB/900 seconds), and
 Work Gmail has completed validation (7,395 documents, 34,494,647 bytes at 10,000/64 MiB/600
-seconds). The Work Drive non-reconciling trial was cancelled twice under the installed v0.32.1
-binary after its embedding service stalled; it made no deletions and must be retried after the
-embedding-supervisor recovery fix is released. Personal Drive validation failed closed after its
-899-second connector timeout. Personal Gmail now has production-budget validation (430 documents,
+seconds). The earlier Work Drive non-reconciling trial was cancelled twice under the installed
+v0.32.1 binary after its embedding service stalled; it made no deletions. After installing v0.32.2,
+a new foreground Work Drive trial progressed through bounded unchanged batches before the local
+embedding health probe timed out while queued embedding work was still completing; it was cancelled
+after roughly seven minutes, and the service recovered afterward. It made no deletions and must be
+retried with a longer bounded window. Personal Drive validation
+failed closed after its 899-second connector timeout. Personal Gmail now has production-budget validation (430 documents,
 1,563,456 bytes), and Special Gmail has production-budget validation (214 documents, 995,335 bytes),
 but both bounded trials are pending.
 Special Drive remains the first cloud source with both production validation and a completed
@@ -502,8 +505,10 @@ and all code roots are disabled by operator choice; Slack remains an optional, u
 connector.
 
 The v0.32.2 source and package now use the local embedding `/health` endpoint for steady-state
-liveness and keep the real vector probe for startup/restart. Install the verified v0.32.2 archive
-before retrying the Work Drive trial; no source or recurring sync is authorized by this fix.
+liveness and keep the real vector probe for startup/restart. The installed v0.32.2 retry showed that
+the local health probe can time out behind queued Qwen work; it recovered without a supervisor
+restart after cancellation. No source or recurring sync is authorized by this evidence; repeat a
+longer bounded non-reconciling trial before advancing the source gate.
 
 Do not infer recurring-sync readiness from this snapshot. Re-run `readiness --allow-sync-service`
 after the next source-scoped validation pass; it must remain fail-closed until every enabled source
