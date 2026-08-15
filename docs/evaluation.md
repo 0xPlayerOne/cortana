@@ -20,9 +20,8 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 ### Current release boundary
 
 The current protected source and published tag are `v0.32.6`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `31880502344` is the package gate
-for v0.32.6; it must complete with all 18 assets and the strict verifier before the downloadable
-package is called fully verified. The v0.32.6 release carries the bounded
+flow and Release Please automation. Release-assets workflow `31880502344` completed the v0.32.6
+package gate with all 18 assets and the strict verifier. The v0.32.6 release carries the bounded
 read-only live-index evaluator.
 A first
 operator-approved retrieval manifest has now passed against the running local work index;
@@ -64,7 +63,7 @@ behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
 The audited host still runs `/Users/amf/.local/bin/cortana` v0.32.5 from the local installation;
-the newly published v0.32.6 archive is the next packaged-core evidence target. The embedding and HTTP
+the newly published v0.32.6 archive also passed the packaged-core gate. The embedding and HTTP
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 

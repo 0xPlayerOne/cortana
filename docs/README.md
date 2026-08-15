@@ -9,7 +9,7 @@ and contributor path.
 
 | Area                           | Current boundary                                                                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Downloadable package           | `v0.32.6`, published from the protected promotion; release-assets workflow `31880502344` is the current 18-asset verification run                 |
+| Downloadable package           | `v0.32.6`, with release-assets workflow `31880502344` completing all 18 assets, signatures, manifest, and packaged-core verification              |
 | Source checkout                | Tracks the protected v0.32.6 tree; use the tagged release for end-user package evidence and keep the verifier result as the package boundary      |
 | Default runtime                | Query-only; no source authorization, full sync, recurring schedule, or optional memory sidecar is enabled automatically                           |
 | Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                     |
