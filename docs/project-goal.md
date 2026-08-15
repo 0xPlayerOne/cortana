@@ -62,10 +62,10 @@ The authoritative current release and open gates live in [Release history](relea
 
 ## Release boundary
 
-The published `v0.32.6` tag is the current release boundary. A source checkout can contain
-validated changes that are not yet in the installer; only a published tag with a passing 18-asset
-verifier should be presented as fully verified downloadable release behavior. Until the
-v0.32.6 asset workflow completes, v0.32.5 remains the latest completed package-verifier evidence.
+The published `v0.32.6` tag is the current release boundary and has passed the strict 18-asset
+verifier. A source checkout can contain validated changes that are not yet in the installer; only
+the published tag and its recorded verifier evidence should be presented as downloadable release
+behavior.
 
 ## Where to start
 

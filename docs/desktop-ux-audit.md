@@ -8,8 +8,8 @@ is not part of a visual/UI change.
 ## Current release evidence (2026-08-15)
 
 - `v0.32.6` is the current protected release, published through the protected promotion and
-  Release Please automation. Release-assets workflow `31880502344` is the current package gate;
-  asset verification does not launch the
+  Release Please automation. Release-assets workflow `31880502344` completed the strict 18-asset
+  package gate; asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
 - The supported v0.32.6 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
@@ -27,8 +27,8 @@ is not part of a visual/UI change.
   verified backup, restore into a second temporary data directory, SQLite verification, and
   post-restore search. The drill used only temporary data and does not prove packaged GUI, OAuth,
   tray, native-dialog, updater, or operating-system trust behavior.
-- The v0.32.5 macOS ARM package verifier remains the latest completed static package evidence;
-  v0.32.6 is pending its release-assets verifier. Gatekeeper still rejects the ad-hoc bundle because
+- The v0.32.6 macOS ARM package verifier passed the published updater signature, packaged-core
+  offline evaluation, and strict codesign checks. Gatekeeper still rejects the ad-hoc bundle because
   Developer ID signing and notarization are not configured; the GUI was not launched.
 - The preceding installed v0.31.16 configured-provider fixture evaluation passed in 14,660 ms with
   planner and synthesis model use, valid citations, cache reuse, and revision invalidation.

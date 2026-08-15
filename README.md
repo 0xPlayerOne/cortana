@@ -66,9 +66,9 @@ direct JSONL imports serialize on the global lock, imports and evaluation fixtur
 resource ceilings, remote `/readyz` requires scoped bearer access, optional memory outbox leases
 are fenced, Desktop settings and schedules serialize through a shared per-config lock, and
 Desktop sidecars publish atomically. Release Please published v0.32.6 from the protected
-promotion carrying the readiness-budget diagnostics. Release-assets workflow `31880502344` is
-the authoritative package gate for this release; it must complete the strict 18-asset verifier
-before the downloadable package is called fully verified. The preceding v0.32.5 workflow
+promotion carrying the readiness-budget diagnostics. Release-assets workflow `31880502344`
+completed all platform jobs and the strict 18-asset verifier, including checksums, updater
+signatures, the manifest, and packaged-core offline evaluation. The preceding v0.32.5 workflow
 `31872008773` remains historical evidence.
 
 When the checkout and the downloaded application report different versions, trust the application
@@ -81,8 +81,8 @@ just to make the version strings match.
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
 package for your operating system and CPU. The current protected release is **v0.32.6**. Its
-release-assets workflow is completing the archive, checksum, updater-signature, and
-credential-free packaged-core verification gate. The Desktop app still has separate manual gates for macOS Developer ID
+release-assets workflow completed the archive, checksum, updater-signature, and credential-free
+packaged-core verification gate. The Desktop app still has separate manual gates for macOS Developer ID
 notarization and first-run operating-system interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 

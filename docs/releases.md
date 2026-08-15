@@ -15,9 +15,8 @@ Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
 `v0.32.6` release contains the current Rust runtime, web workspace, connector package, Desktop
 bundles, example configuration, and Cortana agent skill. Release-assets workflow `31880502344`
-is completing the 18-asset archive, checksum, updater-signature, manifest, and credential-free
-packaged-core verification gates; v0.32.5 remains the latest completed verifier until that run
-finishes.
+completed all 18 archive, checksum, updater-signature, manifest, and credential-free packaged-core
+verification gates; v0.32.5 remains historical evidence.
 
 ### Supported Desktop platforms
 
@@ -60,8 +59,9 @@ operators can correct an under-budget source without inspecting private validati
 The intent changes no credentials, indexed data, source authorization, recurring-sync state, or
 optional memory-provider state. The protected promotion carrying this tree included
 `Release-As: 0.32.6`; Release Please opened and merged the version-only PR, and the tag is now
-published. The release-assets workflow and strict 18-asset verifier remain the final package
-evidence gate for this release.
+published. The release-assets workflow `31880502344` and strict 18-asset verifier completed
+successfully, including all platform archives, checksums, updater signatures, the manifest, and
+packaged-core offline evaluation.
 
 ## v0.32.5 release intent
 
