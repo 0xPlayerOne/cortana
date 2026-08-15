@@ -108,6 +108,14 @@ and 60 seconds (or the source's smaller natural result). These current records a
 configured production budgets, so recurring sync remains uninstalled and the historical larger
 records above do not authorize reconciliation.
 
+The follow-up live pass completed validation-required, non-reconciling trials for every enabled
+non-code source using those same caps. Work/Personal/Special Apple Notes, Drive, Gmail, and
+Calendar all succeeded; Special Calendar returned zero records; Buzz succeeded. Every trial
+reported zero deletions. The live index now contains 12,123 documents and 42,638 chunks, and
+query-only readiness passed. This is bounded ingestion evidence only: production-budget
+validation, reconciliation, recurring sync, Discord, code, Slack, and native Desktop acceptance
+remain separate gates.
+
 On 2026-08-15 a second bounded Work Drive retry emitted the complete 478-document connector
 snapshot, then failed closed when the local embedding connection closed during ingestion. The run
 was non-reconciling, so it made no deletions; completed-prefix writes are retained by the controlled
