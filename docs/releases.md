@@ -83,9 +83,11 @@ foreground retry progressed through bounded unchanged batches before the local e
 probe timed out behind queued Qwen work; it was cancelled after roughly seven minutes, and the
 service recovered afterward. It made no deletions and remains pending a longer bounded trial. The Personal Drive production validation then failed closed at its
 899-second connector timeout; it produced no validation record and did not authorize a sync.
-Special Gmail completed production-budget validation with 214 documents and 995,335 bytes; its
-post-validation trial remains pending. Personal Gmail completed production-budget validation with
-430 documents and 1,563,456 bytes; its post-validation trial also remains pending.
+Special Gmail completed production-budget validation with 214 documents and 995,335 bytes and a
+bounded 100-document-cap non-reconciling trial with 0 deletions. Personal Gmail completed
+production-budget validation with 430 documents and 1,563,456 bytes and the same bounded
+100-document-cap non-reconciling trial with 0 deletions. These capped prefixes remain short of
+complete production trials.
 
 On 2026-08-15 a second bounded Work Drive retry emitted all 478 connector records but failed closed
 when the local embedding connection closed during ingestion. The run used `--no-reconcile`, made no
