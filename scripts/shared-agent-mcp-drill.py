@@ -31,7 +31,13 @@ class DrillError(RuntimeError):
     """A bounded MCP drill assertion failed."""
 
 
-def _run(binary: str, args: list[str], *, timeout: float = PROCESS_TIMEOUT_SECONDS) -> None:
+def _run(
+    binary: str,
+    args: list[str],
+    *,
+    cwd: Path | None = None,
+    timeout: float = PROCESS_TIMEOUT_SECONDS,
+) -> None:
     try:
         subprocess.run(
             [binary, *args],
@@ -40,28 +46,15 @@ def _run(binary: str, args: list[str], *, timeout: float = PROCESS_TIMEOUT_SECON
             stderr=subprocess.PIPE,
             timeout=timeout,
             text=True,
+            cwd=cwd,
         )
     except (OSError, subprocess.SubprocessError) as error:
         raise DrillError(f"command failed: {args[0] if args else binary}") from error
 
 
-def _write_config(config: Path, secrets: Path) -> None:
-    text = config.read_text(encoding="utf-8")
-    runtime = "[runtime]\n"
-    if runtime not in text or "tokens = []" not in text:
-        raise DrillError("generated config is missing the runtime or auth tables")
-    text = text.replace(
-        runtime,
-        f"[runtime]\nenv_file = {json.dumps(str(secrets))}\n",
-        1,
-    )
-    token_table = """[[auth.tokens]]
-principal = "mcp-drill-agent"
-token_env = "CORTANA_MCP_DRILL_TOKEN"
-scopes = ["query", "status"]
-acl = ["work"]
-"""
-    config.write_text(text.replace("tokens = []", token_table.rstrip(), 1), encoding="utf-8")
+def _write_config(config: Path) -> None:
+    template = Path(__file__).with_name("shared-agent-mcp-drill.toml")
+    shutil.copyfile(template, config)
 
 
 def _write_secret(secrets: Path, value: str | None) -> None:
@@ -176,8 +169,12 @@ def run(binary: str, keep: bool) -> None:
         config = root / "config.toml"
         secrets = root / "secrets.env"
         fixture = root / "fixture.jsonl"
-        _run(binary, ["--offline", "--config", str(config), "init", "--data-dir", str(data)])
-        _write_config(config, secrets)
+        _run(
+            binary,
+            ["--offline", "--config", str(config), "init", "--data-dir", str(data)],
+            cwd=root,
+        )
+        _write_config(config)
         _write_secret(secrets, "mcp-secret")
         fixture.write_text(
             "\n".join(
@@ -207,7 +204,11 @@ def run(binary: str, keep: bool) -> None:
             + "\n",
             encoding="utf-8",
         )
-        _run(binary, ["--offline", "--config", str(config), "ingest", str(fixture)])
+        _run(
+            binary,
+            ["--offline", "--config", str(config), "ingest", str(fixture)],
+            cwd=root,
+        )
 
         environment = os.environ.copy()
         environment[TOKEN_ENV] = "mcp-secret"
@@ -226,6 +227,7 @@ def run(binary: str, keep: bool) -> None:
             stderr=subprocess.PIPE,
             text=True,
             env=environment,
+            cwd=root,
         )
         if process.stdout is None or process.stderr is None:
             raise DrillError("MCP stdio pipes are unavailable")
