@@ -13,11 +13,9 @@ under the automated manifest flow.
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.7` is the current protected source and published tag. Its release-assets workflow
-`31896801633` is still building the platform packages, so `v0.32.6` remains the latest fully
-verified release with all 18 archive, checksum, updater-signature, manifest, and credential-free
-packaged-core gates complete. Do not present v0.32.7 as a verified installer until that workflow
-finishes successfully; v0.32.5 and earlier remain historical evidence.
+`v0.32.7` is the current protected source and published release. Release-assets workflow
+`31896801633` completed all 18 archive, checksum, updater-signature, manifest, and credential-free
+packaged-core gates. v0.32.6 and earlier remain historical evidence.
 
 ### Supported Desktop platforms
 
@@ -55,13 +53,12 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.32.7 release intent (published; asset verification pending)
+## v0.32.7 release intent (published and verified)
 
 This patch records the latest bounded live-source evidence and the protected promotion that
 reconciled the staging and main trees. Release Please published the v0.32.7 tag, and release-assets
-workflow `31896801633` is building the platform packages. Until its strict verifier reports all 18
-assets, checksums, updater signatures, manifest, and packaged-core evaluation, v0.32.6 remains the
-latest verified installer. This release intent changes no credentials, source authorization,
+workflow `31896801633` completed all 18 assets, checksums, updater signatures, the manifest, and
+packaged-core evaluation. This release intent changes no credentials, source authorization,
 recurring-sync state, or optional memory-provider state.
 
 ## v0.32.6 release intent (published)
