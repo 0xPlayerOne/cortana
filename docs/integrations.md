@@ -233,6 +233,18 @@ transport. Set `CORTANA_BINARY` for a checkout binary or `CORTANA_KEEP_DRILL=1` 
 temporary record. The Rust API/MCP test suites remain the authoritative transport-level coverage;
 this script is the operator-facing HTTP smoke check.
 
+For the actual stdio transport, run the disposable subprocess drill as well:
+
+```bash
+python3 scripts/shared-agent-mcp-drill.py
+```
+
+It starts the shipped `cortana mcp` command against a temporary offline index,
+checks the initialize/tools/call handshake, proves a work-scoped search cannot
+see a personal document, rotates the file-backed principal without restarting
+the process, and verifies that an emptied token is rejected. It never reads the
+live configuration or index and never contacts a provider.
+
 ## Secret handling
 
 - Token and API-key values are read only from the process environment or the private
