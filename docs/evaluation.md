@@ -62,20 +62,21 @@ This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The audited host still runs `/Users/amf/.local/bin/cortana` v0.32.5 from the local installation;
-the newly published v0.32.6 archive also passed the packaged-core gate. The embedding and HTTP
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.6 from the local installation;
+the published v0.32.6 archive also passed the packaged-core gate. The embedding and HTTP
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
-The installed `0.32.5` core passed `eval --model` on 2026-08-15 in 7,892 ms with planner and
+The installed `0.32.6` core passed `eval --model` on 2026-08-15 in 18,178 ms with planner and
 synthesis enabled, valid citations, cache reuse, revision invalidation, and no provider fallback.
 This remains provider-backed fixture evidence: it does not query the personal index or prove
 packaged GUI behavior. Query-only readiness passed against the installed index with database
 integrity, embedding/index generation, ACL, provider, API, and backup-freshness checks; the
-separate `--allow-sync-service` gate still fails closed on the under-budget Personal Drive
-validation, so the recurring sync service remains uninstalled.
+separate `--allow-sync-service` gate fails closed because `personal-drive` has only a one-document,
+65,536-byte validation against the configured 2,000-document, 128 MiB production budget, so the
+recurring sync service remains uninstalled.
 
-The v0.32.5 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.32.6 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
