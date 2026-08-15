@@ -484,8 +484,8 @@ Notes is the completed first rollout: the three folder-scoped sources have compl
 no-reconcile snapshots for `work`/`Nifty League` (28 documents), `special`/`The Pink Binder`
 (8), and the personal source (65 documents after excluding those folders); the latest run deleted
 nothing. Calendar validation is complete for work (2,208 events), personal (1,839), and special
-(0). 100-event Work and Personal Calendar no-reconcile resumes completed with 0 deletions;
-Special remains validation-only after earlier budget-limited indexing attempts. Buzz validation
+(0). 100-event Work, Personal, and Special Calendar no-reconcile trials completed with 0 deletions.
+Buzz validation
 covers 45 records; its first 60-second trial failed closed at the embedding deadline, then the
 bounded 300-second retry completed all 45 records with 0 deletions. Work Drive has now completed
 production-budget validation (478 documents, 4,527,663 bytes at 2,000/128 MiB/900 seconds), and
@@ -497,8 +497,10 @@ embedding health probe timed out while queued embedding work was still completin
 after roughly seven minutes, and the service recovered afterward. It made no deletions and must be
 retried with a longer bounded window. Personal Drive validation
 failed closed after its 899-second connector timeout. Personal Gmail now has production-budget validation (430 documents,
-1,563,456 bytes), and Special Gmail has production-budget validation (214 documents, 995,335 bytes),
-but both bounded trials are pending.
+1,563,456 bytes) and a completed 100-document-cap non-reconciling trial with 0 deletions. Special
+Gmail has production-budget validation (214 documents, 995,335 bytes) and a completed
+100-document-cap non-reconciling trial with 0 deletions. These capped prefixes are not complete
+production trials, so both sources remain outside the recurring-sync gate.
 Special Drive remains the first cloud source with both production validation and a completed
 97-document non-reconciling trial with 0 deletions. Discord
 and all code roots are disabled by operator choice; Slack remains an optional, unconfigured
