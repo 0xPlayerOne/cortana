@@ -11,6 +11,10 @@ is not part of a visual/UI change.
   Release Please automation. Release-assets workflow `31872008773` completed all platform jobs
   and the strict 18-asset verifier. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
+- The supported v0.32.5 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
+  x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
+  target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
+  provide Intel Desktop evidence.
 - The v0.32.5 archive is the current packaged evidence boundary. The audited host now runs the
   installed `/Users/amf/.local/bin/cortana` v0.32.5 with embedding and server services in
   query-only mode; recurring sync remains disabled. The published v0.32.5 archive separately

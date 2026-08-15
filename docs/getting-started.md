@@ -23,9 +23,12 @@ The installer preserves an existing configuration, index, backups, and secrets. 
 authorize an account, download a connector corpus, start a sync, or enable a scheduler by itself.
 
 Before you begin, use a supported release package for your operating system and CPU and keep at
-least one backup location available. No account credentials are required for the first launch. On
-macOS, an unsigned or non-notarized build may be rejected by Gatekeeper; use the published package
-or follow the host-acceptance notes in the [Desktop audit](desktop-ux-audit.md).
+least one backup location available. For v0.32.5, Desktop packages support macOS Apple Silicon
+(arm64), Linux x86_64, and Windows x86_64; an Intel macOS Desktop package is not published or
+supported. Core archives have their own target matrix and do not expand Desktop support. No
+account credentials are required for the first launch. On macOS, an unsigned or non-notarized
+build may be rejected by Gatekeeper; use the published package or follow the host-acceptance
+notes in the [Desktop audit](desktop-ux-audit.md).
 
 ## The shortest path to a first result
 
