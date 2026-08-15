@@ -277,8 +277,9 @@ Desktop path above unless they specifically need terminal control.
 # Reproducible per-user install (Rust binary, workspace, connector venv, and macOS services).
 ./scripts/install-local.sh
 
-# Also install the portable Cortana skill for Codex, Hermes, OpenCode, and
-# agents that support the shared ~/.agents/skills convention.
+# Also install the portable Cortana skill for Codex and agents that support the
+# shared ~/.agents/skills convention. Hermes/OpenCode roots require an explicit
+# CORTANA_SKILL_ROOTS override so unrelated harnesses are never changed implicitly.
 CORTANA_INSTALL_AGENT_INTEGRATIONS=1 ./scripts/install-local.sh
 
 # Or run directly from a checkout.

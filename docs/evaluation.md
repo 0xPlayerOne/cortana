@@ -79,7 +79,8 @@ the published v0.32.7 archive also passed the packaged-core gate. The embedding 
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
-The installed `0.32.6` core passed `eval --model` on 2026-08-15 in 18,178 ms with planner and
+Historical v0.32.6 evidence: the then-installed core passed `eval --model` on 2026-08-15 in
+18,178 ms with planner and
 synthesis enabled, valid citations, cache reuse, revision invalidation, and no provider fallback.
 This remains provider-backed fixture evidence: it does not query the personal index or prove
 packaged GUI behavior. Query-only readiness passed against the installed index with database
