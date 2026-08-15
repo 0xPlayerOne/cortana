@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.6](https://github.com/0xPlayerOne/cortana/compare/v0.32.5...v0.32.6) (2026-08-15)
+
+
+### promote
+
+* exact staging tree to main (v0.32.6 release intent) ([#1327](https://github.com/0xPlayerOne/cortana/issues/1327)) ([322f426](https://github.com/0xPlayerOne/cortana/commit/322f426d9db74189b69abf38b63bb2b380fd03cf))
+
 ## [0.32.5](https://github.com/0xPlayerOne/cortana/compare/v0.32.4...v0.32.5) (2026-08-15)
 
 
