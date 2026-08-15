@@ -85,6 +85,12 @@ packaged-core evaluation. The Desktop app still has separate manual gates for ma
 notarization and first-run operating-system interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 
+The v0.32.5 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. v0.32.5 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
+this release. Rosetta execution or a core archive is not evidence of Intel Desktop support. A
+future Intel policy change requires a matching signed bundle, updater signature, installer
+verification, and native acceptance evidence.
+
 ### Desktop first launch (recommended)
 
 1. Download and install the matching Desktop package from the release page.
