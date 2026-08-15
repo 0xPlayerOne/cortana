@@ -9,17 +9,17 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.32.7
+## Current release: v0.32.8
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.7` is the current protected source and published release. Release-assets workflow
-`31896801633` completed all 18 archive, checksum, updater-signature, manifest, and credential-free
+`v0.32.8` is the current protected source and published release. Release-assets workflow
+`31903165576` completed all 18 archive, checksum, updater-signature, manifest, and credential-free
 packaged-core gates. v0.32.6 and earlier remain historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.32.7 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.32.8 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -35,13 +35,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.32.7
+  scripts/verify-desktop-release.sh v0.32.8
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.32.7 source is the release boundary for the post-v0.31.12 hardening, bounded live-index
+The v0.32.8 source is the release boundary for the post-v0.31.12 hardening, bounded live-index
 evaluation harness, and readiness-budget diagnostics described below. Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
 being called downloadable-release behavior.
@@ -53,21 +53,16 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.32.8 release intent (pending)
+## v0.32.8 release intent (published and verified)
 
-The next patch release records the rollback-safe Hermes migration publication fix. Migration output
-files are staged before publication, existing files are restored if a later publication step fails,
-and temporary migration artifacts are removed. This marker changes no credentials, source
-authorization, indexed data, recurring-sync state, or optional memory-provider state; it exists so
-the protected promotion's migration fix is represented by a downloadable release.
+This patch records the rollback-safe Hermes migration publication and the protected promotion that
+reconciled the staging and main trees. Release Please published the v0.32.8 tag, and release-assets
+workflow `31903165576` completed all 18 assets, checksums, updater signatures, the manifest, and
+packaged-core evaluation. The migration stages outputs before publication and restores prior
+files on failure; it changes no credentials, source authorization, indexed data, recurring-sync
+state, or optional memory-provider state.
 
-## v0.32.7 release intent (published and verified)
-
-This patch records the latest bounded live-source evidence and the protected promotion that
-reconciled the staging and main trees. Release Please published the v0.32.7 tag, and release-assets
-workflow `31896801633` completed all 18 assets, checksums, updater signatures, the manifest, and
-packaged-core evaluation. This release intent changes no credentials, source authorization,
-recurring-sync state, or optional memory-provider state.
+The v0.32.7 release intent below remains the preceding published evidence record.
 
 ## v0.32.6 release intent (published)
 

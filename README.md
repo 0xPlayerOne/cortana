@@ -60,9 +60,9 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The protected source and latest published release are **v0.32.7**. Release-assets workflow
-`31896801633` completed all platform packages and the strict 18-asset verifier, including
-checksums, updater signatures, the manifest, and packaged-core evaluation. The v0.32.7
+The protected source and latest published release are **v0.32.8**. Release-assets workflow
+`31903165576` completed all platform packages and the strict 18-asset verifier, including
+checksums, updater signatures, the manifest, and packaged-core evaluation. The v0.32.8
 package carries the production safety hardening from the protected `staging` → `main` flow:
 mutating CLI startup and direct JSONL imports serialize on the global lock, imports and
 evaluation fixtures have explicit resource ceilings, remote `/readyz` requires scoped bearer
@@ -79,15 +79,15 @@ just to make the version strings match.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current protected release is **v0.32.7**. Its
+package for your operating system and CPU. The current protected release is **v0.32.8**. Its
 release-assets workflow completed the archive, checksum, updater-signature, and credential-free
 packaged-core verification gate. The Desktop app still has
 separate manual gates for macOS Developer ID notarization and first-run operating-system
 interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 
-The v0.32.7 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
-x86_64**. v0.32.7 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
+The v0.32.8 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. v0.32.8 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
 this release. Rosetta execution or a core archive is not evidence of Intel Desktop support. A
 future Intel policy change requires a matching signed bundle, updater signature, installer
 verification, and native acceptance evidence.
