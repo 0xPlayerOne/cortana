@@ -69,19 +69,20 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
 The v0.32.8 release gate verifies the packaged core offline without credentials. The installed
-host binary evidence below was collected from v0.32.7 after its release verifier passed; its offline evaluator and
+host binary is now v0.32.8; the provider-backed evidence below was collected from the prior v0.32.7
+installation after its release verifier passed. Its offline evaluator and
 query-only readiness pass, while the provider-backed model run remains fixture-only evidence.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The audited host evidence below runs `/Users/amf/.local/bin/cortana` v0.32.7 from the local installation;
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.8 from the local installation;
 the published v0.32.8 archive also passed the packaged-core gate. The embedding and HTTP
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
 The most recent provider-backed fixture evidence was collected on 2026-08-15 with the
-installed CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR,
+then-installed v0.32.7 CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR,
 case pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
 invalidation; the answer completed in 14,045 ms under the 55,000 ms deadline with no provider
 fallback. This is stronger current package/runtime evidence than the archived v0.32.6 run below,

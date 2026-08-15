@@ -16,12 +16,12 @@ is not part of a visual/UI change.
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
 - The v0.32.8 archive is the current fully verified packaged evidence boundary. The audited host
-  evidence below runs the installed `/Users/amf/.local/bin/cortana` v0.32.7 with embedding and server services in
+  evidence below runs the installed `/Users/amf/.local/bin/cortana` v0.32.8 with embedding and server services in
   query-only mode; recurring sync remains disabled. Query-only readiness and
   source authorization are separate host checks; source authorization and full-corpus sync were
   not started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
   Developer ID signing, and notarization remain manual gates.
-- The most recent provider-backed `eval --model` evidence (v0.32.7 host, 2026-08-15, 14,045 ms) passed retrieval recall,
+- The most recent provider-backed `eval --model` evidence (then-installed v0.32.7 host, 2026-08-15, 14,045 ms) passed retrieval recall,
   MRR, case pass rate, citation validity, planner/synthesis execution, cache reuse, revision
   invalidation, and bounded provider behavior all passed with no fallback. This is provider-backed
   fixture evidence only; it does not query the personal index or prove packaged GUI behavior.
