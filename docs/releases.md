@@ -39,6 +39,15 @@ live-index evaluation harness described below.
 Future source-tree changes must still use the protected staging and promotion flow, followed by
 the release verifier, before being called downloadable-release behavior.
 
+## Pending v0.32.5 release intent
+
+The graph workspace/source focus fix and its evidence-selection regression coverage are now
+promoted through the protected staging-to-main flow. This metadata-only release intent asks
+Release Please to publish the next patch so the fix is represented by a downloadable version;
+it does not authorize source credentials, a corpus sync, reconciliation, or optional memory
+providers. The v0.32.5 section becomes current only after its release-assets workflow and strict
+18-asset verifier succeed.
+
 The protected promotion `#1282` and Release Please automation published v0.32.4 from the
 v0.32.3 documentation and bounded-rollout promotion. Release-assets workflow `31867033998` completed all platform
 jobs and the strict 18-asset verifier, including archive checksums, six updater signatures, the
