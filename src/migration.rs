@@ -75,27 +75,9 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
         options.developer_root.join("hermes-infra/.env"),
     ])?;
     let report_path = config_dir.join("hermes-migration-report.json");
-    if !options.force {
-        let mut outputs = vec![options.config_path.as_path(), report_path.as_path()];
-        if !secrets.is_empty() {
-            outputs.push(secrets_path.as_path());
-        }
-        outputs.extend(
-            account_files
-                .iter()
-                .map(|(_, _, destination)| destination.as_path()),
-        );
-        for output in outputs {
-            anyhow::ensure!(
-                !output.exists(),
-                "refusing to replace {}; use --force to replace migrated files",
-                output.display()
-            );
-        }
-    }
-    fs::create_dir_all(&token_dir)?;
+    let mut transaction = MigrationTransaction::new(options.force);
     for (_, source, destination) in &account_files {
-        secure_copy(source, destination, options.force)?;
+        transaction.stage_copy(source, destination)?;
     }
     let migrated_accounts = account_files
         .iter()
@@ -104,10 +86,9 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
     let secrets_file_created = if secrets.is_empty() {
         false
     } else {
-        secure_write(
+        transaction.stage(
             &secrets_path,
             format!("{}\n", secrets.join("\n")).as_bytes(),
-            options.force,
         )?;
         true
     };
@@ -232,14 +213,6 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
     // before beginning the long code embedding pass.
     config.sources.push(work_code);
 
-    fs::create_dir_all(&config.data_dir)
-        .with_context(|| format!("failed to create {}", config.data_dir.display()))?;
-    secure_write(
-        &options.config_path,
-        toml::to_string_pretty(&config)?.as_bytes(),
-        options.force,
-    )?;
-
     let configured_sources = config
         .sources
         .iter()
@@ -258,11 +231,14 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
         configured_sources,
         legacy_indexes_retained,
     };
-    secure_write(
-        &report_path,
-        serde_json::to_vec_pretty(&report)?.as_slice(),
-        options.force,
+    transaction.stage(
+        &options.config_path,
+        toml::to_string_pretty(&config)?.as_bytes(),
     )?;
+    transaction.stage(&report_path, serde_json::to_vec_pretty(&report)?.as_slice())?;
+    fs::create_dir_all(&config.data_dir)
+        .with_context(|| format!("failed to create {}", config.data_dir.display()))?;
+    transaction.publish()?;
     Ok(report)
 }
 
@@ -358,32 +334,196 @@ fn find_embedding_router() -> Option<PathBuf> {
     })
 }
 
-fn secure_copy(source: &Path, destination: &Path, replace: bool) -> Result<()> {
-    anyhow::ensure!(
-        regular_file_no_symlink(source)?,
-        "migration source does not exist: {}",
-        source.display()
-    );
-    let contents =
-        fs::read(source).with_context(|| format!("failed to read {}", source.display()))?;
-    secure_write(destination, &contents, replace)
+struct MigrationTransaction {
+    outputs: Vec<PendingOutput>,
+    replace: bool,
 }
 
-fn secure_write(path: &Path, contents: &[u8], replace: bool) -> Result<()> {
-    if path.exists() {
-        anyhow::ensure!(replace, "refusing to replace {}", path.display());
+struct PendingOutput {
+    path: PathBuf,
+    temporary: PathBuf,
+    backup: Option<PathBuf>,
+    published: bool,
+}
+
+impl MigrationTransaction {
+    fn new(replace: bool) -> Self {
+        Self {
+            outputs: Vec::new(),
+            replace,
+        }
     }
-    let parent = path
-        .parent()
-        .context("secure output path must have a parent directory")?;
-    fs::create_dir_all(parent)?;
-    let temporary = parent.join(format!(
-        ".{}.{}.tmp",
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or("cortana"),
-        uuid::Uuid::new_v4()
-    ));
+
+    fn stage_copy(&mut self, source: &Path, destination: &Path) -> Result<()> {
+        anyhow::ensure!(
+            regular_file_no_symlink(source)?,
+            "migration source does not exist: {}",
+            source.display()
+        );
+        let contents =
+            fs::read(source).with_context(|| format!("failed to read {}", source.display()))?;
+        self.stage(destination, &contents)
+    }
+
+    fn stage(&mut self, path: &Path, contents: &[u8]) -> Result<()> {
+        if path_exists(path)? {
+            anyhow::ensure!(
+                self.replace,
+                "refusing to replace {}; use --force to replace migrated files",
+                path.display()
+            );
+            regular_file_no_symlink(path)?;
+        }
+        anyhow::ensure!(
+            self.outputs.iter().all(|output| output.path != path),
+            "migration output is staged more than once: {}",
+            path.display()
+        );
+        let parent = path
+            .parent()
+            .context("secure output path must have a parent directory")?;
+        fs::create_dir_all(parent)?;
+        let temporary = parent.join(format!(
+            ".{}.{}.tmp",
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("cortana"),
+            uuid::Uuid::new_v4()
+        ));
+        write_secure_temporary(&temporary, contents)?;
+        self.outputs.push(PendingOutput {
+            path: path.to_path_buf(),
+            temporary,
+            backup: None,
+            published: false,
+        });
+        Ok(())
+    }
+
+    fn publish(self) -> Result<()> {
+        self.publish_with_failure(None)
+    }
+
+    fn publish_with_failure(mut self, fail_at: Option<usize>) -> Result<()> {
+        let result = (|| {
+            for (index, output) in self.outputs.iter_mut().enumerate() {
+                if fail_at == Some(index) {
+                    anyhow::bail!("injected migration publication failure at output {index}");
+                }
+                if path_exists(&output.path)? {
+                    anyhow::ensure!(
+                        self.replace,
+                        "refusing to replace {}; use --force to replace migrated files",
+                        output.path.display()
+                    );
+                    regular_file_no_symlink(&output.path)?;
+                    let parent = output
+                        .path
+                        .parent()
+                        .context("secure output path must have a parent directory")?;
+                    let backup = parent.join(format!(
+                        ".{}.{}.bak",
+                        output
+                            .path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("cortana"),
+                        uuid::Uuid::new_v4()
+                    ));
+                    fs::rename(&output.path, &backup).with_context(|| {
+                        format!(
+                            "failed to stage existing migration output {}",
+                            output.path.display()
+                        )
+                    })?;
+                    output.backup = Some(backup);
+                }
+                fs::rename(&output.temporary, &output.path)
+                    .with_context(|| format!("failed to publish {}", output.path.display()))?;
+                output.published = true;
+            }
+            Ok::<(), anyhow::Error>(())
+        })();
+
+        match result {
+            Ok(()) => {
+                for output in &self.outputs {
+                    if let Some(backup) = &output.backup {
+                        if let Err(error) = fs::remove_file(backup) {
+                            tracing::warn!(
+                                path = %backup.display(),
+                                %error,
+                                "failed to remove migration backup after successful publication"
+                            );
+                        }
+                    }
+                }
+                Ok(())
+            }
+            Err(error) => {
+                let rollback_error = self.rollback();
+                if let Err(rollback_error) = rollback_error {
+                    Err(error.context(format!(
+                        "migration publication failed and rollback was incomplete: {rollback_error}"
+                    )))
+                } else {
+                    Err(error)
+                }
+            }
+        }
+    }
+
+    fn rollback(&mut self) -> Result<()> {
+        let mut first_error = None;
+        for output in self.outputs.iter_mut().rev() {
+            if output.published {
+                if let Err(error) = fs::remove_file(&output.path) {
+                    if error.kind() != std::io::ErrorKind::NotFound && first_error.is_none() {
+                        first_error = Some(anyhow::anyhow!(
+                            "failed to remove partially published {}: {error}",
+                            output.path.display()
+                        ));
+                    }
+                }
+            }
+            if let Some(backup) = output.backup.take() {
+                if let Err(error) = fs::rename(&backup, &output.path) {
+                    if first_error.is_none() {
+                        first_error = Some(anyhow::anyhow!(
+                            "failed to restore {} from backup: {error}",
+                            output.path.display()
+                        ));
+                    }
+                }
+            }
+            if let Err(error) = fs::remove_file(&output.temporary) {
+                if error.kind() != std::io::ErrorKind::NotFound && first_error.is_none() {
+                    first_error = Some(anyhow::anyhow!(
+                        "failed to remove staged {}: {error}",
+                        output.path.display()
+                    ));
+                }
+            }
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+}
+
+impl Drop for MigrationTransaction {
+    fn drop(&mut self) {
+        for output in &self.outputs {
+            let _ = fs::remove_file(&output.temporary);
+            if let Some(backup) = &output.backup {
+                let _ = fs::remove_file(backup);
+            }
+        }
+    }
+}
+
+fn write_secure_temporary(path: &Path, contents: &[u8]) -> Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -391,14 +531,26 @@ fn secure_write(path: &Path, contents: &[u8], replace: bool) -> Result<()> {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options
-        .open(&temporary)
-        .with_context(|| format!("failed to create {}", temporary.display()))?;
-    file.write_all(contents)?;
-    file.sync_all()?;
-    fs::rename(&temporary, path)
-        .with_context(|| format!("failed to publish {}", path.display()))?;
-    Ok(())
+    let result = (|| {
+        let mut file = options
+            .open(path)
+            .with_context(|| format!("failed to create {}", path.display()))?;
+        file.write_all(contents)?;
+        file.sync_all()?;
+        Ok::<(), anyhow::Error>(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(path);
+    }
+    result
+}
+
+fn path_exists(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
+    }
 }
 
 fn regular_file_no_symlink(path: &Path) -> Result<bool> {
@@ -552,6 +704,42 @@ mod tests {
             error
                 .to_string()
                 .contains("migration input must not be a symlink")
+        );
+    }
+
+    #[test]
+    fn rolls_back_partial_publication_without_leaving_staged_files() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let first = directory.path().join("first.json");
+        let second = directory.path().join("second.json");
+        fs::write(&second, "old").expect("existing output");
+
+        let mut transaction = MigrationTransaction::new(true);
+        transaction
+            .stage(&first, b"new-first")
+            .expect("stage first");
+        transaction
+            .stage(&second, b"new-second")
+            .expect("stage second");
+        let error = transaction
+            .publish_with_failure(Some(1))
+            .expect_err("injected failure must abort publication");
+        assert!(
+            error
+                .to_string()
+                .contains("injected migration publication failure")
+        );
+
+        assert!(!first.exists(), "new outputs must be removed on rollback");
+        assert_eq!(fs::read_to_string(&second).expect("restored output"), "old");
+        let entries = fs::read_dir(directory.path())
+            .expect("read directory")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("directory entries");
+        assert_eq!(
+            entries.len(),
+            1,
+            "temporary and backup files must be cleaned up"
         );
     }
 }
