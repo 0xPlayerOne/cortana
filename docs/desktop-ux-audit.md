@@ -95,8 +95,9 @@ out while queued embedding work was still completing; it was cancelled after rou
 The service recovered afterward, and the trial made no deletions or reconciliation. Work
 Drive (478 documents/4,527,663 bytes) and Work Gmail (7,395 documents/34,494,647 bytes) now have
 complete production-budget validation records. Work Drive has a successful bounded 100-document
-retry; Work Gmail still needs a bounded trial, and neither source has a complete production-budget
-trial approved for reconciliation or recurring sync.
+retry, and Work Gmail now has a bounded 100-message pass (`changed=75`, `unchanged=25`,
+`deleted=0`); neither source has a complete production-budget trial approved for reconciliation or
+recurring sync.
 Personal Drive failed its 2,000-document/128 MiB/900-second validation at the 899-second connector
 timeout. A follow-up 25-document/5 MiB/60-second validation and non-reconciling trial succeeded
 (`changed=1`, `unchanged=24`, `deleted=0`), but that bounded prefix remains below the production gate.
@@ -194,8 +195,9 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    completed bounded no-reconcile snapshot. Special Drive now has a production-budget validation
    (97 documents, 290,353 bytes) and a completed 97-document non-reconciling trial with zero
    deletions. Work Drive and Work Gmail now have production-budget validation (478/4,527,663 bytes
-   and 7,395/34,494,647 bytes respectively), but the v0.32.2 Work Drive trial was cancelled while
-   queued embedding work was still completing and must be retried with a longer bounded window.
+   and 7,395/34,494,647 bytes respectively). The earlier v0.32.2 Work Drive trial was cancelled
+   while queued embedding work was still completing, but a later 100-document no-reconcile retry
+   completed successfully; the complete 478-document production-budget trial remains open.
    The earlier Personal Drive production-budget validation failed closed at its 899-second
    connector timeout; a later bounded 25-document/5 MiB validation and non-reconciling trial
    succeeded but remains below the configured production budget. Personal Gmail now has
