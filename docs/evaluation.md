@@ -50,20 +50,21 @@ trial.
 On 2026-08-15 a second bounded Work Drive retry emitted all 478 connector records, then failed
 closed when the local embedding connection closed during ingestion. It was non-reconciling and made
 no deletions; controlled ingestion may retain the completed prefix. The embedding supervisor
-restarted the router, and query-only readiness passed afterward. Treat this as a reliability
-observation, not a successful source trial; another bounded retry is required before advancing the
-Work Drive gate.
+restarted the router, and query-only readiness passed afterward. A subsequent v0.32.3 run with a
+100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
+This closes the bounded retry observation but not the complete 478-document production trial or
+the recurring-sync gate.
 The v0.32.3 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The audited host now has `/Users/amf/.local/bin/cortana` v0.32.2 installed from the checksum-
+The audited host now has `/Users/amf/.local/bin/cortana` v0.32.3 installed from the checksum-
 verified core archive; the embedding and HTTP services are running with
 recurring sync uninstalled. This is local installation evidence, not proof of native GUI,
 browser OAuth, updater, or operating-system trust behavior.
 
-The installed `0.32.2` core passed `eval --model` on 2026-08-15 in 17,103 ms with planner and
+The installed `0.32.3` core passed `eval --model` on 2026-08-15 in 20,337 ms with planner and
 synthesis enabled, valid citations, cache reuse, revision invalidation, and no provider fallback.
 This remains provider-backed fixture evidence: it does not query the personal index or prove
 packaged GUI behavior. Query-only readiness also passed against the installed index with

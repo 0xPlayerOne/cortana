@@ -504,17 +504,18 @@ Special Drive remains the first cloud source with both production validation and
 and all code roots are disabled by operator choice; Slack remains an optional, unconfigured
 connector.
 
-The v0.32.2 source and package now use the local embedding `/health` endpoint for steady-state
-liveness and keep the real vector probe for startup/restart. The installed v0.32.2 retry showed that
-the local health probe can time out behind queued Qwen work; it recovered without a supervisor
-restart after cancellation. No source or recurring sync is authorized by this evidence; repeat a
-longer bounded non-reconciling trial before advancing the source gate.
+The v0.32.3 source and package use the local embedding `/health` endpoint for steady-state
+liveness and keep the real vector probe for startup/restart. The installed v0.32.3 Work Drive retry
+completed a 100-document bounded no-reconcile trial with `changed=0` and `deleted=0` after the
+transport-retry path recovered the local embedding connection. This is a successful bounded trial,
+not a complete 478-document production trial; no source or recurring sync is authorized by it.
 
-The 2026-08-15 Work Drive retry reached the complete 478-record connector snapshot but then failed
-closed when the embedding connection closed. It used `--no-reconcile`, so it performed no deletions;
-the controlled importer may retain only its completed prefix. The supervisor restarted the local
-router and query-only readiness passed after recovery. Keep recurring sync uninstalled and treat the
-Work Drive trial as pending until one bounded run completes successfully.
+The earlier 2026-08-15 Work Drive retry reached the complete 478-record connector snapshot but then
+failed closed when the embedding connection closed. It used `--no-reconcile`, so it performed no
+deletions; the controlled importer may retain only its completed prefix. The supervisor restarted
+the local router and query-only readiness passed after recovery. The subsequent v0.32.3 100-document
+bounded retry completed successfully, but recurring sync remains uninstalled until a complete,
+successful production-budget trial and every other enabled source meet the source gate.
 
 Do not infer recurring-sync readiness from this snapshot. Re-run `readiness --allow-sync-service`
 after the next source-scoped validation pass; it must remain fail-closed until every enabled source
