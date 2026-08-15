@@ -40,9 +40,9 @@ Future source-tree changes must still use the protected staging and promotion fl
 the release verifier, before being called downloadable-release behavior.
 
 The protected promotion `#1255` and Release Please automation published v0.32.2 from the
-embedding-supervisor liveness fix. Release-assets workflow `31859387720` is the v0.32.2 package
-gate; until its platform jobs and strict 18-asset verifier complete, do not claim every Desktop
-artifact is verified. These checks do not prove packaged GUI
+embedding-supervisor liveness fix. Release-assets workflow `31859387720` completed all platform
+jobs and the strict 18-asset verifier, including archive checksums, six updater signatures, the
+updater manifest, and the credential-free packaged-core offline evaluator. These checks do not prove packaged GUI
 behavior, operating-system signing, full-corpus source readiness, or optional memory provider
 behavior.
 

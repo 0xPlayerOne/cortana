@@ -65,11 +65,10 @@ safety hardening carried through the protected `staging` → `main` flow: mutati
 direct JSONL imports serialize on the global lock, imports and evaluation fixtures have explicit
 resource ceilings, remote `/readyz` requires scoped bearer access, optional memory outbox leases
 are fenced, Desktop settings and schedules serialize through a shared per-config lock, and
-Desktop sidecars publish atomically. Release-assets workflow `31859387720` is publishing the
-v0.32.2 platform packages; the release tag is already published and the strict verifier remains
-the final asset gate before calling every Desktop artifact complete. The preceding v0.32.1
-workflow `31854746308` completed all platform jobs and its strict 18-asset verifier, including
-checksums, updater signatures, the manifest, and packaged-core offline evaluation.
+Desktop sidecars publish atomically. Release-assets workflow `31859387720` completed all v0.32.2
+platform jobs and the strict 18-asset verifier, including checksums, updater signatures, the
+manifest, and packaged-core offline evaluation. The preceding v0.32.1 workflow `31854746308`
+remains historical evidence.
 
 When the checkout and the downloaded application report different versions, trust the application
 version for end-user behavior and use [Release history](docs/releases.md) to determine which

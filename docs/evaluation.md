@@ -20,9 +20,9 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 ### Current release boundary
 
 The current protected source is `v0.32.2`, published through the protected promotion and
-Release Please automation. Release-assets workflow `31859387720` is the v0.32.2 package gate;
-the release tag is published, but the final 18-asset verifier must complete before every Desktop
-artifact is called verified. The v0.32.2 release includes the bounded read-only live-index evaluator.
+Release Please automation. Release-assets workflow `31859387720` completed the v0.32.2 package
+gate with all 18 assets and the strict verifier. The v0.32.2 release includes the bounded
+read-only live-index evaluator.
 A first
 operator-approved retrieval manifest has now passed against the running local work index;
 approved-corpus answer/synthesis evaluation remains separate and is not a packaged-GUI proof.
@@ -47,8 +47,8 @@ This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The audited host remains on the previously installed `/Users/amf/.local/bin/cortana` v0.32.1
-until the v0.32.2 archive verifier completes; the embedding and HTTP services are running with
+The audited host now has `/Users/amf/.local/bin/cortana` v0.32.2 installed from the checksum-
+verified core archive; the embedding and HTTP services are running with
 recurring sync uninstalled. This is local installation evidence, not proof of native GUI,
 browser OAuth, updater, or operating-system trust behavior.
 

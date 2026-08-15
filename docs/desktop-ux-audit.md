@@ -8,12 +8,11 @@ is not part of a visual/UI change.
 ## Current release evidence (2026-08-15)
 
 - `v0.32.2` is the current protected release, published through the protected promotion and
-  Release Please automation. Release-assets workflow `31859387720` is still completing the
-  platform jobs and strict 18-asset verifier; until it succeeds, do not call every Desktop
-  artifact verified. Asset verification does not launch the
+  Release Please automation. Release-assets workflow `31859387720` completed all platform jobs
+  and the strict 18-asset verifier. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The v0.32.2 archive is the current packaged evidence boundary. The audited host remains on the
-  previously installed v0.32.1 CLI and managed Python package until the v0.32.2 verifier completes, with embedding and server services
+- The v0.32.2 archive is the current packaged evidence boundary. The audited host now has the
+  checksum-verified v0.32.2 core CLI installed, with embedding and server services
   running in query-only mode; recurring sync remains disabled. Query-only readiness and source
   authorization are separate host checks;
   source authorization and full-corpus sync were not started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
