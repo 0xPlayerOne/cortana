@@ -477,7 +477,7 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-14)
+### Current local source rollout snapshot (2026-08-15)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). Apple
 Notes is the completed first rollout: the three folder-scoped sources have complete validation and
@@ -487,15 +487,23 @@ nothing. Calendar validation is complete for work (2,208 events), personal (1,83
 (0). 100-event Work and Personal Calendar no-reconcile resumes completed with 0 deletions;
 Special remains validation-only after earlier budget-limited indexing attempts. Buzz validation
 covers 45 records; its first 60-second trial failed closed at the embedding deadline, then the
-bounded 300-second retry completed all 45 records with 0 deletions. Work Drive, Work Gmail,
-Personal Drive, Personal Gmail, and Special Gmail still have bounded validation records below
-their configured production budgets;
-their bounded no-reconcile trials completed without deletions. Special Drive is the first cloud
-source to complete the production-budget gate: the 2026-08-14 validation covered 97 documents and
-290,353 bytes, followed by a bounded no-reconcile trial that indexed all 97 documents with 0
-deletions. Production-budget validation remains required for the five remaining Drive/Gmail
-sources. Discord and all code roots are disabled by operator choice; Slack remains an optional,
-unconfigured connector.
+bounded 300-second retry completed all 45 records with 0 deletions. Work Drive has now completed
+production-budget validation (478 documents, 4,527,663 bytes at 2,000/128 MiB/900 seconds), and
+Work Gmail has completed validation (7,395 documents, 34,494,647 bytes at 10,000/64 MiB/600
+seconds). The Work Drive non-reconciling trial was cancelled twice under the installed v0.32.0
+binary after its embedding service stalled; it made no deletions and must be retried after the
+embedding-supervisor recovery fix is released. Personal Drive validation failed closed after its
+899-second connector timeout. Personal Gmail now has production-budget validation (430 documents,
+1,563,456 bytes), and Special Gmail has production-budget validation (214 documents, 995,335 bytes),
+but both bounded trials are pending.
+Special Drive remains the first cloud source with both production validation and a completed
+97-document non-reconciling trial with 0 deletions. Discord
+and all code roots are disabled by operator choice; Slack remains an optional, unconfigured
+connector.
+
+The staging source now restarts the local embedding child after three consecutive failed health
+probes and waits for a healthy endpoint before continuing. Treat this as pending v0.32.1 behavior
+until the protected release is published and installed.
 
 Do not infer recurring-sync readiness from this snapshot. Re-run `readiness --allow-sync-service`
 after the next source-scoped validation pass; it must remain fail-closed until every enabled source

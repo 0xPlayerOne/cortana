@@ -74,6 +74,16 @@ a per-config cross-process lock. These source-tree protections are covered by fo
 regressions; they do not authorize a source, enable recurring sync, or prove the unverified
 GUI/browser/tray/dialog/updater gates above.
 
+The post-v0.32.0 staging source adds one operational recovery change for the local embedding
+supervisor: after three consecutive five-second probe failures it stops, respawns, and rechecks the
+embedding child. This is queued for v0.32.1 and is not attributed to the published v0.32.0 binary.
+On 2026-08-15 the installed v0.32.0 Work Drive trial was cancelled twice after that older
+supervisor stalled; the bounded runs made no deletions and did not enable reconciliation. Work
+Drive (478 documents/4,527,663 bytes) and Work Gmail (7,395 documents/34,494,647 bytes) now have
+complete production-budget validation records, but their successful post-fix trials remain open.
+Personal Drive validation failed closed at the 899-second connector timeout and remains below the
+production gate.
+
 ## Requirement matrix
 
 | Area                                                   | Current evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Status            | Follow-up                                                                                                                                                      |
@@ -156,8 +166,12 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    snapshots; Calendar has complete validation with only bounded Work/Personal trials; Buzz has a
    completed bounded no-reconcile snapshot. Special Drive now has a production-budget validation
    (97 documents, 290,353 bytes) and a completed 97-document non-reconciling trial with zero
-   deletions. Work Drive, Work Gmail, Personal Drive, Personal Gmail, and Special Gmail remain
-   under-budget and still require production-budget validation. These records prove selected
+   deletions. Work Drive and Work Gmail now have production-budget validation (478/4,527,663 bytes
+   and 7,395/34,494,647 bytes respectively), but Work Drive's pre-fix trial was cancelled and must
+   be retried after v0.32.1 is installed. Personal Drive failed closed at its 899-second connector
+   timeout; Personal Gmail now has production-budget validation (430 documents/1,563,456 bytes),
+   and Special Gmail has production-budget validation (214 documents/995,335 bytes); both still
+   need bounded trials. These records prove selected
    connector behavior, not full-corpus readiness. Recurring sync must remain uninstalled until
    every enabled source has a fresh `complete=true` validation at its configured production
    budget.
