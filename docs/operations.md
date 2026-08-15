@@ -79,13 +79,12 @@ Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 m
 
 On the current v0.32.7 source tree, mutating CLI startup acquires the same global `sync.lock`
 before opening the store. This covers schema/backfill/fingerprint work as well as the later import
-or sync operation. This is included in the v0.32.7 source and will be in the package once its
-release-assets gate passes.
+or sync operation. This is included in the verified v0.32.7 package.
 
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
 so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
-included in the v0.32.7 source; keep the same lock requirement when running a newer
+included in the verified v0.32.7 package; keep the same lock requirement when running a newer
 source checkout or development build.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
@@ -480,7 +479,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The published v0.32.6 verifier passed this packaged-core gate in addition to the
+`passed: true`. The published v0.32.7 verifier passed this packaged-core gate in addition to the
 archive/signature/checksum/updater-manifest checks.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
