@@ -511,7 +511,10 @@ a new foreground Work Drive trial progressed through bounded unchanged batches b
 embedding health probe timed out while queued embedding work was still completing; it was cancelled
 after roughly seven minutes, and the service recovered afterward. It made no deletions and must be
 retried with a longer bounded window. Personal Drive validation
-failed closed after its 899-second connector timeout. Personal Gmail now has production-budget validation (430 documents,
+failed closed after its 899-second connector timeout. A subsequent 25-document/5 MiB/60-second
+validation and non-reconciling trial succeeded (`changed=1`, `unchanged=24`, `deleted=0`), but this
+bounded prefix remains below the configured production budget and does not authorize recurring sync.
+Personal Gmail now has production-budget validation (430 documents,
 1,563,456 bytes) and a completed 100-document-cap non-reconciling trial with 0 deletions. Special
 Gmail has production-budget validation (214 documents, 995,335 bytes) and a completed
 100-document-cap non-reconciling trial with 0 deletions. These capped prefixes are not complete
