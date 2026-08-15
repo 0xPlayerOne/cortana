@@ -2,7 +2,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use reqwest::{Client, Url};
+use reqwest::{Client, StatusCode, Url};
 use tokio::process::{Child, Command};
 
 use crate::config::Config;
@@ -55,7 +55,7 @@ pub async fn run_embedding(config: &Config) -> Result<()> {
                 // healthy child look dead to the supervisor. Startup/restart still
                 // uses the vector probe below, while the steady-state check only
                 // verifies that the local service is responding.
-                if !liveness_healthy(&client, &health_url).await {
+                if !liveness_healthy(&client, &health_url, &probe_url, config).await {
                     consecutive_probe_failures += 1;
                     tracing::warn!(
                         consecutive_failures = consecutive_probe_failures,
@@ -212,12 +212,22 @@ async fn healthy(client: &Client, url: &Url, config: &Config) -> bool {
         == Some(config.embedding.dimension)
 }
 
-async fn liveness_healthy(client: &Client, url: &Url) -> bool {
-    client
-        .get(url.clone())
-        .send()
-        .await
-        .is_ok_and(|response| response.status().is_success())
+async fn liveness_healthy(
+    client: &Client,
+    health_url: &Url,
+    probe_url: &Url,
+    config: &Config,
+) -> bool {
+    match client.get(health_url.clone()).send().await {
+        Ok(response) if response.status().is_success() => true,
+        // Custom local providers may not expose TEI's /health endpoint. Keep
+        // them compatible by falling back to the validated vector probe only
+        // when the endpoint is explicitly absent.
+        Ok(response) if response.status() == StatusCode::NOT_FOUND => {
+            healthy(client, probe_url, config).await
+        }
+        _ => false,
+    }
 }
 
 async fn resident_memory_mb(pid: Option<u32>) -> Option<u64> {
