@@ -46,6 +46,13 @@ production-budget validation with 430 documents and 1,563,456 bytes; its post-va
 also pending. The recurring gate remains
 correctly closed until every enabled source has fresh complete validation and a successful bounded
 trial.
+
+On 2026-08-15 a second bounded Work Drive retry emitted all 478 connector records, then failed
+closed when the local embedding connection closed during ingestion. It was non-reconciling and made
+no deletions; controlled ingestion may retain the completed prefix. The embedding supervisor
+restarted the router, and query-only readiness passed afterward. Treat this as a reliability
+observation, not a successful source trial; another bounded retry is required before advancing the
+Work Drive gate.
 The v0.32.2 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
