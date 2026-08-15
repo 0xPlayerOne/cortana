@@ -9,18 +9,19 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.32.5
+## Current release: v0.32.6
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.5` release contains the current Rust runtime, web workspace, connector package, Desktop
-bundles, example configuration, and Cortana agent skill. Its published 18-asset set passed the
-archive, checksum, updater-signature, manifest, and credential-free packaged-core verification
-gates.
+`v0.32.6` release contains the current Rust runtime, web workspace, connector package, Desktop
+bundles, example configuration, and Cortana agent skill. Release-assets workflow `31880502344`
+is completing the 18-asset archive, checksum, updater-signature, manifest, and credential-free
+packaged-core verification gates; v0.32.5 remains the latest completed verifier until that run
+finishes.
 
 ### Supported Desktop platforms
 
-The v0.32.5 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.32.6 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -36,36 +37,31 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.32.5
+  scripts/verify-desktop-release.sh v0.32.6
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.32.5 package is the release boundary for the post-v0.31.12 hardening and bounded
-live-index evaluation harness described below.
-Future source-tree changes must still use the protected staging and promotion flow, followed by
-the release verifier, before being called downloadable-release behavior.
-
-The current protected source tree also contains the post-v0.32.5 readiness-budget diagnostic
-hardening. That change is intentionally not retroactively claimed for the already-published
-v0.32.5 artifact. The next protected release intent is v0.32.6; until its Release Please PR,
-asset workflow, and strict verifier complete, v0.32.5 remains the latest downloadable package.
+The v0.32.6 package is the release boundary for the post-v0.31.12 hardening, bounded live-index
+evaluation harness, and readiness-budget diagnostics described below. Future source-tree changes
+must still use the protected staging and promotion flow, followed by the release verifier, before
+being called downloadable-release behavior.
 
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
 check for scoped principals, ACL isolation, metadata-only audit responses, and token rotation. It
 uses synthetic data only and is not a substitute for the packaged GUI/MCP/manual acceptance gates.
 
-## v0.32.6 release intent (pending)
+## v0.32.6 release intent (published)
 
 This metadata-only intent publishes the readiness-budget diagnostics that landed after v0.32.5.
 Readiness failures now report the validated and required document, byte, and duration limits so
 operators can correct an under-budget source without inspecting private validation-state files.
 The intent changes no credentials, indexed data, source authorization, recurring-sync state, or
-optional memory-provider state. The protected promotion carrying this tree must include
-`Release-As: 0.32.6` so Release Please can recover the flattened staging history and open the
-version-only release PR; that PR is the only path that makes the diagnostics part of a published
-package.
+optional memory-provider state. The protected promotion carrying this tree included
+`Release-As: 0.32.6`; Release Please opened and merged the version-only PR, and the tag is now
+published. The release-assets workflow and strict 18-asset verifier remain the final package
+evidence gate for this release.
 
 ## v0.32.5 release intent
 
