@@ -19,9 +19,9 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.32.3`, published through the protected promotion and
-Release Please automation. Release-assets workflow `31865959374` completed the v0.32.3 package
-gate with all 18 assets and the strict verifier. The v0.32.3 release carries the bounded
+The current protected source is `v0.32.4`, published through the protected promotion and
+Release Please automation. Release-assets workflow `31867033998` completed the v0.32.4 package
+gate with all 18 assets and the strict verifier. The v0.32.4 release carries the bounded
 read-only live-index evaluator.
 A first
 operator-approved retrieval manifest has now passed against the running local work index;
@@ -50,28 +50,28 @@ trial.
 On 2026-08-15 a second bounded Work Drive retry emitted all 478 connector records, then failed
 closed when the local embedding connection closed during ingestion. It was non-reconciling and made
 no deletions; controlled ingestion may retain the completed prefix. The embedding supervisor
-restarted the router, and query-only readiness passed afterward. A subsequent v0.32.3 run with a
+restarted the router, and query-only readiness passed afterward. A subsequent v0.32.4 run with a
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.32.3 release gate verifies the packaged core offline without credentials.
+The v0.32.4 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The audited host now has `/Users/amf/.local/bin/cortana` v0.32.3 installed from the checksum-
+The audited host now has `/Users/amf/.local/bin/cortana` v0.32.4 installed from the checksum-
 verified core archive; the embedding and HTTP services are running with
 recurring sync uninstalled. This is local installation evidence, not proof of native GUI,
 browser OAuth, updater, or operating-system trust behavior.
 
-The installed `0.32.3` core passed `eval --model` on 2026-08-15 in 20,337 ms with planner and
+The installed `0.32.4` core passed `eval --model` on 2026-08-15 in 14,726 ms with planner and
 synthesis enabled, valid citations, cache reuse, revision invalidation, and no provider fallback.
 This remains provider-backed fixture evidence: it does not query the personal index or prove
 packaged GUI behavior. Query-only readiness also passed against the installed index with
 database integrity, embedding/index generation, ACL, provider, API, and backup-freshness checks;
 source validation was correctly not required and the recurring sync service remained uninstalled.
 
-The v0.32.2 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.32.4 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
@@ -79,10 +79,10 @@ The model fixture remains synthetic and does not authorize sources or recurring 
 
 The current source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.32.2 source and package; it does
+This protects concurrent Desktop windows/processes in the v0.32.4 source and package; it does
 not authorize source ingestion or recurring sync.
 
-The v0.32.2 source and package add bounded embedding-supervisor recovery: steady-state health checks
+The v0.32.4 source and package add bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -232,7 +232,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.32.2 sign-off state.
+release evidence; use **Current release boundary** above for the v0.32.4 sign-off state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33

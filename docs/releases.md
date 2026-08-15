@@ -9,11 +9,11 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.32.3
+## Current release: v0.32.4
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.3` release contains the current Rust runtime, web workspace, connector package, Desktop
+`v0.32.4` release contains the current Rust runtime, web workspace, connector package, Desktop
 bundles, example configuration, and Cortana agent skill. Its published 18-asset set passed the
 archive, checksum, updater-signature, manifest, and credential-free packaged-core verification
 gates.
@@ -28,19 +28,19 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.32.3
+  scripts/verify-desktop-release.sh v0.32.4
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.32.3 package is the release boundary for the post-v0.31.12 hardening and bounded
+The v0.32.4 package is the release boundary for the post-v0.31.12 hardening and bounded
 live-index evaluation harness described below.
 Future source-tree changes must still use the protected staging and promotion flow, followed by
 the release verifier, before being called downloadable-release behavior.
 
-The protected promotion `#1275` and Release Please automation published v0.32.3 from the
-bounded embedding transport-retry release marker. Release-assets workflow `31865959374` completed all platform
+The protected promotion `#1282` and Release Please automation published v0.32.4 from the
+v0.32.3 documentation and bounded-rollout promotion. Release-assets workflow `31867033998` completed all platform
 jobs and the strict 18-asset verifier, including archive checksums, six updater signatures, the
 updater manifest, and the credential-free packaged-core offline evaluator. These checks do not prove packaged GUI
 behavior, operating-system signing, full-corpus source readiness, or optional memory provider
