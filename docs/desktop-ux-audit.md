@@ -17,7 +17,8 @@ is not part of a visual/UI change.
   authorization are separate host checks;
   source authorization and full-corpus sync were not started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The installed v0.32.2 CLI passed the disposable offline control-plane drill on 2026-08-15:
+- A historical installed v0.32.2 CLI passed the disposable offline control-plane drill on
+  2026-08-15; this evidence predates the current v0.32.4 source and package:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
   verified backup, restore into a second temporary data directory, SQLite verification, and
   post-restore search. The drill used only temporary data and does not prove packaged GUI, OAuth,

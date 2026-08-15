@@ -264,6 +264,7 @@ test('graph supports bounded filtering and explains selected relationships', () 
 })
 
 test('graph exposes workspace and source nodes with bounded type filters', () => {
+  const focused: string[] = []
   render(
     <Workspace
       {...props}
@@ -302,12 +303,17 @@ test('graph exposes workspace and source nodes with bounded type filters', () =>
         ],
         next_cursor: null,
       }}
+      onFocusGraphNode={(node) => focused.push(`${node.kind}:${node.project}:${node.source ?? ''}`)}
     />
   )
 
   expect(screen.getByRole('button', { name: 'Focus workspace: work' })).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Focus source: notes' })).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Open document: Release notes' })).toBeTruthy()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Focus workspace: work' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Focus source: notes' }))
+  expect(focused).toEqual(['workspace:work:', 'source:work:notes'])
 
   fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
   expect(screen.getByRole('button', { name: 'Focus source: notes' })).toBeTruthy()
