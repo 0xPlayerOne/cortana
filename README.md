@@ -371,6 +371,10 @@ cortana doctor
 cortana sync
 ```
 
+The migration stages credentials, configuration, and its report before publishing them. If any
+publication step fails, previously existing files are restored and temporary migration files are
+removed, so a partial migration cannot leave the active installation in a mixed state.
+
 When the legacy Chroma collections use the configured embedding fingerprint, migrate their
 existing vectors without an expensive re-embedding pass:
 
