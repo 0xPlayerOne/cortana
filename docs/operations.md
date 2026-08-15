@@ -494,7 +494,15 @@ native-dialog/updater acceptance.
 
 ### Current local source rollout snapshot (2026-08-15)
 
-The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). Apple
+The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
+latest bounded source-smoke refresh replaced the local validation records for all 13 enabled
+sources with fresh `complete=true` records capped at 25 documents, 5 MiB, and 60 seconds (sources
+with fewer records naturally returned fewer documents). These records are below each source's
+configured production budget and authorize bounded non-reconciling work only; `readiness
+--allow-sync-service` therefore remains failed closed. The larger production-budget results in the
+next paragraph are historical evidence retained for audit, not current recurring-sync authority.
+
+Apple
 Notes is the completed first rollout: the three folder-scoped sources have complete validation and
 no-reconcile snapshots for `work`/`Nifty League` (28 documents), `special`/`The Pink Binder`
 (8), and the personal source (65 documents after excluding those folders); the latest run deleted
