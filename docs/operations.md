@@ -510,6 +510,12 @@ the local health probe can time out behind queued Qwen work; it recovered withou
 restart after cancellation. No source or recurring sync is authorized by this evidence; repeat a
 longer bounded non-reconciling trial before advancing the source gate.
 
+The 2026-08-15 Work Drive retry reached the complete 478-record connector snapshot but then failed
+closed when the embedding connection closed. It used `--no-reconcile`, so it performed no deletions;
+the controlled importer may retain only its completed prefix. The supervisor restarted the local
+router and query-only readiness passed after recovery. Keep recurring sync uninstalled and treat the
+Work Drive trial as pending until one bounded run completes successfully.
+
 Do not infer recurring-sync readiness from this snapshot. Re-run `readiness --allow-sync-service`
 after the next source-scoped validation pass; it must remain fail-closed until every enabled source
 has a fresh, complete record at its configured budget.

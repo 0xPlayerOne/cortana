@@ -85,6 +85,13 @@ complete production-budget validation records, but their successful post-fix tri
 Personal Drive validation failed closed at the 899-second connector timeout and remains below the
 production gate.
 
+On 2026-08-15 a second bounded Work Drive retry emitted the complete 478-document connector
+snapshot, then failed closed when the local embedding connection closed during ingestion. The run
+was non-reconciling, so it made no deletions; completed-prefix writes are retained by the controlled
+ingestion contract. The embedding supervisor restarted the router and query-only readiness passed
+after recovery. This is throughput/reliability evidence only; Work Drive still needs a successful
+bounded trial before it can advance the source gate.
+
 ## Requirement matrix
 
 | Area                                                   | Current evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | Status            | Follow-up                                                                                                                                                      |
