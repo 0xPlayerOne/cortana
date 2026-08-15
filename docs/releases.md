@@ -47,6 +47,8 @@ Release Please to publish the next patch so the fix is represented by a download
 it does not authorize source credentials, a corpus sync, reconciliation, or optional memory
 providers. The v0.32.5 section becomes current only after its release-assets workflow and strict
 18-asset verifier succeed.
+The protected promotion commit carries the explicit `Release-As: 0.32.5` footer so the
+main release caller preserves this intent after the staging history is flattened.
 
 The protected promotion `#1282` and Release Please automation published v0.32.4 from the
 v0.32.3 documentation and bounded-rollout promotion. Release-assets workflow `31867033998` completed all platform
