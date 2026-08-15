@@ -5,15 +5,14 @@ intentionally separate from runtime migration work:
 legacy scope quarantine remains in place, so changing or deleting indexed data
 is not part of a visual/UI change.
 
-## Current release evidence (2026-08-14)
+## Current release evidence (2026-08-15)
 
-- `v0.32.1` is the current protected release, published through Release Please
-  PR #1245. Release-assets workflow `31854746308` completed all platform jobs and the
-  strict verifier confirmed all 18 core, Desktop, signature, checksum, updater-manifest,
-  and packaged-core offline-evaluation gates. Asset verification does not launch the
+- `v0.32.2` is the current protected release, published through the protected promotion and
+  Release Please automation. Release-assets workflow `31859387720` completed all platform jobs
+  and the strict 18-asset verifier. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The v0.32.1 archive is the current packaged evidence boundary. The audited host now has the
-  matching v0.32.1 CLI and managed Python package installed, with embedding and server services
+- The v0.32.2 archive is the current packaged evidence boundary. The audited host now has the
+  checksum-verified v0.32.2 core CLI installed, with embedding and server services
   running in query-only mode; recurring sync remains disabled. Query-only readiness and source
   authorization are separate host checks;
   source authorization and full-corpus sync were not started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
@@ -66,7 +65,7 @@ is not part of a visual/UI change.
   and Slack is unconfigured. The historical sweep is authorization/reachability
   evidence only and must not be read as current source authorization.
 
-The current v0.32.1 source and package include the post-v0.31.12 safety lane, which acquires
+The current v0.32.2 source and package include the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, fences optional-memory outbox leases, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -74,10 +73,9 @@ a per-config cross-process lock. These source-tree protections are covered by fo
 regressions; they do not authorize a source, enable recurring sync, or prove the unverified
 GUI/browser/tray/dialog/updater gates above.
 
-The post-v0.32.1 source adds one operational recovery change for the local embedding supervisor:
+The v0.32.2 source and package add one operational recovery change for the local embedding supervisor:
 steady-state checks use the lightweight `/health` endpoint so queued ingestion work cannot look dead;
-startup and restart still require a real vector probe. This is queued for v0.32.2 and is not
-attributed to the published v0.32.1 binary. On 2026-08-15 the installed v0.32.1 Work Drive trial was cancelled twice after that older
+startup and restart still require a real vector probe. On 2026-08-15 the installed v0.32.1 Work Drive trial was cancelled twice after that older
 supervisor stalled; the bounded runs made no deletions and did not enable reconciliation. Work
 Drive (478 documents/4,527,663 bytes) and Work Gmail (7,395 documents/34,494,647 bytes) now have
 complete production-budget validation records, but their successful post-fix trials remain open.
