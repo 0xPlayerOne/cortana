@@ -509,8 +509,9 @@ seconds). The earlier Work Drive non-reconciling trial was cancelled twice under
 v0.32.1 binary after its embedding service stalled; it made no deletions. After installing v0.32.2,
 a new foreground Work Drive trial progressed through bounded unchanged batches before the local
 embedding health probe timed out while queued embedding work was still completing; it was cancelled
-after roughly seven minutes, and the service recovered afterward. It made no deletions and must be
-retried with a longer bounded window. Personal Drive validation
+after roughly seven minutes, and the service recovered afterward. It made no deletions. A later
+bounded retry completed 100 unchanged documents with zero deletions; the full production-budget
+trial remains open. Personal Drive validation
 failed closed after its 899-second connector timeout. A subsequent 25-document/5 MiB/60-second
 validation and non-reconciling trial succeeded (`changed=1`, `unchanged=24`, `deleted=0`), but this
 bounded prefix remains below the configured production budget and does not authorize recurring sync.
