@@ -154,6 +154,7 @@ export function Workspace({
           onLoadMore={onLoadMoreGraph}
           onRetry={onRetryGraph}
           evidence={evidence}
+          onSelect={selectEvidenceByChunkId}
           onSelectDocument={onSelectDocument}
           onFocusGraphNode={onFocusGraphNode}
         />
@@ -537,6 +538,7 @@ function GraphView({
   onRetry,
   onLoadMore,
   evidence,
+  onSelect,
   onSelectDocument,
   onFocusGraphNode,
 }: {
@@ -547,6 +549,7 @@ function GraphView({
   onRetry?: () => void
   onLoadMore?: () => void
   evidence: Evidence[]
+  onSelect?: (chunkId: string) => void
   onSelectDocument: (id: string) => void
   onFocusGraphNode?: (node: BrainGraphNode) => void
 }) {
@@ -752,7 +755,16 @@ function GraphView({
           }
           onClick={() => {
             setSelectedNodeId(node.id)
-            if (!node.document_id) onFocusGraphNode?.(node)
+            if (node.document_id) return
+            if (node.kind === 'workspace' || node.kind === 'source') {
+              onFocusGraphNode?.(node)
+              return
+            }
+            // The API-backed graph uses workspace/source nodes for navigation,
+            // while the offline evidence fallback uses chunk IDs. Preserve the
+            // fallback's evidence selection without passing synthetic graph IDs
+            // into the workspace/source focus handler.
+            onSelect?.(node.id)
           }}
         >
           {node.kind === 'workspace' ? (
