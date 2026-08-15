@@ -502,6 +502,11 @@ configured production budget and authorize bounded non-reconciling work only; `r
 --allow-sync-service` therefore remains failed closed. The larger production-budget results in the
 next paragraph are historical evidence retained for audit, not current recurring-sync authority.
 
+The installed v0.32.7 CLI also passed a fresh bounded `eval --model` run on 2026-08-15 in 14,045
+ms, including planner/synthesis, valid citations, cache reuse, and revision invalidation without
+provider fallback. This is synthetic provider-backed evidence only; it does not authorize source
+sync, establish personal-index quality, or replace the separate packaged GUI and signing gates.
+
 Apple
 Notes is the completed first rollout: the three folder-scoped sources have complete validation and
 no-reconcile snapshots for `work`/`Nifty League` (28 documents), `special`/`The Pink Binder`
