@@ -1967,6 +1967,56 @@ fn backup_verify_and_restore_round_trip() {
 }
 
 #[test]
+fn restore_rejects_corrupt_snapshot_and_preserves_current_index() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    let data = directory.path().join("data");
+    let corrupt = directory.path().join("corrupt.sqlite3");
+    fs::write(
+        &config,
+        format!(
+            "data_dir = {data:?}\n[embedding]\ndimension = 1024\n\
+             base_url = \"http://127.0.0.1:6999/v1\"\nmodel = \"Qwen/Qwen3-Embedding-0.6B\"\n"
+        ),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["ingest", "-"])
+        .write_stdin(
+            r#"{"source":"test","source_id":"one","title":"Keep me","content":"live index survives a corrupt restore","project":"demo"}"#,
+        )
+        .assert()
+        .success();
+
+    fs::write(&corrupt, b"not a SQLite database").expect("write corrupt snapshot");
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args([
+            "restore",
+            corrupt.to_str().expect("corrupt path"),
+            "--force",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("file is not a database"));
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["search", "survives", "--project", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Keep me"));
+}
+
+#[test]
 fn backup_refuses_to_run_while_sync_lock_is_held() {
     let directory = tempdir().expect("temporary directory");
     let config = directory.path().join("config.toml");
