@@ -2,7 +2,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use reqwest::{Client, Url};
+use reqwest::{Client, StatusCode, Url};
 use tokio::process::{Child, Command};
 
 use crate::config::Config;
@@ -13,6 +13,7 @@ const MAX_CONSECUTIVE_PROBE_FAILURES: u32 = 3;
 pub async fn run_embedding(config: &Config) -> Result<()> {
     let (program, arguments) = embedding_command(config)?;
     let probe_url = embedding_probe_url(config)?;
+    let health_url = embedding_health_url(config)?;
     let client = Client::builder()
         .timeout(embedding_probe_timeout())
         .build()?;
@@ -49,7 +50,12 @@ pub async fn run_embedding(config: &Config) -> Result<()> {
                     stop(&mut child).await;
                     anyhow::bail!("embedding service exceeded its {limit} MiB memory limit");
                 }
-                if !healthy(&client, &probe_url, config).await {
+                // Keep the recurring check lightweight. A real embedding request can
+                // legitimately queue behind a large ingestion batch and would make a
+                // healthy child look dead to the supervisor. Startup/restart still
+                // uses the vector probe below, while the steady-state check only
+                // verifies that the local service is responding.
+                if !liveness_healthy(&client, &health_url, &probe_url, config).await {
                     consecutive_probe_failures += 1;
                     tracing::warn!(
                         consecutive_failures = consecutive_probe_failures,
@@ -179,6 +185,14 @@ fn embedding_probe_url(config: &Config) -> Result<Url> {
     Ok(url)
 }
 
+fn embedding_health_url(config: &Config) -> Result<Url> {
+    let mut url = Url::parse(&config.embedding.base_url)?;
+    url.set_path("/health");
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url)
+}
+
 async fn healthy(client: &Client, url: &Url, config: &Config) -> bool {
     let request = serde_json::json!({
         "model": config.embedding.model,
@@ -196,6 +210,24 @@ async fn healthy(client: &Client, url: &Url, config: &Config) -> bool {
         .ok()
         .and_then(|value| value["data"][0]["embedding"].as_array().map(Vec::len))
         == Some(config.embedding.dimension)
+}
+
+async fn liveness_healthy(
+    client: &Client,
+    health_url: &Url,
+    probe_url: &Url,
+    config: &Config,
+) -> bool {
+    match client.get(health_url.clone()).send().await {
+        Ok(response) if response.status().is_success() => true,
+        // Custom local providers may not expose TEI's /health endpoint. Keep
+        // them compatible by falling back to the validated vector probe only
+        // when the endpoint is explicitly absent.
+        Ok(response) if response.status() == StatusCode::NOT_FOUND => {
+            healthy(client, probe_url, config).await
+        }
+        _ => false,
+    }
 }
 
 async fn resident_memory_mb(pid: Option<u32>) -> Option<u64> {
@@ -261,6 +293,10 @@ mod tests {
         assert_eq!(
             embedding_probe_url(&config).expect("probe").as_str(),
             "http://127.0.0.1:6999/v1/embeddings"
+        );
+        assert_eq!(
+            embedding_health_url(&config).expect("health").as_str(),
+            "http://127.0.0.1:6999/health"
         );
     }
 
