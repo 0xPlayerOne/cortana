@@ -19,9 +19,9 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.32.2`, published through the protected promotion and
-Release Please automation. Release-assets workflow `31859387720` completed the v0.32.2 package
-gate with all 18 assets and the strict verifier. The v0.32.2 release includes the bounded
+The current protected source is `v0.32.3`, published through the protected promotion and
+Release Please automation. Release-assets workflow `31865959374` completed the v0.32.3 package
+gate with all 18 assets and the strict verifier. The v0.32.3 release carries the bounded
 read-only live-index evaluator.
 A first
 operator-approved retrieval manifest has now passed against the running local work index;
@@ -53,7 +53,7 @@ no deletions; controlled ingestion may retain the completed prefix. The embeddin
 restarted the router, and query-only readiness passed afterward. Treat this as a reliability
 observation, not a successful source trial; another bounded retry is required before advancing the
 Work Drive gate.
-The v0.32.2 release gate verifies the packaged core offline without credentials.
+The v0.32.3 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.

@@ -7,11 +7,11 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-15)
 
-- `v0.32.2` is the current protected release, published through the protected promotion and
-  Release Please automation. Release-assets workflow `31859387720` completed all platform jobs
+- `v0.32.3` is the current protected release, published through the protected promotion and
+  Release Please automation. Release-assets workflow `31865959374` completed all platform jobs
   and the strict 18-asset verifier. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The v0.32.2 archive is the current packaged evidence boundary. The audited host now has the
+- The v0.32.3 archive is the current packaged evidence boundary. The audited host still has the
   checksum-verified v0.32.2 core CLI installed, with embedding and server services
   running in query-only mode; recurring sync remains disabled. Query-only readiness and source
   authorization are separate host checks;
