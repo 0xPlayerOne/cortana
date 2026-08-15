@@ -283,6 +283,21 @@ freshly-created drill directory. Set `CORTANA_KEEP_DRILL=1` to retain the exact 
 The drill proves the offline CLI control plane only; it is not a proof of the Desktop GUI, OAuth
 flows, tray integration, or updater behavior, none of which it exercises.
 
+## Shared-agent authorization drill
+
+Use the disposable HTTP drill before onboarding a shared agent or changing its workspace ACL:
+
+```bash
+scripts/shared-agent-auth-drill.sh
+```
+
+The drill uses a fresh temporary config, private synthetic tokens, and two synthetic documents. It
+proves query/status/admin scope separation, work-versus-personal ACL isolation, metadata-only audit
+responses, and atomic token rotation/revocation. It is offline and non-destructive: it does not read
+the live index, contact connectors, authorize accounts, enable recurring sync, or launch the Desktop
+app. A successful drill is evidence for the HTTP contract only; keep the MCP tests and packaged GUI,
+browser OAuth, tray, native-dialog, updater, and operating-system trust gates separate.
+
 ## Approved-index evaluation
 
 When a representative corpus has been explicitly approved for evaluation, use the read-only live
