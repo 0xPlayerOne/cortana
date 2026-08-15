@@ -217,6 +217,22 @@ immediately invalidates removed token values. MCP processes launched with `--tok
 env file resolve the new policy on their next tool call; process-environment-only clients must
 reconnect after changing the variable or its name.
 
+### Run the disposable shared-agent authorization drill
+
+Before connecting a new agent, run the checked-in drill against a temporary offline index:
+
+```bash
+scripts/shared-agent-auth-drill.sh
+```
+
+It creates two synthetic work/personal documents, verifies query/status/admin scope separation and
+ACL filtering, rotates the query token through `/v1/auth/reload`, confirms the old value is rejected,
+and checks that audit responses contain metadata only. It never reads the live config or index,
+contacts a provider, authorizes a source, starts recurring sync, or exercises the packaged GUI/MCP
+transport. Set `CORTANA_BINARY` for a checkout binary or `CORTANA_KEEP_DRILL=1` to retain the exact
+temporary record. The Rust API/MCP test suites remain the authoritative transport-level coverage;
+this script is the operator-facing HTTP smoke check.
+
 ## Secret handling
 
 - Token and API-key values are read only from the process environment or the private

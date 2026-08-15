@@ -39,6 +39,10 @@ live-index evaluation harness described below.
 Future source-tree changes must still use the protected staging and promotion flow, followed by
 the release verifier, before being called downloadable-release behavior.
 
+The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
+check for scoped principals, ACL isolation, metadata-only audit responses, and token rotation. It
+uses synthetic data only and is not a substitute for the packaged GUI/MCP/manual acceptance gates.
+
 ## v0.32.5 release intent
 
 The graph workspace/source focus fix and its evidence-selection regression coverage are now
