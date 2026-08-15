@@ -1,0 +1,10 @@
+data_dir = "data"
+
+[runtime]
+env_file = "secrets.env"
+
+[[auth.tokens]]
+principal = "mcp-drill-agent"
+token_env = "CORTANA_MCP_DRILL_TOKEN"
+scopes = ["query", "status"]
+acl = ["work"]
