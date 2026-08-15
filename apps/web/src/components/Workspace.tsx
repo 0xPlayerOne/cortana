@@ -68,6 +68,7 @@ export function Workspace({
   onTabChange,
   onSelect,
   onSelectDocument,
+  onFocusGraphNode,
   onRetry,
 }: {
   query: string
@@ -88,6 +89,7 @@ export function Workspace({
   onTabChange: (tab: WorkspaceTab) => void
   onSelect: (index: number) => void
   onSelectDocument: (id: string) => void
+  onFocusGraphNode?: (node: BrainGraphNode) => void
   onRetry: () => void
 }) {
   const active = evidence[selected] ?? null
@@ -154,6 +156,7 @@ export function Workspace({
           evidence={evidence}
           onSelect={selectEvidenceByChunkId}
           onSelectDocument={onSelectDocument}
+          onFocusGraphNode={onFocusGraphNode}
         />
       ) : error ? (
         <EmptyState
@@ -537,6 +540,7 @@ function GraphView({
   evidence,
   onSelect,
   onSelectDocument,
+  onFocusGraphNode,
 }: {
   graph: BrainGraphPage | null
   graphLoading: boolean
@@ -545,8 +549,9 @@ function GraphView({
   onRetry?: () => void
   onLoadMore?: () => void
   evidence: Evidence[]
-  onSelect: (chunkId: string) => void
+  onSelect?: (chunkId: string) => void
   onSelectDocument: (id: string) => void
+  onFocusGraphNode?: (node: BrainGraphNode) => void
 }) {
   const [visibleCount, setVisibleCount] = useState(12)
   const [filter, setFilter] = useState('')
@@ -750,7 +755,16 @@ function GraphView({
           }
           onClick={() => {
             setSelectedNodeId(node.id)
-            if (!node.document_id) onSelect(node.id)
+            if (node.document_id) return
+            if (node.kind === 'workspace' || node.kind === 'source') {
+              onFocusGraphNode?.(node)
+              return
+            }
+            // The API-backed graph uses workspace/source nodes for navigation,
+            // while the offline evidence fallback uses chunk IDs. Preserve the
+            // fallback's evidence selection without passing synthetic graph IDs
+            // into the workspace/source focus handler.
+            onSelect?.(node.id)
           }}
         >
           {node.kind === 'workspace' ? (
