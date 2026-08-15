@@ -26,9 +26,10 @@ read-only live-index evaluator.
 A first
 operator-approved retrieval manifest has now passed against the running local work index;
 approved-corpus answer/synthesis evaluation remains separate and is not a packaged-GUI proof.
-An explicit `readiness --allow-sync-service` check correctly failed closed because the
-enabled sources have bounded or under-budget validation records; the recurring sync service
-remains uninstalled.
+An explicit `readiness --allow-sync-service` check on 2026-08-15 correctly failed closed because
+`personal-drive` was validated with a smaller one-document/65,536-byte/60-second budget than its
+configured production budget; the other 12 enabled sources currently meet their configured
+validation limits. The recurring sync service remains uninstalled.
 Since that release evidence was recorded, Special Drive completed a production-budget validation
 covering 97 documents and 290,353 bytes, followed by a bounded non-reconciling trial with 0
 deletions. Work Drive subsequently completed production-budget validation with 478 documents and
@@ -39,8 +40,10 @@ the embedding service stalled; it made no deletions. After installing v0.32.2, a
 unchanged batches, then the local embedding health probe timed out while queued embedding work was
 still completing; the operator cancelled it after roughly seven minutes. The service recovered
 after cancellation. It made no deletions or reconciliation and must not be treated as a successful
-source trial until a longer bounded run is approved. Personal Drive production validation failed closed after its 899-second connector timeout;
-it produced no validation record. Special Gmail completed production-budget validation with 214
+source trial until a longer bounded run is approved. The earlier Personal Drive production-budget
+validation failed closed after its 899-second connector timeout; a later bounded one-document
+validation succeeded but remains below the configured production budget. Special Gmail completed
+production-budget validation with 214
 documents and 995,335 bytes, but its post-validation trial remains pending. Personal Gmail completed
 production-budget validation with 430 documents and 1,563,456 bytes; its post-validation trial is
 also pending. The recurring gate remains
@@ -64,7 +67,7 @@ the newly published v0.32.5 archive also passed the packaged-core gate. The embe
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
-The installed `0.32.5` core passed `eval --model` on 2026-08-15 in 11,550 ms with planner and
+The installed `0.32.5` core passed `eval --model` on 2026-08-15 in 7,892 ms with planner and
 synthesis enabled, valid citations, cache reuse, revision invalidation, and no provider fallback.
 This remains provider-backed fixture evidence: it does not query the personal index or prove
 packaged GUI behavior. Query-only readiness passed against the installed index with database
