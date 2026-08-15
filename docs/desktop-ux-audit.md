@@ -15,8 +15,8 @@ is not part of a visual/UI change.
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.32.6 archive is the current packaged evidence boundary. The audited host still runs the
-  installed `/Users/amf/.local/bin/cortana` v0.32.5 with embedding and server services in
+- The v0.32.6 archive is the current packaged evidence boundary. The audited host now runs the
+  installed `/Users/amf/.local/bin/cortana` v0.32.6 with embedding and server services in
   query-only mode; recurring sync remains disabled. Query-only readiness and
   source authorization are separate host checks; source authorization and full-corpus sync were
   not started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
@@ -43,7 +43,7 @@ is not part of a visual/UI change.
   under the CI-pinned Bun 1.3.14, including the script tests. Its runner groups
   pure suites and executes API-mocking suites in separate Bun processes so one
   mocked bridge cannot leak into another file. The Python package gate passes
-  172 tests, including the retired-model runtime guard. These are
+  184 tests, including the retired-model runtime guard. These are
   headless source checks and do not
   substitute for the still-unverified interactive packaged GUI flows.
 - The published v0.31.12 macOS ARM archive was statically inspected on 2026-08-13 (historical):
@@ -141,9 +141,9 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.32.5 CLI passed the bounded provider-backed
-   fixture gate on 2026-08-15 in 7,892 ms, with planner/synthesis, valid citations, cache reuse,
-   and revision invalidation. The preceding installed v0.32.4 run passed in 14,726 ms and the
+2. Model-backed provider gate: the installed v0.32.6 CLI passed the bounded provider-backed
+   fixture gate on 2026-08-15 in 18,178 ms, with planner/synthesis, valid citations, cache reuse,
+   and revision invalidation. The preceding installed v0.32.5 run passed in 7,892 ms and the
    installed v0.31.16 run passed in 14,660 ms.
    The published v0.32.1 release separately passed the credential-free packaged-core
    offline evaluator within 60 seconds (the v0.31.10-configured provider run
@@ -204,7 +204,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.32.6 release or the installed v0.32.5 core; use the
+does not describe the current v0.32.6 release or the installed v0.32.6 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -220,8 +220,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.32.5` binary or packaged Desktop behavior. The current
-  `v0.32.5` asset workflow and strict verifier are recorded in the release section above.
+  the current `v0.32.6` binary or packaged Desktop behavior. The current
+  `v0.32.6` asset workflow and strict verifier are recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
