@@ -271,6 +271,15 @@ async fn shutdown_signal() {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use axum::{
+        Json, Router,
+        http::StatusCode,
+        routing::{get, post},
+    };
+
     use super::*;
 
     #[test]
@@ -308,5 +317,90 @@ mod tests {
     #[test]
     fn restarts_after_three_consecutive_probe_failures() {
         assert_eq!(MAX_CONSECUTIVE_PROBE_FAILURES, 3);
+    }
+
+    #[tokio::test]
+    async fn steady_state_liveness_does_not_queue_a_vector_probe() {
+        let vector_probes = Arc::new(AtomicUsize::new(0));
+        let vector_probe_count = vector_probes.clone();
+        let app = Router::new()
+            .route("/health", get(|| async { StatusCode::NO_CONTENT }))
+            .route(
+                "/v1/embeddings",
+                post(move || {
+                    let vector_probes = vector_probe_count.clone();
+                    async move {
+                        vector_probes.fetch_add(1, Ordering::SeqCst);
+                        StatusCode::SERVICE_UNAVAILABLE
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind liveness server");
+        let address = listener.local_addr().expect("liveness address");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve liveness server");
+        });
+
+        let config = Config {
+            embedding: crate::config::EmbeddingConfig {
+                base_url: format!("http://{address}/v1"),
+                ..crate::config::EmbeddingConfig::default()
+            },
+            ..Config::default()
+        };
+        let client = Client::new();
+        let health_url = embedding_health_url(&config).expect("health URL");
+        let probe_url = embedding_probe_url(&config).expect("probe URL");
+
+        assert!(liveness_healthy(&client, &health_url, &probe_url, &config).await);
+        assert_eq!(vector_probes.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn custom_provider_without_health_endpoint_uses_vector_fallback() {
+        let vector_probes = Arc::new(AtomicUsize::new(0));
+        let vector_probe_count = vector_probes.clone();
+        let app = Router::new()
+            .route("/health", get(|| async { StatusCode::NOT_FOUND }))
+            .route(
+                "/v1/embeddings",
+                post(move || {
+                    let vector_probes = vector_probe_count.clone();
+                    async move {
+                        vector_probes.fetch_add(1, Ordering::SeqCst);
+                        Json(serde_json::json!({
+                            "data": [{"embedding": [0.5]}]
+                        }))
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind fallback server");
+        let address = listener.local_addr().expect("fallback address");
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .await
+                .expect("serve fallback server");
+        });
+
+        let config = Config {
+            embedding: crate::config::EmbeddingConfig {
+                base_url: format!("http://{address}/v1"),
+                dimension: 1,
+                ..crate::config::EmbeddingConfig::default()
+            },
+            ..Config::default()
+        };
+        let client = Client::new();
+        let health_url = embedding_health_url(&config).expect("health URL");
+        let probe_url = embedding_probe_url(&config).expect("probe URL");
+
+        assert!(liveness_healthy(&client, &health_url, &probe_url, &config).await);
+        assert_eq!(vector_probes.load(Ordering::SeqCst), 1);
     }
 }
