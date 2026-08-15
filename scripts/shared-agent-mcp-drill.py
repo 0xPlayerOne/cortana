@@ -55,12 +55,12 @@ def _write_config(config: Path, secrets: Path) -> None:
         f"[runtime]\nenv_file = {json.dumps(str(secrets))}\n",
         1,
     )
-    token_table = f'''[[auth.tokens]]
+    token_table = """[[auth.tokens]]
 principal = "mcp-drill-agent"
-token_env = "{TOKEN_ENV}"
+token_env = "CORTANA_MCP_DRILL_TOKEN"
 scopes = ["query", "status"]
 acl = ["work"]
-'''
+"""
     config.write_text(text.replace("tokens = []", token_table.rstrip(), 1), encoding="utf-8")
 
 
