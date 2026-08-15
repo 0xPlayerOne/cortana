@@ -50,6 +50,9 @@ being called downloadable-release behavior.
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
 check for scoped principals, ACL isolation, metadata-only audit responses, and token rotation. It
 uses synthetic data only and is not a substitute for the packaged GUI/MCP/manual acceptance gates.
+The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP stdio subprocess,
+including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
+offline synthetic evidence and never authorize a source or touch the live index.
 
 ## v0.32.6 release intent (published)
 

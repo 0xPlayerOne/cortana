@@ -41,8 +41,11 @@ unchanged batches, then the local embedding health probe timed out while queued 
 still completing; the operator cancelled it after roughly seven minutes. The service recovered
 after cancellation. It made no deletions or reconciliation and must not be treated as a successful
 source trial until a longer bounded run is approved. The earlier Personal Drive production-budget
-validation failed closed after its 899-second connector timeout; a later bounded one-document
-validation succeeded but remains below the configured production budget. Special Gmail completed
+validation failed closed after its 899-second connector timeout. On 2026-08-15 a bounded
+25-document/5 MiB/60-second validation succeeded (25 documents, 167,848 bytes), followed by a
+non-reconciling trial with `changed=1`, `unchanged=24`, and `deleted=0`. This proves the bounded
+connector path only; it remains below the configured production budget and does not authorize
+recurring sync. Special Gmail completed
 production-budget validation with 214
 documents and 995,335 bytes, but its post-validation trial remains pending. Personal Gmail completed
 production-budget validation with 430 documents and 1,563,456 bytes; its post-validation trial is
