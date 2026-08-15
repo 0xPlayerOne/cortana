@@ -32,14 +32,13 @@ signature_name="${archive_name}.sig"
 staging="$(mktemp -d "${TMPDIR:-/tmp}/cortana-macos-package.XXXXXX")"
 trap 'rm -rf -- "$staging"' EXIT
 
-if ! gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name' \
-  | grep -Fxq "$archive_name"; then
+release_assets="$(gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name')"
+if ! grep -Fxq "$archive_name" <<<"$release_assets"; then
   echo "release $tag does not publish the requested macOS $release_arch app archive ($archive_name)" >&2
   echo "set CORTANA_MAC_ARCH to a published architecture or add that release artifact" >&2
   exit 1
 fi
-if ! gh release view "$tag" --repo "$repo" --json assets --jq '.assets[].name' \
-  | grep -Fxq "$signature_name"; then
+if ! grep -Fxq "$signature_name" <<<"$release_assets"; then
   echo "release $tag is missing the macOS package signature ($signature_name)" >&2
   exit 1
 fi
