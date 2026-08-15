@@ -62,7 +62,7 @@ The authoritative current release and open gates live in [Release history](relea
 
 ## Release boundary
 
-The published `v0.32.1` package is the current downloadable evidence boundary. A source checkout
+The published `v0.32.2` package is the current downloadable evidence boundary. A source checkout
 can contain validated changes that are not yet in the installer; only a published tag with a
 passing 18-asset verifier should be presented as downloadable release behavior.
 
