@@ -79,6 +79,14 @@ the published v0.32.7 archive also passed the packaged-core gate. The embedding 
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
+Fresh current v0.32.7 provider-backed fixture evidence was collected on 2026-08-15 with the
+installed CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR,
+case pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
+invalidation; the answer completed in 14,045 ms under the 55,000 ms deadline with no provider
+fallback. This is stronger current package/runtime evidence than the archived v0.32.6 run below,
+but it remains synthetic fixture evidence: it does not query the personal index, prove packaged
+GUI behavior, or authorize source synchronization.
+
 Historical v0.32.6 evidence: the then-installed core passed `eval --model` on 2026-08-15 in
 18,178 ms with planner and
 synthesis enabled, valid citations, cache reuse, revision invalidation, and no provider fallback.

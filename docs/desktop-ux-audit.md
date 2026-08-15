@@ -21,6 +21,10 @@ is not part of a visual/UI change.
   source authorization are separate host checks; source authorization and full-corpus sync were
   not started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
   Developer ID signing, and notarization remain manual gates.
+- A fresh current v0.32.7 `eval --model` run passed on 2026-08-15 in 14,045 ms: retrieval recall,
+  MRR, case pass rate, citation validity, planner/synthesis execution, cache reuse, revision
+  invalidation, and bounded provider behavior all passed with no fallback. This is provider-backed
+  fixture evidence only; it does not query the personal index or prove packaged GUI behavior.
 - A historical installed v0.32.2 CLI passed the disposable offline control-plane drill on
   2026-08-15; this evidence predates the current v0.32.7 source and package:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
