@@ -27,10 +27,11 @@ is not part of a visual/UI change.
   verified backup, restore into a second temporary data directory, SQLite verification, and
   post-restore search. The drill used only temporary data and does not prove packaged GUI, OAuth,
   tray, native-dialog, updater, or operating-system trust behavior.
-- The v0.32.6 macOS ARM package verifier passed the published updater signature, packaged-core
+- Historical v0.32.6 evidence: the macOS ARM package verifier passed the published updater signature, packaged-core
   offline evaluation, and strict codesign checks. Gatekeeper still rejects the ad-hoc bundle because
   Developer ID signing and notarization are not configured; the GUI was not launched.
-- The installed v0.32.6 CLI also passed the disposable offline control-plane drill on 2026-08-15:
+- Historical v0.32.6 evidence: the then-installed CLI also passed the disposable offline control-plane
+  drill on 2026-08-15:
   bounded two-document ingest, hybrid search/context, metadata-only audit export, verified backup,
   restore into a second temporary data directory, SQLite verification, and post-restore search.
   The drill used only temporary data and does not prove packaged GUI, OAuth, tray, native-dialog,
