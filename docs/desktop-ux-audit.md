@@ -21,10 +21,11 @@ is not part of a visual/UI change.
   source authorization are separate host checks; source authorization and full-corpus sync were
   not started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
   Developer ID signing, and notarization remain manual gates.
-- The most recent provider-backed `eval --model` evidence (then-installed v0.32.7 host, 2026-08-15, 14,045 ms) passed retrieval recall,
-  MRR, case pass rate, citation validity, planner/synthesis execution, cache reuse, revision
-  invalidation, and bounded provider behavior all passed with no fallback. This is provider-backed
-  fixture evidence only; it does not query the personal index or prove packaged GUI behavior.
+- The current installed v0.32.8 host passed the bounded provider-backed `eval --model` evidence
+  run on 2026-08-15 in 17,160 ms: retrieval recall, MRR, case pass rate, citation validity,
+  planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
+  all passed with no fallback. This is provider-backed fixture evidence only; it does not query
+  the personal index or prove packaged GUI behavior.
 - A historical installed v0.32.2 CLI passed the disposable offline control-plane drill on
   2026-08-15; this evidence predates the current v0.32.8 source and package:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
@@ -170,10 +171,10 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the verified v0.32.8 package passed the credential-free packaged-core
-   evaluator and query-only readiness after installation. The latest provider-backed run was made
-   with the then-installed v0.32.7 CLI on 2026-08-15 and completed in 14,045 ms with planner/synthesis,
-   valid citations, cache reuse, and revision invalidation. That run used synthetic fixtures only;
-   no provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider
+   evaluator and query-only readiness after installation. The current installed v0.32.8 CLI passed
+   the bounded provider-backed run on 2026-08-15 in 17,160 ms with planner/synthesis, valid
+   citations, cache reuse, and revision invalidation. That run used synthetic fixtures only; no
+   provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider
    outages or slow responses still fail closed, and extractive mode remains the safe production
    default. The current package also passes `doctor` and the disposable control-plane/recovery
    drills, while the GUI remains unlaunched.
