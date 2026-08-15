@@ -81,6 +81,15 @@ separate `--allow-sync-service` gate fails closed because `personal-drive` has o
 25-document/5 MiB validation after its production-budget connector timeout, against the configured
 2,000-document, 128 MiB budget, so the recurring sync service remains uninstalled.
 
+After that evaluation, a source-scoped live pass rechecked all enabled non-code sources with
+validation-required, non-reconciling caps. Apple Notes, calendars, Drive, Gmail, and Buzz all
+completed without deletions; the only observed content change was one Personal Drive record and
+the capped Gmail batches reported bounded changes (`75`, `3`, and `1` in Work, Personal, and
+Special respectively). The index ended at 12,118 documents/42,627 chunks and a fresh verified
+backup was created. This is operational ingestion evidence, not a full-corpus quality benchmark:
+Personal Drive remains below its production validation budget, recurring sync is still disabled,
+and the pass did not enable Discord, code, Slack, synthesis, Hindsight, or Honcho.
+
 The v0.32.6 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
@@ -242,7 +251,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.32.5 sign-off state.
+release evidence; use **Current release boundary** above for the v0.32.6 sign-off state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33

@@ -525,6 +525,20 @@ Special Drive remains the first cloud source with both production validation and
 and all code roots are disabled by operator choice; Slack remains an optional, unconfigured
 connector.
 
+The latest bounded live pass on 2026-08-15 rechecked every enabled non-code source with
+`--no-reconcile --require-validation`: Work, Personal, and Special Apple Notes completed
+28/65/8 records with no changes or deletions; Work and Personal Calendar completed 100 records
+each and Special Calendar had no records; Special Drive completed 97 records with no changes;
+Personal Drive completed its validated 25-record prefix with `changed=1`, `unchanged=24`, and
+`deleted=0`; Work, Personal, and Special Gmail completed 100-record caps with
+`75/25`, `3/97`, and `1/99` changed/unchanged records respectively; Buzz completed all 45
+records with no changes. A final Work Drive 100-record cap completed with no changes or
+deletions. The index reached 12,118 documents and 42,627 chunks, and backup
+`cortana-20260815-143556.sqlite3` verified immediately afterward. Query-only readiness passed;
+`readiness --allow-sync-service` still fails closed because Personal Drive's current validation
+is 25 documents/5 MiB rather than its configured 2,000 documents/128 MiB budget. These are
+bounded, non-reconciling observations only; recurring sync remains uninstalled.
+
 The v0.32.6 source and package use the local embedding `/health` endpoint for steady-state
 liveness and keep the real vector probe for startup/restart. The installed v0.32.4 Work Drive retry
 completed a 100-document bounded no-reconcile trial with `changed=0` and `deleted=0` after the
