@@ -68,6 +68,7 @@ export function Workspace({
   onTabChange,
   onSelect,
   onSelectDocument,
+  onFocusGraphNode,
   onRetry,
 }: {
   query: string
@@ -88,6 +89,7 @@ export function Workspace({
   onTabChange: (tab: WorkspaceTab) => void
   onSelect: (index: number) => void
   onSelectDocument: (id: string) => void
+  onFocusGraphNode?: (node: BrainGraphNode) => void
   onRetry: () => void
 }) {
   const active = evidence[selected] ?? null
@@ -152,8 +154,8 @@ export function Workspace({
           onLoadMore={onLoadMoreGraph}
           onRetry={onRetryGraph}
           evidence={evidence}
-          onSelect={selectEvidenceByChunkId}
           onSelectDocument={onSelectDocument}
+          onFocusGraphNode={onFocusGraphNode}
         />
       ) : error ? (
         <EmptyState
@@ -535,8 +537,8 @@ function GraphView({
   onRetry,
   onLoadMore,
   evidence,
-  onSelect,
   onSelectDocument,
+  onFocusGraphNode,
 }: {
   graph: BrainGraphPage | null
   graphLoading: boolean
@@ -545,8 +547,8 @@ function GraphView({
   onRetry?: () => void
   onLoadMore?: () => void
   evidence: Evidence[]
-  onSelect: (chunkId: string) => void
   onSelectDocument: (id: string) => void
+  onFocusGraphNode?: (node: BrainGraphNode) => void
 }) {
   const [visibleCount, setVisibleCount] = useState(12)
   const [filter, setFilter] = useState('')
@@ -750,7 +752,7 @@ function GraphView({
           }
           onClick={() => {
             setSelectedNodeId(node.id)
-            if (!node.document_id) onSelect(node.id)
+            if (!node.document_id) onFocusGraphNode?.(node)
           }}
         >
           {node.kind === 'workspace' ? (

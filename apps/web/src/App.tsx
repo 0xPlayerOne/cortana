@@ -60,6 +60,7 @@ import type {
   AnswerResponse,
   BrainDocument,
   BrainDocumentSummary,
+  BrainGraphNode,
   BrainGraphPage,
   BrainStatus,
   ContextBundle,
@@ -1165,10 +1166,10 @@ export function App() {
     }
   }
 
-  function chooseSource(next: string, project?: string) {
+  function chooseSource(next: string, project?: string, toggle = true) {
     const requestedWorkspace = project ?? workspace
     const nextWorkspace = requestedWorkspace || (workspaces[0]?.id ?? '')
-    const sameScope = source === next && workspace === nextWorkspace
+    const sameScope = toggle && source === next && workspace === nextWorkspace
     const nextSource = sameScope ? '' : next
     abortSearchRequest()
     abortContextRequest()
@@ -1201,6 +1202,16 @@ export function App() {
     if (isDesktopApp) {
       writeWorkspacePreference(nextWorkspace)
       writeSourceSelectionPreference(nextSource)
+    }
+  }
+
+  function focusGraphNode(node: BrainGraphNode) {
+    if (node.kind === 'workspace') {
+      chooseWorkspace(node.project)
+      return
+    }
+    if (node.kind === 'source' && node.source) {
+      chooseSource(node.source, node.project, false)
     }
   }
 
@@ -1738,6 +1749,7 @@ export function App() {
             onTabChange={setWorkspaceTab}
             onSelect={setSelected}
             onSelectDocument={(id) => void chooseDocument(id)}
+            onFocusGraphNode={focusGraphNode}
             onRetry={() => void runSearch(query)}
           />
           {!graphFullScreen && (
