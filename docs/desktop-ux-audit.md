@@ -11,8 +11,8 @@ is not part of a visual/UI change.
   Release Please automation. Release-assets workflow `31865959374` completed all platform jobs
   and the strict 18-asset verifier. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The v0.32.3 archive is the current packaged evidence boundary. The audited host still has the
-  checksum-verified v0.32.2 core CLI installed, with embedding and server services
+- The v0.32.3 archive is the current packaged evidence boundary. The audited host now has the
+  checksum-verified v0.32.3 core CLI installed, with embedding and server services
   running in query-only mode; recurring sync remains disabled. Query-only readiness and source
   authorization are separate host checks;
   source authorization and full-corpus sync were not started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
@@ -65,7 +65,7 @@ is not part of a visual/UI change.
   and Slack is unconfigured. The historical sweep is authorization/reachability
   evidence only and must not be read as current source authorization.
 
-The current v0.32.2 source and package include the post-v0.31.12 safety lane, which acquires
+The current v0.32.3 source and package include the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, fences optional-memory outbox leases, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -73,7 +73,7 @@ a per-config cross-process lock. These source-tree protections are covered by fo
 regressions; they do not authorize a source, enable recurring sync, or prove the unverified
 GUI/browser/tray/dialog/updater gates above.
 
-The v0.32.2 source and package add one operational recovery change for the local embedding supervisor:
+The v0.32.3 source and package add one operational recovery change for the local embedding supervisor:
 steady-state checks use the lightweight `/health` endpoint so queued ingestion work cannot look dead;
 startup and restart still require a real vector probe. The earlier v0.32.1 Work Drive trials were
 cancelled after that older supervisor stalled. After v0.32.2 installation, a foreground Work Drive
@@ -89,8 +89,9 @@ On 2026-08-15 a second bounded Work Drive retry emitted the complete 478-documen
 snapshot, then failed closed when the local embedding connection closed during ingestion. The run
 was non-reconciling, so it made no deletions; completed-prefix writes are retained by the controlled
 ingestion contract. The embedding supervisor restarted the router and query-only readiness passed
-after recovery. This is throughput/reliability evidence only; Work Drive still needs a successful
-bounded trial before it can advance the source gate.
+after recovery. A subsequent v0.32.3 run completed 100 unchanged documents with 0 deletions under
+a 300-second bound. This closes the bounded retry observation but does not prove a complete
+478-document production trial or authorize reconciliation/recurring sync.
 
 ## Requirement matrix
 
