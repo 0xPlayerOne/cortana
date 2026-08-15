@@ -27,9 +27,10 @@ A first
 operator-approved retrieval manifest has now passed against the running local work index;
 approved-corpus answer/synthesis evaluation remains separate and is not a packaged-GUI proof.
 An explicit `readiness --allow-sync-service` check on 2026-08-15 correctly failed closed because
-`personal-drive` was validated with a smaller one-document/65,536-byte/60-second budget than its
-configured production budget; the other 12 enabled sources currently meet their configured
-validation limits. The recurring sync service remains uninstalled.
+`personal-drive` timed out during its 2,000-document/128 MiB/900-second production-budget
+validation. A follow-up 25-document/5 MiB/60-second validation succeeded, but that bounded prefix
+is still below the configured production budget; the other 12 enabled sources currently meet their
+configured validation limits. The recurring sync service remains uninstalled.
 Since that release evidence was recorded, Special Drive completed a production-budget validation
 covering 97 documents and 290,353 bytes, followed by a bounded non-reconciling trial with 0
 deletions. Work Drive subsequently completed production-budget validation with 478 documents and
@@ -75,9 +76,9 @@ synthesis enabled, valid citations, cache reuse, revision invalidation, and no p
 This remains provider-backed fixture evidence: it does not query the personal index or prove
 packaged GUI behavior. Query-only readiness passed against the installed index with database
 integrity, embedding/index generation, ACL, provider, API, and backup-freshness checks; the
-separate `--allow-sync-service` gate fails closed because `personal-drive` has only a one-document,
-65,536-byte validation against the configured 2,000-document, 128 MiB production budget, so the
-recurring sync service remains uninstalled.
+separate `--allow-sync-service` gate fails closed because `personal-drive` has only a bounded
+25-document/5 MiB validation after its production-budget connector timeout, against the configured
+2,000-document, 128 MiB budget, so the recurring sync service remains uninstalled.
 
 The v0.32.6 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
