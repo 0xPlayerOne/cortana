@@ -60,16 +60,15 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The published v0.32.6 package is the latest downloadable release. It includes the production
-safety hardening carried through the protected `staging` → `main` flow: mutating CLI startup and
-direct JSONL imports serialize on the global lock, imports and evaluation fixtures have explicit
-resource ceilings, remote `/readyz` requires scoped bearer access, optional memory outbox leases
-are fenced, Desktop settings and schedules serialize through a shared per-config lock, and
-Desktop sidecars publish atomically. Release Please published v0.32.6 from the protected
-promotion carrying the readiness-budget diagnostics. Release-assets workflow `31880502344`
-completed all platform jobs and the strict 18-asset verifier, including checksums, updater
-signatures, the manifest, and packaged-core offline evaluation. The preceding v0.32.5 workflow
-`31872008773` remains historical evidence.
+The protected source and latest published tag are now **v0.32.7**. Release-assets workflow
+`31896801633` is still building its platform packages; until its strict 18-asset verifier
+finishes, **v0.32.6 remains the latest fully verified downloadable package**. The v0.32.6
+package carries the production safety hardening from the protected `staging` → `main` flow:
+mutating CLI startup and direct JSONL imports serialize on the global lock, imports and
+evaluation fixtures have explicit resource ceilings, remote `/readyz` requires scoped bearer
+access, optional memory outbox leases are fenced, Desktop settings and schedules serialize
+through a shared per-config lock, and Desktop sidecars publish atomically. Do not treat a
+published tag with an incomplete asset workflow as a verified installer.
 
 When the checkout and the downloaded application report different versions, trust the application
 version for end-user behavior and use [Release history](docs/releases.md) to determine which
@@ -80,14 +79,15 @@ just to make the version strings match.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current protected release is **v0.32.6**. Its
-release-assets workflow completed the archive, checksum, updater-signature, and credential-free
-packaged-core verification gate. The Desktop app still has separate manual gates for macOS Developer ID
-notarization and first-run operating-system interactions; those limits are documented in the
+package for your operating system and CPU. The current protected tag is **v0.32.7**. Its
+release-assets workflow is in progress; use the fully verified **v0.32.6** package until workflow
+`31896801633` reports all 18 assets and the strict verifier succeeds. The Desktop app still has
+separate manual gates for macOS Developer ID notarization and first-run operating-system
+interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 
-The v0.32.6 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
-x86_64**. v0.32.6 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
+The v0.32.7 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. v0.32.7 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
 this release. Rosetta execution or a core archive is not evidence of Intel Desktop support. A
 future Intel policy change requires a matching signed bundle, updater signature, installer
 verification, and native acceptance evidence.

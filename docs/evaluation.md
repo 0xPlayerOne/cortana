@@ -19,9 +19,10 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.32.6`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `31880502344` completed the v0.32.6
-package gate with all 18 assets and the strict verifier. The v0.32.6 release carries the bounded
+The current protected source and published tag are `v0.32.7`, promoted through the protected
+flow and Release Please automation. Release-assets workflow `31896801633` is still in progress;
+until its strict verifier completes, the v0.32.6 package remains the latest fully verified
+18-asset package. The v0.32.7 source carries the bounded
 read-only live-index evaluator.
 A first
 operator-approved retrieval manifest has now passed against the running local work index;
@@ -67,7 +68,8 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.32.6 release gate verifies the packaged core offline without credentials.
+The v0.32.6 release gate verifies the packaged core offline without credentials and remains the
+latest completed package gate while v0.32.7 assets build.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
@@ -255,7 +257,8 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.32.6 sign-off state.
+release evidence; use **Current release boundary** above for the v0.32.7 source boundary and the
+v0.32.6 last-verified package state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33
