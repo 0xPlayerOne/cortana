@@ -59,18 +59,18 @@ This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The audited host remains on `/Users/amf/.local/bin/cortana` v0.32.4 from the checksum-
-verified core archive; the newly published v0.32.5 archive passed the packaged-core gate
-without being installed. The embedding and HTTP services are running with
-recurring sync uninstalled. This is local installation evidence, not proof of native GUI,
-browser OAuth, updater, or operating-system trust behavior.
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.5 from the local installation;
+the newly published v0.32.5 archive also passed the packaged-core gate. The embedding and HTTP
+services are running with recurring sync uninstalled. This is local installation evidence, not
+proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
-The installed `0.32.4` core passed `eval --model` on 2026-08-15 in 14,726 ms with planner and
+The installed `0.32.5` core passed `eval --model` on 2026-08-15 in 11,550 ms with planner and
 synthesis enabled, valid citations, cache reuse, revision invalidation, and no provider fallback.
 This remains provider-backed fixture evidence: it does not query the personal index or prove
-packaged GUI behavior. Query-only readiness also passed against the installed index with
-database integrity, embedding/index generation, ACL, provider, API, and backup-freshness checks;
-source validation was correctly not required and the recurring sync service remained uninstalled.
+packaged GUI behavior. Query-only readiness passed against the installed index with database
+integrity, embedding/index generation, ACL, provider, API, and backup-freshness checks; the
+separate `--allow-sync-service` gate still fails closed on the under-budget Personal Drive
+validation, so the recurring sync service remains uninstalled.
 
 The v0.32.5 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
