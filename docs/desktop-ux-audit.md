@@ -194,8 +194,9 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    and 7,395/34,494,647 bytes respectively), but the v0.32.2 Work Drive trial was cancelled while
    queued embedding work was still completing and must be retried with a longer bounded window.
    The earlier Personal Drive production-budget validation failed closed at its 899-second
-   connector timeout; a later bounded one-document validation succeeded but remains below the
-   configured production budget. Personal Gmail now has production-budget validation
+   connector timeout; a later bounded 25-document/5 MiB validation and non-reconciling trial
+   succeeded but remains below the configured production budget. Personal Gmail now has
+   production-budget validation
    (430 documents/1,563,456 bytes) plus a bounded 100-document-cap trial with zero deletions,
    and Special Gmail has
    production-budget validation (214 documents/995,335 bytes) plus the same bounded trial result.
