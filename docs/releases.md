@@ -47,9 +47,25 @@ live-index evaluation harness described below.
 Future source-tree changes must still use the protected staging and promotion flow, followed by
 the release verifier, before being called downloadable-release behavior.
 
+The current protected source tree also contains the post-v0.32.5 readiness-budget diagnostic
+hardening. That change is intentionally not retroactively claimed for the already-published
+v0.32.5 artifact. The next protected release intent is v0.32.6; until its Release Please PR,
+asset workflow, and strict verifier complete, v0.32.5 remains the latest downloadable package.
+
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
 check for scoped principals, ACL isolation, metadata-only audit responses, and token rotation. It
 uses synthetic data only and is not a substitute for the packaged GUI/MCP/manual acceptance gates.
+
+## v0.32.6 release intent (pending)
+
+This metadata-only intent publishes the readiness-budget diagnostics that landed after v0.32.5.
+Readiness failures now report the validated and required document, byte, and duration limits so
+operators can correct an under-budget source without inspecting private validation-state files.
+The intent changes no credentials, indexed data, source authorization, recurring-sync state, or
+optional memory-provider state. The protected promotion carrying this tree must include
+`Release-As: 0.32.6` so Release Please can recover the flattened staging history and open the
+version-only release PR; that PR is the only path that makes the diagnostics part of a published
+package.
 
 ## v0.32.5 release intent
 

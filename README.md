@@ -68,7 +68,9 @@ are fenced, Desktop settings and schedules serialize through a shared per-config
 Desktop sidecars publish atomically. Release-assets workflow `31872008773` completed all v0.32.5
 platform jobs and the strict 18-asset verifier, including checksums, updater signatures, the
 manifest, and packaged-core offline evaluation. The preceding v0.32.3 workflow `31865959374`
-remains historical evidence.
+remains historical evidence. The protected source tree is now ahead of that artifact by a small
+readiness-budget diagnostic hardening; v0.32.6 is the pending release intent, so do not treat that
+source-only detail as shipped until its version-only Release Please PR and 18-asset verifier pass.
 
 When the checkout and the downloaded application report different versions, trust the application
 version for end-user behavior and use [Release history](docs/releases.md) to determine which
