@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.7](https://github.com/0xPlayerOne/cortana/compare/v0.32.6...v0.32.7) (2026-08-15)
+
+
+### Documentation
+
+* record latest bounded live source pass ([#1379](https://github.com/0xPlayerOne/cortana/issues/1379)) ([#1381](https://github.com/0xPlayerOne/cortana/issues/1381)) ([f531bd3](https://github.com/0xPlayerOne/cortana/commit/f531bd37692640196a76cf5c8a0be5e92aa188f1))
+
 ## [0.32.6](https://github.com/0xPlayerOne/cortana/compare/v0.32.5...v0.32.6) (2026-08-15)
 
 
