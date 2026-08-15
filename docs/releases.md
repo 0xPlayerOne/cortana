@@ -53,6 +53,14 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
+## v0.32.8 release intent (pending)
+
+The next patch release records the rollback-safe Hermes migration publication fix. Migration output
+files are staged before publication, existing files are restored if a later publication step fails,
+and temporary migration artifacts are removed. This marker changes no credentials, source
+authorization, indexed data, recurring-sync state, or optional memory-provider state; it exists so
+the protected promotion's migration fix is represented by a downloadable release.
+
 ## v0.32.7 release intent (published and verified)
 
 This patch records the latest bounded live-source evidence and the protected promotion that
