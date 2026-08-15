@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.3](https://github.com/0xPlayerOne/cortana/compare/v0.32.2...v0.32.3) (2026-08-15)
+
+
+### Bug Fixes
+
+* **embedding:** publish bounded transport retry ([c1bca28](https://github.com/0xPlayerOne/cortana/commit/c1bca28a8b7f2f81ad954b8a5de06de056b9a556))
+
 ## [0.32.2](https://github.com/0xPlayerOne/cortana/compare/v0.32.1...v0.32.2) (2026-08-15)
 
 
