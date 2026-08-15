@@ -94,7 +94,9 @@ trial progressed through bounded unchanged batches before the local embedding he
 out while queued embedding work was still completing; it was cancelled after roughly seven minutes.
 The service recovered afterward, and the trial made no deletions or reconciliation. Work
 Drive (478 documents/4,527,663 bytes) and Work Gmail (7,395 documents/34,494,647 bytes) now have
-complete production-budget validation records, but their successful post-fix trials remain open.
+complete production-budget validation records. Work Drive has a successful bounded 100-document
+retry; Work Gmail still needs a bounded trial, and neither source has a complete production-budget
+trial approved for reconciliation or recurring sync.
 Personal Drive failed its 2,000-document/128 MiB/900-second validation at the 899-second connector
 timeout. A follow-up 25-document/5 MiB/60-second validation and non-reconciling trial succeeded
 (`changed=1`, `unchanged=24`, `deleted=0`), but that bounded prefix remains below the production gate.
