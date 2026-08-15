@@ -8,6 +8,7 @@ use tokio::process::{Child, Command};
 use crate::config::Config;
 
 const EMBEDDING_PROBE_TIMEOUT_SECONDS: u64 = 5;
+const MAX_CONSECUTIVE_PROBE_FAILURES: u32 = 3;
 
 pub async fn run_embedding(config: &Config) -> Result<()> {
     let (program, arguments) = embedding_command(config)?;
@@ -21,41 +22,16 @@ pub async fn run_embedding(config: &Config) -> Result<()> {
         %probe_url,
         "starting local embedding service"
     );
-    let mut child = Command::new(&program)
-        .args(&arguments)
-        .envs(&config.environment)
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .kill_on_drop(true)
-        .spawn()
-        .with_context(|| format!("failed to start embedding service {program}"))?;
+    let mut child = spawn_embedding_service(&program, &arguments, config)?;
 
     let startup = Duration::from_secs(config.embedding.service.startup_timeout_seconds);
-    let started = tokio::time::Instant::now();
-    loop {
-        if healthy(&client, &probe_url, config).await {
-            tracing::info!(pid = child.id(), "embedding service is healthy");
-            break;
-        }
-        if let Some(status) = child.try_wait()? {
-            anyhow::bail!("embedding service exited before becoming healthy: {status}");
-        }
-        anyhow::ensure!(
-            started.elapsed() < startup,
-            "embedding service did not become healthy within {} seconds",
-            startup.as_secs()
-        );
-        tokio::select! {
-            () = tokio::time::sleep(Duration::from_secs(1)) => {}
-            () = shutdown_signal() => {
-                stop(&mut child).await;
-                return Ok(());
-            }
-        }
+    if !wait_until_healthy(&mut child, &client, &probe_url, config, startup).await? {
+        stop(&mut child).await;
+        return Ok(());
     }
 
     let mut interval = tokio::time::interval(Duration::from_secs(10));
+    let mut consecutive_probe_failures = 0;
     loop {
         tokio::select! {
             () = shutdown_signal() => {
@@ -74,9 +50,76 @@ pub async fn run_embedding(config: &Config) -> Result<()> {
                     anyhow::bail!("embedding service exceeded its {limit} MiB memory limit");
                 }
                 if !healthy(&client, &probe_url, config).await {
-                    tracing::warn!("real embedding probe failed");
+                    consecutive_probe_failures += 1;
+                    tracing::warn!(
+                        consecutive_failures = consecutive_probe_failures,
+                        "real embedding probe failed"
+                    );
+                    if consecutive_probe_failures >= MAX_CONSECUTIVE_PROBE_FAILURES {
+                        tracing::warn!(
+                            consecutive_failures = consecutive_probe_failures,
+                            "restarting unresponsive embedding service"
+                        );
+                        stop(&mut child).await;
+                        child = spawn_embedding_service(&program, &arguments, config)?;
+                        if !wait_until_healthy(
+                            &mut child,
+                            &client,
+                            &probe_url,
+                            config,
+                            startup,
+                        )
+                        .await?
+                        {
+                            stop(&mut child).await;
+                            return Ok(());
+                        }
+                        consecutive_probe_failures = 0;
+                    }
+                } else {
+                    consecutive_probe_failures = 0;
                 }
             }
+        }
+    }
+}
+
+fn spawn_embedding_service(program: &str, arguments: &[String], config: &Config) -> Result<Child> {
+    Command::new(program)
+        .args(arguments)
+        .envs(&config.environment)
+        .stdin(Stdio::null())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+        .with_context(|| format!("failed to start embedding service {program}"))
+}
+
+async fn wait_until_healthy(
+    child: &mut Child,
+    client: &Client,
+    probe_url: &Url,
+    config: &Config,
+    startup: Duration,
+) -> Result<bool> {
+    let started = tokio::time::Instant::now();
+    loop {
+        if healthy(client, probe_url, config).await {
+            tracing::info!(pid = child.id(), "embedding service is healthy");
+            return Ok(true);
+        }
+        if let Some(status) = child.try_wait()? {
+            anyhow::bail!("embedding service exited before becoming healthy: {status}");
+        }
+        anyhow::ensure!(
+            started.elapsed() < startup,
+            "embedding service did not become healthy within {} seconds",
+            startup.as_secs()
+        );
+        tokio::select! {
+            () = tokio::time::sleep(Duration::from_secs(1)) => {}
+            () = shutdown_signal() => return Ok(false),
         }
     }
 }
@@ -224,5 +267,10 @@ mod tests {
     #[test]
     fn gives_real_embedding_probes_a_bounded_inference_window() {
         assert_eq!(embedding_probe_timeout(), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn restarts_after_three_consecutive_probe_failures() {
+        assert_eq!(MAX_CONSECUTIVE_PROBE_FAILURES, 3);
     }
 }
