@@ -613,7 +613,7 @@ dependencies = [
 
 [[package]]
 name = "cortana-desktop"
-version = "0.32.6" # x-release-please-version
+version = "0.32.7" # x-release-please-version
 dependencies = [
  "dirs 6.0.0",
  "fs2",
