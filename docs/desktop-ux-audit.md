@@ -139,7 +139,7 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.32.5 CLI passed the bounded provider-backed
-   fixture gate on 2026-08-15 in 11,550 ms, with planner/synthesis, valid citations, cache reuse,
+   fixture gate on 2026-08-15 in 7,892 ms, with planner/synthesis, valid citations, cache reuse,
    and revision invalidation. The preceding installed v0.32.4 run passed in 14,726 ms and the
    installed v0.31.16 run passed in 14,660 ms.
    The published v0.32.1 release separately passed the credential-free packaged-core
@@ -185,9 +185,11 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    deletions. Work Drive and Work Gmail now have production-budget validation (478/4,527,663 bytes
    and 7,395/34,494,647 bytes respectively), but the v0.32.2 Work Drive trial was cancelled while
    queued embedding work was still completing and must be retried with a longer bounded window.
-   Personal Drive failed closed at its 899-second connector
-   timeout; Personal Gmail now has production-budget validation (430 documents/1,563,456 bytes)
-   plus a bounded 100-document-cap trial with zero deletions, and Special Gmail has
+   The earlier Personal Drive production-budget validation failed closed at its 899-second
+   connector timeout; a later bounded one-document validation succeeded but remains below the
+   configured production budget. Personal Gmail now has production-budget validation
+   (430 documents/1,563,456 bytes) plus a bounded 100-document-cap trial with zero deletions,
+   and Special Gmail has
    production-budget validation (214 documents/995,335 bytes) plus the same bounded trial result.
    These capped prefixes prove selected
    connector behavior, not full-corpus readiness. Recurring sync must remain uninstalled until
@@ -328,19 +330,19 @@ current-release section above for sign-off status.
   2026-08-12 rerun also passed in 11,100 ms; the earlier 15,107 ms result is historical. Earlier
   provider-unavailable attempts remain historical fail-closed evidence, and extractive mode
   remains the safe production default because synthesis is still an explicit opt-in.
-- The current runtime status remains safely closed for recurring sync: ingestion is `manual`, the
+- That historical runtime snapshot remained safely closed for recurring sync: ingestion was `manual`, the
   sync service is not installed, and the configured inventory has 22 sources with 13 enabled.
   The enabled set is Apple Notes, Drive, Gmail, Calendar, and Buzz; Discord and all code/filesystem
   roots are disabled, and Slack is unconfigured. The enabled records are fresh bounded evidence,
-  but eight Drive/Gmail/Calendar records remain below their configured production budgets. These
+  but eight Drive/Gmail/Calendar records were below their configured production budgets. These
   records do not authorize a full-corpus or recurring run without fresh validation at the configured
   limits.
-- A current query-only readiness probe passes database integrity, embedding/index/provider health,
+- That historical query-only readiness probe passed database integrity, embedding/index/provider health,
   ACL, API liveness, fresh verified backup, extractive mode, and confirms sync is not installed.
-  The matching `readiness --allow-sync-service` probe fails closed because every enabled connector
-  is below its configured full-sync budget and filesystem/code records are bounded samples; no
-  sync service was installed or started. Recurring mode must stay fail-closed until every enabled
-  source covers its configured full-sync budget.
+  The matching historical `readiness --allow-sync-service` probe failed closed because every enabled
+  connector was below its configured full-sync budget and filesystem/code records were bounded
+  samples; no sync service was installed or started. Recurring mode must stay fail-closed until
+  every enabled source covers its configured full-sync budget.
 - The 2026-08-12 validation-only `scripts/source-smoke.sh` run is historical: it passed the 21
   sources enabled at that time at the bounded one-document/65,536-byte/30-second budget, including
   the then-authorized Discord sources, with no trial sync, embeddings, or reconciliation. It confirms
