@@ -55,6 +55,31 @@ repeated-query cache hits against an operator-approved corpus without syncing, r
 changing the index, or printing query content. A private manifest and successful run are still
 required before claiming the approved-corpus evaluation gate is closed.
 
+## Post-v0.32.0 source hardening and rollout evidence
+
+The current `staging` source contains the next patch's embedding-supervisor recovery fix:
+after three consecutive five-second health-probe failures, the supervisor stops and respawns the
+local embedding child and waits for health before continuing. This is source-tree evidence only
+until the protected promotion and Release Please v0.32.1 package complete; the published v0.32.0
+binary does not contain this recovery behavior.
+
+The 2026-08-15 operator rollout added production-budget validation evidence without enabling
+recurring sync or reconciliation. Work Drive validated 478 documents and 4,527,663 bytes at the
+2,000-document/128 MiB/900-second budget. Work Gmail validated 7,395 documents and 34,494,647
+bytes at its 10,000-document/64 MiB/600-second budget. A Work Drive non-reconciling trial was
+intentionally cancelled twice after the installed v0.32.0 embedding service stalled; it made no
+deletions and did not authorize a full index. The retry remains deferred until the supervisor fix
+is released and installed. The Personal Drive production validation then failed closed at its
+899-second connector timeout; it produced no validation record and did not authorize a sync.
+Special Gmail completed production-budget validation with 214 documents and 995,335 bytes; its
+post-validation trial remains pending. Personal Gmail completed production-budget validation with
+430 documents and 1,563,456 bytes; its post-validation trial also remains pending.
+
+These records advance source readiness but do not close the recurring-sync gate: every enabled
+source still needs a fresh complete production-budget validation and a successful bounded trial.
+Discord and code/filesystem sources remain disabled by operator choice, Slack remains optional and
+unconfigured, and Hindsight/Honcho remain disabled.
+
 ## v0.31.16 release-history recovery
 
 The graph hierarchy, truthful status fallback, and Desktop-first project documentation were
