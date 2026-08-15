@@ -177,16 +177,18 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    operator installation has 13 enabled sources: Apple Notes, Drive, Gmail, Calendar, and Buzz;
    Discord and all code/filesystem roots are disabled by operator choice, and Slack is not
    configured. Apple Notes has complete folder-scoped validation and bounded no-reconcile
-   snapshots; Calendar has complete validation with only bounded Work/Personal trials; Buzz has a
+   snapshots; Calendar has complete validation with bounded 100-event Work, Personal, and Special
+   trials; Buzz has a
    completed bounded no-reconcile snapshot. Special Drive now has a production-budget validation
    (97 documents, 290,353 bytes) and a completed 97-document non-reconciling trial with zero
    deletions. Work Drive and Work Gmail now have production-budget validation (478/4,527,663 bytes
    and 7,395/34,494,647 bytes respectively), but the v0.32.2 Work Drive trial was cancelled while
    queued embedding work was still completing and must be retried with a longer bounded window.
    Personal Drive failed closed at its 899-second connector
-   timeout; Personal Gmail now has production-budget validation (430 documents/1,563,456 bytes),
-   and Special Gmail has production-budget validation (214 documents/995,335 bytes); both still
-   need bounded trials. These records prove selected
+   timeout; Personal Gmail now has production-budget validation (430 documents/1,563,456 bytes)
+   plus a bounded 100-document-cap trial with zero deletions, and Special Gmail has
+   production-budget validation (214 documents/995,335 bytes) plus the same bounded trial result.
+   These capped prefixes prove selected
    connector behavior, not full-corpus readiness. Recurring sync must remain uninstalled until
    every enabled source has a fresh `complete=true` validation at its configured production
    budget.
