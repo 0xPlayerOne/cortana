@@ -294,10 +294,14 @@ with planner and synthesis, valid citations, cache reuse, and post-update
 invalidation. This source result does not prove packaged GUI behavior or
 authorize a personal-index sync. No packaged-GUI evaluation is made.
 
-The bounded source trial remains deliberately separate from this fixture gate. A one-document,
-non-reconciling run completed for Personal Drive and Personal Gmail after a 180-second per-source
-window, while their tighter 30-second operator probe expired during connector-to-embedding work.
-The trial did not authorize recurring sync or reconcile indexed data.
+The bounded source trial remains deliberately separate from this fixture gate. Personal Drive first
+failed its 2,000-document/128 MiB/900-second production-budget validation after the connector
+timed out at 899 seconds. A follow-up 25-document/5 MiB/60-second validation and non-reconciling
+trial completed with `changed=1`, `unchanged=24`, and `deleted=0`; this bounded prefix does not
+authorize recurring sync or reconcile the full indexed corpus. Earlier one-document trials for
+Personal Drive and Personal Gmail used a 180-second per-source window while their tighter
+30-second operator probes expired during connector-to-embedding work; those historical trials also
+did not authorize recurring sync or reconcile indexed data.
 
 ```toml
 [query]

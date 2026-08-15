@@ -95,8 +95,9 @@ out while queued embedding work was still completing; it was cancelled after rou
 The service recovered afterward, and the trial made no deletions or reconciliation. Work
 Drive (478 documents/4,527,663 bytes) and Work Gmail (7,395 documents/34,494,647 bytes) now have
 complete production-budget validation records, but their successful post-fix trials remain open.
-Personal Drive validation failed closed at the 899-second connector timeout and remains below the
-production gate.
+Personal Drive failed its 2,000-document/128 MiB/900-second validation at the 899-second connector
+timeout. A follow-up 25-document/5 MiB/60-second validation and non-reconciling trial succeeded
+(`changed=1`, `unchanged=24`, `deleted=0`), but that bounded prefix remains below the production gate.
 
 On 2026-08-15 a second bounded Work Drive retry emitted the complete 478-document connector
 snapshot, then failed closed when the local embedding connection closed during ingestion. The run
