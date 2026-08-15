@@ -19,10 +19,10 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.32.0`, published through Release Please PR
-#1182. Release-assets workflow `31795311797` completed all platform jobs and the
+The current protected source is `v0.32.1`, published through Release Please PR
+#1245. Release-assets workflow `31854746308` completed all platform jobs and the
 strict 18-asset verifier, including the credential-free packaged-core evaluator.
-The v0.32.0 release includes the bounded read-only live-index evaluator. A first
+The v0.32.1 release includes the bounded read-only live-index evaluator. A first
 operator-approved retrieval manifest has now passed against the running local work index;
 approved-corpus answer/synthesis evaluation remains separate and is not a packaged-GUI proof.
 An explicit `readiness --allow-sync-service` check correctly failed closed because the
@@ -32,7 +32,7 @@ Since that release evidence was recorded, Special Drive completed a production-b
 covering 97 documents and 290,353 bytes, followed by a bounded non-reconciling trial with 0
 deletions. Work Drive subsequently completed production-budget validation with 478 documents and
 4,527,663 bytes, and Work Gmail completed validation with 7,395 documents and 34,494,647 bytes.
-The first Work Drive non-reconciling trial was cancelled after the installed v0.32.0 embedding
+The first Work Drive non-reconciling trial was cancelled after the installed v0.32.1 embedding
 service stalled; it made no deletions and will be retried only after the supervisor recovery fix
 ships. Personal Drive production validation failed closed after its 899-second connector timeout;
 it produced no validation record. Special Gmail completed production-budget validation with 214
@@ -41,24 +41,24 @@ production-budget validation with 430 documents and 1,563,456 bytes; its post-va
 also pending. The recurring gate remains
 correctly closed until every enabled source has fresh complete validation and a successful bounded
 trial.
-The v0.32.0 release gate verifies the packaged core offline without credentials.
+The v0.32.1 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
 The audited host is now version-aligned as well: `/Users/amf/.local/bin/cortana` and its managed
-Python package both report `0.32.0`, while the embedding and HTTP services are running with
+Python package both report `0.32.1`, while the embedding and HTTP services are running with
 recurring sync uninstalled. This is local installation evidence, not proof of native GUI,
 browser OAuth, updater, or operating-system trust behavior.
 
-The same installed `0.32.0` core passed `eval --model` on 2026-08-14 in 16,649 ms with planner
+The same installed `0.32.1` core passed `eval --model` on 2026-08-14 in 16,649 ms with planner
 and synthesis enabled, valid citations, cache reuse, revision invalidation, and no provider
 fallback. This remains provider-backed fixture evidence: it does not query the personal index or
 prove packaged GUI behavior. Query-only readiness also passed against the installed index with
 database integrity, embedding/index generation, ACL, provider, API, and backup-freshness checks;
 source validation was correctly not required and the recurring sync service remained uninstalled.
 
-The v0.32.0 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.32.1 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
@@ -66,12 +66,12 @@ The model fixture remains synthetic and does not authorize sources or recurring 
 
 The current source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.32.0 source and package; it does
+This protects concurrent Desktop windows/processes in the v0.32.1 source and package; it does
 not authorize source ingestion or recurring sync.
 
-The post-v0.32.0 source tree adds bounded embedding-supervisor recovery: three consecutive failed
-health probes trigger a child restart and a fresh health wait. This is queued for the v0.32.1
-release and is not claimed as behavior of the installed v0.32.0 binary. The cancelled Work Drive
+The post-v0.32.1 source tree adds bounded embedding-supervisor recovery: steady-state health checks
+avoid queueing vector requests, while startup and restart still require a real vector probe. This is
+queued for the v0.32.2 release and is not claimed as behavior of the installed v0.32.1 binary. The cancelled Work Drive
 trial is therefore an operational incident record, not a failed retrieval-quality result.
 
 ### Current approved-index retrieval evidence (2026-08-14)
@@ -219,7 +219,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.32.0 sign-off state.
+release evidence; use **Current release boundary** above for the v0.32.1 sign-off state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
 20,176 ms, and a packaged v0.29.31 rerun passed in 13,477 ms. However, the installed v0.29.33

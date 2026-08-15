@@ -9,11 +9,11 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.32.0
+## Current release: v0.32.1
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.0` release contains the current Rust runtime, web workspace, connector package, Desktop
+`v0.32.1` release contains the current Rust runtime, web workspace, connector package, Desktop
 bundles, example configuration, and Cortana agent skill. Its published 18-asset set passed the
 archive, checksum, updater-signature, manifest, and credential-free packaged-core verification
 gates.
@@ -28,19 +28,19 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.32.0
+  scripts/verify-desktop-release.sh v0.32.1
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.32.0 package is the release boundary for the post-v0.31.12 hardening and bounded
+The v0.32.1 package is the release boundary for the post-v0.31.12 hardening and bounded
 live-index evaluation harness described below.
 Future source-tree changes must still use the protected staging and promotion flow, followed by
 the release verifier, before being called downloadable-release behavior.
 
-Release Please PR #1182 published v0.32.0 after the protected promotion and staging
-reconciliation. Release-assets workflow `31795311797` completed all platform jobs and the strict
+Release Please PR #1245 published v0.32.1 after the protected promotion and staging
+reconciliation. Release-assets workflow `31854746308` completed all platform jobs and the strict
 18-asset verifier, including archive checksums, six updater signatures, the updater manifest, and
 the credential-free packaged-core offline evaluator. These checks do not prove packaged GUI
 behavior, operating-system signing, full-corpus source readiness, or optional memory provider
@@ -55,19 +55,19 @@ repeated-query cache hits against an operator-approved corpus without syncing, r
 changing the index, or printing query content. A private manifest and successful run are still
 required before claiming the approved-corpus evaluation gate is closed.
 
-## Post-v0.32.0 source hardening and rollout evidence
+## Post-v0.32.1 source hardening and rollout evidence
 
-The current `staging` source contains the next patch's embedding-supervisor recovery fix:
+The current `main` source contains the next patch's embedding-supervisor recovery fix:
 after three consecutive five-second health-probe failures, the supervisor stops and respawns the
 local embedding child and waits for health before continuing. This is source-tree evidence only
-until the protected promotion and Release Please v0.32.1 package complete; the published v0.32.0
+until the protected promotion and Release Please v0.32.2 package complete; the published v0.32.1
 binary does not contain this recovery behavior.
 
 The 2026-08-15 operator rollout added production-budget validation evidence without enabling
 recurring sync or reconciliation. Work Drive validated 478 documents and 4,527,663 bytes at the
 2,000-document/128 MiB/900-second budget. Work Gmail validated 7,395 documents and 34,494,647
 bytes at its 10,000-document/64 MiB/600-second budget. A Work Drive non-reconciling trial was
-intentionally cancelled twice after the installed v0.32.0 embedding service stalled; it made no
+intentionally cancelled twice after the installed v0.32.1 embedding service stalled; it made no
 deletions and did not authorize a full index. The retry remains deferred until the supervisor fix
 is released and installed. The Personal Drive production validation then failed closed at its
 899-second connector timeout; it produced no validation record and did not authorize a sync.
