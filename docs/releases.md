@@ -9,11 +9,11 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.32.4
+## Current release: v0.32.5
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.4` release contains the current Rust runtime, web workspace, connector package, Desktop
+`v0.32.5` release contains the current Rust runtime, web workspace, connector package, Desktop
 bundles, example configuration, and Cortana agent skill. Its published 18-asset set passed the
 archive, checksum, updater-signature, manifest, and credential-free packaged-core verification
 gates.
@@ -28,30 +28,30 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.32.4
+  scripts/verify-desktop-release.sh v0.32.5
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.32.4 package is the release boundary for the post-v0.31.12 hardening and bounded
+The v0.32.5 package is the release boundary for the post-v0.31.12 hardening and bounded
 live-index evaluation harness described below.
 Future source-tree changes must still use the protected staging and promotion flow, followed by
 the release verifier, before being called downloadable-release behavior.
 
-## Pending v0.32.5 release intent
+## v0.32.5 release intent
 
 The graph workspace/source focus fix and its evidence-selection regression coverage are now
-promoted through the protected staging-to-main flow. This metadata-only release intent asks
-Release Please to publish the next patch so the fix is represented by a downloadable version;
+promoted through the protected staging-to-main flow. This metadata-only release intent asked
+Release Please to publish the patch so the fix is represented by a downloadable version;
 it does not authorize source credentials, a corpus sync, reconciliation, or optional memory
-providers. The v0.32.5 section becomes current only after its release-assets workflow and strict
-18-asset verifier succeed.
+providers. Its release-assets workflow and strict 18-asset verifier succeeded before this section
+was promoted as the current release record.
 The protected promotion commit carries the explicit `Release-As: 0.32.5` footer so the
 main release caller preserves this intent after the staging history is flattened.
 
-The protected promotion `#1282` and Release Please automation published v0.32.4 from the
-v0.32.3 documentation and bounded-rollout promotion. Release-assets workflow `31867033998` completed all platform
+The protected promotion `#1301` and Release Please automation published v0.32.5 from the
+v0.32.4 documentation and graph-focus promotion. Release-assets workflow `31872008773` completed all platform
 jobs and the strict 18-asset verifier, including archive checksums, six updater signatures, the
 updater manifest, and the credential-free packaged-core offline evaluator. These checks do not prove packaged GUI
 behavior, operating-system signing, full-corpus source readiness, or optional memory provider
