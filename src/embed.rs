@@ -307,7 +307,16 @@ impl Embedder for OpenAiEmbedder {
                     response = Some(candidate);
                     break;
                 }
-                Err(error) if (error.is_connect() || error.is_timeout()) && attempt < 7 => {
+                // A provider can close an HTTP/2 or keep-alive connection after
+                // accepting the request but before completing its response. Reqwest
+                // reports that as a request error rather than a connect error. An
+                // embedding POST is idempotent, so retry this bounded transport
+                // failure just like connect/timeout errors instead of aborting a
+                // long source run on one dropped router connection.
+                Err(error)
+                    if (error.is_connect() || error.is_timeout() || error.is_request())
+                        && attempt < 7 =>
+                {
                     let delay = exponential_delay(attempt);
                     tracing::warn!(
                         attempt = attempt + 1,
@@ -438,6 +447,7 @@ mod tests {
 
     use axum::{Router, body::Body, http::StatusCode, response::Response, routing::post};
     use tempfile::tempdir;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use super::*;
 
@@ -674,5 +684,56 @@ mod tests {
             "unexpected error: {error}"
         );
         assert_eq!(forwarded.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn request_transport_failures_are_retried_before_embedding_aborts() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let server_attempts = attempts.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind embedding retry server");
+        let address = listener.local_addr().expect("embedding retry address");
+        tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = listener.accept().await.expect("accept embedding request");
+                let attempt = server_attempts.fetch_add(1, Ordering::SeqCst);
+                if attempt == 0 {
+                    let mut request = [0_u8; 4096];
+                    let _ = stream.read(&mut request).await;
+                    drop(stream);
+                    continue;
+                }
+
+                let body = r#"{"data":[{"embedding":[0.5]}]}"#;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream
+                    .write_all(response.as_bytes())
+                    .await
+                    .expect("write embedding response");
+                break;
+            }
+        });
+
+        let embedder = OpenAiEmbedder::new(
+            EmbeddingConfig {
+                base_url: format!("http://{address}/v1"),
+                dimension: 1,
+                ..EmbeddingConfig::default()
+            },
+            None,
+        )
+        .expect("embedding config");
+        let vectors = embedder
+            .embed(&["retry request transport".into()])
+            .await
+            .expect("request error should be retried");
+
+        assert_eq!(vectors, vec![vec![0.5]]);
+        assert!(attempts.load(Ordering::SeqCst) >= 2);
     }
 }
