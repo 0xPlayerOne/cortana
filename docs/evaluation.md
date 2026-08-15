@@ -19,9 +19,10 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source is `v0.32.5`, published through the protected promotion and
-Release Please automation. Release-assets workflow `31872008773` completed the v0.32.5 package
-gate with all 18 assets and the strict verifier. The v0.32.5 release carries the bounded
+The current protected source and published tag are `v0.32.6`, promoted through the protected
+flow and Release Please automation. Release-assets workflow `31880502344` is the package gate
+for v0.32.6; it must complete with all 18 assets and the strict verifier before the downloadable
+package is called fully verified. The v0.32.6 release carries the bounded
 read-only live-index evaluator.
 A first
 operator-approved retrieval manifest has now passed against the running local work index;
@@ -57,13 +58,13 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.32.5 release gate verifies the packaged core offline without credentials.
+The v0.32.6 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.5 from the local installation;
-the newly published v0.32.5 archive also passed the packaged-core gate. The embedding and HTTP
+The audited host still runs `/Users/amf/.local/bin/cortana` v0.32.5 from the local installation;
+the newly published v0.32.6 archive is the next packaged-core evidence target. The embedding and HTTP
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
@@ -83,10 +84,10 @@ The model fixture remains synthetic and does not authorize sources or recurring 
 
 The current source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.32.5 source and package; it does
+This protects concurrent Desktop windows/processes in the v0.32.6 source and package; it does
 not authorize source ingestion or recurring sync.
 
-The v0.32.5 source and package add bounded embedding-supervisor recovery: steady-state health checks
+The v0.32.6 source and package add bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.

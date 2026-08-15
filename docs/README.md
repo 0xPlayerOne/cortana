@@ -7,15 +7,15 @@ and contributor path.
 
 ## Current status
 
-| Area                           | Current boundary                                                                                                                                                            |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Downloadable package           | `v0.32.5`, with the release-assets verifier completing the archives, checksums, updater signatures, manifest, and packaged-core offline evaluation gate                     |
-| Source checkout                | Currently includes the pending v0.32.6 readiness-budget diagnostic; use the checked-out commit for development and the tagged v0.32.5 release for end-user package evidence |
-| Default runtime                | Query-only; no source authorization, full sync, recurring schedule, or optional memory sidecar is enabled automatically                                                     |
-| Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                                               |
-| Knowledge browser              | Obsidian-style workspace/source/document navigation with bounded hierarchical graph pages and local type filters                                                            |
-| Operational visibility         | Query-only service status, health/readiness probes, source progress, and explicit stale-stat warnings during temporary SQLite contention                                    |
-| Still requires host acceptance | Packaged GUI/browser OAuth, tray and native dialogs, updater install, macOS Developer ID/notarization, and complete full-budget source validation                           |
+| Area                           | Current boundary                                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Downloadable package           | `v0.32.6`, published from the protected promotion; release-assets workflow `31880502344` is the current 18-asset verification run                 |
+| Source checkout                | Tracks the protected v0.32.6 tree; use the tagged release for end-user package evidence and keep the verifier result as the package boundary      |
+| Default runtime                | Query-only; no source authorization, full sync, recurring schedule, or optional memory sidecar is enabled automatically                           |
+| Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                     |
+| Knowledge browser              | Obsidian-style workspace/source/document navigation with bounded hierarchical graph pages and local type filters                                  |
+| Operational visibility         | Query-only service status, health/readiness probes, source progress, and explicit stale-stat warnings during temporary SQLite contention          |
+| Still requires host acceptance | Packaged GUI/browser OAuth, tray and native dialogs, updater install, macOS Developer ID/notarization, and complete full-budget source validation |
 
 This table is the documentation boundary for the project. Update it whenever a release, safety gate,
 or first-run workflow changes; keep historical measurements in the linked audit and release pages

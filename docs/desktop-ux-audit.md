@@ -7,29 +7,28 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-15)
 
-- `v0.32.5` is the current protected release, published through the protected promotion and
-  Release Please automation. Release-assets workflow `31872008773` completed all platform jobs
-  and the strict 18-asset verifier. Asset verification does not launch the
+- `v0.32.6` is the current protected release, published through the protected promotion and
+  Release Please automation. Release-assets workflow `31880502344` is the current package gate;
+  asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The supported v0.32.5 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
+- The supported v0.32.6 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.32.5 archive is the current packaged evidence boundary. The audited host now runs the
+- The v0.32.6 archive is the current packaged evidence boundary. The audited host still runs the
   installed `/Users/amf/.local/bin/cortana` v0.32.5 with embedding and server services in
-  query-only mode; recurring sync remains disabled. The published v0.32.5 archive separately
-  passed packaged-core verification without changing the live index. Query-only readiness and
+  query-only mode; recurring sync remains disabled. Query-only readiness and
   source authorization are separate host checks; source authorization and full-corpus sync were
   not started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
   Developer ID signing, and notarization remain manual gates.
 - A historical installed v0.32.2 CLI passed the disposable offline control-plane drill on
-  2026-08-15; this evidence predates the current v0.32.5 source and package:
+  2026-08-15; this evidence predates the current v0.32.6 source and package:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
   verified backup, restore into a second temporary data directory, SQLite verification, and
   post-restore search. The drill used only temporary data and does not prove packaged GUI, OAuth,
   tray, native-dialog, updater, or operating-system trust behavior.
-- The v0.32.5 macOS ARM package verifier passed the published updater signature, packaged-core
-  offline evaluation, and strict codesign checks. Gatekeeper still rejects the ad-hoc bundle because
+- The v0.32.5 macOS ARM package verifier remains the latest completed static package evidence;
+  v0.32.6 is pending its release-assets verifier. Gatekeeper still rejects the ad-hoc bundle because
   Developer ID signing and notarization are not configured; the GUI was not launched.
 - The preceding installed v0.31.16 configured-provider fixture evaluation passed in 14,660 ms with
   planner and synthesis model use, valid citations, cache reuse, and revision invalidation.
@@ -74,7 +73,7 @@ is not part of a visual/UI change.
   and Slack is unconfigured. The historical sweep is authorization/reachability
   evidence only and must not be read as current source authorization.
 
-The current v0.32.5 source and package include the post-v0.31.12 safety lane, which acquires
+The current v0.32.6 source and package include the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, fences optional-memory outbox leases, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -82,7 +81,7 @@ a per-config cross-process lock. These source-tree protections are covered by fo
 regressions; they do not authorize a source, enable recurring sync, or prove the unverified
 GUI/browser/tray/dialog/updater gates above.
 
-The v0.32.5 source and package add one operational recovery change for the local embedding supervisor:
+The v0.32.6 source and package add one operational recovery change for the local embedding supervisor:
 steady-state checks use the lightweight `/health` endpoint so queued ingestion work cannot look dead;
 startup and restart still require a real vector probe. The earlier v0.32.1 Work Drive trials were
 cancelled after that older supervisor stalled. After v0.32.2 installation, a foreground Work Drive
@@ -205,7 +204,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.32.5 release or the installed v0.32.5 core; use the
+does not describe the current v0.32.6 release or the installed v0.32.5 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
