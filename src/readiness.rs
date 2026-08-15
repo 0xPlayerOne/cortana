@@ -956,6 +956,16 @@ mod tests {
                 .detail
                 .contains("validation limits were smaller than this sync")
         );
+        assert!(
+            grown
+                .detail
+                .contains("validated max_documents=25, max_bytes=1024")
+        );
+        assert!(
+            grown
+                .detail
+                .contains("required max_documents=26, max_bytes=1024")
+        );
 
         config.ingestion.max_documents_per_source = 25;
         config.ingestion.max_duration_seconds = 61;
@@ -966,6 +976,8 @@ mod tests {
                 .detail
                 .contains("validation duration limit was smaller than this sync")
         );
+        assert!(longer.detail.contains("validated max_seconds=60"));
+        assert!(longer.detail.contains("required max_seconds=61"));
     }
 
     #[test]

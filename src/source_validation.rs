@@ -143,16 +143,24 @@ pub fn require_success(
         "source {} configuration changed since validation",
         source.name
     );
-    anyhow::ensure!(
-        validation.max_documents >= max_documents && validation.max_bytes >= max_bytes,
-        "source {} validation limits were smaller than this sync",
-        source.name
-    );
-    anyhow::ensure!(
-        validation.max_seconds >= max_seconds,
-        "source {} validation duration limit was smaller than this sync",
-        source.name
-    );
+    if validation.max_documents < max_documents || validation.max_bytes < max_bytes {
+        anyhow::bail!(
+            "source {} validation limits were smaller than this sync (validated max_documents={}, max_bytes={}; required max_documents={}, max_bytes={})",
+            source.name,
+            validation.max_documents,
+            validation.max_bytes,
+            max_documents,
+            max_bytes,
+        );
+    }
+    if validation.max_seconds < max_seconds {
+        anyhow::bail!(
+            "source {} validation duration limit was smaller than this sync (validated max_seconds={}; required max_seconds={})",
+            source.name,
+            validation.max_seconds,
+            max_seconds,
+        );
+    }
     if max_age > chrono::Duration::zero() {
         let age = Utc::now().signed_duration_since(validation.validated_at);
         anyhow::ensure!(
