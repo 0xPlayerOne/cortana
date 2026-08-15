@@ -19,9 +19,10 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.32.7`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `31896801633` completed all 18 assets
-and the strict verifier. The v0.32.7 source carries the bounded
+The current protected source and published tag are `v0.32.8`, promoted through the protected
+flow and Release Please automation. Release-assets workflow `31903165576` completed all 18 assets
+and the strict verifier. The v0.32.8 source carries the rollback-safe Hermes migration publication
+and the bounded
 read-only live-index evaluator.
 A first
 operator-approved retrieval manifest has now passed against the running local work index;
@@ -67,19 +68,19 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.32.7 release gate verifies the packaged core offline without credentials. The installed
-host binary was updated to v0.32.7 after the release verifier passed; its offline evaluator and
+The v0.32.8 release gate verifies the packaged core offline without credentials. The installed
+host binary evidence below was collected from v0.32.7 after its release verifier passed; its offline evaluator and
 query-only readiness pass, while the provider-backed model run remains fixture-only evidence.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
 remains bounded and opt-in; extractive mode is the production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.7 from the local installation;
-the published v0.32.7 archive also passed the packaged-core gate. The embedding and HTTP
+The audited host evidence below runs `/Users/amf/.local/bin/cortana` v0.32.7 from the local installation;
+the published v0.32.8 archive also passed the packaged-core gate. The embedding and HTTP
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
-Fresh current v0.32.7 provider-backed fixture evidence was collected on 2026-08-15 with the
+The most recent provider-backed fixture evidence was collected on 2026-08-15 with the
 installed CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR,
 case pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
 invalidation; the answer completed in 14,045 ms under the 55,000 ms deadline with no provider
@@ -105,7 +106,7 @@ is operational ingestion evidence, not a full-corpus quality benchmark: every cu
 record remains below its configured production budget, recurring sync is still disabled, and the
 pass did not enable Discord, code, Slack, synthesis, Hindsight, or Honcho.
 
-The v0.32.7 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.32.8 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
@@ -113,10 +114,10 @@ The model fixture remains synthetic and does not authorize sources or recurring 
 
 The current source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.32.7 source and package; it does
+This protects concurrent Desktop windows/processes in the v0.32.8 source and package; it does
 not authorize source ingestion or recurring sync.
 
-The v0.32.7 source and package add bounded embedding-supervisor recovery: steady-state health checks
+The v0.32.8 source and package add bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -266,7 +267,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.32.7 source and verified package
+release evidence; use **Current release boundary** above for the v0.32.8 source and verified package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
