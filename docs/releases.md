@@ -18,6 +18,14 @@ bundles, example configuration, and Cortana agent skill. Its published 18-asset 
 archive, checksum, updater-signature, manifest, and credential-free packaged-core verification
 gates.
 
+### Supported Desktop platforms
+
+The v0.32.5 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
+macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
+do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
+updater signature, installer verification, and native Desktop acceptance evidence.
+
 For a first installation, use the Desktop-first steps in the [README](../README.md#desktop-first-launch-recommended).
 The app starts query-only: source authorization, validation, initial sync, local model setup, and
 recurring ingestion are separate confirmation-gated actions. macOS Developer ID/notarization and
