@@ -30,8 +30,17 @@ enabled sources have bounded or under-budget validation records; the recurring s
 remains uninstalled.
 Since that release evidence was recorded, Special Drive completed a production-budget validation
 covering 97 documents and 290,353 bytes, followed by a bounded non-reconciling trial with 0
-deletions. Five Drive/Gmail sources remain below their configured production budgets, so the
-recurring gate remains correctly closed.
+deletions. Work Drive subsequently completed production-budget validation with 478 documents and
+4,527,663 bytes, and Work Gmail completed validation with 7,395 documents and 34,494,647 bytes.
+The first Work Drive non-reconciling trial was cancelled after the installed v0.32.0 embedding
+service stalled; it made no deletions and will be retried only after the supervisor recovery fix
+ships. Personal Drive production validation failed closed after its 899-second connector timeout;
+it produced no validation record. Special Gmail completed production-budget validation with 214
+documents and 995,335 bytes, but its post-validation trial remains pending. Personal Gmail completed
+production-budget validation with 430 documents and 1,563,456 bytes; its post-validation trial is
+also pending. The recurring gate remains
+correctly closed until every enabled source has fresh complete validation and a successful bounded
+trial.
 The v0.32.0 release gate verifies the packaged core offline without credentials.
 This remains fixture-only query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator
@@ -59,6 +68,11 @@ The current source tree also serializes Desktop settings and service-schedule wr
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
 This protects concurrent Desktop windows/processes in the v0.32.0 source and package; it does
 not authorize source ingestion or recurring sync.
+
+The post-v0.32.0 source tree adds bounded embedding-supervisor recovery: three consecutive failed
+health probes trigger a child restart and a fresh health wait. This is queued for the v0.32.1
+release and is not claimed as behavior of the installed v0.32.0 binary. The cancelled Work Drive
+trial is therefore an operational incident record, not a failed retrieval-quality result.
 
 ### Current approved-index retrieval evidence (2026-08-14)
 
