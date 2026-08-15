@@ -39,18 +39,19 @@ The earlier Work Drive non-reconciling trial was cancelled under the installed v
 the embedding service stalled; it made no deletions. After installing v0.32.2, a new foreground
 `sync --source work-drive --no-reconcile --require-validation` attempt progressed through bounded
 unchanged batches, then the local embedding health probe timed out while queued embedding work was
-still completing; the operator cancelled it after roughly seven minutes. The service recovered
-after cancellation. It made no deletions or reconciliation and must not be treated as a successful
-source trial until a longer bounded run is approved. The earlier Personal Drive production-budget
-validation failed closed after its 899-second connector timeout. On 2026-08-15 a bounded
+still completing; the operator cancelled it after roughly seven minutes. That failed attempt is
+historical: the service recovered afterward, and a subsequent v0.32.4 bounded retry completed 100
+unchanged documents with no deletions. The source still lacks a complete 478-document production-
+budget trial. The earlier Personal Drive production-budget validation failed closed after its
+899-second connector timeout. On 2026-08-15 a bounded
 25-document/5 MiB/60-second validation succeeded (25 documents, 167,848 bytes), followed by a
 non-reconciling trial with `changed=1`, `unchanged=24`, and `deleted=0`. This proves the bounded
 connector path only; it remains below the configured production budget and does not authorize
-recurring sync. Special Gmail completed
-production-budget validation with 214
-documents and 995,335 bytes, but its post-validation trial remains pending. Personal Gmail completed
-production-budget validation with 430 documents and 1,563,456 bytes; its post-validation trial is
-also pending. The recurring gate remains
+recurring sync. Special Gmail completed production-budget validation with 214 documents and
+995,335 bytes, followed by a 100-document-cap non-reconciling trial with `deleted=0`. Personal
+Gmail completed production-budget validation with 430 documents and 1,563,456 bytes, followed by
+the same 100-document-cap non-reconciling trial with `deleted=0`. These capped trials remain below
+complete production trials, so the recurring gate remains
 correctly closed until every enabled source has fresh complete validation and a successful bounded
 trial.
 
