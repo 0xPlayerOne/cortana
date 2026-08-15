@@ -307,7 +307,16 @@ impl Embedder for OpenAiEmbedder {
                     response = Some(candidate);
                     break;
                 }
-                Err(error) if (error.is_connect() || error.is_timeout()) && attempt < 7 => {
+                // A provider can close an HTTP/2 or keep-alive connection after
+                // accepting the request but before completing its response. Reqwest
+                // reports that as a request error rather than a connect error. An
+                // embedding POST is idempotent, so retry this bounded transport
+                // failure just like connect/timeout errors instead of aborting a
+                // long source run on one dropped router connection.
+                Err(error)
+                    if (error.is_connect() || error.is_timeout() || error.is_request())
+                        && attempt < 7 =>
+                {
                     let delay = exponential_delay(attempt);
                     tracing::warn!(
                         attempt = attempt + 1,
