@@ -76,6 +76,12 @@ Special Gmail completed production-budget validation with 214 documents and 995,
 post-validation trial remains pending. Personal Gmail completed production-budget validation with
 430 documents and 1,563,456 bytes; its post-validation trial also remains pending.
 
+On 2026-08-15 a second bounded Work Drive retry emitted all 478 connector records but failed closed
+when the local embedding connection closed during ingestion. The run used `--no-reconcile`, made no
+deletions, and the supervisor restarted the router; query-only readiness passed after recovery.
+Because controlled ingestion commits completed prefixes, this is not a clean trial result. Work
+Drive remains pending a successful bounded retry.
+
 These records advance source readiness but do not close the recurring-sync gate: every enabled
 source still needs a fresh complete production-budget validation and a successful bounded trial.
 Discord and code/filesystem sources remain disabled by operator choice, Slack remains optional and
