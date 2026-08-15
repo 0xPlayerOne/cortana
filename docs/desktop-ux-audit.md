@@ -11,13 +11,13 @@ is not part of a visual/UI change.
   Release Please automation. Release-assets workflow `31872008773` completed all platform jobs
   and the strict 18-asset verifier. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The v0.32.5 archive is the current packaged evidence boundary. The audited host remains on the
-  checksum-verified v0.32.4 core CLI, while the newly published v0.32.5 archive passed packaged-core
-  verification without being installed; embedding and server services
-  running in query-only mode; recurring sync remains disabled. Query-only readiness and source
-  authorization are separate host checks;
-  source authorization and full-corpus sync were not started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
-  updater interaction, Developer ID signing, and notarization remain manual gates.
+- The v0.32.5 archive is the current packaged evidence boundary. The audited host now runs the
+  installed `/Users/amf/.local/bin/cortana` v0.32.5 with embedding and server services in
+  query-only mode; recurring sync remains disabled. The published v0.32.5 archive separately
+  passed packaged-core verification without changing the live index. Query-only readiness and
+  source authorization are separate host checks; source authorization and full-corpus sync were
+  not started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
+  Developer ID signing, and notarization remain manual gates.
 - A historical installed v0.32.2 CLI passed the disposable offline control-plane drill on
   2026-08-15; this evidence predates the current v0.32.5 source and package:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
@@ -138,9 +138,10 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.32.4 CLI passed the bounded provider-backed
-   fixture gate on 2026-08-15 in 14,726 ms, with planner/synthesis, valid citations, cache reuse,
-   and revision invalidation. The preceding installed v0.31.16 run passed in 14,660 ms.
+2. Model-backed provider gate: the installed v0.32.5 CLI passed the bounded provider-backed
+   fixture gate on 2026-08-15 in 11,550 ms, with planner/synthesis, valid citations, cache reuse,
+   and revision invalidation. The preceding installed v0.32.4 run passed in 14,726 ms and the
+   installed v0.31.16 run passed in 14,660 ms.
    The published v0.32.1 release separately passed the credential-free packaged-core
    offline evaluator within 60 seconds (the v0.31.10-configured provider run
    passed in 24,491 ms; the published v0.31.8 archive's earlier 14,879 ms and the installed v0.31.7
@@ -198,7 +199,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.32.5 release or the installed v0.32.4 core; use the
+does not describe the current v0.32.5 release or the installed v0.32.5 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
