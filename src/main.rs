@@ -1910,6 +1910,7 @@ fn manage_service(
 }
 
 fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Result<()> {
+    let started = Instant::now();
     match action {
         MemoryAction::Remember {
             kind,
@@ -1936,7 +1937,7 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                         "interface": "cli"
                     })
                 });
-            let record = store.remember(&MemoryInput {
+            let result = store.remember(&MemoryInput {
                 kind: kind.clone(),
                 project: project.clone(),
                 title: title.clone(),
@@ -1949,9 +1950,36 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                 acl: acl.clone(),
                 provenance,
                 supersedes_id: supersedes_id.clone(),
-            })?;
-            println!("{}", serde_json::to_string_pretty(&record)?);
-            Ok(())
+            });
+            match result {
+                Ok(record) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "remember",
+                        Some(project),
+                        Some(source),
+                        "succeeded",
+                        Some(1),
+                        started,
+                    );
+                    println!("{}", serde_json::to_string_pretty(&record)?);
+                    Ok(())
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "remember",
+                        Some(project),
+                        Some(source),
+                        "invalid",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
         }
         MemoryAction::Recall {
             query,
@@ -1959,21 +1987,87 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
             kind,
             limit,
         } => {
-            let records = store.recall_memories(
+            let result = store.recall_memories(
                 query,
                 project.as_deref(),
                 kind.as_deref(),
                 *limit,
                 &["*".into()],
-            )?;
-            println!("{}", serde_json::to_string_pretty(&records)?);
-            Ok(())
+            );
+            match result {
+                Ok(records) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "recall",
+                        project.as_deref(),
+                        None,
+                        "succeeded",
+                        Some(records.len()),
+                        started,
+                    );
+                    println!("{}", serde_json::to_string_pretty(&records)?);
+                    Ok(())
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "recall",
+                        project.as_deref(),
+                        None,
+                        "failed",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
         }
         MemoryAction::Forget { id } => {
-            let forgotten = store.forget_memory(id)?;
-            anyhow::ensure!(forgotten, "memory not found or already retracted: {id}");
-            println!("{}", serde_json::json!({"id": id, "forgotten": true}));
-            Ok(())
+            let result = store.forget_memory(id);
+            match result {
+                Ok(true) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "forget",
+                        None,
+                        None,
+                        "succeeded",
+                        Some(1),
+                        started,
+                    );
+                    println!("{}", serde_json::json!({"id": id, "forgotten": true}));
+                    Ok(())
+                }
+                Ok(false) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "forget",
+                        None,
+                        None,
+                        "not_found",
+                        Some(0),
+                        started,
+                    );
+                    anyhow::bail!("memory not found or already retracted: {id}");
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "forget",
+                        None,
+                        None,
+                        "failed",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
         }
     }
 }
@@ -3561,6 +3655,33 @@ fn record_cli_context_audit(
         max_events,
     ) {
         tracing::warn!(%error, "CLI context audit write failed");
+    }
+}
+
+/// Record metadata-only audit events for owner-local memory commands. Memory
+/// titles, content, queries, and IDs never enter the audit trail.
+#[allow(clippy::too_many_arguments)]
+fn record_cli_memory_audit(
+    store: &Store,
+    max_events: usize,
+    action: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+    outcome: &str,
+    result_count: Option<usize>,
+    started: Instant,
+) {
+    if let Err(error) = store.record_audit(
+        "local-cli",
+        &format!("local-cli/memory/{action}"),
+        project,
+        source,
+        outcome,
+        result_count,
+        u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        max_events,
+    ) {
+        tracing::warn!(%error, "CLI memory audit write failed");
     }
 }
 
