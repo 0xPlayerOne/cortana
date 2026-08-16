@@ -9,17 +9,17 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.32.8
+## Current release: v0.32.9
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.8` is the current protected source and published release. Release-assets workflow
-`31903165576` completed all 18 archive, checksum, updater-signature, manifest, and credential-free
+`v0.32.9` is the current protected source and published release. Release-assets workflow
+`31920097809` completed all 18 archive, checksum, updater-signature, manifest, and credential-free
 packaged-core gates. v0.32.6 and earlier remain historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.32.8 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.32.9 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -35,13 +35,14 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.32.8
+  scripts/verify-desktop-release.sh v0.32.9
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.32.8 source is the release boundary for the post-v0.31.12 hardening, bounded live-index
+The v0.32.9 source is the release boundary for the bounded large-PDF Drive parser and the
+post-v0.31.12 hardening, bounded live-index
 evaluation harness, and readiness-budget diagnostics described below. Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
 being called downloadable-release behavior.
@@ -52,6 +53,15 @@ uses synthetic data only and is not a substitute for the packaged GUI/MCP/manual
 The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP stdio subprocess,
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
+
+## v0.32.9 release intent (published and verified)
+
+This patch publishes the bounded large-PDF Drive parser after the v0.32.8 production-budget
+validation timed out while reading a large document. PDFs larger than the bounded page window are
+sampled with an explicit truncation marker instead of holding the connector indefinitely. Release
+Please published the v0.32.9 tag, and release-assets workflow `31920097809` completed all 18 assets,
+checksums, updater signatures, the manifest, and packaged-core evaluation. The release changes no
+credentials, source authorization, indexed data, recurring-sync state, or optional memory-provider state.
 
 ## v0.32.8 release intent (published and verified)
 

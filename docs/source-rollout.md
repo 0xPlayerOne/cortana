@@ -12,9 +12,9 @@ recurring job is active. The operator has completed the Hermes import/rebuild an
 dated rollback backup; active legacy rows, launch agents, and parallel legacy stores are not part
 of the live Cortana runtime. Migration compatibility code remains available for older installs.
 
-The current safe rollout is intentionally selective. The operator has now refreshed the validation
+The current safe rollout is intentionally selective. The operator has refreshed the validation
 records for the enabled non-code sources at their configured production budgets where the provider
-can complete within the bounded connector deadline:
+can complete within the bounded connector deadline, using the installed v0.32.9 parser:
 
 - Apple Notes: `work-notes` 28, `personal-notes` 65, and `special-notes` 8 documents; all are
   `complete=true` at 2,000 documents/128 MiB/900 seconds.
@@ -23,13 +23,15 @@ can complete within the bounded connector deadline:
   all are complete.
 - Buzz: 45 records at 2,000/128 MiB/900 seconds; complete.
 - Work Gmail: 7,386 messages at 10,000/64 MiB/600 seconds; complete.
+- Personal Gmail: 427 messages at 2,000/128 MiB/900 seconds; complete.
+- Special Gmail: 216 messages at 2,000/128 MiB/900 seconds; complete.
+- Special Drive: 97 documents at 2,000/128 MiB/900 seconds; complete.
 
-Personal Drive's explicit 2,000-document/128 MiB/1,800-second validation failed closed at the
-1,799-second connector deadline under the installed v0.32.8 parser while processing a large PDF;
-it made no index or reconciliation changes. Rerun it only after the bounded large-PDF parser ships.
-Work Drive's latest 2,000-document/128 MiB/900-second validation also failed closed after the
-connector deadline; Personal/Special Gmail and Personal/Special Drive still have only bounded or
-historical records. These failures do not authorize reconciliation. Discord and all code/filesystem
+Personal Drive's explicit 2,000-document/128 MiB/1,800-second validation is currently running with
+the bounded large-PDF parser; it makes no index or reconciliation changes. Work Drive's latest
+2,000-document/128 MiB/900-second validation failed closed under the previous connector deadline
+and will be retried after Personal Drive completes. These failures do not authorize reconciliation.
+Discord and all code/filesystem
 roots remain disabled by operator choice, and Slack is not configured. The recurring sync service
 remains uninstalled until every enabled source has a fresh complete validation at its configured
 budget.
@@ -39,7 +41,7 @@ budget.
 | Apple Notes (`work-notes`, `personal-notes`, `special-notes`)              | Complete folder-scoped validation: 28 `Nifty League` notes in `work`, 65 personal notes after excluding `Nifty League` and Pink Binder folders, and 8 `The Pink Binder` notes in `special`; all meet the 2,000/128 MiB/900-second budget.                                                             | Keep exact folder filters; run a small non-reconciling trial before any future reconciliation.                                                                       |
 | Google Calendar (`work-calendar`, `personal-calendar`, `special-calendar`) | Complete production-budget validation returned 2,207, 1,836, and 0 events respectively.                                                                                                                                                                                                               | Keep trials non-reconciling until the remaining source gates close.                                                                                                  |
 | Buzz                                                                       | Complete production-budget validation returned 45 records at 2,000/128 MiB/900 seconds.                                                                                                                                                                                                               | Keep the source non-reconciling until the remaining source gates close.                                                                                              |
-| Google Drive/Gmail                                                         | Work Gmail is complete at 7,386/34,487,878 bytes and 10,000/64 MiB/600 seconds. Personal/Special Gmail and Personal/Special Drive remain bounded or historical. Personal Drive failed at the 1,799-second connector deadline under v0.32.8; Work Drive failed at 899 seconds with no complete record. | Ship the bounded large-PDF parser, then retry Drive one source at a time with `--no-reconcile`; do not treat capped prefixes or failed runs as production snapshots. |
+| Google Drive/Gmail                                                         | Work Gmail is complete at 7,386/34,487,878 bytes; Personal Gmail is complete at 427/1,489,922 bytes; Special Gmail is complete at 216/1,004,868 bytes; Special Drive is complete at 97/290,353 bytes. Personal Drive is running at the 2,000/128 MiB/1,800-second budget; Work Drive remains failed pending retry. | Finish Personal Drive, then retry Work Drive one source at a time with `--no-reconcile`; do not treat capped prefixes or failed runs as production snapshots. |
 | Discord                                                                    | Disabled by operator decision while the prior bot/RPC authorization is unavailable.                                                                                                                                                                                                                   | Keep disabled until a fresh owner authorization is completed.                                                                                                        |
 | Slack                                                                      | Not configured in this installation.                                                                                                                                                                                                                                                                  | Remains an optional connector for other users.                                                                                                                       |
 | Code/filesystem roots                                                      | Disabled by operator decision to defer the largest syncs.                                                                                                                                                                                                                                             | Keep disabled until a separate code-index rollout is approved.                                                                                                       |
