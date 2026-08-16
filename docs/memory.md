@@ -46,7 +46,7 @@ operational context.
 The native MCP tools are:
 
 - `remember` — write one bounded memory;
-- `recall` — ACL-filtered prefix-aware recall with a precise all-term pass and a bounded natural-language fallback. Candidates are ranked locally by query coverage, lexical relevance, confidence, importance, freshness, and exact-vs-fallback match; no external memory service is consulted;
+- `recall` — ACL-filtered prefix-aware recall with a precise all-term pass and a bounded natural-language fallback. Candidates are ranked locally by query coverage, lexical relevance, confidence, importance, freshness, and exact-vs-fallback match using Cortana's own store;
 - `forget` — redact one memory;
 - `context` — retrieve cited source evidence plus relevant native memory in a
   token-bounded bundle.
