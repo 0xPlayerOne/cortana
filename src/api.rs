@@ -1620,10 +1620,27 @@ async fn forget_memory(
         );
         return Err((StatusCode::FORBIDDEN, "memory ACL denied".into()));
     }
-    let forgotten = state
-        .store
-        .forget_memory_scoped(&request.id, &principal.visible_acl(), principal.is_owner())
-        .map_err(internal_error)?;
+    let forgotten = match state.store.forget_memory_scoped(
+        &request.id,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    ) {
+        Ok(forgotten) => forgotten,
+        Err(error) if error.to_string() == "memory ACL denied" => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.forget",
+                Some(&memory.project),
+                Some(&memory.source),
+                "forbidden",
+                None,
+                started,
+            );
+            return Err((StatusCode::FORBIDDEN, "memory ACL denied".into()));
+        }
+        Err(error) => return Err(internal_error(error)),
+    };
     record_audit(
         &state,
         &principal,

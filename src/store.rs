@@ -1069,35 +1069,48 @@ impl Store {
         }
         let active_count: i64 = transaction.query_row(
             "SELECT COUNT(*) FROM memories
-             WHERE status='active' AND (valid_until IS NULL OR valid_until>?1)",
+             WHERE status='active' AND (valid_until IS NULL OR julianday(valid_until)>julianday(?1))",
             [now.as_str()],
             |row| row.get(0),
         )?;
-        let replaces_active = existing
+        let replaces_active = existing.as_ref().is_some_and(|memory| {
+            memory.status == "active"
+                && memory::valid_until_is_active(memory.valid_until.as_deref(), &now)
+        });
+        let supersession_target: Option<(Vec<String>, Option<String>)> =
+            if let Some(previous_id) = input.supersedes_id.as_deref() {
+                transaction
+                    .query_row(
+                        "SELECT acl_json,valid_until FROM memories
+                         WHERE id=?1 AND status='active'",
+                        [previous_id],
+                        |row| {
+                            let acl_json: String = row.get(0)?;
+                            let acl = serde_json::from_str(&acl_json).map_err(|error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    0,
+                                    Type::Text,
+                                    Box::new(error),
+                                )
+                            })?;
+                            Ok((acl, row.get(1)?))
+                        },
+                    )
+                    .optional()?
+            } else {
+                None
+            };
+        let supersedes_active = supersession_target
             .as_ref()
-            .is_some_and(|memory| memory.status == "active");
+            .is_some_and(|(_, valid_until)| {
+                memory::valid_until_is_active(valid_until.as_deref(), &now)
+            });
         anyhow::ensure!(
-            replaces_active || input.supersedes_id.is_some() || active_count < max_active as i64,
+            replaces_active || supersedes_active || active_count < max_active as i64,
             "active memory limit reached ({max_active}); retract or supersede an existing memory before adding another"
         );
         if let Some(previous_id) = input.supersedes_id.as_deref() {
-            let previous_acl: Option<Vec<String>> = transaction
-                .query_row(
-                    "SELECT acl_json FROM memories WHERE id=?1 AND status='active'",
-                    [previous_id],
-                    |row| {
-                        let acl_json: String = row.get(0)?;
-                        serde_json::from_str(&acl_json).map_err(|error| {
-                            rusqlite::Error::FromSqlConversionFailure(
-                                0,
-                                Type::Text,
-                                Box::new(error),
-                            )
-                        })
-                    },
-                )
-                .optional()?;
-            if let Some(previous_acl) = &previous_acl {
+            if let Some((previous_acl, _)) = &supersession_target {
                 anyhow::ensure!(
                     owner || acl_allows(previous_acl, principal_acl),
                     "memory supersession target is outside principal visibility"
@@ -1193,7 +1206,7 @@ impl Store {
                    AND (?2 IS NULL OR m.project=?2)
                    AND (?3 IS NULL OR m.kind=?3)
                    AND m.valid_from<=?4
-                   AND (m.valid_until IS NULL OR m.valid_until>?4)
+                   AND (m.valid_until IS NULL OR julianday(m.valid_until)>julianday(?4))
                    AND json_valid(m.acl_json)
                    AND json_type(m.acl_json)='array'
                    AND NOT EXISTS (
@@ -1312,9 +1325,9 @@ impl Store {
         let (active, expired, retracted, superseded): (i64, i64, i64, i64) = connection.query_row(
             "SELECT
                    COALESCE(SUM(CASE WHEN status='active'
-                     AND (valid_until IS NULL OR valid_until>?1) THEN 1 ELSE 0 END),0),
+                     AND (valid_until IS NULL OR julianday(valid_until)>julianday(?1)) THEN 1 ELSE 0 END),0),
                    COALESCE(SUM(CASE WHEN status='active'
-                     AND valid_until IS NOT NULL AND valid_until<=?1 THEN 1 ELSE 0 END),0),
+                     AND valid_until IS NOT NULL AND julianday(valid_until)<=julianday(?1) THEN 1 ELSE 0 END),0),
                    COALESCE(SUM(CASE WHEN status='retracted' THEN 1 ELSE 0 END),0),
                    COALESCE(SUM(CASE WHEN status='superseded' THEN 1 ELSE 0 END),0)
                  FROM memories",
@@ -4549,5 +4562,64 @@ mod tests {
             .expect("replacement stays within limit");
         assert_ne!(replacement.id, first.id);
         assert_eq!(store.memory_stats().expect("stats").active, 1);
+    }
+
+    #[test]
+    fn expired_supersession_target_cannot_bypass_active_limit() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store.configure_memory_limit(1).expect("configure limit");
+        let expired = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Expired task".into(),
+                content: "This task is already complete.".into(),
+                source: "agent".into(),
+                source_id: "session-expired".into(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-expired"}),
+                supersedes_id: None,
+                valid_until: Some("2000-01-01T00:00:00Z".into()),
+            })
+            .expect("expired memory");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Keep the active memory cap.".into(),
+                source: "agent".into(),
+                source_id: "session-current".into(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-current"}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("current memory");
+        let error = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Overflow task".into(),
+                content: "This must wait.".into(),
+                source: "agent".into(),
+                source_id: "session-overflow".into(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-overflow"}),
+                supersedes_id: Some(expired.id),
+                valid_until: None,
+            })
+            .expect_err("expired supersession must not bypass the active limit");
+        assert!(error.to_string().contains("active memory limit reached"));
     }
 }

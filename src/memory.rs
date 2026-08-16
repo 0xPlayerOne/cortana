@@ -241,7 +241,26 @@ fn validate_text(name: &str, value: &str, max_bytes: usize) -> Result<()> {
 }
 
 pub(crate) fn now() -> String {
-    Utc::now().to_rfc3339()
+    // Keep newly-written timestamps at a stable precision. SQLite expiry
+    // predicates still use julianday so older rows with a different RFC3339
+    // precision remain safe to compare.
+    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
+/// Return whether an optional expiry is still active at the supplied
+/// RFC3339 instant. Invalid legacy timestamps fail closed so they cannot
+/// consume active capacity or re-enter recall.
+pub(crate) fn valid_until_is_active(valid_until: Option<&str>, now: &str) -> bool {
+    let Some(valid_until) = valid_until else {
+        return true;
+    };
+    let Ok(valid_until) = DateTime::parse_from_rfc3339(valid_until) else {
+        return false;
+    };
+    let Ok(now) = DateTime::parse_from_rfc3339(now) else {
+        return false;
+    };
+    valid_until > now
 }
 
 pub(crate) fn fts_query(query: &str) -> Result<String> {
@@ -308,5 +327,17 @@ mod tests {
         assert_eq!(valid_until.as_deref(), Some("2030-01-01T10:00:00Z"));
         let error = validate_input(&input(Some("tomorrow"))).expect_err("invalid expiry");
         assert!(error.to_string().contains("valid_until must be RFC3339"));
+    }
+
+    #[test]
+    fn expiry_comparison_handles_mixed_rfc3339_precision() {
+        assert!(!valid_until_is_active(
+            Some("2030-01-01T10:00:00Z"),
+            "2030-01-01T10:00:00.123Z"
+        ));
+        assert!(valid_until_is_active(
+            Some("2030-01-01T10:00:00.123Z"),
+            "2030-01-01T10:00:00Z"
+        ));
     }
 }
