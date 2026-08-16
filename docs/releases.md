@@ -70,6 +70,10 @@ operations with workspace isolation, ACL enforcement, provenance, idempotent ded
 expiry, redaction tombstones, cache-revision invalidation, and metadata-only audit events. Native
 memory is the only supported operational-memory path for this release intent.
 
+**Boundary:** this section describes the promoted source tree, not an installed package. The
+source tree must complete the protected promotion, version-only Release Please PR, and strict
+asset verification before v0.33.0 is described as downloadable behavior.
+
 This release intent changes no source authorization, indexed data, recurring-sync state, or live
 credentials. The versioned package and packaged-core verifier remain pending until Release Please
 publishes the protected version PR and the release-assets workflow verifies all platform archives,
