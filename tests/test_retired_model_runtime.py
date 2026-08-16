@@ -23,6 +23,20 @@ RETIRED_IDENTIFIERS = (
     "spark_model",
 )
 
+# Cortana's native SQLite memory is the only supported operational-memory
+# implementation. Keep retired third-party memory engines out of shipped
+# runtime paths while preserving historical changelog entries for auditability.
+RETIRED_EXTERNAL_MEMORY_IDENTIFIERS = (
+    "hindsight",
+    "honcho",
+    "memory-provider",
+    "memory_provider",
+    "memory-adapter",
+    "memory_adapter",
+    "memory-sidecar",
+    "memory_sidecar",
+)
+
 
 def _runtime_files() -> list[Path]:
     tracked = subprocess.run(
@@ -57,3 +71,18 @@ def test_retired_model_identifiers_are_absent_from_runtime_paths() -> None:
                 findings.append(f"{path.relative_to(ROOT)} contains {identifier}")
 
     assert not findings, "retired model/provider identifiers found:\n" + "\n".join(findings)
+
+
+def test_external_memory_engines_are_absent_from_runtime_paths() -> None:
+    findings: list[str] = []
+    for path in _runtime_files():
+        try:
+            content = path.read_bytes().lower()
+        except OSError as error:
+            findings.append(f"{path.relative_to(ROOT)} could not be read: {error}")
+            continue
+        for identifier in RETIRED_EXTERNAL_MEMORY_IDENTIFIERS:
+            if identifier.encode("ascii") in content:
+                findings.append(f"{path.relative_to(ROOT)} contains {identifier}")
+
+    assert not findings, "retired external memory identifiers found:\n" + "\n".join(findings)
