@@ -289,6 +289,10 @@ freshly-created drill directory. Set `CORTANA_KEEP_DRILL=1` to retain the exact 
 The drill proves the offline CLI control plane only; it is not a proof of the Desktop GUI, OAuth
 flows, tray integration, or updater behavior, none of which it exercises.
 
+The installed v0.32.12 host passed this drill on 2026-08-16. That current-version result confirms
+the disposable control-plane and recovery path; it does not authorize source synchronization or
+replace native GUI, browser OAuth, tray, updater, or macOS trust acceptance.
+
 ## Shared-agent authorization drill
 
 Use the disposable HTTP drill before onboarding a shared agent or changing its workspace ACL:
