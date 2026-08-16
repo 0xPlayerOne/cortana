@@ -11,6 +11,10 @@ is not part of a visual/UI change.
   and Release Please automation. Release-assets workflow `31933279147` completed all 18 assets,
   checksums, updater signatures, manifest, and packaged-core verification. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
+- The current macOS Apple Silicon package verifier also passed the v0.32.12 Tauri updater
+  signature, packaged-core offline evaluation, and strict codesign checks. `spctl --assess` still
+  rejects the ad-hoc bundle because Developer ID signing and notarization are not configured; the
+  verifier intentionally did not launch the GUI.
 - The supported v0.32.12 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
@@ -26,8 +30,8 @@ is not part of a visual/UI change.
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
   all passed with no fallback. This is provider-backed fixture evidence only; it does not query
   the personal index or prove packaged GUI behavior.
-- A historical installed v0.32.2 CLI passed the disposable offline control-plane drill on
-  2026-08-15; this evidence predates the current v0.32.12 source and package:
+- The installed v0.32.12 host passed the disposable offline control-plane drill on
+  2026-08-16:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
   verified backup, restore into a second temporary data directory, SQLite verification, and
   post-restore search. The drill used only temporary data and does not prove packaged GUI, OAuth,
