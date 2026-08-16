@@ -1196,9 +1196,10 @@ impl Store {
     ) -> Result<Vec<MemorySearchResult>> {
         let match_query = memory::fts_query(query)?;
         let fallback_query = memory::fts_query_or(query)?;
-        if let Some(kind) = kind {
-            memory::MemoryKind::parse(kind)?;
-        }
+        let normalized_kind = kind
+            .map(memory::MemoryKind::parse)
+            .transpose()?
+            .map(|kind| kind.as_str().to_string());
         let connection = self.read_connection.lock().expect("store lock poisoned");
         let candidate_limit =
             i64::try_from(limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT) * 4).unwrap_or(i64::MAX);
@@ -1250,7 +1251,7 @@ impl Store {
                 params![
                     query_variant,
                     project,
-                    kind,
+                    normalized_kind.as_deref(),
                     now,
                     principal_acl_json,
                     candidate_limit
@@ -4397,6 +4398,40 @@ mod tests {
                 &["work".into()],
             )
             .expect("recall");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].memory.id, memory.id);
+    }
+
+    #[test]
+    fn native_memory_recall_normalizes_case_insensitive_kind_filters() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let memory = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "work".into(),
+                title: "Editor preference".into(),
+                content: "Use a focused editor.".into(),
+                source: "agent".into(),
+                source_id: "preference-1".into(),
+                dedupe_key: None,
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("memory");
+        let results = store
+            .recall_memories(
+                "focused editor",
+                Some("work"),
+                Some("Preference"),
+                10,
+                &["work".into()],
+            )
+            .expect("case-insensitive kind recall");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].memory.id, memory.id);
     }
