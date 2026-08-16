@@ -32,8 +32,9 @@ raw-evidence fallback.
 7. If evidence conflicts, prefer newer authoritative sources and disclose the conflict.
 8. Use `remember` only for an explicit, bounded conclusion, preference, procedure, episode, or
    working-state update. Include a stable `dedupe_key` and provenance when possible; never copy
-   an entire source document into memory. Use `recall` for memory-only retrieval and `forget` when
-   the user withdraws a memory.
+   an entire source document into memory. Set an RFC3339 `valid_until` on short-lived working
+   context so expired state is excluded automatically. Use `recall` for memory-only retrieval and
+   `forget` when the user withdraws a memory.
 
 When using `/v1/answer`, treat any returned `memories` as operational context rather than citations;
 the answer must remain grounded in numbered evidence. Shared agents need the `memory` scope for
