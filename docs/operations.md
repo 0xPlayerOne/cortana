@@ -215,9 +215,13 @@ provider.
 
 Google Drive content is bounded to 50,000 characters per file by default. Oversized exports keep
 equal head and tail samples plus `content_truncated` and `content_original_chars` metadata, avoiding
-hours of low-value embedding work for multi-megabyte CSVs. PDFs larger than 128 pages also use a
-bounded head/tail page sample; they report `content_original_chars: null` because the omitted middle
-was not parsed. Set `max_content_chars` on an individual `google-drive` source when a different
+hours of low-value embedding work for multi-megabyte CSVs. PDFs larger than 32 pages also use a
+bounded head/tail sample of at most 32 pages; they report `content_original_chars: null` because the omitted middle
+was not parsed. Image-only or malformed PDFs are retained with `content_unavailable: true` and an
+explicit original-item recovery message rather than aborting the rest of a strict listing. Other
+unsupported binary Drive items receive the same metadata-only marker and remain linked to their
+original item; Cortana does not claim to have extracted their contents. Set
+`max_content_chars` on an individual `google-drive` source when a different
 evidence budget is justified.
 
 ## Backup and recovery
