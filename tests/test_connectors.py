@@ -1079,6 +1079,18 @@ def test_large_low_text_pdf_does_not_walk_every_page() -> None:
     assert "page-9999" in result
 
 
+def test_empty_text_pdf_emits_explicit_unavailable_marker() -> None:
+    class EmptyPage:
+        def extract_text(self) -> str:
+            return ""
+
+    result = google._extract_pdf_text(type("Reader", (), {"pages": [EmptyPage()]})())
+
+    assert str(result) == google.PDF_NO_TEXT_MARKER
+    assert result.truncated is True
+    assert result.original_chars is None
+
+
 def test_text_heavy_pdf_stops_after_bounded_payload() -> None:
     class FakePage:
         def __init__(self, text: str) -> None:

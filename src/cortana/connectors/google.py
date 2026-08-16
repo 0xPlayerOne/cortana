@@ -66,6 +66,9 @@ MAX_DRIVE_FULL_PDF_PAGES = 32
 MAX_DRIVE_SAMPLE_PAGES = 32
 UNKNOWN_CONTENT_CHARS = -1
 PDF_SAMPLE_MARKER = "\n\n[Cortana omitted middle PDF pages]\n\n"
+PDF_NO_TEXT_MARKER = (
+    "[Cortana PDF contains no extractable text; open the original Drive item for visual content.]"
+)
 # A normal-sized PDF can still contain more text than the bounded extraction
 # payload. Once that bound is reached, stop asking pypdf to parse later pages;
 # the retained prefix is explicitly marked as incomplete and is never treated
@@ -583,6 +586,7 @@ def fetch_drive(
                                 "content_stale": file_id in stale_ids,
                                 "content_truncated": content_truncated
                                 or bool(getattr(body, "truncated", False)),
+                                "content_unavailable": PDF_NO_TEXT_MARKER in str(body),
                                 "content_original_chars": getattr(
                                     body, "original_chars", len(body)
                                 ),
@@ -1309,6 +1313,8 @@ def _extract_pdf_text(reader: Any) -> _DriveContent:
                     truncated=True,
                 )
         result = accumulator.finish()
+        if not str(result).strip():
+            return _DriveContent(PDF_NO_TEXT_MARKER, None, truncated=True)
         return _DriveContent(str(result).strip(), result.original_chars, result.truncated)
 
     sample_limit = MAX_DRIVE_STREAM_CHARS - len(PDF_SAMPLE_MARKER)
@@ -1343,6 +1349,8 @@ def _extract_pdf_text(reader: Any) -> _DriveContent:
 
     head = "".join(head_parts)
     tail = "".join(reversed(tail_parts_reversed))
+    if not head and not tail:
+        return _DriveContent(PDF_NO_TEXT_MARKER, None, truncated=True)
     sampled = f"{head}{PDF_SAMPLE_MARKER}{tail}".strip()
     # The omitted middle is intentionally not parsed, so an exact character
     # count is unavailable. Persist an explicit sentinel rather than claiming
