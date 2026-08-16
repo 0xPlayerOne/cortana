@@ -658,6 +658,11 @@ function IndexView({
             value={(status.retrieval_fallbacks_total ?? 0).toLocaleString()}
           />
           <Metric label="Answers total" value={status.answers_total.toLocaleString()} />
+          <Metric
+            label="Native memory"
+            value={`${status.memory.active.toLocaleString()} active · ${status.memory.total.toLocaleString()} total`}
+          />
+          <Metric label="Expired memory" value={status.memory.expired.toLocaleString()} />
         </div>
       </section>
       <section className="utility-section">
