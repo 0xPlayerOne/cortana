@@ -1308,27 +1308,26 @@ impl Store {
 
     pub fn memory_stats(&self) -> Result<MemoryStats> {
         let connection = self.read_connection.lock().expect("store lock poisoned");
-        let mut statement = connection.prepare("SELECT status,valid_until FROM memories")?;
-        let mut stats = MemoryStats::default();
         let now = memory::now();
-        for row in statement.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
-        })? {
-            let (status, valid_until) = row?;
-            match status.as_str() {
-                "active"
-                    if valid_until
-                        .as_deref()
-                        .is_some_and(|value| value <= now.as_str()) =>
-                {
-                    stats.expired += 1;
-                }
-                "active" => stats.active += 1,
-                "retracted" => stats.retracted += 1,
-                "superseded" => stats.superseded += 1,
-                _ => {}
-            }
-        }
+        let (active, expired, retracted, superseded): (i64, i64, i64, i64) = connection.query_row(
+            "SELECT
+                   COALESCE(SUM(CASE WHEN status='active'
+                     AND (valid_until IS NULL OR valid_until>?1) THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='active'
+                     AND valid_until IS NOT NULL AND valid_until<=?1 THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='retracted' THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='superseded' THEN 1 ELSE 0 END),0)
+                 FROM memories",
+            [now.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        let mut stats = MemoryStats {
+            active,
+            expired,
+            retracted,
+            superseded,
+            total: 0,
+        };
         stats.total = stats.active + stats.expired + stats.retracted + stats.superseded;
         Ok(stats)
     }
