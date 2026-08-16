@@ -1241,9 +1241,13 @@ async fn answer(
     let project = request.project.clone();
     let source = request.source.clone();
     state.metrics.record(&principal, PrincipalMetric::Answer);
+    let visible_acl = principal.visible_acl();
+    let memory_acl = principal
+        .has_scope(MEMORY_SCOPE)
+        .then_some(visible_acl.as_slice());
     let result = state
         .answer
-        .answer_scoped(request, &principal.visible_acl())
+        .answer_scoped_with_memory(request, &visible_acl, memory_acl)
         .await;
     let (outcome, count) = match &result {
         Ok(response) => {
@@ -1258,7 +1262,12 @@ async fn answer(
                 } else {
                     "succeeded"
                 },
-                Some(response.evidence.len()),
+                Some(
+                    response
+                        .evidence
+                        .len()
+                        .saturating_add(response.memories.len()),
+                ),
             )
         }
         Err(_) => ("failed", None),
@@ -4013,6 +4022,23 @@ mod tests {
                 &[("work launch phrase".into(), vec![1.0; 16])],
             )
             .expect("work document");
+        state
+            .store
+            .remember(&MemoryInput {
+                kind: "semantic".into(),
+                project: "demo".into(),
+                title: "Launch memory".into(),
+                content: "The shared launch phrase is approved for work.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: Some("api:admin-launch-memory".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test": true}),
+                supersedes_id: None,
+            })
+            .expect("memory");
 
         let mut config = Config::default();
         config
@@ -4031,7 +4057,7 @@ mod tests {
             AuthTokenConfig {
                 principal: "admin-agent".into(),
                 token_env: "ADMIN_TOKEN".into(),
-                scopes: vec![QUERY_SCOPE.into(), ADMIN_SCOPE.into()],
+                scopes: vec![QUERY_SCOPE.into(), ADMIN_SCOPE.into(), MEMORY_SCOPE.into()],
                 acl: vec!["work".into()],
             },
         ];
@@ -4221,6 +4247,7 @@ mod tests {
             work_answer_value["evidence"].as_array().map(Vec::len),
             Some(1)
         );
+        assert!(work_answer_value.get("memories").is_none());
 
         let admin_answer = app
             .clone()
@@ -4245,6 +4272,10 @@ mod tests {
         assert_eq!(
             admin_answer_value["evidence"].as_array().map(Vec::len),
             Some(2)
+        );
+        assert_eq!(
+            admin_answer_value["memories"].as_array().map(Vec::len),
+            Some(1)
         );
 
         let admin_list = app
