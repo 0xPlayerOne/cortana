@@ -6,7 +6,7 @@
 //! conclusions with their own lifecycle, provenance, confidence, and ACL.
 
 use anyhow::{Result, bail};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -197,7 +197,9 @@ fn normalize_valid_until(value: &str) -> Result<String> {
     validate_text("valid_until", value, MAX_MEMORY_VALID_UNTIL_BYTES)?;
     let timestamp = DateTime::parse_from_rfc3339(value)
         .map_err(|error| anyhow::anyhow!("valid_until must be RFC3339: {error}"))?;
-    Ok(timestamp.with_timezone(&Utc).to_rfc3339())
+    Ok(timestamp
+        .with_timezone(&Utc)
+        .to_rfc3339_opts(SecondsFormat::AutoSi, true))
 }
 
 pub(crate) fn normalize_acl(project: &str, acl: &[String]) -> Result<Vec<String>> {
@@ -297,7 +299,7 @@ mod tests {
     fn expiry_is_normalized_and_bounded() {
         let (_, _, _, valid_until) =
             validate_input(&input(Some("2030-01-01T12:00:00+02:00"))).expect("valid expiry");
-        assert_eq!(valid_until.as_deref(), Some("2030-01-01T10:00:00+00:00"));
+        assert_eq!(valid_until.as_deref(), Some("2030-01-01T10:00:00Z"));
         let error = validate_input(&input(Some("tomorrow"))).expect_err("invalid expiry");
         assert!(error.to_string().contains("valid_until must be RFC3339"));
     }
