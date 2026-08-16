@@ -30,7 +30,7 @@ from .model import Document
 
 DRIVE_FIELDS = (
     "nextPageToken,incompleteSearch,"
-    "files(id,name,mimeType,modifiedTime,webViewLink,owners(displayName))"
+    "files(id,name,mimeType,size,modifiedTime,webViewLink,owners(displayName))"
 )
 GOOGLE_EXPORTS = {
     "application/vnd.google-apps.document": ("text/plain", "txt"),
@@ -1224,6 +1224,19 @@ def _drive_content(session: GoogleSession, item: dict[str, Any]) -> str:
             mime_type=mime_type,
         )
     if mime_type == "application/pdf":
+        # Drive exposes the byte size in the metadata listing. Reject an
+        # oversized PDF before opening a streaming response so a strict
+        # validation fails quickly instead of spending the whole source
+        # deadline downloading a document that the parser must reject anyway.
+        declared_size = item.get("size")
+        if declared_size is not None:
+            try:
+                if int(declared_size) > MAX_DRIVE_PDF_BYTES:
+                    raise RuntimeError(
+                        f"Drive PDF exceeds the {MAX_DRIVE_PDF_BYTES} byte safety limit"
+                    )
+            except (TypeError, ValueError) as error:
+                raise RuntimeError(f"Drive PDF has invalid declared size: id={file_id}") from error
         try:
             from pypdf import PdfReader  # type: ignore[import-not-found,unused-ignore]
         except ImportError as error:

@@ -1874,6 +1874,20 @@ def test_google_drive_full_mode_rejects_unsupported_content(tmp_path: Path) -> N
         list(fetch_drive(token, "work", client=client))
 
 
+def test_google_drive_rejects_oversized_pdf_from_listing_metadata() -> None:
+    item = {
+        "id": "huge-pdf",
+        "mimeType": "application/pdf",
+        "size": str(google.MAX_DRIVE_PDF_BYTES + 1),
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match=f"Drive PDF exceeds the {google.MAX_DRIVE_PDF_BYTES} byte safety limit",
+    ):
+        google._drive_content(None, item)  # type: ignore[arg-type]
+
+
 def test_google_drive_full_mode_rejects_falsey_next_page_token(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     write_token(token, '{"token":"access"}')
