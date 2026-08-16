@@ -504,11 +504,13 @@ messages), Personal Gmail (427), Special Gmail (216), and Special Drive (97). Wo
 complete records meet their configured 2,000-document/128 MiB/900-second or Work Calendar
 3,000-document/64 MiB/300-second budgets.
 
-Personal Drive's 2,000-document/128 MiB/1,800-second validation is being re-run with the v0.32.9
-bounded large-PDF parser after the previous timeout. Work Drive's latest 900-second validation also
-failed closed at the connector deadline. `readiness --allow-sync-service` must remain closed until all enabled sources
-have fresh complete records at their configured budgets; no reconciliation or large sync has been
-run.
+Personal Drive's 2,000-document/128 MiB validation has now failed closed twice: the earlier
+1,800-second attempt reached its 1,799-second connector deadline, and a subsequent run at the
+configured 900-second budget reached its 899-second deadline while processing the account's large
+PDF/media corpus. Both runs made zero index or reconciliation writes. Work Drive's latest
+900-second validation is complete at 478 documents and 4,527,721 bytes. The
+`readiness --allow-sync-service` gate must remain closed until Personal Drive has a fresh complete
+record at its configured budget; no reconciliation or large sync has been run.
 
 The installed v0.32.9 CLI also passed a fresh bounded `eval --model` run on 2026-08-16 in 16,313
 ms, including planner/synthesis, valid citations, cache reuse, and revision invalidation without
