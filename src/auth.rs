@@ -8,6 +8,7 @@ use crate::config::Config;
 pub const QUERY_SCOPE: &str = "query";
 pub const STATUS_SCOPE: &str = "status";
 pub const ADMIN_SCOPE: &str = "admin";
+pub const MEMORY_SCOPE: &str = "memory";
 
 #[derive(Clone, Debug)]
 pub struct Principal {
@@ -20,7 +21,7 @@ impl Principal {
     pub fn local(name: &str) -> Self {
         Self {
             name: name.into(),
-            scopes: [QUERY_SCOPE, STATUS_SCOPE, ADMIN_SCOPE]
+            scopes: [QUERY_SCOPE, STATUS_SCOPE, ADMIN_SCOPE, MEMORY_SCOPE]
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
@@ -116,7 +117,7 @@ impl AuthPolicy {
                 !scopes.is_empty()
                     && scopes.iter().all(|scope| matches!(
                         scope.as_str(),
-                        QUERY_SCOPE | STATUS_SCOPE | ADMIN_SCOPE
+                        QUERY_SCOPE | STATUS_SCOPE | ADMIN_SCOPE | MEMORY_SCOPE
                     )),
                 "auth principal {} has an invalid scope",
                 token.principal

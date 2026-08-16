@@ -17,8 +17,6 @@ use tauri::{
 use tauri_plugin_autostart::ManagerExt;
 
 mod backups;
-mod hindsight;
-mod honcho;
 mod installer;
 mod paths;
 mod provider_models;
@@ -607,16 +605,6 @@ fn desktop_schedule_save(
 }
 
 #[tauri::command]
-async fn desktop_hindsight_status() -> Result<hindsight::HindsightStatus, String> {
-    hindsight::status().await
-}
-
-#[tauri::command]
-async fn desktop_honcho_status() -> Result<honcho::HonchoStatus, String> {
-    honcho::status().await
-}
-
-#[tauri::command]
 async fn desktop_service_action(
     app: AppHandle,
     service: String,
@@ -1162,8 +1150,6 @@ pub fn run() {
             desktop_services_install_sync,
             desktop_schedule_get,
             desktop_schedule_save,
-            desktop_hindsight_status,
-            desktop_honcho_status,
             desktop_service_action,
             desktop_services_action_all,
             desktop_database_backup,
@@ -2008,8 +1994,6 @@ mod tests {
                 "auth_principals",
                 "embedding",
                 "query",
-                "hindsight",
-                "honcho",
                 "ingestion",
                 "runtime",
                 "secrets",

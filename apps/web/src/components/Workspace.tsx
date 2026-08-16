@@ -507,6 +507,23 @@ function AnswerView({
         </p>
       )}
       <p className="lead">{evidence.length} cited passages</p>
+      {response?.memories && response.memories.length > 0 && (
+        <section className="answer-memory" aria-label="Native agent memory">
+          <p className="lead">{response.memories.length} native memory entries</p>
+          {response.memories.slice(0, 4).map((memory) => (
+            <article className="answer-memory-entry" key={memory.id}>
+              <h2>{memory.title}</h2>
+              <p>{memory.content}</p>
+              <small>
+                {memory.kind} · {memory.project} · confidence {memory.confidence.toFixed(2)}
+                {memory.valid_until
+                  ? ` · expires ${new Date(memory.valid_until).toLocaleDateString()}`
+                  : ''}
+              </small>
+            </article>
+          ))}
+        </section>
+      )}
       {evidence.slice(0, 4).map((item, index) => (
         <button
           type="button"

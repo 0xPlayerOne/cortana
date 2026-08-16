@@ -12,7 +12,7 @@ learn about connectors, embeddings, MCP, or service managers first.
 
 Cortana is intentionally not an unrestricted crawler, hosted personal-data warehouse, or automatic
 backup. A new installation is query-only. Account authorization, source reads, embedding work,
-reconciliation, recurring sync, shared-agent access, and optional memory providers are separate
+reconciliation, recurring sync, shared-agent access, and explicit memory writes are separate
 explicit decisions.
 
 ## What the system provides
@@ -22,11 +22,15 @@ explicit decisions.
 - A canonical store with provenance, source/workspace scope, ACL filtering, audit metadata, and
   compatibility migration for the Hermes-era index.
 - Configurable connectors for Google Drive, Gmail, Calendar, Apple Notes, GitHub code, filesystem
-  and code roots, Discord, Slack, Buzz, and bounded external adapters.
+  and code roots, Discord, Slack, and Buzz.
 - Local Qwen text/code embeddings or an OpenAI-compatible cloud provider, with content-addressed
   reuse so unchanged material does not pay for another embedding request.
 - Hybrid lexical and semantic retrieval through the Desktop UI, MCP, HTTP, and CLI, with bounded
   context bundles, citations, cache telemetry, and a deterministic extractive fallback.
+- A vertically integrated native agentic-memory layer in the same store for explicit semantic,
+  episodic, procedural, preference, and working memories, with expiry, supersession, ACL
+  enforcement, audit metadata, scoped export, and cache invalidation shared with knowledge
+  retrieval. Cortana's own store is the sole supported memory engine for this release.
 - A paginated hierarchical knowledge graph that exposes workspace, source, and document
   relationships without loading the entire corpus into memory.
 
@@ -50,8 +54,8 @@ The project is ready for a production claim only when all of these are true:
    operator-controlled evidence; the first retrieval-only run is recorded in the evaluation
    guide, while approved-corpus answer/synthesis evidence is still required before claiming this
    gate fully closed.
-6. Hindsight and Honcho remain disabled unless live retention, deletion, ACL, idempotence, export,
-   and packaged-UI evidence justifies enabling one.
+6. Native memory retention, deletion, ACL, idempotence, export, and packaged-UI evidence are
+   covered by the same canonical-store contract.
 7. Hermes migration compatibility remains available for explicit imports, but the live installation
    must not run a parallel legacy stack. Active legacy rows, launch agents, and machine-level
    directories are removed only after import/rebuild and a verified rollback backup; the migration

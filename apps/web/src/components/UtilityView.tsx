@@ -503,6 +503,14 @@ function AgentToolsView({
               <Metric label="Included" value={contextBundle.metrics.included.toLocaleString()} />
               <Metric label="Omitted" value={contextBundle.metrics.omitted.toLocaleString()} />
               <Metric
+                label="Native memory"
+                value={(
+                  contextBundle.metrics.memories_included ??
+                  contextBundle.memories?.length ??
+                  0
+                ).toLocaleString()}
+              />
+              <Metric
                 label="Estimated tokens"
                 value={contextBundle.metrics.estimated_tokens.toLocaleString()}
               />
@@ -650,6 +658,11 @@ function IndexView({
             value={(status.retrieval_fallbacks_total ?? 0).toLocaleString()}
           />
           <Metric label="Answers total" value={status.answers_total.toLocaleString()} />
+          <Metric
+            label="Native memory"
+            value={`${status.memory.active.toLocaleString()} active · ${status.memory.total.toLocaleString()} total`}
+          />
+          <Metric label="Expired memory" value={status.memory.expired.toLocaleString()} />
         </div>
       </section>
       <section className="utility-section">
