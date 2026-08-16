@@ -5,29 +5,29 @@ intentionally separate from runtime migration work:
 legacy scope quarantine remains in place, so changing or deleting indexed data
 is not part of a visual/UI change.
 
-## Current release evidence (2026-08-15)
+## Current release evidence (2026-08-16)
 
-- `v0.32.9` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `31920097809` completed all 18 assets
+- `v0.32.10` is the current protected source/release, published through the protected promotion
+  and Release Please automation. Release-assets workflow `31926397636` completed all 18 assets
   and the strict package gate. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The supported v0.32.9 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
+- The supported v0.32.10 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.32.9 archive is the current fully verified packaged evidence boundary. The audited host
-  evidence below runs the installed `/Users/amf/.local/bin/cortana` v0.32.9 with embedding and server services in
+- The v0.32.10 archive is the current fully verified packaged evidence boundary. The audited host
+  evidence below still runs the installed `/Users/amf/.local/bin/cortana` v0.32.9 with embedding and server services in
   query-only mode; recurring sync remains disabled. Query-only readiness and
   source authorization are separate host checks; source authorization and full-corpus sync were
   not started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
   Developer ID signing, and notarization remain manual gates.
-- The current installed v0.32.9 host passed the bounded provider-backed `eval --model` evidence
+- The installed v0.32.9 host passed the bounded provider-backed `eval --model` evidence
   run on 2026-08-16 in 16,313 ms: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
   all passed with no fallback. This is provider-backed fixture evidence only; it does not query
   the personal index or prove packaged GUI behavior.
 - A historical installed v0.32.2 CLI passed the disposable offline control-plane drill on
-  2026-08-15; this evidence predates the current v0.32.9 source and package:
+  2026-08-15; this evidence predates the current v0.32.10 source and package:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
   verified backup, restore into a second temporary data directory, SQLite verification, and
   post-restore search. The drill used only temporary data and does not prove packaged GUI, OAuth,
