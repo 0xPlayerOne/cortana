@@ -62,6 +62,20 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
+## v0.33.0 release intent (native agentic memory)
+
+The post-v0.32.12 source tree now makes native agentic memory part of Cortana's canonical SQLite
+knowledge store. It adds explicit `remember`, `recall`, `forget`, `context`, and bounded `export`
+operations with workspace isolation, ACL enforcement, provenance, idempotent dedupe, supersession,
+expiry, redaction tombstones, cache-revision invalidation, and metadata-only audit events. Native
+memory is the only supported operational-memory path for this release intent.
+
+This release intent changes no source authorization, indexed data, recurring-sync state, or live
+credentials. The versioned package and packaged-core verifier remain pending until Release Please
+publishes the protected version PR and the release-assets workflow verifies all platform archives,
+checksums, updater signatures, and the offline evaluator. The existing v0.32.12 evidence above
+remains the latest downloadable release until that flow completes.
+
 ## v0.32.12 release intent (published and verified)
 
 This patch publishes the Drive connector hardening promoted through the protected staging-to-main
