@@ -64,4 +64,6 @@ operator's filesystem policy, auditable, exportable through the existing audit
 trail, and bounded by content, provenance, ACL, and recall limits.
 
 The supported product path keeps retention, deletion, ACL, and backup semantics
-in one database and makes offline operation deterministic.
+in one database and makes offline operation deterministic. Owner-local CLI
+remember, recall, and forget commands also emit metadata-only audit events;
+memory titles, content, queries, and identifiers never enter the audit trail.
