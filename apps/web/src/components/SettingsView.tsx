@@ -1780,7 +1780,7 @@ function NativeMemorySection({
   return (
     <SettingsSection
       title="Native agentic memory"
-      description="Cortana keeps operational memory in its own encrypted local store. Memory is explicit, scoped, auditable, and stays inside Cortana."
+      description="Cortana keeps operational memory in its own private local store. Memory is explicit, scoped, auditable, and protected by the local data-directory permissions."
     >
       <div className="safety-note" role="status">
         Knowledge documents remain source-backed. Agents may explicitly remember, recall, and redact
