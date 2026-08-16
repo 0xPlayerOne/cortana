@@ -9,18 +9,18 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.32.12
+## Current release: v0.33.0
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.12` is the current protected source and published release. Release-assets workflow
-`31933279147` completed the archive, checksum, updater-signature, manifest, and credential-free
-packaged-core gates; all 18 published assets are verified. v0.32.11
-and earlier remain historical evidence.
+`v0.33.0` is the current protected source and published release. Release-assets workflow
+`31969571292` completed the archive, checksum, updater-signature, manifest, and credential-free
+packaged-core gates; all 18 published assets are verified. v0.32.12 and earlier remain
+historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.32.12 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.33.0 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -36,15 +36,15 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.32.12
+  scripts/verify-desktop-release.sh v0.33.0
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.32.12 source is the release boundary for the bounded large-PDF Drive parser and the
-post-v0.31.12 hardening, bounded live-index
-evaluation harness, and readiness-budget diagnostics described below. Future source-tree changes
+The v0.33.0 source is the release boundary for native agentic memory and the post-v0.31.12
+hardening, bounded live-index evaluation harness, and readiness-budget diagnostics described below.
+Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
 being called downloadable-release behavior.
 
@@ -62,23 +62,18 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.33.0 release intent (native agentic memory)
+## v0.33.0 release intent (published and verified)
 
-The post-v0.32.12 source tree now makes native agentic memory part of Cortana's canonical SQLite
+The post-v0.32.12 source tree makes native agentic memory part of Cortana's canonical SQLite
 knowledge store. It adds explicit `remember`, `recall`, `forget`, `context`, and bounded `export`
 operations with workspace isolation, ACL enforcement, provenance, idempotent dedupe, supersession,
 expiry, redaction tombstones, cache-revision invalidation, and metadata-only audit events. Native
 memory is the only supported operational-memory path for this release intent.
 
-**Boundary:** this section describes the promoted source tree, not an installed package. The
-source tree must complete the protected promotion, version-only Release Please PR, and strict
-asset verification before v0.33.0 is described as downloadable behavior.
-
 This release intent changes no source authorization, indexed data, recurring-sync state, or live
-credentials. The versioned package and packaged-core verifier remain pending until Release Please
-publishes the protected version PR and the release-assets workflow verifies all platform archives,
-checksums, updater signatures, and the offline evaluator. The existing v0.32.12 evidence above
-remains the latest downloadable release until that flow completes.
+credentials. The protected promotion, version-only Release Please PR, and release-assets workflow
+have completed; the v0.33.0 package is the downloadable native-memory release. The published
+package does not imply source authorization, recurring sync, or live memory writes.
 
 ## v0.32.12 release intent (published and verified)
 
