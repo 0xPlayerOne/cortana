@@ -14,6 +14,9 @@ Cortana separates agent retrieval from human-facing answers.
 - The workspace uses `/v1/answer`, which can plan several searches, attach authorized native
   memory, and synthesize a cited response. Native memory is returned separately from cited
   evidence and is included only for principals with the `memory` scope.
+- Native memory recall is provider-free: bounded SQLite FTS candidates are ranked by query
+  coverage, lexical match, confidence, importance, freshness, and exact-vs-fallback mode. Its
+  `relevance_score` is diagnostic metadata and never replaces ACL or lifecycle checks.
 - Both paths share the same project/source filters and hybrid lexical, semantic, IDF, and recency
   ranking.
 
