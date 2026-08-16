@@ -61,6 +61,15 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
+## v0.32.12 release intent (pending protected release flow)
+
+This patch publishes the Drive connector hardening promoted through the protected staging-to-main
+flow: bounded PDF/DOCX extraction, folder and folder-shortcut filtering, metadata-only records for
+unsupported binary items, and correct placement of the `--max-documents` cap. The release intent
+changes no credentials, source authorization, indexed data, recurring-sync state, or optional
+memory-provider state. Release assets and packaged-core verification remain pending until the
+version-only Release Please PR is merged and its release workflow completes.
+
 ## v0.32.11 release intent (published and verified)
 
 This patch promotes the current-release documentation boundary after the v0.32.10 package was
