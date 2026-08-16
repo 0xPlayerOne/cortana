@@ -67,8 +67,10 @@ This patch publishes the Drive connector hardening promoted through the protecte
 flow: bounded PDF/DOCX extraction, folder and folder-shortcut filtering, metadata-only records for
 unsupported binary items, and correct placement of the `--max-documents` cap. The release intent
 changes no credentials, source authorization, indexed data, recurring-sync state, or optional
-memory-provider state. Release assets and packaged-core verification remain pending until the
-version-only Release Please PR is merged and its release workflow completes.
+memory-provider state. The next exact-tree promotion carries this release intent in its
+mainline commit so Release Please can create the version-only PR; release assets and
+packaged-core verification remain pending until that PR is merged and its release workflow
+completes.
 
 ## v0.32.11 release intent (published and verified)
 
