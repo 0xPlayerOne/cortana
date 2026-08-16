@@ -2972,7 +2972,7 @@ fn memory_relevance_score(
     let haystack = format!("{} {}", result.memory.title, result.memory.content).to_lowercase();
     let matched = query_terms
         .iter()
-        .filter(|term| haystack.contains(&term.to_lowercase()))
+        .filter(|term| memory_contains_prefix_token(&haystack, term))
         .count();
     let coverage = if query_terms.is_empty() {
         0.0
@@ -2989,6 +2989,13 @@ fn memory_relevance_score(
     let freshness = memory_freshness_score(&result.memory.updated_at, now);
     let mode_bonus = if exact_match { 1.0 } else { 0.8 };
     ((0.55 * coverage) + (0.25 * lexical) + (0.12 * salience) + (0.08 * freshness)) * mode_bonus
+}
+
+fn memory_contains_prefix_token(haystack: &str, term: &str) -> bool {
+    haystack
+        .split(|character: char| !character.is_alphanumeric() && character != '_')
+        .filter(|token| !token.is_empty())
+        .any(|token| token.starts_with(term))
 }
 
 fn memory_freshness_score(updated_at: &str, now: &str) -> f64 {
@@ -4583,6 +4590,13 @@ mod tests {
         assert!(results[0].relevance_score > results[1].relevance_score);
         assert!((0.0..=1.0).contains(&results[0].relevance_score));
         assert!((0.0..=1.0).contains(&results[1].relevance_score));
+    }
+
+    #[test]
+    fn native_memory_relevance_uses_token_prefixes_not_substrings() {
+        assert!(memory_contains_prefix_token("release deployment", "deploy"));
+        assert!(!memory_contains_prefix_token("are fine", "re"));
+        assert!(!memory_contains_prefix_token("redeploy later", "deploy"));
     }
 
     #[test]
