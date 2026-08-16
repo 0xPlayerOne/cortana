@@ -503,10 +503,11 @@ messages). Work Gmail uses its configured 10,000-document/64 MiB/600-second budg
 complete records meet their configured 2,000-document/128 MiB/900-second or Work Calendar
 3,000-document/64 MiB/300-second budgets.
 
-Personal Drive is currently being validated at 2,000 documents/128 MiB/1,800 seconds after a
-previous 900-second connector timeout. Work Drive's latest 900-second validation failed closed at
-the connector deadline. Personal/Special Drive and Personal/Special Gmail remain below their
-production budgets. `readiness --allow-sync-service` must remain closed until all enabled sources
+Personal Drive's 2,000-document/128 MiB/1,800-second validation failed closed at the 1,799-second
+connector deadline under the installed v0.32.8 parser while processing a large PDF. Work Drive's
+latest 900-second validation also failed closed at the connector deadline. Personal/Special Drive
+and Personal/Special Gmail remain below their production budgets. Retry Drive only after the bounded
+large-PDF parser ships. `readiness --allow-sync-service` must remain closed until all enabled sources
 have fresh complete records at their configured budgets; no reconciliation or large sync has been
 run.
 
