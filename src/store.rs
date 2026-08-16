@@ -1356,6 +1356,56 @@ impl Store {
         Ok(stats)
     }
 
+    /// Return lifecycle counts visible to a scoped principal.  Status metrics
+    /// must not reveal the existence of another workspace's memories even
+    /// though they contain no record content.
+    pub fn memory_stats_scoped(&self, principal_acl: &[String]) -> Result<MemoryStats> {
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let now = memory::now();
+        let principal_acl_json = serde_json::to_string(principal_acl)?;
+        let (active, expired, retracted, superseded): (i64, i64, i64, i64) = connection
+            .query_row(
+                "SELECT
+                   COALESCE(SUM(CASE WHEN status='active'
+                     AND (valid_until IS NULL OR julianday(valid_until)>julianday(?1)) THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='active'
+                     AND valid_until IS NOT NULL AND julianday(valid_until)<=julianday(?1) THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='retracted' THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='superseded' THEN 1 ELSE 0 END),0)
+                 FROM memories
+                 WHERE json_valid(acl_json)
+                   AND json_type(acl_json)='array'
+                   AND NOT EXISTS (
+                     SELECT 1 FROM json_each(acl_json) AS memory_acl
+                     WHERE memory_acl.type<>'text'
+                   )
+                   AND (
+                     json_array_length(acl_json)=0
+                     OR EXISTS (
+                       SELECT 1 FROM json_each(?2) AS principal_acl
+                       WHERE principal_acl.type='text'
+                         AND (
+                           principal_acl.value='*'
+                           OR EXISTS (
+                             SELECT 1 FROM json_each(acl_json) AS memory_acl
+                             WHERE memory_acl.type='text'
+                               AND memory_acl.value=principal_acl.value
+                           )
+                         )
+                     )
+                   )",
+                params![now, principal_acl_json],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?;
+        Ok(MemoryStats {
+            active,
+            expired,
+            retracted,
+            superseded,
+            total: active + expired + retracted + superseded,
+        })
+    }
+
     /// Export bounded memory records visible to the supplied ACL.  Tombstones
     /// are retained with their redacted content so a restore can preserve
     /// deletion history without exposing an out-of-scope record.
@@ -4345,6 +4395,53 @@ mod tests {
             .expect("recall");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].memory.id, memory.id);
+    }
+
+    #[test]
+    fn scoped_memory_stats_filter_lifecycle_counts_by_acl() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "semantic".into(),
+                project: "work".into(),
+                title: "Work memory".into(),
+                content: "Work context.".into(),
+                source: "agent".into(),
+                source_id: "work-memory".into(),
+                dedupe_key: None,
+                confidence: 0.8,
+                importance: 0.7,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("work memory");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "semantic".into(),
+                project: "personal".into(),
+                title: "Personal memory".into(),
+                content: "Personal context.".into(),
+                source: "agent".into(),
+                source_id: "personal-memory".into(),
+                dedupe_key: None,
+                confidence: 0.8,
+                importance: 0.7,
+                acl: vec!["personal".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("personal memory");
+
+        let scoped = store
+            .memory_stats_scoped(&["work".into()])
+            .expect("scoped stats");
+        assert_eq!(scoped.active, 1);
+        assert_eq!(scoped.total, 1);
+        assert_eq!(store.memory_stats().expect("owner stats").total, 2);
     }
 
     #[test]

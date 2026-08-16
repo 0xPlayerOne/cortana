@@ -881,7 +881,11 @@ impl BrainServer {
                 let count = usize::try_from(stats.documents).ok();
                 let result = serde_json::to_string(&BrainStatus {
                     stats,
-                    memory: self.store.memory_stats().unwrap_or_default(),
+                    memory: if principal.is_owner() {
+                        self.store.memory_stats().unwrap_or_default()
+                    } else {
+                        self.store.memory_stats_scoped(&acl).unwrap_or_default()
+                    },
                     configured_sources: self
                         .configured_sources
                         .iter()
@@ -1638,6 +1642,40 @@ mod tests {
             scopes: vec![STATUS_SCOPE.into()],
             acl: vec!["work".into()],
         }];
+        store
+            .remember(&MemoryInput {
+                kind: "semantic".into(),
+                project: "work".into(),
+                title: "Work status memory".into(),
+                content: "Work status context.".into(),
+                source: "agent".into(),
+                source_id: "work-status-memory".into(),
+                dedupe_key: None,
+                confidence: 0.8,
+                importance: 0.7,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("work memory");
+        store
+            .remember(&MemoryInput {
+                kind: "semantic".into(),
+                project: "personal".into(),
+                title: "Personal status memory".into(),
+                content: "Personal status context.".into(),
+                source: "agent".into(),
+                source_id: "personal-status-memory".into(),
+                dedupe_key: None,
+                confidence: 0.8,
+                importance: 0.7,
+                acl: vec!["personal".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("personal memory");
         let principal = AuthPolicy::from_config(&config)
             .expect("policy")
             .authenticate("work-secret")
@@ -1655,6 +1693,8 @@ mod tests {
             .filter_map(|source| source["name"].as_str())
             .collect::<Vec<_>>();
         assert_eq!(names, vec!["work-drive"]);
+        assert_eq!(status["memory"]["active"], 1);
+        assert_eq!(status["memory"]["total"], 1);
     }
 
     #[tokio::test]

@@ -1162,6 +1162,12 @@ async fn status(
     };
     let workspaces = fallback_workspaces(&visible_workspaces, source_projects);
     let counters = state.metrics.counters_for(&principal, owner);
+    let memory = if owner {
+        state.store.memory_stats()
+    } else {
+        state.store.memory_stats_scoped(&principal.visible_acl())
+    }
+    .unwrap_or_default();
     Ok(Json(Status {
         status: "ok",
         stats_stale,
@@ -1176,7 +1182,7 @@ async fn status(
         query: state.answer.status(),
         ingestion,
         workspaces,
-        memory: state.store.memory_stats().unwrap_or_default(),
+        memory,
         stats,
     }))
 }
@@ -2982,6 +2988,29 @@ mod tests {
             .store
             .begin_sync("personal-notes", "personal", 50, 1_024, 60)
             .expect("begin running sync");
+        for (project, acl, source_id) in [
+            ("work", "work", "work-status-memory"),
+            ("personal", "personal", "personal-status-memory"),
+        ] {
+            state
+                .store
+                .remember(&MemoryInput {
+                    kind: "semantic".into(),
+                    project: project.into(),
+                    title: format!("{project} status memory"),
+                    content: format!("{project} status context."),
+                    source: "agent".into(),
+                    source_id: source_id.into(),
+                    dedupe_key: None,
+                    confidence: 0.8,
+                    importance: 0.7,
+                    acl: vec![acl.into()],
+                    provenance: serde_json::json!({"test":true}),
+                    supersedes_id: None,
+                    valid_until: None,
+                })
+                .expect("memory");
+        }
         let store = state.store.clone();
 
         let mut config: Config = toml::from_str(
@@ -3052,6 +3081,8 @@ mod tests {
             serde_json::from_slice(&work_body).expect("status JSON");
         assert_eq!(work_value["documents"], 0);
         assert_eq!(work_value["sources"], serde_json::json!([]));
+        assert_eq!(work_value["memory"]["active"], 1);
+        assert_eq!(work_value["memory"]["total"], 1);
         let work_runs = work_value["sync_runs"].as_array().expect("sync runs");
         assert_eq!(work_runs.len(), 1);
         assert_eq!(work_runs[0]["source"], "work-drive");
@@ -3077,6 +3108,8 @@ mod tests {
             .expect("status body");
         let personal_value: serde_json::Value =
             serde_json::from_slice(&personal_body).expect("status JSON");
+        assert_eq!(personal_value["memory"]["active"], 1);
+        assert_eq!(personal_value["memory"]["total"], 1);
         let personal_runs = personal_value["sync_runs"].as_array().expect("sync runs");
         assert_eq!(personal_runs.len(), 1);
         assert_eq!(personal_runs[0]["source"], "personal-notes");
@@ -3099,6 +3132,8 @@ mod tests {
             .expect("status body");
         let admin_value: serde_json::Value =
             serde_json::from_slice(&admin_body).expect("status JSON");
+        assert_eq!(admin_value["memory"]["active"], 2);
+        assert_eq!(admin_value["memory"]["total"], 2);
         let admin_runs = admin_value["sync_runs"].as_array().expect("sync runs");
         assert_eq!(admin_runs.len(), 2, "owner view keeps every run");
 

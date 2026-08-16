@@ -68,7 +68,8 @@ caller’s visible ACL inside the same SQLite transaction, so a scoped agent can
 replace another workspace’s memory by guessing an identifier.
 Identical retries with a dedupe key are true no-ops and do not invalidate answer caches.
 `brain_status` and `/v1/status` expose active, expired, retracted, superseded, and total native-memory
-counts; expired records remain available to scoped export for audit and backup but never enter recall.
+counts; those lifecycle counts are ACL-scoped for shared principals and complete for owners. Expired
+records remain available to scoped export for audit and backup but never enter recall.
 
 ## Local owner mode versus scoped bearer principals
 
