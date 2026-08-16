@@ -305,7 +305,9 @@ The drill uses a fresh temporary config, private synthetic tokens, and two synth
 proves query/status/admin scope separation, work-versus-personal ACL isolation, metadata-only audit
 responses, and atomic token rotation/revocation. It is offline and non-destructive: it does not read
 the live index, contact connectors, authorize accounts, enable recurring sync, or launch the Desktop
-app. A successful drill is evidence for the HTTP contract only; keep the MCP tests and packaged GUI,
+app. The installed v0.32.12 host passed this drill on 2026-08-16, including old-token rejection and
+rotated-token acceptance after `/v1/auth/reload`. A successful drill is evidence for the HTTP contract
+only; keep the MCP tests and packaged GUI,
 browser OAuth, tray, native-dialog, updater, and operating-system trust gates separate.
 
 ## Approved-index evaluation
@@ -521,7 +523,7 @@ validation is complete at 478 documents and 4,527,721 bytes. The
 `readiness --allow-sync-service` gate must remain closed until Personal Drive has a fresh complete
 record at its configured budget; no reconciliation or large sync has been run.
 
-The installed v0.32.12 CLI also passed a fresh bounded `eval --model` run on 2026-08-16 in 23,267
+The installed v0.32.12 CLI also passed a fresh bounded `eval --model` run on 2026-08-16 in 14,437
 ms, including planner/synthesis, valid citations, cache reuse, and revision invalidation without
 provider fallback. This is synthetic provider-backed evidence only; it does not authorize source
 sync, establish personal-index quality, or replace the separate packaged GUI and signing gates.
