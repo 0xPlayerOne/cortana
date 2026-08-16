@@ -87,8 +87,11 @@ be rebuilt from Google. First-time Drive content and Gmail detail retrieval use 
 and four-worker pools respectively; cache writes and emitted documents remain ordered on the main
 connector thread. Drive downloads are processed in 32-file batches, text and export responses are
 consumed as bounded head/tail streams, and PDF responses are spooled to a temporary file with a 64 MiB cap
-before parsing. The cache preserves the original character count and truncation flag, so a later
-cache hit does not hide that a provider response was sampled. Drive installs pypdf's AES support.
+before parsing. PDFs with more than 128 pages use a bounded head/tail page sample instead of parsing
+the entire page tree; their `content_truncated` metadata is true and `content_original_chars` is
+`null` because the omitted middle was intentionally not counted. Smaller PDFs preserve the exact
+character count. The cache preserves this metadata, so a later cache hit does not hide that a
+provider response was sampled. Drive installs pypdf's AES support.
 Idempotent Google GET/HEAD calls retry bounded transport failures and standard transient HTTP
 statuses; a 403 is retried only for Google's explicit rate-limit/backend reasons. Gmail detail
 requests also retry a small, bounded 400 window before strict runs fail closed.
