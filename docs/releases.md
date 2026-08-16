@@ -47,6 +47,13 @@ evaluation harness, and readiness-budget diagnostics described below. Future sou
 must still use the protected staging and promotion flow, followed by the release verifier, before
 being called downloadable-release behavior.
 
+The current non-reconciling rollout evidence is also explicit: Work Drive completed a fresh
+production-budget validation at 478 documents and 4,527,721 bytes with zero writes. Personal
+Drive reached its 1,799-second connector deadline while processing a large PDF and failed closed;
+it remains below the complete-validation gate. Recurring sync stays uninstalled until Personal
+Drive and every other enabled source have fresh `complete=true` records at their configured
+budgets.
+
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
 check for scoped principals, ACL isolation, metadata-only audit responses, and token rotation. It
 uses synthetic data only and is not a substitute for the packaged GUI/MCP/manual acceptance gates.
