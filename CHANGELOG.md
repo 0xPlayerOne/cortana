@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.9](https://github.com/0xPlayerOne/cortana/compare/v0.32.8...v0.32.9) (2026-08-16)
+
+
+### promote
+
+* exact staging tree to main (v0.32.9 Drive parser) ([7c70ef0](https://github.com/0xPlayerOne/cortana/commit/7c70ef0b7faef9c17eb6cccac0e49aff2961ea5b))
+
 ## [0.32.8](https://github.com/0xPlayerOne/cortana/compare/v0.32.7...v0.32.8) (2026-08-15)
 
 
