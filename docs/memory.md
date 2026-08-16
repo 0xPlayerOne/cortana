@@ -15,6 +15,11 @@ Each memory has one of five types:
 - `preference` — a stable user preference;
 - `working` — short-lived task state that can be superseded or redacted.
 
+Working memories may include an RFC3339 `valid_until` timestamp. Recall and answer
+context automatically exclude expired records, so agents can keep short-lived task
+state without a cleanup race. Durable facts should omit the expiry and be replaced
+or forgotten explicitly when they change.
+
 Every record carries a workspace/project, ACL, provenance, source and source
 id, confidence, importance, timestamps, and a lifecycle status. Writes are
 idempotent when an agent supplies a `dedupe_key`. Replacements atomically mark
@@ -53,6 +58,9 @@ cortana memory remember --kind preference --project work \
   --title "Release notes" \
   --content "Prefer concise release notes with explicit risks" \
   --dedupe-key work:release-notes
+cortana memory remember --kind working --project work \
+  --title "Current task" --content "Validate the release" \
+  --valid-until "2026-08-16T18:00:00Z"
 cortana memory recall "release notes" --project work
 cortana memory forget MEMORY_ID
 ```

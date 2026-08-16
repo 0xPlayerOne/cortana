@@ -27,6 +27,9 @@ explicit decisions.
   reuse so unchanged material does not pay for another embedding request.
 - Hybrid lexical and semantic retrieval through the Desktop UI, MCP, HTTP, and CLI, with bounded
   context bundles, citations, cache telemetry, and a deterministic extractive fallback.
+- A native agentic-memory layer in the same store for explicit semantic, episodic, procedural,
+  preference, and working memories, with expiry, supersession, ACL enforcement, audit metadata,
+  and cache invalidation shared with knowledge retrieval.
 - A paginated hierarchical knowledge graph that exposes workspace, source, and document
   relationships without loading the entire corpus into memory.
 

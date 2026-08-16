@@ -69,6 +69,7 @@ pub struct MemoryRememberParams {
     acl: Option<Vec<String>>,
     provenance: Option<serde_json::Value>,
     supersedes_id: Option<String>,
+    valid_until: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -502,7 +503,7 @@ impl BrainServer {
         let acl = if principal.is_owner() {
             requested_acl
         } else if requested_acl.is_empty() {
-            visible_acl
+            visible_acl.clone()
         } else if requested_acl
             .iter()
             .all(|label| visible_acl.iter().any(|visible| visible == label))
@@ -538,8 +539,12 @@ impl BrainServer {
                 })
             }),
             supersedes_id: params.supersedes_id,
+            valid_until: params.valid_until,
         };
-        match self.store.remember(&input) {
+        match self
+            .store
+            .remember_scoped(&input, &visible_acl, principal.is_owner())
+        {
             Ok(memory) => {
                 self.audit_principal(
                     &principal,
@@ -705,7 +710,11 @@ impl BrainServer {
             );
             return "authorization error: memory ACL denied".into();
         }
-        match self.store.forget_memory(&params.id) {
+        match self.store.forget_memory_scoped(
+            &params.id,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        ) {
             Ok(forgotten) => {
                 self.audit_principal(
                     &principal,
@@ -1257,6 +1266,7 @@ mod tests {
                 acl: vec!["work".into()],
                 provenance: serde_json::json!({"test":true}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect("memory");
         let mut config = Config::default();

@@ -954,22 +954,52 @@ impl Store {
     /// Superseding is transactional so the previous memory cannot remain
     /// active after its replacement is committed.
     pub fn remember(&self, input: &MemoryInput) -> Result<MemoryRecord> {
-        let (kind, acl, provenance_json) = memory::validate_input(input)?;
+        self.remember_scoped(input, &["*".into()], true)
+    }
+
+    /// Persist a memory while enforcing the caller's ACL inside the same
+    /// transaction as dedupe and supersession.  The pre-existing record must
+    /// be visible before a scoped agent can replace it or supersede it; doing
+    /// this in the store avoids a check-then-write race in HTTP and MCP.
+    pub fn remember_scoped(
+        &self,
+        input: &MemoryInput,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<MemoryRecord> {
+        let (kind, acl, provenance_json, valid_until) = memory::validate_input(input)?;
         let now = memory::now();
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
         let max_active = self.memory_max_active.load(AtomicOrdering::Acquire);
-        let existing: Option<(String, String)> = if let Some(key) = input.dedupe_key.as_deref() {
-            transaction
-                .query_row(
-                    "SELECT id,status FROM memories WHERE dedupe_key=?1",
-                    [key],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()?
-        } else {
-            None
-        };
+        let existing: Option<(String, String, Vec<String>)> =
+            if let Some(key) = input.dedupe_key.as_deref() {
+                transaction
+                    .query_row(
+                        "SELECT id,status,acl_json FROM memories WHERE dedupe_key=?1",
+                        [key],
+                        |row| {
+                            let acl_json: String = row.get(2)?;
+                            let acl = serde_json::from_str(&acl_json).map_err(|error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    2,
+                                    Type::Text,
+                                    Box::new(error),
+                                )
+                            })?;
+                            Ok((row.get(0)?, row.get(1)?, acl))
+                        },
+                    )
+                    .optional()?
+            } else {
+                None
+            };
+        if let Some((_, _, existing_acl)) = &existing {
+            anyhow::ensure!(
+                owner || acl_allows(existing_acl, principal_acl),
+                "memory dedupe key is outside principal visibility"
+            );
+        }
         let active_count: i64 = transaction.query_row(
             "SELECT COUNT(*) FROM memories WHERE status='active'",
             [],
@@ -977,16 +1007,38 @@ impl Store {
         )?;
         let replaces_active = existing
             .as_ref()
-            .is_some_and(|(_, status)| status == "active");
+            .is_some_and(|(_, status, _)| status == "active");
         anyhow::ensure!(
             replaces_active || input.supersedes_id.is_some() || active_count < max_active as i64,
             "active memory limit reached ({max_active}); retract or supersede an existing memory before adding another"
         );
         let id = existing
             .as_ref()
-            .map(|(id, _)| id.clone())
+            .map(|(id, _, _)| id.clone())
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
         if let Some(previous_id) = input.supersedes_id.as_deref() {
+            let previous_acl: Option<Vec<String>> = transaction
+                .query_row(
+                    "SELECT acl_json FROM memories WHERE id=?1 AND status='active'",
+                    [previous_id],
+                    |row| {
+                        let acl_json: String = row.get(0)?;
+                        serde_json::from_str(&acl_json).map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                0,
+                                Type::Text,
+                                Box::new(error),
+                            )
+                        })
+                    },
+                )
+                .optional()?;
+            if let Some(previous_acl) = &previous_acl {
+                anyhow::ensure!(
+                    owner || acl_allows(previous_acl, principal_acl),
+                    "memory supersession target is outside principal visibility"
+                );
+            }
             let changed = transaction.execute(
                 "UPDATE memories SET status='superseded',valid_until=?2,updated_at=?2
                  WHERE id=?1 AND status='active'",
@@ -1007,14 +1059,14 @@ impl Store {
                id,kind,project,title,content,source,source_id,dedupe_key,
                confidence,importance,status,acl_json,provenance_json,
                observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'active',?11,?12,?13,?13,NULL,?14,?13,?13)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'active',?11,?12,?13,?13,?14,?15,?13,?13)
              ON CONFLICT(id) DO UPDATE SET
                kind=excluded.kind,project=excluded.project,title=excluded.title,
                content=excluded.content,source=excluded.source,source_id=excluded.source_id,
                dedupe_key=excluded.dedupe_key,confidence=excluded.confidence,
                importance=excluded.importance,status='active',acl_json=excluded.acl_json,
                provenance_json=excluded.provenance_json,observed_at=excluded.observed_at,
-               valid_from=excluded.valid_from,valid_until=NULL,
+               valid_from=excluded.valid_from,valid_until=excluded.valid_until,
                supersedes_id=excluded.supersedes_id,updated_at=excluded.updated_at",
             params![
                 id,
@@ -1030,6 +1082,7 @@ impl Store {
                 serde_json::to_string(&acl)?,
                 provenance_json,
                 now,
+                valid_until,
                 input.supersedes_id,
             ],
         )?;
@@ -1120,9 +1173,38 @@ impl Store {
 
     /// Redact memory content while retaining a tombstone for auditability.
     pub fn forget_memory(&self, id: &str) -> Result<bool> {
+        self.forget_memory_scoped(id, &["*".into()], true)
+    }
+
+    /// Redact a memory only when the caller can still see it.  The ACL check
+    /// and tombstone update share one write transaction so a concurrent
+    /// replacement cannot turn a previously authorized read into an
+    /// unauthorized mutation.
+    pub fn forget_memory_scoped(
+        &self,
+        id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<bool> {
         let now = memory::now();
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
+        let acl_json: Option<String> = transaction
+            .query_row(
+                "SELECT acl_json FROM memories WHERE id=?1 AND status='active'",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(acl_json) = acl_json else {
+            transaction.commit()?;
+            return Ok(false);
+        };
+        let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+        anyhow::ensure!(
+            owner || acl_allows(&acl, principal_acl),
+            "memory ACL denied"
+        );
         let changed = transaction.execute(
             "UPDATE memories SET status='retracted',content='',provenance_json='{}',
              valid_until=COALESCE(valid_until,?2),updated_at=?2 WHERE id=?1 AND status='active'",
@@ -3974,6 +4056,7 @@ mod tests {
             acl: vec!["work".into()],
             provenance: serde_json::json!({"session":"session-1","evidence":["doc-1"]}),
             supersedes_id: None,
+            valid_until: None,
         };
         let first = store.remember(&input).expect("remember");
         let second = store.remember(&input).expect("idempotent remember");
@@ -4041,6 +4124,101 @@ mod tests {
     }
 
     #[test]
+    fn scoped_memory_mutations_cannot_cross_acl_boundaries() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let personal = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "personal".into(),
+                title: "Private preference".into(),
+                content: "Keep private context private.".into(),
+                source: "agent".into(),
+                source_id: "private-session".into(),
+                dedupe_key: Some("shared-retry-key".into()),
+                confidence: 0.9,
+                importance: 0.9,
+                acl: vec!["personal".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("personal memory");
+
+        let replacement = crate::memory::MemoryInput {
+            kind: "preference".into(),
+            project: "work".into(),
+            title: "Cross-scope overwrite".into(),
+            content: "This must not replace the personal memory.".into(),
+            source: "agent".into(),
+            source_id: "work-session".into(),
+            dedupe_key: Some("shared-retry-key".into()),
+            confidence: 0.9,
+            importance: 0.9,
+            acl: vec!["work".into()],
+            provenance: serde_json::json!({"test":true}),
+            supersedes_id: None,
+            valid_until: None,
+        };
+        let error = store
+            .remember_scoped(&replacement, &["work".into()], false)
+            .expect_err("dedupe overwrite must be ACL-scoped");
+        assert!(error.to_string().contains("outside principal visibility"));
+
+        let superseding = crate::memory::MemoryInput {
+            supersedes_id: Some(personal.id.clone()),
+            dedupe_key: Some("work-replacement".into()),
+            ..replacement
+        };
+        let error = store
+            .remember_scoped(&superseding, &["work".into()], false)
+            .expect_err("supersession must be ACL-scoped");
+        assert!(error.to_string().contains("outside principal visibility"));
+
+        let error = store
+            .forget_memory_scoped(&personal.id, &["work".into()], false)
+            .expect_err("forget must be ACL-scoped");
+        assert!(error.to_string().contains("memory ACL denied"));
+        assert_eq!(
+            store
+                .memory(&personal.id)
+                .expect("read personal memory")
+                .expect("personal memory exists")
+                .status,
+            "active"
+        );
+    }
+
+    #[test]
+    fn expired_working_memory_is_not_recalled() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Expired task".into(),
+                content: "This task is already complete.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: Some("2000-01-01T00:00:00Z".into()),
+            })
+            .expect("expired memory");
+        assert!(
+            store
+                .recall_memories("task complete", Some("work"), None, 10, &["work".into()])
+                .expect("recall")
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn native_memory_supersession_deactivates_previous_fact_atomically() {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
@@ -4058,6 +4236,7 @@ mod tests {
                 acl: vec![],
                 provenance: serde_json::json!({"session":"session-1"}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect("previous");
         let replacement = store
@@ -4074,6 +4253,7 @@ mod tests {
                 acl: vec![],
                 provenance: serde_json::json!({"session":"session-2"}),
                 supersedes_id: Some(previous.id.clone()),
+                valid_until: None,
             })
             .expect("replacement");
         assert_eq!(store.memory_stats().expect("stats").active, 1);
@@ -4110,6 +4290,7 @@ mod tests {
                 acl: vec![],
                 provenance: serde_json::json!({"session":"session-1"}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect("first memory");
         let error = store
@@ -4126,6 +4307,7 @@ mod tests {
                 acl: vec![],
                 provenance: serde_json::json!({"session":"session-2"}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect_err("active limit must reject a second memory");
         assert!(error.to_string().contains("active memory limit reached"));
@@ -4143,6 +4325,7 @@ mod tests {
                 acl: vec![],
                 provenance: serde_json::json!({"session":"session-3"}),
                 supersedes_id: Some(first.id.clone()),
+                valid_until: None,
             })
             .expect("replacement stays within limit");
         assert_ne!(replacement.id, first.id);
