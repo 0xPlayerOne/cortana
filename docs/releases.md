@@ -69,6 +69,9 @@ production-safety changes represented by a downloadable patch release after the 
 staging-to-main promotion and Release Please version PR complete. It changes no credentials,
 source authorization, indexed data, recurring-sync state, or optional memory-provider state.
 
+The protected promotion already carries this tree; the follow-up release-intent marker uses a
+Conventional Commit so Release Please can open the version-only PR for the exact `0.32.10` patch.
+
 Until the v0.32.10 tag, published assets, and strict verifier are complete, v0.32.9 remains the
 current downloadable release.
 
