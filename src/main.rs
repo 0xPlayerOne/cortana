@@ -3745,11 +3745,11 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits,
-        SyncLock, SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
+        AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, MemoryAction, SourceControl,
+        SourceLimits, SyncLock, SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
         configured_connector_command, context_bundle, ensure_recurring_sync_validated,
-        failure_status, flush_ingest_batch, ingest_documents, is_budget_exceeded, private_file,
-        require_sync_validation, run_connector_to_spool, validate_configured_source,
+        failure_status, flush_ingest_batch, ingest_documents, is_budget_exceeded, manage_memory,
+        private_file, require_sync_validation, run_connector_to_spool, validate_configured_source,
         validate_connector_spool, validation_overrides,
     };
     use cortana::config::{Config, SourceConfig};
@@ -5233,5 +5233,61 @@ mod tests {
             assert!(json.contains(field), "missing {field} in {json}");
         }
         assert!(json.contains("### [1] Release runbook"));
+    }
+
+    #[test]
+    fn local_memory_commands_record_metadata_only_audit_events() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        config.auth.audit_max_events = 10;
+        let store = Store::open(&config.database_path()).expect("store");
+        manage_memory(
+            &config,
+            &store,
+            &MemoryAction::Remember {
+                kind: "preference".into(),
+                project: "work".into(),
+                title: "Release style".into(),
+                content: "Prefer concise notes.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: Some("test:release-style".into()),
+                confidence: None,
+                importance: None,
+                acl: Vec::new(),
+                provenance: None,
+                supersedes_id: None,
+            },
+        )
+        .expect("remember command");
+        let id = store
+            .recall_memories("concise notes", Some("work"), None, 1, &["*".into()])
+            .expect("recall")
+            .pop()
+            .expect("memory")
+            .memory
+            .id;
+        manage_memory(
+            &config,
+            &store,
+            &MemoryAction::Recall {
+                query: "concise notes".into(),
+                project: Some("work".into()),
+                kind: None,
+                limit: 1,
+            },
+        )
+        .expect("recall command");
+        manage_memory(&config, &store, &MemoryAction::Forget { id }).expect("forget command");
+        let audit = store.audit_events(10).expect("audit");
+        assert_eq!(audit.len(), 3);
+        assert_eq!(audit[0].action, "local-cli/memory/forget");
+        assert_eq!(audit[1].action, "local-cli/memory/recall");
+        assert_eq!(audit[2].action, "local-cli/memory/remember");
+        assert_eq!(audit[2].project.as_deref(), Some("work"));
+        assert_eq!(audit[2].source.as_deref(), Some("agent"));
     }
 }
