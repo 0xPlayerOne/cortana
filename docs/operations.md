@@ -536,8 +536,10 @@ The historical bounded live pass on 2026-08-15 rechecked every enabled non-code 
 Special Apple Notes, Drive, Gmail, and Calendar all completed; Special Calendar returned zero
 records; Buzz completed 25 records. Every run reported zero deletions. The index reached 12,123
 documents and 42,638 chunks. Query-only readiness passed and `readiness --allow-sync-service`
-still fails closed because every current validation record is below its configured production
-budget. These are bounded, non-reconciling observations only; recurring sync remains uninstalled.
+failed closed for the then-current bounded records. These are historical bounded,
+non-reconciling observations only; recurring sync remains uninstalled. The current host status is
+tracked above in the release/evaluation evidence: 12 of 13 enabled sources now have fresh
+configured-budget validation, while Personal Drive remains under-budget.
 
 The v0.32.12 source uses the local embedding `/health` endpoint for steady-state
 liveness and keep the real vector probe for startup/restart. The installed v0.32.4 Work Drive retry
