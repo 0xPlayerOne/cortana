@@ -31,8 +31,9 @@ An explicit `readiness --allow-sync-service` check remains intentionally closed 
 enabled-source set is not fully production-validated. The current complete records are: Apple Notes
 `work-notes`/`personal-notes`/`special-notes` (28/65/8), Calendar
 `work`/`personal`/`special` (2,207/1,836/0), Buzz (45), and Work Gmail (7,386). All meet their
-configured document, byte, and duration budgets. Personal Drive is currently running an explicit
-2,000-document/128 MiB/1,800-second validation; Work Drive's latest 900-second attempt failed
+configured document, byte, and duration budgets. Personal Drive's explicit 2,000-document/128 MiB/
+1,800-second validation failed closed at the 1,799-second connector deadline under the installed
+v0.32.8 parser while processing a large PDF; Work Drive's latest 900-second attempt also failed
 closed at the connector deadline. Personal/Special Drive and Personal/Special Gmail remain below
 their production budgets. Recurring sync remains uninstalled, and no reconciliation or large sync
 has been requested.
