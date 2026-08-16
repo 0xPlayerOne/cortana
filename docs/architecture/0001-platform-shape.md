@@ -30,7 +30,8 @@ generation, preventing vectors from different services or models from being comp
 Native memory is stored beside canonical documents in SQLite, but it has an explicit lifecycle and
 never bulk-copies source content. Typed memories carry provenance, confidence, importance, validity,
 supersession, redaction, and workspace ACLs. Agents use the same MCP/HTTP/CLI contract for knowledge
-context and memory recall, so retention and deletion remain inside Cortana's audited backup boundary.
+context and memory recall; each context bundle keeps relevant memories separate from cited source
+evidence, so retention and deletion remain inside Cortana's audited backup boundary.
 
 Rust owns every long-running process and the canonical ingestion, storage, retrieval, API, MCP, and
 CLI paths. Python is a connector subprocess boundary only for vendor SDKs and macOS automation that
