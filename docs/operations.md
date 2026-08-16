@@ -77,14 +77,14 @@ evidence is required.
 Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
 8 MiB maximum line. Use separate reviewed batches for larger migrations.
 
-On the current v0.33.0 source tree, mutating CLI startup acquires the same global `sync.lock`
+On the current v0.34.0 source tree, mutating CLI startup acquires the same global `sync.lock`
 before opening the store. This covers schema/backfill/fingerprint work as well as the later import
-or sync operation. This is included in the published v0.33.0 source release.
+or sync operation. This is included in the published v0.34.0 source release.
 
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
 so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
-included in the published v0.33.0 source release; keep the same lock requirement when running a newer
+included in the published v0.34.0 source release; keep the same lock requirement when running a newer
 source checkout or development build.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
@@ -472,7 +472,7 @@ verification is mandatory by default; set `CORTANA_REQUIRE_MINISIGN=0` only for 
 work where `minisign` is intentionally unavailable.
 
 ```bash
-  GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.33.0
+  GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.34.0
 ```
 
 It checks the bundle version, executes only the bundled core's `--version`
@@ -493,8 +493,8 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The v0.33.0 verifier recorded this packaged-core gate in addition to the
-archive/signature/checksum/updater-manifest checks in workflow `31969571292`.
+`passed: true`. The v0.34.0 verifier recorded this packaged-core gate in addition to the
+archive/signature/checksum/updater-manifest checks in workflow `31975576411`.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
 
@@ -546,7 +546,7 @@ non-reconciling observations only; recurring sync remains uninstalled. The curre
 tracked above in the release/evaluation evidence: 12 of 13 enabled sources now have fresh
 configured-budget validation, while Personal Drive remains under-budget.
 
-The v0.33.0 source uses the local embedding `/health` endpoint for steady-state
+The v0.34.0 source uses the local embedding `/health` endpoint for steady-state
 liveness and keep the real vector probe for startup/restart. The installed v0.32.4 Work Drive retry
 completed a 100-document bounded no-reconcile trial with `changed=0` and `deleted=0` after the
 transport-retry path recovered the local embedding connection. This is a successful bounded trial,
@@ -573,7 +573,7 @@ older releases, but current entry points must not silently drift.
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.33.0
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.34.0
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
