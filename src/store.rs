@@ -1055,7 +1055,7 @@ impl Store {
         )?;
         let rows = statement.query_map(
             params![match_query, project, kind, now, candidate_limit],
-            |row| memory_from_row(row),
+            memory_from_row,
         )?;
         let mut results = Vec::new();
         for row in rows {
@@ -1079,7 +1079,7 @@ impl Store {
                         observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at
                  FROM memories WHERE id=?1",
                 [id],
-                |row| memory_record_from_row(row),
+                memory_record_from_row,
             )
             .optional()
             .map_err(Into::into)
