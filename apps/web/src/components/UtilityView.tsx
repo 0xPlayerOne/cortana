@@ -503,6 +503,10 @@ function AgentToolsView({
               <Metric label="Included" value={contextBundle.metrics.included.toLocaleString()} />
               <Metric label="Omitted" value={contextBundle.metrics.omitted.toLocaleString()} />
               <Metric
+                label="Native memory"
+                value={(contextBundle.metrics.memories_included ?? contextBundle.memories?.length ?? 0).toLocaleString()}
+              />
+              <Metric
                 label="Estimated tokens"
                 value={contextBundle.metrics.estimated_tokens.toLocaleString()}
               />

@@ -2,8 +2,9 @@
 
 Cortana separates agent retrieval from human-facing answers.
 
-- MCP, CLI `search`/`context`, `/v1/search`, and `/v1/context` are low-latency evidence
-  primitives. They never require a language model.
+- MCP, CLI `search`/`context`, `/v1/search`, and `/v1/context` are low-latency retrieval
+  primitives. They never require a language model. Context surfaces also attach relevant native
+  agent memories from the same ACL-filtered SQLite store.
 - MCP also exposes `search_code`, `search_messages`, and `who_knows`. These tools search only the
   enabled source groups derived from configuration, embed the query once across the group, and
   return evidence rather than inferred people profiles.
@@ -60,6 +61,8 @@ builds an agent context bundle.
 
 `cortana context QUERY` returns the same citation-ready, token-bounded bundle as the MCP `context`
 tool and `POST /v1/context`, through the identical local retrieval pipeline and context builder.
+The bundle keeps `memories` separate from numbered `evidence`: memories are durable operational
+context, not source citations.
 It is the CLI fallback for agents without MCP or HTTP access and needs no running server:
 
 ```bash
@@ -76,7 +79,8 @@ The subcommand accepts the same optional filters and strict bounds as the API co
 
 Out-of-contract values are rejected at parse time. Output is stable JSON with the same shape as
 `/v1/context`: the assembled `context` Markdown with numbered `[n]` citations, the included
-`evidence` rows, and `metrics` (`retrieved`, `included`, `omitted`, `estimated_tokens`, and the
+`evidence` rows, relevant `memories`, and `metrics` (`retrieved`, `included`, `omitted`,
+`memories_retrieved`, `memories_included`, `memories_omitted`, `estimated_tokens`, and the
 applied token budget). The bundle also reports `retrieval_mode` (`hybrid` or
 `lexical-fallback`) and, when degraded, a non-secret `retrieval_warning`. Like every other command, it runs against the local index only; use
 `--offline` for the deterministic embedding path when the index generation matches.

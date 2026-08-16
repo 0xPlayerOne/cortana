@@ -614,13 +614,28 @@ export type ContextBundle = {
   query: string
   context: string
   evidence: Evidence[]
+  memories?: AgentMemory[]
   metrics: {
     retrieved: number
     included: number
     omitted: number
+    memories_retrieved?: number
+    memories_included?: number
+    memories_omitted?: number
     estimated_tokens: number
     max_tokens: number
   }
   retrieval_mode?: 'hybrid' | 'lexical-fallback'
   retrieval_warning?: string | null
+}
+
+export type AgentMemory = {
+  id: string
+  kind: string
+  project: string
+  title: string
+  content: string
+  confidence: number
+  importance: number
+  updated_at: string
 }

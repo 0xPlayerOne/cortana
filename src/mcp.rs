@@ -383,6 +383,22 @@ impl BrainServer {
                 if retrieval.degraded() {
                     self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed);
                 }
+                let memories = self
+                    .store
+                    .recall_memories(
+                        &params.query,
+                        params.project.as_deref(),
+                        None,
+                        params
+                            .limit
+                            .unwrap_or(20)
+                            .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
+                        &acl,
+                    )
+                    .unwrap_or_else(|error| {
+                        tracing::warn!(%error, "native memory recall unavailable while building MCP context");
+                        Vec::new()
+                    });
                 self.audit_principal(
                     &principal,
                     "mcp.context",
@@ -396,9 +412,10 @@ impl BrainServer {
                     Some(retrieval.evidence.len()),
                     started,
                 );
-                serde_json::to_string(&context::build_with_retrieval(
+                serde_json::to_string(&context::build_with_retrieval_and_memory(
                     &params.query,
                     &retrieval.evidence,
+                    &memories,
                     params.max_tokens.unwrap_or(8_000),
                     retrieval.mode.as_str(),
                     retrieval.warning.as_deref(),

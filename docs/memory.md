@@ -23,18 +23,21 @@ minimal tombstone for auditability.
 
 ## Agent contract
 
-Agents should retrieve evidence with `context` and retrieve durable memories
-with `recall`. They should call `remember` only for an explicit, bounded
-conclusion and include provenance in the same call. Never copy an entire email,
-note, transcript, or code file into memory. Use `forget` when a user withdraws
-a memory.
+Agents should retrieve evidence and matching durable memories together with
+`context`; use `recall` when memory-only results are needed. The context bundle
+keeps memories in a separate, clearly labelled section so agents can use
+operational context without presenting it as a source citation. They should
+call `remember` only for an explicit, bounded conclusion and include provenance
+in the same call. Never copy an entire email, note, transcript, or code file
+into memory. Use `forget` when a user withdraws a memory.
 
 The native MCP tools are:
 
 - `remember` — write one bounded memory;
 - `recall` — ACL-filtered lexical recall;
 - `forget` — redact one memory;
-- `context` — retrieve cited source evidence.
+- `context` — retrieve cited source evidence plus relevant native memory in a
+  token-bounded bundle.
 
 The equivalent CLI is:
 

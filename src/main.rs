@@ -3526,7 +3526,16 @@ async fn context_bundle(
     max_tokens: usize,
 ) -> Result<ContextBundle> {
     let evidence = retrieval::retrieve(store, embedder, query, project, source, limit).await?;
-    Ok(context::build(query, &evidence, max_tokens))
+    let memories = store.recall_memories(
+        query,
+        project,
+        None,
+        limit.min(cortana::memory::MAX_MEMORY_RECALL_LIMIT),
+        &["*".into()],
+    )?;
+    Ok(context::build_with_retrieval_and_memory(
+        query, &evidence, &memories, max_tokens, "hybrid", None,
+    ))
 }
 
 /// Metadata-only audit trail for CLI context requests. The query text and
@@ -3624,6 +3633,7 @@ mod tests {
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
+    use cortana::memory::MemoryInput;
     use cortana::model::Document;
     use cortana::source_validation::{SourceValidationStatus, configuration_fingerprint, record};
     use cortana::store::Store;
@@ -5048,6 +5058,22 @@ mod tests {
                 &[(content, vector)],
             )
             .expect("upsert");
+        store
+            .remember(&MemoryInput {
+                kind: "procedural".into(),
+                project: "engineering".into(),
+                title: "Deploy preference".into(),
+                content: "Always deploy after validation.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: Some("test:deploy-preference".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: Vec::new(),
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+            })
+            .expect("remember");
 
         let bundle = context_bundle(
             &store,
@@ -5061,8 +5087,14 @@ mod tests {
         .await
         .expect("context bundle");
         assert!(bundle.context.contains("### [1] Release runbook"));
-        assert!(bundle.context.contains("Cite sources with [n]"));
+        assert!(
+            bundle
+                .context
+                .contains("source evidence for factual claims")
+        );
         assert_eq!(bundle.evidence.len(), 1);
+        assert_eq!(bundle.memories.len(), 1);
+        assert_eq!(bundle.metrics.memories_included, 1);
         assert_eq!(bundle.metrics.retrieved, 1);
         assert_eq!(bundle.metrics.included, 1);
         assert_eq!(bundle.metrics.omitted, 0);
