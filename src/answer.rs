@@ -875,6 +875,7 @@ pub fn validate_query_provider(config: &QueryConfig) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use axum::{Json, Router, body::Body, http::StatusCode, response::Response, routing::post};
@@ -889,6 +890,10 @@ mod tests {
     struct MockModel {
         calls: AtomicUsize,
         invalid_citation: bool,
+    }
+
+    struct MemoryAwareModel {
+        prompts: Arc<Mutex<Vec<String>>>,
     }
 
     struct SlowEmbedder;
@@ -921,6 +926,24 @@ mod tests {
                 Ok("The deployment is ready [99].".into())
             } else {
                 Ok("Promote only after the release checks pass [1].".into())
+            }
+        }
+    }
+
+    #[async_trait]
+    impl LanguageModel for MemoryAwareModel {
+        async fn complete(
+            &self,
+            system: &str,
+            user: &str,
+            _max_tokens: usize,
+            _session_id: &str,
+        ) -> Result<String> {
+            if system == SYNTHESIS_SYSTEM {
+                self.prompts.lock().expect("prompt lock").push(user.into());
+                Ok("Use the release playbook and the remembered preference [1].".into())
+            } else {
+                Ok(r#"{"queries":["release preference"]}"#.into())
             }
         }
     }
@@ -1573,6 +1596,67 @@ mod tests {
             .await
             .expect("query-only answer");
         assert!(query_only.memories.is_empty());
+    }
+
+    #[tokio::test]
+    async fn synthesized_answers_receive_native_memory_as_separate_context() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        seed(
+            &store,
+            &embedder,
+            "release",
+            "The release playbook requires all checks before promotion.",
+        )
+        .await;
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "demo".into(),
+                title: "Release preference".into(),
+                content: "Prefer concise release notes.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: Some("answer:synthesis-memory".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test": true}),
+                supersedes_id: None,
+            })
+            .expect("memory");
+        let prompts = Arc::new(Mutex::new(Vec::new()));
+        let engine = AnswerEngine::new(
+            store,
+            embedder,
+            Some(Arc::new(MemoryAwareModel {
+                prompts: prompts.clone(),
+            })),
+            QueryConfig {
+                synthesis_enabled: true,
+                ..QueryConfig::default()
+            },
+        );
+        let response = engine
+            .answer_scoped_with_memory(
+                AnswerRequest {
+                    query: "release preference".into(),
+                    project: Some("demo".into()),
+                    source: None,
+                },
+                &["work".into()],
+                Some(&["work".into()]),
+            )
+            .await
+            .expect("synthesized answer");
+        assert_eq!(response.mode, "synthesized");
+        assert_eq!(response.memories.len(), 1);
+        let prompts = prompts.lock().expect("prompt lock");
+        assert_eq!(prompts.len(), 1);
+        assert!(prompts[0].contains("## Agent memory"));
+        assert!(prompts[0].contains("Prefer concise release notes."));
+        assert!(prompts[0].contains("### [1] Release playbook"));
     }
 
     #[tokio::test]
