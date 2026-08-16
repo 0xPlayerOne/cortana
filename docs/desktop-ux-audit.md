@@ -21,10 +21,12 @@ is not part of a visual/UI change.
   provide Intel Desktop evidence.
 - The v0.32.12 tag is the fully verified packaged evidence boundary. The audited host
   now runs the installed `/Users/amf/.local/bin/cortana` v0.32.12 with embedding and server services in
-  query-only mode; recurring sync remains disabled. Query-only readiness and
-  source authorization are separate host checks; source authorization and full-corpus sync were
-  not started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
-  Developer ID signing, and notarization remain manual gates.
+  query-only mode; recurring sync remains disabled. As of 2026-08-16, 13 sources are enabled and
+  12 have fresh `complete=true` validation at their configured budgets. Personal Drive has only a
+  successful 25-document/5 MiB/60-second validation against its configured 2,000-document/128 MiB/
+  900-second budget, so the recurring-sync readiness gate correctly fails closed. No full-corpus
+  reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
+  updater interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.32.12 host passed the bounded provider-backed `eval --model` evidence
   run on 2026-08-16 in 23,267 ms: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
