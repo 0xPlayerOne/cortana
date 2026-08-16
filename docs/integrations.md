@@ -43,11 +43,11 @@ filters are bounded, each tool returns at most 50 evidence rows, and the context
 independent token budget (`--limit` 1–50, `--max-tokens` 256–64,000, defaulting to the configured
 `[query].context_tokens` budget of 8,000).
 
-| Interface                                       | Entry points                                                                                                                                                                            |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCP stdio (`cortana --config <path> mcp`)       | `context`, `remember`, `recall`, `forget`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                  |
+| Interface                                       | Entry points                                                                                                                                                                                                                 |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP stdio (`cortana --config <path> mcp`)       | `context`, `remember`, `recall`, `forget`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                                                           |
 | HTTP (`cortana serve --address 127.0.0.1:7331`) | `POST /v1/context`, `POST /v1/memory[/{recall,forget}]`, `POST /v1/search`, `POST /v1/answer`, `GET /v1/documents[/{id}]`, `GET /v1/graph`, `GET /v1/status`, `GET /v1/audit`, `GET /healthz`, `GET /readyz`, `GET /metrics` |
-| CLI (no server required)                        | `cortana context`, `cortana search` (raw-evidence fallback)                                                                                                                             |
+| CLI (no server required)                        | `cortana context`, `cortana search` (raw-evidence fallback)                                                                                                                                                                  |
 
 `cortana context QUERY`, `POST /v1/context`, and the MCP `context` tool return the same
 citation-ready, token-bounded Markdown bundle with numbered `[n]` citations, the included evidence,
