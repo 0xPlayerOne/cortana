@@ -1568,6 +1568,19 @@ async fn recall_memories(
     Extension(principal): Extension<Principal>,
     Json(request): Json<MemoryRecallRequest>,
 ) -> Result<Json<Vec<crate::memory::MemorySearchResult>>, (StatusCode, String)> {
+    if !principal.has_scope(MEMORY_SCOPE) {
+        record_audit(
+            &state,
+            &principal,
+            "memory.recall",
+            request.project.as_deref(),
+            None,
+            "forbidden",
+            None,
+            Instant::now(),
+        );
+        return Err((StatusCode::FORBIDDEN, "memory scope required".into()));
+    }
     validate_query(&request.query)?;
     validate_retrieval_scope(request.project.as_deref(), None)?;
     let started = Instant::now();
@@ -2379,7 +2392,7 @@ mod tests {
             acl: Vec::new(),
         }];
         let policy = AuthPolicy::from_config(&config).expect("auth policy");
-        let app = router(state.with_auth_policy(policy));
+        let app = router(state.clone().with_auth_policy(policy));
         let health = app
             .clone()
             .oneshot(
@@ -2415,6 +2428,21 @@ mod tests {
             .await
             .expect("metrics response");
         assert_eq!(authorized.status(), StatusCode::OK);
+
+        let memory_denied =
+            router(state.with_auth_policy(AuthPolicy::from_config(&config).expect("policy")))
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/v1/memory/recall")
+                        .header(header::AUTHORIZATION, "Bearer secret")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(r#"{"query":"release notes"}"#))
+                        .expect("memory request"),
+                )
+                .await
+                .expect("memory denial response");
+        assert_eq!(memory_denied.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]

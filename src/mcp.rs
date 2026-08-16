@@ -608,7 +608,7 @@ impl BrainServer {
                 return format!("authorization error: {error}");
             }
         };
-        if !principal.has_scope(QUERY_SCOPE) && !principal.has_scope(MEMORY_SCOPE) {
+        if !principal.has_scope(MEMORY_SCOPE) {
             self.audit_principal(
                 &principal,
                 "mcp.recall",
@@ -618,7 +618,7 @@ impl BrainServer {
                 None,
                 started,
             );
-            return "authorization error: query or memory scope required".into();
+            return "authorization error: memory scope required".into();
         }
         if let Err(error) = validate_request(&params.query, params.project.as_deref(), None) {
             self.audit_principal(
@@ -1447,6 +1447,18 @@ mod tests {
         assert_eq!(work_context["evidence"].as_array().map(Vec::len), Some(1));
         assert!(work_context.get("memories").is_none());
 
+        assert_eq!(
+            work_server
+                .recall(Parameters(MemoryRecallParams {
+                    query: "shared launch phrase".into(),
+                    project: Some("demo".into()),
+                    kind: None,
+                    limit: Some(10),
+                }))
+                .await,
+            "authorization error: memory scope required"
+        );
+
         let admin_context: serde_json::Value = serde_json::from_str(
             &admin_server
                 .context(Parameters(ContextParams {
@@ -1461,6 +1473,19 @@ mod tests {
         .expect("admin context");
         assert_eq!(admin_context["evidence"].as_array().map(Vec::len), Some(2));
         assert_eq!(admin_context["memories"].as_array().map(Vec::len), Some(1));
+
+        let admin_memories: Vec<crate::memory::MemorySearchResult> = serde_json::from_str(
+            &admin_server
+                .recall(Parameters(MemoryRecallParams {
+                    query: "shared launch phrase".into(),
+                    project: Some("demo".into()),
+                    kind: None,
+                    limit: Some(10),
+                }))
+                .await,
+        )
+        .expect("admin memory recall");
+        assert_eq!(admin_memories.len(), 1);
     }
 
     #[tokio::test]
