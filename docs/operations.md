@@ -201,8 +201,8 @@ source evidence. `/v1/answer` follows the same scope boundary and includes memor
 principals with the `memory` scope; numbered source evidence remains the citation authority. Source
 ingestion never bulk-copies documents into memory. Identical dedupe-key retries are no-ops, and
 memory status reports distinguish valid active records from expired records retained for export.
-The native store is the sole supported memory engine for this release. See [Native agentic memory]
-(memory.md) for the lifecycle and interface contract.
+The native store is the sole supported memory engine for this release. See
+[Native agentic memory](memory.md) for the lifecycle and interface contract.
 
 Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
 queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
