@@ -128,7 +128,13 @@ pub struct MemoryRecord {
 pub struct MemorySearchResult {
     #[serde(flatten)]
     pub memory: MemoryRecord,
+    /// Raw SQLite FTS5 score. Lower values are better; retained for
+    /// diagnostics and backwards-compatible clients.
     pub lexical_score: f64,
+    /// Bounded, higher-is-better score used to order native-memory recall.
+    /// This combines query coverage, lexical relevance, memory salience, and
+    /// freshness without contacting a provider or loading the corpus.
+    pub relevance_score: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -285,7 +291,11 @@ pub(crate) fn fts_query_or(query: &str) -> Result<String> {
     Ok(query_terms(query)?.join(" OR "))
 }
 
-fn query_terms(query: &str) -> Result<Vec<String>> {
+/// Return normalized, bounded terms shared by FTS construction and the
+/// salience scorer. Keeping one tokenizer prevents the scorer from claiming
+/// coverage for words that the FTS query discarded as stopwords or unsafe
+/// punctuation.
+pub(crate) fn term_tokens(query: &str) -> Result<Vec<String>> {
     anyhow::ensure!(
         query.len() <= MAX_MEMORY_CONTENT_BYTES,
         "memory query is too long"
@@ -303,13 +313,19 @@ fn query_terms(query: &str) -> Result<Vec<String>> {
         // normal inflections ("deploy" matches "deployment"). The input has
         // already been reduced to alphanumeric/underscore tokens, so the
         // generated expression cannot inject FTS operators.
-        .map(|term| format!("\"{term}\"*"))
         .collect::<Vec<_>>();
     anyhow::ensure!(
         !terms.is_empty(),
         "memory query must contain searchable terms"
     );
     Ok(terms)
+}
+
+fn query_terms(query: &str) -> Result<Vec<String>> {
+    Ok(term_tokens(query)?
+        .into_iter()
+        .map(|term| format!("\"{term}\"*"))
+        .collect::<Vec<_>>())
 }
 
 fn is_stopword(term: &str) -> bool {
@@ -394,5 +410,9 @@ mod tests {
         assert!(fts_query("how do i").is_err());
         // Preserve code/proper-name tokens that are not in the stopword set.
         assert_eq!(fts_query("I Cortana").expect("query terms"), "\"Cortana\"*");
+        assert_eq!(
+            term_tokens("how do i deploy the release").expect("term tokens"),
+            ["deploy", "release"]
+        );
     }
 }

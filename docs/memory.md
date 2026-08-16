@@ -46,7 +46,7 @@ operational context.
 The native MCP tools are:
 
 - `remember` — write one bounded memory;
-- `recall` — ACL-filtered prefix-aware lexical recall with a precise all-term pass and a bounded natural-language fallback;
+- `recall` — ACL-filtered prefix-aware recall with a precise all-term pass and a bounded natural-language fallback. Candidates are ranked locally by query coverage, lexical relevance, confidence, importance, freshness, and exact-vs-fallback match; no external memory service is consulted;
 - `forget` — redact one memory;
 - `context` — retrieve cited source evidence plus relevant native memory in a
   token-bounded bundle.
@@ -86,6 +86,12 @@ no-op: it does not advance the memory revision, so answer-cache entries remain
 reusable. `brain_status` reports active, expired, retracted, superseded, and
 total records. Expired working memories remain exportable for audit and backup,
 but are excluded from recall and active-capacity accounting.
+
+Recall is deliberately local and bounded. SQLite FTS5 produces the candidate
+set, then Cortana applies a stable salience score so a precise, recent memory
+beats a weak one-term match even when the latter has a high importance value.
+The score is returned as `relevance_score` for agent diagnostics; it is not a
+confidence claim and does not override ACL, expiry, or lifecycle checks.
 
 Dedupe keys and supersession targets are workspace-scoped: a memory in one project
 cannot overwrite or supersede a memory in another project, including for the owner.

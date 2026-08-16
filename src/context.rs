@@ -276,6 +276,7 @@ mod tests {
                 updated_at: "2026-01-01T00:00:00Z".into(),
             },
             lexical_score: -1.0,
+            relevance_score: 0.9,
         };
         let bundle = build_with_retrieval_and_memory(
             "release notes",
