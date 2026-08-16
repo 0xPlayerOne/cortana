@@ -219,6 +219,18 @@ pub(crate) fn now() -> String {
 }
 
 pub(crate) fn fts_query(query: &str) -> Result<String> {
+    let terms = query_terms(query)?;
+    Ok(terms.join(" AND "))
+}
+
+/// Build a bounded fallback query for natural-language questions. Exact
+/// all-term matching remains the primary path; callers may use this OR form
+/// only when that precise query returns no memories.
+pub(crate) fn fts_query_or(query: &str) -> Result<String> {
+    Ok(query_terms(query)?.join(" OR "))
+}
+
+fn query_terms(query: &str) -> Result<Vec<String>> {
     anyhow::ensure!(
         query.len() <= MAX_MEMORY_CONTENT_BYTES,
         "memory query is too long"
@@ -238,5 +250,5 @@ pub(crate) fn fts_query(query: &str) -> Result<String> {
         !terms.is_empty(),
         "memory query must contain searchable terms"
     );
-    Ok(terms.join(" AND "))
+    Ok(terms)
 }
