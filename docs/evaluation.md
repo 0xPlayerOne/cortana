@@ -19,9 +19,10 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.32.11`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `31928018360` completed all 18 assets
-and the strict verifier. The v0.32.11 source carries the bounded large-PDF Drive parser and the
+The current protected source and published tag are `v0.32.12`, promoted through the protected
+flow and Release Please automation. Release-assets workflow `31933279147` completed the 18-asset
+release gate, including checksums, updater signatures, manifest, and packaged-core verification.
+The v0.32.12 source carries the bounded large-PDF Drive parser and the
 rollback-safe Hermes migration publication
 and the bounded
 read-only live-index evaluator.
@@ -69,24 +70,24 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.32.11 release gate verifies the packaged core offline without credentials. The installed
-host binary used for the provider-backed model run below is v0.32.11, matching the protected
-source and published archive.
+The v0.32.12 release gate verified the packaged core offline without credentials. The installed
+host is now v0.32.12; the provider-backed evaluation below remains fixture-only evidence and is
+separate from the packaged-core gate.
 The offline evaluator and query-only readiness pass, while the provider-backed model run remains
 fixture-only evidence. This remains bounded query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator remains opt-in;
 extractive mode is the production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.11 from the local installation;
-the published v0.32.11 archive and its checksum/signature gate passed. The embedding and HTTP
-services are running with recurring sync uninstalled. This is local installation evidence, not
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.12 from the verified local
+installation. The embedding and HTTP services are running with recurring sync uninstalled. This is
+local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
-The current provider-backed fixture evidence was collected on 2026-08-16 with the installed
-v0.32.11 CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR, case
+The latest provider-backed fixture evidence was collected on 2026-08-16 with the installed
+v0.32.12 CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR, case
 pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
-invalidation; the answer completed in 14,795 ms under the 55,000 ms deadline with no provider
-fallback. This is current package/runtime evidence, but it remains synthetic fixture evidence: it
+invalidation; the answer completed in 23,267 ms under the 55,000 ms deadline with no provider
+fallback. This is installed-runtime evidence, but it remains synthetic fixture evidence: it
 does not query the personal index, prove packaged GUI behavior, or authorize source
 synchronization. The preceding v0.32.7 result remains historical evidence in the release record.
 
@@ -108,18 +109,18 @@ is operational ingestion evidence, not a full-corpus quality benchmark: every cu
 record remains below its configured production budget, recurring sync is still disabled, and the
 pass did not enable Discord, code, Slack, synthesis, Hindsight, or Honcho.
 
-The v0.32.11 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.32.12 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current v0.32.11 source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.32.12 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.32.11 source and package; it does
+This protects concurrent Desktop windows/processes in the v0.32.12 source; it does
 not authorize source ingestion or recurring sync.
 
-The v0.32.11 source and package add bounded embedding-supervisor recovery: steady-state health checks
+The v0.32.12 source adds bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -269,7 +270,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.32.11 source and verified package
+release evidence; use **Current release boundary** above for the v0.32.12 source and verified package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
