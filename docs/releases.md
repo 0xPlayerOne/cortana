@@ -9,17 +9,17 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.32.9
+## Current release: v0.32.10
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.9` is the current protected source and published release. Release-assets workflow
-`31920097809` completed all 18 archive, checksum, updater-signature, manifest, and credential-free
-packaged-core gates. v0.32.6 and earlier remain historical evidence.
+`v0.32.10` is the current protected source and published release. Release-assets workflow
+`31926397636` completed all 18 archive, checksum, updater-signature, manifest, and credential-free
+packaged-core gates. v0.32.9 and earlier remain historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.32.9 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.32.10 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -35,13 +35,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.32.9
+  scripts/verify-desktop-release.sh v0.32.10
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.32.9 source is the release boundary for the bounded large-PDF Drive parser and the
+The v0.32.10 source is the release boundary for the bounded large-PDF Drive parser and the
 post-v0.31.12 hardening, bounded live-index
 evaluation harness, and readiness-budget diagnostics described below. Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
@@ -61,19 +61,17 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.32.10 release intent (pending protected release flow)
+## v0.32.10 release intent (published and verified)
 
 The post-v0.32.9 source tree contains the bounded Google Drive PDF metadata preflight and the
 corresponding current Personal Drive validation evidence. This release intent keeps those
 production-safety changes represented by a downloadable patch release after the protected
-staging-to-main promotion and Release Please version PR complete. It changes no credentials,
+staging-to-main promotion and Release Please version PR. It changes no credentials,
 source authorization, indexed data, recurring-sync state, or optional memory-provider state.
 
-The protected promotion already carries this tree; the follow-up release-intent marker uses a
-Conventional Commit so Release Please can open the version-only PR for the exact `0.32.10` patch.
-
-Until the v0.32.10 tag, published assets, and strict verifier are complete, v0.32.9 remains the
-current downloadable release.
+The protected promotion and version-only PR merged successfully. Release-assets workflow
+`31926397636` published all 18 assets and passed the strict cross-platform verifier, including
+archive checksums, updater signatures, the manifest, and packaged-core verification.
 
 ## v0.32.9 release intent (published and verified)
 
