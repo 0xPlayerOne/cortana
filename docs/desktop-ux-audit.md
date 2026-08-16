@@ -204,13 +204,13 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    trials; Buzz has a
    completed bounded no-reconcile snapshot. Historical records show Special Drive with a
    production-budget validation (97 documents, 290,353 bytes) and a completed 97-document
-   non-reconciling trial with zero deletions. Historical Work Drive and Work Gmail records show
-   production-budget validation (478/4,527,663 bytes and 7,395/34,494,647 bytes respectively). The earlier v0.32.2 Work Drive trial was cancelled
-   while queued embedding work was still completing, but a later 100-document no-reconcile retry
-   completed successfully; the complete 478-document production-budget trial remains open.
-   The earlier Personal Drive production-budget validation failed closed at its 899-second
-   connector timeout; a later bounded 25-document/5 MiB validation and non-reconciling trial
-   succeeded but remains below the configured production budget. Personal Gmail now has
+   non-reconciling trial with zero deletions. Current Work Drive and Work Gmail records show
+   production-budget validation (478/4,527,721 bytes and 7,386/34,487,878 bytes respectively).
+   The earlier v0.32.2 Work Drive trial was cancelled while queued embedding work was still
+   completing, but the later complete 478-document validation is now authoritative. Personal
+   Drive failed both its earlier 1,799-second and later configured 899-second connector deadlines;
+   bounded 25-document/5 MiB validation and non-reconciling trial evidence remains below the
+   configured production budget. Personal Gmail now has
    production-budget validation
    (430 documents/1,563,456 bytes) plus a bounded 100-document-cap trial with zero deletions,
    and Special Gmail has historical production-budget validation (214 documents/995,335 bytes)
