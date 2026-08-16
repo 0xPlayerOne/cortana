@@ -1059,6 +1059,26 @@ def test_large_pdf_uses_bounded_head_tail_page_sample() -> None:
     assert sum(page.calls for page in pages) < len(pages)
 
 
+def test_text_heavy_pdf_stops_after_bounded_payload() -> None:
+    class FakePage:
+        def __init__(self, text: str) -> None:
+            self.text = text
+            self.calls = 0
+
+        def extract_text(self) -> str:
+            self.calls += 1
+            return self.text
+
+    pages = [FakePage("x" * 10_000) for _ in range(40)]
+    result = google._extract_pdf_text(type("Reader", (), {"pages": pages})())
+
+    assert result.truncated is True
+    assert result.original_chars is None
+    assert len(result) <= google.MAX_DRIVE_STREAM_CHARS
+    assert google.PDF_EARLY_STOP_MARKER.strip() in result
+    assert sum(page.calls for page in pages) < len(pages)
+
+
 def test_google_gmail_detail_concurrency_is_four() -> None:
     assert google.GMAIL_DETAIL_CONCURRENCY == 4
 
