@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.32.11](https://github.com/0xPlayerOne/cortana/compare/v0.32.10...v0.32.11) (2026-08-16)
+
+
+### Documentation
+
+* refresh v0.32.10 release evidence ([bd5fa26](https://github.com/0xPlayerOne/cortana/commit/bd5fa26a13e2ad3a014412ff88413557c1aedc8e))
+
+## [0.32.10](https://github.com/0xPlayerOne/cortana/compare/v0.32.9...v0.32.10) (2026-08-16)
+
+
+### Bug Fixes
+
+* **release:** trigger v0.32.10 version PR ([a5b262e](https://github.com/0xPlayerOne/cortana/commit/a5b262e0313e59bb0f1c7f0af5b3bea1ce2e613b))
+
 ## [0.32.9](https://github.com/0xPlayerOne/cortana/compare/v0.32.8...v0.32.9) (2026-08-16)
 
 
