@@ -237,7 +237,7 @@ impl Store {
                content TEXT NOT NULL,
                source TEXT NOT NULL,
                source_id TEXT NOT NULL,
-               dedupe_key TEXT UNIQUE,
+               dedupe_key TEXT,
                confidence REAL NOT NULL,
                importance REAL NOT NULL,
                status TEXT NOT NULL,
@@ -280,6 +280,15 @@ impl Store {
         ensure_document_content_column(&connection)?;
         backfill_document_links(&mut connection)?;
         migrate_embedding_blobs(&mut connection)?;
+        migrate_memory_dedupe_scope(&mut connection)?;
+        connection.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_memories_scope
+               ON memories(project,kind,status,updated_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_memories_status
+               ON memories(status,updated_at DESC);
+             CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_project_dedupe
+               ON memories(project,dedupe_key) WHERE dedupe_key IS NOT NULL",
+        )?;
         secure_database_files(path)?;
         let read_connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         read_connection.busy_timeout(DATABASE_BUSY_TIMEOUT)?;
@@ -995,8 +1004,8 @@ impl Store {
                     "SELECT id,kind,project,title,content,source,source_id,status,
                             acl_json,confidence,importance,provenance_json,valid_until,
                             supersedes_id
-                     FROM memories WHERE dedupe_key=?1",
-                    [key],
+                     FROM memories WHERE project=?1 AND dedupe_key=?2",
+                    params![input.project, key],
                     |row| {
                         let acl_json: String = row.get(8)?;
                         let acl = serde_json::from_str(&acl_json).map_err(|error| {
@@ -2768,6 +2777,65 @@ fn ensure_document_content_column(connection: &Connection) -> Result<()> {
     )
 }
 
+/// Older native-memory databases declared `dedupe_key` globally unique.  That
+/// made a generic retry key in one workspace collide with the same key in a
+/// different workspace, despite the memory contract being workspace-scoped.
+/// Rebuild that table once so the invariant is enforced by the correct
+/// `(project, dedupe_key)` partial unique index created by `Store::open`.
+fn migrate_memory_dedupe_scope(connection: &mut Connection) -> Result<()> {
+    let schema: Option<String> = connection
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='memories'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(schema) = schema else {
+        return Ok(());
+    };
+    if !schema.contains("dedupe_key TEXT UNIQUE") {
+        return Ok(());
+    }
+
+    let transaction = connection.transaction()?;
+    transaction.execute_batch(
+        "DROP INDEX IF EXISTS idx_memories_scope;
+         DROP INDEX IF EXISTS idx_memories_status;
+         ALTER TABLE memories RENAME TO memories_legacy;
+         CREATE TABLE memories(
+           id TEXT PRIMARY KEY,
+           kind TEXT NOT NULL,
+           project TEXT NOT NULL,
+           title TEXT NOT NULL,
+           content TEXT NOT NULL,
+           source TEXT NOT NULL,
+           source_id TEXT NOT NULL,
+           dedupe_key TEXT,
+           confidence REAL NOT NULL,
+           importance REAL NOT NULL,
+           status TEXT NOT NULL,
+           acl_json TEXT NOT NULL,
+           provenance_json TEXT NOT NULL,
+           observed_at TEXT NOT NULL,
+           valid_from TEXT NOT NULL,
+           valid_until TEXT,
+           supersedes_id TEXT,
+           created_at TEXT NOT NULL,
+           updated_at TEXT NOT NULL);
+         INSERT INTO memories(
+           id,kind,project,title,content,source,source_id,dedupe_key,
+           confidence,importance,status,acl_json,provenance_json,
+           observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at)
+         SELECT id,kind,project,title,content,source,source_id,dedupe_key,
+           confidence,importance,status,acl_json,provenance_json,
+           observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at
+         FROM memories_legacy;
+         DROP TABLE memories_legacy;",
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
 fn ensure_column(
     connection: &Connection,
     table: &str,
@@ -4437,6 +4505,83 @@ mod tests {
     }
 
     #[test]
+    fn migrates_legacy_global_memory_dedupe_to_project_scope() {
+        let directory = tempdir().expect("temporary directory");
+        let database = directory.path().join("store.sqlite3");
+        let connection = Connection::open(&database).expect("open legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE memories(
+                   id TEXT PRIMARY KEY,
+                   kind TEXT NOT NULL,
+                   project TEXT NOT NULL,
+                   title TEXT NOT NULL,
+                   content TEXT NOT NULL,
+                   source TEXT NOT NULL,
+                   source_id TEXT NOT NULL,
+                   dedupe_key TEXT UNIQUE,
+                   confidence REAL NOT NULL,
+                   importance REAL NOT NULL,
+                   status TEXT NOT NULL,
+                   acl_json TEXT NOT NULL,
+                   provenance_json TEXT NOT NULL,
+                   observed_at TEXT NOT NULL,
+                   valid_from TEXT NOT NULL,
+                   valid_until TEXT,
+                   supersedes_id TEXT,
+                   created_at TEXT NOT NULL,
+                   updated_at TEXT NOT NULL);
+                 CREATE INDEX idx_memories_scope
+                   ON memories(project,kind,status,updated_at DESC);
+                 CREATE INDEX idx_memories_status
+                   ON memories(status,updated_at DESC);",
+            )
+            .expect("create legacy memory schema");
+        connection
+            .execute(
+                "INSERT INTO memories(
+                   id,kind,project,title,content,source,source_id,dedupe_key,
+                   confidence,importance,status,acl_json,provenance_json,
+                   observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at)
+                 VALUES(?1,'preference','personal','Legacy preference','Keep private context private.',
+                   'agent','legacy-session','shared-key',0.9,0.8,'active','[\"personal\"]','{}',
+                   '2026-01-01T00:00:00Z','2026-01-01T00:00:00Z',NULL,NULL,
+                   '2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')",
+                ["legacy-memory"],
+            )
+            .expect("insert legacy memory");
+        drop(connection);
+
+        let store = Store::open(&database).expect("migrate store");
+        assert_eq!(
+            store
+                .memory("legacy-memory")
+                .expect("read migrated memory")
+                .expect("migrated record")
+                .project,
+            "personal"
+        );
+        let work = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "work".into(),
+                title: "Work preference".into(),
+                content: "Use the team editor.".into(),
+                source: "agent".into(),
+                source_id: "work-session".into(),
+                dedupe_key: Some("shared-key".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("same key may be reused in a different project after migration");
+        assert_eq!(work.project, "work");
+    }
+
+    #[test]
     fn scoped_memory_stats_filter_lifecycle_counts_by_acl() {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
@@ -4507,7 +4652,7 @@ mod tests {
 
         let replacement = crate::memory::MemoryInput {
             kind: "preference".into(),
-            project: "work".into(),
+            project: "personal".into(),
             title: "Cross-scope overwrite".into(),
             content: "This must not replace the personal memory.".into(),
             source: "agent".into(),
@@ -4563,7 +4708,7 @@ mod tests {
     }
 
     #[test]
-    fn native_memory_replacement_is_project_scoped_even_for_owner() {
+    fn native_memory_dedupe_is_project_scoped_even_for_owner() {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
         let personal = store
@@ -4600,11 +4745,34 @@ mod tests {
                 supersedes_id: None,
                 valid_until: None,
             })
-            .expect_err("owner must not overwrite another project's dedupe key");
-        assert!(
-            cross_project_dedupe
-                .to_string()
-                .contains("dedupe key must stay within its project")
+            .expect("same dedupe key is independent in another project");
+        assert_ne!(cross_project_dedupe.id, personal.id);
+        assert_eq!(cross_project_dedupe.project, "work");
+        assert_eq!(
+            store
+                .recall_memories(
+                    "editor preference",
+                    Some("personal"),
+                    None,
+                    10,
+                    &["personal".into()]
+                )
+                .expect("personal recall")
+                .len(),
+            1
+        );
+        assert_eq!(
+            store
+                .recall_memories(
+                    "editor preference",
+                    Some("work"),
+                    None,
+                    10,
+                    &["work".into()]
+                )
+                .expect("work recall")
+                .len(),
+            1
         );
 
         let cross_project_supersession = store
