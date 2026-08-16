@@ -19,9 +19,9 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.32.9`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `31920097809` completed all 18 assets
-and the strict verifier. The v0.32.9 source carries the bounded large-PDF Drive parser and the
+The current protected source and published tag are `v0.32.10`, promoted through the protected
+flow and Release Please automation. Release-assets workflow `31926397636` completed all 18 assets
+and the strict verifier. The v0.32.10 source carries the bounded large-PDF Drive parser and the
 rollback-safe Hermes migration publication
 and the bounded
 read-only live-index evaluator.
@@ -35,7 +35,7 @@ enabled-source set is not fully production-validated. The current complete recor
 Personal Gmail (427), Special Gmail (216), and Special Drive (97). All meet their configured
 document, byte, and duration budgets; Work Drive's current record is 4,527,721 bytes at its
 900-second budget with zero writes. Personal Drive's explicit 2,000-document/128 MiB/1,800-second
-validation failed closed at the 1,799-second connector deadline under the installed v0.32.9 parser
+validation failed closed at the 1,799-second connector deadline under the then-installed v0.32.9 parser
 while processing a large PDF. Recurring sync remains uninstalled, and no reconciliation or large
 sync has been requested.
 
@@ -69,15 +69,16 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.32.9 release gate verifies the packaged core offline without credentials. The installed
-host binary is v0.32.9, and its provider-backed model run below was refreshed after installation.
+The v0.32.10 release gate verifies the packaged core offline without credentials. The installed
+host binary used for the provider-backed model run below is v0.32.9; the v0.32.10 archive passed
+the packaged-core gate independently.
 The offline evaluator and query-only readiness pass, while the provider-backed model run remains
 fixture-only evidence. This remains bounded query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator remains opt-in;
 extractive mode is the production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.9 from the local installation;
-the published v0.32.9 archive also passed the packaged-core gate. The embedding and HTTP
+The audited host still runs `/Users/amf/.local/bin/cortana` v0.32.9 from the local installation;
+the published v0.32.10 archive passed the packaged-core gate. The embedding and HTTP
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
@@ -107,18 +108,18 @@ is operational ingestion evidence, not a full-corpus quality benchmark: every cu
 record remains below its configured production budget, recurring sync is still disabled, and the
 pass did not enable Discord, code, Slack, synthesis, Hindsight, or Honcho.
 
-The v0.32.9 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.32.10 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.32.10 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
 This protects concurrent Desktop windows/processes in the v0.32.9 source and package; it does
 not authorize source ingestion or recurring sync.
 
-The v0.32.9 source and package add bounded embedding-supervisor recovery: steady-state health checks
+The v0.32.10 source and package add bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
