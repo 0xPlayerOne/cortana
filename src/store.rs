@@ -1001,8 +1001,9 @@ impl Store {
             );
         }
         let active_count: i64 = transaction.query_row(
-            "SELECT COUNT(*) FROM memories WHERE status='active'",
-            [],
+            "SELECT COUNT(*) FROM memories
+             WHERE status='active' AND (valid_until IS NULL OR valid_until>?1)",
+            [now.as_str()],
             |row| row.get(0),
         )?;
         let replaces_active = existing
@@ -4216,6 +4217,26 @@ mod tests {
                 .expect("recall")
                 .is_empty()
         );
+        store
+            .configure_memory_limit(1)
+            .expect("configure memory limit");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "This task is still active.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("expired records do not consume active capacity");
     }
 
     #[test]
