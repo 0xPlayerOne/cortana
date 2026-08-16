@@ -87,6 +87,11 @@ reusable. `brain_status` reports active, expired, retracted, superseded, and
 total records. Expired working memories remain exportable for audit and backup,
 but are excluded from recall and active-capacity accounting.
 
+Dedupe keys and supersession targets are workspace-scoped: a memory in one project
+cannot overwrite or supersede a memory in another project, including for the owner.
+This keeps work, personal, and special operational context isolated even when agents
+reuse generic retry keys.
+
 The supported product path keeps retention, deletion, ACL, and backup semantics
 in one database and makes offline operation deterministic. Owner-local CLI
 remember, recall, and forget commands also emit metadata-only audit events;

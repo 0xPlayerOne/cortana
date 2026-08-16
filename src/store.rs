@@ -1033,6 +1033,10 @@ impl Store {
                 owner || acl_allows(&existing.acl, principal_acl),
                 "memory dedupe key is outside principal visibility"
             );
+            anyhow::ensure!(
+                existing.project == input.project,
+                "memory dedupe key must stay within its project"
+            );
         }
         let id = existing
             .as_ref()
@@ -1077,32 +1081,45 @@ impl Store {
             memory.status == "active"
                 && memory::valid_until_is_active(memory.valid_until.as_deref(), &now)
         });
-        let supersession_target: Option<(Vec<String>, Option<String>)> =
+        let supersession_target: Option<(String, Vec<String>, Option<String>)> =
             if let Some(previous_id) = input.supersedes_id.as_deref() {
                 transaction
                     .query_row(
-                        "SELECT acl_json,valid_until FROM memories
+                        "SELECT project,acl_json,valid_until FROM memories
                          WHERE id=?1 AND status='active'",
                         [previous_id],
                         |row| {
-                            let acl_json: String = row.get(0)?;
+                            let acl_json: String = row.get(1)?;
                             let acl = serde_json::from_str(&acl_json).map_err(|error| {
                                 rusqlite::Error::FromSqlConversionFailure(
-                                    0,
+                                    1,
                                     Type::Text,
                                     Box::new(error),
                                 )
                             })?;
-                            Ok((acl, row.get(1)?))
+                            Ok((row.get(0)?, acl, row.get(2)?))
                         },
                     )
                     .optional()?
             } else {
                 None
             };
+        if let Some((previous_project, previous_acl, _)) = &supersession_target {
+            anyhow::ensure!(
+                owner || acl_allows(previous_acl, principal_acl),
+                "memory supersession target is outside principal visibility"
+            );
+            anyhow::ensure!(
+                previous_project == &input.project,
+                "memory supersession target must stay within its project"
+            );
+        }
+        if let Some(previous_id) = input.supersedes_id.as_deref() {
+            anyhow::ensure!(previous_id != id, "memory cannot supersede itself");
+        }
         let supersedes_active = supersession_target
             .as_ref()
-            .is_some_and(|(_, valid_until)| {
+            .is_some_and(|(_, _, valid_until)| {
                 memory::valid_until_is_active(valid_until.as_deref(), &now)
             });
         anyhow::ensure!(
@@ -1110,12 +1127,6 @@ impl Store {
             "active memory limit reached ({max_active}); retract or supersede an existing memory before adding another"
         );
         if let Some(previous_id) = input.supersedes_id.as_deref() {
-            if let Some((previous_acl, _)) = &supersession_target {
-                anyhow::ensure!(
-                    owner || acl_allows(previous_acl, principal_acl),
-                    "memory supersession target is outside principal visibility"
-                );
-            }
             let changed = transaction.execute(
                 "UPDATE memories SET status='superseded',valid_until=?2,updated_at=?2
                  WHERE id=?1 AND status='active'",
@@ -4379,6 +4390,124 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn native_memory_replacement_is_project_scoped_even_for_owner() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let personal = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "personal".into(),
+                title: "Editor preference".into(),
+                content: "Use a focused editor.".into(),
+                source: "agent".into(),
+                source_id: "personal-session".into(),
+                dedupe_key: Some("editor-preference".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["personal".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("personal memory");
+
+        let cross_project_dedupe = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "work".into(),
+                title: "Work editor preference".into(),
+                content: "Use the team editor.".into(),
+                source: "agent".into(),
+                source_id: "work-session".into(),
+                dedupe_key: Some("editor-preference".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect_err("owner must not overwrite another project's dedupe key");
+        assert!(
+            cross_project_dedupe
+                .to_string()
+                .contains("dedupe key must stay within its project")
+        );
+
+        let cross_project_supersession = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "work".into(),
+                title: "Work editor preference".into(),
+                content: "Use the team editor.".into(),
+                source: "agent".into(),
+                source_id: "work-session-2".into(),
+                dedupe_key: Some("work-editor-preference".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: Some(personal.id.clone()),
+                valid_until: None,
+            })
+            .expect_err("owner must not supersede another project's memory");
+        assert!(
+            cross_project_supersession
+                .to_string()
+                .contains("supersession target must stay within its project")
+        );
+        assert_eq!(
+            store
+                .memory(&personal.id)
+                .expect("read personal memory")
+                .expect("personal memory")
+                .status,
+            "active"
+        );
+    }
+
+    #[test]
+    fn native_memory_cannot_supersede_itself() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let current = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Keep the task active.".into(),
+                source: "agent".into(),
+                source_id: "session-1".into(),
+                dedupe_key: Some("current-task".into()),
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("current memory");
+        let error = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Keep the task active.".into(),
+                source: "agent".into(),
+                source_id: "session-2".into(),
+                dedupe_key: Some("current-task".into()),
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: Some(current.id),
+                valid_until: None,
+            })
+            .expect_err("memory must not supersede itself");
+        assert!(error.to_string().contains("cannot supersede itself"));
     }
 
     #[test]
