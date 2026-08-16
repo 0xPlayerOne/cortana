@@ -263,6 +263,16 @@ pub(crate) fn valid_until_is_active(valid_until: Option<&str>, now: &str) -> boo
     valid_until > now
 }
 
+/// Classify store errors that mean the caller is outside the memory's scope.
+/// Interfaces use this to return a stable authorization response without
+/// exposing dedupe keys, memory ids, or internal ACL details.
+pub(crate) fn is_authorization_error(error: &anyhow::Error) -> bool {
+    let message = error.to_string();
+    message == "memory ACL denied"
+        || message.contains("outside principal visibility")
+        || message.contains("ACL exceeds principal visibility")
+}
+
 pub(crate) fn fts_query(query: &str) -> Result<String> {
     let terms = query_terms(query)?;
     Ok(terms.join(" AND "))
@@ -339,5 +349,18 @@ mod tests {
             Some("2030-01-01T10:00:00.123Z"),
             "2030-01-01T10:00:00Z"
         ));
+    }
+
+    #[test]
+    fn authorization_errors_are_classified_without_matching_internal_details() {
+        assert!(is_authorization_error(&anyhow::anyhow!(
+            "memory ACL denied"
+        )));
+        assert!(is_authorization_error(&anyhow::anyhow!(
+            "memory dedupe key is outside principal visibility"
+        )));
+        assert!(!is_authorization_error(&anyhow::anyhow!(
+            "memory title exceeds 512 bytes"
+        )));
     }
 }

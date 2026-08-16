@@ -571,11 +571,19 @@ impl BrainServer {
                     "mcp.remember",
                     Some(&input.project),
                     Some(&input.source),
-                    "invalid",
+                    if crate::memory::is_authorization_error(&error) {
+                        "forbidden"
+                    } else {
+                        "invalid"
+                    },
                     None,
                     started,
                 );
-                format!("memory error: {error}")
+                if crate::memory::is_authorization_error(&error) {
+                    "authorization error: memory ACL denied".into()
+                } else {
+                    format!("memory error: {error}")
+                }
             }
         }
     }
@@ -734,6 +742,18 @@ impl BrainServer {
                     started,
                 );
                 serde_json::json!({"id": params.id, "forgotten": forgotten}).to_string()
+            }
+            Err(error) if crate::memory::is_authorization_error(&error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.forget",
+                    Some(&memory.project),
+                    Some(&memory.source),
+                    "forbidden",
+                    None,
+                    started,
+                );
+                "authorization error: memory ACL denied".into()
             }
             Err(error) => format!("memory error: {error}"),
         }

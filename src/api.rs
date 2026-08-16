@@ -1534,6 +1534,19 @@ async fn remember_memory(
             );
             Ok(Json(memory))
         }
+        Err(error) if crate::memory::is_authorization_error(&error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.remember",
+                Some(&input.project),
+                Some(&input.source),
+                "forbidden",
+                None,
+                started,
+            );
+            Err((StatusCode::FORBIDDEN, "memory ACL denied".into()))
+        }
         Err(error) => {
             record_audit(
                 &state,
@@ -1626,7 +1639,7 @@ async fn forget_memory(
         principal.is_owner(),
     ) {
         Ok(forgotten) => forgotten,
-        Err(error) if error.to_string() == "memory ACL denied" => {
+        Err(error) if crate::memory::is_authorization_error(&error) => {
             record_audit(
                 &state,
                 &principal,
