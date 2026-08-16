@@ -1237,6 +1237,7 @@
 
 .safety-note.error,
 .safety-note[role='alert'],
+.source-unassigned-note[role='alert'],
 .settings-inline-error {
   color: var(--theme-error-fg);
   border-color: var(--theme-error-border);
