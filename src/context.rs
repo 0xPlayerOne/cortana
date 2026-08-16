@@ -160,11 +160,19 @@ fn evidence_prefix(index: usize, item: &Evidence) -> String {
 }
 
 fn memory_prefix(index: usize, item: &MemorySearchResult) -> String {
+    let expiry = item
+        .memory
+        .valid_until
+        .as_deref()
+        .map(|value| format!(" · Expires: {value}"))
+        .unwrap_or_default();
     format!(
-        "### [memory {index}] {} ({})\nProject: {} · Confidence: {:.2} · Importance: {:.2}\n\n",
+        "### [memory {index}] {} ({})\nProject: {} · Source: {} · Observed: {} · Confidence: {:.2} · Importance: {:.2}{expiry}\n\n",
         item.memory.title,
         item.memory.kind,
         item.memory.project,
+        item.memory.source,
+        item.memory.observed_at,
         item.memory.confidence,
         item.memory.importance
     )
