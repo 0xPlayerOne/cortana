@@ -81,6 +81,12 @@ for agent conclusions. The store is local-first and protected by the operator's
 filesystem policy, auditable, exportable through the scoped export and backup
 paths, and bounded by content, provenance, ACL, and recall limits.
 
+A retry with the same dedupe key and identical normalized payload is a true
+no-op: it does not advance the memory revision, so answer-cache entries remain
+reusable. `brain_status` reports active, expired, retracted, superseded, and
+total records. Expired working memories remain exportable for audit and backup,
+but are excluded from recall and active-capacity accounting.
+
 The supported product path keeps retention, deletion, ACL, and backup semantics
 in one database and makes offline operation deterministic. Owner-local CLI
 remember, recall, and forget commands also emit metadata-only audit events;

@@ -291,6 +291,7 @@ export type BrainStatus = {
 
 export type MemoryStats = {
   active: number
+  expired: number
   superseded: number
   retracted: number
   total: number

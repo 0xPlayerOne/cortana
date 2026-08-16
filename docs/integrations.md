@@ -66,6 +66,9 @@ records are excluded from recall and answer context automatically; durable facts
 an explicit supersession or forget operation. Dedupe and supersession are checked against the
 caller’s visible ACL inside the same SQLite transaction, so a scoped agent cannot overwrite or
 replace another workspace’s memory by guessing an identifier.
+Identical retries with a dedupe key are true no-ops and do not invalidate answer caches.
+`brain_status` and `/v1/status` expose active, expired, retracted, superseded, and total native-memory
+counts; expired records remain available to scoped export for audit and backup but never enter recall.
 
 ## Local owner mode versus scoped bearer principals
 

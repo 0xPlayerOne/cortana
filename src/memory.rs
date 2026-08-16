@@ -133,9 +133,14 @@ pub struct MemorySearchResult {
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct MemoryStats {
+    /// Active and currently valid memories available to recall.
     pub active: i64,
+    /// Active records whose validity window has elapsed. They remain in the
+    /// store for export/audit history but are not eligible for recall.
+    pub expired: i64,
     pub retracted: i64,
     pub superseded: i64,
+    pub total: i64,
 }
 
 pub(crate) fn default_memory_source() -> String {
