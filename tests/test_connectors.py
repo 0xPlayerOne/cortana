@@ -1037,6 +1037,28 @@ def test_google_drive_content_concurrency_is_one() -> None:
     assert google.DRIVE_CONTENT_CONCURRENCY == 1
 
 
+def test_large_pdf_uses_bounded_head_tail_page_sample() -> None:
+    class FakePage:
+        def __init__(self, text: str) -> None:
+            self.text = text
+            self.calls = 0
+
+        def extract_text(self) -> str:
+            self.calls += 1
+            return self.text
+
+    pages = [FakePage(f"page-{index}\n" + ("x" * 10_000)) for index in range(129)]
+    result = google._extract_pdf_text(type("Reader", (), {"pages": pages})())
+
+    assert result.truncated is True
+    assert result.original_chars is None
+    assert len(result) <= google.MAX_DRIVE_STREAM_CHARS
+    assert "page-0" in result
+    assert "page-128" in result
+    assert google.PDF_SAMPLE_MARKER.strip() in result
+    assert sum(page.calls for page in pages) < len(pages)
+
+
 def test_google_gmail_detail_concurrency_is_four() -> None:
     assert google.GMAIL_DETAIL_CONCURRENCY == 4
 
@@ -1678,6 +1700,50 @@ def test_google_drive_bounded_run_commits_new_cache_content(
 
     assert first[0].content == "bounded cache body"
     assert second[0].content == first[0].content
+
+
+def test_google_drive_cache_preserves_unknown_pdf_character_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    cache = tmp_path / "cache"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "large-pdf",
+                            "name": "Large PDF",
+                            "mimeType": "application/pdf",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="unused", request=request)
+
+    monkeypatch.setattr(
+        google,
+        "_drive_content",
+        lambda _session, _item: google._DriveContent("head\n[marker]\ntail", None, True),
+    )
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = list(fetch_drive(token, "work", client=client, cache_dir=cache, max_documents=1))
+    second = list(fetch_drive(token, "work", client=client, cache_dir=cache, max_documents=1))
+
+    assert first[0].metadata["content_original_chars"] is None
+    assert second[0].metadata["content_original_chars"] is None
+    connection = sqlite3.connect(cache / "drive.sqlite3")
+    try:
+        assert connection.execute(
+            "SELECT original_chars,truncated FROM files WHERE id='large-pdf'"
+        ).fetchone() == (google.UNKNOWN_CONTENT_CHARS, 1)
+    finally:
+        connection.close()
 
 
 def test_google_drive_full_mode_rejects_unresolved_content(

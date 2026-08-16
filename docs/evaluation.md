@@ -27,20 +27,20 @@ read-only live-index evaluator.
 A first
 operator-approved retrieval manifest has now passed against the running local work index;
 approved-corpus answer/synthesis evaluation remains separate and is not a packaged-GUI proof.
-An explicit `readiness --allow-sync-service` check on 2026-08-15 correctly failed closed because
-`personal-drive` timed out during its 2,000-document/128 MiB/900-second production-budget
-validation. A follow-up 25-document/5 MiB/60-second validation succeeded, but that bounded prefix
-is still below the configured production budget. The latest bounded source-smoke refresh also
-replaced the on-disk validation records for all 13 enabled sources with fresh `complete=true`
-records capped at 25 documents, 5 MiB, and 60 seconds (sources with fewer records naturally
-returned fewer documents). Those records are valid for bounded non-reconciling work only; they do
-not meet the configured production budgets, so `readiness --allow-sync-service` remains failed
-closed and the recurring sync service remains uninstalled. Earlier production-budget results below
-are retained as historical evidence, not current authorization.
-Since that release evidence was recorded, Special Drive completed a production-budget validation
-covering 97 documents and 290,353 bytes, followed by a bounded non-reconciling trial with 0
-deletions. Work Drive subsequently completed production-budget validation with 478 documents and
-4,527,663 bytes, and Work Gmail completed validation with 7,395 documents and 34,494,647 bytes.
+An explicit `readiness --allow-sync-service` check remains intentionally closed because the current
+enabled-source set is not fully production-validated. The current complete records are: Apple Notes
+`work-notes`/`personal-notes`/`special-notes` (28/65/8), Calendar
+`work`/`personal`/`special` (2,207/1,836/0), Buzz (45), and Work Gmail (7,386). All meet their
+configured document, byte, and duration budgets. Personal Drive's explicit 2,000-document/128 MiB/
+1,800-second validation failed closed at the 1,799-second connector deadline under the installed
+v0.32.8 parser while processing a large PDF; Work Drive's latest 900-second attempt also failed
+closed at the connector deadline. Personal/Special Drive and Personal/Special Gmail remain below
+their production budgets. Recurring sync remains uninstalled, and no reconciliation or large sync
+has been requested.
+
+The older production-budget results below are retained as historical evidence, not current
+authorization. They document prior successful prefixes and failure/recovery behavior, but the
+on-disk validation record and its configuration fingerprint are the authoritative gate.
 The earlier Work Drive non-reconciling trial was cancelled under the installed v0.32.1 binary after
 the embedding service stalled; it made no deletions. After installing v0.32.2, a new foreground
 `sync --source work-drive --no-reconcile --require-validation` attempt progressed through bounded
