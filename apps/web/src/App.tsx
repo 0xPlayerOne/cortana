@@ -12,10 +12,8 @@ import {
 
 import {
   getAnswer,
-  getDesktopHindsightStatus,
   getDesktopInfo,
   getDesktopInstaller,
-  getDesktopHonchoStatus,
   getDesktopServices,
   getDesktopSettings,
   getDesktopUpdate,
@@ -67,8 +65,6 @@ import type {
   DesktopSettings,
   DesktopInfo,
   DesktopInstallJob,
-  DesktopHindsightStatus,
-  DesktopHonchoStatus,
   DesktopReadiness,
   DesktopReadinessActivity,
   DesktopServiceActivity,
@@ -104,7 +100,7 @@ export function App() {
   const [desktopServices, setDesktopServices] = useState<DesktopServiceReport | null>(null)
   const [desktopServicesError, setDesktopServicesError] = useState('')
   const [settingsSection, setSettingsSection] = useState<
-    'readiness' | 'services' | 'updates' | 'sources' | 'hindsight' | 'honcho'
+    'readiness' | 'services' | 'updates' | 'sources' | 'memory'
   >('readiness')
   const [settingsDirty, setSettingsDirty] = useState(false)
   const [installerJob, setInstallerJob] = useState<DesktopInstallJob | null>(null)
@@ -116,8 +112,6 @@ export function App() {
   const [sourceToggleBusy, setSourceToggleBusy] = useState<string | null>(null)
   const [sourceToggleError, setSourceToggleError] = useState('')
   const [sourceToggleNotice, setSourceToggleNotice] = useState('')
-  const [hindsightStatus, setHindsightStatus] = useState<DesktopHindsightStatus | null>(null)
-  const [honchoStatus, setHonchoStatus] = useState<DesktopHonchoStatus | null>(null)
   const [documents, setDocuments] = useState<BrainDocumentSummary[]>([])
   const [documentCursor, setDocumentCursor] = useState<string | null>(null)
   const [documentsLoading, setDocumentsLoading] = useState(true)
@@ -651,64 +645,6 @@ export function App() {
   }, [pageVisible])
 
   useEffect(() => {
-    if (!isDesktopApp || !desktopSettings || !pageVisible) return
-    let disposed = false
-    let requestInFlight = false
-    const refresh = () => {
-      if (disposed || requestInFlight) return
-      requestInFlight = true
-      void Promise.allSettled([getDesktopHindsightStatus(), getDesktopHonchoStatus()])
-        .then(([hindsight, honcho]) => {
-          if (disposed) return
-          if (hindsight.status === 'fulfilled') {
-            setHindsightStatus(hindsight.value)
-          } else {
-            setHindsightStatus({
-              enabled: desktopSettings.hindsight.enabled,
-              configured: false,
-              reachable: false,
-              state: 'unreachable',
-              endpoint: desktopSettings.hindsight.base_url,
-              bank: desktopSettings.hindsight.bank,
-              token_configured: false,
-              detail:
-                hindsight.reason instanceof Error
-                  ? hindsight.reason.message
-                  : 'Hindsight status is unavailable',
-            })
-          }
-          if (honcho.status === 'fulfilled') {
-            setHonchoStatus(honcho.value)
-          } else {
-            setHonchoStatus({
-              enabled: desktopSettings.honcho.enabled,
-              configured: false,
-              reachable: false,
-              state: 'unreachable',
-              endpoint: desktopSettings.honcho.base_url,
-              workspace_id: desktopSettings.honcho.workspace_id,
-              peer_id: desktopSettings.honcho.peer_id,
-              token_configured: false,
-              detail:
-                honcho.reason instanceof Error
-                  ? honcho.reason.message
-                  : 'Honcho status is unavailable',
-            })
-          }
-        })
-        .finally(() => {
-          requestInFlight = false
-        })
-    }
-    refresh()
-    const timer = window.setInterval(refresh, STATUS_REFRESH_MS)
-    return () => {
-      disposed = true
-      window.clearInterval(timer)
-    }
-  }, [desktopSettings, pageVisible])
-
-  useEffect(() => {
     if (!isDesktopApp) return
     const completed = sourceJobs.jobs.filter(
       (job) =>
@@ -1021,8 +957,7 @@ export function App() {
         auth_principals: desktopSettings.auth_principals,
         embedding: desktopSettings.embedding,
         query: desktopSettings.query,
-        hindsight: desktopSettings.hindsight,
-        honcho: desktopSettings.honcho,
+        memory: desktopSettings.memory,
         ingestion: desktopSettings.ingestion,
         runtime: desktopSettings.runtime,
         secrets: [],
@@ -1586,15 +1521,9 @@ export function App() {
           onDesktopInfo={setDesktopInfo}
           serviceActivity={serviceActivity}
           onServiceActivity={setServiceActivity}
-          hindsightStatus={hindsightStatus}
-          onHindsightStatus={setHindsightStatus}
-          honchoStatus={honchoStatus}
-          onHonchoStatus={setHonchoStatus}
           onSaved={(next) => {
             applyDesktopSettings(next)
             setSettingsDirty(false)
-            setHindsightStatus(null)
-            setHonchoStatus(null)
             // A settings save can change the configured embedding/runtime
             // services. Refresh the shell-owned snapshots immediately rather
             // than waiting for the next 15-second health tick.
@@ -1952,24 +1881,6 @@ export function App() {
             setView('settings')
           }}
         />
-        <SidecarStatusIndicator
-          label="Hindsight"
-          status={hindsightStatus}
-          onOpen={() => {
-            if (!canLeaveSettings()) return
-            setSettingsSection('hindsight')
-            setView('settings')
-          }}
-        />
-        <SidecarStatusIndicator
-          label="Honcho"
-          status={honchoStatus}
-          onOpen={() => {
-            if (!canLeaveSettings()) return
-            setSettingsSection('honcho')
-            setView('settings')
-          }}
-        />
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
         {isDesktopApp && (
@@ -2227,39 +2138,6 @@ export function ServiceHealthIndicator({
       onClick={onOpen}
     >
       <i /> {label}
-    </button>
-  )
-}
-
-function SidecarStatusIndicator({
-  label,
-  status,
-  onOpen,
-}: {
-  label: string
-  status: { state: string; detail: string | null } | null
-  onOpen: () => void
-}) {
-  if (!status) return null
-  const state =
-    status.state === 'healthy'
-      ? 'healthy'
-      : status.state === 'disabled'
-        ? 'disabled'
-        : status.state === 'reachable'
-          ? 'reachable'
-          : 'warning'
-  const readable = status.state.replaceAll('_', ' ')
-  const detail = `${label}: ${readable}${status.detail ? ` — ${status.detail}` : ''}`
-  return (
-    <button
-      type="button"
-      className={`sidecar-health ${state} quick-tooltip quick-tooltip--above`}
-      aria-label={`Open ${label} status`}
-      data-tooltip={detail}
-      onClick={onOpen}
-    >
-      <i /> {label}: {readable}
     </button>
   )
 }

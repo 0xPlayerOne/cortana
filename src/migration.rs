@@ -218,7 +218,7 @@ pub fn migrate_hermes(options: &HermesMigrationOptions) -> Result<HermesMigratio
         .iter()
         .map(|item| item.name.clone())
         .collect::<Vec<_>>();
-    let legacy_indexes_retained = ["code-index", "second-brain-chroma", "hindsight"]
+    let legacy_indexes_retained = ["code-index", "second-brain-chroma"]
         .iter()
         .map(|name| options.hermes_home.join(name))
         .filter(|path| path.exists())

@@ -240,12 +240,9 @@ failure with bounded, sanitized output.
 The shell owns a compact service-activity snapshot and mirrors it in the status bar, keeping an
 install or start/stop/restart request visible while the operator changes sections or returns to
 the knowledge view; completion and sanitized failures link back to the Services panel.
-The same shell-owned boundary retains Hindsight connection results while the operator changes
-settings sections, and Desktop refreshes both optional sidecar probes on its normal status cadence;
-health checks always read the last saved sidecar configuration. Honcho exposes the same bounded
-reachability check; because hosted and self-hosted Honcho deployments do not share one stable
-health path, a response is reported as reachable and only a successful response is reported as
-healthy.
+The same shell-owned boundary retains native memory status while the operator changes settings
+sections. Health checks read the last saved local configuration and native memory statistics; the
+Desktop never contacts a separate memory service.
 
 Start All, Stop All, and Restart All are narrower than the individual controls: they operate only
 on `embedding` and `server`, in dependency-safe order. They always exclude `sync` and `backup`, so

@@ -11,6 +11,7 @@ use cortana::config::{Config, SourceConfig, default_config_path};
 use cortana::connectors;
 use cortana::context::{self, ContextBundle};
 use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbedder};
+use cortana::memory::MemoryInput;
 use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
@@ -294,6 +295,11 @@ enum Command {
         )]
         max_tokens: Option<usize>,
     },
+    /// Create, recall, or redact explicit memories in Cortana's native store.
+    Memory {
+        #[command(subcommand)]
+        action: MemoryAction,
+    },
     /// Serve the HTTP query API.
     Serve {
         #[arg(long, default_value = "127.0.0.1:7331")]
@@ -323,6 +329,49 @@ enum Command {
         #[command(subcommand)]
         action: ServiceAction,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum MemoryAction {
+    /// Write one durable, provenance-bearing memory. Reusing --dedupe-key is idempotent.
+    Remember {
+        #[arg(long)]
+        kind: String,
+        #[arg(long)]
+        project: String,
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        content: String,
+        #[arg(long, default_value = "agent")]
+        source: String,
+        #[arg(long, default_value = "")]
+        source_id: String,
+        #[arg(long)]
+        dedupe_key: Option<String>,
+        #[arg(long)]
+        confidence: Option<f32>,
+        #[arg(long)]
+        importance: Option<f32>,
+        #[arg(long = "acl")]
+        acl: Vec<String>,
+        #[arg(long, help = "JSON provenance object (never store secrets here)")]
+        provenance: Option<String>,
+        #[arg(long)]
+        supersedes_id: Option<String>,
+    },
+    /// Recall active memories with bounded lexical retrieval and ACL filtering.
+    Recall {
+        query: String,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// Redact a memory while retaining its audit tombstone.
+    Forget { id: String },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -723,6 +772,9 @@ async fn main() -> Result<()> {
                 | Command::Acl {
                     action: AclAction::Apply { .. },
                 }
+                | Command::Memory {
+                    action: MemoryAction::Remember { .. } | MemoryAction::Forget { .. },
+                }
         )
     ) {
         Some(SyncLock::acquire(&config.data_dir.join("sync.lock"))?)
@@ -730,6 +782,10 @@ async fn main() -> Result<()> {
         None
     };
     let store = Store::open(&config.database_path())?;
+    store.configure_memory_limit(config.memory.max_active)?;
+    if let Some(Command::Memory { action }) = cli.command.as_ref() {
+        return manage_memory(&config, &store, action);
+    }
     if let Some(Command::Acl { action }) = cli.command.as_ref() {
         let _lock = startup_lock.as_ref();
         if matches!(action, AclAction::Apply { .. }) {
@@ -1044,6 +1100,10 @@ async fn main() -> Result<()> {
             api::serve(
                 api::AppState::new(store, embedder)
                     .with_config(&config, service::sync_job_installed())
+                    .with_memory_defaults(
+                        config.memory.default_confidence,
+                        config.memory.default_importance,
+                    )
                     .with_answer_engine(answer)
                     .with_auth_policy(auth)
                     .with_auth_config_path(config_path.clone()),
@@ -1086,6 +1146,10 @@ async fn main() -> Result<()> {
             let server = mcp::BrainServer::new(store, embedder)
                 .with_principal(principal)
                 .with_audit_limit(config.auth.audit_max_events)
+                .with_memory_defaults(
+                    config.memory.default_confidence,
+                    config.memory.default_importance,
+                )
                 .with_source_groups(code_sources, message_sources)
                 .with_configured_sources(configured_sources);
             let server = if let Some(token_env) = reloadable_token_env {
@@ -1111,6 +1175,7 @@ async fn main() -> Result<()> {
             | Command::SlackWorkspaces { .. }
             | Command::BuzzCommunities { .. }
             | Command::ValidateSource { .. }
+            | Command::Memory { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
         ) => unreachable!(),
@@ -1841,6 +1906,75 @@ fn manage_service(
         ServiceAction::Stop { service: name } => service::stop(name.as_str()),
         ServiceAction::Restart { service: name } => service::restart(name.as_str()),
         ServiceAction::Uninstall => service::uninstall(),
+    }
+}
+
+fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Result<()> {
+    match action {
+        MemoryAction::Remember {
+            kind,
+            project,
+            title,
+            content,
+            source,
+            source_id,
+            dedupe_key,
+            confidence,
+            importance,
+            acl,
+            provenance,
+            supersedes_id,
+        } => {
+            let provenance = provenance
+                .as_deref()
+                .map(serde_json::from_str)
+                .transpose()
+                .context("--provenance must be a valid JSON value")?
+                .unwrap_or_else(|| {
+                    serde_json::json!({
+                        "principal": "local-cli",
+                        "interface": "cli"
+                    })
+                });
+            let record = store.remember(&MemoryInput {
+                kind: kind.clone(),
+                project: project.clone(),
+                title: title.clone(),
+                content: content.clone(),
+                source: source.clone(),
+                source_id: source_id.clone(),
+                dedupe_key: dedupe_key.clone(),
+                confidence: confidence.unwrap_or(config.memory.default_confidence),
+                importance: importance.unwrap_or(config.memory.default_importance),
+                acl: acl.clone(),
+                provenance,
+                supersedes_id: supersedes_id.clone(),
+            })?;
+            println!("{}", serde_json::to_string_pretty(&record)?);
+            Ok(())
+        }
+        MemoryAction::Recall {
+            query,
+            project,
+            kind,
+            limit,
+        } => {
+            let records = store.recall_memories(
+                query,
+                project.as_deref(),
+                kind.as_deref(),
+                *limit,
+                &["*".into()],
+            )?;
+            println!("{}", serde_json::to_string_pretty(&records)?);
+            Ok(())
+        }
+        MemoryAction::Forget { id } => {
+            let forgotten = store.forget_memory(id)?;
+            anyhow::ensure!(forgotten, "memory not found or already retracted: {id}");
+            println!("{}", serde_json::json!({"id": id, "forgotten": true}));
+            Ok(())
+        }
     }
 }
 

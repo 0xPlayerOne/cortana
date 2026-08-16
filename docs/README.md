@@ -11,7 +11,7 @@ and contributor path.
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Downloadable package           | `v0.32.12`, with release-assets workflow `31933279147` verified: 18 assets, signatures, manifest, and packaged core                               |
 | Source checkout                | Tracks the protected v0.32.12 tree; the tag is published and the strict verifier passed                                                           |
-| Default runtime                | Query-only; no source authorization, full sync, recurring schedule, or optional memory sidecar is enabled automatically                           |
+| Default runtime                | Query-only; no source authorization, full sync, or recurring schedule is enabled automatically; native memory is explicit-write only              |
 | Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                     |
 | Knowledge browser              | Obsidian-style workspace/source/document navigation with bounded hierarchical graph pages and local type filters                                  |
 | Operational visibility         | Query-only service status, health/readiness probes, source progress, and explicit stale-stat warnings during temporary SQLite contention          |
@@ -42,9 +42,10 @@ instead of silently rewriting them.
   validation, and the explicit recurring-sync gate.
 - [Query](query.md) — hybrid retrieval, local Qwen or cloud embeddings, synthesis, cache behavior,
   degraded operation, and the bounded hierarchical knowledge graph.
+- [Native memory](memory.md) — memory types, provenance, ACLs, lifecycle, MCP, HTTP, and CLI usage.
 - [Evaluation](evaluation.md) — the bounded model, release, readiness, and evidence requirements.
 - [Configuration example](../config.example.toml) — a redacted starting point for local, cloud,
-  multi-workspace, and optional sidecar settings.
+  multi-workspace, and local service settings.
 
 ## Desktop and architecture
 
@@ -54,8 +55,7 @@ instead of silently rewriting them.
   and packaging.
 - [Desktop UX audit](desktop-ux-audit.md) — current evidence, completed UX requirements, and
   explicitly open manual gates.
-- [Memory adapters](memory-hindsight-outbox.md) and [Honcho contract](memory-honcho.md) — optional
-  sidecars that remain disabled until their provider and deletion/ACL gates are proven.
+- [Memory](memory.md) — the vertically integrated native agent-memory layer.
 
 ## Releases and contribution
 
@@ -69,7 +69,7 @@ instead of silently rewriting them.
 The first-run path is query-only. Documentation examples intentionally use bounded validation and
 non-reconciling trial syncs. A failed readiness or source-validation check is a stop condition;
 never bypass it by enabling a schedule or increasing limits. Full-corpus validation, recurring
-sync, shared-agent principals, live Hindsight/Honcho use, and native GUI acceptance each require
+sync, shared-agent principals, and native GUI acceptance each require
 their own evidence and explicit operator approval.
 
 ## Documentation source of truth

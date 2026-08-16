@@ -37,7 +37,11 @@ def _runtime_files() -> list[Path]:
         check=True,
         capture_output=True,
     )
-    return [ROOT / relative for relative in tracked.stdout.decode("utf-8").split("\0") if relative]
+    return [
+        ROOT / relative
+        for relative in tracked.stdout.decode("utf-8").split("\0")
+        if relative and (ROOT / relative).is_file()
+    ]
 
 
 def test_retired_model_identifiers_are_absent_from_runtime_paths() -> None:

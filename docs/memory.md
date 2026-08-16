@@ -1,0 +1,64 @@
+# Native agentic memory
+
+Cortana is vertically integrated: the same private SQLite store owns both
+source-backed knowledge and explicit agent memory. Documents and code remain
+evidence; memories are small, deliberate conclusions that agents choose to
+retain.
+
+## Memory model
+
+Each memory has one of five types:
+
+- `semantic` — a durable fact or relationship;
+- `episodic` — an event, decision, or interaction;
+- `procedural` — a repeatable workflow or preference for how work is done;
+- `preference` — a stable user preference;
+- `working` — short-lived task state that can be superseded or redacted.
+
+Every record carries a workspace/project, ACL, provenance, source and source
+id, confidence, importance, timestamps, and a lifecycle status. Writes are
+idempotent when an agent supplies a `dedupe_key`. Replacements atomically mark
+the previous record `superseded`; forgetting redacts content and leaves only a
+minimal tombstone for auditability.
+
+## Agent contract
+
+Agents should retrieve evidence with `context` and retrieve durable memories
+with `recall`. They should call `remember` only for an explicit, bounded
+conclusion and include provenance in the same call. Never copy an entire email,
+note, transcript, or code file into memory. Use `forget` when a user withdraws
+a memory.
+
+The native MCP tools are:
+
+- `remember` — write one bounded memory;
+- `recall` — ACL-filtered lexical recall;
+- `forget` — redact one memory;
+- `context` — retrieve cited source evidence.
+
+The equivalent CLI is:
+
+```sh
+cortana memory remember --kind preference --project work \
+  --title "Release notes" \
+  --content "Prefer concise release notes with explicit risks" \
+  --dedupe-key work:release-notes
+cortana memory recall "release notes" --project work
+cortana memory forget MEMORY_ID
+```
+
+HTTP clients can use `POST /v1/memory`, `POST /v1/memory/recall`, and
+`POST /v1/memory/forget`. Shared agents need the `memory` scope in addition to
+their normal query/status scopes; ACLs are enforced before content is returned
+or redacted.
+
+## Operating boundaries
+
+Memory is not an automatic mirror of ingestion. Source sync remains the
+authority for world knowledge, while explicit memory writes are the authority
+for agent conclusions. The store is local-first, encrypted-at-rest by the
+operator's filesystem policy, auditable, exportable through the existing audit
+trail, and bounded by content, provenance, ACL, and recall limits.
+
+The supported product path keeps retention, deletion, ACL, and backup semantics
+in one database and makes offline operation deterministic.

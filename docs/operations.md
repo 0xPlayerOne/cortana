@@ -190,18 +190,12 @@ Credential failures are reported as `authorization denied` without exposing conn
 this includes Google OAuth refresh failures such as `invalid_grant` and a `400` response from the
 Google token endpoint. Re-authorize that source before enabling a recurring schedule.
 
-### Derived-memory sidecars
+### Native agentic memory
 
-Hindsight and Honcho are optional, disabled-by-default adapters. They are not wired into normal
-ingestion or query retrieval, and no source content is queued automatically. A drain is an explicit
-operator action through `cortana-memory-sync` with a selected provider, outbox, and token; the
-canonical Cortana store remains the source of truth.
-
-Before enabling either sidecar for personal data, record a passing versioned evaluation and prove
-provider ACL enforcement, deletion propagation, export behavior, and the packaged Desktop path.
-Honcho also requires the append-only/idempotence review described in `docs/memory-honcho.md`.
-Until those gates are reviewed and approved, use Cortana's native `context` MCP tool for agent
-memory and leave both sidecars disabled.
+Native memory lives in the canonical SQLite store and is explicit-write only. Agents use `remember`
+for bounded conclusions with provenance, `recall` for ACL-filtered retrieval, and `forget` to redact
+withdrawn memories. Source ingestion never bulk-copies documents into memory. See [Native agentic
+memory](memory.md) for the lifecycle and interface contract.
 
 Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
 queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
@@ -345,7 +339,8 @@ For a shared agent, pass a scoped bearer token through `--token-env`. Run one ma
 principal/workspace and include forbidden IDs to test isolation. This harness is read-only: it does
 not sync, reconcile, mutate the index, or test cache invalidation by editing corpus data. Keep the
 deterministic fixture gate for invalidation and run this harness only after readiness is healthy.
-Do not interpret a passing report as permission to install recurring sync or enable Hindsight/Honcho.
+Do not interpret a passing report as permission to install recurring sync; memory writes remain
+explicit agent operations.
 
 ## Release verification
 
@@ -458,7 +453,7 @@ The v0.31.16 package includes the hardening described above: direct ingestion an
 source validation share the global `sync.lock`, and remote `/readyz` requests
 require a bearer principal with `status` scope while `/healthz` remains public
 liveness. Keep this release evidence separate from the still-open source,
-shared-agent, memory-sidecar, and native GUI acceptance gates.
+shared-agent, native memory, and native GUI acceptance gates.
 
 To verify a published macOS package without launching its GUI, run the static
 package smoke check on macOS. It selects the host architecture automatically;

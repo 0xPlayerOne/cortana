@@ -72,8 +72,7 @@ Readiness is read-only. A failure means stop and correct the reported issue; do 
 limits, enable a scheduler, or delete the index to force a green result.
 
 Stop after step 6 if you only need a local searchable brain. Recurring sync, shared-agent access,
-cloud model use, and optional Hindsight/Honcho memory adapters are separate decisions with their
-own safety and evidence gates.
+cloud model use and recurring sync are separate decisions with their own safety and evidence gates.
 
 For a first trial, keep the default source budget and stop after one known cited question. Do not
 use a full-corpus budget to make a validation pass, and do not treat a sampled filesystem/code
@@ -96,8 +95,8 @@ validation as permission for reconciliation or recurring sync.
 - It does not crawl every configured source on first launch.
 - It does not enable recurring ingestion when a validation is sampled, incomplete, stale, or
   missing.
-- It does not treat Hindsight or Honcho as the source of truth; both are optional and disabled by
-  default.
+- It does not write memories implicitly from source ingestion. Native memory is explicit and
+  provenance-bearing so agents can decide what is durable.
 - It does not claim that a static package check proves GUI, browser OAuth, tray, native dialog,
   updater-install, or operating-system signing behavior. See the [Desktop UX audit](desktop-ux-audit.md)
   for current evidence and open manual gates.
