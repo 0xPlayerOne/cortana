@@ -215,8 +215,10 @@ provider.
 
 Google Drive content is bounded to 50,000 characters per file by default. Oversized exports keep
 equal head and tail samples plus `content_truncated` and `content_original_chars` metadata, avoiding
-hours of low-value embedding work for multi-megabyte CSVs. Set `max_content_chars` on an individual
-`google-drive` source when a different evidence budget is justified.
+hours of low-value embedding work for multi-megabyte CSVs. PDFs larger than 128 pages also use a
+bounded head/tail page sample; they report `content_original_chars: null` because the omitted middle
+was not parsed. Set `max_content_chars` on an individual `google-drive` source when a different
+evidence budget is justified.
 
 ## Backup and recovery
 
@@ -492,53 +494,35 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-15)
+### Current local source rollout snapshot (2026-08-16)
 
-The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
-latest bounded source-smoke refresh replaced the local validation records for all 13 enabled
-sources with fresh `complete=true` records capped at 25 documents, 5 MiB, and 60 seconds (sources
-with fewer records naturally returned fewer documents). These records are below each source's
-configured production budget and authorize bounded non-reconciling work only; `readiness
---allow-sync-service` therefore remains failed closed. The larger production-budget results in the
-next paragraph are historical evidence retained for audit, not current recurring-sync authority.
+The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). Current
+production-budget validation records are complete for Apple Notes (`work`/`personal`/`special`:
+28/65/8 documents), Calendar (2,207/1,836/0 events), Buzz (45 records), and Work Gmail (7,386
+messages). Work Gmail uses its configured 10,000-document/64 MiB/600-second budget; the other
+complete records meet their configured 2,000-document/128 MiB/900-second or Work Calendar
+3,000-document/64 MiB/300-second budgets.
+
+Personal Drive's 2,000-document/128 MiB/1,800-second validation failed closed at the 1,799-second
+connector deadline under the installed v0.32.8 parser while processing a large PDF. Work Drive's
+latest 900-second validation also failed closed at the connector deadline. Personal/Special Drive
+and Personal/Special Gmail remain below their production budgets. Retry Drive only after the bounded
+large-PDF parser ships. `readiness --allow-sync-service` must remain closed until all enabled sources
+have fresh complete records at their configured budgets; no reconciliation or large sync has been
+run.
 
 The installed v0.32.8 CLI also passed a fresh bounded `eval --model` run on 2026-08-15 in 17,160
 ms, including planner/synthesis, valid citations, cache reuse, and revision invalidation without
 provider fallback. This is synthetic provider-backed evidence only; it does not authorize source
 sync, establish personal-index quality, or replace the separate packaged GUI and signing gates.
 
-Apple
-Notes is the completed first rollout: the three folder-scoped sources have complete validation and
-no-reconcile snapshots for `work`/`Nifty League` (28 documents), `special`/`The Pink Binder`
-(8), and the personal source (65 documents after excluding those folders); the latest run deleted
-nothing. Calendar validation is complete for work (2,208 events), personal (1,839), and special
-(0). 100-event Work, Personal, and Special Calendar no-reconcile trials completed with 0 deletions.
-Buzz validation
-covers 45 records; its first 60-second trial failed closed at the embedding deadline, then the
-bounded 300-second retry completed all 45 records with 0 deletions. Work Drive has now completed
-production-budget validation (478 documents, 4,527,663 bytes at 2,000/128 MiB/900 seconds), and
-Work Gmail has completed validation (7,395 documents, 34,494,647 bytes at 10,000/64 MiB/600
-seconds). The earlier Work Drive non-reconciling trial was cancelled twice under the installed
-v0.32.1 binary after its embedding service stalled; it made no deletions. After installing v0.32.2,
-a new foreground Work Drive trial progressed through bounded unchanged batches before the local
-embedding health probe timed out while queued embedding work was still completing; it was cancelled
-after roughly seven minutes, and the service recovered afterward. It made no deletions. A later
-bounded retry completed 100 unchanged documents with zero deletions; the full production-budget
-trial remains open. Personal Drive validation
-failed closed after its 899-second connector timeout. A subsequent 25-document/5 MiB/60-second
-validation and non-reconciling trial succeeded (`changed=1`, `unchanged=24`, `deleted=0`), but this
-bounded prefix remains below the configured production budget and does not authorize recurring sync.
-Personal Gmail now has production-budget validation (430 documents,
-1,563,456 bytes) and a completed 100-document-cap non-reconciling trial with 0 deletions. Special
-Gmail has production-budget validation (214 documents, 995,335 bytes) and a completed
-100-document-cap non-reconciling trial with 0 deletions. These capped prefixes are not complete
-production trials, so both sources remain outside the recurring-sync gate.
-Special Drive remains the first cloud source with both production validation and a completed
-97-document non-reconciling trial with 0 deletions. Discord
-and all code roots are disabled by operator choice; Slack remains an optional, unconfigured
-connector.
+### Historical rollout observations
 
-The latest bounded live pass on 2026-08-15 rechecked every enabled non-code source with
+Earlier bounded and production-budget runs are retained below for incident and recovery context;
+they do not override the current records in `source-validations.json`. Discord and all code roots
+are disabled by operator choice, and Slack remains an optional, unconfigured connector.
+
+The historical bounded live pass on 2026-08-15 rechecked every enabled non-code source with
 `--no-reconcile --require-validation` and 25-document/5 MiB/60-second caps. Work, Personal, and
 Special Apple Notes, Drive, Gmail, and Calendar all completed; Special Calendar returned zero
 records; Buzz completed 25 records. Every run reported zero deletions. The index reached 12,123

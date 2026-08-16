@@ -58,6 +58,13 @@ MAX_DRIVE_STREAM_CHARS = 256_000
 # PDFs are spooled to disk before parsing; this cap prevents an untrusted
 # provider response from filling the temporary volume.
 MAX_DRIVE_PDF_BYTES = 64 * 1024 * 1024
+# Parsing every page of a very large PDF is expensive in the pure-Python
+# fallback. Keep the full-text path for ordinary documents, but use the same
+# bounded head/tail contract for larger page trees so one document cannot
+# monopolize a source validation run.
+MAX_DRIVE_FULL_PDF_PAGES = 128
+UNKNOWN_CONTENT_CHARS = -1
+PDF_SAMPLE_MARKER = "\n\n[Cortana omitted middle PDF pages]\n\n"
 MAX_TOKEN_FILE_BYTES = 64 * 1024
 GOOGLE_REQUEST_RETRIES = 2
 GOOGLE_RETRY_BACKOFF_SECONDS = (0.25, 0.75)
@@ -83,23 +90,27 @@ DRIVE_CONTENT_CONCURRENCY = 1
 class _DriveContent(str):
     """Bounded Drive content with the provider-size metadata kept separately."""
 
-    original_chars: int
+    original_chars: int | None
     truncated: bool
 
-    def __new__(cls, value: str, original_chars: int, truncated: bool = False) -> _DriveContent:
+    def __new__(
+        cls, value: str, original_chars: int | None, truncated: bool = False
+    ) -> _DriveContent:
         result = str.__new__(cls, value)
         result.original_chars = original_chars
         result.truncated = truncated
         return result
 
-    def __reduce_ex__(self, _protocol: SupportsIndex) -> tuple[Any, tuple[str, int, bool]]:
+    def __reduce_ex__(self, _protocol: SupportsIndex) -> tuple[Any, tuple[str, int | None, bool]]:
         # dataclasses.asdict deep-copies Document.content before emitting JSON.
         # A plain str subclass would call __new__ without the metadata args and
         # fail closed during a real connector run.
         return (_restore_drive_content, (str(self), self.original_chars, self.truncated))
 
 
-def _restore_drive_content(value: str, original_chars: int, truncated: bool) -> _DriveContent:
+def _restore_drive_content(
+    value: str, original_chars: int | None, truncated: bool
+) -> _DriveContent:
     return _DriveContent(value, original_chars, truncated)
 
 
@@ -517,7 +528,11 @@ def fetch_drive(
                                     file_id,
                                     modified_time,
                                     body,
-                                    getattr(body, "original_chars", len(body)),
+                                    (
+                                        UNKNOWN_CONTENT_CHARS
+                                        if getattr(body, "original_chars", len(body)) is None
+                                        else getattr(body, "original_chars", len(body))
+                                    ),
                                     int(bool(getattr(body, "truncated", False))),
                                 ),
                             )
@@ -894,7 +909,8 @@ def _cached_drive_content(
     if row is None:
         return None
     body = str(row[0])
-    original_chars = int(row[1] or 0) or len(body)
+    stored_chars = int(row[1] or 0)
+    original_chars = None if stored_chars == UNKNOWN_CONTENT_CHARS else (stored_chars or len(body))
     return _DriveContent(body, original_chars, bool(row[2]))
 
 
@@ -907,7 +923,8 @@ def _stale_cached_drive_content(cache: sqlite3.Connection | None, file_id: str) 
     if row is None:
         return None
     body = str(row[0])
-    original_chars = int(row[1] or 0) or len(body)
+    stored_chars = int(row[1] or 0)
+    original_chars = None if stored_chars == UNKNOWN_CONTENT_CHARS else (stored_chars or len(body))
     return _DriveContent(body, original_chars, bool(row[2]))
 
 
@@ -1203,7 +1220,7 @@ def _drive_content(session: GoogleSession, item: dict[str, Any]) -> str:
         )
     if mime_type == "application/pdf":
         try:
-            from pypdf import PdfReader  # type: ignore[import-not-found]
+            from pypdf import PdfReader  # type: ignore[import-not-found,unused-ignore]
         except ImportError as error:
             raise RuntimeError("PDF ingestion requires `uv sync --extra ingestion`") from error
         with tempfile.NamedTemporaryFile(prefix="cortana-drive-", suffix=".pdf") as output:
@@ -1221,12 +1238,7 @@ def _drive_content(session: GoogleSession, item: dict[str, Any]) -> str:
                         )
                     output.write(chunk)
             output.flush()
-            accumulator = _BoundedTextAccumulator(MAX_DRIVE_STREAM_CHARS)
-            for page in PdfReader(output.name).pages:
-                accumulator.append(page.extract_text() or "")
-                accumulator.append("\n\n")
-            result = accumulator.finish()
-            return _DriveContent(str(result).strip(), result.original_chars, result.truncated)
+            return _extract_pdf_text(PdfReader(output.name, strict=False))
     return ""
 
 
@@ -1253,6 +1265,56 @@ def _safe_drive_content(session: GoogleSession, item: dict[str, Any]) -> tuple[s
         return _drive_content(session, item), None
     except Exception as error:
         return "", type(error).__name__
+
+
+def _extract_pdf_text(reader: Any) -> _DriveContent:
+    """Extract bounded PDF text without letting huge page trees monopolize a run."""
+
+    pages = reader.pages
+    page_count = len(pages)
+    if page_count <= MAX_DRIVE_FULL_PDF_PAGES:
+        accumulator = _BoundedTextAccumulator(MAX_DRIVE_STREAM_CHARS)
+        for page in pages:
+            accumulator.append(page.extract_text() or "")
+            accumulator.append("\n\n")
+        result = accumulator.finish()
+        return _DriveContent(str(result).strip(), result.original_chars, result.truncated)
+
+    sample_limit = MAX_DRIVE_STREAM_CHARS - len(PDF_SAMPLE_MARKER)
+    head_limit = sample_limit // 2
+    tail_limit = sample_limit - head_limit
+
+    head_parts: list[str] = []
+    head_chars = 0
+    for index in range(page_count):
+        if head_chars >= head_limit:
+            break
+        text = pages[index].extract_text() or ""
+        remaining = head_limit - head_chars
+        chunk = text[:remaining]
+        if chunk:
+            head_parts.append(chunk)
+            head_chars += len(chunk)
+
+    tail_parts_reversed: list[str] = []
+    tail_chars = 0
+    for index in range(page_count - 1, -1, -1):
+        if tail_chars >= tail_limit:
+            break
+        text = pages[index].extract_text() or ""
+        remaining = tail_limit - tail_chars
+        chunk = text[-remaining:]
+        if chunk:
+            tail_parts_reversed.append(chunk)
+            tail_chars += len(chunk)
+
+    head = "".join(head_parts)
+    tail = "".join(reversed(tail_parts_reversed))
+    sampled = f"{head}{PDF_SAMPLE_MARKER}{tail}".strip()
+    # The omitted middle is intentionally not parsed, so an exact character
+    # count is unavailable. Persist an explicit sentinel rather than claiming
+    # that the retained head/tail sample is the complete document.
+    return _DriveContent(sampled, None, truncated=True)
 
 
 def _bounded_content(value: str, max_chars: int) -> tuple[str, bool]:

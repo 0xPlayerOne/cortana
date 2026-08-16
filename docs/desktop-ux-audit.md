@@ -108,19 +108,19 @@ Personal Drive failed its 2,000-document/128 MiB/900-second validation at the 89
 timeout. A follow-up 25-document/5 MiB/60-second validation and non-reconciling trial succeeded
 (`changed=1`, `unchanged=24`, `deleted=0`), but that bounded prefix remains below the production gate.
 
-The current validation metadata was subsequently refreshed by a bounded source-smoke pass: all 13
-enabled sources are fresh and `complete=true`, but each record is capped at 25 documents, 5 MiB,
-and 60 seconds (or the source's smaller natural result). These current records are below the
-configured production budgets, so recurring sync remains uninstalled and the historical larger
-records above do not authorize reconciliation.
+The current validation metadata now contains production-budget complete records for Apple Notes
+(28/65/8 documents), Calendar (2,207/1,836/0 events), Buzz (45 records), and Work Gmail (7,386
+messages). Personal Drive's 2,000-document/128 MiB/1,800-second validation failed closed at the
+1,799-second connector deadline under the installed v0.32.8 parser while processing a large PDF;
+Work Drive's latest 900-second validation also failed closed at its connector deadline. Retry Drive
+only after the bounded large-PDF parser ships. Personal/Special Drive and Personal/Special Gmail
+remain below their configured budgets.
+The recurring sync service remains uninstalled, and no reconciliation or large sync has been run.
 
-The follow-up live pass completed validation-required, non-reconciling trials for every enabled
-non-code source using those same caps. Work/Personal/Special Apple Notes, Drive, Gmail, and
-Calendar all succeeded; Special Calendar returned zero records; Buzz succeeded. Every trial
-reported zero deletions. The live index now contains 12,123 documents and 42,638 chunks, and
-query-only readiness passed. This is bounded ingestion evidence only: production-budget
-validation, reconciliation, recurring sync, Discord, code, Slack, and native Desktop acceptance
-remain separate gates.
+Historical bounded source-smoke and non-reconciling trials remain useful connector evidence, but do
+not override the current production-budget validation gate. Discord and code/filesystem sources are
+disabled by operator choice, Slack is unconfigured, and native Desktop acceptance remains a separate
+manual gate.
 
 On 2026-08-15 a second bounded Work Drive retry emitted the complete 478-document connector
 snapshot, then failed closed when the local embedding connection closed during ingestion. The run
