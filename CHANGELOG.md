@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.0](https://github.com/0xPlayerOne/cortana/compare/v0.32.12...v0.33.0) (2026-08-16)
+
+
+### Bug Fixes
+
+* **release:** publish native agentic memory v0.33.0 ([62b1be4](https://github.com/0xPlayerOne/cortana/commit/62b1be49160a91be659597eae947facd702f2c1b))
+
 ## [0.32.12](https://github.com/0xPlayerOne/cortana/compare/v0.32.11...v0.32.12) (2026-08-16)
 
 
