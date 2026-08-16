@@ -193,12 +193,14 @@ Google token endpoint. Re-authorize that source before enabling a recurring sche
 ### Native agentic memory
 
 Native memory lives in the canonical SQLite store and is explicit-write only. Agents use `remember`
-for bounded conclusions with provenance, `recall` for ACL-filtered retrieval, and `forget` to redact
-withdrawn memories. The HTTP, MCP, and CLI `context` surfaces automatically include matching native
-memories in a separate bounded section alongside source evidence. `/v1/answer` follows the same
-scope boundary and includes memory context only for principals with the `memory` scope; numbered
-source evidence remains the citation authority. Source ingestion never bulk-copies documents into
-memory. See [Native agentic memory](memory.md) for the lifecycle and interface contract.
+for bounded conclusions with provenance, `recall` for ACL-filtered retrieval, `forget` to redact
+withdrawn memories, and `export` for a bounded operator-controlled snapshot. Working memories can
+carry `valid_until` and are excluded automatically after expiry. The HTTP, MCP, and CLI `context`
+surfaces automatically include matching native memories in a separate bounded section alongside
+source evidence. `/v1/answer` follows the same scope boundary and includes memory context only for
+principals with the `memory` scope; numbered source evidence remains the citation authority. Source
+ingestion never bulk-copies documents into memory. See [Native agentic memory](memory.md) for the
+lifecycle and interface contract.
 
 Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
 queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
