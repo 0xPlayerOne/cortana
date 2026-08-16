@@ -1360,16 +1360,47 @@ impl Store {
         }
         let limit = limit.clamp(1, memory::MAX_MEMORY_EXPORT_LIMIT);
         let connection = self.read_connection.lock().expect("store lock poisoned");
+        let principal_acl_json = serde_json::to_string(principal_acl)?;
         let mut statement = connection.prepare(
             "SELECT id,kind,project,title,content,source,source_id,dedupe_key,
                     confidence,importance,status,acl_json,provenance_json,
                     observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at
              FROM memories
-             WHERE (?1 IS NULL OR project=?1)
+               WHERE (?1 IS NULL OR project=?1)
                AND (?2 IS NULL OR kind=?2)
-             ORDER BY updated_at DESC,id DESC",
+               AND json_valid(acl_json)
+               AND json_type(acl_json)='array'
+               AND NOT EXISTS (
+                 SELECT 1 FROM json_each(acl_json) AS memory_acl
+                 WHERE memory_acl.type<>'text'
+               )
+               AND (
+                 json_array_length(acl_json)=0
+                 OR EXISTS (
+                   SELECT 1 FROM json_each(?3) AS principal_acl
+                   WHERE principal_acl.type='text'
+                     AND (
+                       principal_acl.value='*'
+                       OR EXISTS (
+                         SELECT 1 FROM json_each(acl_json) AS memory_acl
+                         WHERE memory_acl.type='text'
+                           AND memory_acl.value=principal_acl.value
+                       )
+                     )
+                 )
+               )
+             ORDER BY updated_at DESC,id DESC
+             LIMIT ?4",
         )?;
-        let rows = statement.query_map(params![project, kind], memory_record_from_row)?;
+        let rows = statement.query_map(
+            params![
+                project,
+                kind,
+                principal_acl_json,
+                i64::try_from(limit).unwrap_or(i64::MAX)
+            ],
+            memory_record_from_row,
+        )?;
         let mut records = Vec::new();
         for row in rows {
             let record = row?;
@@ -4448,6 +4479,11 @@ mod tests {
             .expect("scoped recall");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].memory.id, visible.id);
+        let exported = store
+            .export_memories(None, None, 1, &["work".into()])
+            .expect("scoped export");
+        assert_eq!(exported.len(), 1);
+        assert_eq!(exported[0].id, visible.id);
     }
 
     #[test]
