@@ -431,7 +431,9 @@ providers interchangeable without mixing vector spaces inside an index generatio
 Agentic memory is native to Cortana's canonical SQLite store. Explicit `remember`, `recall`,
 `forget`, expiry, supersession, and scoped export operations share the same provenance, workspace
 ACL, audit, backup, and cache-revision semantics as knowledge retrieval. See
-[Native agentic memory](docs/memory.md) for the built-in operational memory layer.
+[Native agentic memory](docs/memory.md) for the built-in operational memory layer. Recall stays
+provider-free: local FTS candidates are ranked by query coverage, lexical match, salience, and
+freshness, with ACL and lifecycle checks applied before results are returned.
 
 ## Development
 

@@ -70,6 +70,9 @@ Identical retries with a dedupe key are true no-ops and do not invalidate answer
 `brain_status` and `/v1/status` expose active, expired, retracted, superseded, and total native-memory
 counts; those lifecycle counts are ACL-scoped for shared principals and complete for owners. Expired
 records remain available to scoped export for audit and backup but never enter recall.
+Recall ranking is fully local and bounded: exact query coverage is preferred, then lexical
+relevance, confidence, importance, and freshness. The returned `relevance_score` is diagnostic
+metadata only; ACL, expiry, and lifecycle checks always run independently.
 
 ## Local owner mode versus scoped bearer principals
 
