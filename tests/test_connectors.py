@@ -1290,6 +1290,16 @@ def test_google_drive_ignores_folder_containers_in_strict_mode(tmp_path: Path) -
                             "modifiedTime": "2026-07-29T12:00:00Z",
                         },
                         {
+                            "id": "shortcut-folder1",
+                            "name": "Pink Binder",
+                            "mimeType": google.GOOGLE_DRIVE_SHORTCUT_MIME_TYPE,
+                            "shortcutDetails": {
+                                "targetId": "folder2",
+                                "targetMimeType": google.GOOGLE_DRIVE_FOLDER_MIME_TYPE,
+                            },
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                        {
                             "id": "doc1",
                             "name": "Roadmap",
                             "mimeType": "text/plain",

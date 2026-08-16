@@ -32,7 +32,8 @@ from .model import Document
 
 DRIVE_FIELDS = (
     "nextPageToken,incompleteSearch,"
-    "files(id,name,mimeType,size,modifiedTime,webViewLink,owners(displayName))"
+    "files(id,name,mimeType,size,modifiedTime,webViewLink,owners(displayName),"
+    "shortcutDetails(targetId,targetMimeType))"
 )
 GOOGLE_EXPORTS = {
     "application/vnd.google-apps.document": ("text/plain", "txt"),
@@ -40,6 +41,7 @@ GOOGLE_EXPORTS = {
     "application/vnd.google-apps.spreadsheet": ("text/csv", "csv"),
 }
 GOOGLE_DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
+GOOGLE_DRIVE_SHORTCUT_MIME_TYPE = "application/vnd.google-apps.shortcut"
 TEXT_MIME_TYPES = {
     "application/json",
     "application/rtf",
@@ -430,6 +432,18 @@ def _validate_token_uri(value: str) -> None:
         raise RuntimeError("Google token URI must use an HTTPS Google OAuth endpoint")
 
 
+def _is_drive_container(item: dict[str, Any]) -> bool:
+    mime_type = item.get("mimeType")
+    if mime_type == GOOGLE_DRIVE_FOLDER_MIME_TYPE:
+        return True
+    if mime_type != GOOGLE_DRIVE_SHORTCUT_MIME_TYPE:
+        return False
+    details = item.get("shortcutDetails")
+    return isinstance(details, dict) and details.get("targetMimeType") == (
+        GOOGLE_DRIVE_FOLDER_MIME_TYPE
+    )
+
+
 def fetch_drive(
     token_path: Path,
     project: str,
@@ -491,7 +505,7 @@ def fetch_drive(
                     stale_ids: set[str] = set()
                     for item in batch_items:
                         file_id = item["id"]
-                        if item.get("mimeType") == GOOGLE_DRIVE_FOLDER_MIME_TYPE:
+                        if _is_drive_container(item):
                             # Folder records are containers, not documents. The
                             # listing remains complete while their children are
                             # emitted as ordinary files on this and later pages.
@@ -538,7 +552,7 @@ def fetch_drive(
                                 bodies[file_id] = body
                     for item in batch_items:
                         file_id = str(item["id"])
-                        if item.get("mimeType") == GOOGLE_DRIVE_FOLDER_MIME_TYPE:
+                        if _is_drive_container(item):
                             continue
                         modified_time = _drive_modified_time(item, file_id, strict)
                         if modified_time is None:
