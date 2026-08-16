@@ -61,8 +61,8 @@ separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers 
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
 The protected source and latest published release are **v0.32.12**. Release-assets workflow
-`31933279147` is building all platform packages and the strict 18-asset verifier; do not treat
-the v0.32.12 installers as fully verified until that workflow completes. The v0.32.12
+`31933279147` completed all platform packages and the strict 18-asset verifier: all 18 release
+assets, checksums, updater signatures, manifest, and packaged-core checks passed. The v0.32.12
 package carries the production safety hardening from the protected `staging` → `main` flow:
 mutating CLI startup and direct JSONL imports serialize on the global lock, imports and
 evaluation fixtures have explicit resource ceilings, remote `/readyz` requires scoped bearer
@@ -70,10 +70,11 @@ access, optional memory outbox leases are fenced, Desktop settings and schedules
 through a shared per-config lock, and Desktop sidecars publish atomically. v0.32.6 and earlier
 release records remain historical evidence.
 
-When the checkout and the downloaded application report different versions, trust the application
-version for end-user behavior and use [Release history](docs/releases.md) to determine which
-source-tree hardening has shipped. Do not install a source checkout over a working installation
-just to make the version strings match.
+The verified host installation now reports `cortana 0.32.12`. When a checkout and downloaded
+application report different versions, trust the application version for end-user behavior and
+use [Release history](docs/releases.md) to determine which source-tree hardening has shipped.
+Do not install a source checkout over a working installation just to make the version strings
+match.
 
 ## Download the latest release
 

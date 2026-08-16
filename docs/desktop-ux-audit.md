@@ -8,21 +8,21 @@ is not part of a visual/UI change.
 ## Current release evidence (2026-08-16)
 
 - `v0.32.12` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `31933279147` is still running the 18-asset
-  package gate. Asset verification does not launch the
+  and Release Please automation. Release-assets workflow `31933279147` completed all 18 assets,
+  checksums, updater signatures, manifest, and packaged-core verification. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
 - The supported v0.32.12 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.32.12 tag is published but is not yet the fully verified packaged evidence boundary. The audited host
-  evidence below still runs the installed `/Users/amf/.local/bin/cortana` v0.32.11 with embedding and server services in
+- The v0.32.12 tag is the fully verified packaged evidence boundary. The audited host
+  now runs the installed `/Users/amf/.local/bin/cortana` v0.32.12 with embedding and server services in
   query-only mode; recurring sync remains disabled. Query-only readiness and
   source authorization are separate host checks; source authorization and full-corpus sync were
   not started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
   Developer ID signing, and notarization remain manual gates.
-- The installed v0.32.11 host passed the bounded provider-backed `eval --model` evidence
-  run on 2026-08-16 in 14,795 ms: retrieval recall, MRR, case pass rate, citation validity,
+- The installed v0.32.12 host passed the bounded provider-backed `eval --model` evidence
+  run on 2026-08-16 in 23,267 ms: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
   all passed with no fallback. This is provider-backed fixture evidence only; it does not query
   the personal index or prove packaged GUI behavior.
@@ -169,9 +169,9 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the previously verified v0.32.11 package passed the credential-free packaged-core
-   evaluator and query-only readiness after installation. The current installed v0.32.11 CLI passed
-   the bounded provider-backed run on 2026-08-16 in 14,795 ms with planner/synthesis, valid
+2. Model-backed provider gate: the verified v0.32.12 package passed the credential-free packaged-core
+   evaluator and query-only readiness after installation. The current installed v0.32.12 CLI passed
+   the bounded provider-backed run on 2026-08-16 in 23,267 ms with planner/synthesis, valid
    citations, cache reuse, and revision invalidation. That run used synthetic fixtures only; no
    provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider
    outages or slow responses still fail closed, and extractive mode remains the safe production

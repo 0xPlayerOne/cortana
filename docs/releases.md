@@ -14,8 +14,8 @@ under the automated manifest flow.
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
 `v0.32.12` is the current protected source and published release. Release-assets workflow
-`31933279147` is building the archive, checksum, updater-signature, manifest, and credential-free
-packaged-core gates; do not call the package fully verified until that workflow completes. v0.32.11
+`31933279147` completed the archive, checksum, updater-signature, manifest, and credential-free
+packaged-core gates; all 18 published assets are verified. v0.32.11
 and earlier remain historical evidence.
 
 ### Supported Desktop platforms
@@ -62,15 +62,16 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.32.12 release intent (published; asset verification in progress)
+## v0.32.12 release intent (published and verified)
 
 This patch publishes the Drive connector hardening promoted through the protected staging-to-main
 flow: bounded PDF/DOCX extraction, folder and folder-shortcut filtering, metadata-only records for
 unsupported binary items, and correct placement of the `--max-documents` cap. The release intent
 changes no credentials, source authorization, indexed data, recurring-sync state, or optional
 memory-provider state. The exact-tree promotion and Release Please version PR have merged, and
-the `v0.32.12` tag is published. Release-assets workflow `31933279147` is the remaining package
-verification gate at this point.
+the `v0.32.12` tag is published. Release-assets workflow `31933279147` completed the package
+verification gate with all 18 assets, checksums, updater signatures, manifest, and packaged-core
+checks.
 
 ## v0.32.11 release intent (published and verified)
 

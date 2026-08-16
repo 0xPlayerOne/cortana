@@ -486,7 +486,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
 `passed: true`. The v0.32.12 verifier will record this packaged-core gate in addition to the
-archive/signature/checksum/updater-manifest checks once workflow `31933279147` completes.
+archive/signature/checksum/updater-manifest checks in workflow `31933279147`.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
 
@@ -516,7 +516,7 @@ PDF/media corpus. Both runs made zero index or reconciliation writes. Work Drive
 `readiness --allow-sync-service` gate must remain closed until Personal Drive has a fresh complete
 record at its configured budget; no reconciliation or large sync has been run.
 
-The installed v0.32.11 CLI also passed a fresh bounded `eval --model` run on 2026-08-16 in 14,795
+The installed v0.32.12 CLI also passed a fresh bounded `eval --model` run on 2026-08-16 in 23,267
 ms, including planner/synthesis, valid citations, cache reuse, and revision invalidation without
 provider fallback. This is synthetic provider-backed evidence only; it does not authorize source
 sync, establish personal-index quality, or replace the separate packaged GUI and signing gates.
