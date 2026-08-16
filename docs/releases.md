@@ -62,7 +62,7 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.34.0 release intent (pending protected release)
+## v0.34.0 release intent (protected release target)
 
 The post-v0.33.0 source tree improves the canonical native memory layer with local salience-aware
 recall ranking. Candidate memories are scored by query-term coverage using the same token-prefix
@@ -72,7 +72,7 @@ invalidation contracts remain unchanged.
 
 This release intent changes no credentials, source authorization, indexed data, recurring-sync state,
 or external memory/plugin integration. The protected staging-to-main promotion and version-only
-Release Please PR must complete before the `v0.34.0` package is called downloadable or verified.
+Release Please PR will complete before the `v0.34.0` package is called downloadable or verified.
 
 ## v0.33.0 release intent (published and verified)
 
