@@ -29,6 +29,15 @@ fn bump_corpus_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
     Ok(())
 }
 
+fn bump_memory_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
+    transaction.execute(
+        "UPDATE meta SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)
+         WHERE key='memory_revision'",
+        [],
+    )?;
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct Store {
     connection: Arc<Mutex<Connection>>,
@@ -245,6 +254,10 @@ impl Store {
         )?;
         connection.execute(
             "INSERT OR IGNORE INTO meta(key,value) VALUES('corpus_revision','0')",
+            [],
+        )?;
+        connection.execute(
+            "INSERT OR IGNORE INTO meta(key,value) VALUES('memory_revision','0')",
             [],
         )?;
         ensure_document_content_column(&connection)?;
@@ -747,6 +760,16 @@ impl Store {
         value.parse().context("invalid corpus revision")
     }
 
+    pub fn memory_revision(&self) -> Result<u64> {
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let value: String = connection.query_row(
+            "SELECT value FROM meta WHERE key='memory_revision'",
+            [],
+            |row| row.get(0),
+        )?;
+        value.parse().context("invalid memory revision")
+    }
+
     pub fn cached_query(&self, cache_key: &str, ttl_seconds: u64) -> Result<Option<String>> {
         if ttl_seconds == 0 {
             return Ok(None);
@@ -1015,6 +1038,7 @@ impl Store {
             "INSERT INTO memories_fts(memory_id,title,content) VALUES(?1,?2,?3)",
             params![id, input.title, input.content],
         )?;
+        bump_memory_revision(&transaction)?;
         transaction.commit()?;
         self.memory(&id)?
             .ok_or_else(|| anyhow::anyhow!("memory disappeared after commit"))
@@ -1031,6 +1055,7 @@ impl Store {
         principal_acl: &[String],
     ) -> Result<Vec<MemorySearchResult>> {
         let match_query = memory::fts_query(query)?;
+        let fallback_query = memory::fts_query_or(query)?;
         if let Some(kind) = kind {
             memory::MemoryKind::parse(kind)?;
         }
@@ -1038,32 +1063,40 @@ impl Store {
         let candidate_limit =
             i64::try_from(limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT) * 4).unwrap_or(i64::MAX);
         let now = memory::now();
-        let mut statement = connection.prepare(
-            "SELECT m.id,m.kind,m.project,m.title,m.content,m.source,m.source_id,
-                    m.dedupe_key,m.confidence,m.importance,m.status,m.acl_json,
-                    m.provenance_json,m.observed_at,m.valid_from,m.valid_until,
-                    m.supersedes_id,m.created_at,m.updated_at,bm25(memories_fts)
-             FROM memories_fts
-             JOIN memories m ON m.id=memories_fts.memory_id
-             WHERE memories_fts MATCH ?1 AND m.status='active'
-               AND (?2 IS NULL OR m.project=?2)
-               AND (?3 IS NULL OR m.kind=?3)
-               AND m.valid_from<=?4
-               AND (m.valid_until IS NULL OR m.valid_until>?4)
-             ORDER BY bm25(memories_fts),m.importance DESC,m.confidence DESC,m.updated_at DESC
-             LIMIT ?5",
-        )?;
-        let rows = statement.query_map(
-            params![match_query, project, kind, now, candidate_limit],
-            memory_from_row,
-        )?;
         let mut results = Vec::new();
-        for row in rows {
-            let memory = row?;
-            if acl_allows(&memory.memory.acl, principal_acl) {
-                results.push(memory);
-                if results.len() >= limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT) {
-                    break;
+        let mut seen = HashSet::new();
+        for (index, query_variant) in [match_query, fallback_query].into_iter().enumerate() {
+            if index > 0 && !results.is_empty() {
+                break;
+            }
+            let mut statement = connection.prepare(
+                "SELECT m.id,m.kind,m.project,m.title,m.content,m.source,m.source_id,
+                        m.dedupe_key,m.confidence,m.importance,m.status,m.acl_json,
+                        m.provenance_json,m.observed_at,m.valid_from,m.valid_until,
+                        m.supersedes_id,m.created_at,m.updated_at,bm25(memories_fts)
+                 FROM memories_fts
+                 JOIN memories m ON m.id=memories_fts.memory_id
+                 WHERE memories_fts MATCH ?1 AND m.status='active'
+                   AND (?2 IS NULL OR m.project=?2)
+                   AND (?3 IS NULL OR m.kind=?3)
+                   AND m.valid_from<=?4
+                   AND (m.valid_until IS NULL OR m.valid_until>?4)
+                 ORDER BY bm25(memories_fts),m.importance DESC,m.confidence DESC,m.updated_at DESC
+                 LIMIT ?5",
+            )?;
+            let rows = statement.query_map(
+                params![query_variant, project, kind, now, candidate_limit],
+                memory_from_row,
+            )?;
+            for row in rows {
+                let memory = row?;
+                if acl_allows(&memory.memory.acl, principal_acl)
+                    && seen.insert(memory.memory.id.clone())
+                {
+                    results.push(memory);
+                    if results.len() >= limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT) {
+                        return Ok(results);
+                    }
                 }
             }
         }
@@ -1097,6 +1130,7 @@ impl Store {
         )?;
         if changed == 1 {
             transaction.execute("DELETE FROM memories_fts WHERE memory_id=?1", [id])?;
+            bump_memory_revision(&transaction)?;
         }
         transaction.commit()?;
         Ok(changed == 1)
@@ -3955,6 +3989,19 @@ mod tests {
                     &["work".into()]
                 )
                 .expect("work recall")
+                .len(),
+            1
+        );
+        assert_eq!(
+            store
+                .recall_memories(
+                    "what is my preference for concise release notes",
+                    Some("work"),
+                    None,
+                    10,
+                    &["work".into()]
+                )
+                .expect("natural-language fallback")
                 .len(),
             1
         );

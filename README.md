@@ -412,9 +412,11 @@ mature vendor libraries or macOS automation are the safer boundary.
 
 The human workspace calls `/v1/answer`: a bounded planner can fan out up to eight focused searches,
 the runtime executes them concurrently, reciprocal-rank fusion deduplicates evidence, and a
-configured model produces a citation-validated answer. Every model failure degrades to a
-deterministic extractive answer. MCP intentionally exposes raw search and token-bounded context
-instead, allowing an agent to orchestrate without paying for an opaque extra synthesis call.
+configured model produces a citation-validated answer. Authorized principals also receive matching
+native memory as separate operational context; numbered source evidence remains the citation
+authority. Every model failure degrades to a deterministic extractive answer. MCP intentionally
+exposes raw search and token-bounded context as well, allowing an agent to orchestrate without
+paying for an opaque extra synthesis call.
 Task-specific `search_code`, `search_messages`, and `who_knows` tools reuse one query embedding
 across their configured source group. Ranked passages receive one ACL-checked neighboring chunk
 on either side, capped at 16 KiB per result before the independent context-token budget.
