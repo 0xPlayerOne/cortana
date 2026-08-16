@@ -81,42 +81,18 @@ pub struct QuerySettings {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct HindsightSettings {
-    pub enabled: bool,
-    pub provider: String,
-    pub base_url: String,
-    pub bank: String,
-    pub token_env: Option<String>,
-    pub optional: bool,
-    pub wired_to_ingestion: bool,
+pub struct MemorySettings {
+    pub max_active: usize,
+    pub default_confidence: f32,
+    pub default_importance: f32,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct HonchoSettings {
-    pub enabled: bool,
-    pub provider: String,
-    pub base_url: String,
-    pub workspace_id: String,
-    pub peer_id: String,
-    pub session_prefix: String,
-    pub token_env: Option<String>,
-    pub optional: bool,
-    pub wired_to_ingestion: bool,
-}
-
-impl Default for HonchoSettings {
+impl Default for MemorySettings {
     fn default() -> Self {
         Self {
-            enabled: false,
-            provider: "honcho".into(),
-            base_url: "https://api.honcho.dev".into(),
-            workspace_id: "default".into(),
-            peer_id: "cortana".into(),
-            session_prefix: "cortana".into(),
-            token_env: None,
-            optional: true,
-            wired_to_ingestion: false,
+            max_active: 100_000,
+            default_confidence: 0.7,
+            default_importance: 0.5,
         }
     }
 }
@@ -221,8 +197,7 @@ pub struct SettingsUpdate {
     pub auth_principals: Vec<AuthPrincipalSettings>,
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
-    pub hindsight: HindsightSettings,
-    pub honcho: HonchoSettings,
+    pub memory: MemorySettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
     #[serde(default)]
@@ -249,8 +224,7 @@ pub struct SettingsSnapshot {
     pub auth_principals: Vec<AuthPrincipalSettings>,
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
-    pub hindsight: HindsightSettings,
-    pub honcho: HonchoSettings,
+    pub memory: MemorySettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
     pub secrets: Vec<SecretState>,
@@ -264,9 +238,8 @@ pub struct PortableSettings {
     pub auth_principals: Vec<AuthPrincipalSettings>,
     pub embedding: EmbeddingSettings,
     pub query: QuerySettings,
-    pub hindsight: HindsightSettings,
     #[serde(default)]
-    pub honcho: HonchoSettings,
+    pub memory: MemorySettings,
     pub ingestion: IngestionSettings,
     pub runtime: RuntimeSettings,
 }
@@ -421,7 +394,7 @@ pub(crate) fn secret_value_for_env(name: &str) -> Result<Option<String>, String>
 }
 
 fn bearer_for_scope_at(config_path: &Path, scope: &str) -> Result<Option<String>, String> {
-    if !matches!(scope, "query" | "status" | "admin") {
+    if !matches!(scope, "query" | "status" | "admin" | "memory") {
         return Err("unsupported desktop bearer scope".into());
     }
     let root = read_config(config_path)?;
@@ -640,8 +613,7 @@ fn export_portable_at(config_path: &Path, path: &Path) -> Result<PortableExport,
         auth_principals: snapshot.auth_principals,
         embedding: snapshot.embedding,
         query: snapshot.query,
-        hindsight: snapshot.hindsight,
-        honcho: snapshot.honcho,
+        memory: snapshot.memory,
         ingestion: snapshot.ingestion,
         runtime: snapshot.runtime,
     };
@@ -824,8 +796,7 @@ impl PortableSettings {
             auth_principals: self.auth_principals,
             embedding: self.embedding,
             query: self.query,
-            hindsight: self.hindsight,
-            honcho: self.honcho,
+            memory: self.memory,
             ingestion: self.ingestion,
             runtime: self.runtime,
             secrets: Vec::new(),
@@ -839,8 +810,7 @@ impl PortableSettings {
             auth_principals: update.auth_principals,
             embedding: update.embedding,
             query: update.query,
-            hindsight: update.hindsight,
-            honcho: update.honcho,
+            memory: update.memory,
             ingestion: update.ingestion,
             runtime: update.runtime,
         }
@@ -859,8 +829,6 @@ fn snapshot(
     let auth_principals = configured_auth_principals(root);
     let embedding_api_key_env = optional_string(root, "embedding", "api_key_env");
     let query_api_key_env = optional_string(root, "query", "api_key_env");
-    let hindsight_token_env = optional_string(root, "hindsight", "token_env");
-    let honcho_token_env = optional_string(root, "honcho", "token_env");
     let embedding_service_program = nested_table(root, "embedding", "service")
         .map(|service| table_string_array(service, "command"))
         .and_then(|command| command.into_iter().next());
@@ -871,8 +839,6 @@ fn snapshot(
     let mut secret_names = BTreeSet::new();
     secret_names.extend(embedding_api_key_env.iter().cloned());
     secret_names.extend(query_api_key_env.iter().cloned());
-    secret_names.extend(hindsight_token_env.iter().cloned());
-    secret_names.extend(honcho_token_env.iter().cloned());
     secret_names.extend(
         sources
             .iter()
@@ -939,25 +905,10 @@ fn snapshot(
             cache_max_entries: usize_value(root, "query", "cache_max_entries", 10_000),
             cache_ttl_seconds: u64_value(root, "query", "cache_ttl_seconds", 3600),
         },
-        hindsight: HindsightSettings {
-            enabled: bool_value(root, "hindsight", "enabled", false),
-            provider: string(root, "hindsight", "provider", "hindsight"),
-            base_url: string(root, "hindsight", "base_url", "http://127.0.0.1:8888"),
-            bank: string(root, "hindsight", "bank", "default"),
-            token_env: optional_string(root, "hindsight", "token_env"),
-            optional: bool_value(root, "hindsight", "optional", true),
-            wired_to_ingestion: bool_value(root, "hindsight", "wired_to_ingestion", false),
-        },
-        honcho: HonchoSettings {
-            enabled: bool_value(root, "honcho", "enabled", false),
-            provider: string(root, "honcho", "provider", "honcho"),
-            base_url: string(root, "honcho", "base_url", "https://api.honcho.dev"),
-            workspace_id: string(root, "honcho", "workspace_id", "default"),
-            peer_id: string(root, "honcho", "peer_id", "cortana"),
-            session_prefix: string(root, "honcho", "session_prefix", "cortana"),
-            token_env: honcho_token_env,
-            optional: bool_value(root, "honcho", "optional", true),
-            wired_to_ingestion: bool_value(root, "honcho", "wired_to_ingestion", false),
+        memory: MemorySettings {
+            max_active: usize_value(root, "memory", "max_active", 100_000),
+            default_confidence: f32_value(root, "memory", "default_confidence", 0.7),
+            default_importance: f32_value(root, "memory", "default_importance", 0.5),
         },
         ingestion: IngestionSettings {
             max_documents_per_source: usize_value(
@@ -1168,8 +1119,6 @@ fn referenced_secret_names(root: &Table) -> BTreeSet<String> {
     for (section, key) in [
         ("embedding", "api_key_env"),
         ("query", "api_key_env"),
-        ("hindsight", "token_env"),
-        ("honcho", "token_env"),
     ] {
         if let Some(name) = optional_string(root, section, key) {
             names.insert(name);
@@ -1204,8 +1153,6 @@ fn update_secret_names(update: &SettingsUpdate) -> BTreeSet<String> {
     for name in [
         update.embedding.api_key_env.as_ref(),
         update.query.api_key_env.as_ref(),
-        update.hindsight.token_env.as_ref(),
-        update.honcho.token_env.as_ref(),
     ]
     .into_iter()
     .flatten()
@@ -1344,62 +1291,9 @@ fn validate_update_with_legacy_scopes(
         604_800,
     )?;
 
-    if update.hindsight.provider != "hindsight" {
-        return Err("hindsight provider must be `hindsight`".into());
-    }
-    if !update.hindsight.optional {
-        return Err("hindsight is fixed as optional and cannot be changed".into());
-    }
-    if update.hindsight.wired_to_ingestion {
-        return Err("hindsight cannot be wired into normal ingestion by default".into());
-    }
-    update.hindsight.base_url = update.hindsight.base_url.trim().to_string();
-    update.hindsight.bank = update.hindsight.bank.trim().to_string();
-    if update.hindsight.enabled {
-        if update.hindsight.base_url.is_empty() {
-            return Err("hindsight enabled requires a base URL".into());
-        }
-        if update.hindsight.token_env.is_none() {
-            return Err("hindsight enabled requires a token environment variable".into());
-        }
-        validate_hindsight_bank(&update.hindsight.bank)?;
-        validate_hindsight_url("hindsight", &update.hindsight.base_url)?;
-    } else {
-        if update.hindsight.base_url.is_empty() {
-            update.hindsight.base_url = "http://127.0.0.1:8888".into();
-        }
-        if update.hindsight.bank.is_empty() {
-            update.hindsight.bank = "default".into();
-        }
-        validate_hindsight_url("hindsight", &update.hindsight.base_url)?;
-        validate_hindsight_bank(&update.hindsight.bank)?;
-    }
-    validate_optional_env(&update.hindsight.token_env)?;
-
-    if update.honcho.provider != "honcho" {
-        return Err("honcho provider must be `honcho`".into());
-    }
-    if !update.honcho.optional {
-        return Err("honcho is fixed as optional and cannot be changed".into());
-    }
-    if update.honcho.wired_to_ingestion {
-        return Err("honcho cannot be wired into normal ingestion by default".into());
-    }
-    update.honcho.base_url = update.honcho.base_url.trim().to_string();
-    update.honcho.workspace_id = update.honcho.workspace_id.trim().to_string();
-    update.honcho.peer_id = update.honcho.peer_id.trim().to_string();
-    update.honcho.session_prefix = update.honcho.session_prefix.trim().to_string();
-    if update.honcho.enabled && update.honcho.token_env.is_none() {
-        return Err("honcho enabled requires a token environment variable".into());
-    }
-    if update.honcho.base_url.is_empty() {
-        update.honcho.base_url = "https://api.honcho.dev".into();
-    }
-    validate_hindsight_url("honcho", &update.honcho.base_url)?;
-    validate_honcho_identifier("honcho workspace", &update.honcho.workspace_id)?;
-    validate_honcho_identifier("honcho peer", &update.honcho.peer_id)?;
-    validate_honcho_identifier("honcho session prefix", &update.honcho.session_prefix)?;
-    validate_optional_env(&update.honcho.token_env)?;
+    bounded("active native memories", update.memory.max_active, 1, 1_000_000)?;
+    bounded_f32("default memory confidence", update.memory.default_confidence)?;
+    bounded_f32("default memory importance", update.memory.default_importance)?;
 
     bounded(
         "documents per source",
@@ -1584,38 +1478,9 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
         set_integer(root, "query", key, value);
     }
 
-    set_string(root, "hindsight", "provider", &update.hindsight.provider);
-    set_bool(root, "hindsight", "enabled", update.hindsight.enabled);
-    set_string(root, "hindsight", "base_url", &update.hindsight.base_url);
-    set_string(root, "hindsight", "bank", &update.hindsight.bank);
-    set_optional_string(root, "hindsight", "token_env", &update.hindsight.token_env);
-    set_bool(root, "hindsight", "optional", update.hindsight.optional);
-    set_bool(
-        root,
-        "hindsight",
-        "wired_to_ingestion",
-        update.hindsight.wired_to_ingestion,
-    );
-
-    set_string(root, "honcho", "provider", &update.honcho.provider);
-    set_bool(root, "honcho", "enabled", update.honcho.enabled);
-    set_string(root, "honcho", "base_url", &update.honcho.base_url);
-    set_string(root, "honcho", "workspace_id", &update.honcho.workspace_id);
-    set_string(root, "honcho", "peer_id", &update.honcho.peer_id);
-    set_string(
-        root,
-        "honcho",
-        "session_prefix",
-        &update.honcho.session_prefix,
-    );
-    set_optional_string(root, "honcho", "token_env", &update.honcho.token_env);
-    set_bool(root, "honcho", "optional", update.honcho.optional);
-    set_bool(
-        root,
-        "honcho",
-        "wired_to_ingestion",
-        update.honcho.wired_to_ingestion,
-    );
+    set_integer(root, "memory", "max_active", update.memory.max_active as i64);
+    set_float(root, "memory", "default_confidence", update.memory.default_confidence);
+    set_float(root, "memory", "default_importance", update.memory.default_importance);
 
     for (key, value) in [
         (
@@ -1723,15 +1588,15 @@ fn validate_auth_principals(principals: &mut [AuthPrincipalSettings]) -> Result<
                 principal.token_env
             ));
         }
-        normalize_string_list("auth scope", &mut principal.scopes, 3, 16)?;
+        normalize_string_list("auth scope", &mut principal.scopes, 4, 16)?;
         if principal.scopes.is_empty()
             || principal
                 .scopes
                 .iter()
-                .any(|scope| !matches!(scope.as_str(), "query" | "status" | "admin"))
+                .any(|scope| !matches!(scope.as_str(), "query" | "status" | "admin" | "memory"))
         {
             return Err(format!(
-                "auth principal `{}` must have query, status, or admin scopes",
+                "auth principal `{}` must have query, status, admin, or memory scopes",
                 principal.principal
             ));
         }
@@ -1906,12 +1771,11 @@ fn validate_mutable_sections(root: &Table) -> Result<(), String> {
     for section in [
         "embedding",
         "query",
-        "hindsight",
+        "memory",
         "ingestion",
         "connectors",
         "auth",
         "runtime",
-        "honcho",
     ] {
         if root.get(section).is_some_and(|value| !value.is_table()) {
             return Err(format!("settings section `{section}` must be a TOML table"));
@@ -2700,27 +2564,6 @@ fn validate_url(name: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_hindsight_url(name: &str, value: &str) -> Result<(), String> {
-    let url = reqwest::Url::parse(value).map_err(|_| format!("{name} URL is invalid"))?;
-    if !matches!(url.scheme(), "http" | "https") {
-        return Err(format!("{name} URL must use HTTP or HTTPS"));
-    }
-    let is_loopback = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
-    if url.scheme() == "http" && !is_loopback {
-        return Err(format!("{name} cloud URL must use HTTPS"));
-    }
-    if !url.username().is_empty() || url.password().is_some() {
-        return Err(format!("{name} URL must not include credentials"));
-    }
-    if url.query().is_some() {
-        return Err(format!("{name} URL must not include query parameters"));
-    }
-    if url.fragment().is_some() {
-        return Err(format!("{name} URL must not include a fragment"));
-    }
-    Ok(())
-}
-
 fn validate_provider_url(name: &str, provider: &str, value: &str) -> Result<(), String> {
     let url = reqwest::Url::parse(value).map_err(|_| format!("{name} URL is invalid"))?;
     let is_loopback = matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "::1"));
@@ -2748,40 +2591,6 @@ fn validate_workspace_id(value: &str) -> Result<(), String> {
         return Err(
             "workspace ids must be 1-32 lowercase letters, numbers, dashes, or underscores".into(),
         );
-    }
-    Ok(())
-}
-
-fn validate_hindsight_bank(value: &str) -> Result<(), String> {
-    if value.is_empty()
-        || value.len() > 64
-        || !value.chars().all(|character| {
-            character.is_ascii_lowercase()
-                || character.is_ascii_digit()
-                || matches!(character, '-' | '_')
-        })
-        || !value
-            .chars()
-            .next()
-            .is_some_and(|character| character.is_ascii_lowercase() || character.is_ascii_digit())
-    {
-        return Err(
-            "hindsight bank must be 1-64 lowercase letters, numbers, dashes, or underscores".into(),
-        );
-    }
-    Ok(())
-}
-
-fn validate_honcho_identifier(name: &str, value: &str) -> Result<(), String> {
-    if value.is_empty()
-        || value.len() > 128
-        || !value.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
-        })
-    {
-        return Err(format!(
-            "{name} must be 1-128 letters, numbers, dots, dashes, or underscores"
-        ));
     }
     Ok(())
 }
@@ -2824,6 +2633,14 @@ fn bounded_u64(name: &str, value: u64, minimum: u64, maximum: u64) -> Result<(),
         Ok(())
     } else {
         Err(format!("{name} must be between {minimum} and {maximum}"))
+    }
+}
+
+fn bounded_f32(name: &str, value: f32) -> Result<(), String> {
+    if value.is_finite() && (0.0..=1.0).contains(&value) {
+        Ok(())
+    } else {
+        Err(format!("{name} must be a finite number between 0 and 1"))
     }
 }
 
@@ -2906,6 +2723,14 @@ fn u64_value(root: &Table, section: &str, key: &str, default: u64) -> u64 {
         .unwrap_or(default)
 }
 
+fn f32_value(root: &Table, section: &str, key: &str, default: f32) -> f32 {
+    table(root, section)
+        .and_then(|table| table.get(key))
+        .and_then(Value::as_float)
+        .map(|value| value as f32)
+        .unwrap_or(default)
+}
+
 fn nested_u64(root: &Table, section: &str, nested: &str, key: &str, default: u64) -> u64 {
     nested_table(root, section, nested)
         .and_then(|table| table.get(key))
@@ -2984,6 +2809,10 @@ fn set_table_optional_integer(table: &mut Table, key: &str, value: Option<i64>) 
 
 fn set_integer(root: &mut Table, section: &str, key: &str, value: i64) {
     mutable_table(root, section).insert(key.into(), Value::Integer(value));
+}
+
+fn set_float(root: &mut Table, section: &str, key: &str, value: f32) {
+    mutable_table(root, section).insert(key.into(), Value::Float(f64::from(value)));
 }
 
 fn set_nested_integer(root: &mut Table, section: &str, nested: &str, key: &str, value: i64) {
@@ -3082,26 +2911,7 @@ mod tests {
                 cache_max_entries: 10_000,
                 cache_ttl_seconds: 3600,
             },
-            hindsight: HindsightSettings {
-                enabled: false,
-                provider: "hindsight".into(),
-                base_url: "http://127.0.0.1:8888".into(),
-                bank: "default".into(),
-                token_env: Some("CORTANA_HINDSIGHT_TOKEN".into()),
-                optional: true,
-                wired_to_ingestion: false,
-            },
-            honcho: HonchoSettings {
-                enabled: false,
-                provider: "honcho".into(),
-                base_url: "https://api.honcho.dev".into(),
-                workspace_id: "default".into(),
-                peer_id: "cortana".into(),
-                session_prefix: "cortana".into(),
-                token_env: Some("CORTANA_HONCHO_TOKEN".into()),
-                optional: true,
-                wired_to_ingestion: false,
-            },
+            memory: MemorySettings::default(),
             ingestion: IngestionSettings {
                 max_documents_per_source: 2000,
                 max_bytes_per_source: 128 * 1024 * 1024,
@@ -3124,16 +2934,6 @@ mod tests {
                 SecretUpdate {
                     name: "CORTANA_WORK_AGENT_TOKEN".into(),
                     value: Some("private-bearer".into()),
-                    clear: false,
-                },
-                SecretUpdate {
-                    name: "CORTANA_HINDSIGHT_TOKEN".into(),
-                    value: Some("hindsight-secret".into()),
-                    clear: false,
-                },
-                SecretUpdate {
-                    name: "CORTANA_HONCHO_TOKEN".into(),
-                    value: Some("honcho-secret".into()),
                     clear: false,
                 },
             ],
@@ -3293,18 +3093,12 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(secret_names.contains(&"CORTANA_QUERY_API_KEY"));
         assert!(secret_names.contains(&"CORTANA_WORK_AGENT_TOKEN"));
-        assert!(secret_names.contains(&"CORTANA_HINDSIGHT_TOKEN"));
-        assert!(secret_names.contains(&"CORTANA_HONCHO_TOKEN"));
         assert!(!format!("{state:?}").contains("not-returned"));
         assert!(!format!("{state:?}").contains("private-bearer"));
-        assert!(!format!("{state:?}").contains("hindsight-secret"));
-        assert!(!format!("{state:?}").contains("honcho-secret"));
         let secret_body =
             fs::read_to_string(temp.path().join("config/secrets.env")).expect("secret file");
         assert!(secret_body.contains("CORTANA_QUERY_API_KEY=not-returned"));
         assert!(secret_body.contains("CORTANA_WORK_AGENT_TOKEN=private-bearer"));
-        assert!(secret_body.contains("CORTANA_HINDSIGHT_TOKEN=hindsight-secret"));
-        assert!(secret_body.contains("CORTANA_HONCHO_TOKEN=honcho-secret"));
         assert_eq!(
             bearer_for_scope_at(&store.config_path, "query").expect("query bearer"),
             Some("private-bearer".into())
@@ -3419,56 +3213,6 @@ mod tests {
         update.auth_principals[0].scopes = vec!["root".into()];
         assert!(validate_update(&mut update).is_err());
 
-        let mut update = valid_update(temp.path());
-        update.hindsight.enabled = true;
-        update.hindsight.token_env = None;
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.hindsight.base_url = "http://127.0.0.1:9000/v1?x=1".into();
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.hindsight.base_url = "http://hindsight.example/v1".into();
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.hindsight.provider = "openai".into();
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.hindsight.provider = "hindsight".into();
-        update.hindsight.optional = false;
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.hindsight.bank = "bad Bank".into();
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.hindsight.base_url = "https://127.0.0.1/v1#section".into();
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.hindsight.token_env = Some("bad-env".into());
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.honcho.enabled = true;
-        update.honcho.token_env = None;
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.honcho.base_url = "http://honcho.example/v3".into();
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.honcho.workspace_id = "work space".into();
-        assert!(validate_update(&mut update).is_err());
-
-        let mut update = valid_update(temp.path());
-        update.honcho.provider = "openai".into();
-        assert!(validate_update(&mut update).is_err());
     }
 
     #[test]
@@ -3516,20 +3260,9 @@ mod tests {
         assert_eq!(state.ingestion.request_concurrency, 1);
         assert_eq!(state.ingestion.sync_freshness_hours, 48);
         assert_eq!(state.runtime.connector_timeout_seconds, 21_600);
-        assert!(!state.hindsight.enabled);
-        assert_eq!(state.hindsight.provider, "hindsight");
-        assert_eq!(state.hindsight.base_url, "http://127.0.0.1:8888");
-        assert_eq!(state.hindsight.bank, "default");
-        assert!(state.hindsight.optional);
-        assert!(!state.hindsight.wired_to_ingestion);
-        assert!(!state.honcho.enabled);
-        assert_eq!(state.honcho.provider, "honcho");
-        assert_eq!(state.honcho.base_url, "https://api.honcho.dev");
-        assert_eq!(state.honcho.workspace_id, "default");
-        assert_eq!(state.honcho.peer_id, "cortana");
-        assert_eq!(state.honcho.session_prefix, "cortana");
-        assert!(state.honcho.optional);
-        assert!(!state.honcho.wired_to_ingestion);
+        assert_eq!(state.memory.max_active, 100_000);
+        assert_eq!(state.memory.default_confidence, 0.7);
+        assert_eq!(state.memory.default_importance, 0.5);
 
         fs::create_dir_all(store.config_path.parent().expect("config parent"))
             .expect("config directory");

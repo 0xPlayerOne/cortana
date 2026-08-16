@@ -282,7 +282,7 @@ mod tests {
         let args = install_args(&schedule::ScheduleSettings::default(), "local", false);
         assert!(!args.iter().any(|arg| arg == "--no-embedding-service"));
 
-        let args = install_args(&schedule::ScheduleSettings::default(), "honcho", false);
+        let args = install_args(&schedule::ScheduleSettings::default(), "cloud", false);
         assert!(args.iter().any(|arg| arg == "--no-embedding-service"));
         assert_eq!(
             args.last().map(String::as_str),

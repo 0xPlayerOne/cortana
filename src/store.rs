@@ -1,6 +1,7 @@
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -13,10 +14,28 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::auth::acl_allows;
+use crate::memory::{self, MemoryInput, MemoryRecord, MemorySearchResult, MemoryStats};
 use crate::model::{Document, StoredChunk};
 
 const DATABASE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const SYNC_RUNS_PER_SOURCE: usize = 100;
+
+struct ExistingMemory {
+    id: String,
+    kind: String,
+    project: String,
+    title: String,
+    content: String,
+    source: String,
+    source_id: String,
+    status: String,
+    acl: Vec<String>,
+    confidence: f64,
+    importance: f64,
+    provenance_json: String,
+    valid_until: Option<String>,
+    supersedes_id: Option<String>,
+}
 
 fn bump_corpus_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
     transaction.execute(
@@ -27,10 +46,20 @@ fn bump_corpus_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
     Ok(())
 }
 
+fn bump_memory_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
+    transaction.execute(
+        "UPDATE meta SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)
+         WHERE key='memory_revision'",
+        [],
+    )?;
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct Store {
     connection: Arc<Mutex<Connection>>,
     read_connection: Arc<Mutex<Connection>>,
+    memory_max_active: Arc<AtomicUsize>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -200,6 +229,28 @@ impl Store {
                id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL,
                principal TEXT NOT NULL, action TEXT NOT NULL, project TEXT, source TEXT,
                outcome TEXT NOT NULL, result_count INTEGER, latency_ms INTEGER NOT NULL);
+             CREATE TABLE IF NOT EXISTS memories(
+               id TEXT PRIMARY KEY,
+               kind TEXT NOT NULL,
+               project TEXT NOT NULL,
+               title TEXT NOT NULL,
+               content TEXT NOT NULL,
+               source TEXT NOT NULL,
+               source_id TEXT NOT NULL,
+               dedupe_key TEXT UNIQUE,
+               confidence REAL NOT NULL,
+               importance REAL NOT NULL,
+               status TEXT NOT NULL,
+               acl_json TEXT NOT NULL,
+               provenance_json TEXT NOT NULL,
+               observed_at TEXT NOT NULL,
+               valid_from TEXT NOT NULL,
+               valid_until TEXT,
+               supersedes_id TEXT,
+               created_at TEXT NOT NULL,
+               updated_at TEXT NOT NULL);
+             CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+               memory_id UNINDEXED, title, content, tokenize='unicode61');
              CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                chunk_id UNINDEXED, title, content, tokenize='unicode61');
              CREATE INDEX IF NOT EXISTS idx_documents_scope ON documents(project, source);
@@ -212,10 +263,18 @@ impl Store {
              CREATE INDEX IF NOT EXISTS idx_sync_runs_source
                ON sync_runs(source,project,started_at DESC);
              CREATE INDEX IF NOT EXISTS idx_audit_events_timestamp
-               ON audit_events(timestamp DESC);",
+               ON audit_events(timestamp DESC);
+             CREATE INDEX IF NOT EXISTS idx_memories_scope
+               ON memories(project,kind,status,updated_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_memories_status
+               ON memories(status,updated_at DESC);",
         )?;
         connection.execute(
             "INSERT OR IGNORE INTO meta(key,value) VALUES('corpus_revision','0')",
+            [],
+        )?;
+        connection.execute(
+            "INSERT OR IGNORE INTO meta(key,value) VALUES('memory_revision','0')",
             [],
         )?;
         ensure_document_content_column(&connection)?;
@@ -227,7 +286,20 @@ impl Store {
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
             read_connection: Arc::new(Mutex::new(read_connection)),
+            memory_max_active: Arc::new(AtomicUsize::new(memory::DEFAULT_MEMORY_MAX_ACTIVE)),
         })
+    }
+
+    /// Configure the active-memory ceiling on this process-wide store handle.
+    /// The setting is shared by all clones used by HTTP, MCP, and CLI paths.
+    pub fn configure_memory_limit(&self, max_active: usize) -> Result<()> {
+        anyhow::ensure!(
+            (1..=1_000_000).contains(&max_active),
+            "memory max_active must be between 1 and 1000000"
+        );
+        self.memory_max_active
+            .store(max_active, AtomicOrdering::Release);
+        Ok(())
     }
 
     pub fn ensure_fingerprint(&self, fingerprint: &str) -> Result<()> {
@@ -705,6 +777,16 @@ impl Store {
         value.parse().context("invalid corpus revision")
     }
 
+    pub fn memory_revision(&self) -> Result<u64> {
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let value: String = connection.query_row(
+            "SELECT value FROM meta WHERE key='memory_revision'",
+            [],
+            |row| row.get(0),
+        )?;
+        value.parse().context("invalid memory revision")
+    }
+
     pub fn cached_query(&self, cache_key: &str, ttl_seconds: u64) -> Result<Option<String>> {
         if ttl_seconds == 0 {
             return Ok(None);
@@ -880,6 +962,521 @@ impl Store {
         // then emit them oldest-first so exports replay chronologically.
         events.reverse();
         Ok(events)
+    }
+
+    /// Persist an explicit agent memory in the canonical SQLite store.
+    ///
+    /// Memory writes are idempotent when a caller supplies `dedupe_key`; this
+    /// lets an agent retry a tool call without accumulating duplicate facts.
+    /// Superseding is transactional so the previous memory cannot remain
+    /// active after its replacement is committed.
+    pub fn remember(&self, input: &MemoryInput) -> Result<MemoryRecord> {
+        self.remember_scoped(input, &["*".into()], true)
+    }
+
+    /// Persist a memory while enforcing the caller's ACL inside the same
+    /// transaction as dedupe and supersession.  The pre-existing record must
+    /// be visible before a scoped agent can replace it or supersede it; doing
+    /// this in the store avoids a check-then-write race in HTTP and MCP.
+    pub fn remember_scoped(
+        &self,
+        input: &MemoryInput,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<MemoryRecord> {
+        let (kind, acl, provenance_json, valid_until) = memory::validate_input(input)?;
+        let now = memory::now();
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let max_active = self.memory_max_active.load(AtomicOrdering::Acquire);
+        let existing: Option<ExistingMemory> = if let Some(key) = input.dedupe_key.as_deref() {
+            transaction
+                .query_row(
+                    "SELECT id,kind,project,title,content,source,source_id,status,
+                            acl_json,confidence,importance,provenance_json,valid_until,
+                            supersedes_id
+                     FROM memories WHERE dedupe_key=?1",
+                    [key],
+                    |row| {
+                        let acl_json: String = row.get(8)?;
+                        let acl = serde_json::from_str(&acl_json).map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                8,
+                                Type::Text,
+                                Box::new(error),
+                            )
+                        })?;
+                        Ok(ExistingMemory {
+                            id: row.get(0)?,
+                            kind: row.get(1)?,
+                            project: row.get(2)?,
+                            title: row.get(3)?,
+                            content: row.get(4)?,
+                            source: row.get(5)?,
+                            source_id: row.get(6)?,
+                            status: row.get(7)?,
+                            acl,
+                            confidence: row.get(9)?,
+                            importance: row.get(10)?,
+                            provenance_json: row.get(11)?,
+                            valid_until: row.get(12)?,
+                            supersedes_id: row.get(13)?,
+                        })
+                    },
+                )
+                .optional()?
+        } else {
+            None
+        };
+        if let Some(existing) = &existing {
+            anyhow::ensure!(
+                owner || acl_allows(&existing.acl, principal_acl),
+                "memory dedupe key is outside principal visibility"
+            );
+            anyhow::ensure!(
+                existing.project == input.project,
+                "memory dedupe key must stay within its project"
+            );
+            anyhow::ensure!(
+                existing.status == "active",
+                "memory dedupe key belongs to a retired memory; choose a new key"
+            );
+        }
+        let id = existing
+            .as_ref()
+            .map(|memory| memory.id.clone())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let source_id = if input.source_id.trim().is_empty() {
+            id.clone()
+        } else {
+            input.source_id.clone()
+        };
+        // A retry with the same dedupe key and identical normalized payload is
+        // a true no-op. Avoiding a write keeps memory_revision stable, which in
+        // turn preserves answer-cache hits for idempotent agent retries.
+        if let Some(existing) = &existing {
+            if existing.status == "active"
+                && existing.kind == kind.as_str()
+                && existing.project == input.project
+                && existing.title == input.title
+                && existing.content == input.content
+                && existing.source == input.source
+                && existing.source_id == source_id
+                && existing.confidence == f64::from(input.confidence)
+                && existing.importance == f64::from(input.importance)
+                && existing.acl == acl
+                && existing.provenance_json == provenance_json
+                && existing.valid_until == valid_until
+                && existing.supersedes_id == input.supersedes_id
+            {
+                transaction.commit()?;
+                return self
+                    .memory(&existing.id)?
+                    .ok_or_else(|| anyhow::anyhow!("memory disappeared during idempotent retry"));
+            }
+        }
+        let active_count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM memories
+             WHERE status='active' AND (valid_until IS NULL OR julianday(valid_until)>julianday(?1))",
+            [now.as_str()],
+            |row| row.get(0),
+        )?;
+        let replaces_active = existing.as_ref().is_some_and(|memory| {
+            memory.status == "active"
+                && memory::valid_until_is_active(memory.valid_until.as_deref(), &now)
+        });
+        let supersession_target: Option<(String, Vec<String>, Option<String>)> =
+            if let Some(previous_id) = input.supersedes_id.as_deref() {
+                transaction
+                    .query_row(
+                        "SELECT project,acl_json,valid_until FROM memories
+                         WHERE id=?1 AND status='active'",
+                        [previous_id],
+                        |row| {
+                            let acl_json: String = row.get(1)?;
+                            let acl = serde_json::from_str(&acl_json).map_err(|error| {
+                                rusqlite::Error::FromSqlConversionFailure(
+                                    1,
+                                    Type::Text,
+                                    Box::new(error),
+                                )
+                            })?;
+                            Ok((row.get(0)?, acl, row.get(2)?))
+                        },
+                    )
+                    .optional()?
+            } else {
+                None
+            };
+        if let Some((previous_project, previous_acl, _)) = &supersession_target {
+            anyhow::ensure!(
+                owner || acl_allows(previous_acl, principal_acl),
+                "memory supersession target is outside principal visibility"
+            );
+            anyhow::ensure!(
+                previous_project == &input.project,
+                "memory supersession target must stay within its project"
+            );
+        }
+        if let Some(previous_id) = input.supersedes_id.as_deref() {
+            anyhow::ensure!(previous_id != id, "memory cannot supersede itself");
+        }
+        let supersedes_active = supersession_target
+            .as_ref()
+            .is_some_and(|(_, _, valid_until)| {
+                memory::valid_until_is_active(valid_until.as_deref(), &now)
+            });
+        anyhow::ensure!(
+            replaces_active || supersedes_active || active_count < max_active as i64,
+            "active memory limit reached ({max_active}); retract or supersede an existing memory before adding another"
+        );
+        if let Some(previous_id) = input.supersedes_id.as_deref() {
+            let changed = transaction.execute(
+                "UPDATE memories SET status='superseded',valid_until=?2,updated_at=?2
+                 WHERE id=?1 AND status='active'",
+                params![previous_id, now],
+            )?;
+            anyhow::ensure!(
+                changed == 1,
+                "supersedes_id does not identify an active memory"
+            );
+        }
+        transaction.execute(
+            "INSERT INTO memories(
+               id,kind,project,title,content,source,source_id,dedupe_key,
+               confidence,importance,status,acl_json,provenance_json,
+               observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'active',?11,?12,?13,?13,?14,?15,?13,?13)
+             ON CONFLICT(id) DO UPDATE SET
+               kind=excluded.kind,project=excluded.project,title=excluded.title,
+               content=excluded.content,source=excluded.source,source_id=excluded.source_id,
+               dedupe_key=excluded.dedupe_key,confidence=excluded.confidence,
+               importance=excluded.importance,status='active',acl_json=excluded.acl_json,
+               provenance_json=excluded.provenance_json,observed_at=excluded.observed_at,
+               valid_from=excluded.valid_from,valid_until=excluded.valid_until,
+               supersedes_id=excluded.supersedes_id,updated_at=excluded.updated_at",
+            params![
+                id,
+                kind.as_str(),
+                input.project,
+                input.title,
+                input.content,
+                input.source,
+                source_id,
+                input.dedupe_key,
+                f64::from(input.confidence),
+                f64::from(input.importance),
+                serde_json::to_string(&acl)?,
+                provenance_json,
+                now,
+                valid_until,
+                input.supersedes_id,
+            ],
+        )?;
+        transaction.execute("DELETE FROM memories_fts WHERE memory_id=?1", [&id])?;
+        transaction.execute(
+            "INSERT INTO memories_fts(memory_id,title,content) VALUES(?1,?2,?3)",
+            params![id, input.title, input.content],
+        )?;
+        bump_memory_revision(&transaction)?;
+        transaction.commit()?;
+        self.memory(&id)?
+            .ok_or_else(|| anyhow::anyhow!("memory disappeared after commit"))
+    }
+
+    /// Recall active memories using bounded SQLite FTS and an explicit ACL.
+    /// Content is never returned for retracted or superseded memories.
+    pub fn recall_memories(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        kind: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+    ) -> Result<Vec<MemorySearchResult>> {
+        let match_query = memory::fts_query(query)?;
+        let fallback_query = memory::fts_query_or(query)?;
+        if let Some(kind) = kind {
+            memory::MemoryKind::parse(kind)?;
+        }
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let candidate_limit =
+            i64::try_from(limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT) * 4).unwrap_or(i64::MAX);
+        let now = memory::now();
+        let principal_acl_json = serde_json::to_string(principal_acl)?;
+        let mut results = Vec::new();
+        let mut seen = HashSet::new();
+        for (index, query_variant) in [match_query, fallback_query].into_iter().enumerate() {
+            if index > 0 && results.len() >= limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT) {
+                break;
+            }
+            let mut statement = connection.prepare(
+                "SELECT m.id,m.kind,m.project,m.title,m.content,m.source,m.source_id,
+                        m.dedupe_key,m.confidence,m.importance,m.status,m.acl_json,
+                        m.provenance_json,m.observed_at,m.valid_from,m.valid_until,
+                        m.supersedes_id,m.created_at,m.updated_at,bm25(memories_fts)
+                 FROM memories_fts
+                 JOIN memories m ON m.id=memories_fts.memory_id
+                 WHERE memories_fts MATCH ?1 AND m.status='active'
+                   AND (?2 IS NULL OR m.project=?2)
+                   AND (?3 IS NULL OR m.kind=?3)
+                   AND m.valid_from<=?4
+                   AND (m.valid_until IS NULL OR julianday(m.valid_until)>julianday(?4))
+                   AND json_valid(m.acl_json)
+                   AND json_type(m.acl_json)='array'
+                   AND NOT EXISTS (
+                     SELECT 1 FROM json_each(m.acl_json) AS memory_acl
+                     WHERE memory_acl.type<>'text'
+                   )
+                   AND (
+                     json_array_length(m.acl_json)=0
+                     OR EXISTS (
+                       SELECT 1 FROM json_each(?5) AS principal_acl
+                       WHERE principal_acl.type='text'
+                         AND (
+                           principal_acl.value='*'
+                           OR EXISTS (
+                             SELECT 1 FROM json_each(m.acl_json) AS memory_acl
+                             WHERE memory_acl.type='text'
+                               AND memory_acl.value=principal_acl.value
+                           )
+                         )
+                     )
+                   )
+                 ORDER BY bm25(memories_fts),m.importance DESC,m.confidence DESC,m.updated_at DESC
+                 LIMIT ?6",
+            )?;
+            let rows = statement.query_map(
+                params![
+                    query_variant,
+                    project,
+                    kind,
+                    now,
+                    principal_acl_json,
+                    candidate_limit
+                ],
+                memory_from_row,
+            )?;
+            for row in rows {
+                let memory = row?;
+                if acl_allows(&memory.memory.acl, principal_acl)
+                    && seen.insert(memory.memory.id.clone())
+                {
+                    results.push(memory);
+                    if results.len() >= limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT) {
+                        return Ok(results);
+                    }
+                }
+            }
+        }
+        Ok(results)
+    }
+
+    pub fn memory(&self, id: &str) -> Result<Option<MemoryRecord>> {
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        connection
+            .query_row(
+                "SELECT id,kind,project,title,content,source,source_id,dedupe_key,
+                        confidence,importance,status,acl_json,provenance_json,
+                        observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at
+                 FROM memories WHERE id=?1",
+                [id],
+                memory_record_from_row,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Redact memory content while retaining a tombstone for auditability.
+    pub fn forget_memory(&self, id: &str) -> Result<bool> {
+        self.forget_memory_scoped(id, &["*".into()], true)
+    }
+
+    /// Redact a memory only when the caller can still see it.  The ACL check
+    /// and tombstone update share one write transaction so a concurrent
+    /// replacement cannot turn a previously authorized read into an
+    /// unauthorized mutation.
+    pub fn forget_memory_scoped(
+        &self,
+        id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<bool> {
+        let now = memory::now();
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let acl_json: Option<String> = transaction
+            .query_row(
+                "SELECT acl_json FROM memories WHERE id=?1 AND status='active'",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(acl_json) = acl_json else {
+            transaction.commit()?;
+            return Ok(false);
+        };
+        let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+        anyhow::ensure!(
+            owner || acl_allows(&acl, principal_acl),
+            "memory ACL denied"
+        );
+        let changed = transaction.execute(
+            "UPDATE memories SET status='retracted',content='',provenance_json='{}',
+             valid_until=COALESCE(valid_until,?2),updated_at=?2 WHERE id=?1 AND status='active'",
+            params![id, now],
+        )?;
+        if changed == 1 {
+            transaction.execute("DELETE FROM memories_fts WHERE memory_id=?1", [id])?;
+            bump_memory_revision(&transaction)?;
+        }
+        transaction.commit()?;
+        Ok(changed == 1)
+    }
+
+    pub fn memory_stats(&self) -> Result<MemoryStats> {
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let now = memory::now();
+        let (active, expired, retracted, superseded): (i64, i64, i64, i64) = connection.query_row(
+            "SELECT
+                   COALESCE(SUM(CASE WHEN status='active'
+                     AND (valid_until IS NULL OR julianday(valid_until)>julianday(?1)) THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='active'
+                     AND valid_until IS NOT NULL AND julianday(valid_until)<=julianday(?1) THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='retracted' THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='superseded' THEN 1 ELSE 0 END),0)
+                 FROM memories",
+            [now.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
+        let mut stats = MemoryStats {
+            active,
+            expired,
+            retracted,
+            superseded,
+            total: 0,
+        };
+        stats.total = stats.active + stats.expired + stats.retracted + stats.superseded;
+        Ok(stats)
+    }
+
+    /// Return lifecycle counts visible to a scoped principal.  Status metrics
+    /// must not reveal the existence of another workspace's memories even
+    /// though they contain no record content.
+    pub fn memory_stats_scoped(&self, principal_acl: &[String]) -> Result<MemoryStats> {
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let now = memory::now();
+        let principal_acl_json = serde_json::to_string(principal_acl)?;
+        let (active, expired, retracted, superseded): (i64, i64, i64, i64) = connection
+            .query_row(
+                "SELECT
+                   COALESCE(SUM(CASE WHEN status='active'
+                     AND (valid_until IS NULL OR julianday(valid_until)>julianday(?1)) THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='active'
+                     AND valid_until IS NOT NULL AND julianday(valid_until)<=julianday(?1) THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='retracted' THEN 1 ELSE 0 END),0),
+                   COALESCE(SUM(CASE WHEN status='superseded' THEN 1 ELSE 0 END),0)
+                 FROM memories
+                 WHERE json_valid(acl_json)
+                   AND json_type(acl_json)='array'
+                   AND NOT EXISTS (
+                     SELECT 1 FROM json_each(acl_json) AS memory_acl
+                     WHERE memory_acl.type<>'text'
+                   )
+                   AND (
+                     json_array_length(acl_json)=0
+                     OR EXISTS (
+                       SELECT 1 FROM json_each(?2) AS principal_acl
+                       WHERE principal_acl.type='text'
+                         AND (
+                           principal_acl.value='*'
+                           OR EXISTS (
+                             SELECT 1 FROM json_each(acl_json) AS memory_acl
+                             WHERE memory_acl.type='text'
+                               AND memory_acl.value=principal_acl.value
+                           )
+                         )
+                     )
+                   )",
+                params![now, principal_acl_json],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )?;
+        Ok(MemoryStats {
+            active,
+            expired,
+            retracted,
+            superseded,
+            total: active + expired + retracted + superseded,
+        })
+    }
+
+    /// Export bounded memory records visible to the supplied ACL.  Tombstones
+    /// are retained with their redacted content so a restore can preserve
+    /// deletion history without exposing an out-of-scope record.
+    pub fn export_memories(
+        &self,
+        project: Option<&str>,
+        kind: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+    ) -> Result<Vec<MemoryRecord>> {
+        if let Some(kind) = kind {
+            memory::MemoryKind::parse(kind)?;
+        }
+        let limit = limit.clamp(1, memory::MAX_MEMORY_EXPORT_LIMIT);
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let principal_acl_json = serde_json::to_string(principal_acl)?;
+        let mut statement = connection.prepare(
+            "SELECT id,kind,project,title,content,source,source_id,dedupe_key,
+                    confidence,importance,status,acl_json,provenance_json,
+                    observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at
+             FROM memories
+               WHERE (?1 IS NULL OR project=?1)
+               AND (?2 IS NULL OR kind=?2)
+               AND json_valid(acl_json)
+               AND json_type(acl_json)='array'
+               AND NOT EXISTS (
+                 SELECT 1 FROM json_each(acl_json) AS memory_acl
+                 WHERE memory_acl.type<>'text'
+               )
+               AND (
+                 json_array_length(acl_json)=0
+                 OR EXISTS (
+                   SELECT 1 FROM json_each(?3) AS principal_acl
+                   WHERE principal_acl.type='text'
+                     AND (
+                       principal_acl.value='*'
+                       OR EXISTS (
+                         SELECT 1 FROM json_each(acl_json) AS memory_acl
+                         WHERE memory_acl.type='text'
+                           AND memory_acl.value=principal_acl.value
+                       )
+                     )
+                 )
+               )
+             ORDER BY updated_at DESC,id DESC
+             LIMIT ?4",
+        )?;
+        let rows = statement.query_map(
+            params![
+                project,
+                kind,
+                principal_acl_json,
+                i64::try_from(limit).unwrap_or(i64::MAX)
+            ],
+            memory_record_from_row,
+        )?;
+        let mut records = Vec::new();
+        for row in rows {
+            let record = row?;
+            if acl_allows(&record.acl, principal_acl) {
+                records.push(record);
+                if records.len() >= limit {
+                    break;
+                }
+            }
+        }
+        Ok(records)
     }
 
     pub fn list_documents_scoped(
@@ -2272,6 +2869,43 @@ fn cosine(left: &[f32], right: &[f32]) -> f32 {
     }
 }
 
+fn memory_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemorySearchResult> {
+    Ok(MemorySearchResult {
+        memory: memory_record_from_row(row)?,
+        lexical_score: row.get(19)?,
+    })
+}
+
+fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryRecord> {
+    let acl_json: String = row.get(11)?;
+    let provenance_json: String = row.get(12)?;
+    Ok(MemoryRecord {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        project: row.get(2)?,
+        title: row.get(3)?,
+        content: row.get(4)?,
+        source: row.get(5)?,
+        source_id: row.get(6)?,
+        dedupe_key: row.get(7)?,
+        confidence: row.get(8)?,
+        importance: row.get(9)?,
+        status: row.get(10)?,
+        acl: serde_json::from_str(&acl_json).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(11, Type::Text, Box::new(error))
+        })?,
+        provenance: serde_json::from_str(&provenance_json).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(12, Type::Text, Box::new(error))
+        })?,
+        observed_at: row.get(13)?,
+        valid_from: row.get(14)?,
+        valid_until: row.get(15)?,
+        supersedes_id: row.get(16)?,
+        created_at: row.get(17)?,
+        updated_at: row.get(18)?,
+    })
+}
+
 fn stable_id(source: &str, source_id: &str) -> String {
     hex_digest(format!("{source}\0{source_id}").as_bytes())
 }
@@ -3645,5 +4279,693 @@ mod tests {
                 .to_string()
                 .contains("symlinked database path")
         );
+    }
+
+    #[test]
+    fn native_memory_is_idempotent_acl_scoped_and_redactable() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let input = crate::memory::MemoryInput {
+            kind: "preference".into(),
+            project: "work".into(),
+            title: "Review preference".into(),
+            content: "Prefer concise release notes with explicit risks.".into(),
+            source: "agent".into(),
+            source_id: "session-1".into(),
+            dedupe_key: Some("work:release-notes".into()),
+            confidence: 0.9,
+            importance: 0.8,
+            acl: vec!["work".into()],
+            provenance: serde_json::json!({"session":"session-1","evidence":["doc-1"]}),
+            supersedes_id: None,
+            valid_until: None,
+        };
+        let first = store.remember(&input).expect("remember");
+        let revision = store.memory_revision().expect("memory revision");
+        let second = store.remember(&input).expect("idempotent remember");
+        assert_eq!(first.id, second.id);
+        assert_eq!(store.memory_revision().expect("stable revision"), revision);
+        assert_eq!(store.memory_stats().expect("stats").active, 1);
+        assert_eq!(
+            store
+                .recall_memories(
+                    "concise release notes",
+                    Some("work"),
+                    None,
+                    10,
+                    &["work".into()]
+                )
+                .expect("work recall")
+                .len(),
+            1
+        );
+        assert_eq!(
+            store
+                .recall_memories(
+                    "what is my preference for concise release notes",
+                    Some("work"),
+                    None,
+                    10,
+                    &["work".into()]
+                )
+                .expect("natural-language fallback")
+                .len(),
+            1
+        );
+        assert!(
+            store
+                .recall_memories(
+                    "concise release notes",
+                    Some("work"),
+                    None,
+                    10,
+                    &["personal".into()]
+                )
+                .expect("personal recall")
+                .is_empty()
+        );
+        assert!(store.forget_memory(&first.id).expect("forget"));
+        assert!(
+            store
+                .memory(&first.id)
+                .expect("tombstone")
+                .expect("memory")
+                .content
+                .is_empty()
+        );
+        assert!(
+            store
+                .recall_memories(
+                    "concise release notes",
+                    Some("work"),
+                    None,
+                    10,
+                    &["work".into()]
+                )
+                .expect("redacted recall")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn native_memory_recall_matches_safe_prefix_terms_after_stopword_filtering() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let memory = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "procedural".into(),
+                project: "work".into(),
+                title: "Deployment checklist".into(),
+                content: "Run the release validation before deployment.".into(),
+                source: "agent".into(),
+                source_id: "release-playbook".into(),
+                dedupe_key: None,
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("memory");
+        let results = store
+            .recall_memories(
+                "how do I deploy the release",
+                Some("work"),
+                None,
+                10,
+                &["work".into()],
+            )
+            .expect("recall");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].memory.id, memory.id);
+    }
+
+    #[test]
+    fn scoped_memory_stats_filter_lifecycle_counts_by_acl() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "semantic".into(),
+                project: "work".into(),
+                title: "Work memory".into(),
+                content: "Work context.".into(),
+                source: "agent".into(),
+                source_id: "work-memory".into(),
+                dedupe_key: None,
+                confidence: 0.8,
+                importance: 0.7,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("work memory");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "semantic".into(),
+                project: "personal".into(),
+                title: "Personal memory".into(),
+                content: "Personal context.".into(),
+                source: "agent".into(),
+                source_id: "personal-memory".into(),
+                dedupe_key: None,
+                confidence: 0.8,
+                importance: 0.7,
+                acl: vec!["personal".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("personal memory");
+
+        let scoped = store
+            .memory_stats_scoped(&["work".into()])
+            .expect("scoped stats");
+        assert_eq!(scoped.active, 1);
+        assert_eq!(scoped.total, 1);
+        assert_eq!(store.memory_stats().expect("owner stats").total, 2);
+    }
+
+    #[test]
+    fn scoped_memory_mutations_cannot_cross_acl_boundaries() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let personal = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "personal".into(),
+                title: "Private preference".into(),
+                content: "Keep private context private.".into(),
+                source: "agent".into(),
+                source_id: "private-session".into(),
+                dedupe_key: Some("shared-retry-key".into()),
+                confidence: 0.9,
+                importance: 0.9,
+                acl: vec!["personal".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("personal memory");
+
+        let replacement = crate::memory::MemoryInput {
+            kind: "preference".into(),
+            project: "work".into(),
+            title: "Cross-scope overwrite".into(),
+            content: "This must not replace the personal memory.".into(),
+            source: "agent".into(),
+            source_id: "work-session".into(),
+            dedupe_key: Some("shared-retry-key".into()),
+            confidence: 0.9,
+            importance: 0.9,
+            acl: vec!["work".into()],
+            provenance: serde_json::json!({"test":true}),
+            supersedes_id: None,
+            valid_until: None,
+        };
+        let error = store
+            .remember_scoped(&replacement, &["work".into()], false)
+            .expect_err("dedupe overwrite must be ACL-scoped");
+        assert!(error.to_string().contains("outside principal visibility"));
+
+        let superseding = crate::memory::MemoryInput {
+            supersedes_id: Some(personal.id.clone()),
+            dedupe_key: Some("work-replacement".into()),
+            ..replacement
+        };
+        let error = store
+            .remember_scoped(&superseding, &["work".into()], false)
+            .expect_err("supersession must be ACL-scoped");
+        assert!(error.to_string().contains("outside principal visibility"));
+
+        let error = store
+            .forget_memory_scoped(&personal.id, &["work".into()], false)
+            .expect_err("forget must be ACL-scoped");
+        assert!(error.to_string().contains("memory ACL denied"));
+        assert_eq!(
+            store
+                .memory(&personal.id)
+                .expect("read personal memory")
+                .expect("personal memory exists")
+                .status,
+            "active"
+        );
+        assert!(
+            store
+                .export_memories(None, None, 100, &["work".into()])
+                .expect("scoped export")
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .export_memories(None, None, 100, &["*".into()])
+                .expect("owner export")
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn native_memory_replacement_is_project_scoped_even_for_owner() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let personal = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "personal".into(),
+                title: "Editor preference".into(),
+                content: "Use a focused editor.".into(),
+                source: "agent".into(),
+                source_id: "personal-session".into(),
+                dedupe_key: Some("editor-preference".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["personal".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("personal memory");
+
+        let cross_project_dedupe = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "work".into(),
+                title: "Work editor preference".into(),
+                content: "Use the team editor.".into(),
+                source: "agent".into(),
+                source_id: "work-session".into(),
+                dedupe_key: Some("editor-preference".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect_err("owner must not overwrite another project's dedupe key");
+        assert!(
+            cross_project_dedupe
+                .to_string()
+                .contains("dedupe key must stay within its project")
+        );
+
+        let cross_project_supersession = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "work".into(),
+                title: "Work editor preference".into(),
+                content: "Use the team editor.".into(),
+                source: "agent".into(),
+                source_id: "work-session-2".into(),
+                dedupe_key: Some("work-editor-preference".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: Some(personal.id.clone()),
+                valid_until: None,
+            })
+            .expect_err("owner must not supersede another project's memory");
+        assert!(
+            cross_project_supersession
+                .to_string()
+                .contains("supersession target must stay within its project")
+        );
+        assert_eq!(
+            store
+                .memory(&personal.id)
+                .expect("read personal memory")
+                .expect("personal memory")
+                .status,
+            "active"
+        );
+    }
+
+    #[test]
+    fn native_memory_cannot_supersede_itself() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let current = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Keep the task active.".into(),
+                source: "agent".into(),
+                source_id: "session-1".into(),
+                dedupe_key: Some("current-task".into()),
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("current memory");
+        let error = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Keep the task active.".into(),
+                source: "agent".into(),
+                source_id: "session-2".into(),
+                dedupe_key: Some("current-task".into()),
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: Some(current.id),
+                valid_until: None,
+            })
+            .expect_err("memory must not supersede itself");
+        assert!(error.to_string().contains("cannot supersede itself"));
+    }
+
+    #[test]
+    fn native_memory_dedupe_keys_cannot_reactivate_retired_records() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let current = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Keep the task active.".into(),
+                source: "agent".into(),
+                source_id: "session-1".into(),
+                dedupe_key: Some("retired-task".into()),
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("current memory");
+        assert!(store.forget_memory(&current.id).expect("forget"));
+        let error = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Reusing a retired key must fail.".into(),
+                source: "agent".into(),
+                source_id: "session-2".into(),
+                dedupe_key: Some("retired-task".into()),
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect_err("retired dedupe key must not reactivate a tombstone");
+        assert!(
+            error
+                .to_string()
+                .contains("dedupe key belongs to a retired memory")
+        );
+    }
+
+    #[test]
+    fn expired_working_memory_is_not_recalled() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Expired task".into(),
+                content: "This task is already complete.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: Some("2000-01-01T00:00:00Z".into()),
+            })
+            .expect("expired memory");
+        assert!(
+            store
+                .recall_memories("task complete", Some("work"), None, 10, &["work".into()])
+                .expect("recall")
+                .is_empty()
+        );
+        let stats = store.memory_stats().expect("memory stats");
+        assert_eq!(stats.active, 0);
+        assert_eq!(stats.expired, 1);
+        assert_eq!(stats.total, 1);
+        store
+            .configure_memory_limit(1)
+            .expect("configure memory limit");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "This task is still active.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("expired records do not consume active capacity");
+    }
+
+    #[test]
+    fn memory_recall_filters_acl_before_bounded_candidate_limit() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        for index in 0..8 {
+            store
+                .remember(&crate::memory::MemoryInput {
+                    kind: "working".into(),
+                    project: "private".into(),
+                    title: format!("Shared task {index}"),
+                    content: "shared task context".into(),
+                    source: "agent".into(),
+                    source_id: format!("private-{index}"),
+                    dedupe_key: None,
+                    confidence: 1.0,
+                    importance: 1.0,
+                    acl: vec!["private".into()],
+                    provenance: serde_json::json!({"test":true}),
+                    supersedes_id: None,
+                    valid_until: None,
+                })
+                .expect("private memory");
+        }
+        let visible = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Shared task for work".into(),
+                content: "shared task context".into(),
+                source: "agent".into(),
+                source_id: "work-1".into(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("visible memory");
+        let results = store
+            .recall_memories("shared task context", None, None, 1, &["work".into()])
+            .expect("scoped recall");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].memory.id, visible.id);
+        let exported = store
+            .export_memories(None, None, 1, &["work".into()])
+            .expect("scoped export");
+        assert_eq!(exported.len(), 1);
+        assert_eq!(exported[0].id, visible.id);
+    }
+
+    #[test]
+    fn native_memory_supersession_deactivates_previous_fact_atomically() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let previous = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "semantic".into(),
+                project: "personal".into(),
+                title: "Current editor".into(),
+                content: "The current editor is Vim.".into(),
+                source: "agent".into(),
+                source_id: "session-1".into(),
+                dedupe_key: Some("personal:editor".into()),
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-1"}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("previous");
+        let replacement = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "semantic".into(),
+                project: "personal".into(),
+                title: "Current editor".into(),
+                content: "The current editor is Helix.".into(),
+                source: "agent".into(),
+                source_id: "session-2".into(),
+                dedupe_key: Some("personal:editor-v2".into()),
+                confidence: 0.95,
+                importance: 0.8,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-2"}),
+                supersedes_id: Some(previous.id.clone()),
+                valid_until: None,
+            })
+            .expect("replacement");
+        assert_eq!(store.memory_stats().expect("stats").active, 1);
+        assert_eq!(store.memory_stats().expect("stats").superseded, 1);
+        let results = store
+            .recall_memories(
+                "current editor",
+                Some("personal"),
+                None,
+                10,
+                &["personal".into()],
+            )
+            .expect("recall");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].memory.id, replacement.id);
+    }
+
+    #[test]
+    fn native_memory_enforces_configured_active_limit_without_blocking_replacement() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store.configure_memory_limit(1).expect("configure limit");
+        let first = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Ship the native memory contract.".into(),
+                source: "agent".into(),
+                source_id: "session-1".into(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-1"}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("first memory");
+        let error = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Another task".into(),
+                content: "This must wait.".into(),
+                source: "agent".into(),
+                source_id: "session-2".into(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-2"}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect_err("active limit must reject a second memory");
+        assert!(error.to_string().contains("active memory limit reached"));
+        let replacement = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "The native memory contract shipped.".into(),
+                source: "agent".into(),
+                source_id: "session-3".into(),
+                dedupe_key: Some("work:current-task".into()),
+                confidence: 0.95,
+                importance: 0.8,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-3"}),
+                supersedes_id: Some(first.id.clone()),
+                valid_until: None,
+            })
+            .expect("replacement stays within limit");
+        assert_ne!(replacement.id, first.id);
+        assert_eq!(store.memory_stats().expect("stats").active, 1);
+    }
+
+    #[test]
+    fn expired_supersession_target_cannot_bypass_active_limit() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        store.configure_memory_limit(1).expect("configure limit");
+        let expired = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Expired task".into(),
+                content: "This task is already complete.".into(),
+                source: "agent".into(),
+                source_id: "session-expired".into(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-expired"}),
+                supersedes_id: None,
+                valid_until: Some("2000-01-01T00:00:00Z".into()),
+            })
+            .expect("expired memory");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Keep the active memory cap.".into(),
+                source: "agent".into(),
+                source_id: "session-current".into(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-current"}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("current memory");
+        let error = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Overflow task".into(),
+                content: "This must wait.".into(),
+                source: "agent".into(),
+                source_id: "session-overflow".into(),
+                dedupe_key: None,
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"session":"session-overflow"}),
+                supersedes_id: Some(expired.id),
+                valid_until: None,
+            })
+            .expect_err("expired supersession must not bypass the active limit");
+        assert!(error.to_string().contains("active memory limit reached"));
     }
 }

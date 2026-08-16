@@ -11,6 +11,7 @@ use cortana::config::{Config, SourceConfig, default_config_path};
 use cortana::connectors;
 use cortana::context::{self, ContextBundle};
 use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbedder};
+use cortana::memory::MemoryInput;
 use cortana::model::Document;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
@@ -294,6 +295,11 @@ enum Command {
         )]
         max_tokens: Option<usize>,
     },
+    /// Create, recall, or redact explicit memories in Cortana's native store.
+    Memory {
+        #[command(subcommand)]
+        action: MemoryAction,
+    },
     /// Serve the HTTP query API.
     Serve {
         #[arg(long, default_value = "127.0.0.1:7331")]
@@ -323,6 +329,60 @@ enum Command {
         #[command(subcommand)]
         action: ServiceAction,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum MemoryAction {
+    /// Write one durable, provenance-bearing memory. Reusing --dedupe-key is idempotent.
+    Remember {
+        #[arg(long)]
+        kind: String,
+        #[arg(long)]
+        project: String,
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        content: String,
+        #[arg(long, default_value = "agent")]
+        source: String,
+        #[arg(long, default_value = "")]
+        source_id: String,
+        #[arg(long)]
+        dedupe_key: Option<String>,
+        #[arg(long)]
+        confidence: Option<f32>,
+        #[arg(long)]
+        importance: Option<f32>,
+        #[arg(long = "acl")]
+        acl: Vec<String>,
+        #[arg(long, help = "JSON provenance object (never store secrets here)")]
+        provenance: Option<String>,
+        #[arg(long)]
+        supersedes_id: Option<String>,
+        #[arg(long, help = "Optional RFC3339 expiry for short-lived working context")]
+        valid_until: Option<String>,
+    },
+    /// Recall active memories with bounded lexical retrieval and ACL filtering.
+    Recall {
+        query: String,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// Export bounded native memories as JSON, including redacted tombstones.
+    Export {
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 10_000)]
+        limit: usize,
+    },
+    /// Redact a memory while retaining its audit tombstone.
+    Forget { id: String },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -723,6 +783,9 @@ async fn main() -> Result<()> {
                 | Command::Acl {
                     action: AclAction::Apply { .. },
                 }
+                | Command::Memory {
+                    action: MemoryAction::Remember { .. } | MemoryAction::Forget { .. },
+                }
         )
     ) {
         Some(SyncLock::acquire(&config.data_dir.join("sync.lock"))?)
@@ -730,6 +793,10 @@ async fn main() -> Result<()> {
         None
     };
     let store = Store::open(&config.database_path())?;
+    store.configure_memory_limit(config.memory.max_active)?;
+    if let Some(Command::Memory { action }) = cli.command.as_ref() {
+        return manage_memory(&config, &store, action);
+    }
     if let Some(Command::Acl { action }) = cli.command.as_ref() {
         let _lock = startup_lock.as_ref();
         if matches!(action, AclAction::Apply { .. }) {
@@ -990,7 +1057,7 @@ async fn main() -> Result<()> {
                         project,
                         source,
                         "succeeded",
-                        Some(bundle.evidence.len()),
+                        Some(bundle.evidence.len().saturating_add(bundle.memories.len())),
                         started,
                     );
                     let mut stdout = std::io::BufWriter::new(std::io::stdout());
@@ -1044,6 +1111,10 @@ async fn main() -> Result<()> {
             api::serve(
                 api::AppState::new(store, embedder)
                     .with_config(&config, service::sync_job_installed())
+                    .with_memory_defaults(
+                        config.memory.default_confidence,
+                        config.memory.default_importance,
+                    )
                     .with_answer_engine(answer)
                     .with_auth_policy(auth)
                     .with_auth_config_path(config_path.clone()),
@@ -1086,6 +1157,10 @@ async fn main() -> Result<()> {
             let server = mcp::BrainServer::new(store, embedder)
                 .with_principal(principal)
                 .with_audit_limit(config.auth.audit_max_events)
+                .with_memory_defaults(
+                    config.memory.default_confidence,
+                    config.memory.default_importance,
+                )
                 .with_source_groups(code_sources, message_sources)
                 .with_configured_sources(configured_sources);
             let server = if let Some(token_env) = reloadable_token_env {
@@ -1111,6 +1186,7 @@ async fn main() -> Result<()> {
             | Command::SlackWorkspaces { .. }
             | Command::BuzzCommunities { .. }
             | Command::ValidateSource { .. }
+            | Command::Memory { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
         ) => unreachable!(),
@@ -1841,6 +1917,208 @@ fn manage_service(
         ServiceAction::Stop { service: name } => service::stop(name.as_str()),
         ServiceAction::Restart { service: name } => service::restart(name.as_str()),
         ServiceAction::Uninstall => service::uninstall(),
+    }
+}
+
+fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Result<()> {
+    let started = Instant::now();
+    match action {
+        MemoryAction::Remember {
+            kind,
+            project,
+            title,
+            content,
+            source,
+            source_id,
+            dedupe_key,
+            confidence,
+            importance,
+            acl,
+            provenance,
+            supersedes_id,
+            valid_until,
+        } => {
+            let provenance = provenance
+                .as_deref()
+                .map(serde_json::from_str)
+                .transpose()
+                .context("--provenance must be a valid JSON value")?
+                .unwrap_or_else(|| {
+                    serde_json::json!({
+                        "principal": "local-cli",
+                        "interface": "cli"
+                    })
+                });
+            let result = store.remember(&MemoryInput {
+                kind: kind.clone(),
+                project: project.clone(),
+                title: title.clone(),
+                content: content.clone(),
+                source: source.clone(),
+                source_id: source_id.clone(),
+                dedupe_key: dedupe_key.clone(),
+                confidence: confidence.unwrap_or(config.memory.default_confidence),
+                importance: importance.unwrap_or(config.memory.default_importance),
+                acl: acl.clone(),
+                provenance,
+                supersedes_id: supersedes_id.clone(),
+                valid_until: valid_until.clone(),
+            });
+            match result {
+                Ok(record) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "remember",
+                        Some(project),
+                        Some(source),
+                        "succeeded",
+                        Some(1),
+                        started,
+                    );
+                    println!("{}", serde_json::to_string_pretty(&record)?);
+                    Ok(())
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "remember",
+                        Some(project),
+                        Some(source),
+                        "invalid",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
+        }
+        MemoryAction::Recall {
+            query,
+            project,
+            kind,
+            limit,
+        } => {
+            let result = store.recall_memories(
+                query,
+                project.as_deref(),
+                kind.as_deref(),
+                *limit,
+                &["*".into()],
+            );
+            match result {
+                Ok(records) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "recall",
+                        project.as_deref(),
+                        None,
+                        "succeeded",
+                        Some(records.len()),
+                        started,
+                    );
+                    println!("{}", serde_json::to_string_pretty(&records)?);
+                    Ok(())
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "recall",
+                        project.as_deref(),
+                        None,
+                        "failed",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
+        }
+        MemoryAction::Forget { id } => {
+            let result = store.forget_memory(id);
+            match result {
+                Ok(true) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "forget",
+                        None,
+                        None,
+                        "succeeded",
+                        Some(1),
+                        started,
+                    );
+                    println!("{}", serde_json::json!({"id": id, "forgotten": true}));
+                    Ok(())
+                }
+                Ok(false) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "forget",
+                        None,
+                        None,
+                        "not_found",
+                        Some(0),
+                        started,
+                    );
+                    anyhow::bail!("memory not found or already retracted: {id}");
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "forget",
+                        None,
+                        None,
+                        "failed",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
+        }
+        MemoryAction::Export {
+            project,
+            kind,
+            limit,
+        } => {
+            let result =
+                store.export_memories(project.as_deref(), kind.as_deref(), *limit, &["*".into()]);
+            match result {
+                Ok(records) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "export",
+                        project.as_deref(),
+                        None,
+                        "succeeded",
+                        Some(records.len()),
+                        started,
+                    );
+                    println!("{}", serde_json::to_string_pretty(&records)?);
+                    Ok(())
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "export",
+                        project.as_deref(),
+                        None,
+                        "failed",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
+        }
     }
 }
 
@@ -3392,7 +3670,21 @@ async fn context_bundle(
     max_tokens: usize,
 ) -> Result<ContextBundle> {
     let evidence = retrieval::retrieve(store, embedder, query, project, source, limit).await?;
-    Ok(context::build(query, &evidence, max_tokens))
+    let memories = store
+        .recall_memories(
+            query,
+            project,
+            None,
+            limit.min(cortana::memory::MAX_MEMORY_RECALL_LIMIT),
+            &["*".into()],
+        )
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "native memory recall unavailable while building CLI context");
+            Vec::new()
+        });
+    Ok(context::build_with_retrieval_and_memory(
+        query, &evidence, &memories, max_tokens, "hybrid", None,
+    ))
 }
 
 /// Metadata-only audit trail for CLI context requests. The query text and
@@ -3418,6 +3710,33 @@ fn record_cli_context_audit(
         max_events,
     ) {
         tracing::warn!(%error, "CLI context audit write failed");
+    }
+}
+
+/// Record metadata-only audit events for owner-local memory commands. Memory
+/// titles, content, queries, and IDs never enter the audit trail.
+#[allow(clippy::too_many_arguments)]
+fn record_cli_memory_audit(
+    store: &Store,
+    max_events: usize,
+    action: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+    outcome: &str,
+    result_count: Option<usize>,
+    started: Instant,
+) {
+    if let Err(error) = store.record_audit(
+        "local-cli",
+        &format!("local-cli/memory/{action}"),
+        project,
+        source,
+        outcome,
+        result_count,
+        u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        max_events,
+    ) {
+        tracing::warn!(%error, "CLI memory audit write failed");
     }
 }
 
@@ -3481,15 +3800,16 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits,
-        SyncLock, SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
+        AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, MemoryAction, SourceControl,
+        SourceLimits, SyncLock, SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
         configured_connector_command, context_bundle, ensure_recurring_sync_validated,
-        failure_status, flush_ingest_batch, ingest_documents, is_budget_exceeded, private_file,
-        require_sync_validation, run_connector_to_spool, validate_configured_source,
+        failure_status, flush_ingest_batch, ingest_documents, is_budget_exceeded, manage_memory,
+        private_file, require_sync_validation, run_connector_to_spool, validate_configured_source,
         validate_connector_spool, validation_overrides,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
+    use cortana::memory::MemoryInput;
     use cortana::model::Document;
     use cortana::source_validation::{SourceValidationStatus, configuration_fingerprint, record};
     use cortana::store::Store;
@@ -4914,6 +5234,23 @@ mod tests {
                 &[(content, vector)],
             )
             .expect("upsert");
+        store
+            .remember(&MemoryInput {
+                kind: "procedural".into(),
+                project: "engineering".into(),
+                title: "Deploy preference".into(),
+                content: "Always deploy after validation.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: Some("test:deploy-preference".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: Vec::new(),
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("remember");
 
         let bundle = context_bundle(
             &store,
@@ -4927,8 +5264,14 @@ mod tests {
         .await
         .expect("context bundle");
         assert!(bundle.context.contains("### [1] Release runbook"));
-        assert!(bundle.context.contains("Cite sources with [n]"));
+        assert!(
+            bundle
+                .context
+                .contains("source evidence for factual claims")
+        );
         assert_eq!(bundle.evidence.len(), 1);
+        assert_eq!(bundle.memories.len(), 1);
+        assert_eq!(bundle.metrics.memories_included, 1);
         assert_eq!(bundle.metrics.retrieved, 1);
         assert_eq!(bundle.metrics.included, 1);
         assert_eq!(bundle.metrics.omitted, 0);
@@ -4946,5 +5289,62 @@ mod tests {
             assert!(json.contains(field), "missing {field} in {json}");
         }
         assert!(json.contains("### [1] Release runbook"));
+    }
+
+    #[test]
+    fn local_memory_commands_record_metadata_only_audit_events() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        config.auth.audit_max_events = 10;
+        let store = Store::open(&config.database_path()).expect("store");
+        manage_memory(
+            &config,
+            &store,
+            &MemoryAction::Remember {
+                kind: "preference".into(),
+                project: "work".into(),
+                title: "Release style".into(),
+                content: "Prefer concise notes.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: Some("test:release-style".into()),
+                confidence: None,
+                importance: None,
+                acl: Vec::new(),
+                provenance: None,
+                supersedes_id: None,
+                valid_until: None,
+            },
+        )
+        .expect("remember command");
+        let id = store
+            .recall_memories("concise notes", Some("work"), None, 1, &["*".into()])
+            .expect("recall")
+            .pop()
+            .expect("memory")
+            .memory
+            .id;
+        manage_memory(
+            &config,
+            &store,
+            &MemoryAction::Recall {
+                query: "concise notes".into(),
+                project: Some("work".into()),
+                kind: None,
+                limit: 1,
+            },
+        )
+        .expect("recall command");
+        manage_memory(&config, &store, &MemoryAction::Forget { id }).expect("forget command");
+        let audit = store.audit_events(10).expect("audit");
+        assert_eq!(audit.len(), 3);
+        assert_eq!(audit[0].action, "local-cli/memory/forget");
+        assert_eq!(audit[1].action, "local-cli/memory/recall");
+        assert_eq!(audit[2].action, "local-cli/memory/remember");
+        assert_eq!(audit[2].project.as_deref(), Some("work"));
+        assert_eq!(audit[2].source.as_deref(), Some("agent"));
     }
 }

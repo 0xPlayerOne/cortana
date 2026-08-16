@@ -124,8 +124,7 @@ mock.module('./api', () => ({
       auth_principals: update.auth_principals,
       embedding: update.embedding,
       query: update.query,
-      hindsight: update.hindsight,
-      honcho: update.honcho,
+      memory: update.memory,
       ingestion: update.ingestion,
       runtime: update.runtime,
     }

@@ -110,7 +110,7 @@ is operational ingestion evidence, not a full-corpus quality benchmark. That his
 used smaller bounds than the configured budgets; the current host status now reports 12 of 13
 enabled sources complete at their configured budgets, while Personal Drive remains at the
 successful 25-document/5 MiB/60-second sample and keeps recurring sync disabled. The pass did
-not enable Discord, code, Slack, synthesis, Hindsight, or Honcho.
+not enable Discord, code, Slack, or synthesis.
 
 The v0.32.12 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
@@ -200,7 +200,7 @@ cache invalidation is intentionally not attempted because mutating the approved 
 violate the read-only safety boundary. Keep the deterministic fixture's cache-revision test as
 the invalidation gate, and record this live report separately for the approved principal and
 workspace. A passing report is provider- and corpus-specific evidence, not permission to enable
-recurring sync or optional Hindsight/Honcho memory.
+recurring sync or implicit memory writes.
 
 ## Bounded disposable load benchmark
 

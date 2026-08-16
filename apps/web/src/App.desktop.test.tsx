@@ -368,29 +368,6 @@ mock.module('./api', () => ({
   runDesktopServiceAction: () => Promise.resolve(installedServiceReport),
   installDesktopUpdate: () => Promise.resolve(desktopUpdate),
   checkDesktopUpdate: () => Promise.resolve(desktopUpdate),
-  getDesktopHindsightStatus: () =>
-    Promise.resolve({
-      enabled: false,
-      configured: false,
-      reachable: false,
-      state: 'disabled' as const,
-      endpoint: 'http://127.0.0.1:8888',
-      bank: 'default',
-      token_configured: false,
-      detail: 'Optional sidecar is disabled; normal ingestion is unchanged.',
-    }),
-  getDesktopHonchoStatus: () =>
-    Promise.resolve({
-      enabled: false,
-      configured: false,
-      reachable: false,
-      state: 'disabled' as const,
-      endpoint: 'https://api.honcho.dev/',
-      workspace_id: 'default',
-      peer_id: 'cortana',
-      token_configured: false,
-      detail: 'Optional sidecar is disabled; normal ingestion is unchanged.',
-    }),
   getRuntimeAudit: (limit: number) => Promise.resolve(runtimeAuditEvents.slice(0, limit)),
   getDesktopAudit: (limit: number) => Promise.resolve(desktopAuditEvents.slice(0, limit)),
   getDesktopUpdate: () => {
@@ -985,16 +962,12 @@ test('updates project link surfaces native browser failures', async () => {
   }
 })
 
-test('desktop shell surfaces optional sidecar health without opening settings', async () => {
+test('desktop shell surfaces service health without native memory details', async () => {
   render(<App />)
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Open Hindsight status' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Open service health' })).toBeTruthy()
   )
-  expect(screen.getByRole('button', { name: 'Open Honcho status' })).toBeTruthy()
-  expect(screen.getByRole('button', { name: 'Open service health' })).toBeTruthy()
   expect(screen.getByText('Services: core attention')).toBeTruthy()
-  expect(screen.getByText('Hindsight: disabled')).toBeTruthy()
-  expect(screen.getByText('Honcho: disabled')).toBeTruthy()
 })
 
 test('desktop Help links use the native external URL bridge', async () => {
@@ -1667,7 +1640,7 @@ test('settings refuses duplicate canonical source labels in one workspace', asyn
   }
 })
 
-test('settings navigation opens workspace and services first and groups plugins', async () => {
+test('settings navigation opens workspace and services first and exposes native memory', async () => {
   render(<App />)
   await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy())
 
@@ -1682,12 +1655,10 @@ test('settings navigation opens workspace and services first and groups plugins'
   expect(labels[2]).toBe('Sources')
   expect(labels[3]).toBe('Readiness')
 
-  fireEvent.click(screen.getByRole('button', { name: 'Plugins' }))
-  expect(screen.getByRole('button', { name: 'Plugins' }).className).toContain('active')
-  fireEvent.click(screen.getByRole('button', { name: 'Hindsight' }))
-  expect(screen.getByRole('button', { name: 'Plugins' }).className).toContain('active')
+  fireEvent.click(screen.getByRole('button', { name: 'Memory' }))
+  expect(screen.getByRole('button', { name: 'Memory' }).className).toContain('active')
   await waitFor(() =>
-    expect(screen.getByRole('heading', { name: 'Hindsight memory sidecar' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Native agentic memory' })).toBeTruthy()
   )
 })
 
@@ -2838,54 +2809,6 @@ test('completed source jobs refresh source health without waiting for the status
     state.settings = desktopSettings
     state.sourceJob = null
   }
-})
-
-test('hindsight status section remains explicit about being optional', async () => {
-  render(<App />)
-  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
-
-  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-  await waitFor(() =>
-    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
-  )
-  fireEvent.click(screen.getByRole('button', { name: 'Hindsight' }))
-  expect(screen.getByText('Hindsight memory sidecar')).toBeTruthy()
-  expect(screen.getByText(/intentionally not wired into normal ingestion/i)).toBeTruthy()
-  expect(screen.getByDisplayValue('Optional sidecar')).toBeTruthy()
-  expect(screen.getByDisplayValue('Disabled')).toBeTruthy()
-  expect(screen.getByLabelText('Enabled')).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: 'Check connection' }))
-  await waitFor(() => expect(screen.getByText(/Health: disabled/)).toBeTruthy())
-  expect(screen.getByRole('button', { name: 'Open Hindsight status' })).toBeTruthy()
-
-  // The shell retains the native health result when Settings is unmounted.
-  fireEvent.click(screen.getByRole('button', { name: 'Knowledge' }))
-  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
-  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
-  fireEvent.click(screen.getByRole('button', { name: 'Hindsight' }))
-  await waitFor(() => expect(screen.getByText(/Health: disabled/)).toBeTruthy())
-  expect(screen.getByText(/health snapshot is retained/i)).toBeTruthy()
-})
-
-test('honcho settings section exposes a disabled-by-default session sidecar', async () => {
-  render(<App />)
-  await waitFor(() => expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy())
-
-  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
-  await waitFor(() =>
-    expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
-  )
-  fireEvent.click(screen.getByRole('button', { name: 'Honcho' }))
-  expect(screen.getByText('Honcho memory sidecar')).toBeTruthy()
-  expect(screen.getByText(/not the source of truth/i)).toBeTruthy()
-  expect(screen.getByDisplayValue('https://api.honcho.dev')).toBeTruthy()
-  expect(screen.getByDisplayValue('default')).toBeTruthy()
-  expect(screen.getAllByDisplayValue('cortana')).toHaveLength(2)
-  expect(screen.getByLabelText('Enabled')).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: 'Check connection' }))
-  await waitFor(() => expect(screen.getByText(/Health: disabled/)).toBeTruthy())
-  expect(screen.getByRole('button', { name: 'Open Honcho status' })).toBeTruthy()
 })
 
 test('local runtime section opens active secret file path in desktop', async () => {

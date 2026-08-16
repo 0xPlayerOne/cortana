@@ -286,6 +286,15 @@ export type BrainStatus = {
   sync_runs: SourceSyncSummary[]
   ingestion: IngestionStatus
   workspaces: WorkspaceSettings[]
+  memory: MemoryStats
+}
+
+export type MemoryStats = {
+  active: number
+  expired: number
+  superseded: number
+  retracted: number
+  total: number
 }
 
 export type ProviderSettings = {
@@ -318,32 +327,16 @@ export type QuerySettings = ProviderSettings & {
   cache_ttl_seconds: number
 }
 
-export type HindsightSettings = {
-  enabled: boolean
-  provider: 'hindsight'
-  base_url: string
-  bank: string
-  token_env: string | null
-  optional: boolean
-  wired_to_ingestion: boolean
-}
-
-export type HonchoSettings = {
-  enabled: boolean
-  provider: 'honcho'
-  base_url: string
-  workspace_id: string
-  peer_id: string
-  session_prefix: string
-  token_env: string | null
-  optional: boolean
-  wired_to_ingestion: boolean
+export type MemorySettings = {
+  max_active: number
+  default_confidence: number
+  default_importance: number
 }
 
 export type AuthPrincipalSettings = {
   principal: string
   token_env: string
-  scopes: Array<'query' | 'status' | 'admin'>
+  scopes: Array<'query' | 'status' | 'admin' | 'memory'>
   acl: string[]
 }
 
@@ -380,8 +373,7 @@ export type DesktopSettings = {
   auth_principals: AuthPrincipalSettings[]
   embedding: EmbeddingSettings
   query: QuerySettings
-  hindsight: HindsightSettings
-  honcho: HonchoSettings
+  memory: MemorySettings
   ingestion: {
     max_documents_per_source: number
     max_bytes_per_source: number
@@ -409,8 +401,7 @@ export type DesktopSettingsUpdate = Pick<
   | 'auth_principals'
   | 'embedding'
   | 'query'
-  | 'hindsight'
-  | 'honcho'
+  | 'memory'
   | 'ingestion'
   | 'runtime'
 > & {
@@ -568,30 +559,6 @@ export type DesktopServiceActivity = {
   detail: string | null
 }
 
-export type DesktopHindsightStatus = {
-  enabled: boolean
-  configured: boolean
-  reachable: boolean
-  state: 'disabled' | 'configuration_required' | 'healthy' | 'unreachable' | 'unhealthy'
-  endpoint: string
-  bank: string
-  token_configured: boolean
-  detail: string | null
-}
-
-export type DesktopHonchoStatus = {
-  enabled: boolean
-  configured: boolean
-  reachable: boolean
-  state:
-    'disabled' | 'configuration_required' | 'healthy' | 'reachable' | 'unreachable' | 'unhealthy'
-  endpoint: string
-  workspace_id: string
-  peer_id: string
-  token_configured: boolean
-  detail: string | null
-}
-
 export type DesktopInstallJob = {
   id: string
   tool: string
@@ -632,6 +599,7 @@ export type AnswerResponse = {
   query: string
   answer: string
   evidence: Evidence[]
+  memories?: AgentMemory[]
   plan: {
     queries: string[]
     model_generated: boolean
@@ -648,13 +616,31 @@ export type ContextBundle = {
   query: string
   context: string
   evidence: Evidence[]
+  memories?: AgentMemory[]
   metrics: {
     retrieved: number
     included: number
     omitted: number
+    memories_retrieved?: number
+    memories_included?: number
+    memories_omitted?: number
     estimated_tokens: number
     max_tokens: number
   }
   retrieval_mode?: 'hybrid' | 'lexical-fallback'
   retrieval_warning?: string | null
+}
+
+export type AgentMemory = {
+  id: string
+  kind: string
+  project: string
+  title: string
+  content: string
+  confidence: number
+  importance: number
+  source?: string
+  observed_at?: string
+  valid_until?: string | null
+  updated_at: string
 }

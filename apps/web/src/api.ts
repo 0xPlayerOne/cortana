@@ -14,8 +14,6 @@ import type {
   DesktopInitialSyncPlan,
   DesktopInstallJob,
   DesktopInfo,
-  DesktopHindsightStatus,
-  DesktopHonchoStatus,
   DesktopReadiness,
   DesktopServiceReport,
   DesktopDatabaseActionResult,
@@ -107,16 +105,6 @@ export async function getDesktopSchedule(): Promise<DesktopSchedule> {
 export async function saveDesktopSchedule(schedule: DesktopSchedule): Promise<DesktopSchedule> {
   if (!isDesktopApp) throw new Error('Service scheduling is available in Cortana Desktop')
   return invokeDesktop<DesktopSchedule>('desktop_schedule_save', { schedule })
-}
-
-export async function getDesktopHindsightStatus(): Promise<DesktopHindsightStatus> {
-  if (!isDesktopApp) throw new Error('Hindsight status is available in Cortana Desktop')
-  return invokeDesktop<DesktopHindsightStatus>('desktop_hindsight_status')
-}
-
-export async function getDesktopHonchoStatus(): Promise<DesktopHonchoStatus> {
-  if (!isDesktopApp) throw new Error('Honcho status is available in Cortana Desktop')
-  return invokeDesktop<DesktopHonchoStatus>('desktop_honcho_status')
 }
 
 export async function runDesktopServiceAction(

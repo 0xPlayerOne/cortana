@@ -41,6 +41,8 @@ pub struct Config {
     #[serde(default)]
     pub query: QueryConfig,
     #[serde(default)]
+    pub memory: MemoryConfig,
+    #[serde(default)]
     pub auth: AuthConfig,
     #[serde(default)]
     pub connectors: ConnectorConfig,
@@ -150,6 +152,26 @@ pub struct QueryConfig {
     pub cache_max_entries: usize,
     #[serde(default = "default_query_cache_ttl")]
     pub cache_ttl_seconds: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct MemoryConfig {
+    #[serde(default = "default_memory_max_active")]
+    pub max_active: usize,
+    #[serde(default = "default_memory_confidence")]
+    pub default_confidence: f32,
+    #[serde(default = "default_memory_importance")]
+    pub default_importance: f32,
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        Self {
+            max_active: default_memory_max_active(),
+            default_confidence: default_memory_confidence(),
+            default_importance: default_memory_importance(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -355,6 +377,7 @@ impl Default for Config {
             embedding: EmbeddingConfig::default(),
             ingestion: IngestionConfig::default(),
             query: QueryConfig::default(),
+            memory: MemoryConfig::default(),
             auth: AuthConfig::default(),
             connectors: ConnectorConfig::default(),
             runtime: RuntimeConfig::default(),
@@ -454,6 +477,20 @@ impl Config {
 }
 
 fn validate_source_definitions(config: &Config) -> Result<()> {
+    anyhow::ensure!(
+        (1..=1_000_000).contains(&config.memory.max_active),
+        "memory max_active must be between 1 and 1000000"
+    );
+    anyhow::ensure!(
+        config.memory.default_confidence.is_finite()
+            && (0.0..=1.0).contains(&config.memory.default_confidence),
+        "memory default_confidence must be a finite number between 0 and 1"
+    );
+    anyhow::ensure!(
+        config.memory.default_importance.is_finite()
+            && (0.0..=1.0).contains(&config.memory.default_importance),
+        "memory default_importance must be a finite number between 0 and 1"
+    );
     anyhow::ensure!(
         config.ingestion.validation_max_age_hours <= MAX_VALIDATION_MAX_AGE_HOURS,
         "ingestion validation_max_age_hours exceeds the supported maximum"
@@ -788,6 +825,18 @@ const fn default_query_cache_entries() -> usize {
 
 const fn default_query_cache_ttl() -> u64 {
     3_600
+}
+
+const fn default_memory_max_active() -> usize {
+    crate::memory::DEFAULT_MEMORY_MAX_ACTIVE
+}
+
+const fn default_memory_confidence() -> f32 {
+    0.7
+}
+
+const fn default_memory_importance() -> f32 {
+    0.5
 }
 
 const fn default_audit_max_events() -> usize {
