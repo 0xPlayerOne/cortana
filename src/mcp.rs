@@ -409,7 +409,7 @@ impl BrainServer {
                     } else {
                         "succeeded"
                     },
-                    Some(retrieval.evidence.len()),
+                    Some(retrieval.evidence.len().saturating_add(memories.len())),
                     started,
                 );
                 serde_json::to_string(&context::build_with_retrieval_and_memory(

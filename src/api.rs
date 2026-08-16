@@ -1418,7 +1418,7 @@ async fn context(
         } else {
             "succeeded"
         },
-        Some(retrieval.evidence.len()),
+        Some(retrieval.evidence.len().saturating_add(memories.len())),
         started,
     );
     Ok(Json(context_bundle::build_with_retrieval_and_memory(
