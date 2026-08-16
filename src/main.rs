@@ -3620,13 +3620,18 @@ async fn context_bundle(
     max_tokens: usize,
 ) -> Result<ContextBundle> {
     let evidence = retrieval::retrieve(store, embedder, query, project, source, limit).await?;
-    let memories = store.recall_memories(
-        query,
-        project,
-        None,
-        limit.min(cortana::memory::MAX_MEMORY_RECALL_LIMIT),
-        &["*".into()],
-    )?;
+    let memories = store
+        .recall_memories(
+            query,
+            project,
+            None,
+            limit.min(cortana::memory::MAX_MEMORY_RECALL_LIMIT),
+            &["*".into()],
+        )
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "native memory recall unavailable while building CLI context");
+            Vec::new()
+        });
     Ok(context::build_with_retrieval_and_memory(
         query, &evidence, &memories, max_tokens, "hybrid", None,
     ))
