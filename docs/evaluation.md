@@ -331,6 +331,11 @@ Personal Drive and Personal Gmail used a 180-second per-source window while thei
 30-second operator probes expired during connector-to-embedding work; those historical trials also
 did not authorize recurring sync or reconcile indexed data.
 
+On 2026-08-16 a separate Personal Drive validation-only probe completed 100 documents at
+390,182 bytes and a 300-second cap with zero index writes. It remains under the configured
+production budget and is recorded as connector evidence only; the recurring-sync gate stays
+closed until a complete production-budget validation succeeds.
+
 ```toml
 [query]
 synthesis_enabled = true

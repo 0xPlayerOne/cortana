@@ -1556,7 +1556,9 @@ test('source settings quarantine legacy scopes until they are assigned to a work
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
 
     fireEvent.click(screen.getByRole('tab', { name: /Needs assignment/ }))
-    expect(screen.getByRole('alert').textContent).toContain('uses the legacy community scope')
+    const assignmentAlert = screen.getByRole('alert')
+    expect(assignmentAlert.textContent).toContain('uses the legacy community scope')
+    expect(assignmentAlert.className).toContain('source-unassigned-note')
     expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: 'Validate' }) as HTMLButtonElement).disabled).toBe(
       true
