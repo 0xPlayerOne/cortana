@@ -427,10 +427,10 @@ planned multi-user store; the canonical model intentionally does not depend on e
 OpenAI-compatible embedding APIs make the existing local Qwen/TEI service and cloud embedding
 providers interchangeable without mixing vector spaces inside an index generation.
 
-Agentic memory is native to Cortana's canonical SQLite store. Explicit `remember`, `recall`, and
-`forget` operations share the same provenance, workspace ACL, audit, backup, and deletion semantics
-as knowledge retrieval. See [Native agentic memory](docs/memory.md) for the built-in operational
-memory layer.
+Agentic memory is native to Cortana's canonical SQLite store. Explicit `remember`, `recall`,
+`forget`, and scoped export operations share the same provenance, workspace ACL, audit, backup, and
+deletion semantics as knowledge retrieval. See [Native agentic memory](docs/memory.md) for the
+built-in operational memory layer.
 
 ## Development
 

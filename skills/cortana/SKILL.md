@@ -72,9 +72,9 @@ to the configured principal, enforces query/status scopes and document/source AC
 MCP, scopes status counters and source inventory, and records only metadata-only audit events under
 that principal name.
 
-The MCP server also exposes native `remember`, `recall`, and `forget` tools. They use the same
-workspace ACLs and audit trail as document retrieval; `context` automatically includes relevant
-native memories without exposing retracted or out-of-scope records.
+The MCP server also exposes native `remember`, `recall`, `forget`, and `export_memory` tools. They
+use the same workspace ACLs and audit trail as document retrieval; `context` automatically includes
+relevant native memories without exposing retracted or out-of-scope records.
 
 For an HTTP-only client, send:
 
