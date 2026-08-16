@@ -65,6 +65,11 @@ MAX_DRIVE_PDF_BYTES = 64 * 1024 * 1024
 MAX_DRIVE_FULL_PDF_PAGES = 128
 UNKNOWN_CONTENT_CHARS = -1
 PDF_SAMPLE_MARKER = "\n\n[Cortana omitted middle PDF pages]\n\n"
+# A normal-sized PDF can still contain more text than the bounded extraction
+# payload. Once that bound is reached, stop asking pypdf to parse later pages;
+# the retained prefix is explicitly marked as incomplete and is never treated
+# as a complete source snapshot by the validation gate.
+PDF_EARLY_STOP_MARKER = "\n\n[Cortana stopped PDF extraction at the bounded text limit]\n\n"
 MAX_TOKEN_FILE_BYTES = 64 * 1024
 GOOGLE_REQUEST_RETRIES = 2
 GOOGLE_RETRY_BACKOFF_SECONDS = (0.25, 0.75)
@@ -1277,6 +1282,18 @@ def _extract_pdf_text(reader: Any) -> _DriveContent:
         for page in pages:
             accumulator.append(page.extract_text() or "")
             accumulator.append("\n\n")
+            if accumulator.total_chars > MAX_DRIVE_STREAM_CHARS:
+                # Parsing later pages cannot improve the bounded payload. Keep
+                # the already-collected sample, mark its original length as
+                # unknown, and avoid turning one text-heavy PDF into a
+                # source-wide timeout.
+                available = max(0, MAX_DRIVE_STREAM_CHARS - len(PDF_EARLY_STOP_MARKER))
+                prefix = str(accumulator.finish())[:available]
+                return _DriveContent(
+                    f"{prefix}{PDF_EARLY_STOP_MARKER}"[:MAX_DRIVE_STREAM_CHARS],
+                    None,
+                    truncated=True,
+                )
         result = accumulator.finish()
         return _DriveContent(str(result).strip(), result.original_chars, result.truncated)
 

@@ -70,6 +70,11 @@ chunks, query-only readiness passed, and the installation remains manual/query-o
 records are below production budgets, so code roots, Discord, Slack, reconciliation, and
 recurring sync remain explicitly gated.
 
+On 2026-08-16 a separate read-only Personal Drive probe completed 100 documents at 390,182
+bytes with a 300-second cap and zero index writes. This is useful bounded connector evidence
+while the PDF parser is being optimized, but it is still below the configured 2,000-document,
+128 MiB, 1,800-second production gate and does not authorize reconciliation or recurring sync.
+
 ## Per-source rollout matrix
 
 | Source family   | Authorization boundary                                                                       | Implemented contract                                                                                                                       | Safe next gate                                                                                | Production gate                                                                       |
