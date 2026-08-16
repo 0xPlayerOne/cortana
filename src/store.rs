@@ -1205,19 +1205,20 @@ impl Store {
     ) -> Result<Vec<MemorySearchResult>> {
         let match_query = memory::fts_query(query)?;
         let fallback_query = memory::fts_query_or(query)?;
+        let query_terms = memory::term_tokens(query)?;
+        let result_limit = limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT);
         let normalized_kind = kind
             .map(memory::MemoryKind::parse)
             .transpose()?
             .map(|kind| kind.as_str().to_string());
         let connection = self.read_connection.lock().expect("store lock poisoned");
-        let candidate_limit =
-            i64::try_from(limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT) * 4).unwrap_or(i64::MAX);
+        let candidate_limit = i64::try_from(result_limit * 4).unwrap_or(i64::MAX);
         let now = memory::now();
         let principal_acl_json = serde_json::to_string(principal_acl)?;
         let mut results = Vec::new();
         let mut seen = HashSet::new();
         for (index, query_variant) in [match_query, fallback_query].into_iter().enumerate() {
-            if index > 0 && results.len() >= limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT) {
+            if index > 0 && results.len() >= result_limit {
                 break;
             }
             let mut statement = connection.prepare(
@@ -1268,17 +1269,28 @@ impl Store {
                 memory_from_row,
             )?;
             for row in rows {
-                let memory = row?;
+                let mut memory = row?;
                 if acl_allows(&memory.memory.acl, principal_acl)
                     && seen.insert(memory.memory.id.clone())
                 {
+                    memory.relevance_score =
+                        memory_relevance_score(&memory, index == 0, &query_terms, &now);
                     results.push(memory);
-                    if results.len() >= limit.clamp(1, memory::MAX_MEMORY_RECALL_LIMIT) {
-                        return Ok(results);
+                    if results.len() >= usize::try_from(candidate_limit).unwrap_or(usize::MAX) {
+                        break;
                     }
                 }
             }
         }
+        results.sort_by(|left, right| {
+            right
+                .relevance_score
+                .partial_cmp(&left.relevance_score)
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| right.memory.updated_at.cmp(&left.memory.updated_at))
+                .then_with(|| left.memory.id.cmp(&right.memory.id))
+        });
+        results.truncate(result_limit);
         Ok(results)
     }
 
@@ -2942,7 +2954,62 @@ fn memory_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemorySearchResu
     Ok(MemorySearchResult {
         memory: memory_record_from_row(row)?,
         lexical_score: row.get(19)?,
+        relevance_score: 0.0,
     })
+}
+
+/// Rank explicit memories without a second provider call. FTS5 remains the
+/// candidate generator; this bounded score prevents a highly-important but
+/// weak one-term match from displacing a precise, fresh memory. Exact
+/// all-term matches receive a small mode bonus over the natural-language OR
+/// fallback, while confidence and importance remain visible tie-breakers.
+fn memory_relevance_score(
+    result: &MemorySearchResult,
+    exact_match: bool,
+    query_terms: &[String],
+    now: &str,
+) -> f64 {
+    let haystack = format!("{} {}", result.memory.title, result.memory.content).to_lowercase();
+    let matched = query_terms
+        .iter()
+        .filter(|term| memory_contains_prefix_token(&haystack, term))
+        .count();
+    let coverage = if query_terms.is_empty() {
+        0.0
+    } else {
+        matched as f64 / query_terms.len() as f64
+    };
+    // SQLite's bm25 score is lower-is-better and normally negative for a
+    // match. Clamp malformed/legacy values so the public score stays [0, 1].
+    let lexical = (-result.lexical_score).max(0.0);
+    let lexical = (lexical / (1.0 + lexical)).clamp(0.0, 1.0);
+    let salience = (0.6 * f64::from(result.memory.importance)
+        + 0.4 * f64::from(result.memory.confidence))
+    .clamp(0.0, 1.0);
+    let freshness = memory_freshness_score(&result.memory.updated_at, now);
+    let mode_bonus = if exact_match { 1.0 } else { 0.8 };
+    ((0.55 * coverage) + (0.25 * lexical) + (0.12 * salience) + (0.08 * freshness)) * mode_bonus
+}
+
+fn memory_contains_prefix_token(haystack: &str, term: &str) -> bool {
+    haystack
+        .split(|character: char| !character.is_alphanumeric() && character != '_')
+        .filter(|token| !token.is_empty())
+        .any(|token| token.starts_with(term))
+}
+
+fn memory_freshness_score(updated_at: &str, now: &str) -> f64 {
+    let Ok(updated_at) = DateTime::parse_from_rfc3339(updated_at) else {
+        return 0.0;
+    };
+    let Ok(now) = DateTime::parse_from_rfc3339(now) else {
+        return 0.0;
+    };
+    let age_days = (now.with_timezone(&Utc) - updated_at.with_timezone(&Utc))
+        .num_seconds()
+        .max(0) as f64
+        / 86_400.0;
+    (1.0 + age_days / 30.0).recip()
 }
 
 fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryRecord> {
@@ -4468,6 +4535,68 @@ mod tests {
             .expect("recall");
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].memory.id, memory.id);
+    }
+
+    #[test]
+    fn native_memory_recall_ranks_exact_coverage_above_weak_salience_match() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let exact = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "procedural".into(),
+                project: "work".into(),
+                title: "Release validation checklist".into(),
+                content: "Run the release validation before publishing notes.".into(),
+                source: "agent".into(),
+                source_id: "exact-release".into(),
+                dedupe_key: None,
+                confidence: 0.6,
+                importance: 0.1,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("exact memory");
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "preference".into(),
+                project: "work".into(),
+                title: "Release preference".into(),
+                content: "Prefer concise notes.".into(),
+                source: "agent".into(),
+                source_id: "weak-release".into(),
+                dedupe_key: None,
+                confidence: 1.0,
+                importance: 1.0,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("weak memory");
+
+        let results = store
+            .recall_memories(
+                "release validation notes",
+                Some("work"),
+                None,
+                2,
+                &["work".into()],
+            )
+            .expect("recall");
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].memory.id, exact.id);
+        assert!(results[0].relevance_score > results[1].relevance_score);
+        assert!((0.0..=1.0).contains(&results[0].relevance_score));
+        assert!((0.0..=1.0).contains(&results[1].relevance_score));
+    }
+
+    #[test]
+    fn native_memory_relevance_uses_token_prefixes_not_substrings() {
+        assert!(memory_contains_prefix_token("release deployment", "deploy"));
+        assert!(!memory_contains_prefix_token("are fine", "re"));
+        assert!(!memory_contains_prefix_token("redeploy later", "deploy"));
     }
 
     #[test]
