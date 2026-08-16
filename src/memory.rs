@@ -21,6 +21,7 @@ pub const MAX_MEMORY_VALID_UNTIL_BYTES: usize = 64;
 pub const MAX_MEMORY_ACL_ENTRIES: usize = 32;
 pub const MAX_MEMORY_ACL_BYTES: usize = 256;
 pub const MAX_MEMORY_RECALL_LIMIT: usize = 100;
+pub const MAX_MEMORY_EXPORT_LIMIT: usize = 100_000;
 pub const DEFAULT_MEMORY_MAX_ACTIVE: usize = 100_000;
 
 #[derive(Clone, Copy, Debug)]

@@ -50,6 +50,8 @@ The native MCP tools are:
 - `forget` — redact one memory;
 - `context` — retrieve cited source evidence plus relevant native memory in a
   token-bounded bundle.
+- `export` — export bounded native records, including redacted tombstones, for
+  an operator-controlled backup or migration.
 
 The equivalent CLI is:
 
@@ -62,11 +64,12 @@ cortana memory remember --kind working --project work \
   --title "Current task" --content "Validate the release" \
   --valid-until "2026-08-16T18:00:00Z"
 cortana memory recall "release notes" --project work
+cortana memory export --project work --limit 10000 > work-memory.json
 cortana memory forget MEMORY_ID
 ```
 
 HTTP clients can use `POST /v1/memory`, `POST /v1/memory/recall`, and
-`POST /v1/memory/forget`. Shared agents need the `memory` scope in addition to
+`POST /v1/memory/forget`, or `GET /v1/memory/export`. Shared agents need the `memory` scope in addition to
 their normal query/status scopes; ACLs are enforced before content is returned
 or redacted.
 

@@ -1238,6 +1238,44 @@ impl Store {
         Ok(stats)
     }
 
+    /// Export bounded memory records visible to the supplied ACL.  Tombstones
+    /// are retained with their redacted content so a restore can preserve
+    /// deletion history without exposing an out-of-scope record.
+    pub fn export_memories(
+        &self,
+        project: Option<&str>,
+        kind: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+    ) -> Result<Vec<MemoryRecord>> {
+        if let Some(kind) = kind {
+            memory::MemoryKind::parse(kind)?;
+        }
+        let limit = limit.clamp(1, memory::MAX_MEMORY_EXPORT_LIMIT);
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT id,kind,project,title,content,source,source_id,dedupe_key,
+                    confidence,importance,status,acl_json,provenance_json,
+                    observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at
+             FROM memories
+             WHERE (?1 IS NULL OR project=?1)
+               AND (?2 IS NULL OR kind=?2)
+             ORDER BY updated_at DESC,id DESC",
+        )?;
+        let rows = statement.query_map(params![project, kind], memory_record_from_row)?;
+        let mut records = Vec::new();
+        for row in rows {
+            let record = row?;
+            if acl_allows(&record.acl, principal_acl) {
+                records.push(record);
+                if records.len() >= limit {
+                    break;
+                }
+            }
+        }
+        Ok(records)
+    }
+
     pub fn list_documents_scoped(
         &self,
         project: Option<&str>,
@@ -4187,6 +4225,19 @@ mod tests {
                 .expect("personal memory exists")
                 .status,
             "active"
+        );
+        assert!(
+            store
+                .export_memories(None, None, 100, &["work".into()])
+                .expect("scoped export")
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .export_memories(None, None, 100, &["*".into()])
+                .expect("owner export")
+                .len(),
+            1
         );
     }
 

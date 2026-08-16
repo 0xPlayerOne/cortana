@@ -83,6 +83,14 @@ pub struct MemoryRecallParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct MemoryExportParams {
+    project: Option<String>,
+    kind: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryForgetParams {
     id: String,
 }
@@ -728,6 +736,74 @@ impl BrainServer {
                 serde_json::json!({"id": params.id, "forgotten": forgotten}).to_string()
             }
             Err(error) => format!("memory error: {error}"),
+        }
+    }
+
+    #[tool(
+        description = "Export bounded native memory records visible to this principal, including redacted tombstones"
+    )]
+    async fn export_memory(&self, Parameters(params): Parameters<MemoryExportParams>) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.memory_export",
+                    params.project.as_deref(),
+                    None,
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                return format!("authorization error: {error}");
+            }
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            self.audit_principal(
+                &principal,
+                "mcp.memory_export",
+                params.project.as_deref(),
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            return "authorization error: memory scope required".into();
+        }
+        match self.store.export_memories(
+            params.project.as_deref(),
+            params.kind.as_deref(),
+            params
+                .limit
+                .unwrap_or(10_000)
+                .min(crate::memory::MAX_MEMORY_EXPORT_LIMIT),
+            &principal.visible_acl(),
+        ) {
+            Ok(memories) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_export",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(memories.len()),
+                    started,
+                );
+                serde_json::to_string(&memories).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_export",
+                    params.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("memory export error: {error}")
+            }
         }
     }
 

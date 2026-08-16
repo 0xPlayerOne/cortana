@@ -57,6 +57,7 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
             [
                 "brain_status",
                 "context",
+                "export_memory",
                 "forget",
                 "recall",
                 "remember",

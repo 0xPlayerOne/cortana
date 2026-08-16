@@ -365,6 +365,15 @@ struct MemoryRecallRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct MemoryExportParams {
+    project: Option<String>,
+    kind: Option<String>,
+    #[serde(default = "default_memory_export_limit")]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct MemoryForgetRequest {
     id: String,
 }
@@ -562,6 +571,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/memory", post(remember_memory))
         .route("/v1/memory/recall", post(recall_memories))
         .route("/v1/memory/forget", post(forget_memory))
+        .route("/v1/memory/export", get(export_memories))
         .route("/v1/answer", post(answer))
         .route("/v1/audit", get(audit_events))
         .route("/v1/auth/reload", post(reload_auth))
@@ -613,7 +623,9 @@ async fn authorize(
     };
     let required_scope = match path {
         "/metrics" | "/v1/audit" | "/v1/auth/reload" => ADMIN_SCOPE,
-        "/v1/memory" | "/v1/memory/recall" | "/v1/memory/forget" => MEMORY_SCOPE,
+        "/v1/memory" | "/v1/memory/recall" | "/v1/memory/forget" | "/v1/memory/export" => {
+            MEMORY_SCOPE
+        }
         "/v1/status" | "/readyz" => STATUS_SCOPE,
         _ => QUERY_SCOPE,
     };
@@ -1628,6 +1640,48 @@ async fn forget_memory(
     }))
 }
 
+async fn export_memories(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumQuery(params): AxumQuery<MemoryExportParams>,
+) -> Result<Json<Vec<crate::memory::MemoryRecord>>, (StatusCode, String)> {
+    validate_retrieval_scope(params.project.as_deref(), None)?;
+    let started = Instant::now();
+    match state.store.export_memories(
+        params.project.as_deref(),
+        params.kind.as_deref(),
+        params.limit,
+        &principal.visible_acl(),
+    ) {
+        Ok(memories) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.export",
+                params.project.as_deref(),
+                None,
+                "succeeded",
+                Some(memories.len()),
+                started,
+            );
+            Ok(Json(memories))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.export",
+                params.project.as_deref(),
+                None,
+                "failed",
+                None,
+                started,
+            );
+            Err(internal_error(error))
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct AuditParams {
     #[serde(default = "default_audit_limit")]
@@ -1766,6 +1820,10 @@ fn default_limit() -> usize {
 
 fn default_memory_limit() -> usize {
     10
+}
+
+fn default_memory_export_limit() -> usize {
+    10_000
 }
 
 fn default_context_tokens() -> usize {

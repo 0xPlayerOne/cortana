@@ -372,6 +372,15 @@ enum MemoryAction {
         #[arg(short = 'n', long, default_value_t = 10)]
         limit: usize,
     },
+    /// Export bounded native memories as JSON, including redacted tombstones.
+    Export {
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 10_000)]
+        limit: usize,
+    },
     /// Redact a memory while retaining its audit tombstone.
     Forget { id: String },
 }
@@ -2064,6 +2073,43 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                         config.auth.audit_max_events,
                         "forget",
                         None,
+                        None,
+                        "failed",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
+        }
+        MemoryAction::Export {
+            project,
+            kind,
+            limit,
+        } => {
+            let result =
+                store.export_memories(project.as_deref(), kind.as_deref(), *limit, &["*".into()]);
+            match result {
+                Ok(records) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "export",
+                        project.as_deref(),
+                        None,
+                        "succeeded",
+                        Some(records.len()),
+                        started,
+                    );
+                    println!("{}", serde_json::to_string_pretty(&records)?);
+                    Ok(())
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "export",
+                        project.as_deref(),
                         None,
                         "failed",
                         None,
