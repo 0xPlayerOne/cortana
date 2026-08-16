@@ -34,7 +34,8 @@ raw-evidence fallback.
    working-state update. Include a stable `dedupe_key` and provenance when possible; never copy
    an entire source document into memory. Set an RFC3339 `valid_until` on short-lived working
    context so expired state is excluded automatically. Dedupe keys and supersession targets stay
-   within the selected workspace, even for the owner. Use `recall` for memory-only retrieval and
+   within the selected workspace, even for the owner; use a new key for each superseding
+   record because retired keys remain reserved. Use `recall` for memory-only retrieval and
    `forget` when the user withdraws a memory.
 
 When using `/v1/answer`, treat any returned `memories` as operational context rather than citations;

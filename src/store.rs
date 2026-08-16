@@ -1037,6 +1037,10 @@ impl Store {
                 existing.project == input.project,
                 "memory dedupe key must stay within its project"
             );
+            anyhow::ensure!(
+                existing.status == "active",
+                "memory dedupe key belongs to a retired memory; choose a new key"
+            );
         }
         let id = existing
             .as_ref()
@@ -4639,6 +4643,52 @@ mod tests {
             })
             .expect_err("memory must not supersede itself");
         assert!(error.to_string().contains("cannot supersede itself"));
+    }
+
+    #[test]
+    fn native_memory_dedupe_keys_cannot_reactivate_retired_records() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let current = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Keep the task active.".into(),
+                source: "agent".into(),
+                source_id: "session-1".into(),
+                dedupe_key: Some("retired-task".into()),
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("current memory");
+        assert!(store.forget_memory(&current.id).expect("forget"));
+        let error = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "work".into(),
+                title: "Current task".into(),
+                content: "Reusing a retired key must fail.".into(),
+                source: "agent".into(),
+                source_id: "session-2".into(),
+                dedupe_key: Some("retired-task".into()),
+                confidence: 0.7,
+                importance: 0.5,
+                acl: vec![],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect_err("retired dedupe key must not reactivate a tombstone");
+        assert!(
+            error
+                .to_string()
+                .contains("dedupe key belongs to a retired memory")
+        );
     }
 
     #[test]
