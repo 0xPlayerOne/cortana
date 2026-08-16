@@ -61,6 +61,17 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
+## v0.32.10 release intent (pending protected release flow)
+
+The post-v0.32.9 source tree contains the bounded Google Drive PDF metadata preflight and the
+corresponding current Personal Drive validation evidence. This release intent keeps those
+production-safety changes represented by a downloadable patch release after the protected
+staging-to-main promotion and Release Please version PR complete. It changes no credentials,
+source authorization, indexed data, recurring-sync state, or optional memory-provider state.
+
+Until the v0.32.10 tag, published assets, and strict verifier are complete, v0.32.9 remains the
+current downloadable release.
+
 ## v0.32.9 release intent (published and verified)
 
 This patch publishes the bounded large-PDF Drive parser after the v0.32.8 production-budget
