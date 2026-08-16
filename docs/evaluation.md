@@ -87,7 +87,7 @@ proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 The latest provider-backed fixture evidence was collected on 2026-08-16 with the installed
 v0.32.12 CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR, case
 pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
-invalidation; the answer completed in 23,267 ms under the 55,000 ms deadline with no provider
+invalidation; the answer completed in 14,437 ms under the 55,000 ms deadline with no provider
 fallback. This is installed-runtime evidence, but it remains synthetic fixture evidence: it
 does not query the personal index, prove packaged GUI behavior, or authorize source
 synchronization. The preceding v0.32.7 result remains historical evidence in the release record.
