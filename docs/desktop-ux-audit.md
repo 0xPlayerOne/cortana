@@ -109,12 +109,11 @@ timeout. A follow-up 25-document/5 MiB/60-second validation and non-reconciling 
 (`changed=1`, `unchanged=24`, `deleted=0`), but that bounded prefix remains below the production gate.
 
 The current validation metadata now contains production-budget complete records for Apple Notes
-(28/65/8 documents), Calendar (2,207/1,836/0 events), Buzz (45 records), and Work Gmail (7,386
-messages). Personal Drive's 2,000-document/128 MiB/1,800-second validation failed closed at the
-1,799-second connector deadline under the installed v0.32.8 parser while processing a large PDF;
-Work Drive's latest 900-second validation also failed closed at its connector deadline. Retry Drive
-only after the bounded large-PDF parser ships. Personal/Special Drive and Personal/Special Gmail
-remain below their configured budgets.
+(28/65/8 documents), Calendar (2,207/1,836/0 events), Buzz (45 records), Work Drive (478
+documents/4,527,721 bytes), Work Gmail (7,386 messages), Personal Gmail (427 messages), Special
+Gmail (216 messages), and Special Drive (97 documents). Personal Drive's 2,000-document/128 MiB/
+1,800-second validation failed closed at the 1,799-second connector deadline under the installed
+v0.32.9 parser while processing a large PDF.
 The recurring sync service remains uninstalled, and no reconciliation or large sync has been run.
 
 Historical bounded source-smoke and non-reconciling trials remain useful connector evidence, but do
