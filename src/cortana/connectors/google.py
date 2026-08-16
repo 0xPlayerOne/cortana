@@ -78,6 +78,9 @@ PDF_NO_TEXT_MARKER = (
 DOCX_NO_TEXT_MARKER = (
     "[Cortana Word document contains no extractable text; open the original Drive item.]"
 )
+DRIVE_NO_TEXT_MARKER = (
+    "[Cortana Drive item has no supported text content; open the original Drive item.]"
+)
 MAX_DRIVE_ZIP_UNCOMPRESSED_BYTES = 128 * 1024 * 1024
 # A normal-sized PDF can still contain more text than the bounded extraction
 # payload. Once that bound is reached, stop asking pypdf to parse later pages;
@@ -582,11 +585,13 @@ def fetch_drive(
                                 pending_writes = 0
                         if not body.strip():
                             if strict:
-                                raise RuntimeError(
-                                    "Drive file has no supported content: "
-                                    f"id={file_id}; refusing partial snapshot"
-                                )
-                            continue
+                                # Preserve metadata for binary formats we do not
+                                # OCR yet instead of aborting an otherwise complete
+                                # Drive snapshot. The explicit marker keeps this
+                                # limitation visible to retrieval and operators.
+                                body = _DriveContent(DRIVE_NO_TEXT_MARKER, None, True)
+                            else:
+                                continue
                         try:
                             updated_at = _timestamp(item.get("modifiedTime"))
                         except (TypeError, ValueError, OverflowError, OSError) as error:
@@ -617,7 +622,11 @@ def fetch_drive(
                                 or bool(getattr(body, "truncated", False)),
                                 "content_unavailable": any(
                                     marker in str(body)
-                                    for marker in (PDF_NO_TEXT_MARKER, DOCX_NO_TEXT_MARKER)
+                                    for marker in (
+                                        PDF_NO_TEXT_MARKER,
+                                        DOCX_NO_TEXT_MARKER,
+                                        DRIVE_NO_TEXT_MARKER,
+                                    )
                                 ),
                                 "content_original_chars": getattr(
                                     body, "original_chars", len(body)

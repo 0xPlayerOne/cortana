@@ -1944,7 +1944,7 @@ def test_google_drive_full_mode_uses_stale_cached_content(
     assert "sensitive provider detail" not in diagnostic
 
 
-def test_google_drive_full_mode_rejects_unsupported_content(tmp_path: Path) -> None:
+def test_google_drive_full_mode_preserves_metadata_for_binary_content(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     write_token(token, '{"token":"access"}')
 
@@ -1965,9 +1965,18 @@ def test_google_drive_full_mode_rejects_unsupported_content(tmp_path: Path) -> N
             )
         return httpx.Response(200, text="unused", request=request)
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
-    with pytest.raises(RuntimeError, match="Drive file has no supported content: id=bin1"):
-        list(fetch_drive(token, "work", client=client))
+    documents = list(
+        fetch_drive(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert len(documents) == 1
+    assert documents[0].content == google.DRIVE_NO_TEXT_MARKER
+    assert documents[0].metadata["content_unavailable"] is True
+    assert documents[0].metadata["content_truncated"] is True
 
 
 def test_google_drive_rejects_oversized_pdf_from_listing_metadata() -> None:
