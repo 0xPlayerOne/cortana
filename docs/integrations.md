@@ -61,6 +61,12 @@ alone remains citation-bearing. Query-only principals receive no memory field. A
 include the native memory revision and visible memory ACL, so remember/forget operations cannot
 leave an old memory-backed answer cached.
 
+Memory writes may include an optional RFC3339 `valid_until` for short-lived working context. Expired
+records are excluded from recall and answer context automatically; durable facts should instead use
+an explicit supersession or forget operation. Dedupe and supersession are checked against the
+caller’s visible ACL inside the same SQLite transaction, so a scoped agent cannot overwrite or
+replace another workspace’s memory by guessing an identifier.
+
 ## Local owner mode versus scoped bearer principals
 
 With no `[[auth.tokens]]` configured, Cortana runs in local owner mode: the loopback-bound HTTP

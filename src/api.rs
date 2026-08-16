@@ -350,6 +350,7 @@ struct MemoryRememberRequest {
     acl: Option<Vec<String>>,
     provenance: Option<serde_json::Value>,
     supersedes_id: Option<String>,
+    valid_until: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1458,7 +1459,7 @@ async fn remember_memory(
     let acl = if principal.is_owner() {
         requested_acl
     } else if requested_acl.is_empty() {
-        visible_acl
+        visible_acl.clone()
     } else if requested_acl
         .iter()
         .all(|label| visible_acl.iter().any(|visible| visible == label))
@@ -1502,8 +1503,12 @@ async fn remember_memory(
             })
         }),
         supersedes_id: request.supersedes_id,
+        valid_until: request.valid_until,
     };
-    match state.store.remember(&input) {
+    match state
+        .store
+        .remember_scoped(&input, &visible_acl, principal.is_owner())
+    {
         Ok(memory) => {
             record_audit(
                 &state,
@@ -1605,7 +1610,7 @@ async fn forget_memory(
     }
     let forgotten = state
         .store
-        .forget_memory(&request.id)
+        .forget_memory_scoped(&request.id, &principal.visible_acl(), principal.is_owner())
         .map_err(internal_error)?;
     record_audit(
         &state,
@@ -4037,6 +4042,7 @@ mod tests {
                 acl: vec!["work".into()],
                 provenance: serde_json::json!({"test": true}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect("memory");
 

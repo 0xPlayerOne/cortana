@@ -359,6 +359,8 @@ enum MemoryAction {
         provenance: Option<String>,
         #[arg(long)]
         supersedes_id: Option<String>,
+        #[arg(long, help = "Optional RFC3339 expiry for short-lived working context")]
+        valid_until: Option<String>,
     },
     /// Recall active memories with bounded lexical retrieval and ACL filtering.
     Recall {
@@ -1925,6 +1927,7 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
             acl,
             provenance,
             supersedes_id,
+            valid_until,
         } => {
             let provenance = provenance
                 .as_deref()
@@ -1950,6 +1953,7 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                 acl: acl.clone(),
                 provenance,
                 supersedes_id: supersedes_id.clone(),
+                valid_until: valid_until.clone(),
             });
             match result {
                 Ok(record) => {
@@ -5198,6 +5202,7 @@ mod tests {
                 acl: Vec::new(),
                 provenance: serde_json::json!({"test":true}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect("remember");
 
@@ -5265,6 +5270,7 @@ mod tests {
                 acl: Vec::new(),
                 provenance: None,
                 supersedes_id: None,
+                valid_until: None,
             },
         )
         .expect("remember command");

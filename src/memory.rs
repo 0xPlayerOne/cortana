@@ -6,7 +6,7 @@
 //! conclusions with their own lifecycle, provenance, confidence, and ACL.
 
 use anyhow::{Result, bail};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -17,6 +17,7 @@ pub const MAX_MEMORY_SOURCE_BYTES: usize = 128;
 pub const MAX_MEMORY_SOURCE_ID_BYTES: usize = 512;
 pub const MAX_MEMORY_DEDUPE_KEY_BYTES: usize = 512;
 pub const MAX_MEMORY_PROVENANCE_BYTES: usize = 16 * 1024;
+pub const MAX_MEMORY_VALID_UNTIL_BYTES: usize = 64;
 pub const MAX_MEMORY_ACL_ENTRIES: usize = 32;
 pub const MAX_MEMORY_ACL_BYTES: usize = 256;
 pub const MAX_MEMORY_RECALL_LIMIT: usize = 100;
@@ -94,6 +95,9 @@ pub struct MemoryInput {
     pub provenance: Value,
     #[serde(default)]
     pub supersedes_id: Option<String>,
+    /// Optional RFC3339 expiry for short-lived working context.
+    #[serde(default)]
+    pub valid_until: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -145,7 +149,9 @@ fn default_importance() -> f32 {
     0.5
 }
 
-pub(crate) fn validate_input(input: &MemoryInput) -> Result<(MemoryKind, Vec<String>, String)> {
+pub(crate) fn validate_input(
+    input: &MemoryInput,
+) -> Result<(MemoryKind, Vec<String>, String, Option<String>)> {
     let kind = MemoryKind::parse(&input.kind)?;
     validate_text("project", &input.project, MAX_MEMORY_PROJECT_BYTES)?;
     validate_text("title", &input.title, MAX_MEMORY_TITLE_BYTES)?;
@@ -160,6 +166,11 @@ pub(crate) fn validate_input(input: &MemoryInput) -> Result<(MemoryKind, Vec<Str
     if let Some(id) = &input.supersedes_id {
         validate_text("supersedes_id", id, 128)?;
     }
+    let valid_until = input
+        .valid_until
+        .as_deref()
+        .map(normalize_valid_until)
+        .transpose()?;
     anyhow::ensure!(
         input.confidence.is_finite() && (0.0..=1.0).contains(&input.confidence),
         "confidence must be a finite number between 0 and 1"
@@ -179,7 +190,14 @@ pub(crate) fn validate_input(input: &MemoryInput) -> Result<(MemoryKind, Vec<Str
         provenance_json.len() <= MAX_MEMORY_PROVENANCE_BYTES,
         "provenance exceeds {MAX_MEMORY_PROVENANCE_BYTES} bytes"
     );
-    Ok((kind, acl, provenance_json))
+    Ok((kind, acl, provenance_json, valid_until))
+}
+
+fn normalize_valid_until(value: &str) -> Result<String> {
+    validate_text("valid_until", value, MAX_MEMORY_VALID_UNTIL_BYTES)?;
+    let timestamp = DateTime::parse_from_rfc3339(value)
+        .map_err(|error| anyhow::anyhow!("valid_until must be RFC3339: {error}"))?;
+    Ok(timestamp.with_timezone(&Utc).to_rfc3339())
 }
 
 pub(crate) fn normalize_acl(project: &str, acl: &[String]) -> Result<Vec<String>> {
@@ -251,4 +269,36 @@ fn query_terms(query: &str) -> Result<Vec<String>> {
         "memory query must contain searchable terms"
     );
     Ok(terms)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input(valid_until: Option<&str>) -> MemoryInput {
+        MemoryInput {
+            kind: "working".into(),
+            project: "work".into(),
+            title: "Current task".into(),
+            content: "Finish the release checklist.".into(),
+            source: "agent".into(),
+            source_id: String::new(),
+            dedupe_key: None,
+            confidence: 0.7,
+            importance: 0.5,
+            acl: vec![],
+            provenance: serde_json::json!({"test":true}),
+            supersedes_id: None,
+            valid_until: valid_until.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn expiry_is_normalized_and_bounded() {
+        let (_, _, _, valid_until) =
+            validate_input(&input(Some("2030-01-01T12:00:00+02:00"))).expect("valid expiry");
+        assert_eq!(valid_until.as_deref(), Some("2030-01-01T10:00:00+00:00"));
+        let error = validate_input(&input(Some("tomorrow"))).expect_err("invalid expiry");
+        assert!(error.to_string().contains("valid_until must be RFC3339"));
+    }
 }

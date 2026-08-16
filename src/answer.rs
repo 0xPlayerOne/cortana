@@ -1553,6 +1553,7 @@ mod tests {
                 acl: vec!["work".into()],
                 provenance: serde_json::json!({"test": true}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect("memory");
         let engine = AnswerEngine::new(store.clone(), embedder, None, QueryConfig::default());
@@ -1624,6 +1625,7 @@ mod tests {
                 acl: vec!["work".into()],
                 provenance: serde_json::json!({"test": true}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect("memory");
         let prompts = Arc::new(Mutex::new(Vec::new()));
