@@ -33,7 +33,8 @@ raw-evidence fallback.
 8. Use `remember` only for an explicit, bounded conclusion, preference, procedure, episode, or
    working-state update. Include a stable `dedupe_key` and provenance when possible; never copy
    an entire source document into memory. Set an RFC3339 `valid_until` on short-lived working
-   context so expired state is excluded automatically. Use `recall` for memory-only retrieval and
+   context so expired state is excluded automatically. Dedupe keys and supersession targets stay
+   within the selected workspace, even for the owner. Use `recall` for memory-only retrieval and
    `forget` when the user withdraws a memory.
 
 When using `/v1/answer`, treat any returned `memories` as operational context rather than citations;
