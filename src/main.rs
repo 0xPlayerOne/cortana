@@ -1046,7 +1046,7 @@ async fn main() -> Result<()> {
                         project,
                         source,
                         "succeeded",
-                        Some(bundle.evidence.len()),
+                        Some(bundle.evidence.len().saturating_add(bundle.memories.len())),
                         started,
                     );
                     let mut stdout = std::io::BufWriter::new(std::io::stdout());
