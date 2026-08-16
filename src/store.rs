@@ -1274,7 +1274,7 @@ impl Store {
                     && seen.insert(memory.memory.id.clone())
                 {
                     memory.relevance_score =
-                        memory_relevance_score(&memory, index == 0, &query_terms);
+                        memory_relevance_score(&memory, index == 0, &query_terms, &now);
                     results.push(memory);
                     if results.len() >= usize::try_from(candidate_limit).unwrap_or(usize::MAX) {
                         break;
@@ -2967,6 +2967,7 @@ fn memory_relevance_score(
     result: &MemorySearchResult,
     exact_match: bool,
     query_terms: &[String],
+    now: &str,
 ) -> f64 {
     let haystack = format!("{} {}", result.memory.title, result.memory.content).to_lowercase();
     let matched = query_terms
@@ -2985,16 +2986,19 @@ fn memory_relevance_score(
     let salience = (0.6 * f64::from(result.memory.importance)
         + 0.4 * f64::from(result.memory.confidence))
     .clamp(0.0, 1.0);
-    let freshness = memory_freshness_score(&result.memory.updated_at);
+    let freshness = memory_freshness_score(&result.memory.updated_at, now);
     let mode_bonus = if exact_match { 1.0 } else { 0.8 };
     ((0.55 * coverage) + (0.25 * lexical) + (0.12 * salience) + (0.08 * freshness)) * mode_bonus
 }
 
-fn memory_freshness_score(updated_at: &str) -> f64 {
+fn memory_freshness_score(updated_at: &str, now: &str) -> f64 {
     let Ok(updated_at) = DateTime::parse_from_rfc3339(updated_at) else {
         return 0.0;
     };
-    let age_days = (Utc::now() - updated_at.with_timezone(&Utc))
+    let Ok(now) = DateTime::parse_from_rfc3339(now) else {
+        return 0.0;
+    };
+    let age_days = (now.with_timezone(&Utc) - updated_at.with_timezone(&Utc))
         .num_seconds()
         .max(0) as f64
         / 86_400.0;
