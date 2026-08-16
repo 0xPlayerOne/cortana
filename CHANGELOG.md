@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.1](https://github.com/0xPlayerOne/cortana/compare/v0.33.0...v0.33.1) (2026-08-16)
+
+
+### Bug Fixes
+
+* **release:** promote native memory salience as v0.34.0 ([e8a0d4e](https://github.com/0xPlayerOne/cortana/commit/e8a0d4e597583f70064472a0fc444279b2186da9))
+
 ## [0.33.0](https://github.com/0xPlayerOne/cortana/compare/v0.32.12...v0.33.0) (2026-08-16)
 
 
