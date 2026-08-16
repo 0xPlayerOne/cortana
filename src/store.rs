@@ -29,6 +29,15 @@ fn bump_corpus_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
     Ok(())
 }
 
+fn bump_memory_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
+    transaction.execute(
+        "UPDATE meta SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)
+         WHERE key='memory_revision'",
+        [],
+    )?;
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct Store {
     connection: Arc<Mutex<Connection>>,
@@ -245,6 +254,10 @@ impl Store {
         )?;
         connection.execute(
             "INSERT OR IGNORE INTO meta(key,value) VALUES('corpus_revision','0')",
+            [],
+        )?;
+        connection.execute(
+            "INSERT OR IGNORE INTO meta(key,value) VALUES('memory_revision','0')",
             [],
         )?;
         ensure_document_content_column(&connection)?;
@@ -747,6 +760,16 @@ impl Store {
         value.parse().context("invalid corpus revision")
     }
 
+    pub fn memory_revision(&self) -> Result<u64> {
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let value: String = connection.query_row(
+            "SELECT value FROM meta WHERE key='memory_revision'",
+            [],
+            |row| row.get(0),
+        )?;
+        value.parse().context("invalid memory revision")
+    }
+
     pub fn cached_query(&self, cache_key: &str, ttl_seconds: u64) -> Result<Option<String>> {
         if ttl_seconds == 0 {
             return Ok(None);
@@ -1015,6 +1038,7 @@ impl Store {
             "INSERT INTO memories_fts(memory_id,title,content) VALUES(?1,?2,?3)",
             params![id, input.title, input.content],
         )?;
+        bump_memory_revision(&transaction)?;
         transaction.commit()?;
         self.memory(&id)?
             .ok_or_else(|| anyhow::anyhow!("memory disappeared after commit"))
@@ -1097,6 +1121,7 @@ impl Store {
         )?;
         if changed == 1 {
             transaction.execute("DELETE FROM memories_fts WHERE memory_id=?1", [id])?;
+            bump_memory_revision(&transaction)?;
         }
         transaction.commit()?;
         Ok(changed == 1)

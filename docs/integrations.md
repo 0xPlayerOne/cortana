@@ -55,6 +55,12 @@ relevant native `memories`, and `retrieved`/`included`/`omitted`/`memories_inclu
 `estimated_tokens`/`max_tokens` metrics. Memory writes and redactions remain explicit actions;
 ingestion never silently promotes source text into agent memory.
 
+`POST /v1/answer` follows the same boundary: principals with the `memory` scope receive a bounded
+`memories` array and the synthesizer may use those entries as operational context, while evidence
+alone remains citation-bearing. Query-only principals receive no memory field. Answer-cache keys
+include the native memory revision and visible memory ACL, so remember/forget operations cannot
+leave an old memory-backed answer cached.
+
 ## Local owner mode versus scoped bearer principals
 
 With no `[[auth.tokens]]` configured, Cortana runs in local owner mode: the loopback-bound HTTP
@@ -294,9 +300,10 @@ index and never start or schedule ingestion; recurring sync remains opt-in and v
 - Reuse a context bundle within the same task. Avoiding redundant retrieval also saves ranking and
   context-window work, even when embeddings are already cached.
 - Synthesized answers are cached server-side only when citation-validated. Cache keys include the
-  query contract version, corpus revision, query text plus project/source scope, embedding
-  fingerprint, model endpoint/name, and planner/retrieval/context/output bounds; changed or deleted
-  content invalidates prior keys. Bounds are configurable via `[query].cache_max_entries` and
+  query contract version, document corpus revision, native memory revision and visible memory ACL
+  when enabled, query text plus project/source scope, embedding fingerprint, model endpoint/name,
+  and planner/retrieval/context/output bounds; changed or deleted content or memory invalidates
+  prior keys. Bounds are configurable via `[query].cache_max_entries` and
   `[query].cache_ttl_seconds` (set either to `0` to skip reads or writes). Temporary planner or
   provider failures are never hidden by a stale cache entry.
 - Reusing a bundle within the task is an agent-side practice — the answer cache described above

@@ -35,6 +35,10 @@ raw-evidence fallback.
    an entire source document into memory. Use `recall` for memory-only retrieval and `forget` when
    the user withdraws a memory.
 
+When using `/v1/answer`, treat any returned `memories` as operational context rather than citations;
+the answer must remain grounded in numbered evidence. Shared agents need the `memory` scope for
+those entries, while query-only agents intentionally receive evidence-only answers.
+
 For an MCP client, configure:
 
 ```json

@@ -96,7 +96,7 @@ pub struct MemoryInput {
     pub supersedes_id: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MemoryRecord {
     pub id: String,
     pub kind: String,
@@ -119,7 +119,7 @@ pub struct MemoryRecord {
     pub updated_at: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MemorySearchResult {
     #[serde(flatten)]
     pub memory: MemoryRecord,

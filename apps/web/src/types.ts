@@ -598,6 +598,7 @@ export type AnswerResponse = {
   query: string
   answer: string
   evidence: Evidence[]
+  memories?: AgentMemory[]
   plan: {
     queries: string[]
     model_generated: boolean

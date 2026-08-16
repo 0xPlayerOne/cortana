@@ -31,6 +31,13 @@ call `remember` only for an explicit, bounded conclusion and include provenance
 in the same call. Never copy an entire email, note, transcript, or code file
 into memory. Use `forget` when a user withdraws a memory.
 
+The human-facing `/v1/answer` path follows the same contract for principals with
+the `memory` scope: matching native memories are returned separately and may
+help the synthesizer, while only indexed evidence can satisfy numbered citation
+requirements. Query-only principals receive evidence-only answers. Memory writes
+advance a dedicated revision so cached answers cannot retain retracted or stale
+operational context.
+
 The native MCP tools are:
 
 - `remember` — write one bounded memory;

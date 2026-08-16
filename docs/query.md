@@ -11,7 +11,9 @@ Cortana separates agent retrieval from human-facing answers.
 - MCP request validation is identical to the HTTP and CLI retrieval contract: queries must be
   non-empty and at most 16 KiB, scope filters are bounded, and each tool returns at most 50 rows.
   Oversized or blank requests are rejected before embedding work begins.
-- The workspace uses `/v1/answer`, which can plan several searches and synthesize a cited response.
+- The workspace uses `/v1/answer`, which can plan several searches, attach authorized native
+  memory, and synthesize a cited response. Native memory is returned separately from cited
+  evidence and is included only for principals with the `memory` scope.
 - Both paths share the same project/source filters and hybrid lexical, semantic, IDF, and recency
   ranking.
 
@@ -161,9 +163,10 @@ re-scored against the original question with meaningful-term coverage; when that
 strong, only the strongest lexical matches survive into the synthesis bundle, so rows that
 merely match a tangential planner query cannot be cited. Purely semantic questions (no strong
 lexical signal) keep the full fused set, and dropped rows are reported in `warnings` as an
-`evidence focus` entry. The synthesizer sees
-only a token-bounded evidence bundle and must cite every non-empty paragraph with numbered
-passages. Missing, out-of-range, or paragraph-incomplete citations cause an extractive fallback.
+`evidence focus` entry. The synthesizer sees a token-bounded evidence-and-memory bundle. Evidence
+remains the citation authority; native memory is clearly labelled operational context and is never
+counted as a source citation. The model must cite every non-empty paragraph with numbered passages.
+Missing, out-of-range, or paragraph-incomplete citations cause an extractive fallback.
 Evidence is treated as historical unless it explicitly proves current state, so old runbooks and
 status notes cannot silently become claims about the live deployment.
 
@@ -187,6 +190,7 @@ the TOML file.
 Answers are keyed by:
 
 - query contract version and corpus revision;
+- native memory revision and memory ACL scope when memory context is enabled;
 - query text plus project/source scope;
 - embedding fingerprint;
 - model endpoint/name;
@@ -214,10 +218,10 @@ five-second interactive budget, retrieval falls back to lexical search and marks
 `retrieval_degraded` (answers) or `retrieval_mode = lexical-fallback` (contexts); the fallback is
 not cached for configured model-backed answers. Model unavailability, timeout, invalid JSON, missing
 citations, or unknown citations produces an extractive answer. An empty index returns an explicit
-insufficient-evidence response. The response always reports `mode`, `cached`, `latency_ms`, the
-executed plan, evidence, and warnings so the workspace can make degradation visible.
-The end-to-end deadline is hard-clamped to 55 seconds so a slow planner still leaves time for a
-citation-stable fallback before the HTTP request deadline.
+insufficient-evidence response. The response reports `mode`, `cached`, `latency_ms`, the executed
+plan, evidence, authorized native `memories`, and warnings so the workspace can make degradation
+visible. The end-to-end deadline is hard-clamped to 55 seconds so a slow planner still leaves time
+for a citation-stable fallback before the HTTP request deadline.
 
 `cortana readiness` performs a minimal grounded completion against the configured query model when
 synthesis is enabled. Configuration alone is not considered production-ready. The check fails

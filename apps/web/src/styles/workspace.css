@@ -426,6 +426,46 @@
   line-height: 1.65;
 }
 
+.answer-memory {
+  margin: 28px 0 8px;
+  padding: 18px 20px;
+  border-left: 3px solid var(--amber);
+  background: var(--theme-content-surface);
+}
+
+.answer-memory .lead {
+  margin: 0 0 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.answer-memory-entry {
+  padding: 12px 0;
+  border-top: 1px solid var(--theme-content-border);
+}
+
+.answer-memory-entry:first-of-type {
+  border-top: 0;
+}
+
+.answer-memory-entry h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.answer-memory-entry p {
+  margin: 0 0 6px;
+  font-family: Georgia, serif;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.answer-memory-entry small {
+  color: var(--theme-content-subtle);
+  font-size: 11px;
+}
+
 .answer-note {
   padding: 12px 14px;
   color: #686963;
