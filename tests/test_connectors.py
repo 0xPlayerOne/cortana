@@ -1059,6 +1059,26 @@ def test_large_pdf_uses_bounded_head_tail_page_sample() -> None:
     assert sum(page.calls for page in pages) < len(pages)
 
 
+def test_large_low_text_pdf_does_not_walk_every_page() -> None:
+    class FakePage:
+        def __init__(self, index: int) -> None:
+            self.index = index
+            self.calls = 0
+
+        def extract_text(self) -> str:
+            self.calls += 1
+            return f"page-{self.index}\n"
+
+    pages = [FakePage(index) for index in range(10_000)]
+    result = google._extract_pdf_text(type("Reader", (), {"pages": pages})())
+
+    assert result.truncated is True
+    assert google.PDF_SAMPLE_MARKER.strip() in result
+    assert sum(page.calls for page in pages) <= google.MAX_DRIVE_SAMPLE_PAGES
+    assert "page-0" in result
+    assert "page-9999" in result
+
+
 def test_text_heavy_pdf_stops_after_bounded_payload() -> None:
     class FakePage:
         def __init__(self, text: str) -> None:
@@ -1069,7 +1089,7 @@ def test_text_heavy_pdf_stops_after_bounded_payload() -> None:
             self.calls += 1
             return self.text
 
-    pages = [FakePage("x" * 10_000) for _ in range(40)]
+    pages = [FakePage("x" * 10_000) for _ in range(30)]
     result = google._extract_pdf_text(type("Reader", (), {"pages": pages})())
 
     assert result.truncated is True

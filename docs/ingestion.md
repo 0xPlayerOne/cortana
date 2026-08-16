@@ -87,8 +87,8 @@ be rebuilt from Google. First-time Drive content and Gmail detail retrieval use 
 and four-worker pools respectively; cache writes and emitted documents remain ordered on the main
 connector thread. Drive downloads are processed in 32-file batches, text and export responses are
 consumed as bounded head/tail streams, and PDF responses are spooled to a temporary file with a 64 MiB cap
-before parsing. PDFs with more than 128 pages use a bounded head/tail page sample instead of parsing
-the entire page tree; ordinary PDFs also stop parsing once the 256,000-character extraction bound is
+before parsing. PDFs with more than 32 pages use a bounded head/tail sample of at most 32 pages instead of
+walking the entire page tree; ordinary PDFs also stop parsing once the 256,000-character extraction bound is
 reached. Both paths set `content_truncated=true` and `content_original_chars=null` because the omitted
 content was intentionally not counted. Smaller PDFs preserve the exact character count. The cache
 preserves this metadata, so a later cache hit does not hide that a provider response was sampled. Drive

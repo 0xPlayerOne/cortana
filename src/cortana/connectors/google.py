@@ -59,10 +59,11 @@ MAX_DRIVE_STREAM_CHARS = 256_000
 # provider response from filling the temporary volume.
 MAX_DRIVE_PDF_BYTES = 64 * 1024 * 1024
 # Parsing every page of a very large PDF is expensive in the pure-Python
-# fallback. Keep the full-text path for ordinary documents, but use the same
-# bounded head/tail contract for larger page trees so one document cannot
-# monopolize a source validation run.
-MAX_DRIVE_FULL_PDF_PAGES = 128
+# fallback. Keep the full-text path for ordinary documents, but use a fixed
+# head/tail page budget for larger page trees so a low-text, high-page-count
+# document cannot monopolize a source validation run.
+MAX_DRIVE_FULL_PDF_PAGES = 32
+MAX_DRIVE_SAMPLE_PAGES = 32
 UNKNOWN_CONTENT_CHARS = -1
 PDF_SAMPLE_MARKER = "\n\n[Cortana omitted middle PDF pages]\n\n"
 # A normal-sized PDF can still contain more text than the bounded extraction
@@ -1314,9 +1315,11 @@ def _extract_pdf_text(reader: Any) -> _DriveContent:
     head_limit = sample_limit // 2
     tail_limit = sample_limit - head_limit
 
+    sample_page_count = min(MAX_DRIVE_SAMPLE_PAGES // 2, page_count)
+
     head_parts: list[str] = []
     head_chars = 0
-    for index in range(page_count):
+    for index in range(sample_page_count):
         if head_chars >= head_limit:
             break
         text = pages[index].extract_text() or ""
@@ -1328,7 +1331,7 @@ def _extract_pdf_text(reader: Any) -> _DriveContent:
 
     tail_parts_reversed: list[str] = []
     tail_chars = 0
-    for index in range(page_count - 1, -1, -1):
+    for index in range(page_count - 1, page_count - sample_page_count - 1, -1):
         if tail_chars >= tail_limit:
             break
         text = pages[index].extract_text() or ""
