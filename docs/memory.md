@@ -59,8 +59,8 @@ or redacted.
 
 Memory is not an automatic mirror of ingestion. Source sync remains the
 authority for world knowledge, while explicit memory writes are the authority
-for agent conclusions. The store is local-first, encrypted-at-rest by the
-operator's filesystem policy, auditable, exportable through the existing audit
+for agent conclusions. The store is local-first and protected by the operator's
+filesystem policy, auditable, exportable through the existing audit
 trail, and bounded by content, provenance, ACL, and recall limits.
 
 The supported product path keeps retention, deletion, ACL, and backup semantics
