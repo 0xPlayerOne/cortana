@@ -1274,6 +1274,54 @@ def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
     assert documents[0].metadata["owners"] == ["Ada"]
 
 
+def test_google_drive_ignores_folder_containers_in_strict_mode(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "folder1",
+                            "name": "Holtz",
+                            "mimeType": google.GOOGLE_DRIVE_FOLDER_MIME_TYPE,
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                        {
+                            "id": "shortcut-folder1",
+                            "name": "Pink Binder",
+                            "mimeType": google.GOOGLE_DRIVE_SHORTCUT_MIME_TYPE,
+                            "shortcutDetails": {
+                                "targetId": "folder2",
+                                "targetMimeType": google.GOOGLE_DRIVE_FOLDER_MIME_TYPE,
+                            },
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                        {
+                            "id": "doc1",
+                            "name": "Roadmap",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="Quarterly roadmap", request=request)
+
+    documents = list(
+        fetch_drive(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["doc1"]
+
+
 def test_google_drive_bounded_validation_caps_listing_page_and_documents(
     tmp_path: Path,
 ) -> None:
@@ -1896,7 +1944,7 @@ def test_google_drive_full_mode_uses_stale_cached_content(
     assert "sensitive provider detail" not in diagnostic
 
 
-def test_google_drive_full_mode_rejects_unsupported_content(tmp_path: Path) -> None:
+def test_google_drive_full_mode_preserves_metadata_for_binary_content(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     write_token(token, '{"token":"access"}')
 
@@ -1917,9 +1965,18 @@ def test_google_drive_full_mode_rejects_unsupported_content(tmp_path: Path) -> N
             )
         return httpx.Response(200, text="unused", request=request)
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
-    with pytest.raises(RuntimeError, match="Drive file has no supported content: id=bin1"):
-        list(fetch_drive(token, "work", client=client))
+    documents = list(
+        fetch_drive(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert len(documents) == 1
+    assert documents[0].content == google.DRIVE_NO_TEXT_MARKER
+    assert documents[0].metadata["content_unavailable"] is True
+    assert documents[0].metadata["content_truncated"] is True
 
 
 def test_google_drive_rejects_oversized_pdf_from_listing_metadata() -> None:
@@ -3126,6 +3183,20 @@ def test_connector_cli_applies_bounded_document_cap(
     captured = capsys.readouterr()
     assert len(captured.out.splitlines()) == 2
     assert "emitted=2" in captured.err
+
+
+def test_connector_cli_preserves_drive_cap_in_either_argument_position(
+    tmp_path: Path,
+) -> None:
+    before = connector_cli.parser().parse_args(
+        ["--max-documents", "7", "google-drive", "--token", str(tmp_path / "token.json")]
+    )
+    after = connector_cli.parser().parse_args(
+        ["google-drive", "--token", str(tmp_path / "token.json"), "--max-documents", "9"]
+    )
+
+    assert before.max_documents == 7
+    assert after.max_documents == 9
 
 
 def test_connector_cli_rejects_non_positive_document_cap() -> None:

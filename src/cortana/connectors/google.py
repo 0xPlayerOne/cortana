@@ -32,13 +32,16 @@ from .model import Document
 
 DRIVE_FIELDS = (
     "nextPageToken,incompleteSearch,"
-    "files(id,name,mimeType,size,modifiedTime,webViewLink,owners(displayName))"
+    "files(id,name,mimeType,size,modifiedTime,webViewLink,owners(displayName),"
+    "shortcutDetails(targetId,targetMimeType))"
 )
 GOOGLE_EXPORTS = {
     "application/vnd.google-apps.document": ("text/plain", "txt"),
     "application/vnd.google-apps.presentation": ("text/plain", "txt"),
     "application/vnd.google-apps.spreadsheet": ("text/csv", "csv"),
 }
+GOOGLE_DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
+GOOGLE_DRIVE_SHORTCUT_MIME_TYPE = "application/vnd.google-apps.shortcut"
 TEXT_MIME_TYPES = {
     "application/json",
     "application/rtf",
@@ -74,6 +77,9 @@ PDF_NO_TEXT_MARKER = (
 )
 DOCX_NO_TEXT_MARKER = (
     "[Cortana Word document contains no extractable text; open the original Drive item.]"
+)
+DRIVE_NO_TEXT_MARKER = (
+    "[Cortana Drive item has no supported text content; open the original Drive item.]"
 )
 MAX_DRIVE_ZIP_UNCOMPRESSED_BYTES = 128 * 1024 * 1024
 # A normal-sized PDF can still contain more text than the bounded extraction
@@ -429,6 +435,18 @@ def _validate_token_uri(value: str) -> None:
         raise RuntimeError("Google token URI must use an HTTPS Google OAuth endpoint")
 
 
+def _is_drive_container(item: dict[str, Any]) -> bool:
+    mime_type = item.get("mimeType")
+    if mime_type == GOOGLE_DRIVE_FOLDER_MIME_TYPE:
+        return True
+    if mime_type != GOOGLE_DRIVE_SHORTCUT_MIME_TYPE:
+        return False
+    details = item.get("shortcutDetails")
+    return isinstance(details, dict) and details.get("targetMimeType") == (
+        GOOGLE_DRIVE_FOLDER_MIME_TYPE
+    )
+
+
 def fetch_drive(
     token_path: Path,
     project: str,
@@ -490,6 +508,11 @@ def fetch_drive(
                     stale_ids: set[str] = set()
                     for item in batch_items:
                         file_id = item["id"]
+                        if _is_drive_container(item):
+                            # Folder records are containers, not documents. The
+                            # listing remains complete while their children are
+                            # emitted as ordinary files on this and later pages.
+                            continue
                         modified_time = _drive_modified_time(item, file_id, strict)
                         if modified_time is None:
                             continue
@@ -532,6 +555,8 @@ def fetch_drive(
                                 bodies[file_id] = body
                     for item in batch_items:
                         file_id = str(item["id"])
+                        if _is_drive_container(item):
+                            continue
                         modified_time = _drive_modified_time(item, file_id, strict)
                         if modified_time is None:
                             continue
@@ -560,11 +585,13 @@ def fetch_drive(
                                 pending_writes = 0
                         if not body.strip():
                             if strict:
-                                raise RuntimeError(
-                                    "Drive file has no supported content: "
-                                    f"id={file_id}; refusing partial snapshot"
-                                )
-                            continue
+                                # Preserve metadata for binary formats we do not
+                                # OCR yet instead of aborting an otherwise complete
+                                # Drive snapshot. The explicit marker keeps this
+                                # limitation visible to retrieval and operators.
+                                body = _DriveContent(DRIVE_NO_TEXT_MARKER, None, True)
+                            else:
+                                continue
                         try:
                             updated_at = _timestamp(item.get("modifiedTime"))
                         except (TypeError, ValueError, OverflowError, OSError) as error:
@@ -595,7 +622,11 @@ def fetch_drive(
                                 or bool(getattr(body, "truncated", False)),
                                 "content_unavailable": any(
                                     marker in str(body)
-                                    for marker in (PDF_NO_TEXT_MARKER, DOCX_NO_TEXT_MARKER)
+                                    for marker in (
+                                        PDF_NO_TEXT_MARKER,
+                                        DOCX_NO_TEXT_MARKER,
+                                        DRIVE_NO_TEXT_MARKER,
+                                    )
                                 ),
                                 "content_original_chars": getattr(
                                     body, "original_chars", len(body)
