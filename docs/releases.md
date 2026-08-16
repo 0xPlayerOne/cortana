@@ -9,17 +9,17 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.32.10
+## Current release: v0.32.11
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.32.10` is the current protected source and published release. Release-assets workflow
-`31926397636` completed all 18 archive, checksum, updater-signature, manifest, and credential-free
-packaged-core gates. v0.32.9 and earlier remain historical evidence.
+`v0.32.11` is the current protected source and published release. Release-assets workflow
+`31928018360` completed all 18 archive, checksum, updater-signature, manifest, and credential-free
+packaged-core gates. v0.32.10 and earlier remain historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.32.10 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.32.11 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -35,13 +35,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.32.10
+  scripts/verify-desktop-release.sh v0.32.11
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.32.10 source is the release boundary for the bounded large-PDF Drive parser and the
+The v0.32.11 source is the release boundary for the bounded large-PDF Drive parser and the
 post-v0.31.12 hardening, bounded live-index
 evaluation harness, and readiness-budget diagnostics described below. Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
@@ -60,6 +60,13 @@ uses synthetic data only and is not a substitute for the packaged GUI/MCP/manual
 The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP stdio subprocess,
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
+
+## v0.32.11 release intent (published and verified)
+
+This patch promotes the current-release documentation boundary after the v0.32.10 package was
+published. Release-assets workflow `31928018360` completed all 18 assets and the strict verifier;
+it changes no credentials, source authorization, indexed data, recurring-sync state, or optional
+memory-provider state.
 
 ## v0.32.10 release intent (published and verified)
 
