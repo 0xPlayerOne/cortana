@@ -76,6 +76,10 @@ scopes = ["query", "status"]
 acl = ["work", "shared"]
 ```
 
+Add the `memory` scope when this principal should read, write, or redact native agent memory.
+Without it, `context` still returns source evidence but omits the native-memory section; this keeps
+query-only agents from receiving operational memory by accident.
+
 The token value lives only in the agent process environment or the private `[runtime].env_file`
 (see below) — never in the TOML. How principals are presented per interface:
 
