@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.0](https://github.com/0xPlayerOne/cortana/compare/v0.33.1...v0.34.0) (2026-08-16)
+
+
+### Bug Fixes
+
+* **release:** promote v0.34.0 release intent ([d6835da](https://github.com/0xPlayerOne/cortana/commit/d6835daec45c34a065c24502ae0788fff062aa10))
+
 ## [0.33.1](https://github.com/0xPlayerOne/cortana/compare/v0.33.0...v0.33.1) (2026-08-16)
 
 

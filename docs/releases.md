@@ -9,18 +9,18 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.33.0
+## Current release: v0.34.0
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.33.0` is the current protected source and published release. Release-assets workflow
-`31969571292` completed the archive, checksum, updater-signature, manifest, and credential-free
-packaged-core gates; all 18 published assets are verified. v0.32.12 and earlier remain
+`v0.34.0` is the current protected source and published release. Release-assets workflow
+`31975576411` completed the archive, checksum, updater-signature, manifest, and credential-free
+packaged-core gates; all 18 published assets are verified. v0.33.0 and earlier remain
 historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.33.0 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.34.0 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -36,13 +36,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.33.0
+  scripts/verify-desktop-release.sh v0.34.0
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.33.0 source is the release boundary for native agentic memory and the post-v0.31.12
+The v0.34.0 source is the release boundary for native agentic memory and the post-v0.31.12
 hardening, bounded live-index evaluation harness, and readiness-budget diagnostics described below.
 Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
@@ -62,7 +62,7 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.34.0 release intent (protected release target)
+## v0.34.0 release intent (published and verified)
 
 The post-v0.33.0 source tree improves the canonical native memory layer with local salience-aware
 recall ranking. Candidate memories are scored by query-term coverage using the same token-prefix
@@ -70,9 +70,10 @@ semantics as FTS, lexical relevance, confidence, importance, freshness, and exac
 matching. The score is bounded and diagnostic; ACL, expiry, supersession, dedupe, and cache
 invalidation contracts remain unchanged.
 
-This release intent changes no credentials, source authorization, indexed data, recurring-sync state,
-or external memory/plugin integration. The protected staging-to-main promotion and version-only
-Release Please PR will complete before the `v0.34.0` package is called downloadable or verified.
+This release intent changes no credentials, source authorization, indexed data, or recurring-sync
+state. Native memory is the only supported operational-memory path. The protected promotion,
+version-only Release Please PR, and release-assets workflow have completed; the `v0.34.0` package
+is the downloadable native-memory release.
 
 ## v0.33.0 release intent (published and verified)
 

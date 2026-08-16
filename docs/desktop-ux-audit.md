@@ -7,20 +7,20 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-16)
 
-- `v0.33.0` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `31969571292` completed all 18 assets,
+- `v0.34.0` is the current protected source/release, published through the protected promotion
+  and Release Please automation. Release-assets workflow `31975576411` completed all 18 assets,
   checksums, updater signatures, manifest, and packaged-core verification. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The current macOS Apple Silicon package verifier also passed the v0.33.0 Tauri updater
+- The current macOS Apple Silicon package verifier also passed the v0.34.0 Tauri updater
   signature, packaged-core offline evaluation, and strict codesign checks. `spctl --assess` still
   rejects the ad-hoc bundle because Developer ID signing and notarization are not configured; the
   verifier intentionally did not launch the GUI.
-- The supported v0.33.0 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
+- The supported v0.34.0 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.33.0 tag is the fully verified packaged evidence boundary. The audited host has not yet
-  installed v0.33.0 and still runs the previous `/Users/amf/.local/bin/cortana` v0.32.12 with embedding and server services in
+- The v0.34.0 tag is the fully verified packaged evidence boundary. The audited host has not yet
+  installed v0.34.0 and still runs the previous `/Users/amf/.local/bin/cortana` v0.32.12 with embedding and server services in
   query-only mode; recurring sync remains disabled. As of 2026-08-16, 13 sources are enabled and
   12 have fresh `complete=true` validation at their configured budgets. Personal Drive has only a
   successful 25-document/5 MiB/60-second validation against its configured 2,000-document/128 MiB/
@@ -90,7 +90,7 @@ is not part of a visual/UI change.
   and Slack is unconfigured. The historical sweep is authorization/reachability
   evidence only and must not be read as current source authorization.
 
-The current v0.33.0 source includes the post-v0.31.12 safety lane, which acquires
+The current v0.34.0 source includes the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, enforces native-memory retention bounds, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -98,7 +98,7 @@ a per-config cross-process lock. These source-tree protections are covered by fo
 regressions; they do not authorize a source, enable recurring sync, or prove the unverified
 GUI/browser/tray/dialog/updater gates above.
 
-The v0.33.0 source adds one operational recovery change for the local embedding supervisor:
+The v0.34.0 source adds one operational recovery change for the local embedding supervisor:
 steady-state checks use the lightweight `/health` endpoint so queued ingestion work cannot look dead;
 startup and restart still require a real vector probe. The earlier v0.32.1 Work Drive trials were
 cancelled after that older supervisor stalled. After v0.32.2 installation, a foreground Work Drive
@@ -175,7 +175,7 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the verified v0.33.0 package passed the credential-free packaged-core
+2. Model-backed provider gate: the verified v0.34.0 package passed the credential-free packaged-core
    evaluator and query-only readiness in release verification. The previous installed v0.32.12 CLI passed
    the bounded provider-backed run on 2026-08-16 in 14,437 ms with planner/synthesis, valid
    citations, cache reuse, and revision invalidation. That run used synthetic fixtures only; no
@@ -227,7 +227,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.33.0 source or the historical v0.32.6 core; use the
+does not describe the current v0.34.0 source or the historical v0.32.6 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -243,8 +243,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.33.0` source or packaged Desktop behavior. The verified
-  `v0.32.12` asset workflow is historical; the active `v0.33.0` workflow is recorded in the release section above.
+  the current `v0.34.0` source or packaged Desktop behavior. The verified
+  `v0.32.12` asset workflow is historical; the active `v0.34.0` workflow is recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
