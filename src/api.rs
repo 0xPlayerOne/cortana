@@ -1394,6 +1394,23 @@ async fn context(
             .metrics
             .record(&principal, PrincipalMetric::RetrievalFallback);
     }
+    let memories = if principal.has_scope(MEMORY_SCOPE) {
+        state
+            .store
+            .recall_memories(
+                &request.query,
+                request.project.as_deref(),
+                None,
+                request.limit.min(crate::memory::MAX_MEMORY_RECALL_LIMIT),
+                &acl,
+            )
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "native memory recall unavailable while building context");
+                Vec::new()
+            })
+    } else {
+        Vec::new()
+    };
     record_audit(
         &state,
         &principal,
@@ -1405,12 +1422,13 @@ async fn context(
         } else {
             "succeeded"
         },
-        Some(retrieval.evidence.len()),
+        Some(retrieval.evidence.len().saturating_add(memories.len())),
         started,
     );
-    Ok(Json(context_bundle::build_with_retrieval(
+    Ok(Json(context_bundle::build_with_retrieval_and_memory(
         &request.query,
         &retrieval.evidence,
+        &memories,
         request.max_tokens,
         retrieval.mode.as_str(),
         retrieval.warning.as_deref(),

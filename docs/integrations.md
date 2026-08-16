@@ -1,7 +1,8 @@
 # Agent integrations
 
-Cortana exposes the same retrieval pipeline through a portable agent skill, an MCP stdio server, a
-loopback HTTP API, and the CLI. Agents should start with the skill's `context` primitive (MCP,
+Cortana exposes the same vertically integrated knowledge and memory pipeline through a portable
+agent skill, an MCP stdio server, a loopback HTTP API, and the CLI. Agents should start with the
+skill's `context` primitive (MCP,
 HTTP, or CLI) and treat `search_code`, `search_messages`, and `who_knows` as targeted evidence
 tools; see [the skill](../skills/cortana/SKILL.md) for the full retrieval protocol and
 [the query guide](query.md) for pipeline details. This guide covers installation and client
@@ -42,15 +43,17 @@ filters are bounded, each tool returns at most 50 evidence rows, and the context
 independent token budget (`--limit` 1–50, `--max-tokens` 256–64,000, defaulting to the configured
 `[query].context_tokens` budget of 8,000).
 
-| Interface                                       | Entry points                                                                                                                                                                            |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCP stdio (`cortana --config <path> mcp`)       | `context`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                                                      |
-| HTTP (`cortana serve --address 127.0.0.1:7331`) | `POST /v1/context`, `POST /v1/search`, `POST /v1/answer`, `GET /v1/documents[/{id}]`, `GET /v1/graph`, `GET /v1/status`, `GET /v1/audit`, `GET /healthz`, `GET /readyz`, `GET /metrics` |
-| CLI (no server required)                        | `cortana context`, `cortana search` (raw-evidence fallback)                                                                                                                             |
+| Interface                                       | Entry points                                                                                                                                                                                                                 |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP stdio (`cortana --config <path> mcp`)       | `context`, `remember`, `recall`, `forget`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                                                           |
+| HTTP (`cortana serve --address 127.0.0.1:7331`) | `POST /v1/context`, `POST /v1/memory[/{recall,forget}]`, `POST /v1/search`, `POST /v1/answer`, `GET /v1/documents[/{id}]`, `GET /v1/graph`, `GET /v1/status`, `GET /v1/audit`, `GET /healthz`, `GET /readyz`, `GET /metrics` |
+| CLI (no server required)                        | `cortana context`, `cortana search` (raw-evidence fallback)                                                                                                                                                                  |
 
 `cortana context QUERY`, `POST /v1/context`, and the MCP `context` tool return the same
-citation-ready, token-bounded Markdown bundle with numbered `[n]` citations, the included evidence
-rows, and `retrieved`/`included`/`omitted`/`estimated_tokens`/`max_tokens` metrics.
+citation-ready, token-bounded Markdown bundle with numbered `[n]` citations, the included evidence,
+relevant native `memories`, and `retrieved`/`included`/`omitted`/`memories_included`/
+`estimated_tokens`/`max_tokens` metrics. Memory writes and redactions remain explicit actions;
+ingestion never silently promotes source text into agent memory.
 
 ## Local owner mode versus scoped bearer principals
 
@@ -72,6 +75,10 @@ token_env = "CORTANA_SHARED_AGENT_TOKEN"
 scopes = ["query", "status"]
 acl = ["work", "shared"]
 ```
+
+Add the `memory` scope when this principal should read, write, or redact native agent memory.
+Without it, `context` still returns source evidence but omits the native-memory section; this keeps
+query-only agents from receiving operational memory by accident.
 
 The token value lives only in the agent process environment or the private `[runtime].env_file`
 (see below) — never in the TOML. How principals are presented per interface:

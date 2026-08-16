@@ -1046,7 +1046,7 @@ async fn main() -> Result<()> {
                         project,
                         source,
                         "succeeded",
-                        Some(bundle.evidence.len()),
+                        Some(bundle.evidence.len().saturating_add(bundle.memories.len())),
                         started,
                     );
                     let mut stdout = std::io::BufWriter::new(std::io::stdout());
@@ -1910,6 +1910,7 @@ fn manage_service(
 }
 
 fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Result<()> {
+    let started = Instant::now();
     match action {
         MemoryAction::Remember {
             kind,
@@ -1936,7 +1937,7 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                         "interface": "cli"
                     })
                 });
-            let record = store.remember(&MemoryInput {
+            let result = store.remember(&MemoryInput {
                 kind: kind.clone(),
                 project: project.clone(),
                 title: title.clone(),
@@ -1949,9 +1950,36 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                 acl: acl.clone(),
                 provenance,
                 supersedes_id: supersedes_id.clone(),
-            })?;
-            println!("{}", serde_json::to_string_pretty(&record)?);
-            Ok(())
+            });
+            match result {
+                Ok(record) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "remember",
+                        Some(project),
+                        Some(source),
+                        "succeeded",
+                        Some(1),
+                        started,
+                    );
+                    println!("{}", serde_json::to_string_pretty(&record)?);
+                    Ok(())
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "remember",
+                        Some(project),
+                        Some(source),
+                        "invalid",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
         }
         MemoryAction::Recall {
             query,
@@ -1959,21 +1987,87 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
             kind,
             limit,
         } => {
-            let records = store.recall_memories(
+            let result = store.recall_memories(
                 query,
                 project.as_deref(),
                 kind.as_deref(),
                 *limit,
                 &["*".into()],
-            )?;
-            println!("{}", serde_json::to_string_pretty(&records)?);
-            Ok(())
+            );
+            match result {
+                Ok(records) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "recall",
+                        project.as_deref(),
+                        None,
+                        "succeeded",
+                        Some(records.len()),
+                        started,
+                    );
+                    println!("{}", serde_json::to_string_pretty(&records)?);
+                    Ok(())
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "recall",
+                        project.as_deref(),
+                        None,
+                        "failed",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
         }
         MemoryAction::Forget { id } => {
-            let forgotten = store.forget_memory(id)?;
-            anyhow::ensure!(forgotten, "memory not found or already retracted: {id}");
-            println!("{}", serde_json::json!({"id": id, "forgotten": true}));
-            Ok(())
+            let result = store.forget_memory(id);
+            match result {
+                Ok(true) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "forget",
+                        None,
+                        None,
+                        "succeeded",
+                        Some(1),
+                        started,
+                    );
+                    println!("{}", serde_json::json!({"id": id, "forgotten": true}));
+                    Ok(())
+                }
+                Ok(false) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "forget",
+                        None,
+                        None,
+                        "not_found",
+                        Some(0),
+                        started,
+                    );
+                    anyhow::bail!("memory not found or already retracted: {id}");
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "forget",
+                        None,
+                        None,
+                        "failed",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
         }
     }
 }
@@ -3526,7 +3620,21 @@ async fn context_bundle(
     max_tokens: usize,
 ) -> Result<ContextBundle> {
     let evidence = retrieval::retrieve(store, embedder, query, project, source, limit).await?;
-    Ok(context::build(query, &evidence, max_tokens))
+    let memories = store
+        .recall_memories(
+            query,
+            project,
+            None,
+            limit.min(cortana::memory::MAX_MEMORY_RECALL_LIMIT),
+            &["*".into()],
+        )
+        .unwrap_or_else(|error| {
+            tracing::warn!(%error, "native memory recall unavailable while building CLI context");
+            Vec::new()
+        });
+    Ok(context::build_with_retrieval_and_memory(
+        query, &evidence, &memories, max_tokens, "hybrid", None,
+    ))
 }
 
 /// Metadata-only audit trail for CLI context requests. The query text and
@@ -3552,6 +3660,33 @@ fn record_cli_context_audit(
         max_events,
     ) {
         tracing::warn!(%error, "CLI context audit write failed");
+    }
+}
+
+/// Record metadata-only audit events for owner-local memory commands. Memory
+/// titles, content, queries, and IDs never enter the audit trail.
+#[allow(clippy::too_many_arguments)]
+fn record_cli_memory_audit(
+    store: &Store,
+    max_events: usize,
+    action: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+    outcome: &str,
+    result_count: Option<usize>,
+    started: Instant,
+) {
+    if let Err(error) = store.record_audit(
+        "local-cli",
+        &format!("local-cli/memory/{action}"),
+        project,
+        source,
+        outcome,
+        result_count,
+        u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        max_events,
+    ) {
+        tracing::warn!(%error, "CLI memory audit write failed");
     }
 }
 
@@ -3615,15 +3750,16 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, SourceControl, SourceLimits,
-        SyncLock, SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
+        AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, MemoryAction, SourceControl,
+        SourceLimits, SyncLock, SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
         configured_connector_command, context_bundle, ensure_recurring_sync_validated,
-        failure_status, flush_ingest_batch, ingest_documents, is_budget_exceeded, private_file,
-        require_sync_validation, run_connector_to_spool, validate_configured_source,
+        failure_status, flush_ingest_batch, ingest_documents, is_budget_exceeded, manage_memory,
+        private_file, require_sync_validation, run_connector_to_spool, validate_configured_source,
         validate_connector_spool, validation_overrides,
     };
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
+    use cortana::memory::MemoryInput;
     use cortana::model::Document;
     use cortana::source_validation::{SourceValidationStatus, configuration_fingerprint, record};
     use cortana::store::Store;
@@ -5048,6 +5184,22 @@ mod tests {
                 &[(content, vector)],
             )
             .expect("upsert");
+        store
+            .remember(&MemoryInput {
+                kind: "procedural".into(),
+                project: "engineering".into(),
+                title: "Deploy preference".into(),
+                content: "Always deploy after validation.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: Some("test:deploy-preference".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: Vec::new(),
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+            })
+            .expect("remember");
 
         let bundle = context_bundle(
             &store,
@@ -5061,8 +5213,14 @@ mod tests {
         .await
         .expect("context bundle");
         assert!(bundle.context.contains("### [1] Release runbook"));
-        assert!(bundle.context.contains("Cite sources with [n]"));
+        assert!(
+            bundle
+                .context
+                .contains("source evidence for factual claims")
+        );
         assert_eq!(bundle.evidence.len(), 1);
+        assert_eq!(bundle.memories.len(), 1);
+        assert_eq!(bundle.metrics.memories_included, 1);
         assert_eq!(bundle.metrics.retrieved, 1);
         assert_eq!(bundle.metrics.included, 1);
         assert_eq!(bundle.metrics.omitted, 0);
@@ -5080,5 +5238,61 @@ mod tests {
             assert!(json.contains(field), "missing {field} in {json}");
         }
         assert!(json.contains("### [1] Release runbook"));
+    }
+
+    #[test]
+    fn local_memory_commands_record_metadata_only_audit_events() {
+        let directory = tempfile::tempdir().expect("temporary directory");
+        let mut config = Config {
+            data_dir: directory.path().to_path_buf(),
+            ..Config::default()
+        };
+        config.auth.audit_max_events = 10;
+        let store = Store::open(&config.database_path()).expect("store");
+        manage_memory(
+            &config,
+            &store,
+            &MemoryAction::Remember {
+                kind: "preference".into(),
+                project: "work".into(),
+                title: "Release style".into(),
+                content: "Prefer concise notes.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: Some("test:release-style".into()),
+                confidence: None,
+                importance: None,
+                acl: Vec::new(),
+                provenance: None,
+                supersedes_id: None,
+            },
+        )
+        .expect("remember command");
+        let id = store
+            .recall_memories("concise notes", Some("work"), None, 1, &["*".into()])
+            .expect("recall")
+            .pop()
+            .expect("memory")
+            .memory
+            .id;
+        manage_memory(
+            &config,
+            &store,
+            &MemoryAction::Recall {
+                query: "concise notes".into(),
+                project: Some("work".into()),
+                kind: None,
+                limit: 1,
+            },
+        )
+        .expect("recall command");
+        manage_memory(&config, &store, &MemoryAction::Forget { id }).expect("forget command");
+        let audit = store.audit_events(10).expect("audit");
+        assert_eq!(audit.len(), 3);
+        assert_eq!(audit[0].action, "local-cli/memory/forget");
+        assert_eq!(audit[1].action, "local-cli/memory/recall");
+        assert_eq!(audit[2].action, "local-cli/memory/remember");
+        assert_eq!(audit[2].project.as_deref(), Some("work"));
+        assert_eq!(audit[2].source.as_deref(), Some("agent"));
     }
 }

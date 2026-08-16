@@ -13,8 +13,9 @@ local HTTP API at `http://127.0.0.1:7331/v1/context` is equivalent. Use `cortana
 raw-evidence fallback.
 
 1. Start with `context` (MCP, CLI, or HTTP) using the user's concrete terms and the current project
-   when known. Its token-bounded Markdown is ready to place directly into the working context and
-   cite with `[n]`.
+   when known. Its token-bounded Markdown contains numbered source evidence plus a separate native
+   memory section when matching durable agent context exists. Cite only the numbered evidence with
+   `[n]`; treat memories as scoped operational context.
 2. Use `search_code` for repository and filesystem evidence, `search_messages` for Gmail, Slack,
    Discord, and Buzz evidence, and `who_knows` when identifying source-backed expertise. Use generic
    `search` only for another focused pass, an explicit source, or exact debugging details.
@@ -29,6 +30,10 @@ raw-evidence fallback.
 6. Do not persist secrets, credentials, private keys, raw authentication material, or copied
    Cortana evidence outside the task unless the user asks.
 7. If evidence conflicts, prefer newer authoritative sources and disclose the conflict.
+8. Use `remember` only for an explicit, bounded conclusion, preference, procedure, episode, or
+   working-state update. Include a stable `dedupe_key` and provenance when possible; never copy
+   an entire source document into memory. Use `recall` for memory-only retrieval and `forget` when
+   the user withdraws a memory.
 
 For an MCP client, configure:
 
@@ -61,6 +66,10 @@ The token value stays in the agent process environment/private Cortana env file.
 to the configured principal, enforces query/status scopes and document/source ACL labels inside
 MCP, scopes status counters and source inventory, and records only metadata-only audit events under
 that principal name.
+
+The MCP server also exposes native `remember`, `recall`, and `forget` tools. They use the same
+workspace ACLs and audit trail as document retrieval; `context` automatically includes relevant
+native memories without exposing retracted or out-of-scope records.
 
 For an HTTP-only client, send:
 
@@ -96,7 +105,8 @@ cortana context "the concrete question" --project optional-project --max-tokens 
 
 The command prints stable JSON containing the Markdown context (with `[n]` citations), the
 included evidence rows, and retrieval/metrics fields (`retrieved`, `included`, `omitted`,
-`estimated_tokens`, `max_tokens`, and `retrieval_mode`). If the embedding provider is unavailable
+`memories_retrieved`, `memories_included`, `memories_omitted`, `estimated_tokens`, `max_tokens`,
+and `retrieval_mode`). If the embedding provider is unavailable
 or exceeds the interactive budget, `retrieval_mode` is `lexical-fallback` and the bundle includes
 a non-secret `retrieval_warning`; disclose that degradation to the user instead of presenting it
 as semantic retrieval. Omit `--max-tokens` to use the configured `[query].context_tokens` budget.

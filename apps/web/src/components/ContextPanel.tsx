@@ -102,6 +102,26 @@ export function ContextPanel({
             </button>
           ))}
         </div>
+        {serverContext?.memories && serverContext.memories.length > 0 && (
+          <>
+            <section className="section-label">
+              <span>Native agent memory</span>
+              <span>{serverContext.memories.length}</span>
+            </section>
+            <div className="evidence-list">
+              {serverContext.memories.map((memory) => (
+                <div className="utility-item" key={memory.id}>
+                  <div className="utility-item-main">
+                    <strong>{memory.title}</strong>
+                    <time>
+                      {memory.kind} · {memory.project} · confidence {memory.confidence.toFixed(2)}
+                    </time>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
         <section className="provenance">
           <span className="section-title">Embedding</span>
           <p>{status?.embedding_fingerprint ?? 'unavailable'}</p>
