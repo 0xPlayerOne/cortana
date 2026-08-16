@@ -638,5 +638,8 @@ export type AgentMemory = {
   content: string
   confidence: number
   importance: number
+  source?: string
+  observed_at?: string
+  valid_until?: string | null
   updated_at: string
 }
