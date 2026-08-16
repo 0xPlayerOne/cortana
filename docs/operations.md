@@ -512,11 +512,12 @@ messages), Personal Gmail (427), Special Gmail (216), and Special Drive (97). Wo
 complete records meet their configured 2,000-document/128 MiB/900-second or Work Calendar
 3,000-document/64 MiB/300-second budgets.
 
-Personal Drive's 2,000-document/128 MiB validation has now failed closed twice: the earlier
-1,800-second attempt reached its 1,799-second connector deadline, and a subsequent run at the
-configured 900-second budget reached its 899-second deadline while processing the account's large
-PDF/media corpus. Both runs made zero index or reconciliation writes. Work Drive's latest
-900-second validation is complete at 478 documents and 4,527,721 bytes. The
+Personal Drive's full-budget validations failed closed twice: the earlier 1,800-second attempt
+reached its 1,799-second connector deadline, and a subsequent run at the current 900-second budget
+reached its 899-second deadline while processing the account's large PDF/media corpus. Both runs
+made zero index or reconciliation writes. A later bounded sample succeeded at 25 documents/
+5 MiB/60 seconds, but remains below the configured budget. Work Drive's latest 900-second
+validation is complete at 478 documents and 4,527,721 bytes. The
 `readiness --allow-sync-service` gate must remain closed until Personal Drive has a fresh complete
 record at its configured budget; no reconciliation or large sync has been run.
 
@@ -536,8 +537,10 @@ The historical bounded live pass on 2026-08-15 rechecked every enabled non-code 
 Special Apple Notes, Drive, Gmail, and Calendar all completed; Special Calendar returned zero
 records; Buzz completed 25 records. Every run reported zero deletions. The index reached 12,123
 documents and 42,638 chunks. Query-only readiness passed and `readiness --allow-sync-service`
-still fails closed because every current validation record is below its configured production
-budget. These are bounded, non-reconciling observations only; recurring sync remains uninstalled.
+failed closed for the then-current bounded records. These are historical bounded,
+non-reconciling observations only; recurring sync remains uninstalled. The current host status is
+tracked above in the release/evaluation evidence: 12 of 13 enabled sources now have fresh
+configured-budget validation, while Personal Drive remains under-budget.
 
 The v0.32.12 source uses the local embedding `/health` endpoint for steady-state
 liveness and keep the real vector probe for startup/restart. The installed v0.32.4 Work Drive retry

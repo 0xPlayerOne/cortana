@@ -35,10 +35,11 @@ enabled-source set is not fully production-validated. The current complete recor
 `work`/`personal`/`special` (2,207/1,836/0), Buzz (45), Work Drive (478), Work Gmail (7,386),
 Personal Gmail (427), Special Gmail (216), and Special Drive (97). All meet their configured
 document, byte, and duration budgets; Work Drive's current record is 4,527,721 bytes at its
-900-second budget with zero writes. Personal Drive's explicit 2,000-document/128 MiB/1,800-second
-validation failed closed at the 1,799-second connector deadline under the then-installed v0.32.9 parser
-while processing a large PDF. Recurring sync remains uninstalled, and no reconciliation or large
-sync has been requested.
+900-second budget with zero writes. Personal Drive has a successful bounded 25-document/5 MiB/
+60-second sample, but remains below its configured 2,000-document/128 MiB/900-second budget; an
+earlier full-budget attempt failed closed under the then-installed v0.32.9 parser while processing
+a large PDF. Recurring sync remains uninstalled, and no reconciliation or large sync has been
+requested.
 
 The older production-budget results below are retained as historical evidence, not current
 authorization. They document prior successful prefixes and failure/recovery behavior, but the
@@ -101,13 +102,15 @@ separate `--allow-sync-service` gate fails closed because `personal-drive` has o
 25-document/5 MiB validation after its production-budget connector timeout, against the configured
 2,000-document, 128 MiB budget, so the recurring sync service remains uninstalled.
 
-After that evaluation, a fresh source-scoped live pass rechecked all enabled non-code sources with
+After that evaluation, a source-scoped live pass rechecked all enabled non-code sources with
 validation-required, non-reconciling 25-document/5 MiB/60-second caps. Apple Notes, calendars,
 Drive, Gmail, and Buzz all completed without deletions; Special Calendar naturally returned zero
 records. The index ended at 12,123 documents/42,638 chunks and query-only readiness passed. This
-is operational ingestion evidence, not a full-corpus quality benchmark: every current validation
-record remains below its configured production budget, recurring sync is still disabled, and the
-pass did not enable Discord, code, Slack, synthesis, Hindsight, or Honcho.
+is operational ingestion evidence, not a full-corpus quality benchmark. That historical pass
+used smaller bounds than the configured budgets; the current host status now reports 12 of 13
+enabled sources complete at their configured budgets, while Personal Drive remains at the
+successful 25-document/5 MiB/60-second sample and keeps recurring sync disabled. The pass did
+not enable Discord, code, Slack, synthesis, Hindsight, or Honcho.
 
 The v0.32.12 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is

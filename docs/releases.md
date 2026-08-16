@@ -48,12 +48,12 @@ evaluation harness, and readiness-budget diagnostics described below. Future sou
 must still use the protected staging and promotion flow, followed by the release verifier, before
 being called downloadable-release behavior.
 
-The current non-reconciling rollout evidence is also explicit: Work Drive completed a fresh
-production-budget validation at 478 documents and 4,527,721 bytes with zero writes. Personal
-Drive reached its 1,799-second connector deadline while processing a large PDF and failed closed;
-it remains below the complete-validation gate. Recurring sync stays uninstalled until Personal
-Drive and every other enabled source have fresh `complete=true` records at their configured
-budgets.
+The current source gate is also explicit. On the audited host (2026-08-16), 13 sources are
+enabled: 12 have fresh `complete=true` validation at their configured document, byte, and time
+budgets. Personal Drive has a successful bounded 25-document/5 MiB/60-second record, but its
+configured budget is 2,000 documents/128 MiB/900 seconds, so `readiness --allow-sync-service`
+fails closed on that source. Recurring sync remains uninstalled until that source is validated
+at its configured budget; no reconciliation or large sync has been started.
 
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
 check for scoped principals, ACL isolation, metadata-only audit responses, and token rotation. It
