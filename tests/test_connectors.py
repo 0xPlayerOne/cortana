@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -1077,6 +1078,33 @@ def test_large_low_text_pdf_does_not_walk_every_page() -> None:
     assert sum(page.calls for page in pages) <= google.MAX_DRIVE_SAMPLE_PAGES
     assert "page-0" in result
     assert "page-9999" in result
+
+
+def test_empty_text_pdf_emits_explicit_unavailable_marker() -> None:
+    class EmptyPage:
+        def extract_text(self) -> str:
+            return ""
+
+    result = google._extract_pdf_text(type("Reader", (), {"pages": [EmptyPage()]})())
+
+    assert str(result) == google.PDF_NO_TEXT_MARKER
+    assert result.truncated is True
+    assert result.original_chars is None
+
+
+def test_docx_text_is_extracted_with_a_bounded_zip_reader(tmp_path: Path) -> None:
+    path = tmp_path / "document.docx"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            """<document xmlns='urn:word'><body><p><t>Hello</t><t> world</t></p></body></document>""",
+        )
+
+    result = google._extract_docx_text(str(path))
+
+    assert "Hello world" in result
+    assert result.truncated is False
+    assert result.original_chars is not None
 
 
 def test_text_heavy_pdf_stops_after_bounded_payload() -> None:

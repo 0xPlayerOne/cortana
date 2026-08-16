@@ -15,6 +15,8 @@ import stat
 import sys
 import tempfile
 import time
+import xml.etree.ElementTree as ET
+import zipfile
 from collections import deque
 from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
@@ -46,6 +48,7 @@ TEXT_MIME_TYPES = {
     "text/markdown",
     "text/plain",
 }
+DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 DEFAULT_MAX_DRIVE_CONTENT_CHARS = 50_000
 # Drive listing pages hold up to 1000 files; downloaded bodies are fetched,
 # emitted, and cached in fixed batches of this size so a full page never keeps
@@ -66,6 +69,13 @@ MAX_DRIVE_FULL_PDF_PAGES = 32
 MAX_DRIVE_SAMPLE_PAGES = 32
 UNKNOWN_CONTENT_CHARS = -1
 PDF_SAMPLE_MARKER = "\n\n[Cortana omitted middle PDF pages]\n\n"
+PDF_NO_TEXT_MARKER = (
+    "[Cortana PDF contains no extractable text; open the original Drive item for visual content.]"
+)
+DOCX_NO_TEXT_MARKER = (
+    "[Cortana Word document contains no extractable text; open the original Drive item.]"
+)
+MAX_DRIVE_ZIP_UNCOMPRESSED_BYTES = 128 * 1024 * 1024
 # A normal-sized PDF can still contain more text than the bounded extraction
 # payload. Once that bound is reached, stop asking pypdf to parse later pages;
 # the retained prefix is explicitly marked as incomplete and is never treated
@@ -583,6 +593,10 @@ def fetch_drive(
                                 "content_stale": file_id in stale_ids,
                                 "content_truncated": content_truncated
                                 or bool(getattr(body, "truncated", False)),
+                                "content_unavailable": any(
+                                    marker in str(body)
+                                    for marker in (PDF_NO_TEXT_MARKER, DOCX_NO_TEXT_MARKER)
+                                ),
                                 "content_original_chars": getattr(
                                     body, "original_chars", len(body)
                                 ),
@@ -1258,6 +1272,26 @@ def _drive_content(session: GoogleSession, item: dict[str, Any]) -> str:
                     output.write(chunk)
             output.flush()
             return _extract_pdf_text(PdfReader(output.name, strict=False))
+    if mime_type == DOCX_MIME_TYPE:
+        try:
+            with tempfile.NamedTemporaryFile(prefix="cortana-drive-", suffix=".docx") as output:
+                total_bytes = 0
+                with session.stream(
+                    "GET",
+                    f"https://www.googleapis.com/drive/v3/files/{file_id}",
+                    params={"alt": "media"},
+                ) as response:
+                    for chunk in response.iter_bytes():
+                        total_bytes += len(chunk)
+                        if total_bytes > MAX_DRIVE_PDF_BYTES:
+                            raise RuntimeError(
+                                f"Drive Word document exceeds {MAX_DRIVE_PDF_BYTES} bytes"
+                            )
+                        output.write(chunk)
+                output.flush()
+                return _extract_docx_text(output.name)
+        except zipfile.BadZipFile as error:
+            raise RuntimeError(f"Drive Word document is not a valid DOCX: id={file_id}") from error
     return ""
 
 
@@ -1309,6 +1343,8 @@ def _extract_pdf_text(reader: Any) -> _DriveContent:
                     truncated=True,
                 )
         result = accumulator.finish()
+        if not str(result).strip():
+            return _DriveContent(PDF_NO_TEXT_MARKER, None, truncated=True)
         return _DriveContent(str(result).strip(), result.original_chars, result.truncated)
 
     sample_limit = MAX_DRIVE_STREAM_CHARS - len(PDF_SAMPLE_MARKER)
@@ -1343,11 +1379,50 @@ def _extract_pdf_text(reader: Any) -> _DriveContent:
 
     head = "".join(head_parts)
     tail = "".join(reversed(tail_parts_reversed))
+    if not head and not tail:
+        return _DriveContent(PDF_NO_TEXT_MARKER, None, truncated=True)
     sampled = f"{head}{PDF_SAMPLE_MARKER}{tail}".strip()
     # The omitted middle is intentionally not parsed, so an exact character
     # count is unavailable. Persist an explicit sentinel rather than claiming
     # that the retained head/tail sample is the complete document.
     return _DriveContent(sampled, None, truncated=True)
+
+
+def _extract_docx_text(path: str) -> _DriveContent:
+    """Extract bounded Word text without trusting ZIP member sizes."""
+
+    with zipfile.ZipFile(path) as archive:
+        members = archive.infolist()
+        total_uncompressed = 0
+        for member in members:
+            name = member.filename.replace("\\", "/")
+            if name.startswith("/") or ".." in name.split("/"):
+                raise RuntimeError("Drive Word document contains an unsafe ZIP member")
+            if member.file_size > MAX_DRIVE_ZIP_UNCOMPRESSED_BYTES:
+                raise RuntimeError("Drive Word document contains an oversized ZIP member")
+            total_uncompressed += member.file_size
+            if total_uncompressed > MAX_DRIVE_ZIP_UNCOMPRESSED_BYTES:
+                raise RuntimeError("Drive Word document exceeds the uncompressed safety limit")
+
+        try:
+            document = archive.open("word/document.xml")
+        except KeyError as error:
+            raise RuntimeError("Drive Word document is missing word/document.xml") from error
+
+        accumulator = _BoundedTextAccumulator(MAX_DRIVE_STREAM_CHARS)
+        with document:
+            for _event, element in ET.iterparse(document, events=("end",)):
+                if element.tag.endswith("}t") and element.text:
+                    accumulator.append(" ".join(element.text.split()))
+                    accumulator.append(" ")
+                elif element.tag.endswith("}p"):
+                    accumulator.append("\n\n")
+                element.clear()
+
+        result = accumulator.finish()
+        if not str(result).strip():
+            return _DriveContent(DOCX_NO_TEXT_MARKER, None, truncated=True)
+        return _DriveContent(str(result).strip(), result.original_chars, result.truncated)
 
 
 def _bounded_content(value: str, max_chars: int) -> tuple[str, bool]:
