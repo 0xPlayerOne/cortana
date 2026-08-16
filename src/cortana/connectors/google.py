@@ -39,6 +39,7 @@ GOOGLE_EXPORTS = {
     "application/vnd.google-apps.presentation": ("text/plain", "txt"),
     "application/vnd.google-apps.spreadsheet": ("text/csv", "csv"),
 }
+GOOGLE_DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 TEXT_MIME_TYPES = {
     "application/json",
     "application/rtf",
@@ -490,6 +491,11 @@ def fetch_drive(
                     stale_ids: set[str] = set()
                     for item in batch_items:
                         file_id = item["id"]
+                        if item.get("mimeType") == GOOGLE_DRIVE_FOLDER_MIME_TYPE:
+                            # Folder records are containers, not documents. The
+                            # listing remains complete while their children are
+                            # emitted as ordinary files on this and later pages.
+                            continue
                         modified_time = _drive_modified_time(item, file_id, strict)
                         if modified_time is None:
                             continue
@@ -532,6 +538,8 @@ def fetch_drive(
                                 bodies[file_id] = body
                     for item in batch_items:
                         file_id = str(item["id"])
+                        if item.get("mimeType") == GOOGLE_DRIVE_FOLDER_MIME_TYPE:
+                            continue
                         modified_time = _drive_modified_time(item, file_id, strict)
                         if modified_time is None:
                             continue

@@ -1274,6 +1274,44 @@ def test_google_drive_exports_supported_content(tmp_path: Path) -> None:
     assert documents[0].metadata["owners"] == ["Ada"]
 
 
+def test_google_drive_ignores_folder_containers_in_strict_mode(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "folder1",
+                            "name": "Holtz",
+                            "mimeType": google.GOOGLE_DRIVE_FOLDER_MIME_TYPE,
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                        {
+                            "id": "doc1",
+                            "name": "Roadmap",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="Quarterly roadmap", request=request)
+
+    documents = list(
+        fetch_drive(
+            token,
+            "work",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+    )
+
+    assert [document.source_id for document in documents] == ["doc1"]
+
+
 def test_google_drive_bounded_validation_caps_listing_page_and_documents(
     tmp_path: Path,
 ) -> None:
