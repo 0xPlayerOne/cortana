@@ -4314,6 +4314,40 @@ mod tests {
     }
 
     #[test]
+    fn native_memory_recall_matches_safe_prefix_terms_after_stopword_filtering() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let memory = store
+            .remember(&crate::memory::MemoryInput {
+                kind: "procedural".into(),
+                project: "work".into(),
+                title: "Deployment checklist".into(),
+                content: "Run the release validation before deployment.".into(),
+                source: "agent".into(),
+                source_id: "release-playbook".into(),
+                dedupe_key: None,
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("memory");
+        let results = store
+            .recall_memories(
+                "how do I deploy the release",
+                Some("work"),
+                None,
+                10,
+                &["work".into()],
+            )
+            .expect("recall");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].memory.id, memory.id);
+    }
+
+    #[test]
     fn scoped_memory_mutations_cannot_cross_acl_boundaries() {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");

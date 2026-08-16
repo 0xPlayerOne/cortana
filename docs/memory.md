@@ -46,7 +46,7 @@ operational context.
 The native MCP tools are:
 
 - `remember` — write one bounded memory;
-- `recall` — ACL-filtered lexical recall with a precise all-term pass and a bounded natural-language fallback;
+- `recall` — ACL-filtered prefix-aware lexical recall with a precise all-term pass and a bounded natural-language fallback;
 - `forget` — redact one memory;
 - `context` — retrieve cited source evidence plus relevant native memory in a
   token-bounded bundle.

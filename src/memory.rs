@@ -297,15 +297,32 @@ fn query_terms(query: &str) -> Result<Vec<String>> {
                 .filter(|character| character.is_alphanumeric() || *character == '_')
                 .collect::<String>()
         })
-        .filter(|term| !term.is_empty())
+        .filter(|term| !term.is_empty() && !is_stopword(term))
         .take(16)
-        .map(|term| format!("\"{}\"", term.replace('"', "")))
+        // FTS5 prefix terms preserve exact token boundaries while allowing
+        // normal inflections ("deploy" matches "deployment"). The input has
+        // already been reduced to alphanumeric/underscore tokens, so the
+        // generated expression cannot inject FTS operators.
+        .map(|term| format!("\"{term}\"*"))
         .collect::<Vec<_>>();
     anyhow::ensure!(
         !terms.is_empty(),
         "memory query must contain searchable terms"
     );
     Ok(terms)
+}
+
+fn is_stopword(term: &str) -> bool {
+    const STOPWORDS: [&str; 52] = [
+        "a", "an", "and", "are", "as", "at", "be", "been", "but", "by", "can", "could", "did",
+        "do", "does", "for", "from", "had", "has", "have", "how", "i", "if", "in", "into", "is",
+        "it", "its", "may", "me", "my", "of", "on", "or", "our", "should", "that", "the", "their",
+        "there", "this", "to", "was", "what", "when", "where", "who", "will", "with", "would",
+        "you", "your",
+    ];
+    STOPWORDS
+        .iter()
+        .any(|stopword| term.eq_ignore_ascii_case(stopword))
 }
 
 #[cfg(test)]
@@ -362,5 +379,20 @@ mod tests {
         assert!(!is_authorization_error(&anyhow::anyhow!(
             "memory title exceeds 512 bytes"
         )));
+    }
+
+    #[test]
+    fn memory_queries_remove_stopwords_and_use_safe_prefix_terms() {
+        assert_eq!(
+            fts_query("how do i deploy the release").expect("query terms"),
+            "\"deploy\"* AND \"release\"*"
+        );
+        assert_eq!(
+            fts_query_or("deploying release notes").expect("query terms"),
+            "\"deploying\"* OR \"release\"* OR \"notes\"*"
+        );
+        assert!(fts_query("how do i").is_err());
+        // Preserve code/proper-name tokens that are not in the stopword set.
+        assert_eq!(fts_query("I Cortana").expect("query terms"), "\"Cortana\"*");
     }
 }
