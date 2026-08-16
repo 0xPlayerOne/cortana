@@ -19,10 +19,10 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.32.12`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `31933279147` completed the 18-asset
+The current protected source and published tag are `v0.33.0`, promoted through the protected
+flow and Release Please automation. Release-assets workflow `31969571292` completed the 18-asset
 release gate, including checksums, updater signatures, manifest, and packaged-core verification.
-The v0.32.12 source carries the bounded large-PDF Drive parser and the
+The v0.33.0 source carries the native agentic-memory layer and the
 rollback-safe Hermes migration publication
 and the bounded
 read-only live-index evaluator.
@@ -71,15 +71,15 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.32.12 release gate verified the packaged core offline without credentials. The installed
-host is now v0.32.12; the provider-backed evaluation below remains fixture-only evidence and is
-separate from the packaged-core gate.
+The v0.33.0 release gate verified the packaged core offline without credentials. The installed
+host remains v0.32.12; the provider-backed evaluation below is historical installed-runtime
+evidence and remains fixture-only evidence, separate from the packaged-core gate.
 The offline evaluator and query-only readiness pass, while the provider-backed model run remains
 fixture-only evidence. This remains bounded query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator remains opt-in;
 extractive mode is the production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.12 from the verified local
+The audited host still runs `/Users/amf/.local/bin/cortana` v0.32.12 from the previous verified local
 installation. The embedding and HTTP services are running with recurring sync uninstalled. This is
 local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
@@ -112,18 +112,18 @@ enabled sources complete at their configured budgets, while Personal Drive remai
 successful 25-document/5 MiB/60-second sample and keeps recurring sync disabled. The pass did
 not enable Discord, code, Slack, or synthesis.
 
-The v0.32.12 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.33.0 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current v0.32.12 source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.33.0 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.32.12 source; it does
+This protects concurrent Desktop windows/processes in the v0.33.0 source; it does
 not authorize source ingestion or recurring sync.
 
-The v0.32.12 source adds bounded embedding-supervisor recovery: steady-state health checks
+The v0.33.0 source adds bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -273,7 +273,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.32.12 source and verified package
+release evidence; use **Current release boundary** above for the v0.33.0 source and verified package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
