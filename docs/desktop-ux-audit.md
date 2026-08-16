@@ -16,13 +16,13 @@ is not part of a visual/UI change.
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
 - The v0.32.11 archive is the current fully verified packaged evidence boundary. The audited host
-  evidence below still runs the installed `/Users/amf/.local/bin/cortana` v0.32.9 with embedding and server services in
+  evidence below now runs the installed `/Users/amf/.local/bin/cortana` v0.32.11 with embedding and server services in
   query-only mode; recurring sync remains disabled. Query-only readiness and
   source authorization are separate host checks; source authorization and full-corpus sync were
   not started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater interaction,
   Developer ID signing, and notarization remain manual gates.
-- The installed v0.32.9 host passed the bounded provider-backed `eval --model` evidence
-  run on 2026-08-16 in 16,313 ms: retrieval recall, MRR, case pass rate, citation validity,
+- The installed v0.32.11 host passed the bounded provider-backed `eval --model` evidence
+  run on 2026-08-16 in 14,795 ms: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
   all passed with no fallback. This is provider-backed fixture evidence only; it does not query
   the personal index or prove packaged GUI behavior.
@@ -84,7 +84,7 @@ is not part of a visual/UI change.
   and Slack is unconfigured. The historical sweep is authorization/reachability
   evidence only and must not be read as current source authorization.
 
-The current v0.32.9 source and package include the post-v0.31.12 safety lane, which acquires
+The current v0.32.11 source and package include the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, fences optional-memory outbox leases, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -92,7 +92,7 @@ a per-config cross-process lock. These source-tree protections are covered by fo
 regressions; they do not authorize a source, enable recurring sync, or prove the unverified
 GUI/browser/tray/dialog/updater gates above.
 
-The v0.32.9 source adds one operational recovery change for the local embedding supervisor:
+The v0.32.11 source adds one operational recovery change for the local embedding supervisor:
 steady-state checks use the lightweight `/health` endpoint so queued ingestion work cannot look dead;
 startup and restart still require a real vector probe. The earlier v0.32.1 Work Drive trials were
 cancelled after that older supervisor stalled. After v0.32.2 installation, a foreground Work Drive
@@ -113,7 +113,7 @@ The current validation metadata now contains production-budget complete records 
 documents/4,527,721 bytes), Work Gmail (7,386 messages), Personal Gmail (427 messages), Special
 Gmail (216 messages), and Special Drive (97 documents). Personal Drive's 2,000-document/128 MiB/
 1,800-second validation failed closed at the 1,799-second connector deadline under the installed
-v0.32.9 parser while processing a large PDF.
+then-installed v0.32.9 parser while processing a large PDF.
 The recurring sync service remains uninstalled, and no reconciliation or large sync has been run.
 
 Historical bounded source-smoke and non-reconciling trials remain useful connector evidence, but do
@@ -169,9 +169,9 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the verified v0.32.9 package passed the credential-free packaged-core
-   evaluator and query-only readiness after installation. The current installed v0.32.9 CLI passed
-   the bounded provider-backed run on 2026-08-15 in 17,160 ms with planner/synthesis, valid
+2. Model-backed provider gate: the verified v0.32.11 package passed the credential-free packaged-core
+   evaluator and query-only readiness after installation. The current installed v0.32.11 CLI passed
+   the bounded provider-backed run on 2026-08-16 in 14,795 ms with planner/synthesis, valid
    citations, cache reuse, and revision invalidation. That run used synthetic fixtures only; no
    provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider
    outages or slow responses still fail closed, and extractive mode remains the safe production
@@ -224,7 +224,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.32.9 source or the historical v0.32.6 core; use the
+does not describe the current v0.32.11 source or the historical v0.32.6 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -240,8 +240,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.32.9` source or packaged Desktop behavior. The verified
-  `v0.32.9` asset workflow is recorded in the release section above.
+  the current `v0.32.11` source or packaged Desktop behavior. The verified
+  `v0.32.11` asset workflow is recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected

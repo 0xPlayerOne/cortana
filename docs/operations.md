@@ -512,7 +512,7 @@ PDF/media corpus. Both runs made zero index or reconciliation writes. Work Drive
 `readiness --allow-sync-service` gate must remain closed until Personal Drive has a fresh complete
 record at its configured budget; no reconciliation or large sync has been run.
 
-The installed v0.32.9 CLI also passed a fresh bounded `eval --model` run on 2026-08-16 in 16,313
+The installed v0.32.11 CLI also passed a fresh bounded `eval --model` run on 2026-08-16 in 14,795
 ms, including planner/synthesis, valid citations, cache reuse, and revision invalidation without
 provider fallback. This is synthetic provider-backed evidence only; it does not authorize source
 sync, establish personal-index quality, or replace the separate packaged GUI and signing gates.
@@ -558,7 +558,7 @@ older releases, but current entry points must not silently drift.
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.32.9
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.32.11
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified

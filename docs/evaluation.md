@@ -70,22 +70,22 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
 The v0.32.11 release gate verifies the packaged core offline without credentials. The installed
-host binary used for the provider-backed model run below is v0.32.9; the v0.32.11 archive passed
-the packaged-core gate independently.
+host binary used for the provider-backed model run below is v0.32.11, matching the protected
+source and published archive.
 The offline evaluator and query-only readiness pass, while the provider-backed model run remains
 fixture-only evidence. This remains bounded query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator remains opt-in;
 extractive mode is the production default.
 
-The audited host still runs `/Users/amf/.local/bin/cortana` v0.32.9 from the local installation;
-the published v0.32.11 archive passed the packaged-core gate. The embedding and HTTP
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.11 from the local installation;
+the published v0.32.11 archive and its checksum/signature gate passed. The embedding and HTTP
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
 The current provider-backed fixture evidence was collected on 2026-08-16 with the installed
-v0.32.9 CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR, case
+v0.32.11 CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR, case
 pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
-invalidation; the answer completed in 16,313 ms under the 55,000 ms deadline with no provider
+invalidation; the answer completed in 14,795 ms under the 55,000 ms deadline with no provider
 fallback. This is current package/runtime evidence, but it remains synthetic fixture evidence: it
 does not query the personal index, prove packaged GUI behavior, or authorize source
 synchronization. The preceding v0.32.7 result remains historical evidence in the release record.
@@ -116,7 +116,7 @@ The model fixture remains synthetic and does not authorize sources or recurring 
 
 The current v0.32.11 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.32.9 source and package; it does
+This protects concurrent Desktop windows/processes in the v0.32.11 source and package; it does
 not authorize source ingestion or recurring sync.
 
 The v0.32.11 source and package add bounded embedding-supervisor recovery: steady-state health checks
@@ -269,7 +269,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.32.9 source and verified package
+release evidence; use **Current release boundary** above for the v0.32.11 source and verified package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
