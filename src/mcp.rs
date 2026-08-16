@@ -383,22 +383,26 @@ impl BrainServer {
                 if retrieval.degraded() {
                     self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed);
                 }
-                let memories = self
-                    .store
-                    .recall_memories(
-                        &params.query,
-                        params.project.as_deref(),
-                        None,
-                        params
-                            .limit
-                            .unwrap_or(20)
-                            .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
-                        &acl,
-                    )
-                    .unwrap_or_else(|error| {
-                        tracing::warn!(%error, "native memory recall unavailable while building MCP context");
-                        Vec::new()
-                    });
+                let memories = if principal.has_scope(MEMORY_SCOPE) {
+                    self
+                        .store
+                        .recall_memories(
+                            &params.query,
+                            params.project.as_deref(),
+                            None,
+                            params
+                                .limit
+                                .unwrap_or(20)
+                                .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
+                            &acl,
+                        )
+                        .unwrap_or_else(|error| {
+                            tracing::warn!(%error, "native memory recall unavailable while building MCP context");
+                            Vec::new()
+                        })
+                } else {
+                    Vec::new()
+                };
                 self.audit_principal(
                     &principal,
                     "mcp.context",
@@ -1239,6 +1243,22 @@ mod tests {
                 )
                 .expect("document");
         }
+        store
+            .remember(&MemoryInput {
+                kind: "semantic".into(),
+                project: "demo".into(),
+                title: "Launch memory".into(),
+                content: "The shared launch phrase is approved for work.".into(),
+                source: "agent".into(),
+                source_id: String::new(),
+                dedupe_key: Some("test:admin-launch-memory".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+            })
+            .expect("memory");
         let mut config = Config::default();
         config
             .environment
@@ -1256,7 +1276,7 @@ mod tests {
             AuthTokenConfig {
                 principal: "admin-agent".into(),
                 token_env: "ADMIN_TOKEN".into(),
-                scopes: vec![QUERY_SCOPE.into(), ADMIN_SCOPE.into()],
+                scopes: vec![QUERY_SCOPE.into(), ADMIN_SCOPE.into(), MEMORY_SCOPE.into()],
                 acl: vec!["work".into()],
             },
         ];
@@ -1319,6 +1339,7 @@ mod tests {
         )
         .expect("work context");
         assert_eq!(work_context["evidence"].as_array().map(Vec::len), Some(1));
+        assert!(work_context.get("memories").is_none());
 
         let admin_context: serde_json::Value = serde_json::from_str(
             &admin_server
@@ -1333,6 +1354,7 @@ mod tests {
         )
         .expect("admin context");
         assert_eq!(admin_context["evidence"].as_array().map(Vec::len), Some(2));
+        assert_eq!(admin_context["memories"].as_array().map(Vec::len), Some(1));
     }
 
     #[tokio::test]
