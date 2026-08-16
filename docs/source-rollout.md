@@ -14,7 +14,7 @@ of the live Cortana runtime. Migration compatibility code remains available for 
 
 The current safe rollout is intentionally selective. The operator has refreshed the validation
 records for the enabled non-code sources at their configured production budgets where the provider
-can complete within the bounded connector deadline, using the installed v0.32.11 parser:
+can complete within the bounded connector deadline, using the installed v0.32.12 parser:
 
 - Apple Notes: `work-notes` 28, `personal-notes` 65, and `special-notes` 8 documents; all are
   `complete=true` at 2,000 documents/128 MiB/900 seconds.
@@ -27,12 +27,11 @@ can complete within the bounded connector deadline, using the installed v0.32.11
 - Special Gmail: 216 messages at 2,000/128 MiB/900 seconds; complete.
 - Special Drive: 97 documents at 2,000/128 MiB/900 seconds; complete.
 
-Personal Drive's explicit 2,000-document/128 MiB/1,800-second validation failed closed at the
-1,799-second connector deadline while processing a large PDF; it made no index or reconciliation
-changes. Work Drive then completed its 2,000-document/128 MiB/900-second validation with 478
-documents and 4,527,721 bytes, `complete=true`, and zero writes. Personal Drive remains the only
-enabled source with a failed production-budget validation, so these results do not authorize
-reconciliation or recurring sync.
+Personal Drive has a successful bounded 25-document/5 MiB/60-second validation, but its configured
+production budget is 2,000 documents/128 MiB/900 seconds. Work Drive completed its
+2,000-document/128 MiB/900-second validation with 478 documents and 4,527,721 bytes,
+`complete=true`, and zero writes. Personal Drive remains the only enabled source without a
+production-budget validation, so these results do not authorize reconciliation or recurring sync.
 Discord and all code/filesystem
 roots remain disabled by operator choice, and Slack is not configured. The recurring sync service
 remains uninstalled until every enabled source has a fresh complete validation at its configured
@@ -43,7 +42,7 @@ budget.
 | Apple Notes (`work-notes`, `personal-notes`, `special-notes`)              | Complete folder-scoped validation: 28 `Nifty League` notes in `work`, 65 personal notes after excluding `Nifty League` and Pink Binder folders, and 8 `The Pink Binder` notes in `special`; all meet the 2,000/128 MiB/900-second budget.                                                                          | Keep exact folder filters; run a small non-reconciling trial before any future reconciliation.                                                                   |
 | Google Calendar (`work-calendar`, `personal-calendar`, `special-calendar`) | Complete production-budget validation returned 2,207, 1,836, and 0 events respectively.                                                                                                                                                                                                                            | Keep trials non-reconciling until the remaining source gates close.                                                                                              |
 | Buzz                                                                       | Complete production-budget validation returned 45 records at 2,000/128 MiB/900 seconds.                                                                                                                                                                                                                            | Keep the source non-reconciling until the remaining source gates close.                                                                                          |
-| Google Drive/Gmail                                                         | Work Drive is complete at 478/4,527,721 bytes; Work Gmail is complete at 7,386/34,487,878 bytes; Personal Gmail is complete at 427/1,489,922 bytes; Special Gmail is complete at 216/1,004,868 bytes; Special Drive is complete at 97/290,353 bytes. Personal Drive failed at the 1,799-second connector deadline. | Keep Personal Drive non-reconciling until a complete production-budget validation succeeds; do not treat capped prefixes or failed runs as production snapshots. |
+| Google Drive/Gmail                                                         | Work Drive is complete at 478/4,527,721 bytes; Work Gmail is complete at 7,386/34,487,878 bytes; Personal Gmail is complete at 427/1,489,922 bytes; Special Gmail is complete at 216/1,004,868 bytes; Special Drive is complete at 97/290,353 bytes. Personal Drive has only a successful 25-document/5 MiB/60-second sample against its 2,000-document/128 MiB/900-second budget. | Keep Personal Drive non-reconciling until a complete production-budget validation succeeds; do not treat capped prefixes or failed runs as production snapshots. |
 | Discord                                                                    | Disabled by operator decision while the prior bot/RPC authorization is unavailable.                                                                                                                                                                                                                                | Keep disabled until a fresh owner authorization is completed.                                                                                                    |
 | Slack                                                                      | Not configured in this installation.                                                                                                                                                                                                                                                                               | Remains an optional connector for other users.                                                                                                                   |
 | Code/filesystem roots                                                      | Disabled by operator decision to defer the largest syncs.                                                                                                                                                                                                                                                          | Keep disabled until a separate code-index rollout is approved.                                                                                                   |
@@ -70,10 +69,10 @@ chunks, query-only readiness passed, and the installation remains manual/query-o
 records are below production budgets, so code roots, Discord, Slack, reconciliation, and
 recurring sync remain explicitly gated.
 
-On 2026-08-16 a separate read-only Personal Drive probe completed 100 documents at 390,182
-bytes with a 300-second cap and zero index writes. This is useful bounded connector evidence
-while the PDF parser is being optimized, but it is still below the configured 2,000-document,
-128 MiB, 1,800-second production gate and does not authorize reconciliation or recurring sync.
+Historical note: on 2026-08-16 a separate read-only Personal Drive probe completed 100 documents
+at 390,182 bytes with a 300-second cap and zero index writes. This remains bounded connector
+evidence, not a production validation; the current configured gate is 2,000 documents/128 MiB/
+900 seconds and still does not authorize reconciliation or recurring sync.
 
 ## Per-source rollout matrix
 
