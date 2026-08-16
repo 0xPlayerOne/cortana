@@ -20,8 +20,9 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 ### Current release boundary
 
 The current protected source and published tag are `v0.32.12`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `31933279147` is the active 18-asset
-release gate; packaged verification remains pending until it completes. The v0.32.12 source carries the bounded large-PDF Drive parser and the
+flow and Release Please automation. Release-assets workflow `31933279147` completed the 18-asset
+release gate, including checksums, updater signatures, manifest, and packaged-core verification.
+The v0.32.12 source carries the bounded large-PDF Drive parser and the
 rollback-safe Hermes migration publication
 and the bounded
 read-only live-index evaluator.
@@ -69,23 +70,23 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.32.12 release gate will verify the packaged core offline without credentials. The installed
-host binary used for the provider-backed model run below remains v0.32.11; it is separate from
-the newly published tag while the v0.32.12 asset workflow is running.
+The v0.32.12 release gate verified the packaged core offline without credentials. The installed
+host is now v0.32.12; the provider-backed evaluation below remains fixture-only evidence and is
+separate from the packaged-core gate.
 The offline evaluator and query-only readiness pass, while the provider-backed model run remains
 fixture-only evidence. This remains bounded query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator remains opt-in;
 extractive mode is the production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.11 from the local installation;
-the v0.32.12 tag is published and its checksum/signature gate is still in progress. The embedding and HTTP
-services are running with recurring sync uninstalled. This is local installation evidence, not
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.32.12 from the verified local
+installation. The embedding and HTTP services are running with recurring sync uninstalled. This is
+local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
 The latest provider-backed fixture evidence was collected on 2026-08-16 with the installed
-v0.32.11 CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR, case
+v0.32.12 CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR, case
 pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
-invalidation; the answer completed in 14,795 ms under the 55,000 ms deadline with no provider
+invalidation; the answer completed in 23,267 ms under the 55,000 ms deadline with no provider
 fallback. This is installed-runtime evidence, but it remains synthetic fixture evidence: it
 does not query the personal index, prove packaged GUI behavior, or authorize source
 synchronization. The preceding v0.32.7 result remains historical evidence in the release record.
@@ -269,7 +270,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.32.11 source and verified package
+release evidence; use **Current release boundary** above for the v0.32.12 source and verified package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
