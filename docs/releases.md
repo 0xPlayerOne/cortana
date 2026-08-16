@@ -62,6 +62,18 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
+## v0.34.0 release intent (pending protected release)
+
+The post-v0.33.0 source tree improves the canonical native memory layer with local salience-aware
+recall ranking. Candidate memories are scored by query-term coverage using the same token-prefix
+semantics as FTS, lexical relevance, confidence, importance, freshness, and exact-versus-fallback
+matching. The score is bounded and diagnostic; ACL, expiry, supersession, dedupe, and cache
+invalidation contracts remain unchanged.
+
+This release intent changes no credentials, source authorization, indexed data, recurring-sync state,
+or external memory/plugin integration. The protected staging-to-main promotion and version-only
+Release Please PR must complete before the `v0.34.0` package is called downloadable or verified.
+
 ## v0.33.0 release intent (published and verified)
 
 The post-v0.32.12 source tree makes native agentic memory part of Cortana's canonical SQLite
