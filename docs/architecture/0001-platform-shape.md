@@ -1,13 +1,12 @@
-# ADR 0001: Canonical evidence platform with optional memory providers
+# ADR 0001: Canonical evidence and native memory platform
 
 Status: accepted
 
 ## Context
 
 The predecessor Hermes infrastructure stores code and personal knowledge in separate Chroma
-collections, exports a Markdown vault, supervises a local Qwen embedding service, and optionally
-duplicates durable facts into Hindsight. Those parts work, but retrieval semantics, provenance,
-project scope, permissions, and agent access are not unified.
+collections and exports a Markdown vault. Those parts work, but retrieval semantics, provenance,
+project scope, permissions, knowledge, and agent memory are not unified.
 
 ## Decision
 
@@ -28,9 +27,10 @@ current release and is not silently provisioned. Local/cloud embedding providers
 OpenAI-compatible contract. A provider-endpoint/model/dimension fingerprint defines an index
 generation, preventing vectors from different services or models from being compared or mixed.
 
-Hindsight remains an optional sink/source for reflective temporal memory. It cannot become the
-canonical store because its abstractions do not preserve Cortana's complete source and access
-contract. Honcho may be added through the same interface after an evaluation suite proves value.
+Native memory is stored beside canonical documents in SQLite, but it has an explicit lifecycle and
+never bulk-copies source content. Typed memories carry provenance, confidence, importance, validity,
+supersession, redaction, and workspace ACLs. Agents use the same MCP/HTTP/CLI contract for knowledge
+context and memory recall, so retention and deletion remain inside Cortana's audited backup boundary.
 
 Rust owns every long-running process and the canonical ingestion, storage, retrieval, API, MCP, and
 CLI paths. Python is a connector subprocess boundary only for vendor SDKs and macOS automation that

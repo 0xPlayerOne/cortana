@@ -22,7 +22,8 @@ const DUPLEX_BUFFER_BYTES: usize = 64 * 1024;
 const CONVERSATION_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[tokio::test]
-async fn protocol_contract_exposes_six_tools_and_serves_brain_status() -> anyhow::Result<()> {
+async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
+-> anyhow::Result<()> {
     let directory = tempdir().expect("temporary directory");
     let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
     let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
@@ -56,6 +57,9 @@ async fn protocol_contract_exposes_six_tools_and_serves_brain_status() -> anyhow
             [
                 "brain_status",
                 "context",
+                "forget",
+                "recall",
+                "remember",
                 "search",
                 "search_code",
                 "search_messages",

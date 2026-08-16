@@ -15,10 +15,11 @@ use rmcp::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    auth::{AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
+    auth::{AuthPolicy, MEMORY_SCOPE, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
     config::Config,
     context,
     embed::Embedder,
+    memory::MemoryInput,
     retrieval,
     store::Store,
 };
@@ -53,6 +54,38 @@ pub struct DomainSearchParams {
     limit: Option<usize>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryRememberParams {
+    kind: String,
+    project: String,
+    title: String,
+    content: String,
+    source: Option<String>,
+    source_id: Option<String>,
+    dedupe_key: Option<String>,
+    confidence: Option<f32>,
+    importance: Option<f32>,
+    acl: Option<Vec<String>>,
+    provenance: Option<serde_json::Value>,
+    supersedes_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryRecallParams {
+    query: String,
+    project: Option<String>,
+    kind: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryForgetParams {
+    id: String,
+}
+
 /// Safe, non-secret source configuration exposed to agents through
 /// `brain_status`. This deliberately omits credential paths, environment names,
 /// and connector arguments.
@@ -62,6 +95,7 @@ pub use crate::source_status::ConfiguredSourceStatus;
 struct BrainStatus {
     #[serde(flatten)]
     stats: crate::store::StoreStats,
+    memory: crate::memory::MemoryStats,
     configured_sources: Vec<ConfiguredSourceStatus>,
     retrieval_fallbacks_total: u64,
 }
@@ -77,6 +111,7 @@ pub struct BrainServer {
     message_sources: Vec<String>,
     configured_sources: Vec<ConfiguredSourceStatus>,
     retrieval_fallbacks: Arc<AtomicU64>,
+    memory_defaults: crate::memory::MemoryDefaults,
 }
 
 #[derive(Clone)]
@@ -127,11 +162,20 @@ impl BrainServer {
             message_sources: Vec::new(),
             configured_sources: Vec::new(),
             retrieval_fallbacks: Arc::new(AtomicU64::new(0)),
+            memory_defaults: crate::memory::MemoryDefaults::default(),
         }
     }
 
     pub fn with_principal(mut self, principal: Principal) -> Self {
         self.principal = PrincipalSource::Static(principal);
+        self
+    }
+
+    pub fn with_memory_defaults(mut self, confidence: f32, importance: f32) -> Self {
+        self.memory_defaults = crate::memory::MemoryDefaults {
+            confidence,
+            importance,
+        };
         self
     }
 
@@ -401,6 +445,263 @@ impl BrainServer {
     }
 
     #[tool(
+        description = "Write one explicit, provenance-bearing memory to Cortana's native memory store. Use this for durable facts, preferences, procedures, episodes, or short-lived working state; do not copy whole source documents."
+    )]
+    async fn remember(&self, Parameters(params): Parameters<MemoryRememberParams>) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.remember",
+                    None,
+                    None,
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                return format!("authorization error: {error}");
+            }
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            self.audit_principal(
+                &principal,
+                "mcp.remember",
+                Some(&params.project),
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            return "authorization error: memory scope required".into();
+        }
+        let requested_acl = params.acl.unwrap_or_default();
+        let visible_acl = principal.visible_acl();
+        let acl = if principal.is_owner() {
+            requested_acl
+        } else if requested_acl.is_empty() {
+            visible_acl
+        } else if requested_acl
+            .iter()
+            .all(|label| visible_acl.iter().any(|visible| visible == label))
+        {
+            requested_acl
+        } else {
+            self.audit_principal(
+                &principal,
+                "mcp.remember",
+                Some(&params.project),
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            return "authorization error: memory ACL exceeds principal visibility".into();
+        };
+        let input = MemoryInput {
+            kind: params.kind,
+            project: params.project.clone(),
+            title: params.title,
+            content: params.content,
+            source: params.source.unwrap_or_else(|| "agent".into()),
+            source_id: params.source_id.unwrap_or_default(),
+            dedupe_key: params.dedupe_key,
+            confidence: params.confidence.unwrap_or(self.memory_defaults.confidence),
+            importance: params.importance.unwrap_or(self.memory_defaults.importance),
+            acl,
+            provenance: params.provenance.unwrap_or_else(|| {
+                serde_json::json!({
+                    "principal": principal.name,
+                    "interface": "mcp"
+                })
+            }),
+            supersedes_id: params.supersedes_id,
+        };
+        match self.store.remember(&input) {
+            Ok(memory) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.remember",
+                    Some(&memory.project),
+                    Some(&memory.source),
+                    "succeeded",
+                    Some(1),
+                    started,
+                );
+                serde_json::to_string(&memory).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.remember",
+                    Some(&input.project),
+                    Some(&input.source),
+                    "invalid",
+                    None,
+                    started,
+                );
+                format!("memory error: {error}")
+            }
+        }
+    }
+
+    #[tool(
+        description = "Recall relevant active memories from Cortana's native store with project, type, confidence, provenance, and ACL filtering."
+    )]
+    async fn recall(&self, Parameters(params): Parameters<MemoryRecallParams>) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.recall",
+                    params.project.as_deref(),
+                    None,
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                return format!("authorization error: {error}");
+            }
+        };
+        if !principal.has_scope(QUERY_SCOPE) && !principal.has_scope(MEMORY_SCOPE) {
+            self.audit_principal(
+                &principal,
+                "mcp.recall",
+                params.project.as_deref(),
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            return "authorization error: query or memory scope required".into();
+        }
+        if let Err(error) = validate_request(&params.query, params.project.as_deref(), None) {
+            self.audit_principal(
+                &principal,
+                "mcp.recall",
+                params.project.as_deref(),
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return format!("invalid request: {error}");
+        }
+        match self.store.recall_memories(
+            &params.query,
+            params.project.as_deref(),
+            params.kind.as_deref(),
+            params.limit.unwrap_or(10),
+            &principal.visible_acl(),
+        ) {
+            Ok(memories) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.recall",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(memories.len()),
+                    started,
+                );
+                serde_json::to_string(&memories).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.recall",
+                    params.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("memory recall error: {error}")
+            }
+        }
+    }
+
+    #[tool(
+        description = "Redact one native memory while retaining a minimal tombstone for auditability."
+    )]
+    async fn forget(&self, Parameters(params): Parameters<MemoryForgetParams>) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.forget",
+                    None,
+                    None,
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                return format!("authorization error: {error}");
+            }
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            self.audit_principal(
+                &principal,
+                "mcp.forget",
+                None,
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            return "authorization error: memory scope required".into();
+        }
+        let memory = match self.store.memory(&params.id) {
+            Ok(Some(memory)) => memory,
+            Ok(None) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.forget",
+                    None,
+                    None,
+                    "not_found",
+                    None,
+                    started,
+                );
+                return "memory not found".into();
+            }
+            Err(error) => return format!("memory error: {error}"),
+        };
+        if !principal.is_owner() && !acl_allows(&memory.acl, &principal.visible_acl()) {
+            self.audit_principal(
+                &principal,
+                "mcp.forget",
+                Some(&memory.project),
+                Some(&memory.source),
+                "forbidden",
+                None,
+                started,
+            );
+            return "authorization error: memory ACL denied".into();
+        }
+        match self.store.forget_memory(&params.id) {
+            Ok(forgotten) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.forget",
+                    Some(&memory.project),
+                    Some(&memory.source),
+                    "succeeded",
+                    Some(usize::from(forgotten)),
+                    started,
+                );
+                serde_json::json!({"id": params.id, "forgotten": forgotten}).to_string()
+            }
+            Err(error) => format!("memory error: {error}"),
+        }
+    }
+
+    #[tool(
         description = "Report index health, configured source coverage, embedding identity, and persistent cache telemetry without exposing credentials"
     )]
     async fn brain_status(&self) -> String {
@@ -454,6 +755,7 @@ impl BrainServer {
                 let count = usize::try_from(stats.documents).ok();
                 let result = serde_json::to_string(&BrainStatus {
                     stats,
+                    memory: self.store.memory_stats().unwrap_or_default(),
                     configured_sources: self
                         .configured_sources
                         .iter()
@@ -670,7 +972,7 @@ impl BrainServer {
 impl ServerHandler for BrainServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            "Call context before answering questions about the user or their work. Prefer search_code, search_messages, or who_knows for narrow discovery. Reuse citation-ready output instead of repeating broad calls.",
+            "Call context before answering questions about the user or their work. Use recall for durable agent memory, remember only explicit conclusions with provenance, and forget when a memory is withdrawn. Prefer search_code, search_messages, or who_knows for narrow discovery.",
         )
     }
 }

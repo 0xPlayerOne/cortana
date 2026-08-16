@@ -286,6 +286,14 @@ export type BrainStatus = {
   sync_runs: SourceSyncSummary[]
   ingestion: IngestionStatus
   workspaces: WorkspaceSettings[]
+  memory: MemoryStats
+}
+
+export type MemoryStats = {
+  active: number
+  superseded: number
+  retracted: number
+  total: number
 }
 
 export type ProviderSettings = {
@@ -318,32 +326,16 @@ export type QuerySettings = ProviderSettings & {
   cache_ttl_seconds: number
 }
 
-export type HindsightSettings = {
-  enabled: boolean
-  provider: 'hindsight'
-  base_url: string
-  bank: string
-  token_env: string | null
-  optional: boolean
-  wired_to_ingestion: boolean
-}
-
-export type HonchoSettings = {
-  enabled: boolean
-  provider: 'honcho'
-  base_url: string
-  workspace_id: string
-  peer_id: string
-  session_prefix: string
-  token_env: string | null
-  optional: boolean
-  wired_to_ingestion: boolean
+export type MemorySettings = {
+  max_active: number
+  default_confidence: number
+  default_importance: number
 }
 
 export type AuthPrincipalSettings = {
   principal: string
   token_env: string
-  scopes: Array<'query' | 'status' | 'admin'>
+  scopes: Array<'query' | 'status' | 'admin' | 'memory'>
   acl: string[]
 }
 
@@ -380,8 +372,7 @@ export type DesktopSettings = {
   auth_principals: AuthPrincipalSettings[]
   embedding: EmbeddingSettings
   query: QuerySettings
-  hindsight: HindsightSettings
-  honcho: HonchoSettings
+  memory: MemorySettings
   ingestion: {
     max_documents_per_source: number
     max_bytes_per_source: number
@@ -409,8 +400,7 @@ export type DesktopSettingsUpdate = Pick<
   | 'auth_principals'
   | 'embedding'
   | 'query'
-  | 'hindsight'
-  | 'honcho'
+  | 'memory'
   | 'ingestion'
   | 'runtime'
 > & {
@@ -565,30 +555,6 @@ export type DesktopServiceActivity = {
   target: string
   action: 'install' | 'start' | 'stop' | 'restart'
   status: 'running' | 'succeeded' | 'failed'
-  detail: string | null
-}
-
-export type DesktopHindsightStatus = {
-  enabled: boolean
-  configured: boolean
-  reachable: boolean
-  state: 'disabled' | 'configuration_required' | 'healthy' | 'unreachable' | 'unhealthy'
-  endpoint: string
-  bank: string
-  token_configured: boolean
-  detail: string | null
-}
-
-export type DesktopHonchoStatus = {
-  enabled: boolean
-  configured: boolean
-  reachable: boolean
-  state:
-    'disabled' | 'configuration_required' | 'healthy' | 'reachable' | 'unreachable' | 'unhealthy'
-  endpoint: string
-  workspace_id: string
-  peer_id: string
-  token_configured: boolean
   detail: string | null
 }
 

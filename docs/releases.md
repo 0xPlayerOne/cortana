@@ -67,8 +67,8 @@ offline synthetic evidence and never authorize a source or touch the live index.
 This patch publishes the Drive connector hardening promoted through the protected staging-to-main
 flow: bounded PDF/DOCX extraction, folder and folder-shortcut filtering, metadata-only records for
 unsupported binary items, and correct placement of the `--max-documents` cap. The release intent
-changes no credentials, source authorization, indexed data, recurring-sync state, or optional
-memory-provider state. The exact-tree promotion and Release Please version PR have merged, and
+changes no credentials, source authorization, indexed data, recurring-sync state, or native
+memory state. The exact-tree promotion and Release Please version PR have merged, and
 the `v0.32.12` tag is published. Release-assets workflow `31933279147` completed the package
 verification gate with all 18 assets, checksums, updater signatures, manifest, and packaged-core
 checks.
@@ -77,8 +77,8 @@ checks.
 
 This patch promotes the current-release documentation boundary after the v0.32.10 package was
 published. Release-assets workflow `31928018360` completed all 18 assets and the strict verifier;
-it changes no credentials, source authorization, indexed data, recurring-sync state, or optional
-memory-provider state.
+it changes no credentials, source authorization, indexed data, recurring-sync state, or native
+memory state.
 
 ## v0.32.10 release intent (published and verified)
 
@@ -86,7 +86,7 @@ The post-v0.32.9 source tree contains the bounded Google Drive PDF metadata pref
 corresponding current Personal Drive validation evidence. This release intent keeps those
 production-safety changes represented by a downloadable patch release after the protected
 staging-to-main promotion and Release Please version PR. It changes no credentials,
-source authorization, indexed data, recurring-sync state, or optional memory-provider state.
+source authorization, indexed data, recurring-sync state, or native memory state.
 
 The protected promotion and version-only PR merged successfully. Release-assets workflow
 `31926397636` published all 18 assets and passed the strict cross-platform verifier, including
@@ -99,7 +99,7 @@ validation timed out while reading a large document. PDFs larger than the bounde
 sampled with an explicit truncation marker instead of holding the connector indefinitely. Release
 Please published the v0.32.9 tag, and release-assets workflow `31920097809` completed all 18 assets,
 checksums, updater signatures, the manifest, and packaged-core evaluation. The release changes no
-credentials, source authorization, indexed data, recurring-sync state, or optional memory-provider state.
+credentials, source authorization, indexed data, recurring-sync state, or native memory state.
 
 ## v0.32.8 release intent (published and verified)
 
@@ -108,7 +108,7 @@ reconciled the staging and main trees. Release Please published the v0.32.8 tag,
 workflow `31903165576` completed all 18 assets, checksums, updater signatures, the manifest, and
 packaged-core evaluation. The migration stages outputs before publication and restores prior
 files on failure; it changes no credentials, source authorization, indexed data, recurring-sync
-state, or optional memory-provider state.
+state, or native memory state.
 
 The v0.32.7 release intent below remains the preceding published evidence record.
 
@@ -118,7 +118,7 @@ This metadata-only intent publishes the readiness-budget diagnostics that landed
 Readiness failures now report the validated and required document, byte, and duration limits so
 operators can correct an under-budget source without inspecting private validation-state files.
 The intent changes no credentials, indexed data, source authorization, recurring-sync state, or
-optional memory-provider state. The protected promotion carrying this tree included
+native memory state. The protected promotion carrying this tree included
 `Release-As: 0.32.6`; Release Please opened and merged the version-only PR, and the tag is now
 published. The release-assets workflow `31880502344` and strict 18-asset verifier completed
 successfully, including all platform archives, checksums, updater signatures, the manifest, and
@@ -129,8 +129,8 @@ packaged-core offline evaluation.
 The graph workspace/source focus fix and its evidence-selection regression coverage are now
 promoted through the protected staging-to-main flow. This metadata-only release intent asked
 Release Please to publish the patch so the fix is represented by a downloadable version;
-it does not authorize source credentials, a corpus sync, reconciliation, or optional memory
-providers. Its release-assets workflow and strict 18-asset verifier succeeded before this section
+it does not authorize source credentials, a corpus sync, reconciliation, or implicit memory
+writes. Its release-assets workflow and strict 18-asset verifier succeeded before this section
 was promoted as the current release record.
 The protected promotion commit carries the explicit `Release-As: 0.32.5` footer so the
 main release caller preserves this intent after the staging history is flattened.
@@ -139,7 +139,7 @@ The protected promotion `#1301` and Release Please automation published v0.32.5 
 v0.32.4 documentation and graph-focus promotion. Release-assets workflow `31872008773` completed all platform
 jobs and the strict 18-asset verifier, including archive checksums, six updater signatures, the
 updater manifest, and the credential-free packaged-core offline evaluator. These checks do not prove packaged GUI
-behavior, operating-system signing, full-corpus source readiness, or optional memory provider
+behavior, operating-system signing, full-corpus source readiness, or live personal-memory
 behavior.
 
 The previous v0.31.15 package and workflow `31774425020` remain historical evidence.
@@ -183,7 +183,7 @@ Drive remains pending a successful bounded retry.
 These records advance source readiness but do not close the recurring-sync gate: every enabled
 source still needs a fresh complete production-budget validation and a successful bounded trial.
 Discord and code/filesystem sources remain disabled by operator choice, Slack remains optional and
-unconfigured, and Hindsight/Honcho remain disabled.
+unconfigured, and native memory remains explicit-write only.
 
 ## v0.31.16 release-history recovery
 
@@ -191,7 +191,7 @@ The graph hierarchy, truthful status fallback, and Desktop-first project documen
 validated on `staging` and promoted to `main` through the protected exact-tree flow. This
 metadata-only marker restores those already-published changes to Release Please's conventional
 commit history after the promotion was flattened; it does not change runtime behavior, authorize
-sources, enable recurring sync, alter credentials, or trigger a memory provider. The v0.31.16
+sources, enable recurring sync, alter credentials, or trigger a memory write. The v0.31.16
 version PR, published assets, and strict 18-asset verifier have completed successfully.
 
 Generated version pull requests are restricted to changelog and configured
@@ -227,7 +227,7 @@ deterministic.
 
 ## 0.19.0 release-history recovery
 
-The Hindsight desktop settings, deterministic evaluation gate, and bounded outbox
+The native memory settings, deterministic evaluation gate, and bounded store
 telemetry landed together in the 2026-08-02 promotion. A metadata-only marker
 commit restores those already-published capabilities to Release Please's
 conventional-commit history after that promotion was merged as one squash commit;
@@ -303,14 +303,13 @@ The same source-tree lane now also:
   migrations and fingerprint writes cannot race a concurrent sync;
 - bounds direct JSONL imports to 2,000 documents, 128 MiB of content, 15 minutes, and 8 MiB per
   line, and bounds custom evaluation fixtures before deserialization;
-- fences Hindsight/Honcho outbox acknowledgements and failures to the specific lease that claimed
-  the row, preventing an expired worker from changing a newer worker's result; and
-- serializes Desktop sidecar preparation and atomically renames completed sidecars into place.
+- fences native memory writes and redactions to explicit record identities; and
+- serializes Desktop resource preparation and atomically renames completed resources into place.
 - serializes Desktop settings and schedule writes through one per-config cross-process lock.
 
-These are shipped safety contracts, not evidence that a large personal sync or optional memory
-provider is enabled. The v0.32.0 package, signatures, and packaged-core gate are verified; the
-manual Desktop, source-authorization, and optional-memory gates remain separate.
+These are shipped safety contracts, not evidence that a large personal sync or implicit memory
+write is enabled. The v0.32.0 package, signatures, and packaged-core gate are verified; the
+manual Desktop and source-authorization gates remain separate.
 
 ## Desktop release gates
 

@@ -24,10 +24,13 @@ use tracing::Level;
 
 use crate::{
     answer::{AnswerEngine, AnswerRequest, AnswerResponse, QueryRuntimeStatus},
-    auth::{ADMIN_SCOPE, AuthPolicy, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
+    auth::{
+        ADMIN_SCOPE, AuthPolicy, MEMORY_SCOPE, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows,
+    },
     config::{Config, WorkspaceConfig},
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
+    memory::MemoryInput,
     retrieval,
     source_status::{self, ConfiguredSourceStatus},
     store::{AuditEvent, DocumentCursor, DocumentSummary, Store, StoreStats},
@@ -52,6 +55,7 @@ pub struct AppState {
     ingestion: Arc<IngestionStatus>,
     workspaces: Arc<Vec<WorkspaceConfig>>,
     answer: AnswerEngine,
+    memory_defaults: crate::memory::MemoryDefaults,
     audit_max_events: usize,
     auth_config_path: Option<std::path::PathBuf>,
     status_stats_cache: Arc<Mutex<HashMap<String, CachedStatusStats>>>,
@@ -96,6 +100,7 @@ impl AppState {
             ingestion: Arc::new(IngestionStatus::default()),
             workspaces: Arc::new(Vec::new()),
             answer,
+            memory_defaults: crate::memory::MemoryDefaults::default(),
             audit_max_events: crate::config::AuthConfig::default().audit_max_events,
             auth_config_path: None,
             status_stats_cache: Arc::new(Mutex::new(HashMap::new())),
@@ -105,12 +110,24 @@ impl AppState {
     pub fn with_config(mut self, config: &Config, scheduled: bool) -> Self {
         self.ingestion = Arc::new(IngestionStatus::from_config(config, scheduled));
         self.workspaces = Arc::new(config.workspaces.clone());
+        self.memory_defaults = crate::memory::MemoryDefaults {
+            confidence: config.memory.default_confidence,
+            importance: config.memory.default_importance,
+        };
         self.audit_max_events = config.auth.audit_max_events;
         self
     }
 
     pub fn with_answer_engine(mut self, answer: AnswerEngine) -> Self {
         self.answer = answer;
+        self
+    }
+
+    pub fn with_memory_defaults(mut self, confidence: f32, importance: f32) -> Self {
+        self.memory_defaults = crate::memory::MemoryDefaults {
+            confidence,
+            importance,
+        };
         self
     }
 
@@ -318,6 +335,45 @@ struct ContextRequest {
     max_tokens: usize,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryRememberRequest {
+    kind: String,
+    project: String,
+    title: String,
+    content: String,
+    source: Option<String>,
+    source_id: Option<String>,
+    dedupe_key: Option<String>,
+    confidence: Option<f32>,
+    importance: Option<f32>,
+    acl: Option<Vec<String>>,
+    provenance: Option<serde_json::Value>,
+    supersedes_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryRecallRequest {
+    query: String,
+    project: Option<String>,
+    kind: Option<String>,
+    #[serde(default = "default_memory_limit")]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryForgetRequest {
+    id: String,
+}
+
+#[derive(Debug, Serialize)]
+struct MemoryForgetResponse {
+    id: String,
+    forgotten: bool,
+}
+
 #[derive(Debug, Serialize)]
 struct Health {
     status: &'static str,
@@ -345,6 +401,7 @@ struct Status {
     query: QueryRuntimeStatus,
     ingestion: IngestionStatus,
     workspaces: Vec<WorkspaceConfig>,
+    memory: crate::memory::MemoryStats,
     #[serde(flatten)]
     stats: StoreStats,
 }
@@ -501,6 +558,9 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/graph", get(graph))
         .route("/v1/search", post(search))
         .route("/v1/context", post(context))
+        .route("/v1/memory", post(remember_memory))
+        .route("/v1/memory/recall", post(recall_memories))
+        .route("/v1/memory/forget", post(forget_memory))
         .route("/v1/answer", post(answer))
         .route("/v1/audit", get(audit_events))
         .route("/v1/auth/reload", post(reload_auth))
@@ -552,6 +612,7 @@ async fn authorize(
     };
     let required_scope = match path {
         "/metrics" | "/v1/audit" | "/v1/auth/reload" => ADMIN_SCOPE,
+        "/v1/memory" | "/v1/memory/recall" | "/v1/memory/forget" => MEMORY_SCOPE,
         "/v1/status" | "/readyz" => STATUS_SCOPE,
         _ => QUERY_SCOPE,
     };
@@ -1102,6 +1163,7 @@ async fn status(
         query: state.answer.status(),
         ingestion,
         workspaces,
+        memory: state.store.memory_stats().unwrap_or_default(),
         stats,
     }))
 }
@@ -1355,6 +1417,185 @@ async fn context(
     )))
 }
 
+async fn remember_memory(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    Json(request): Json<MemoryRememberRequest>,
+) -> Result<Json<crate::memory::MemoryRecord>, (StatusCode, String)> {
+    let started = Instant::now();
+    if request.project.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "project must not be empty".into()));
+    }
+    let requested_acl = request.acl.unwrap_or_default();
+    let visible_acl = principal.visible_acl();
+    let acl = if principal.is_owner() {
+        requested_acl
+    } else if requested_acl.is_empty() {
+        visible_acl
+    } else if requested_acl
+        .iter()
+        .all(|label| visible_acl.iter().any(|visible| visible == label))
+    {
+        requested_acl
+    } else {
+        record_audit(
+            &state,
+            &principal,
+            "memory.remember",
+            Some(&request.project),
+            None,
+            "forbidden",
+            None,
+            started,
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            "memory ACL exceeds principal visibility".into(),
+        ));
+    };
+    let input = MemoryInput {
+        kind: request.kind,
+        project: request.project.clone(),
+        title: request.title,
+        content: request.content,
+        source: request.source.unwrap_or_else(|| "agent".into()),
+        source_id: request.source_id.unwrap_or_default(),
+        dedupe_key: request.dedupe_key,
+        confidence: request
+            .confidence
+            .unwrap_or(state.memory_defaults.confidence),
+        importance: request
+            .importance
+            .unwrap_or(state.memory_defaults.importance),
+        acl,
+        provenance: request.provenance.unwrap_or_else(|| {
+            serde_json::json!({
+                "principal": principal.name,
+                "interface": "http"
+            })
+        }),
+        supersedes_id: request.supersedes_id,
+    };
+    match state.store.remember(&input) {
+        Ok(memory) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.remember",
+                Some(&memory.project),
+                Some(&memory.source),
+                "succeeded",
+                Some(1),
+                started,
+            );
+            Ok(Json(memory))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.remember",
+                Some(&input.project),
+                Some(&input.source),
+                "invalid",
+                None,
+                started,
+            );
+            Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
+        }
+    }
+}
+
+async fn recall_memories(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    Json(request): Json<MemoryRecallRequest>,
+) -> Result<Json<Vec<crate::memory::MemorySearchResult>>, (StatusCode, String)> {
+    validate_query(&request.query)?;
+    validate_retrieval_scope(request.project.as_deref(), None)?;
+    let started = Instant::now();
+    match state.store.recall_memories(
+        &request.query,
+        request.project.as_deref(),
+        request.kind.as_deref(),
+        request
+            .limit
+            .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
+        &principal.visible_acl(),
+    ) {
+        Ok(memories) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.recall",
+                request.project.as_deref(),
+                None,
+                "succeeded",
+                Some(memories.len()),
+                started,
+            );
+            Ok(Json(memories))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.recall",
+                request.project.as_deref(),
+                None,
+                "failed",
+                None,
+                started,
+            );
+            Err(internal_error(error))
+        }
+    }
+}
+
+async fn forget_memory(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    Json(request): Json<MemoryForgetRequest>,
+) -> Result<Json<MemoryForgetResponse>, (StatusCode, String)> {
+    let started = Instant::now();
+    let memory = state
+        .store
+        .memory(&request.id)
+        .map_err(internal_error)?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "memory not found".into()))?;
+    if !principal.is_owner() && !acl_allows(&memory.acl, &principal.visible_acl()) {
+        record_audit(
+            &state,
+            &principal,
+            "memory.forget",
+            Some(&memory.project),
+            Some(&memory.source),
+            "forbidden",
+            None,
+            started,
+        );
+        return Err((StatusCode::FORBIDDEN, "memory ACL denied".into()));
+    }
+    let forgotten = state
+        .store
+        .forget_memory(&request.id)
+        .map_err(internal_error)?;
+    record_audit(
+        &state,
+        &principal,
+        "memory.forget",
+        Some(&memory.project),
+        Some(&memory.source),
+        "succeeded",
+        Some(usize::from(forgotten)),
+        started,
+    );
+    Ok(Json(MemoryForgetResponse {
+        id: request.id,
+        forgotten,
+    }))
+}
+
 #[derive(Deserialize)]
 struct AuditParams {
     #[serde(default = "default_audit_limit")]
@@ -1488,6 +1729,10 @@ fn internal_error(error: anyhow::Error) -> (StatusCode, String) {
 }
 
 fn default_limit() -> usize {
+    10
+}
+
+fn default_memory_limit() -> usize {
     10
 }
 

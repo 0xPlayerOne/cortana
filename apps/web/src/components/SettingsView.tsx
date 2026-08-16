@@ -38,8 +38,6 @@ import {
   listDesktopProviderModels,
   listDesktopSlackWorkspaces,
   listDesktopBuzzCommunities,
-  getDesktopHindsightStatus,
-  getDesktopHonchoStatus,
   getDesktopSchedule,
   getDesktopServices,
   getDesktopSourceValidation,
@@ -78,8 +76,6 @@ import type {
   DesktopInitialSyncPlan,
   DesktopInstallJob,
   DesktopInfo,
-  DesktopHindsightStatus,
-  DesktopHonchoStatus,
   DesktopReadiness,
   DesktopReadinessActivity,
   DesktopServiceActivity,
@@ -113,15 +109,9 @@ type Section =
   | 'sources'
   | 'embedding'
   | 'query'
-  | 'hindsight'
-  | 'honcho'
+  | 'memory'
   | 'ingestion'
   | 'advanced'
-
-const PLUGIN_SECTIONS: Array<{ key: 'hindsight' | 'honcho'; label: string }> = [
-  { key: 'hindsight', label: 'Hindsight' },
-  { key: 'honcho', label: 'Honcho' },
-]
 
 const SETTINGS_NAV_PRIMARY_SECTIONS: Section[] = ['services', 'workspaces', 'sources', 'readiness']
 const SETTINGS_NAV_SECONDARY_SECTIONS: Section[] = [
@@ -229,10 +219,6 @@ export function SettingsView({
   onDesktopInfo,
   serviceActivity,
   onServiceActivity,
-  hindsightStatus: externalHindsightStatus,
-  onHindsightStatus,
-  honchoStatus: externalHonchoStatus,
-  onHonchoStatus,
 }: {
   /** Shell-owned settings snapshot. Standalone renders fetch their own copy. */
   desktopSettings?: DesktopSettings
@@ -273,12 +259,6 @@ export function SettingsView({
   /** Shell-owned service action status shared across Settings mounts. */
   serviceActivity?: DesktopServiceActivity | null
   onServiceActivity?: (activity: DesktopServiceActivity | null) => void
-  /** Shell-owned Hindsight health snapshot shared across Settings mounts. */
-  hindsightStatus?: DesktopHindsightStatus | null
-  onHindsightStatus?: (status: DesktopHindsightStatus | null) => void
-  /** Shell-owned Honcho health snapshot shared across Settings mounts. */
-  honchoStatus?: DesktopHonchoStatus | null
-  onHonchoStatus?: (status: DesktopHonchoStatus | null) => void
 }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(externalSettings ?? null)
   const [section, setSection] = useState<Section>(initialSection)
@@ -526,8 +506,7 @@ export function SettingsView({
         auth_principals: settings.auth_principals,
         embedding: settings.embedding,
         query: settings.query,
-        hindsight: settings.hindsight,
-        honcho: settings.honcho,
+        memory: settings.memory,
         ingestion: settings.ingestion,
         runtime: settings.runtime,
         secrets: [
@@ -658,31 +637,13 @@ export function SettingsView({
               {item[0].toUpperCase() + item.slice(1)}
             </button>
           ))}
-          <div className="settings-nav-group">
-            <button
-              type="button"
-              className={`settings-nav-item ${
-                section === 'hindsight' || section === 'honcho' ? 'active' : ''
-              }`}
-              onClick={() => setSection('hindsight')}
-            >
-              Plugins
-            </button>
-            <div className="settings-nav-subgroup" role="group" aria-label="Plugins">
-              {PLUGIN_SECTIONS.map((plugin) => (
-                <button
-                  type="button"
-                  key={plugin.key}
-                  className={`settings-nav-item settings-nav-item--sub ${
-                    section === plugin.key ? 'active' : ''
-                  }`}
-                  onClick={() => setSection(plugin.key)}
-                >
-                  {plugin.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <button
+            type="button"
+            className={`settings-nav-item ${section === 'memory' ? 'active' : ''}`}
+            onClick={() => setSection('memory')}
+          >
+            Memory
+          </button>
           <div className="settings-paths">
             <span>Config</span>
             <code title={settings.config_path}>{settings.config_path}</code>
@@ -829,48 +790,7 @@ export function SettingsView({
               onRefreshModels={() => void refreshProviderModels('query')}
             />
           )}
-          {section === 'hindsight' && (
-            <HindsightSection
-              settings={settings}
-              secretValues={secretValues}
-              onSecret={(values) => {
-                setSecretValues(values)
-                setDirty(true)
-                setSaved(false)
-              }}
-              clearedSecrets={clearedSecrets}
-              onClearSecret={(name) => {
-                setClearedSecrets((current) => new Set(current).add(name))
-                setSecretValues((current) => ({ ...current, [name]: '' }))
-                setDirty(true)
-                setSaved(false)
-              }}
-              update={update}
-              hindsightStatus={externalHindsightStatus}
-              onHindsightStatus={onHindsightStatus}
-            />
-          )}
-          {section === 'honcho' && (
-            <HonchoSection
-              settings={settings}
-              secretValues={secretValues}
-              onSecret={(values) => {
-                setSecretValues(values)
-                setDirty(true)
-                setSaved(false)
-              }}
-              clearedSecrets={clearedSecrets}
-              onClearSecret={(name) => {
-                setClearedSecrets((current) => new Set(current).add(name))
-                setSecretValues((current) => ({ ...current, [name]: '' }))
-                setDirty(true)
-                setSaved(false)
-              }}
-              update={update}
-              honchoStatus={externalHonchoStatus}
-              onHonchoStatus={onHonchoStatus}
-            />
-          )}
+          {section === 'memory' && <NativeMemorySection settings={settings} update={update} />}
           {section === 'ingestion' && <IngestionSection settings={settings} update={update} />}
           {section === 'advanced' && (
             <AdvancedSection settings={settings} update={update} dirty={dirty} />
@@ -1851,373 +1771,50 @@ function UpdatesSection({
   )
 }
 
-function HindsightSection({
+function NativeMemorySection({
   settings,
   update,
-  secretValues,
-  onSecret,
-  clearedSecrets,
-  onClearSecret,
-  hindsightStatus: externalStatus,
-  onHindsightStatus,
-}: SettingsSectionProps & {
-  settings: DesktopSettings
-  secretValues: Record<string, string>
-  onSecret: (values: Record<string, string>) => void
-  clearedSecrets: Set<string>
-  onClearSecret: (name: string) => void
-  hindsightStatus?: DesktopHindsightStatus | null
-  onHindsightStatus?: (status: DesktopHindsightStatus | null) => void
-}) {
-  const [localStatus, setLocalStatus] = useState<DesktopHindsightStatus | null>(null)
-  const status = externalStatus === undefined ? localStatus : externalStatus
-  const setStatus = onHindsightStatus ?? setLocalStatus
-  const [checking, setChecking] = useState(false)
-  const setHindsight = (hindsight: DesktopSettings['hindsight']) => {
-    setStatus(null)
-    update((current) => ({ ...current, hindsight }))
-  }
-  const statusSource = settings.hindsight.token_env
-    ? settings.secrets.find((item) => item.name === settings.hindsight.token_env)
-    : undefined
-
-  const checkStatus = async () => {
-    setChecking(true)
-    try {
-      setStatus(await getDesktopHindsightStatus())
-    } catch (caught) {
-      setStatus({
-        enabled: settings.hindsight.enabled,
-        configured: false,
-        reachable: false,
-        state: 'unreachable',
-        endpoint: settings.hindsight.base_url,
-        bank: settings.hindsight.bank,
-        token_configured: false,
-        detail: caught instanceof Error ? caught.message : 'Hindsight status check failed',
-      })
-    } finally {
-      setChecking(false)
-    }
-  }
-
+}: SettingsSectionProps & { settings: DesktopSettings }) {
+  const change = (patch: Partial<DesktopSettings['memory']>) =>
+    update((current) => ({ ...current, memory: { ...current.memory, ...patch } }))
   return (
     <SettingsSection
-      title="Hindsight memory sidecar"
-      description="Optional connector for outbox-based memory export. It is intentionally not wired into normal ingestion by default."
+      title="Native agentic memory"
+      description="Cortana keeps operational memory in its own encrypted local store. Memory is explicit, scoped, auditable, and stays inside Cortana."
     >
-      <div className="form-grid">
-        <label className="form-field">
-          <span>Adapter status</span>
-          <input type="text" value="Optional sidecar" disabled />
-          <small>This adapter is opt-in only.</small>
-        </label>
-        <label className="form-field">
-          <span>Ingestion integration</span>
-          <input
-            type="text"
-            value={settings.hindsight.wired_to_ingestion ? 'Enabled' : 'Disabled'}
-            disabled
-          />
-          <small>Normal source sync flow remains unchanged.</small>
-        </label>
-        <label className="form-field">
-          <span>Enabled</span>
-          <input
-            type="checkbox"
-            checked={settings.hindsight.enabled}
-            onChange={(event) =>
-              setHindsight({ ...settings.hindsight, enabled: event.target.checked })
-            }
-          />
-        </label>
-      </div>
       <div className="safety-note" role="status">
-        <span>
-          Health: {status?.state.replace('_', ' ') || 'not checked'}
-          {status?.detail ? ` — ${status.detail}` : ''}
-        </span>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={() => void checkStatus()}
-          disabled={checking}
-        >
-          <RefreshCw size={14} /> {checking ? 'Checking…' : 'Check connection'}
-        </button>
+        Knowledge documents remain source-backed. Agents may explicitly remember, recall, and redact
+        bounded records through the native MCP, HTTP, or CLI interfaces.
       </div>
-      {externalStatus && (
-        <p className="settings-note">
-          This health snapshot is retained while you move between Desktop settings sections. It
-          reads the last saved Hindsight configuration; save changes before checking again.
-        </p>
-      )}
-      <Field label="Provider" hint="Hindsight currently supports only this provider.">
-        <select
-          value={settings.hindsight.provider}
-          onChange={(event) =>
-            setHindsight({
-              ...settings.hindsight,
-              provider: event.target.value as 'hindsight',
-            })
-          }
-        >
-          <option value="hindsight">hindsight</option>
-        </select>
-      </Field>
       <div className="form-grid">
-        <Field label="Endpoint" wide>
+        <Field label="Maximum active memories" hint="bounded local record count">
           <input
-            type="url"
-            value={settings.hindsight.base_url}
-            onChange={(event) =>
-              setHindsight({ ...settings.hindsight, base_url: event.target.value })
-            }
-            required
+            type="number"
+            min={1}
+            max={1000000}
+            value={settings.memory.max_active}
+            onChange={(event) => change({ max_active: Number(event.target.value) || 1 })}
           />
         </Field>
-        <Field label="Bank">
+        <Field label="Default confidence" hint="0 to 1; agents can override per record">
           <input
-            value={settings.hindsight.bank}
-            onChange={(event) => setHindsight({ ...settings.hindsight, bank: event.target.value })}
-            required
-            maxLength={64}
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            value={settings.memory.default_confidence}
+            onChange={(event) => change({ default_confidence: Number(event.target.value) || 0 })}
           />
         </Field>
-        <Field label="Token environment variable">
+        <Field label="Default importance" hint="0 to 1; used for review and ranking">
           <input
-            value={settings.hindsight.token_env || ''}
-            onChange={(event) =>
-              setHindsight({ ...settings.hindsight, token_env: event.target.value || null })
-            }
-            pattern="[A-Z_][A-Z0-9_]*"
-            placeholder="CORTANA_HINDSIGHT_TOKEN"
+            type="number"
+            min={0}
+            max={1}
+            step={0.05}
+            value={settings.memory.default_importance}
+            onChange={(event) => change({ default_importance: Number(event.target.value) || 0 })}
           />
-        </Field>
-        <Field label="New token" hint="write-only; leave blank to retain">
-          <div className="secret-input">
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={
-                settings.hindsight.token_env ? secretValues[settings.hindsight.token_env] || '' : ''
-              }
-              disabled={!settings.hindsight.token_env}
-              onChange={(event) => {
-                if (!settings.hindsight.token_env) return
-                setStatus(null)
-                onSecret({ ...secretValues, [settings.hindsight.token_env]: event.target.value })
-              }}
-            />
-            {settings.hindsight.token_env &&
-              statusSource?.configured &&
-              !clearedSecrets.has(statusSource.name) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStatus(null)
-                    onClearSecret(settings.hindsight.token_env!)
-                  }}
-                >
-                  Clear
-                </button>
-              )}
-          </div>
-        </Field>
-      </div>
-    </SettingsSection>
-  )
-}
-
-function HonchoSection({
-  settings,
-  update,
-  secretValues,
-  onSecret,
-  clearedSecrets,
-  onClearSecret,
-  honchoStatus: externalStatus,
-  onHonchoStatus,
-}: SettingsSectionProps & {
-  settings: DesktopSettings
-  secretValues: Record<string, string>
-  onSecret: (values: Record<string, string>) => void
-  clearedSecrets: Set<string>
-  onClearSecret: (name: string) => void
-  honchoStatus?: DesktopHonchoStatus | null
-  onHonchoStatus?: (status: DesktopHonchoStatus | null) => void
-}) {
-  const [localStatus, setLocalStatus] = useState<DesktopHonchoStatus | null>(null)
-  const status = externalStatus === undefined ? localStatus : externalStatus
-  const setStatus = onHonchoStatus ?? setLocalStatus
-  const [checking, setChecking] = useState(false)
-  const setHoncho = (honcho: DesktopSettings['honcho']) => {
-    setStatus(null)
-    update((current) => ({ ...current, honcho }))
-  }
-  const statusSource = settings.honcho.token_env
-    ? settings.secrets.find((item) => item.name === settings.honcho.token_env)
-    : undefined
-
-  const checkStatus = async () => {
-    setChecking(true)
-    try {
-      setStatus(await getDesktopHonchoStatus())
-    } catch (caught) {
-      setStatus({
-        enabled: settings.honcho.enabled,
-        configured: false,
-        reachable: false,
-        state: 'unreachable',
-        endpoint: settings.honcho.base_url,
-        workspace_id: settings.honcho.workspace_id,
-        peer_id: settings.honcho.peer_id,
-        token_configured: false,
-        detail: caught instanceof Error ? caught.message : 'Honcho status check failed',
-      })
-    } finally {
-      setChecking(false)
-    }
-  }
-
-  return (
-    <SettingsSection
-      title="Honcho memory sidecar"
-      description="Optional session memory for deliberately selected agent episodes. It is not the source of truth and is never wired into normal ingestion by default."
-    >
-      <div className="form-grid">
-        <label className="form-field">
-          <span>Adapter status</span>
-          <input type="text" value="Optional sidecar" disabled />
-          <small>
-            Saving records configuration only; it does not copy the corpus or start a worker.
-          </small>
-        </label>
-        <label className="form-field">
-          <span>Ingestion integration</span>
-          <input
-            type="text"
-            value={settings.honcho.wired_to_ingestion ? 'Enabled' : 'Disabled'}
-            disabled
-          />
-          <small>Normal source sync remains unchanged.</small>
-        </label>
-        <label className="form-field">
-          <span>Enabled</span>
-          <input
-            type="checkbox"
-            checked={settings.honcho.enabled}
-            onChange={(event) => setHoncho({ ...settings.honcho, enabled: event.target.checked })}
-          />
-        </label>
-      </div>
-      <div className="safety-note" role="status">
-        Honcho uses one deterministic session per retained Cortana document so deletion can remove
-        only that document. Keep it disabled until the evaluation, ACL, deletion, and export gates
-        pass.
-      </div>
-      <div className="safety-note" role="status">
-        <span>
-          Health: {status?.state.replace('_', ' ') || 'not checked'}
-          {status?.detail ? ` — ${status.detail}` : ''}
-        </span>
-        <button
-          type="button"
-          className="secondary-button"
-          onClick={() => void checkStatus()}
-          disabled={checking}
-        >
-          <RefreshCw size={14} /> {checking ? 'Checking…' : 'Check connection'}
-        </button>
-      </div>
-      {externalStatus && (
-        <p className="settings-note">
-          This health snapshot is retained while you move between Desktop settings sections. It
-          reads the last saved Honcho configuration; save changes before checking again.
-        </p>
-      )}
-      <Field label="Provider" hint="Honcho currently supports only its v3 HTTP API.">
-        <select value={settings.honcho.provider} disabled>
-          <option value="honcho">honcho</option>
-        </select>
-      </Field>
-      <div className="form-grid">
-        <Field label="Endpoint" wide>
-          <input
-            type="url"
-            value={settings.honcho.base_url}
-            onChange={(event) => setHoncho({ ...settings.honcho, base_url: event.target.value })}
-            required
-          />
-        </Field>
-        <Field label="Workspace ID" hint="letters, numbers, dots, dashes, or underscores">
-          <input
-            value={settings.honcho.workspace_id}
-            onChange={(event) =>
-              setHoncho({ ...settings.honcho, workspace_id: event.target.value })
-            }
-            pattern="[A-Za-z0-9._-]{1,128}"
-            maxLength={128}
-            required
-          />
-        </Field>
-        <Field label="Peer ID" hint="the Honcho agent peer identity">
-          <input
-            value={settings.honcho.peer_id}
-            onChange={(event) => setHoncho({ ...settings.honcho, peer_id: event.target.value })}
-            pattern="[A-Za-z0-9._-]{1,128}"
-            maxLength={128}
-            required
-          />
-        </Field>
-        <Field label="Session prefix" hint="stable namespace prefix for per-document sessions">
-          <input
-            value={settings.honcho.session_prefix}
-            onChange={(event) =>
-              setHoncho({ ...settings.honcho, session_prefix: event.target.value })
-            }
-            pattern="[A-Za-z0-9._-]{1,128}"
-            maxLength={128}
-            required
-          />
-        </Field>
-        <Field label="Token environment variable">
-          <input
-            value={settings.honcho.token_env || ''}
-            onChange={(event) =>
-              setHoncho({ ...settings.honcho, token_env: event.target.value || null })
-            }
-            pattern="[A-Z_][A-Z0-9_]*"
-            placeholder="CORTANA_HONCHO_TOKEN"
-          />
-        </Field>
-        <Field label="New token" hint="write-only; leave blank to retain">
-          <div className="secret-input">
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={settings.honcho.token_env ? secretValues[settings.honcho.token_env] || '' : ''}
-              disabled={!settings.honcho.token_env}
-              onChange={(event) => {
-                if (!settings.honcho.token_env) return
-                setStatus(null)
-                onSecret({ ...secretValues, [settings.honcho.token_env]: event.target.value })
-              }}
-            />
-            {settings.honcho.token_env &&
-              statusSource?.configured &&
-              !clearedSecrets.has(statusSource.name) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStatus(null)
-                    onClearSecret(settings.honcho.token_env!)
-                  }}
-                >
-                  Clear
-                </button>
-              )}
-          </div>
         </Field>
       </div>
     </SettingsSection>
@@ -5307,12 +4904,7 @@ function optionalNumber(value: string): number | null {
 
 function referencedSecretNames(settings: DesktopSettings): Set<string> {
   const names = new Set<string>()
-  for (const name of [
-    settings.embedding.api_key_env,
-    settings.query.api_key_env,
-    settings.hindsight.token_env,
-    settings.honcho.token_env,
-  ]) {
+  for (const name of [settings.embedding.api_key_env, settings.query.api_key_env]) {
     if (name) names.add(name)
   }
   settings.sources.forEach((source) => {

@@ -66,7 +66,7 @@ assets, checksums, updater signatures, manifest, and packaged-core checks passed
 package carries the production safety hardening from the protected `staging` → `main` flow:
 mutating CLI startup and direct JSONL imports serialize on the global lock, imports and
 evaluation fixtures have explicit resource ceilings, remote `/readyz` requires scoped bearer
-access, optional memory outbox leases are fenced, Desktop settings and schedules serialize
+access, native memory writes are idempotent and fenced, Desktop settings and schedules serialize
 through a shared per-config lock, and Desktop sidecars publish atomically. v0.32.6 and earlier
 release records remain historical evidence.
 
@@ -125,8 +125,8 @@ recovery, and contributors; they are not required for a normal Desktop installat
 | Contributing to Cortana               | [Development](#development) and [Desktop architecture](docs/desktop-architecture.md) | Local builds, tests, Tauri boundaries, and release packaging                 |
 
 The safest first milestone is deliberately small: install the Desktop app, validate one source,
-run one bounded non-reconciling trial, and confirm a cited query. Do not enable recurring ingestion
-or a memory sidecar until the relevant production gates in the [evaluation guide](docs/evaluation.md)
+run one bounded non-reconciling trial, confirm a cited query, then write one explicit native memory.
+Do not enable recurring ingestion until the relevant production gates in the [evaluation guide](docs/evaluation.md)
 are complete.
 
 ## Quick start
@@ -343,11 +343,11 @@ vectors into a new generation. For a true model or preprocessing change, use the
 recovery snapshot and only swaps the live vectors after the entire corpus succeeds.
 See [the ingestion guide](docs/ingestion.md) and
 [`config.example.toml`](config.example.toml) for Google Drive, Gmail, Calendar, Apple Notes,
-GitHub code, Slack, Discord, Buzz, filesystem/code, and external adapters.
+GitHub code, Slack, Discord, Buzz, and filesystem/code sources.
 See [the query guide](docs/query.md) for hybrid retrieval, cited synthesis, local model-gateway
 configuration, cloud providers, cache invalidation, and degraded operation.
 See the [agent integration guide](docs/integrations.md) for Codex, Hermes, Buzz, MCP, HTTP, and
-CLI setup with scoped principals and cache-aware context retrieval.
+CLI setup with scoped principals, native memory, and cache-aware context retrieval.
 See the [operations guide](docs/operations.md) for service management, authenticated remote access,
 telemetry, backup, restore, and Linux systemd units.
 Run the isolated [evaluation and readiness gates](docs/evaluation.md) before enabling synthesis or
@@ -362,7 +362,7 @@ See the [documentation index](docs/README.md) for the complete guide map.
 
 Cortana can copy only reusable Google OAuth tokens and supported chat tokens from Hermes, lock
 every migrated credential to mode `0600`, and generate equivalent source configuration. Existing
-Chroma and Hindsight indexes are reported and retained until Cortana has imported or rebuilt and
+Chroma indexes are reported and retained until Cortana has imported or rebuilt and
 verified their data:
 
 ```bash
@@ -425,13 +425,10 @@ planned multi-user store; the canonical model intentionally does not depend on e
 OpenAI-compatible embedding APIs make the existing local Qwen/TEI service and cloud embedding
 providers interchangeable without mixing vector spaces inside an index generation.
 
-Hindsight is retained as an optional derived memory adapter for temporal/reflection workflows, and
-Honcho now has a bounded session adapter behind the same durable outbox. Neither is the system of
-record: source evidence, provenance, permissions, and retrieval remain native to Cortana. Both
-remain disabled until the versioned evaluation, replacement, and deletion/ACL gates pass; see the [Hindsight
-outbox guide](docs/memory-hindsight-outbox.md) and [Honcho adapter contract](docs/memory-honcho.md).
-The adapters use Cortana's bounded HTTP clients directly; no heavyweight provider SDK is installed
-by the default or ingestion dependency sets.
+Agentic memory is native to Cortana's canonical SQLite store. Explicit `remember`, `recall`, and
+`forget` operations share the same provenance, workspace ACL, audit, backup, and deletion semantics
+as knowledge retrieval. See [Native agentic memory](docs/memory.md) for the built-in operational
+memory layer.
 
 ## Development
 
