@@ -87,12 +87,16 @@ be rebuilt from Google. First-time Drive content and Gmail detail retrieval use 
 and four-worker pools respectively; cache writes and emitted documents remain ordered on the main
 connector thread. Drive downloads are processed in 32-file batches, text and export responses are
 consumed as bounded head/tail streams, and PDF responses are spooled to a temporary file with a 64 MiB cap
-before parsing. PDFs with more than 128 pages use a bounded head/tail page sample instead of parsing
-the entire page tree; ordinary PDFs also stop parsing once the 256,000-character extraction bound is
+before parsing. PDFs with more than 32 pages use a bounded head/tail sample of at most 32 pages instead of
+walking the entire page tree; ordinary PDFs also stop parsing once the 256,000-character extraction bound is
 reached. Both paths set `content_truncated=true` and `content_original_chars=null` because the omitted
 content was intentionally not counted. Smaller PDFs preserve the exact character count. The cache
-preserves this metadata, so a later cache hit does not hide that a provider response was sampled. Drive
-installs pypdf's AES support.
+preserves this metadata, so a later cache hit does not hide that a provider response was sampled. A
+valid PDF with no extractable text is retained with an explicit metadata-only placeholder and
+`content_unavailable=true`, so one scanned or malformed PDF cannot abort an otherwise complete listing;
+the original Drive link remains the recovery path. Other binary or otherwise unsupported Drive items
+are retained with the same explicit metadata-only marker in complete runs; Cortana does not claim to
+have extracted their contents. Drive installs pypdf's AES support.
 Idempotent Google GET/HEAD calls retry bounded transport failures and standard transient HTTP
 statuses; a 403 is retried only for Google's explicit rate-limit/backend reasons. Gmail detail
 requests also retry a small, bounded 400 window before strict runs fail closed.
@@ -100,8 +104,11 @@ requests also retry a small, bounded 400 window before strict runs fail closed.
 Complete, reconciling Google runs fail closed on unresolved listing, detail, or conversion data
 so a truncated snapshot can never reconcile as if it were whole. Drive rejects an
 `incompleteSearch` listing, malformed file records, missing or unparsable `modifiedTime`, invalid
-pagination cursors, content that cannot be downloaded without a cached copy, and unsupported or
-empty file bodies. Gmail rejects malformed message listings, invalid pagination cursors, cached or
+pagination cursors, and content that cannot be downloaded without a cached copy. Unsupported or
+empty file bodies are retained with `content_unavailable=true` and an explicit recovery marker;
+they are not treated as extracted text. PDFs with no extractable text use the explicit placeholder
+described above.
+Gmail rejects malformed message listings, invalid pagination cursors, cached or
 fresh detail IDs that do not match the listed ID, any message detail that is denied or unavailable
 between list and detail requests, and messages that fail document conversion. Calendar applies the
 same strict listing, event, and cursor checks and paginates the calendar list. The one tolerated
