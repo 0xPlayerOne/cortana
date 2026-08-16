@@ -79,7 +79,11 @@ def parser() -> argparse.ArgumentParser:
     _google_arguments(drive)
     drive.add_argument("--query", default="trashed = false")
     drive.add_argument("--max-content-chars", type=int, default=50_000)
-    drive.add_argument("--max-documents", type=int)
+    # Keep the root-level option usable before the subcommand while also
+    # accepting the conventional `google-drive --max-documents N` form.
+    # Suppressing the subparser default prevents an omitted subcommand option
+    # from overwriting the root value.
+    drive.add_argument("--max-documents", type=int, default=argparse.SUPPRESS)
 
     gmail = commands.add_parser("gmail")
     _google_arguments(gmail)

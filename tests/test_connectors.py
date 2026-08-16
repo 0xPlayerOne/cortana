@@ -3185,6 +3185,20 @@ def test_connector_cli_applies_bounded_document_cap(
     assert "emitted=2" in captured.err
 
 
+def test_connector_cli_preserves_drive_cap_in_either_argument_position(
+    tmp_path: Path,
+) -> None:
+    before = connector_cli.parser().parse_args(
+        ["--max-documents", "7", "google-drive", "--token", str(tmp_path / "token.json")]
+    )
+    after = connector_cli.parser().parse_args(
+        ["google-drive", "--token", str(tmp_path / "token.json"), "--max-documents", "9"]
+    )
+
+    assert before.max_documents == 7
+    assert after.max_documents == 9
+
+
 def test_connector_cli_rejects_non_positive_document_cap() -> None:
     with pytest.raises(RuntimeError, match="greater than zero"):
         connector_cli.main(["--max-documents", "0", "buzz"])
