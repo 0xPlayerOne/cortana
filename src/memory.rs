@@ -309,10 +309,6 @@ pub(crate) fn term_tokens(query: &str) -> Result<Vec<String>> {
         })
         .filter(|term| !term.is_empty() && !is_stopword(term))
         .take(16)
-        // FTS5 prefix terms preserve exact token boundaries while allowing
-        // normal inflections ("deploy" matches "deployment"). The input has
-        // already been reduced to alphanumeric/underscore tokens, so the
-        // generated expression cannot inject FTS operators.
         .collect::<Vec<_>>();
     anyhow::ensure!(
         !terms.is_empty(),
@@ -322,6 +318,10 @@ pub(crate) fn term_tokens(query: &str) -> Result<Vec<String>> {
 }
 
 fn query_terms(query: &str) -> Result<Vec<String>> {
+    // FTS5 prefix terms preserve exact token boundaries while allowing normal
+    // inflections ("deploy" matches "deployment"). The input has already
+    // been reduced to alphanumeric/underscore tokens, so this expression
+    // cannot inject FTS operators.
     Ok(term_tokens(query)?
         .into_iter()
         .map(|term| format!("\"{term}\"*"))
