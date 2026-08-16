@@ -359,6 +359,8 @@ enum MemoryAction {
         provenance: Option<String>,
         #[arg(long)]
         supersedes_id: Option<String>,
+        #[arg(long, help = "Optional RFC3339 expiry for short-lived working context")]
+        valid_until: Option<String>,
     },
     /// Recall active memories with bounded lexical retrieval and ACL filtering.
     Recall {
@@ -368,6 +370,15 @@ enum MemoryAction {
         #[arg(long)]
         kind: Option<String>,
         #[arg(short = 'n', long, default_value_t = 10)]
+        limit: usize,
+    },
+    /// Export bounded native memories as JSON, including redacted tombstones.
+    Export {
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 10_000)]
         limit: usize,
     },
     /// Redact a memory while retaining its audit tombstone.
@@ -1925,6 +1936,7 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
             acl,
             provenance,
             supersedes_id,
+            valid_until,
         } => {
             let provenance = provenance
                 .as_deref()
@@ -1950,6 +1962,7 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                 acl: acl.clone(),
                 provenance,
                 supersedes_id: supersedes_id.clone(),
+                valid_until: valid_until.clone(),
             });
             match result {
                 Ok(record) => {
@@ -2060,6 +2073,43 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                         config.auth.audit_max_events,
                         "forget",
                         None,
+                        None,
+                        "failed",
+                        None,
+                        started,
+                    );
+                    Err(error)
+                }
+            }
+        }
+        MemoryAction::Export {
+            project,
+            kind,
+            limit,
+        } => {
+            let result =
+                store.export_memories(project.as_deref(), kind.as_deref(), *limit, &["*".into()]);
+            match result {
+                Ok(records) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "export",
+                        project.as_deref(),
+                        None,
+                        "succeeded",
+                        Some(records.len()),
+                        started,
+                    );
+                    println!("{}", serde_json::to_string_pretty(&records)?);
+                    Ok(())
+                }
+                Err(error) => {
+                    record_cli_memory_audit(
+                        store,
+                        config.auth.audit_max_events,
+                        "export",
+                        project.as_deref(),
                         None,
                         "failed",
                         None,
@@ -5198,6 +5248,7 @@ mod tests {
                 acl: Vec::new(),
                 provenance: serde_json::json!({"test":true}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect("remember");
 
@@ -5265,6 +5316,7 @@ mod tests {
                 acl: Vec::new(),
                 provenance: None,
                 supersedes_id: None,
+                valid_until: None,
             },
         )
         .expect("remember command");

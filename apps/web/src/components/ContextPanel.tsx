@@ -115,6 +115,9 @@ export function ContextPanel({
                     <strong>{memory.title}</strong>
                     <time>
                       {memory.kind} · {memory.project} · confidence {memory.confidence.toFixed(2)}
+                      {memory.valid_until
+                        ? ` · expires ${new Date(memory.valid_until).toLocaleDateString()}`
+                        : ''}
                     </time>
                   </div>
                 </div>

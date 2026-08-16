@@ -291,6 +291,7 @@ export type BrainStatus = {
 
 export type MemoryStats = {
   active: number
+  expired: number
   superseded: number
   retracted: number
   total: number
@@ -638,5 +639,8 @@ export type AgentMemory = {
   content: string
   confidence: number
   importance: number
+  source?: string
+  observed_at?: string
+  valid_until?: string | null
   updated_at: string
 }

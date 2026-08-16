@@ -69,12 +69,21 @@ pub struct MemoryRememberParams {
     acl: Option<Vec<String>>,
     provenance: Option<serde_json::Value>,
     supersedes_id: Option<String>,
+    valid_until: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryRecallParams {
     query: String,
+    project: Option<String>,
+    kind: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryExportParams {
     project: Option<String>,
     kind: Option<String>,
     limit: Option<usize>,
@@ -502,7 +511,7 @@ impl BrainServer {
         let acl = if principal.is_owner() {
             requested_acl
         } else if requested_acl.is_empty() {
-            visible_acl
+            visible_acl.clone()
         } else if requested_acl
             .iter()
             .all(|label| visible_acl.iter().any(|visible| visible == label))
@@ -538,8 +547,12 @@ impl BrainServer {
                 })
             }),
             supersedes_id: params.supersedes_id,
+            valid_until: params.valid_until,
         };
-        match self.store.remember(&input) {
+        match self
+            .store
+            .remember_scoped(&input, &visible_acl, principal.is_owner())
+        {
             Ok(memory) => {
                 self.audit_principal(
                     &principal,
@@ -558,11 +571,19 @@ impl BrainServer {
                     "mcp.remember",
                     Some(&input.project),
                     Some(&input.source),
-                    "invalid",
+                    if crate::memory::is_authorization_error(&error) {
+                        "forbidden"
+                    } else {
+                        "invalid"
+                    },
                     None,
                     started,
                 );
-                format!("memory error: {error}")
+                if crate::memory::is_authorization_error(&error) {
+                    "authorization error: memory ACL denied".into()
+                } else {
+                    format!("memory error: {error}")
+                }
             }
         }
     }
@@ -587,7 +608,7 @@ impl BrainServer {
                 return format!("authorization error: {error}");
             }
         };
-        if !principal.has_scope(QUERY_SCOPE) && !principal.has_scope(MEMORY_SCOPE) {
+        if !principal.has_scope(MEMORY_SCOPE) {
             self.audit_principal(
                 &principal,
                 "mcp.recall",
@@ -597,7 +618,7 @@ impl BrainServer {
                 None,
                 started,
             );
-            return "authorization error: query or memory scope required".into();
+            return "authorization error: memory scope required".into();
         }
         if let Err(error) = validate_request(&params.query, params.project.as_deref(), None) {
             self.audit_principal(
@@ -705,7 +726,11 @@ impl BrainServer {
             );
             return "authorization error: memory ACL denied".into();
         }
-        match self.store.forget_memory(&params.id) {
+        match self.store.forget_memory_scoped(
+            &params.id,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        ) {
             Ok(forgotten) => {
                 self.audit_principal(
                     &principal,
@@ -718,7 +743,87 @@ impl BrainServer {
                 );
                 serde_json::json!({"id": params.id, "forgotten": forgotten}).to_string()
             }
+            Err(error) if crate::memory::is_authorization_error(&error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.forget",
+                    Some(&memory.project),
+                    Some(&memory.source),
+                    "forbidden",
+                    None,
+                    started,
+                );
+                "authorization error: memory ACL denied".into()
+            }
             Err(error) => format!("memory error: {error}"),
+        }
+    }
+
+    #[tool(
+        description = "Export bounded native memory records visible to this principal, including redacted tombstones"
+    )]
+    async fn export_memory(&self, Parameters(params): Parameters<MemoryExportParams>) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.memory_export",
+                    params.project.as_deref(),
+                    None,
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                return format!("authorization error: {error}");
+            }
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            self.audit_principal(
+                &principal,
+                "mcp.memory_export",
+                params.project.as_deref(),
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            return "authorization error: memory scope required".into();
+        }
+        match self.store.export_memories(
+            params.project.as_deref(),
+            params.kind.as_deref(),
+            params
+                .limit
+                .unwrap_or(10_000)
+                .min(crate::memory::MAX_MEMORY_EXPORT_LIMIT),
+            &principal.visible_acl(),
+        ) {
+            Ok(memories) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_export",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(memories.len()),
+                    started,
+                );
+                serde_json::to_string(&memories).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_export",
+                    params.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("memory export error: {error}")
+            }
         }
     }
 
@@ -776,7 +881,11 @@ impl BrainServer {
                 let count = usize::try_from(stats.documents).ok();
                 let result = serde_json::to_string(&BrainStatus {
                     stats,
-                    memory: self.store.memory_stats().unwrap_or_default(),
+                    memory: if principal.is_owner() {
+                        self.store.memory_stats().unwrap_or_default()
+                    } else {
+                        self.store.memory_stats_scoped(&acl).unwrap_or_default()
+                    },
                     configured_sources: self
                         .configured_sources
                         .iter()
@@ -1257,6 +1366,7 @@ mod tests {
                 acl: vec!["work".into()],
                 provenance: serde_json::json!({"test":true}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect("memory");
         let mut config = Config::default();
@@ -1341,6 +1451,18 @@ mod tests {
         assert_eq!(work_context["evidence"].as_array().map(Vec::len), Some(1));
         assert!(work_context.get("memories").is_none());
 
+        assert_eq!(
+            work_server
+                .recall(Parameters(MemoryRecallParams {
+                    query: "shared launch phrase".into(),
+                    project: Some("demo".into()),
+                    kind: None,
+                    limit: Some(10),
+                }))
+                .await,
+            "authorization error: memory scope required"
+        );
+
         let admin_context: serde_json::Value = serde_json::from_str(
             &admin_server
                 .context(Parameters(ContextParams {
@@ -1355,6 +1477,19 @@ mod tests {
         .expect("admin context");
         assert_eq!(admin_context["evidence"].as_array().map(Vec::len), Some(2));
         assert_eq!(admin_context["memories"].as_array().map(Vec::len), Some(1));
+
+        let admin_memories: Vec<crate::memory::MemorySearchResult> = serde_json::from_str(
+            &admin_server
+                .recall(Parameters(MemoryRecallParams {
+                    query: "shared launch phrase".into(),
+                    project: Some("demo".into()),
+                    kind: None,
+                    limit: Some(10),
+                }))
+                .await,
+        )
+        .expect("admin memory recall");
+        assert_eq!(admin_memories.len(), 1);
     }
 
     #[tokio::test]
@@ -1507,6 +1642,40 @@ mod tests {
             scopes: vec![STATUS_SCOPE.into()],
             acl: vec!["work".into()],
         }];
+        store
+            .remember(&MemoryInput {
+                kind: "semantic".into(),
+                project: "work".into(),
+                title: "Work status memory".into(),
+                content: "Work status context.".into(),
+                source: "agent".into(),
+                source_id: "work-status-memory".into(),
+                dedupe_key: None,
+                confidence: 0.8,
+                importance: 0.7,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("work memory");
+        store
+            .remember(&MemoryInput {
+                kind: "semantic".into(),
+                project: "personal".into(),
+                title: "Personal status memory".into(),
+                content: "Personal status context.".into(),
+                source: "agent".into(),
+                source_id: "personal-status-memory".into(),
+                dedupe_key: None,
+                confidence: 0.8,
+                importance: 0.7,
+                acl: vec!["personal".into()],
+                provenance: serde_json::json!({"test":true}),
+                supersedes_id: None,
+                valid_until: None,
+            })
+            .expect("personal memory");
         let principal = AuthPolicy::from_config(&config)
             .expect("policy")
             .authenticate("work-secret")
@@ -1524,6 +1693,8 @@ mod tests {
             .filter_map(|source| source["name"].as_str())
             .collect::<Vec<_>>();
         assert_eq!(names, vec!["work-drive"]);
+        assert_eq!(status["memory"]["active"], 1);
+        assert_eq!(status["memory"]["total"], 1);
     }
 
     #[tokio::test]

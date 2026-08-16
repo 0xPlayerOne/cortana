@@ -43,11 +43,11 @@ filters are bounded, each tool returns at most 50 evidence rows, and the context
 independent token budget (`--limit` 1–50, `--max-tokens` 256–64,000, defaulting to the configured
 `[query].context_tokens` budget of 8,000).
 
-| Interface                                       | Entry points                                                                                                                                                                                                                 |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCP stdio (`cortana --config <path> mcp`)       | `context`, `remember`, `recall`, `forget`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                                                           |
-| HTTP (`cortana serve --address 127.0.0.1:7331`) | `POST /v1/context`, `POST /v1/memory[/{recall,forget}]`, `POST /v1/search`, `POST /v1/answer`, `GET /v1/documents[/{id}]`, `GET /v1/graph`, `GET /v1/status`, `GET /v1/audit`, `GET /healthz`, `GET /readyz`, `GET /metrics` |
-| CLI (no server required)                        | `cortana context`, `cortana search` (raw-evidence fallback)                                                                                                                                                                  |
+| Interface                                       | Entry points                                                                                                                                                                                                                                          |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP stdio (`cortana --config <path> mcp`)       | `context`, `remember`, `recall`, `forget`, `export_memory`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                                                                   |
+| HTTP (`cortana serve --address 127.0.0.1:7331`) | `POST /v1/context`, `POST /v1/memory[/{recall,forget}]`, `GET /v1/memory/export`, `POST /v1/search`, `POST /v1/answer`, `GET /v1/documents[/{id}]`, `GET /v1/graph`, `GET /v1/status`, `GET /v1/audit`, `GET /healthz`, `GET /readyz`, `GET /metrics` |
+| CLI (no server required)                        | `cortana context`, `cortana search` (raw-evidence fallback)                                                                                                                                                                                           |
 
 `cortana context QUERY`, `POST /v1/context`, and the MCP `context` tool return the same
 citation-ready, token-bounded Markdown bundle with numbered `[n]` citations, the included evidence,
@@ -60,6 +60,16 @@ ingestion never silently promotes source text into agent memory.
 alone remains citation-bearing. Query-only principals receive no memory field. Answer-cache keys
 include the native memory revision and visible memory ACL, so remember/forget operations cannot
 leave an old memory-backed answer cached.
+
+Memory writes may include an optional RFC3339 `valid_until` for short-lived working context. Expired
+records are excluded from recall and answer context automatically; durable facts should instead use
+an explicit supersession or forget operation. Dedupe and supersession are checked against the
+caller’s visible ACL inside the same SQLite transaction, so a scoped agent cannot overwrite or
+replace another workspace’s memory by guessing an identifier.
+Identical retries with a dedupe key are true no-ops and do not invalidate answer caches.
+`brain_status` and `/v1/status` expose active, expired, retracted, superseded, and total native-memory
+counts; those lifecycle counts are ACL-scoped for shared principals and complete for owners. Expired
+records remain available to scoped export for audit and backup but never enter recall.
 
 ## Local owner mode versus scoped bearer principals
 

@@ -516,6 +516,9 @@ function AnswerView({
               <p>{memory.content}</p>
               <small>
                 {memory.kind} · {memory.project} · confidence {memory.confidence.toFixed(2)}
+                {memory.valid_until
+                  ? ` · expires ${new Date(memory.valid_until).toLocaleDateString()}`
+                  : ''}
               </small>
             </article>
           ))}

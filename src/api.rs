@@ -350,6 +350,7 @@ struct MemoryRememberRequest {
     acl: Option<Vec<String>>,
     provenance: Option<serde_json::Value>,
     supersedes_id: Option<String>,
+    valid_until: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -359,6 +360,15 @@ struct MemoryRecallRequest {
     project: Option<String>,
     kind: Option<String>,
     #[serde(default = "default_memory_limit")]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryExportParams {
+    project: Option<String>,
+    kind: Option<String>,
+    #[serde(default = "default_memory_export_limit")]
     limit: usize,
 }
 
@@ -561,6 +571,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/memory", post(remember_memory))
         .route("/v1/memory/recall", post(recall_memories))
         .route("/v1/memory/forget", post(forget_memory))
+        .route("/v1/memory/export", get(export_memories))
         .route("/v1/answer", post(answer))
         .route("/v1/audit", get(audit_events))
         .route("/v1/auth/reload", post(reload_auth))
@@ -612,7 +623,9 @@ async fn authorize(
     };
     let required_scope = match path {
         "/metrics" | "/v1/audit" | "/v1/auth/reload" => ADMIN_SCOPE,
-        "/v1/memory" | "/v1/memory/recall" | "/v1/memory/forget" => MEMORY_SCOPE,
+        "/v1/memory" | "/v1/memory/recall" | "/v1/memory/forget" | "/v1/memory/export" => {
+            MEMORY_SCOPE
+        }
         "/v1/status" | "/readyz" => STATUS_SCOPE,
         _ => QUERY_SCOPE,
     };
@@ -1149,6 +1162,12 @@ async fn status(
     };
     let workspaces = fallback_workspaces(&visible_workspaces, source_projects);
     let counters = state.metrics.counters_for(&principal, owner);
+    let memory = if owner {
+        state.store.memory_stats()
+    } else {
+        state.store.memory_stats_scoped(&principal.visible_acl())
+    }
+    .unwrap_or_default();
     Ok(Json(Status {
         status: "ok",
         stats_stale,
@@ -1163,7 +1182,7 @@ async fn status(
         query: state.answer.status(),
         ingestion,
         workspaces,
-        memory: state.store.memory_stats().unwrap_or_default(),
+        memory,
         stats,
     }))
 }
@@ -1458,7 +1477,7 @@ async fn remember_memory(
     let acl = if principal.is_owner() {
         requested_acl
     } else if requested_acl.is_empty() {
-        visible_acl
+        visible_acl.clone()
     } else if requested_acl
         .iter()
         .all(|label| visible_acl.iter().any(|visible| visible == label))
@@ -1502,8 +1521,12 @@ async fn remember_memory(
             })
         }),
         supersedes_id: request.supersedes_id,
+        valid_until: request.valid_until,
     };
-    match state.store.remember(&input) {
+    match state
+        .store
+        .remember_scoped(&input, &visible_acl, principal.is_owner())
+    {
         Ok(memory) => {
             record_audit(
                 &state,
@@ -1516,6 +1539,19 @@ async fn remember_memory(
                 started,
             );
             Ok(Json(memory))
+        }
+        Err(error) if crate::memory::is_authorization_error(&error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.remember",
+                Some(&input.project),
+                Some(&input.source),
+                "forbidden",
+                None,
+                started,
+            );
+            Err((StatusCode::FORBIDDEN, "memory ACL denied".into()))
         }
         Err(error) => {
             record_audit(
@@ -1538,6 +1574,19 @@ async fn recall_memories(
     Extension(principal): Extension<Principal>,
     Json(request): Json<MemoryRecallRequest>,
 ) -> Result<Json<Vec<crate::memory::MemorySearchResult>>, (StatusCode, String)> {
+    if !principal.has_scope(MEMORY_SCOPE) {
+        record_audit(
+            &state,
+            &principal,
+            "memory.recall",
+            request.project.as_deref(),
+            None,
+            "forbidden",
+            None,
+            Instant::now(),
+        );
+        return Err((StatusCode::FORBIDDEN, "memory scope required".into()));
+    }
     validate_query(&request.query)?;
     validate_retrieval_scope(request.project.as_deref(), None)?;
     let started = Instant::now();
@@ -1603,10 +1652,27 @@ async fn forget_memory(
         );
         return Err((StatusCode::FORBIDDEN, "memory ACL denied".into()));
     }
-    let forgotten = state
-        .store
-        .forget_memory(&request.id)
-        .map_err(internal_error)?;
+    let forgotten = match state.store.forget_memory_scoped(
+        &request.id,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    ) {
+        Ok(forgotten) => forgotten,
+        Err(error) if crate::memory::is_authorization_error(&error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.forget",
+                Some(&memory.project),
+                Some(&memory.source),
+                "forbidden",
+                None,
+                started,
+            );
+            return Err((StatusCode::FORBIDDEN, "memory ACL denied".into()));
+        }
+        Err(error) => return Err(internal_error(error)),
+    };
     record_audit(
         &state,
         &principal,
@@ -1621,6 +1687,48 @@ async fn forget_memory(
         id: request.id,
         forgotten,
     }))
+}
+
+async fn export_memories(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumQuery(params): AxumQuery<MemoryExportParams>,
+) -> Result<Json<Vec<crate::memory::MemoryRecord>>, (StatusCode, String)> {
+    validate_retrieval_scope(params.project.as_deref(), None)?;
+    let started = Instant::now();
+    match state.store.export_memories(
+        params.project.as_deref(),
+        params.kind.as_deref(),
+        params.limit,
+        &principal.visible_acl(),
+    ) {
+        Ok(memories) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.export",
+                params.project.as_deref(),
+                None,
+                "succeeded",
+                Some(memories.len()),
+                started,
+            );
+            Ok(Json(memories))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.export",
+                params.project.as_deref(),
+                None,
+                "failed",
+                None,
+                started,
+            );
+            Err(internal_error(error))
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -1761,6 +1869,10 @@ fn default_limit() -> usize {
 
 fn default_memory_limit() -> usize {
     10
+}
+
+fn default_memory_export_limit() -> usize {
+    10_000
 }
 
 fn default_context_tokens() -> usize {
@@ -2286,7 +2398,7 @@ mod tests {
             acl: Vec::new(),
         }];
         let policy = AuthPolicy::from_config(&config).expect("auth policy");
-        let app = router(state.with_auth_policy(policy));
+        let app = router(state.clone().with_auth_policy(policy));
         let health = app
             .clone()
             .oneshot(
@@ -2322,6 +2434,21 @@ mod tests {
             .await
             .expect("metrics response");
         assert_eq!(authorized.status(), StatusCode::OK);
+
+        let memory_denied =
+            router(state.with_auth_policy(AuthPolicy::from_config(&config).expect("policy")))
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/v1/memory/recall")
+                        .header(header::AUTHORIZATION, "Bearer secret")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(r#"{"query":"release notes"}"#))
+                        .expect("memory request"),
+                )
+                .await
+                .expect("memory denial response");
+        assert_eq!(memory_denied.status(), StatusCode::FORBIDDEN);
     }
 
     #[tokio::test]
@@ -2861,6 +2988,29 @@ mod tests {
             .store
             .begin_sync("personal-notes", "personal", 50, 1_024, 60)
             .expect("begin running sync");
+        for (project, acl, source_id) in [
+            ("work", "work", "work-status-memory"),
+            ("personal", "personal", "personal-status-memory"),
+        ] {
+            state
+                .store
+                .remember(&MemoryInput {
+                    kind: "semantic".into(),
+                    project: project.into(),
+                    title: format!("{project} status memory"),
+                    content: format!("{project} status context."),
+                    source: "agent".into(),
+                    source_id: source_id.into(),
+                    dedupe_key: None,
+                    confidence: 0.8,
+                    importance: 0.7,
+                    acl: vec![acl.into()],
+                    provenance: serde_json::json!({"test":true}),
+                    supersedes_id: None,
+                    valid_until: None,
+                })
+                .expect("memory");
+        }
         let store = state.store.clone();
 
         let mut config: Config = toml::from_str(
@@ -2931,6 +3081,8 @@ mod tests {
             serde_json::from_slice(&work_body).expect("status JSON");
         assert_eq!(work_value["documents"], 0);
         assert_eq!(work_value["sources"], serde_json::json!([]));
+        assert_eq!(work_value["memory"]["active"], 1);
+        assert_eq!(work_value["memory"]["total"], 1);
         let work_runs = work_value["sync_runs"].as_array().expect("sync runs");
         assert_eq!(work_runs.len(), 1);
         assert_eq!(work_runs[0]["source"], "work-drive");
@@ -2956,6 +3108,8 @@ mod tests {
             .expect("status body");
         let personal_value: serde_json::Value =
             serde_json::from_slice(&personal_body).expect("status JSON");
+        assert_eq!(personal_value["memory"]["active"], 1);
+        assert_eq!(personal_value["memory"]["total"], 1);
         let personal_runs = personal_value["sync_runs"].as_array().expect("sync runs");
         assert_eq!(personal_runs.len(), 1);
         assert_eq!(personal_runs[0]["source"], "personal-notes");
@@ -2978,6 +3132,8 @@ mod tests {
             .expect("status body");
         let admin_value: serde_json::Value =
             serde_json::from_slice(&admin_body).expect("status JSON");
+        assert_eq!(admin_value["memory"]["active"], 2);
+        assert_eq!(admin_value["memory"]["total"], 2);
         let admin_runs = admin_value["sync_runs"].as_array().expect("sync runs");
         assert_eq!(admin_runs.len(), 2, "owner view keeps every run");
 
@@ -4037,6 +4193,7 @@ mod tests {
                 acl: vec!["work".into()],
                 provenance: serde_json::json!({"test": true}),
                 supersedes_id: None,
+                valid_until: None,
             })
             .expect("memory");
 

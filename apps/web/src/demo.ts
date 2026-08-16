@@ -63,7 +63,7 @@ export const demoStatus: BrainStatus = {
   query_cache_entries: 328,
   query_cache_hits: 971,
   answers_total: 1324,
-  memory: { active: 42, superseded: 7, retracted: 1, total: 50 },
+  memory: { active: 42, expired: 0, superseded: 7, retracted: 1, total: 50 },
   query: {
     mode: 'synthesized',
     model: 'auto-efficient',

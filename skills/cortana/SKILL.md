@@ -32,8 +32,11 @@ raw-evidence fallback.
 7. If evidence conflicts, prefer newer authoritative sources and disclose the conflict.
 8. Use `remember` only for an explicit, bounded conclusion, preference, procedure, episode, or
    working-state update. Include a stable `dedupe_key` and provenance when possible; never copy
-   an entire source document into memory. Use `recall` for memory-only retrieval and `forget` when
-   the user withdraws a memory.
+   an entire source document into memory. Set an RFC3339 `valid_until` on short-lived working
+   context so expired state is excluded automatically. Dedupe keys and supersession targets stay
+   within the selected workspace, even for the owner; use a new key for each superseding
+   record because retired keys remain reserved. Use `recall` for memory-only retrieval and
+   `forget` when the user withdraws a memory.
 
 When using `/v1/answer`, treat any returned `memories` as operational context rather than citations;
 the answer must remain grounded in numbered evidence. Shared agents need the `memory` scope for
@@ -71,9 +74,9 @@ to the configured principal, enforces query/status scopes and document/source AC
 MCP, scopes status counters and source inventory, and records only metadata-only audit events under
 that principal name.
 
-The MCP server also exposes native `remember`, `recall`, and `forget` tools. They use the same
-workspace ACLs and audit trail as document retrieval; `context` automatically includes relevant
-native memories without exposing retracted or out-of-scope records.
+The MCP server also exposes native `remember`, `recall`, `forget`, and `export_memory` tools. They
+use the same workspace ACLs and audit trail as document retrieval; `context` automatically includes
+relevant native memories without exposing retracted or out-of-scope records.
 
 For an HTTP-only client, send:
 
