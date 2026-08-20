@@ -3790,6 +3790,36 @@ mod tests {
     }
 
     #[test]
+    fn old_sync_run_schema_is_upgraded_with_progress_columns() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("store.sqlite3");
+        let connection = Connection::open(&path).expect("legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE sync_runs(
+                   id TEXT PRIMARY KEY, source TEXT NOT NULL, project TEXT NOT NULL,
+                   status TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT,
+                   documents INTEGER, bytes INTEGER, deleted INTEGER,
+                   budget_documents INTEGER NOT NULL, budget_bytes INTEGER NOT NULL,
+                   budget_seconds INTEGER NOT NULL
+                 );",
+            )
+            .expect("legacy sync_runs schema");
+        drop(connection);
+
+        let store = Store::open(&path).expect("upgrade legacy database");
+        let run = store
+            .begin_sync("work-notes", "work", 10, 1_024, 60)
+            .expect("begin upgraded sync");
+        store
+            .update_sync_progress(&run, 2, 128)
+            .expect("record upgraded progress");
+        let stats = store.stats().expect("upgraded stats");
+        assert_eq!(stats.sync_runs[0].progress_documents, 2);
+        assert_eq!(stats.sync_runs[0].progress_bytes, 128);
+    }
+
+    #[test]
     fn sync_run_history_is_bounded_per_source() {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
