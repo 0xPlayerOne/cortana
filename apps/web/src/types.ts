@@ -80,6 +80,10 @@ export type SourceSyncSummary = {
   documents: number | null
   bytes: number | null
   deleted: number | null
+  /** Durable in-flight counters; absent when talking to an older server. */
+  progress_documents?: number
+  progress_bytes?: number
+  progress_updated_at?: string | null
   budget_documents: number
   budget_bytes: number
   budget_seconds: number
