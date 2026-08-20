@@ -34,7 +34,13 @@ from .model import Document
 DRIVE_FIELDS = (
     "nextPageToken,incompleteSearch,"
     "files(id,name,mimeType,size,modifiedTime,webViewLink,owners(displayName),"
-    "shortcutDetails(targetId,targetMimeType))"
+    "trashed,shortcutDetails(targetId,targetMimeType))"
+)
+DRIVE_DEFAULT_QUERY = "trashed = false"
+DRIVE_CHANGES_FIELDS = (
+    "nextPageToken,newStartPageToken,"
+    "changes(fileId,removed,file(id,name,mimeType,size,modifiedTime,webViewLink,"
+    "owners(displayName),trashed,shortcutDetails(targetId,targetMimeType)))"
 )
 GOOGLE_EXPORTS = {
     "application/vnd.google-apps.document": ("text/plain", "txt"),
@@ -112,6 +118,10 @@ DRIVE_CONTENT_CONCURRENCY = 1
 
 class _GmailHistoryExpired(Exception):
     """The provider no longer retains the cursor; rebuild the snapshot."""
+
+
+class _DriveChangesExpired(Exception):
+    """The provider no longer accepts the stored Drive changes cursor."""
 
 
 class _DriveContent(str):
@@ -467,8 +477,33 @@ def fetch_drive(
         raise ValueError("max_documents must be greater than zero")
     strict = max_documents is None
     cache = _drive_cache(cache_dir)
+    drive_scope: str | None = None
+    drive_start_page_token: str | None = None
+    drive_cursor_eligible = strict and cache is not None and query.strip() == DRIVE_DEFAULT_QUERY
+    stale_content_used = False
     try:
         with GoogleSession(token_path, client) as session:
+            if drive_cursor_eligible:
+                assert cache is not None
+                drive_scope = _drive_scope_fingerprint(token_path, project, query)
+                cached_page_token = _drive_cached_page_token(cache, drive_scope)
+                if cached_page_token is not None:
+                    try:
+                        yield from _fetch_drive_changes_delta(
+                            session,
+                            cache,
+                            project,
+                            drive_scope,
+                            cached_page_token,
+                            max_content_chars,
+                        )
+                        return
+                    except _DriveChangesExpired:
+                        # Drive cursors are invalidated after long retention
+                        # gaps or account changes. Clear only the derived
+                        # snapshot and rebuild it with a fresh baseline token.
+                        _drive_reset_cache(cache)
+                drive_start_page_token = _drive_start_page_token(session)
             page_token: str | None = None
             pending_writes = 0
             emitted = 0
@@ -546,6 +581,7 @@ def fetch_drive(
                                     if stale is not None:
                                         body = stale
                                         stale_ids.add(file_id)
+                                        stale_content_used = True
                                     elif strict:
                                         raise RuntimeError(
                                             "Drive file content unavailable: "
@@ -566,22 +602,19 @@ def fetch_drive(
                         if modified_time is None:
                             continue
                         body = bodies[file_id]
-                        if file_id in downloaded_ids and cache is not None:
-                            cache.execute(
-                                "INSERT OR REPLACE INTO files("
-                                "id,modified_time,body,original_chars,truncated) VALUES(?,?,?,?,?)",
-                                (
-                                    file_id,
-                                    modified_time,
-                                    body,
-                                    (
-                                        UNKNOWN_CONTENT_CHARS
-                                        if getattr(body, "original_chars", len(body)) is None
-                                        else getattr(body, "original_chars", len(body))
-                                    ),
-                                    int(bool(getattr(body, "truncated", False))),
-                                ),
-                            )
+                        if cache is not None and file_id not in stale_ids:
+                            if file_id in downloaded_ids:
+                                cache.execute(
+                                    "INSERT OR REPLACE INTO files("
+                                    "id,modified_time,body,original_chars,truncated,item) "
+                                    "VALUES(?,?,?,?,?,?)",
+                                    _drive_cache_values(file_id, modified_time, body, item),
+                                )
+                            else:
+                                cache.execute(
+                                    "UPDATE files SET item=? WHERE id=?",
+                                    (_drive_item_json(item), file_id),
+                                )
                             pending_writes += 1
                         if cache is not None:
                             cache.execute("INSERT OR IGNORE INTO seen(id) VALUES(?)", (file_id,))
@@ -666,6 +699,12 @@ def fetch_drive(
                 # bodies it did not list, or every bounded sync would invalidate
                 # the whole derived cache. Additive writes above are safe.
                 cache.execute("DELETE FROM files WHERE id NOT IN (SELECT id FROM seen)")
+                if drive_cursor_eligible and drive_scope is not None and not stale_content_used:
+                    cache.execute("DELETE FROM sync_state")
+                    cache.execute(
+                        "INSERT INTO sync_state(scope,page_token) VALUES(?,?)",
+                        (drive_scope, drive_start_page_token or ""),
+                    )
             # Small bounded probes must persist additive cache writes too.
             cache.commit()
     finally:
@@ -1393,21 +1432,330 @@ def _drive_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
     connection.execute(
         "CREATE TABLE IF NOT EXISTS files("
         "id TEXT PRIMARY KEY,modified_time TEXT NOT NULL,body TEXT NOT NULL,"
-        "original_chars INTEGER NOT NULL DEFAULT 0,truncated INTEGER NOT NULL DEFAULT 0)"
+        "original_chars INTEGER NOT NULL DEFAULT 0,truncated INTEGER NOT NULL DEFAULT 0,"
+        "item TEXT NOT NULL DEFAULT '{}')"
     )
     # Existing installations have the original three-column cache. Add the
     # metadata columns in place so upgrading does not discard cached content.
     for column, definition in (
         ("original_chars", "INTEGER NOT NULL DEFAULT 0"),
         ("truncated", "INTEGER NOT NULL DEFAULT 0"),
+        ("item", "TEXT NOT NULL DEFAULT '{}'"),
     ):
         try:
             connection.execute(f"ALTER TABLE files ADD COLUMN {column} {definition}")
         except sqlite3.OperationalError as error:
             if "duplicate column name" not in str(error).lower():
                 raise
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS sync_state(scope TEXT PRIMARY KEY,page_token TEXT NOT NULL)"
+    )
     connection.execute("CREATE TEMP TABLE seen(id TEXT PRIMARY KEY)")
     return connection
+
+
+def _drive_scope_fingerprint(token_path: Path, project: str, query: str) -> str:
+    """Bind a Drive cursor to account identity and the exact source query."""
+
+    digest = hashlib.sha256()
+    token_bytes = token_path.read_bytes()
+    try:
+        credentials = json.loads(token_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        credentials = None
+    if isinstance(credentials, dict):
+        identity = {
+            key: credentials.get(key)
+            for key in ("refresh_token", "client_id", "token_uri", "sub", "email")
+            if credentials.get(key)
+        }
+        if identity:
+            token_bytes = json.dumps(identity, sort_keys=True).encode()
+    digest.update(token_bytes)
+    digest.update(b"\0")
+    digest.update(project.encode())
+    digest.update(b"\0")
+    digest.update(query.encode())
+    return digest.hexdigest()
+
+
+def _drive_cached_page_token(cache: sqlite3.Connection, scope: str) -> str | None:
+    row = cache.execute("SELECT scope,page_token FROM sync_state LIMIT 1").fetchone()
+    if row is None:
+        # A pre-cursor cache has no account binding. Discard its derived
+        # bodies before the first cursor-backed snapshot so a reauthorized
+        # account can never reuse a matching file id and modified timestamp.
+        if cache.execute("SELECT 1 FROM files LIMIT 1").fetchone() is not None:
+            _drive_reset_cache(cache)
+        return None
+    if str(row[0]) != scope:
+        _drive_reset_cache(cache)
+        return None
+    token = str(row[1]).strip()
+    return token or None
+
+
+def _drive_reset_cache(cache: sqlite3.Connection) -> None:
+    cache.execute("DELETE FROM files")
+    cache.execute("DELETE FROM sync_state")
+    cache.execute("DELETE FROM seen")
+    cache.commit()
+
+
+def _drive_start_page_token(session: GoogleSession) -> str | None:
+    response = session.request(
+        "GET",
+        "https://www.googleapis.com/drive/v3/changes/startPageToken",
+        params={"supportsAllDrives": "true"},
+    )
+    try:
+        payload = json_payload(response)
+    except RuntimeError:
+        # A provider that does not expose the changes endpoint can still be
+        # synchronized safely with a complete files listing. Do not create a
+        # cursor in that case; the next strict run will retry discovery.
+        print(
+            "Drive changes cursor unavailable; using a complete listing",
+            file=sys.stderr,
+        )
+        return None
+    if not isinstance(payload, dict):
+        print(
+            "Drive start page token unavailable; using a complete listing",
+            file=sys.stderr,
+        )
+        return None
+    token = payload.get("startPageToken")
+    if not isinstance(token, str) or not token.strip():
+        print(
+            "Drive start page token unavailable; using a complete listing",
+            file=sys.stderr,
+        )
+        return None
+    return token.strip()
+
+
+def _drive_item_json(item: dict[str, Any]) -> str:
+    return json.dumps(item, separators=(",", ":"), sort_keys=True)
+
+
+def _drive_cache_values(
+    file_id: str, modified_time: str, body: str, item: dict[str, Any]
+) -> tuple[str, str, str, int, int, str]:
+    return (
+        file_id,
+        modified_time,
+        body,
+        (
+            UNKNOWN_CONTENT_CHARS
+            if getattr(body, "original_chars", len(body)) is None
+            else getattr(body, "original_chars", len(body))
+        ),
+        int(bool(getattr(body, "truncated", False))),
+        _drive_item_json(item),
+    )
+
+
+def _drive_document(
+    item: dict[str, Any],
+    body: str,
+    project: str,
+    max_content_chars: int,
+    *,
+    content_stale: bool = False,
+) -> Document:
+    file_id = str(item.get("id") or "").strip()
+    if not file_id:
+        raise RuntimeError("Drive cached file has no id")
+    if not body.strip():
+        body = _DriveContent(DRIVE_NO_TEXT_MARKER, None, True)
+    try:
+        updated_at = _timestamp(item.get("modifiedTime"))
+    except (TypeError, ValueError, OverflowError, OSError) as error:
+        raise RuntimeError(f"Drive file has invalid modifiedTime: id={file_id}") from error
+    content, content_truncated = _bounded_content(body, max_content_chars)
+    return Document(
+        source="google-drive",
+        source_id=file_id,
+        title=str(item.get("name") or "Untitled Drive file"),
+        content=content,
+        uri=item.get("webViewLink"),
+        updated_at=updated_at,
+        project=project,
+        metadata={
+            "mime_type": item.get("mimeType"),
+            "owners": [
+                owner.get("displayName")
+                for owner in item.get("owners", [])
+                if isinstance(owner, dict) and owner.get("displayName")
+            ],
+            "content_stale": content_stale,
+            "content_truncated": content_truncated or bool(getattr(body, "truncated", False)),
+            "content_unavailable": any(
+                marker in str(body)
+                for marker in (
+                    PDF_NO_TEXT_MARKER,
+                    DOCX_NO_TEXT_MARKER,
+                    DRIVE_NO_TEXT_MARKER,
+                )
+            ),
+            "content_original_chars": getattr(body, "original_chars", len(body)),
+        },
+    )
+
+
+def _iter_cached_drive_documents(
+    cache: sqlite3.Connection,
+    project: str,
+    max_content_chars: int,
+) -> Iterable[Document]:
+    rows = cache.execute("SELECT id,body,original_chars,truncated,item FROM files ORDER BY id")
+    for file_id, body, original_chars, truncated, item_body in rows:
+        try:
+            item = json.loads(str(item_body))
+            if not isinstance(item, dict) or str(item.get("id") or "").strip() != str(file_id):
+                raise ValueError("cached id mismatch")
+            stored_chars = int(original_chars or 0)
+            original = (
+                None if stored_chars == UNKNOWN_CONTENT_CHARS else (stored_chars or len(body))
+            )
+            content = _DriveContent(str(body), original, bool(truncated))
+            yield _drive_document(item, content, project, max_content_chars)
+        except (AttributeError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"Drive cached file conversion failed: id={file_id}") from error
+
+
+def _fetch_drive_changes_delta(
+    session: GoogleSession,
+    cache: sqlite3.Connection,
+    project: str,
+    scope: str,
+    page_token: str,
+    max_content_chars: int,
+) -> Iterable[Document]:
+    changed: dict[str, dict[str, Any]] = {}
+    removed: set[str] = set()
+    next_page_token: str | None = page_token
+    new_start_page_token: str | None = None
+    while next_page_token is not None:
+        try:
+            response = session.request(
+                "GET",
+                "https://www.googleapis.com/drive/v3/changes",
+                params={
+                    "pageToken": next_page_token,
+                    "includeRemoved": "true",
+                    "supportsAllDrives": "true",
+                    "includeItemsFromAllDrives": "true",
+                    "fields": DRIVE_CHANGES_FIELDS,
+                },
+            )
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code in {400, 404, 410}:
+                raise _DriveChangesExpired from error
+            raise
+        payload = json_payload(response)
+        if not isinstance(payload, dict):
+            raise RuntimeError("Drive changes listing is not an object; refusing partial snapshot")
+        raw_changes = payload.get("changes")
+        if raw_changes is None:
+            raise RuntimeError("Drive change list is missing; refusing partial snapshot")
+        if not isinstance(raw_changes, list):
+            raise RuntimeError("Drive change list is not a list; refusing partial snapshot")
+        changes: list[dict[str, Any]] = []
+        for index, change in enumerate(raw_changes):
+            if not isinstance(change, dict):
+                raise RuntimeError(
+                    f"Drive change record={index} is not an object; refusing partial snapshot"
+                )
+            changes.append(change)
+        for index, change in enumerate(changes):
+            raw_file_id = change.get("fileId")
+            if not isinstance(raw_file_id, str) or not raw_file_id.strip():
+                raise RuntimeError(f"Drive change record={index} has invalid fileId")
+            file_id = raw_file_id.strip()
+            item = change.get("file")
+            if change.get("removed") or not isinstance(item, dict):
+                changed.pop(file_id, None)
+                removed.add(file_id)
+                continue
+            item_id = item.get("id")
+            if not isinstance(item_id, str) or item_id.strip() != file_id:
+                raise RuntimeError(f"Drive change record={index} has mismatched file id")
+            if item.get("trashed") or _is_drive_container(item):
+                changed.pop(file_id, None)
+                removed.add(file_id)
+                continue
+            removed.discard(file_id)
+            changed[file_id] = item
+
+        raw_next_page_token = payload.get("nextPageToken")
+        if raw_next_page_token is None:
+            raw_new_start_page_token = payload.get("newStartPageToken")
+            if (
+                not isinstance(raw_new_start_page_token, str)
+                or not raw_new_start_page_token.strip()
+            ):
+                raise RuntimeError("Drive changes listing has no newStartPageToken")
+            new_start_page_token = raw_new_start_page_token.strip()
+            next_page_token = None
+        elif isinstance(raw_next_page_token, str) and raw_next_page_token.strip():
+            next_page_token = raw_next_page_token.strip()
+        else:
+            raise RuntimeError("Drive changes listing has invalid nextPageToken")
+
+    updates: dict[str, tuple[dict[str, Any], str]] = {}
+    if changed:
+        with ThreadPoolExecutor(
+            max_workers=min(DRIVE_CONTENT_CONCURRENCY, len(changed)),
+            thread_name_prefix="cortana-drive-changes",
+        ) as pool:
+            fetched = pool.map(
+                lambda item: _safe_drive_content(session, item),
+                [changed[file_id] for file_id in sorted(changed)],
+            )
+            for file_id, item, (body, error_name) in zip(
+                sorted(changed),
+                [changed[file_id] for file_id in sorted(changed)],
+                fetched,
+                strict=True,
+            ):
+                if error_name is not None:
+                    raise RuntimeError(
+                        "Drive changed file content unavailable: "
+                        f"id={file_id}; refusing cursor advance"
+                    )
+                updates[file_id] = (item, body)
+
+    cache.execute("BEGIN")
+    try:
+        for file_id in removed:
+            cache.execute("DELETE FROM files WHERE id=?", (file_id,))
+        for file_id, (item, body) in updates.items():
+            modified_time = _drive_modified_time(item, file_id, strict=True)
+            assert modified_time is not None
+            cache.execute(
+                "INSERT OR REPLACE INTO files("
+                "id,modified_time,body,original_chars,truncated,item) VALUES(?,?,?,?,?,?)",
+                _drive_cache_values(file_id, modified_time, body, item),
+            )
+        assert new_start_page_token is not None
+        cache.execute("DELETE FROM sync_state")
+        cache.execute(
+            "INSERT INTO sync_state(scope,page_token) VALUES(?,?)",
+            (scope, new_start_page_token),
+        )
+        # Validate every cached record before blessing the new cursor. This is
+        # intentionally streamed so a large cache does not become a second
+        # in-memory corpus.
+        for _document in _iter_cached_drive_documents(cache, project, max_content_chars):
+            pass
+        cache.commit()
+    except Exception:
+        cache.rollback()
+        raise
+
+    yield from _iter_cached_drive_documents(cache, project, max_content_chars)
 
 
 def _private_cache(path: Path) -> sqlite3.Connection:

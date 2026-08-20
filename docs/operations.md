@@ -228,6 +228,11 @@ unsupported binary Drive items receive the same metadata-only marker and remain 
 original item; Cortana does not claim to have extracted their contents. Set
 `max_content_chars` on an individual `google-drive` source when a different
 evidence budget is justified.
+Unfiltered complete Drive snapshots also persist a provider changes cursor in the source cache;
+subsequent runs apply additions, updates, trash/removal events, and shared-drive changes
+atomically. Cursor expiry, account/workspace changes, and unavailable cursor support fall back to
+a fresh complete listing without advancing a partial snapshot. Bounded or filtered trials never
+advance this cursor.
 
 ## Backup and recovery
 

@@ -104,6 +104,15 @@ The cursor is bound to the OAuth account identity and workspace; changing either
 bodies. Expired cursors rebuild the full snapshot, while bounded validation and filtered runs never
 advance the cursor. Delta mutations and cursor advancement commit together, so a failed history
 page or message fetch cannot bless a partial snapshot.
+Full, uncapped Google Drive runs use the same durable cache contract in
+`data_dir/connector-cache/<source>/drive.sqlite3`: the first complete unfiltered listing captures a
+Drive `startPageToken`, and later runs request only provider changes, including file additions,
+updates, trash/removal events, and shared-drive items. Change application and the replacement
+cursor commit atomically before Cortana emits the resulting complete snapshot. A 400/404/410
+expired cursor or an account/workspace/query fingerprint change clears only the derived Drive
+cache and performs a fresh full listing. Bounded, filtered, or failed runs never advance the
+cursor; if Drive does not return a usable start token, Cortana safely falls back to a complete
+listing without claiming incremental progress.
 Idempotent Google GET/HEAD calls retry bounded transport failures and standard transient HTTP
 statuses; a 403 is retried only for Google's explicit rate-limit/backend reasons. Gmail detail
 requests also retry a small, bounded 400 window before strict runs fail closed.

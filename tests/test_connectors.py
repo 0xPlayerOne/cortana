@@ -1730,6 +1730,10 @@ def test_google_drive_reuses_content_until_modified(tmp_path: Path) -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal content_requests
+        if request.url.path == "/drive/v3/changes/startPageToken":
+            return response({"startPageToken": "100"}, request=request)
+        if request.url.path == "/drive/v3/changes":
+            return response({"changes": [], "newStartPageToken": "100"}, request=request)
         if request.url.path == "/drive/v3/files":
             return response(
                 {
@@ -1756,6 +1760,230 @@ def test_google_drive_reuses_content_until_modified(tmp_path: Path) -> None:
     assert (cache / "drive.sqlite3").stat().st_mode & 0o777 == 0o600
 
 
+def test_google_drive_applies_changes_delta_to_persisted_snapshot(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access","refresh_token":"refresh","client_id":"client"}')
+    cache = tmp_path / "cache"
+    listing_calls = 0
+    changes_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal listing_calls, changes_calls
+        if request.url.path == "/drive/v3/changes/startPageToken":
+            return response({"startPageToken": "100"}, request=request)
+        if request.url.path == "/drive/v3/files":
+            listing_calls += 1
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "doc1",
+                            "name": "Roadmap",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                        {
+                            "id": "doc2",
+                            "name": "Notes",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        },
+                    ]
+                },
+                request=request,
+            )
+        if request.url.path == "/drive/v3/changes":
+            changes_calls += 1
+            assert request.url.params["pageToken"] == "100"
+            return response(
+                {
+                    "changes": [
+                        {
+                            "fileId": "doc1",
+                            "file": {
+                                "id": "doc1",
+                                "name": "Roadmap updated",
+                                "mimeType": "text/plain",
+                                "modifiedTime": "2026-07-29T13:00:00Z",
+                            },
+                        },
+                        {"fileId": "doc2", "removed": True},
+                    ],
+                    "newStartPageToken": "120",
+                },
+                request=request,
+            )
+        file_id = request.url.path.rsplit("/", 1)[-1]
+        return httpx.Response(200, text=f"body-{file_id}", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = list(fetch_drive(token, "work", client=client, cache_dir=cache))
+    second = list(fetch_drive(token, "work", client=client, cache_dir=cache))
+
+    assert [document.source_id for document in first] == ["doc1", "doc2"]
+    assert [document.source_id for document in second] == ["doc1"]
+    assert second[0].title == "Roadmap updated"
+    assert second[0].content == "body-doc1"
+    assert listing_calls == 1
+    assert changes_calls == 1
+    connection = sqlite3.connect(cache / "drive.sqlite3")
+    try:
+        assert connection.execute("SELECT page_token FROM sync_state").fetchone() == ("120",)
+    finally:
+        connection.close()
+
+
+def test_google_drive_rebuilds_when_changes_cursor_expires(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access","refresh_token":"refresh","client_id":"client"}')
+    cache = tmp_path / "cache"
+    listing_calls = 0
+    change_attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal listing_calls, change_attempts
+        if request.url.path == "/drive/v3/changes/startPageToken":
+            return response(
+                {"startPageToken": "100" if listing_calls == 0 else "200"}, request=request
+            )
+        if request.url.path == "/drive/v3/files":
+            listing_calls += 1
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "doc1",
+                            "name": "Rebuilt",
+                            "mimeType": "text/plain",
+                            "modifiedTime": f"2026-07-29T{11 + listing_calls:02d}:00:00Z",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        if request.url.path == "/drive/v3/changes":
+            change_attempts += 1
+            return httpx.Response(410, json={"error": "expired"}, request=request)
+        return httpx.Response(200, text="rebuilt body", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    list(fetch_drive(token, "work", client=client, cache_dir=cache))
+    rebuilt = list(fetch_drive(token, "work", client=client, cache_dir=cache))
+
+    assert [document.source_id for document in rebuilt] == ["doc1"]
+    assert rebuilt[0].content == "rebuilt body"
+    assert listing_calls == 2
+    assert change_attempts == 1
+    connection = sqlite3.connect(cache / "drive.sqlite3")
+    try:
+        assert connection.execute("SELECT page_token FROM sync_state").fetchone() == ("200",)
+    finally:
+        connection.close()
+
+
+def test_google_drive_invalidates_cursor_when_account_scope_changes(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access","refresh_token":"account-one","client_id":"client"}')
+    cache = tmp_path / "cache"
+    listing_calls = 0
+    changes_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal listing_calls, changes_calls
+        if request.url.path == "/drive/v3/changes/startPageToken":
+            return response(
+                {"startPageToken": "100" if listing_calls == 0 else "200"}, request=request
+            )
+        if request.url.path == "/drive/v3/changes":
+            changes_calls += 1
+            return response({"changes": [], "newStartPageToken": "101"}, request=request)
+        if request.url.path == "/drive/v3/files":
+            listing_calls += 1
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "same-id",
+                            "name": "Account one" if listing_calls == 1 else "Account two",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        return httpx.Response(200, text="account body", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = list(fetch_drive(token, "work", client=client, cache_dir=cache))
+    write_token(token, '{"token":"access","refresh_token":"account-two","client_id":"client"}')
+    second = list(fetch_drive(token, "work", client=client, cache_dir=cache))
+
+    assert first[0].title == "Account one"
+    assert second[0].title == "Account two"
+    assert listing_calls == 2
+    assert changes_calls == 0
+
+
+def test_google_drive_failed_delta_does_not_advance_cursor(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access","refresh_token":"refresh","client_id":"client"}')
+    cache = tmp_path / "cache"
+    fail_delta = False
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal fail_delta
+        if request.url.path == "/drive/v3/changes/startPageToken":
+            return response({"startPageToken": "100"}, request=request)
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": "doc1",
+                            "name": "Roadmap",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                    ]
+                },
+                request=request,
+            )
+        if request.url.path == "/drive/v3/changes":
+            return response(
+                {
+                    "changes": [
+                        {
+                            "fileId": "doc1",
+                            "file": {
+                                "id": "doc1",
+                                "name": "Changed",
+                                "mimeType": "text/plain",
+                                "modifiedTime": "2026-07-29T13:00:00Z",
+                            },
+                        }
+                    ],
+                    "newStartPageToken": "120",
+                },
+                request=request,
+            )
+        if fail_delta:
+            return httpx.Response(503, request=request)
+        return httpx.Response(200, text="body", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    list(fetch_drive(token, "work", client=client, cache_dir=cache))
+    fail_delta = True
+    with pytest.raises(RuntimeError, match="refusing cursor advance"):
+        list(fetch_drive(token, "work", client=client, cache_dir=cache))
+
+    connection = sqlite3.connect(cache / "drive.sqlite3")
+    try:
+        assert connection.execute("SELECT page_token FROM sync_state").fetchone() == ("100",)
+    finally:
+        connection.close()
+
+
 def test_google_drive_capped_run_does_not_prune_cached_bodies(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     write_token(token, '{"token":"access"}')
@@ -1764,6 +1992,8 @@ def test_google_drive_capped_run_does_not_prune_cached_bodies(tmp_path: Path) ->
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal content_requests
+        if request.url.path == "/drive/v3/changes/startPageToken":
+            return response({"startPageToken": "100"}, request=request)
         if request.url.path == "/drive/v3/files":
             page_size = int(request.url.params.get("pageSize") or 1000)
             return response(
@@ -1793,9 +2023,11 @@ def test_google_drive_capped_run_does_not_prune_cached_bodies(tmp_path: Path) ->
     connection = sqlite3.connect(cache / "drive.sqlite3")
     try:
         bodies = connection.execute("SELECT id FROM files ORDER BY id").fetchall()
+        cursor = connection.execute("SELECT page_token FROM sync_state").fetchone()
     finally:
         connection.close()
     assert bodies == [("doc1",), ("doc2",)], "a capped run must not prune cached bodies"
+    assert cursor == ("100",), "a capped run must not advance the Drive cursor"
 
 
 def test_google_drive_bounded_run_commits_new_cache_content(
