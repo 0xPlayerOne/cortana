@@ -98,6 +98,19 @@ def fetch(
             "Apple Notes automation timed out; open Notes and grant Automation access to "
             "the invoking terminal or Cortana service"
         ) from error
+    except subprocess.CalledProcessError as error:
+        detail = str(error.stderr or "").lower()
+        if any(
+            marker in detail
+            for marker in ("not authorized", "not permitted", "permission", "automation")
+        ):
+            raise RuntimeError(
+                "Automation access to Apple Notes was denied; open System Settings > "
+                "Privacy & Security > Automation and allow the invoking terminal or Cortana service"
+            ) from error
+        raise RuntimeError(
+            "Apple Notes export failed; open Notes and verify Automation access for Cortana"
+        ) from error
     if len(result.stdout.encode("utf-8")) > MAX_EXPORT_BYTES:
         raise RuntimeError(
             f"Apple Notes export exceeds the {MAX_EXPORT_BYTES} byte safety limit; "

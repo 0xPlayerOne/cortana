@@ -218,6 +218,22 @@ def test_apple_notes_reports_actionable_timeout(monkeypatch: pytest.MonkeyPatch)
         list(apple_notes.fetch())
 
 
+def test_apple_notes_reports_actionable_permission_denial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def denied(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.CalledProcessError(
+            1,
+            ["osascript"],
+            stderr="Not authorized to send Apple events to Notes.",
+        )
+
+    monkeypatch.setattr(subprocess, "run", denied)
+
+    with pytest.raises(RuntimeError, match="Automation access to Apple Notes was denied"):
+        list(apple_notes.fetch())
+
+
 def test_apple_notes_rejects_malformed_or_oversized_exports(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
