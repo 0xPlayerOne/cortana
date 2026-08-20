@@ -2565,6 +2565,192 @@ def test_google_gmail_reuses_private_message_cache(tmp_path: Path) -> None:
     assert cache.stat().st_mode & 0o777 == 0o700
 
 
+def test_google_gmail_applies_history_delta_to_persisted_snapshot(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(
+        token,
+        json.dumps(
+            {
+                "token": "access",
+                "refresh_token": "refresh",
+                "client_id": "client",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "email": "owner@example.test",
+            }
+        ),
+    )
+    cache = tmp_path / "cache"
+    phase = "full"
+    list_requests = 0
+    history_requests: list[str] = []
+
+    def message(message_id: str, history_id: str, body: str) -> dict[str, Any]:
+        return {
+            "id": message_id,
+            "historyId": history_id,
+            "payload": {
+                "headers": [{"name": "Subject", "value": message_id}],
+                "mimeType": "text/plain",
+                "body": {"data": base64.urlsafe_b64encode(body.encode()).decode()},
+            },
+        }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal list_requests
+        path = request.url.path
+        if path.endswith("/messages"):
+            list_requests += 1
+            return response({"messages": [{"id": "m1"}, {"id": "m2"}]}, request=request)
+        if path.endswith("/history"):
+            history_requests.append(request.url.params["startHistoryId"])
+            assert phase == "delta"
+            return response(
+                {
+                    "historyId": "120",
+                    "history": [
+                        {"id": "110", "messagesDeleted": [{"message": {"id": "m1"}}]},
+                        {"id": "115", "messagesAdded": [{"message": {"id": "m3"}}]},
+                        {"id": "120", "labelsAdded": [{"message": {"id": "m2"}}]},
+                    ],
+                },
+                request=request,
+            )
+        message_id = path.rsplit("/", 1)[-1]
+        if phase == "full":
+            return response(
+                {
+                    "m1": message("m1", "100", "one"),
+                    "m2": message("m2", "105", "two"),
+                }[message_id],
+                request=request,
+            )
+        return response(
+            {
+                "m2": message("m2", "120", "two updated"),
+                "m3": message("m3", "115", "three"),
+            }[message_id],
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = list(fetch_gmail(token, "work", client=client, cache_dir=cache))
+    phase = "delta"
+    second = list(fetch_gmail(token, "work", client=client, cache_dir=cache))
+
+    assert [document.source_id for document in first] == ["m1", "m2"]
+    assert [document.source_id for document in second] == ["m2", "m3"]
+    assert second[0].content.endswith("two updated")
+    assert list_requests == 1, "the delta run must not relist the mailbox"
+    assert history_requests == ["100"], "the cursor must start at the oldest cached history id"
+    connection = sqlite3.connect(cache / "gmail.sqlite3")
+    try:
+        cursor = connection.execute("SELECT history_id FROM sync_state").fetchone()
+        cached_ids = connection.execute("SELECT id FROM messages ORDER BY id").fetchall()
+    finally:
+        connection.close()
+    assert cursor == ("120",)
+    assert cached_ids == [("m2",), ("m3",)]
+
+
+def test_google_gmail_rebuilds_when_history_cursor_expires(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access","email":"owner@example.test"}')
+    cache = tmp_path / "cache"
+    phase = "full"
+    list_requests = 0
+    history_requests = 0
+
+    def message(message_id: str, history_id: str) -> dict[str, Any]:
+        return {
+            "id": message_id,
+            "historyId": history_id,
+            "payload": {
+                "headers": [{"name": "Subject", "value": message_id}],
+                "mimeType": "text/plain",
+                "body": {
+                    "data": base64.urlsafe_b64encode(message_id.encode()).decode(),
+                },
+            },
+        }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal history_requests, list_requests
+        path = request.url.path
+        if path.endswith("/history"):
+            history_requests += 1
+            assert phase == "expired"
+            return response({"error": "historyExpired"}, status=404, request=request)
+        if path.endswith("/messages"):
+            list_requests += 1
+            message_id = "m1" if phase == "full" else "m2"
+            return response({"messages": [{"id": message_id}]}, request=request)
+        message_id = path.rsplit("/", 1)[-1]
+        return response(
+            message(message_id, "100" if message_id == "m1" else "200"), request=request
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = list(fetch_gmail(token, "work", client=client, cache_dir=cache))
+    phase = "expired"
+    second = list(fetch_gmail(token, "work", client=client, cache_dir=cache))
+
+    assert [document.source_id for document in first] == ["m1"]
+    assert [document.source_id for document in second] == ["m2"]
+    assert history_requests == 1
+    assert list_requests == 2, "expired history must fall back to a full listing"
+    connection = sqlite3.connect(cache / "gmail.sqlite3")
+    try:
+        cached_ids = connection.execute("SELECT id FROM messages").fetchall()
+        cursor = connection.execute("SELECT history_id FROM sync_state").fetchone()
+    finally:
+        connection.close()
+    assert cached_ids == [("m2",)]
+    assert cursor == ("200",)
+
+
+def test_google_gmail_invalidates_cursor_when_account_scope_changes(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access","email":"first@example.test"}')
+    cache = tmp_path / "cache"
+    phase = "first"
+    list_requests = 0
+    history_requests = 0
+
+    def message(message_id: str) -> dict[str, Any]:
+        return {
+            "id": message_id,
+            "historyId": "100",
+            "payload": {
+                "headers": [{"name": "Subject", "value": message_id}],
+                "mimeType": "text/plain",
+                "body": {"data": base64.urlsafe_b64encode(message_id.encode()).decode()},
+            },
+        }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal history_requests, list_requests
+        path = request.url.path
+        if path.endswith("/history"):
+            history_requests += 1
+            return response({"historyId": "110", "history": []}, request=request)
+        if path.endswith("/messages"):
+            list_requests += 1
+            message_id = "m1" if phase == "first" else "m2"
+            return response({"messages": [{"id": message_id}]}, request=request)
+        return response(message(path.rsplit("/", 1)[-1]), request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = list(fetch_gmail(token, "work", client=client, cache_dir=cache))
+    write_token(token, '{"token":"access","email":"second@example.test"}')
+    phase = "second"
+    second = list(fetch_gmail(token, "work", client=client, cache_dir=cache))
+
+    assert [document.source_id for document in first] == ["m1"]
+    assert [document.source_id for document in second] == ["m2"]
+    assert list_requests == 2, "a changed account must rebuild from a listing"
+    assert history_requests == 0, "a changed account must not reuse the old cursor"
+
+
 def test_google_gmail_capped_run_does_not_prune_cached_messages(tmp_path: Path) -> None:
     token = tmp_path / "token.json"
     write_token(token, '{"token":"access"}')

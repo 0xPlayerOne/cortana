@@ -110,6 +110,10 @@ GMAIL_DETAIL_CONCURRENCY = 4
 DRIVE_CONTENT_CONCURRENCY = 1
 
 
+class _GmailHistoryExpired(Exception):
+    """The provider no longer retains the cursor; rebuild the snapshot."""
+
+
 class _DriveContent(str):
     """Bounded Drive content with the provider-size metadata kept separately."""
 
@@ -680,12 +684,32 @@ def fetch_gmail(
 ) -> Iterable[Document]:
     strict = max_documents is None
     cache = _gmail_cache(cache_dir)
+    scope: str | None = None
     try:
         with GoogleSession(token_path, client) as session:
+            if cache is not None and strict:
+                scope = _gmail_scope_fingerprint(token_path, project)
+                cached_history_id = _gmail_cached_history_id(cache, scope)
+                history_id = cached_history_id if not query and not labels else None
+                if not query and not labels and history_id is not None:
+                    try:
+                        yield from _fetch_gmail_history_delta(
+                            session, cache, project, scope, history_id
+                        )
+                        return
+                    except _GmailHistoryExpired:
+                        # Gmail history cursors expire. Clearing the derived
+                        # snapshot forces the ordinary full listing below;
+                        # no stale cursor can advance a partial reconciliation.
+                        cache.execute("DELETE FROM messages")
+                        cache.execute("DELETE FROM sync_state")
+                        cache.commit()
             page_token: str | None = None
             pending_writes = 0
             emitted = 0
             limit_reached = False
+            history_ids: list[int] = []
+            history_id_missing = False
             while True:
                 params: dict[str, Any] = {
                     "maxResults": min(500, max_documents or 500),
@@ -774,6 +798,11 @@ def fetch_gmail(
                     message = messages.get(message_id)
                     if message is None:
                         continue
+                    message_history_id = _gmail_message_history_id(message)
+                    if message_history_id is None:
+                        history_id_missing = True
+                    else:
+                        history_ids.append(message_history_id)
                     if message_id in missing_set and cache is not None:
                         cache.execute(
                             "INSERT OR REPLACE INTO messages(id,body) VALUES(?,?)",
@@ -820,10 +849,209 @@ def fetch_gmail(
                 # messages it never listed; only a complete run reconciles the
                 # persistent message cache.
                 cache.execute("DELETE FROM messages WHERE id NOT IN (SELECT id FROM seen)")
+                if cache is not None and history_ids and not history_id_missing:
+                    assert scope is not None
+                    cache.execute("DELETE FROM sync_state")
+                    cache.execute(
+                        "INSERT INTO sync_state(scope,history_id) VALUES(?,?)",
+                        (scope, str(min(history_ids))),
+                    )
             cache.commit()
     finally:
         if cache is not None:
             cache.close()
+
+
+def _gmail_scope_fingerprint(token_path: Path, project: str) -> str:
+    """Bind a Gmail cursor to the account and source scope, not access tokens."""
+    digest = hashlib.sha256()
+    token_bytes = token_path.read_bytes()
+    try:
+        credentials = json.loads(token_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        credentials = None
+    if isinstance(credentials, dict):
+        identity = {
+            key: credentials.get(key)
+            for key in ("refresh_token", "client_id", "token_uri", "sub", "email")
+            if credentials.get(key)
+        }
+        if identity:
+            token_bytes = json.dumps(identity, sort_keys=True).encode()
+    digest.update(token_bytes)
+    digest.update(b"\0")
+    digest.update(project.encode())
+    return digest.hexdigest()
+
+
+def _gmail_cached_history_id(cache: sqlite3.Connection, scope: str) -> str | None:
+    row = cache.execute("SELECT scope,history_id FROM sync_state LIMIT 1").fetchone()
+    if row is None:
+        return None
+    if str(row[0]) != scope:
+        # A source may be reauthorized to another account. Never let a
+        # document body from the previous identity survive that boundary.
+        cache.execute("DELETE FROM messages")
+        cache.execute("DELETE FROM sync_state")
+        cache.commit()
+        return None
+    history_id = str(row[1]).strip()
+    return history_id if history_id.isdigit() and int(history_id) > 0 else None
+
+
+def _gmail_message_history_id(message: dict[str, Any]) -> int | None:
+    value = message.get("historyId")
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _gmail_history_message_ids(
+    payload: dict[str, Any],
+) -> tuple[set[str], set[str], str]:
+    raw_history_id = payload.get("historyId")
+    if isinstance(raw_history_id, bool) or not str(raw_history_id or "").strip().isdigit():
+        raise RuntimeError("Gmail history has invalid historyId")
+    history_id = str(raw_history_id).strip()
+    changed: set[str] = set()
+    deleted: set[str] = set()
+    history = payload.get("history", [])
+    if history is None:
+        history = []
+    if not isinstance(history, list):
+        raise RuntimeError("Gmail history is not a list; refusing partial snapshot")
+    for index, entry in enumerate(history):
+        if not isinstance(entry, dict):
+            raise RuntimeError(f"Gmail history record={index} is not an object")
+        for field in ("messagesAdded", "messagesDeleted", "labelsAdded", "labelsRemoved"):
+            records = entry.get(field, [])
+            if records is None:
+                continue
+            if not isinstance(records, list):
+                raise RuntimeError(f"Gmail history {field} is not a list")
+            for record_index, record in enumerate(records):
+                if not isinstance(record, dict):
+                    raise RuntimeError(
+                        f"Gmail history {field} record={record_index} is not an object"
+                    )
+                message = record.get("message")
+                if not isinstance(message, dict):
+                    raise RuntimeError(
+                        f"Gmail history {field} record={record_index} has no message"
+                    )
+                message_id = message.get("id")
+                if not isinstance(message_id, str) or not message_id.strip():
+                    raise RuntimeError(
+                        f"Gmail history {field} record={record_index} has invalid id"
+                    )
+                message_id = message_id.strip()
+                if field == "messagesDeleted":
+                    deleted.add(message_id)
+                    changed.discard(message_id)
+                elif message_id not in deleted:
+                    changed.add(message_id)
+    return changed, deleted, history_id
+
+
+def _fetch_gmail_history_delta(
+    session: GoogleSession,
+    cache: sqlite3.Connection,
+    project: str,
+    scope: str,
+    start_history_id: str,
+) -> Iterable[Document]:
+    changed: set[str] = set()
+    deleted: set[str] = set()
+    next_page_token: str | None = None
+    latest_history_id: str | None = None
+    while True:
+        params: dict[str, Any] = {
+            "startHistoryId": start_history_id,
+            "historyTypes": [
+                "messageAdded",
+                "messageDeleted",
+                "labelAdded",
+                "labelRemoved",
+            ],
+        }
+        if next_page_token:
+            params["pageToken"] = next_page_token
+        try:
+            response = session.request(
+                "GET",
+                "https://gmail.googleapis.com/gmail/v1/users/me/history",
+                params=params,
+            )
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code in {404, 410}:
+                raise _GmailHistoryExpired from error
+            raise
+        payload = json_payload(response)
+        if not isinstance(payload, dict):
+            raise RuntimeError("Gmail history is not an object; refusing partial snapshot")
+        page_changed, page_deleted, page_history_id = _gmail_history_message_ids(payload)
+        changed.update(page_changed)
+        deleted.update(page_deleted)
+        changed.difference_update(deleted)
+        latest_history_id = page_history_id
+        raw_next_page_token = payload.get("nextPageToken")
+        if raw_next_page_token is None:
+            break
+        if isinstance(raw_next_page_token, str) and raw_next_page_token.strip():
+            next_page_token = raw_next_page_token.strip()
+            continue
+        raise RuntimeError("Gmail history has invalid nextPageToken; refusing partial snapshot")
+    if latest_history_id is None:
+        raise RuntimeError("Gmail history returned no cursor")
+
+    updates: dict[str, dict[str, Any]] = {}
+    if changed:
+        with ThreadPoolExecutor(
+            max_workers=min(GMAIL_DETAIL_CONCURRENCY, len(changed)),
+            thread_name_prefix="cortana-gmail-history",
+        ) as pool:
+            fetched = pool.map(
+                lambda message_id: _fetch_gmail_message(session, message_id),
+                sorted(changed),
+            )
+            for message_id, message in zip(sorted(changed), fetched, strict=True):
+                if message is not None and message.get("id") == message_id:
+                    updates[message_id] = message
+
+    cache.execute("BEGIN")
+    try:
+        for message_id in deleted:
+            cache.execute("DELETE FROM messages WHERE id=?", (message_id,))
+        for message_id, message in updates.items():
+            cache.execute(
+                "INSERT OR REPLACE INTO messages(id,body) VALUES(?,?)",
+                (message_id, json.dumps(message, separators=(",", ":"))),
+            )
+        cache.execute("DELETE FROM sync_state")
+        cache.execute(
+            "INSERT INTO sync_state(scope,history_id) VALUES(?,?)",
+            (scope, latest_history_id),
+        )
+        cache.commit()
+    except Exception:
+        cache.rollback()
+        raise
+
+    rows = cache.execute("SELECT id,body FROM messages ORDER BY id").fetchall()
+    for message_id, body in rows:
+        try:
+            message = json.loads(body)
+            if not isinstance(message, dict) or message.get("id") != message_id:
+                raise ValueError("cached id mismatch")
+            yield _gmail_document(message, project)
+        except (AttributeError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
+            raise RuntimeError(
+                f"Gmail cached message conversion failed: id={message_id}"
+            ) from error
 
 
 def _fetch_gmail_message(session: GoogleSession, message_id: str) -> dict[str, Any] | None:
@@ -867,6 +1095,9 @@ def _gmail_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
     connection = _private_cache(cache_dir / "gmail.sqlite3")
     connection.execute(
         "CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,body TEXT NOT NULL)"
+    )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS sync_state(scope TEXT PRIMARY KEY,history_id TEXT NOT NULL)"
     )
     connection.execute("CREATE TEMP TABLE seen(id TEXT PRIMARY KEY)")
     return connection
