@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.1](https://github.com/0xPlayerOne/cortana/compare/v0.34.0...v0.34.1) (2026-08-20)
+
+
+### Bug Fixes
+
+* **release:** promote exact staging tree for Apple Notes v0.34.1 ([09e46f7](https://github.com/0xPlayerOne/cortana/commit/09e46f79888b4e1a62e4168c5095221abf33a4ed))
+
 ## [0.34.0](https://github.com/0xPlayerOne/cortana/compare/v0.33.1...v0.34.0) (2026-08-16)
 
 
