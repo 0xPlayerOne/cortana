@@ -62,6 +62,19 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
+## v0.34.1 release intent (pending)
+
+The post-v0.34.0 source tree adds a first-class Apple Notes permissions handoff in Desktop. The
+source editor now exposes **Grant Apple Notes access**, opening the macOS Automation privacy pane,
+and the getting-started and ingestion guides document the exact folder-to-workspace setup. The
+handoff fails closed on unsupported platforms and does not read, authorize, or sync Notes by itself.
+
+This metadata-only release signal restores the already-validated Apple Notes `fix(desktop)` change
+to Release Please's conventional-commit history after the protected exact-tree promotion flattened
+its topic commit. It changes no credentials, source authorization, indexed data, recurring-sync
+state, or Hermes data. The v0.34.1 package remains pending until the protected version PR, release
+assets, signatures, and packaged-core verifier complete.
+
 ## v0.34.0 release intent (published and verified)
 
 The post-v0.33.0 source tree improves the canonical native memory layer with local salience-aware
