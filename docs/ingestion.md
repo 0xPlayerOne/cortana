@@ -97,6 +97,13 @@ valid PDF with no extractable text is retained with an explicit metadata-only pl
 the original Drive link remains the recovery path. Other binary or otherwise unsupported Drive items
 are retained with the same explicit metadata-only marker in complete runs; Cortana does not claim to
 have extracted their contents. Drive installs pypdf's AES support.
+Full, uncapped Gmail runs also persist a private `sync_state` cursor in
+`data_dir/connector-cache/<source>/gmail.sqlite3`. For an unfiltered mailbox, later runs use
+Gmail history deltas for additions, deletions, and label changes instead of relisting every message.
+The cursor is bound to the OAuth account identity and workspace; changing either clears the cached
+bodies. Expired cursors rebuild the full snapshot, while bounded validation and filtered runs never
+advance the cursor. Delta mutations and cursor advancement commit together, so a failed history
+page or message fetch cannot bless a partial snapshot.
 Idempotent Google GET/HEAD calls retry bounded transport failures and standard transient HTTP
 statuses; a 403 is retried only for Google's explicit rate-limit/backend reasons. Gmail detail
 requests also retry a small, bounded 400 window before strict runs fail closed.
