@@ -2968,9 +2968,15 @@ function SourcesSection({
           : source.kind === 'slack'
             ? 'Slack'
             : 'Google'
+    const authorizationGuidance =
+      source.kind === 'discord'
+        ? 'Cortana will ask the running Discord Desktop client for approval and store the resulting token in the configured private file.'
+        : source.kind === 'apple-notes'
+          ? 'Cortana will ask macOS for Automation access to Apple Notes during validation; no note data is read during this setup step.'
+          : 'Cortana will open the system browser and store the resulting token in the configured private file.'
     if (
       !window.confirm(
-        `Authorize ${source.name} with ${provider}?\n\nCortana will open the system browser and store the resulting token in the configured private file. No source data is read during authorization.`
+        `Authorize ${source.name} with ${provider}?\n\n${authorizationGuidance} No source data is read during authorization.`
       )
     ) {
       return
@@ -3408,8 +3414,8 @@ function SourcesSection({
                     <button
                       type="button"
                       className="source-icon-button quick-tooltip"
-                      aria-label="Setup"
-                      data-tooltip="Setup"
+                      aria-label={setupActionLabel(source.kind)}
+                      data-tooltip={setupActionLabel(source.kind)}
                       disabled={!canValidate || sourceLocked}
                       onClick={() => void openSetup(source)}
                     >
@@ -3589,7 +3595,7 @@ function SourcesSection({
                     <>
                       <Field
                         label="Include Apple Notes folders"
-                        hint="one exact folder name per line; leave empty to include every folder"
+                        hint="one exact folder name per line; leave empty to include every folder. On first validation, allow Cortana or the invoking terminal under macOS Privacy & Security > Automation."
                         wide
                       >
                         <textarea
@@ -4886,7 +4892,17 @@ function isGoogleSource(kind: SourceKind) {
 }
 
 function hasBrowserSetup(kind: SourceKind) {
-  return isGoogleSource(kind) || kind === 'github' || kind === 'slack' || kind === 'discord'
+  return (
+    isGoogleSource(kind) ||
+    kind === 'github' ||
+    kind === 'slack' ||
+    kind === 'discord' ||
+    kind === 'apple-notes'
+  )
+}
+
+function setupActionLabel(kind: SourceKind) {
+  return kind === 'apple-notes' ? 'Grant Apple Notes access' : 'Setup'
 }
 
 function splitList(value: string) {

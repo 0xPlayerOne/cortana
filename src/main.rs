@@ -941,11 +941,6 @@ async fn main() -> Result<()> {
                 },
             )?;
             let cancellation = Cancellation::install();
-            let control = SourceControl {
-                limits,
-                started: Instant::now(),
-                cancellation: &cancellation,
-            };
             let canonical_source = canonical_source(&source);
             let run_id = store.begin_sync(
                 &canonical_source,
@@ -954,6 +949,15 @@ async fn main() -> Result<()> {
                 limits.max_bytes,
                 limits.max_seconds,
             )?;
+            let control = SourceControl {
+                limits,
+                started: Instant::now(),
+                cancellation: &cancellation,
+                progress: Some(SyncProgress {
+                    store: store.clone(),
+                    run_id: run_id.clone(),
+                }),
+            };
             let result =
                 sync_source_documents(&config, &store, embedder.as_ref(), &source, &control, false)
                     .await;
@@ -1374,10 +1378,17 @@ async fn wait_for_shutdown_signal() {
     }
 }
 
+#[derive(Clone)]
+struct SyncProgress {
+    store: Store,
+    run_id: String,
+}
+
 struct SourceControl<'a> {
     limits: SourceLimits,
     started: Instant,
     cancellation: &'a Cancellation,
+    progress: Option<SyncProgress>,
 }
 
 impl SourceControl<'_> {
@@ -1397,6 +1408,15 @@ impl SourceControl<'_> {
     fn remaining(&self, source: &str) -> Result<Duration> {
         self.check(source)?;
         Ok(Duration::from_secs(self.limits.max_seconds).saturating_sub(self.started.elapsed()))
+    }
+
+    fn record_progress(&self, documents: usize, bytes: u64) -> Result<()> {
+        if let Some(progress) = &self.progress {
+            progress
+                .store
+                .update_sync_progress(&progress.run_id, documents, bytes)?;
+        }
+        Ok(())
     }
 }
 
@@ -1621,6 +1641,7 @@ async fn validate_configured_source(
         limits,
         started: Instant::now(),
         cancellation,
+        progress: None,
     };
     let validation: Result<serde_json::Value> = async {
         if source.kind == "filesystem" {
@@ -2590,6 +2611,7 @@ async fn ingest(store: &Store, embedder: &dyn Embedder, input: &str) -> Result<(
         },
         started: Instant::now(),
         cancellation: &cancellation,
+        progress: None,
     };
     let mut documents = Vec::with_capacity(64);
     let started = Instant::now();
@@ -2784,6 +2806,7 @@ async fn ingest_documents(
         },
         started: Instant::now(),
         cancellation: &cancellation,
+        progress: None,
     };
     let result =
         ingest_documents_controlled(store, embedder, documents, "direct-ingest", &control).await;
@@ -2802,11 +2825,19 @@ async fn ingest_documents_controlled(
     let mut unchanged = 0;
     let mut pending = Vec::new();
     let mut pending_chunks = 0;
+    let mut processed_documents = 0usize;
+    let mut processed_bytes = 0u64;
     for document in documents {
         control.check(source)?;
+        processed_documents = processed_documents.saturating_add(1);
+        processed_bytes = processed_bytes
+            .saturating_add(u64::try_from(document.content.len()).unwrap_or(u64::MAX));
         if !store.needs_update(&document)? {
             store.refresh_timestamp(&document)?;
             unchanged += 1;
+            if processed_documents.is_multiple_of(64) {
+                control.record_progress(processed_documents, processed_bytes)?;
+            }
             continue;
         }
         let texts = chunk(&document.content);
@@ -2823,6 +2854,7 @@ async fn ingest_documents_controlled(
                 control,
             )
             .await?;
+            control.record_progress(processed_documents, processed_bytes)?;
             pending_chunks = 0;
         }
     }
@@ -2836,6 +2868,7 @@ async fn ingest_documents_controlled(
         control,
     )
     .await?;
+    control.record_progress(processed_documents, processed_bytes)?;
     println!("ingested changed={changed} unchanged={unchanged}");
     Ok(())
 }
@@ -2991,11 +3024,6 @@ async fn sync_configured_sources(
     let mut failures = Vec::new();
     for source in sources {
         let limits = SourceLimits::resolve(config, source, overrides)?;
-        let control = SourceControl {
-            limits,
-            started: Instant::now(),
-            cancellation,
-        };
         let canonical_source = canonical_source(source);
         let run_id = store.begin_sync(
             &canonical_source,
@@ -3004,6 +3032,15 @@ async fn sync_configured_sources(
             limits.max_bytes,
             limits.max_seconds,
         )?;
+        let control = SourceControl {
+            limits,
+            started: Instant::now(),
+            cancellation,
+            progress: Some(SyncProgress {
+                store: store.clone(),
+                run_id: run_id.clone(),
+            }),
+        };
         let result = async {
             let scope =
                 sync_source_documents(config, store, embedder, source, &control, reconcile).await?;
@@ -3988,6 +4025,7 @@ mod tests {
             },
             started: std::time::Instant::now(),
             cancellation: &cancellation,
+            progress: None,
         };
 
         let error = validate_connector_spool(&spool, &source, &control)
@@ -4902,6 +4940,7 @@ mod tests {
             },
             started: std::time::Instant::now(),
             cancellation: &cancellation,
+            progress: None,
         };
         let ticks = Arc::new(AtomicUsize::new(0));
         let tick_counter = Arc::clone(&ticks);
@@ -5042,6 +5081,7 @@ mod tests {
             },
             started: Instant::now(),
             cancellation: &cancellation,
+            progress: None,
         };
         let mut changed = 0;
         let mut unchanged = 0;

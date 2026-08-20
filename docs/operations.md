@@ -143,7 +143,11 @@ outcomes are recorded as `running`, `succeeded`,
 `failed`, `cancelled`, or `budget_exceeded`. A process interruption intentionally leaves a
 `running` record behind so the workspace can distinguish an interrupted run from a source that
 never started. Before a new sync starts, recovery only marks `running` rows as `cancelled` and
-preserves any completed run status and outcome counters. The workspace refreshes this
+preserves any completed run status and outcome counters. While a run is active, the store also
+persists bounded `progress_documents`, `progress_bytes`, and `progress_updated_at` counters after
+each ingestion batch. These counters are resumable operational evidence only: they do not
+authorize reconciliation, imply a complete snapshot, or expose connector payloads. The workspace
+refreshes this
 status every 15 seconds and keeps query availability separate from ingestion health. Cortana retains the newest 100 run records per source to keep this
 operational history bounded. Runtime request counters in a scoped status response are maintained
 per authenticated principal; only the local owner or an admin-scoped principal receives the
@@ -224,6 +228,11 @@ unsupported binary Drive items receive the same metadata-only marker and remain 
 original item; Cortana does not claim to have extracted their contents. Set
 `max_content_chars` on an individual `google-drive` source when a different
 evidence budget is justified.
+Unfiltered complete Drive snapshots also persist a provider changes cursor in the source cache;
+subsequent runs apply additions, updates, trash/removal events, and shared-drive changes
+atomically. Cursor expiry, account/workspace changes, and unavailable cursor support fall back to
+a fresh complete listing without advancing a partial snapshot. Bounded or filtered trials never
+advance this cursor.
 
 ## Backup and recovery
 
@@ -290,7 +299,7 @@ freshly-created drill directory. Set `CORTANA_KEEP_DRILL=1` to retain the exact 
 The drill proves the offline CLI control plane only; it is not a proof of the Desktop GUI, OAuth
 flows, tray integration, or updater behavior, none of which it exercises.
 
-The previous installed v0.32.12 host passed this drill on 2026-08-16. That installed-runtime result confirms
+The historical v0.32.12 host passed this drill on 2026-08-16. That installed-runtime result confirms
 the disposable control-plane and recovery path; it does not authorize source synchronization or
 replace native GUI, browser OAuth, tray, updater, or macOS trust acceptance.
 
@@ -306,7 +315,7 @@ The drill uses a fresh temporary config, private synthetic tokens, and two synth
 proves query/status/admin scope separation, work-versus-personal ACL isolation, metadata-only audit
 responses, and atomic token rotation/revocation. It is offline and non-destructive: it does not read
 the live index, contact connectors, authorize accounts, enable recurring sync, or launch the Desktop
-app. The previous installed v0.32.12 host passed this drill on 2026-08-16, including old-token rejection and
+app. The historical v0.32.12 host passed this drill on 2026-08-16, including old-token rejection and
 rotated-token acceptance after `/v1/auth/reload`. A successful drill is evidence for the HTTP contract
 only; keep the MCP tests and packaged GUI,
 browser OAuth, tray, native-dialog, updater, and operating-system trust gates separate.
@@ -525,7 +534,7 @@ validation is complete at 478 documents and 4,527,721 bytes. The
 `readiness --allow-sync-service` gate must remain closed until Personal Drive has a fresh complete
 record at its configured budget; no reconciliation or large sync has been run.
 
-The previous installed v0.32.12 CLI also passed a fresh bounded `eval --model` run on 2026-08-16 in 14,437
+The historical v0.32.12 CLI also passed a fresh bounded `eval --model` run on 2026-08-16 in 14,437
 ms, including planner/synthesis, valid citations, cache reuse, and revision invalidation without
 provider fallback. This is synthetic provider-backed evidence only; it does not authorize source
 sync, establish personal-index quality, or replace the separate packaged GUI and signing gates.

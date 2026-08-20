@@ -272,8 +272,9 @@ function InboxView({
                   <strong>{run.source}</strong>
                   <span>
                     {run.project} · started {new Date(run.started_at).toLocaleString()} ·{' '}
-                    {describeSyncRunProgress(run)} · {run.documents ?? '—'} documents ·{' '}
-                    {run.bytes ?? '—'} bytes
+                    {describeSyncRunProgress(run)} ·{' '}
+                    {run.progress_documents ?? run.documents ?? '—'} documents ·{' '}
+                    {run.progress_bytes ?? run.bytes ?? '—'} bytes
                   </span>
                 </div>
                 <StatusPill status={run.status} />

@@ -70,12 +70,13 @@ access, native memory writes are idempotent and fenced, Desktop settings and sch
 through a shared per-config lock, and Desktop sidecars publish atomically. v0.32.6 and earlier
 release records remain historical evidence.
 
-The last verified host installation reports `cortana 0.32.12`; the published v0.34.0 package is
-the current downloadable boundary but has not been installed on this host yet. When a checkout and downloaded
-application report different versions, trust the application version for end-user behavior and
-use [Release history](docs/releases.md) to determine which source-tree hardening has shipped.
-Do not install a source checkout over a working installation just to make the version strings
-match.
+The verified host installation now reports `cortana 0.34.0`, matching the current published package;
+the embedding and HTTP services are running in query-only mode and recurring sync remains
+uninstalled. The provider-backed evaluation records below were collected under the earlier
+v0.32.12 installation and remain historical fixture evidence, not a v0.34.0 personal-index proof.
+When a checkout and downloaded application report different versions, trust the application version
+for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree
+hardening has shipped.
 
 ## Download the latest release
 

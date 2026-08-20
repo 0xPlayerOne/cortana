@@ -100,6 +100,9 @@ pub struct SourceSyncStats {
     pub documents: Option<i64>,
     pub bytes: Option<i64>,
     pub deleted: Option<i64>,
+    pub progress_documents: i64,
+    pub progress_bytes: i64,
+    pub progress_updated_at: Option<String>,
     pub budget_documents: i64,
     pub budget_bytes: i64,
     pub budget_seconds: i64,
@@ -219,6 +222,9 @@ impl Store {
                id TEXT PRIMARY KEY, source TEXT NOT NULL, project TEXT NOT NULL,
                status TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT,
                documents INTEGER, bytes INTEGER, deleted INTEGER,
+               progress_documents INTEGER NOT NULL DEFAULT 0,
+               progress_bytes INTEGER NOT NULL DEFAULT 0,
+               progress_updated_at TEXT,
                budget_documents INTEGER NOT NULL, budget_bytes INTEGER NOT NULL,
                budget_seconds INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS query_cache(
@@ -278,6 +284,19 @@ impl Store {
             [],
         )?;
         ensure_document_content_column(&connection)?;
+        ensure_column(
+            &connection,
+            "sync_runs",
+            "progress_documents",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        ensure_column(
+            &connection,
+            "sync_runs",
+            "progress_bytes",
+            "INTEGER NOT NULL DEFAULT 0",
+        )?;
+        ensure_column(&connection, "sync_runs", "progress_updated_at", "TEXT")?;
         backfill_document_links(&mut connection)?;
         migrate_embedding_blobs(&mut connection)?;
         migrate_memory_dedupe_scope(&mut connection)?;
@@ -555,8 +574,9 @@ impl Store {
         transaction.execute(
             "INSERT INTO sync_runs(
                id,source,project,status,started_at,
+               progress_updated_at,
                budget_documents,budget_bytes,budget_seconds)
-             VALUES(?1,?2,?3,'running',?4,?5,?6,?7)",
+             VALUES(?1,?2,?3,'running',?4,?4,?5,?6,?7)",
             params![
                 id,
                 source,
@@ -596,7 +616,10 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         let changed = connection.execute(
             "UPDATE sync_runs
-             SET status=?2,completed_at=?3,documents=?4,bytes=?5,deleted=?6
+             SET status=?2,completed_at=?3,documents=?4,bytes=?5,deleted=?6,
+                 progress_documents=COALESCE(?4,progress_documents),
+                 progress_bytes=COALESCE(?5,progress_bytes),
+                 progress_updated_at=?3
              WHERE id=?1 AND status='running'",
             params![
                 id,
@@ -605,6 +628,26 @@ impl Store {
                 documents.map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
                 bytes.map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
                 deleted.map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+            ],
+        )?;
+        anyhow::ensure!(changed == 1, "sync run is missing or already completed");
+        Ok(())
+    }
+
+    /// Persist bounded in-flight progress for an active source run. This is
+    /// metadata-only: it never changes indexed documents and is safe to
+    /// expose through status, MCP, and the Desktop control plane.
+    pub fn update_sync_progress(&self, id: &str, documents: usize, bytes: u64) -> Result<()> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let changed = connection.execute(
+            "UPDATE sync_runs
+             SET progress_documents=?2,progress_bytes=?3,progress_updated_at=?4
+             WHERE id=?1 AND status='running'",
+            params![
+                id,
+                i64::try_from(documents).unwrap_or(i64::MAX),
+                i64::try_from(bytes).unwrap_or(i64::MAX),
+                Utc::now().to_rfc3339(),
             ],
         )?;
         anyhow::ensure!(changed == 1, "sync run is missing or already completed");
@@ -624,7 +667,7 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         let changed = connection.execute(
             "UPDATE sync_runs
-             SET status=?1,completed_at=?2
+             SET status=?1,completed_at=?2,progress_updated_at=?2
              WHERE status='running'",
             params![SyncRunStatus::Cancelled.as_str(), Utc::now().to_rfc3339()],
         )?;
@@ -2001,6 +2044,7 @@ impl Store {
             .collect::<rusqlite::Result<Vec<_>>>()?;
         let mut sync_statement = connection.prepare(
             "SELECT source,project,status,started_at,completed_at,documents,bytes,deleted,
+                    progress_documents,progress_bytes,progress_updated_at,
                     budget_documents,budget_bytes,budget_seconds
              FROM (
                SELECT sync_runs.*,
@@ -2024,9 +2068,12 @@ impl Store {
                     documents: row.get(5)?,
                     bytes: row.get(6)?,
                     deleted: row.get(7)?,
-                    budget_documents: row.get(8)?,
-                    budget_bytes: row.get(9)?,
-                    budget_seconds: row.get(10)?,
+                    progress_documents: row.get(8)?,
+                    progress_bytes: row.get(9)?,
+                    progress_updated_at: row.get(10)?,
+                    budget_documents: row.get(11)?,
+                    budget_bytes: row.get(12)?,
+                    budget_seconds: row.get(13)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -2134,6 +2181,7 @@ impl Store {
             .collect::<HashSet<_>>();
         let mut sync_statement = connection.prepare(
             "SELECT source,project,status,started_at,completed_at,documents,bytes,deleted,
+                    progress_documents,progress_bytes,progress_updated_at,
                     budget_documents,budget_bytes,budget_seconds
              FROM (
                SELECT sync_runs.*,
@@ -2157,9 +2205,12 @@ impl Store {
                     documents: row.get(5)?,
                     bytes: row.get(6)?,
                     deleted: row.get(7)?,
-                    budget_documents: row.get(8)?,
-                    budget_bytes: row.get(9)?,
-                    budget_seconds: row.get(10)?,
+                    progress_documents: row.get(8)?,
+                    progress_bytes: row.get(9)?,
+                    progress_updated_at: row.get(10)?,
+                    budget_documents: row.get(11)?,
+                    budget_bytes: row.get(12)?,
+                    budget_seconds: row.get(13)?,
                 })
             })?
             .filter_map(|row| match row {
@@ -3699,6 +3750,73 @@ mod tests {
         assert_eq!(run.budget_bytes, 4_096);
         assert_eq!(run.budget_seconds, 60);
         assert!(run.completed_at.is_some());
+    }
+
+    #[test]
+    fn sync_run_progress_is_visible_while_running_and_finishes_with_totals() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let run = store
+            .begin_sync("work-drive", "work", 100, 10_000, 60)
+            .expect("begin sync");
+
+        store
+            .update_sync_progress(&run, 7, 1_024)
+            .expect("record progress");
+        let running = store.stats().expect("running stats");
+        let running_run = &running.sync_runs[0];
+        assert_eq!(running_run.status, "running");
+        assert_eq!(running_run.progress_documents, 7);
+        assert_eq!(running_run.progress_bytes, 1_024);
+        assert!(running_run.progress_updated_at.is_some());
+
+        store
+            .finish_sync(
+                &run,
+                SyncRunStatus::Succeeded,
+                Some(9),
+                Some(2_048),
+                Some(0),
+            )
+            .expect("finish sync");
+        let finished = store.stats().expect("finished stats");
+        let finished_run = &finished.sync_runs[0];
+        assert_eq!(finished_run.status, "succeeded");
+        assert_eq!(finished_run.documents, Some(9));
+        assert_eq!(finished_run.bytes, Some(2_048));
+        assert_eq!(finished_run.progress_documents, 9);
+        assert_eq!(finished_run.progress_bytes, 2_048);
+        assert!(finished_run.completed_at.is_some());
+    }
+
+    #[test]
+    fn old_sync_run_schema_is_upgraded_with_progress_columns() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("store.sqlite3");
+        let connection = Connection::open(&path).expect("legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE sync_runs(
+                   id TEXT PRIMARY KEY, source TEXT NOT NULL, project TEXT NOT NULL,
+                   status TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT,
+                   documents INTEGER, bytes INTEGER, deleted INTEGER,
+                   budget_documents INTEGER NOT NULL, budget_bytes INTEGER NOT NULL,
+                   budget_seconds INTEGER NOT NULL
+                 );",
+            )
+            .expect("legacy sync_runs schema");
+        drop(connection);
+
+        let store = Store::open(&path).expect("upgrade legacy database");
+        let run = store
+            .begin_sync("work-notes", "work", 10, 1_024, 60)
+            .expect("begin upgraded sync");
+        store
+            .update_sync_progress(&run, 2, 128)
+            .expect("record upgraded progress");
+        let stats = store.stats().expect("upgraded stats");
+        assert_eq!(stats.sync_runs[0].progress_documents, 2);
+        assert_eq!(stats.sync_runs[0].progress_bytes, 128);
     }
 
     #[test]

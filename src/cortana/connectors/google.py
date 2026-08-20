@@ -6,6 +6,7 @@ import datetime as dt
 import email
 import email.policy
 import email.utils
+import hashlib
 import html
 import json
 import os
@@ -33,7 +34,13 @@ from .model import Document
 DRIVE_FIELDS = (
     "nextPageToken,incompleteSearch,"
     "files(id,name,mimeType,size,modifiedTime,webViewLink,owners(displayName),"
-    "shortcutDetails(targetId,targetMimeType))"
+    "trashed,shortcutDetails(targetId,targetMimeType))"
+)
+DRIVE_DEFAULT_QUERY = "trashed = false"
+DRIVE_CHANGES_FIELDS = (
+    "nextPageToken,newStartPageToken,"
+    "changes(fileId,removed,file(id,name,mimeType,size,modifiedTime,webViewLink,"
+    "owners(displayName),trashed,shortcutDetails(targetId,targetMimeType)))"
 )
 GOOGLE_EXPORTS = {
     "application/vnd.google-apps.document": ("text/plain", "txt"),
@@ -107,6 +114,14 @@ GMAIL_DETAIL_RETRIES = 4
 GMAIL_DETAIL_RETRY_BACKOFF_SECONDS = (0.25, 0.75, 1.5, 3.0)
 GMAIL_DETAIL_CONCURRENCY = 4
 DRIVE_CONTENT_CONCURRENCY = 1
+
+
+class _GmailHistoryExpired(Exception):
+    """The provider no longer retains the cursor; rebuild the snapshot."""
+
+
+class _DriveChangesExpired(Exception):
+    """The provider no longer accepts the stored Drive changes cursor."""
 
 
 class _DriveContent(str):
@@ -462,8 +477,33 @@ def fetch_drive(
         raise ValueError("max_documents must be greater than zero")
     strict = max_documents is None
     cache = _drive_cache(cache_dir)
+    drive_scope: str | None = None
+    drive_start_page_token: str | None = None
+    drive_cursor_eligible = strict and cache is not None and query.strip() == DRIVE_DEFAULT_QUERY
+    stale_content_used = False
     try:
         with GoogleSession(token_path, client) as session:
+            if drive_cursor_eligible:
+                assert cache is not None
+                drive_scope = _drive_scope_fingerprint(token_path, project, query)
+                cached_page_token = _drive_cached_page_token(cache, drive_scope)
+                if cached_page_token is not None:
+                    try:
+                        yield from _fetch_drive_changes_delta(
+                            session,
+                            cache,
+                            project,
+                            drive_scope,
+                            cached_page_token,
+                            max_content_chars,
+                        )
+                        return
+                    except _DriveChangesExpired:
+                        # Drive cursors are invalidated after long retention
+                        # gaps or account changes. Clear only the derived
+                        # snapshot and rebuild it with a fresh baseline token.
+                        _drive_reset_cache(cache)
+                drive_start_page_token = _drive_start_page_token(session)
             page_token: str | None = None
             pending_writes = 0
             emitted = 0
@@ -541,6 +581,7 @@ def fetch_drive(
                                     if stale is not None:
                                         body = stale
                                         stale_ids.add(file_id)
+                                        stale_content_used = True
                                     elif strict:
                                         raise RuntimeError(
                                             "Drive file content unavailable: "
@@ -561,22 +602,19 @@ def fetch_drive(
                         if modified_time is None:
                             continue
                         body = bodies[file_id]
-                        if file_id in downloaded_ids and cache is not None:
-                            cache.execute(
-                                "INSERT OR REPLACE INTO files("
-                                "id,modified_time,body,original_chars,truncated) VALUES(?,?,?,?,?)",
-                                (
-                                    file_id,
-                                    modified_time,
-                                    body,
-                                    (
-                                        UNKNOWN_CONTENT_CHARS
-                                        if getattr(body, "original_chars", len(body)) is None
-                                        else getattr(body, "original_chars", len(body))
-                                    ),
-                                    int(bool(getattr(body, "truncated", False))),
-                                ),
-                            )
+                        if cache is not None and file_id not in stale_ids:
+                            if file_id in downloaded_ids:
+                                cache.execute(
+                                    "INSERT OR REPLACE INTO files("
+                                    "id,modified_time,body,original_chars,truncated,item) "
+                                    "VALUES(?,?,?,?,?,?)",
+                                    _drive_cache_values(file_id, modified_time, body, item),
+                                )
+                            else:
+                                cache.execute(
+                                    "UPDATE files SET item=? WHERE id=?",
+                                    (_drive_item_json(item), file_id),
+                                )
                             pending_writes += 1
                         if cache is not None:
                             cache.execute("INSERT OR IGNORE INTO seen(id) VALUES(?)", (file_id,))
@@ -661,6 +699,12 @@ def fetch_drive(
                 # bodies it did not list, or every bounded sync would invalidate
                 # the whole derived cache. Additive writes above are safe.
                 cache.execute("DELETE FROM files WHERE id NOT IN (SELECT id FROM seen)")
+                if drive_cursor_eligible and drive_scope is not None and not stale_content_used:
+                    cache.execute("DELETE FROM sync_state")
+                    cache.execute(
+                        "INSERT INTO sync_state(scope,page_token) VALUES(?,?)",
+                        (drive_scope, drive_start_page_token or ""),
+                    )
             # Small bounded probes must persist additive cache writes too.
             cache.commit()
     finally:
@@ -679,12 +723,32 @@ def fetch_gmail(
 ) -> Iterable[Document]:
     strict = max_documents is None
     cache = _gmail_cache(cache_dir)
+    scope: str | None = None
     try:
         with GoogleSession(token_path, client) as session:
+            if cache is not None and strict:
+                scope = _gmail_scope_fingerprint(token_path, project)
+                cached_history_id = _gmail_cached_history_id(cache, scope)
+                history_id = cached_history_id if not query and not labels else None
+                if not query and not labels and history_id is not None:
+                    try:
+                        yield from _fetch_gmail_history_delta(
+                            session, cache, project, scope, history_id
+                        )
+                        return
+                    except _GmailHistoryExpired:
+                        # Gmail history cursors expire. Clearing the derived
+                        # snapshot forces the ordinary full listing below;
+                        # no stale cursor can advance a partial reconciliation.
+                        cache.execute("DELETE FROM messages")
+                        cache.execute("DELETE FROM sync_state")
+                        cache.commit()
             page_token: str | None = None
             pending_writes = 0
             emitted = 0
             limit_reached = False
+            history_ids: list[int] = []
+            history_id_missing = False
             while True:
                 params: dict[str, Any] = {
                     "maxResults": min(500, max_documents or 500),
@@ -773,6 +837,11 @@ def fetch_gmail(
                     message = messages.get(message_id)
                     if message is None:
                         continue
+                    message_history_id = _gmail_message_history_id(message)
+                    if message_history_id is None:
+                        history_id_missing = True
+                    else:
+                        history_ids.append(message_history_id)
                     if message_id in missing_set and cache is not None:
                         cache.execute(
                             "INSERT OR REPLACE INTO messages(id,body) VALUES(?,?)",
@@ -819,10 +888,209 @@ def fetch_gmail(
                 # messages it never listed; only a complete run reconciles the
                 # persistent message cache.
                 cache.execute("DELETE FROM messages WHERE id NOT IN (SELECT id FROM seen)")
+                if cache is not None and history_ids and not history_id_missing:
+                    assert scope is not None
+                    cache.execute("DELETE FROM sync_state")
+                    cache.execute(
+                        "INSERT INTO sync_state(scope,history_id) VALUES(?,?)",
+                        (scope, str(min(history_ids))),
+                    )
             cache.commit()
     finally:
         if cache is not None:
             cache.close()
+
+
+def _gmail_scope_fingerprint(token_path: Path, project: str) -> str:
+    """Bind a Gmail cursor to the account and source scope, not access tokens."""
+    digest = hashlib.sha256()
+    token_bytes = token_path.read_bytes()
+    try:
+        credentials = json.loads(token_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        credentials = None
+    if isinstance(credentials, dict):
+        identity = {
+            key: credentials.get(key)
+            for key in ("refresh_token", "client_id", "token_uri", "sub", "email")
+            if credentials.get(key)
+        }
+        if identity:
+            token_bytes = json.dumps(identity, sort_keys=True).encode()
+    digest.update(token_bytes)
+    digest.update(b"\0")
+    digest.update(project.encode())
+    return digest.hexdigest()
+
+
+def _gmail_cached_history_id(cache: sqlite3.Connection, scope: str) -> str | None:
+    row = cache.execute("SELECT scope,history_id FROM sync_state LIMIT 1").fetchone()
+    if row is None:
+        return None
+    if str(row[0]) != scope:
+        # A source may be reauthorized to another account. Never let a
+        # document body from the previous identity survive that boundary.
+        cache.execute("DELETE FROM messages")
+        cache.execute("DELETE FROM sync_state")
+        cache.commit()
+        return None
+    history_id = str(row[1]).strip()
+    return history_id if history_id.isdigit() and int(history_id) > 0 else None
+
+
+def _gmail_message_history_id(message: dict[str, Any]) -> int | None:
+    value = message.get("historyId")
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _gmail_history_message_ids(
+    payload: dict[str, Any],
+) -> tuple[set[str], set[str], str]:
+    raw_history_id = payload.get("historyId")
+    if isinstance(raw_history_id, bool) or not str(raw_history_id or "").strip().isdigit():
+        raise RuntimeError("Gmail history has invalid historyId")
+    history_id = str(raw_history_id).strip()
+    changed: set[str] = set()
+    deleted: set[str] = set()
+    history = payload.get("history", [])
+    if history is None:
+        history = []
+    if not isinstance(history, list):
+        raise RuntimeError("Gmail history is not a list; refusing partial snapshot")
+    for index, entry in enumerate(history):
+        if not isinstance(entry, dict):
+            raise RuntimeError(f"Gmail history record={index} is not an object")
+        for field in ("messagesAdded", "messagesDeleted", "labelsAdded", "labelsRemoved"):
+            records = entry.get(field, [])
+            if records is None:
+                continue
+            if not isinstance(records, list):
+                raise RuntimeError(f"Gmail history {field} is not a list")
+            for record_index, record in enumerate(records):
+                if not isinstance(record, dict):
+                    raise RuntimeError(
+                        f"Gmail history {field} record={record_index} is not an object"
+                    )
+                message = record.get("message")
+                if not isinstance(message, dict):
+                    raise RuntimeError(
+                        f"Gmail history {field} record={record_index} has no message"
+                    )
+                message_id = message.get("id")
+                if not isinstance(message_id, str) or not message_id.strip():
+                    raise RuntimeError(
+                        f"Gmail history {field} record={record_index} has invalid id"
+                    )
+                message_id = message_id.strip()
+                if field == "messagesDeleted":
+                    deleted.add(message_id)
+                    changed.discard(message_id)
+                elif message_id not in deleted:
+                    changed.add(message_id)
+    return changed, deleted, history_id
+
+
+def _fetch_gmail_history_delta(
+    session: GoogleSession,
+    cache: sqlite3.Connection,
+    project: str,
+    scope: str,
+    start_history_id: str,
+) -> Iterable[Document]:
+    changed: set[str] = set()
+    deleted: set[str] = set()
+    next_page_token: str | None = None
+    latest_history_id: str | None = None
+    while True:
+        params: dict[str, Any] = {
+            "startHistoryId": start_history_id,
+            "historyTypes": [
+                "messageAdded",
+                "messageDeleted",
+                "labelAdded",
+                "labelRemoved",
+            ],
+        }
+        if next_page_token:
+            params["pageToken"] = next_page_token
+        try:
+            response = session.request(
+                "GET",
+                "https://gmail.googleapis.com/gmail/v1/users/me/history",
+                params=params,
+            )
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code in {404, 410}:
+                raise _GmailHistoryExpired from error
+            raise
+        payload = json_payload(response)
+        if not isinstance(payload, dict):
+            raise RuntimeError("Gmail history is not an object; refusing partial snapshot")
+        page_changed, page_deleted, page_history_id = _gmail_history_message_ids(payload)
+        changed.update(page_changed)
+        deleted.update(page_deleted)
+        changed.difference_update(deleted)
+        latest_history_id = page_history_id
+        raw_next_page_token = payload.get("nextPageToken")
+        if raw_next_page_token is None:
+            break
+        if isinstance(raw_next_page_token, str) and raw_next_page_token.strip():
+            next_page_token = raw_next_page_token.strip()
+            continue
+        raise RuntimeError("Gmail history has invalid nextPageToken; refusing partial snapshot")
+    if latest_history_id is None:
+        raise RuntimeError("Gmail history returned no cursor")
+
+    updates: dict[str, dict[str, Any]] = {}
+    if changed:
+        with ThreadPoolExecutor(
+            max_workers=min(GMAIL_DETAIL_CONCURRENCY, len(changed)),
+            thread_name_prefix="cortana-gmail-history",
+        ) as pool:
+            fetched = pool.map(
+                lambda message_id: _fetch_gmail_message(session, message_id),
+                sorted(changed),
+            )
+            for message_id, message in zip(sorted(changed), fetched, strict=True):
+                if message is not None and message.get("id") == message_id:
+                    updates[message_id] = message
+
+    cache.execute("BEGIN")
+    try:
+        for message_id in deleted:
+            cache.execute("DELETE FROM messages WHERE id=?", (message_id,))
+        for message_id, message in updates.items():
+            cache.execute(
+                "INSERT OR REPLACE INTO messages(id,body) VALUES(?,?)",
+                (message_id, json.dumps(message, separators=(",", ":"))),
+            )
+        cache.execute("DELETE FROM sync_state")
+        cache.execute(
+            "INSERT INTO sync_state(scope,history_id) VALUES(?,?)",
+            (scope, latest_history_id),
+        )
+        cache.commit()
+    except Exception:
+        cache.rollback()
+        raise
+
+    rows = cache.execute("SELECT id,body FROM messages ORDER BY id").fetchall()
+    for message_id, body in rows:
+        try:
+            message = json.loads(body)
+            if not isinstance(message, dict) or message.get("id") != message_id:
+                raise ValueError("cached id mismatch")
+            yield _gmail_document(message, project)
+        except (AttributeError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
+            raise RuntimeError(
+                f"Gmail cached message conversion failed: id={message_id}"
+            ) from error
 
 
 def _fetch_gmail_message(session: GoogleSession, message_id: str) -> dict[str, Any] | None:
@@ -867,8 +1135,294 @@ def _gmail_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
     connection.execute(
         "CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY,body TEXT NOT NULL)"
     )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS sync_state(scope TEXT PRIMARY KEY,history_id TEXT NOT NULL)"
+    )
     connection.execute("CREATE TEMP TABLE seen(id TEXT PRIMARY KEY)")
     return connection
+
+
+def _calendar_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
+    if cache_dir is None:
+        return None
+    connection = _private_cache(cache_dir / "calendar.sqlite3")
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS events("
+        "calendar_id TEXT NOT NULL,event_id TEXT NOT NULL,body TEXT NOT NULL,"
+        "PRIMARY KEY(calendar_id,event_id))"
+    )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS sync_tokens("
+        "calendar_id TEXT PRIMARY KEY,scope TEXT NOT NULL,token TEXT NOT NULL)"
+    )
+    # The cache was introduced after the connector shipped. Keep a future
+    # schema change from silently reusing a token under a different account or
+    # source configuration.
+    try:
+        connection.execute("ALTER TABLE sync_tokens ADD COLUMN scope TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError as error:
+        if "duplicate column name" not in str(error).lower():
+            raise
+    return connection
+
+
+def _calendar_scope_fingerprint(token_path: Path, project: str, query: str) -> str:
+    digest = hashlib.sha256()
+    token_bytes = token_path.read_bytes()
+    try:
+        credentials = json.loads(token_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        credentials = None
+    if isinstance(credentials, dict):
+        # Access tokens rotate during normal refreshes. Bind the cache to the
+        # account/client identity instead of invalidating a healthy calendar
+        # cursor every time the short-lived access token changes.
+        identity = {
+            key: credentials.get(key)
+            for key in ("refresh_token", "client_id", "token_uri", "sub", "email")
+            if credentials.get(key)
+        }
+        if identity:
+            token_bytes = json.dumps(identity, sort_keys=True).encode()
+    digest.update(token_bytes)
+    digest.update(b"\0")
+    digest.update(project.encode())
+    digest.update(b"\0")
+    digest.update(query.encode())
+    return digest.hexdigest()
+
+
+def _cached_calendar_token(cache: sqlite3.Connection, calendar_id: str, scope: str) -> str | None:
+    row = cache.execute(
+        "SELECT scope,token FROM sync_tokens WHERE calendar_id=?", (calendar_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    if str(row[0]) != scope:
+        cache.execute("DELETE FROM events WHERE calendar_id=?", (calendar_id,))
+        cache.execute("DELETE FROM sync_tokens WHERE calendar_id=?", (calendar_id,))
+        return None
+    token = str(row[1]).strip()
+    return token or None
+
+
+def _iter_cached_calendar_documents(
+    cache: sqlite3.Connection,
+    calendar_id: str,
+    calendar: dict[str, Any],
+    project: str,
+) -> Iterable[Document]:
+    recurring_series: dict[str, dict[str, Any]] = {}
+    rows = cache.execute(
+        "SELECT body FROM events WHERE calendar_id=? ORDER BY event_id", (calendar_id,)
+    )
+    for (body,) in rows:
+        event: Any = None
+        try:
+            event = json.loads(str(body))
+            if not isinstance(event, dict) or not str(event.get("id") or "").strip():
+                raise ValueError("missing event id")
+            if event.get("status") == "cancelled":
+                continue
+            recurring_id = str(event.get("recurringEventId") or "")
+            if recurring_id:
+                _add_calendar_occurrence(recurring_series, recurring_id, event)
+            else:
+                yield _calendar_document(event, calendar, project)
+        except (AttributeError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
+            raise RuntimeError(
+                f"cached Calendar event conversion failed: id={event.get('id') if isinstance(event, dict) else 'unknown'}"
+            ) from error
+    for recurring_id, series in recurring_series.items():
+        yield _calendar_series_document(recurring_id, series, calendar, project)
+
+
+def _apply_calendar_pages(
+    session: GoogleSession,
+    cache: sqlite3.Connection,
+    calendar_id: str,
+    query: str,
+    sync_token: str | None,
+) -> str | None:
+    page_token: str | None = None
+    next_sync_token: str | None = None
+    while True:
+        if sync_token:
+            params: dict[str, Any] = {
+                "singleEvents": "true",
+                "showDeleted": "true",
+                "maxResults": 2500,
+                "syncToken": sync_token,
+            }
+        else:
+            params = {
+                "singleEvents": "true",
+                "showDeleted": "false",
+                "orderBy": "startTime",
+                "timeMin": (dt.datetime.now(dt.UTC) - dt.timedelta(days=365 * 5)).isoformat(),
+                "maxResults": 2500,
+            }
+            if query:
+                params["q"] = query
+        if page_token:
+            params["pageToken"] = page_token
+        response = session.request(
+            "GET",
+            f"https://www.googleapis.com/calendar/v3/calendars/{quote(calendar_id, safe='')}/events",
+            params=params,
+        )
+        payload = json_payload(response)
+        if not isinstance(payload, dict):
+            raise RuntimeError("Calendar events are not an object; refusing partial snapshot")
+        events = _google_records(payload.get("items"), "Calendar event", strict=True)
+        for event in events:
+            event_id = str(event.get("id") or "").strip()
+            if not event_id:
+                raise RuntimeError("Calendar event is missing an id; refusing partial snapshot")
+            if event.get("status") == "cancelled":
+                cache.execute(
+                    "DELETE FROM events WHERE calendar_id=? AND event_id=?",
+                    (calendar_id, event_id),
+                )
+            else:
+                cache.execute(
+                    "INSERT OR REPLACE INTO events(calendar_id,event_id,body) VALUES(?,?,?)",
+                    (calendar_id, event_id, json.dumps(event, sort_keys=True)),
+                )
+        raw_next_page_token = payload.get("nextPageToken")
+        if raw_next_page_token is None:
+            raw_sync_token = payload.get("nextSyncToken")
+            if raw_sync_token is not None:
+                if not isinstance(raw_sync_token, str) or not raw_sync_token.strip():
+                    raise RuntimeError("Calendar events have invalid nextSyncToken")
+                next_sync_token = raw_sync_token.strip()
+            break
+        if isinstance(raw_next_page_token, str) and raw_next_page_token:
+            page_token = raw_next_page_token
+            continue
+        raise RuntimeError("Calendar events have invalid nextPageToken; refusing partial snapshot")
+    return next_sync_token
+
+
+def _fetch_calendar_cached(
+    token_path: Path,
+    project: str,
+    query: str,
+    client: httpx.Client | None,
+    cache_dir: Path,
+) -> Iterable[Document]:
+    cache = _calendar_cache(cache_dir)
+    assert cache is not None
+    scope = _calendar_scope_fingerprint(token_path, project, query)
+    try:
+        with GoogleSession(token_path, client) as session:
+            calendar_records: list[dict[str, Any]] = []
+            page_token: str | None = None
+            while True:
+                params = {"pageToken": page_token} if page_token else {}
+                response = session.request(
+                    "GET",
+                    "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+                    params=params,
+                )
+                payload = json_payload(response)
+                if not isinstance(payload, dict):
+                    raise RuntimeError(
+                        "Calendar listing is not an object; refusing partial snapshot"
+                    )
+                calendar_records.extend(
+                    _google_records(payload.get("items"), "Calendar", strict=True)
+                )
+                raw_next_page_token = payload.get("nextPageToken")
+                if raw_next_page_token is None:
+                    break
+                if isinstance(raw_next_page_token, str) and raw_next_page_token:
+                    page_token = raw_next_page_token
+                    continue
+                raise RuntimeError(
+                    "Calendar listing has invalid nextPageToken; refusing partial snapshot"
+                )
+
+            active_ids: set[str] = set()
+            active_calendars: list[tuple[str, dict[str, Any]]] = []
+            for calendar in calendar_records:
+                calendar_id = str(calendar.get("id") or "").strip()
+                if not calendar_id or calendar.get("deleted") or calendar.get("hidden"):
+                    continue
+                active_ids.add(calendar_id)
+                active_calendars.append((calendar_id, calendar))
+
+            # One source snapshot may span many calendars. Keep all event
+            # mutations and cursor updates in one transaction so a later
+            # calendar failure cannot advance an earlier calendar's token.
+            cache.execute("BEGIN")
+            try:
+                for calendar_id, calendar in active_calendars:
+                    sync_token = _cached_calendar_token(cache, calendar_id, scope)
+                    try:
+                        next_sync_token = _apply_calendar_pages(
+                            session, cache, calendar_id, query, sync_token
+                        )
+                    except httpx.HTTPStatusError as error:
+                        if not sync_token or error.response.status_code != 410:
+                            raise
+                        # Google invalidates tokens after history expiration or
+                        # account changes. Rebuild this calendar atomically.
+                        cache.execute("DELETE FROM events WHERE calendar_id=?", (calendar_id,))
+                        next_sync_token = _apply_calendar_pages(
+                            session, cache, calendar_id, query, None
+                        )
+                    # Validate every cached row before advancing the token. A
+                    # malformed provider record must never bless a partial
+                    # snapshot for the next reconciliation.
+                    tuple(_iter_cached_calendar_documents(cache, calendar_id, calendar, project))
+                    if next_sync_token:
+                        cache.execute(
+                            "INSERT OR REPLACE INTO sync_tokens(calendar_id,scope,token) VALUES(?,?,?)",
+                            (calendar_id, scope, next_sync_token),
+                        )
+                    else:
+                        cache.execute("DELETE FROM sync_tokens WHERE calendar_id=?", (calendar_id,))
+
+                if active_ids:
+                    placeholders = ",".join("?" for _ in active_ids)
+                    values = tuple(sorted(active_ids))
+                    cache.execute(
+                        f"DELETE FROM events WHERE calendar_id NOT IN ({placeholders})", values
+                    )
+                    cache.execute(
+                        f"DELETE FROM sync_tokens WHERE calendar_id NOT IN ({placeholders})", values
+                    )
+                else:
+                    cache.execute("DELETE FROM events")
+                    cache.execute("DELETE FROM sync_tokens")
+                cache.commit()
+            except Exception:
+                cache.rollback()
+                raise
+
+            # Emit only after the complete multi-calendar snapshot and all
+            # cursor updates are durable.
+            for calendar_id, calendar in active_calendars:
+                yield from _iter_cached_calendar_documents(cache, calendar_id, calendar, project)
+    finally:
+        cache.close()
+
+
+def fetch_calendar(
+    token_path: Path,
+    project: str,
+    query: str = "",
+    client: httpx.Client | None = None,
+    max_documents: int | None = None,
+    cache_dir: Path | None = None,
+) -> Iterable[Document]:
+    # Bounded validation is intentionally cache-free: it is a sample, not a
+    # complete snapshot, and must never advance or invalidate a provider cursor.
+    if cache_dir is not None and max_documents is None:
+        yield from _fetch_calendar_cached(token_path, project, query, client, cache_dir)
+        return
+    yield from _fetch_calendar_uncached(token_path, project, query, client, max_documents)
 
 
 def _drive_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
@@ -878,21 +1432,330 @@ def _drive_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
     connection.execute(
         "CREATE TABLE IF NOT EXISTS files("
         "id TEXT PRIMARY KEY,modified_time TEXT NOT NULL,body TEXT NOT NULL,"
-        "original_chars INTEGER NOT NULL DEFAULT 0,truncated INTEGER NOT NULL DEFAULT 0)"
+        "original_chars INTEGER NOT NULL DEFAULT 0,truncated INTEGER NOT NULL DEFAULT 0,"
+        "item TEXT NOT NULL DEFAULT '{}')"
     )
     # Existing installations have the original three-column cache. Add the
     # metadata columns in place so upgrading does not discard cached content.
     for column, definition in (
         ("original_chars", "INTEGER NOT NULL DEFAULT 0"),
         ("truncated", "INTEGER NOT NULL DEFAULT 0"),
+        ("item", "TEXT NOT NULL DEFAULT '{}'"),
     ):
         try:
             connection.execute(f"ALTER TABLE files ADD COLUMN {column} {definition}")
         except sqlite3.OperationalError as error:
             if "duplicate column name" not in str(error).lower():
                 raise
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS sync_state(scope TEXT PRIMARY KEY,page_token TEXT NOT NULL)"
+    )
     connection.execute("CREATE TEMP TABLE seen(id TEXT PRIMARY KEY)")
     return connection
+
+
+def _drive_scope_fingerprint(token_path: Path, project: str, query: str) -> str:
+    """Bind a Drive cursor to account identity and the exact source query."""
+
+    digest = hashlib.sha256()
+    token_bytes = token_path.read_bytes()
+    try:
+        credentials = json.loads(token_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        credentials = None
+    if isinstance(credentials, dict):
+        identity = {
+            key: credentials.get(key)
+            for key in ("refresh_token", "client_id", "token_uri", "sub", "email")
+            if credentials.get(key)
+        }
+        if identity:
+            token_bytes = json.dumps(identity, sort_keys=True).encode()
+    digest.update(token_bytes)
+    digest.update(b"\0")
+    digest.update(project.encode())
+    digest.update(b"\0")
+    digest.update(query.encode())
+    return digest.hexdigest()
+
+
+def _drive_cached_page_token(cache: sqlite3.Connection, scope: str) -> str | None:
+    row = cache.execute("SELECT scope,page_token FROM sync_state LIMIT 1").fetchone()
+    if row is None:
+        # A pre-cursor cache has no account binding. Discard its derived
+        # bodies before the first cursor-backed snapshot so a reauthorized
+        # account can never reuse a matching file id and modified timestamp.
+        if cache.execute("SELECT 1 FROM files LIMIT 1").fetchone() is not None:
+            _drive_reset_cache(cache)
+        return None
+    if str(row[0]) != scope:
+        _drive_reset_cache(cache)
+        return None
+    token = str(row[1]).strip()
+    return token or None
+
+
+def _drive_reset_cache(cache: sqlite3.Connection) -> None:
+    cache.execute("DELETE FROM files")
+    cache.execute("DELETE FROM sync_state")
+    cache.execute("DELETE FROM seen")
+    cache.commit()
+
+
+def _drive_start_page_token(session: GoogleSession) -> str | None:
+    response = session.request(
+        "GET",
+        "https://www.googleapis.com/drive/v3/changes/startPageToken",
+        params={"supportsAllDrives": "true"},
+    )
+    try:
+        payload = json_payload(response)
+    except RuntimeError:
+        # A provider that does not expose the changes endpoint can still be
+        # synchronized safely with a complete files listing. Do not create a
+        # cursor in that case; the next strict run will retry discovery.
+        print(
+            "Drive changes cursor unavailable; using a complete listing",
+            file=sys.stderr,
+        )
+        return None
+    if not isinstance(payload, dict):
+        print(
+            "Drive start page token unavailable; using a complete listing",
+            file=sys.stderr,
+        )
+        return None
+    token = payload.get("startPageToken")
+    if not isinstance(token, str) or not token.strip():
+        print(
+            "Drive start page token unavailable; using a complete listing",
+            file=sys.stderr,
+        )
+        return None
+    return token.strip()
+
+
+def _drive_item_json(item: dict[str, Any]) -> str:
+    return json.dumps(item, separators=(",", ":"), sort_keys=True)
+
+
+def _drive_cache_values(
+    file_id: str, modified_time: str, body: str, item: dict[str, Any]
+) -> tuple[str, str, str, int, int, str]:
+    return (
+        file_id,
+        modified_time,
+        body,
+        (
+            UNKNOWN_CONTENT_CHARS
+            if getattr(body, "original_chars", len(body)) is None
+            else getattr(body, "original_chars", len(body))
+        ),
+        int(bool(getattr(body, "truncated", False))),
+        _drive_item_json(item),
+    )
+
+
+def _drive_document(
+    item: dict[str, Any],
+    body: str,
+    project: str,
+    max_content_chars: int,
+    *,
+    content_stale: bool = False,
+) -> Document:
+    file_id = str(item.get("id") or "").strip()
+    if not file_id:
+        raise RuntimeError("Drive cached file has no id")
+    if not body.strip():
+        body = _DriveContent(DRIVE_NO_TEXT_MARKER, None, True)
+    try:
+        updated_at = _timestamp(item.get("modifiedTime"))
+    except (TypeError, ValueError, OverflowError, OSError) as error:
+        raise RuntimeError(f"Drive file has invalid modifiedTime: id={file_id}") from error
+    content, content_truncated = _bounded_content(body, max_content_chars)
+    return Document(
+        source="google-drive",
+        source_id=file_id,
+        title=str(item.get("name") or "Untitled Drive file"),
+        content=content,
+        uri=item.get("webViewLink"),
+        updated_at=updated_at,
+        project=project,
+        metadata={
+            "mime_type": item.get("mimeType"),
+            "owners": [
+                owner.get("displayName")
+                for owner in item.get("owners", [])
+                if isinstance(owner, dict) and owner.get("displayName")
+            ],
+            "content_stale": content_stale,
+            "content_truncated": content_truncated or bool(getattr(body, "truncated", False)),
+            "content_unavailable": any(
+                marker in str(body)
+                for marker in (
+                    PDF_NO_TEXT_MARKER,
+                    DOCX_NO_TEXT_MARKER,
+                    DRIVE_NO_TEXT_MARKER,
+                )
+            ),
+            "content_original_chars": getattr(body, "original_chars", len(body)),
+        },
+    )
+
+
+def _iter_cached_drive_documents(
+    cache: sqlite3.Connection,
+    project: str,
+    max_content_chars: int,
+) -> Iterable[Document]:
+    rows = cache.execute("SELECT id,body,original_chars,truncated,item FROM files ORDER BY id")
+    for file_id, body, original_chars, truncated, item_body in rows:
+        try:
+            item = json.loads(str(item_body))
+            if not isinstance(item, dict) or str(item.get("id") or "").strip() != str(file_id):
+                raise ValueError("cached id mismatch")
+            stored_chars = int(original_chars or 0)
+            original = (
+                None if stored_chars == UNKNOWN_CONTENT_CHARS else (stored_chars or len(body))
+            )
+            content = _DriveContent(str(body), original, bool(truncated))
+            yield _drive_document(item, content, project, max_content_chars)
+        except (AttributeError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"Drive cached file conversion failed: id={file_id}") from error
+
+
+def _fetch_drive_changes_delta(
+    session: GoogleSession,
+    cache: sqlite3.Connection,
+    project: str,
+    scope: str,
+    page_token: str,
+    max_content_chars: int,
+) -> Iterable[Document]:
+    changed: dict[str, dict[str, Any]] = {}
+    removed: set[str] = set()
+    next_page_token: str | None = page_token
+    new_start_page_token: str | None = None
+    while next_page_token is not None:
+        try:
+            response = session.request(
+                "GET",
+                "https://www.googleapis.com/drive/v3/changes",
+                params={
+                    "pageToken": next_page_token,
+                    "includeRemoved": "true",
+                    "supportsAllDrives": "true",
+                    "includeItemsFromAllDrives": "true",
+                    "fields": DRIVE_CHANGES_FIELDS,
+                },
+            )
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code in {400, 404, 410}:
+                raise _DriveChangesExpired from error
+            raise
+        payload = json_payload(response)
+        if not isinstance(payload, dict):
+            raise RuntimeError("Drive changes listing is not an object; refusing partial snapshot")
+        raw_changes = payload.get("changes")
+        if raw_changes is None:
+            raise RuntimeError("Drive change list is missing; refusing partial snapshot")
+        if not isinstance(raw_changes, list):
+            raise RuntimeError("Drive change list is not a list; refusing partial snapshot")
+        changes: list[dict[str, Any]] = []
+        for index, change in enumerate(raw_changes):
+            if not isinstance(change, dict):
+                raise RuntimeError(
+                    f"Drive change record={index} is not an object; refusing partial snapshot"
+                )
+            changes.append(change)
+        for index, change in enumerate(changes):
+            raw_file_id = change.get("fileId")
+            if not isinstance(raw_file_id, str) or not raw_file_id.strip():
+                raise RuntimeError(f"Drive change record={index} has invalid fileId")
+            file_id = raw_file_id.strip()
+            item = change.get("file")
+            if change.get("removed") or not isinstance(item, dict):
+                changed.pop(file_id, None)
+                removed.add(file_id)
+                continue
+            item_id = item.get("id")
+            if not isinstance(item_id, str) or item_id.strip() != file_id:
+                raise RuntimeError(f"Drive change record={index} has mismatched file id")
+            if item.get("trashed") or _is_drive_container(item):
+                changed.pop(file_id, None)
+                removed.add(file_id)
+                continue
+            removed.discard(file_id)
+            changed[file_id] = item
+
+        raw_next_page_token = payload.get("nextPageToken")
+        if raw_next_page_token is None:
+            raw_new_start_page_token = payload.get("newStartPageToken")
+            if (
+                not isinstance(raw_new_start_page_token, str)
+                or not raw_new_start_page_token.strip()
+            ):
+                raise RuntimeError("Drive changes listing has no newStartPageToken")
+            new_start_page_token = raw_new_start_page_token.strip()
+            next_page_token = None
+        elif isinstance(raw_next_page_token, str) and raw_next_page_token.strip():
+            next_page_token = raw_next_page_token.strip()
+        else:
+            raise RuntimeError("Drive changes listing has invalid nextPageToken")
+
+    updates: dict[str, tuple[dict[str, Any], str]] = {}
+    if changed:
+        with ThreadPoolExecutor(
+            max_workers=min(DRIVE_CONTENT_CONCURRENCY, len(changed)),
+            thread_name_prefix="cortana-drive-changes",
+        ) as pool:
+            fetched = pool.map(
+                lambda item: _safe_drive_content(session, item),
+                [changed[file_id] for file_id in sorted(changed)],
+            )
+            for file_id, item, (body, error_name) in zip(
+                sorted(changed),
+                [changed[file_id] for file_id in sorted(changed)],
+                fetched,
+                strict=True,
+            ):
+                if error_name is not None:
+                    raise RuntimeError(
+                        "Drive changed file content unavailable: "
+                        f"id={file_id}; refusing cursor advance"
+                    )
+                updates[file_id] = (item, body)
+
+    cache.execute("BEGIN")
+    try:
+        for file_id in removed:
+            cache.execute("DELETE FROM files WHERE id=?", (file_id,))
+        for file_id, (item, body) in updates.items():
+            modified_time = _drive_modified_time(item, file_id, strict=True)
+            assert modified_time is not None
+            cache.execute(
+                "INSERT OR REPLACE INTO files("
+                "id,modified_time,body,original_chars,truncated,item) VALUES(?,?,?,?,?,?)",
+                _drive_cache_values(file_id, modified_time, body, item),
+            )
+        assert new_start_page_token is not None
+        cache.execute("DELETE FROM sync_state")
+        cache.execute(
+            "INSERT INTO sync_state(scope,page_token) VALUES(?,?)",
+            (scope, new_start_page_token),
+        )
+        # Validate every cached record before blessing the new cursor. This is
+        # intentionally streamed so a large cache does not become a second
+        # in-memory corpus.
+        for _document in _iter_cached_drive_documents(cache, project, max_content_chars):
+            pass
+        cache.commit()
+    except Exception:
+        cache.rollback()
+        raise
+
+    yield from _iter_cached_drive_documents(cache, project, max_content_chars)
 
 
 def _private_cache(path: Path) -> sqlite3.Connection:
@@ -999,7 +1862,7 @@ def _cached_gmail_message(
     return message
 
 
-def fetch_calendar(
+def _fetch_calendar_uncached(
     token_path: Path,
     project: str,
     query: str = "",
