@@ -1968,10 +1968,15 @@ mod tests {
 
     #[test]
     fn apple_notes_setup_targets_macos_automation_privacy() {
-        assert_eq!(
-            setup_url("apple-notes").expect("Apple Notes setup URL"),
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
-        );
+        if std::env::consts::OS == "macos" {
+            assert_eq!(
+                setup_url("apple-notes").expect("Apple Notes setup URL"),
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+            );
+        } else {
+            let error = setup_url("apple-notes").expect_err("Apple Notes is macOS-only");
+            assert!(error.contains("available only on macOS"));
+        }
     }
 
     #[test]
