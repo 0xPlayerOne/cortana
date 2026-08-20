@@ -72,19 +72,19 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
 The v0.34.0 release gate verified the packaged core offline without credentials. The installed
-host remains v0.32.12; the provider-backed evaluation below is historical installed-runtime
-evidence and remains fixture-only evidence, separate from the packaged-core gate.
+host now reports v0.34.0, matching the published package. The provider-backed evaluation below was
+collected under the earlier v0.32.12 installation and remains historical fixture-only evidence,
+separate from the packaged-core gate.
 The offline evaluator and query-only readiness pass, while the provider-backed model run remains
 fixture-only evidence. This remains bounded query-layer evidence and does not prove packaged GUI
 behavior, personal-index sync, or Developer ID/notarization trust. The evaluator remains opt-in;
 extractive mode is the production default.
 
-The audited host still runs `/Users/amf/.local/bin/cortana` v0.32.12 from the previous verified local
-installation. The embedding and HTTP services are running with recurring sync uninstalled. This is
-local installation evidence, not
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.0. The embedding and HTTP services
+are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
-The latest provider-backed fixture evidence was collected on 2026-08-16 with the installed
+The latest provider-backed fixture evidence was collected on 2026-08-16 with the then-installed
 v0.32.12 CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR, case
 pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
 invalidation; the answer completed in 14,437 ms under the 55,000 ms deadline with no provider

@@ -97,6 +97,22 @@ valid PDF with no extractable text is retained with an explicit metadata-only pl
 the original Drive link remains the recovery path. Other binary or otherwise unsupported Drive items
 are retained with the same explicit metadata-only marker in complete runs; Cortana does not claim to
 have extracted their contents. Drive installs pypdf's AES support.
+Full, uncapped Gmail runs also persist a private `sync_state` cursor in
+`data_dir/connector-cache/<source>/gmail.sqlite3`. For an unfiltered mailbox, later runs use
+Gmail history deltas for additions, deletions, and label changes instead of relisting every message.
+The cursor is bound to the OAuth account identity and workspace; changing either clears the cached
+bodies. Expired cursors rebuild the full snapshot, while bounded validation and filtered runs never
+advance the cursor. Delta mutations and cursor advancement commit together, so a failed history
+page or message fetch cannot bless a partial snapshot.
+Full, uncapped Google Drive runs use the same durable cache contract in
+`data_dir/connector-cache/<source>/drive.sqlite3`: the first complete unfiltered listing captures a
+Drive `startPageToken`, and later runs request only provider changes, including file additions,
+updates, trash/removal events, and shared-drive items. Change application and the replacement
+cursor commit atomically before Cortana emits the resulting complete snapshot. A 400/404/410
+expired cursor or an account/workspace/query fingerprint change clears only the derived Drive
+cache and performs a fresh full listing. Bounded, filtered, or failed runs never advance the
+cursor; if Drive does not return a usable start token, Cortana safely falls back to a complete
+listing without claiming incremental progress.
 Idempotent Google GET/HEAD calls retry bounded transport failures and standard transient HTTP
 statuses; a 403 is retried only for Google's explicit rate-limit/backend reasons. Gmail detail
 requests also retry a small, bounded 400 window before strict runs fail closed.
@@ -206,10 +222,19 @@ configured document cap and never reconcile deletions.
 - A Google source may use `token_env` instead of `token` when the named environment value contains
   an absolute OAuth token JSON path. The Desktop editor stores that path value write-only in its
   managed secret file; it does not accept inline token JSON.
-- Apple Notes uses the local macOS Notes automation permission and stores no credential. Each
-  Apple Notes source may set exact `folders` to include or `exclude_folders` to omit. Use separate
-  sources when folders belong to different workspaces; an empty include list means all folders
-  unless exclusions are present. Folder metadata is retained on every indexed note.
+- Google Calendar full snapshots persist the provider's `nextSyncToken` and the complete event
+  snapshot in the source's private `connector-cache/<source>/calendar.sqlite3` cache. Later full
+  runs request only the provider delta, apply additions, updates, and deletions to the cached
+  snapshot, and emit the resulting complete snapshot so reconciliation remains safe. The cursor
+  is scoped to the token file, workspace, and query configuration; a changed scope or expired
+  Google token causes a clean full rebuild. Bounded validation and capped non-reconciling trials
+  never read or advance this cache.
+- Apple Notes uses the local macOS Notes automation permission and stores no credential. Desktop's
+  **Grant Apple Notes access** action opens macOS Privacy & Security → Automation; allow Cortana
+  (or the invoking terminal) to control Notes before validating. Each Apple Notes source may set
+  exact `folders` to include or `exclude_folders` to omit. Use separate sources when folders belong
+  to different workspaces; an empty include list means all folders unless exclusions are present.
+  Folder metadata is retained on every indexed note.
 - Buzz opens the retention database read-only. Community identity comes from the
   read-only `agents/teams.json` file; see `cortana buzz-communities SOURCE` above.
 

@@ -174,6 +174,9 @@ def _documents(arguments: argparse.Namespace) -> Iterable[Document]:
             token_path,
             arguments.project,
             arguments.query,
+            cache_dir=None
+            if arguments.no_cache or arguments.max_documents is not None
+            else arguments.cache_dir,
             max_documents=arguments.max_documents,
         )
     raise RuntimeError(f"unsupported connector: {arguments.connector}")
