@@ -3414,8 +3414,8 @@ function SourcesSection({
                     <button
                       type="button"
                       className="source-icon-button quick-tooltip"
-                      aria-label="Setup"
-                      data-tooltip="Setup"
+                      aria-label={setupActionLabel(source.kind)}
+                      data-tooltip={setupActionLabel(source.kind)}
                       disabled={!canValidate || sourceLocked}
                       onClick={() => void openSetup(source)}
                     >
@@ -4892,7 +4892,17 @@ function isGoogleSource(kind: SourceKind) {
 }
 
 function hasBrowserSetup(kind: SourceKind) {
-  return isGoogleSource(kind) || kind === 'github' || kind === 'slack' || kind === 'discord'
+  return (
+    isGoogleSource(kind) ||
+    kind === 'github' ||
+    kind === 'slack' ||
+    kind === 'discord' ||
+    kind === 'apple-notes'
+  )
+}
+
+function setupActionLabel(kind: SourceKind) {
+  return kind === 'apple-notes' ? 'Grant Apple Notes access' : 'Setup'
 }
 
 function splitList(value: string) {

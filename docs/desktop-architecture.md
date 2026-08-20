@@ -176,6 +176,8 @@ Discord requires explicit channels plus private Desktop RPC token and OAuth-clie
 environment variable).
 Apple Notes sources can be split across workspaces with exact folder allowlists (`folders`) and
 exclusions (`exclude_folders`); an empty allowlist means all folders except explicit exclusions.
+The source card's **Grant Apple Notes access** action opens macOS Privacy & Security → Automation
+so the operator can approve Notes control before a validation or sync trial.
 The connector keeps the originating account and folder in document metadata, while the Desktop
 editor exposes both lists as repeatable line-separated fields.
 Canonical source

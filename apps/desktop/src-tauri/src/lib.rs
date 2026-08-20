@@ -1586,7 +1586,7 @@ mod tests {
                 setup
                     .as_str()
                     .unwrap_or_default()
-                    .contains("does not have a browser-based account setup page")
+                    .contains("does not have a setup handoff")
             );
         });
     }

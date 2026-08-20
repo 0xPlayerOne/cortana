@@ -229,10 +229,12 @@ configured document cap and never reconcile deletions.
   is scoped to the token file, workspace, and query configuration; a changed scope or expired
   Google token causes a clean full rebuild. Bounded validation and capped non-reconciling trials
   never read or advance this cache.
-- Apple Notes uses the local macOS Notes automation permission and stores no credential. Each
-  Apple Notes source may set exact `folders` to include or `exclude_folders` to omit. Use separate
-  sources when folders belong to different workspaces; an empty include list means all folders
-  unless exclusions are present. Folder metadata is retained on every indexed note.
+- Apple Notes uses the local macOS Notes automation permission and stores no credential. Desktop's
+  **Grant Apple Notes access** action opens macOS Privacy & Security → Automation; allow Cortana
+  (or the invoking terminal) to control Notes before validating. Each Apple Notes source may set
+  exact `folders` to include or `exclude_folders` to omit. Use separate sources when folders belong
+  to different workspaces; an empty include list means all folders unless exclusions are present.
+  Folder metadata is retained on every indexed note.
 - Buzz opens the retention database read-only. Community identity comes from the
   read-only `agents/teams.json` file; see `cortana buzz-communities SOURCE` above.
 

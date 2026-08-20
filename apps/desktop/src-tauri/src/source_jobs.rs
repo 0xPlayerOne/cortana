@@ -1347,17 +1347,27 @@ pub(crate) fn terminate_source_process(child: CommandChild) -> Result<(), String
         .map_err(|error| format!("kill source process: {error}"))
 }
 
+fn setup_url(kind: &str) -> Result<&'static str, String> {
+    match kind {
+        "google-drive" | "gmail" | "google-calendar" => {
+            Ok("https://console.cloud.google.com/apis/credentials")
+        }
+        "github" => Ok("https://github.com/settings/tokens"),
+        "slack" => Ok("https://api.slack.com/apps"),
+        "discord" => Ok("https://discord.com/developers/applications"),
+        "apple-notes" if std::env::consts::OS == "macos" => {
+            Ok("x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
+        }
+        "apple-notes" => Err(
+            "Apple Notes setup is available only on macOS; grant Automation access to Cortana in System Settings > Privacy & Security > Automation".into(),
+        ),
+        _ => Err("this source does not have a setup handoff".into()),
+    }
+}
+
 pub fn open_setup(source_name: &str) -> Result<SetupOpenOutcome, String> {
     let source = settings::configured_source(source_name)?;
-    let url = match source.kind.as_str() {
-        "google-drive" | "gmail" | "google-calendar" => {
-            "https://console.cloud.google.com/apis/credentials"
-        }
-        "github" => "https://github.com/settings/tokens",
-        "slack" => "https://api.slack.com/apps",
-        "discord" => "https://discord.com/developers/applications",
-        _ => return Err("this source does not have a browser-based account setup page".into()),
-    };
+    let url = setup_url(&source.kind)?;
     open::that_detached(url).map_err(|error| format!("open source setup page: {error}"))?;
     let event = serde_json::json!({
         "at_unix_seconds": now(),
@@ -1954,6 +1964,25 @@ mod tests {
             authorization_args("slack", "team-slack"),
             ["authorize-slack", "team-slack"]
         );
+    }
+
+    #[test]
+    fn apple_notes_setup_targets_macos_automation_privacy() {
+        if std::env::consts::OS == "macos" {
+            assert_eq!(
+                setup_url("apple-notes").expect("Apple Notes setup URL"),
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"
+            );
+        } else {
+            let error = setup_url("apple-notes").expect_err("Apple Notes is macOS-only");
+            assert!(error.contains("available only on macOS"));
+        }
+    }
+
+    #[test]
+    fn unsupported_source_setup_fails_closed() {
+        let error = setup_url("filesystem").expect_err("filesystem has no setup handoff");
+        assert!(error.contains("does not have a setup handoff"));
     }
 
     #[test]
