@@ -143,7 +143,11 @@ outcomes are recorded as `running`, `succeeded`,
 `failed`, `cancelled`, or `budget_exceeded`. A process interruption intentionally leaves a
 `running` record behind so the workspace can distinguish an interrupted run from a source that
 never started. Before a new sync starts, recovery only marks `running` rows as `cancelled` and
-preserves any completed run status and outcome counters. The workspace refreshes this
+preserves any completed run status and outcome counters. While a run is active, the store also
+persists bounded `progress_documents`, `progress_bytes`, and `progress_updated_at` counters after
+each ingestion batch. These counters are resumable operational evidence only: they do not
+authorize reconciliation, imply a complete snapshot, or expose connector payloads. The workspace
+refreshes this
 status every 15 seconds and keeps query availability separate from ingestion health. Cortana retains the newest 100 run records per source to keep this
 operational history bounded. Runtime request counters in a scoped status response are maintained
 per authenticated principal; only the local owner or an admin-scoped principal receives the
