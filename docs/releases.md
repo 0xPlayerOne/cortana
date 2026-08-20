@@ -64,6 +64,10 @@ offline synthetic evidence and never authorize a source or touch the live index.
 
 ## v0.34.1 release intent (pending)
 
+The Apple Notes permissions handoff is the user-facing patch for this release. Keep this
+conventional release signal attached to the protected promotion history so Release Please
+creates the version-only PR after staging reaches main.
+
 The post-v0.34.0 source tree adds a first-class Apple Notes permissions handoff in Desktop. The
 source editor now exposes **Grant Apple Notes access**, opening the macOS Automation privacy pane,
 and the getting-started and ingestion guides document the exact folder-to-workspace setup. The
