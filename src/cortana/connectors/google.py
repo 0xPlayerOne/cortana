@@ -6,6 +6,7 @@ import datetime as dt
 import email
 import email.policy
 import email.utils
+import hashlib
 import html
 import json
 import os
@@ -871,6 +872,289 @@ def _gmail_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
     return connection
 
 
+def _calendar_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
+    if cache_dir is None:
+        return None
+    connection = _private_cache(cache_dir / "calendar.sqlite3")
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS events("
+        "calendar_id TEXT NOT NULL,event_id TEXT NOT NULL,body TEXT NOT NULL,"
+        "PRIMARY KEY(calendar_id,event_id))"
+    )
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS sync_tokens("
+        "calendar_id TEXT PRIMARY KEY,scope TEXT NOT NULL,token TEXT NOT NULL)"
+    )
+    # The cache was introduced after the connector shipped. Keep a future
+    # schema change from silently reusing a token under a different account or
+    # source configuration.
+    try:
+        connection.execute("ALTER TABLE sync_tokens ADD COLUMN scope TEXT NOT NULL DEFAULT ''")
+    except sqlite3.OperationalError as error:
+        if "duplicate column name" not in str(error).lower():
+            raise
+    return connection
+
+
+def _calendar_scope_fingerprint(token_path: Path, project: str, query: str) -> str:
+    digest = hashlib.sha256()
+    token_bytes = token_path.read_bytes()
+    try:
+        credentials = json.loads(token_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        credentials = None
+    if isinstance(credentials, dict):
+        # Access tokens rotate during normal refreshes. Bind the cache to the
+        # account/client identity instead of invalidating a healthy calendar
+        # cursor every time the short-lived access token changes.
+        identity = {
+            key: credentials.get(key)
+            for key in ("refresh_token", "client_id", "token_uri", "sub", "email")
+            if credentials.get(key)
+        }
+        if identity:
+            token_bytes = json.dumps(identity, sort_keys=True).encode()
+    digest.update(token_bytes)
+    digest.update(b"\0")
+    digest.update(project.encode())
+    digest.update(b"\0")
+    digest.update(query.encode())
+    return digest.hexdigest()
+
+
+def _cached_calendar_token(cache: sqlite3.Connection, calendar_id: str, scope: str) -> str | None:
+    row = cache.execute(
+        "SELECT scope,token FROM sync_tokens WHERE calendar_id=?", (calendar_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    if str(row[0]) != scope:
+        cache.execute("DELETE FROM events WHERE calendar_id=?", (calendar_id,))
+        cache.execute("DELETE FROM sync_tokens WHERE calendar_id=?", (calendar_id,))
+        return None
+    token = str(row[1]).strip()
+    return token or None
+
+
+def _iter_cached_calendar_documents(
+    cache: sqlite3.Connection,
+    calendar_id: str,
+    calendar: dict[str, Any],
+    project: str,
+) -> Iterable[Document]:
+    recurring_series: dict[str, dict[str, Any]] = {}
+    rows = cache.execute(
+        "SELECT body FROM events WHERE calendar_id=? ORDER BY event_id", (calendar_id,)
+    )
+    for (body,) in rows:
+        event: Any = None
+        try:
+            event = json.loads(str(body))
+            if not isinstance(event, dict) or not str(event.get("id") or "").strip():
+                raise ValueError("missing event id")
+            if event.get("status") == "cancelled":
+                continue
+            recurring_id = str(event.get("recurringEventId") or "")
+            if recurring_id:
+                _add_calendar_occurrence(recurring_series, recurring_id, event)
+            else:
+                yield _calendar_document(event, calendar, project)
+        except (AttributeError, TypeError, ValueError, KeyError, json.JSONDecodeError) as error:
+            raise RuntimeError(
+                f"cached Calendar event conversion failed: id={event.get('id') if isinstance(event, dict) else 'unknown'}"
+            ) from error
+    for recurring_id, series in recurring_series.items():
+        yield _calendar_series_document(recurring_id, series, calendar, project)
+
+
+def _apply_calendar_pages(
+    session: GoogleSession,
+    cache: sqlite3.Connection,
+    calendar_id: str,
+    query: str,
+    sync_token: str | None,
+) -> str | None:
+    page_token: str | None = None
+    next_sync_token: str | None = None
+    while True:
+        if sync_token:
+            params: dict[str, Any] = {
+                "singleEvents": "true",
+                "showDeleted": "true",
+                "maxResults": 2500,
+                "syncToken": sync_token,
+            }
+        else:
+            params = {
+                "singleEvents": "true",
+                "showDeleted": "false",
+                "orderBy": "startTime",
+                "timeMin": (dt.datetime.now(dt.UTC) - dt.timedelta(days=365 * 5)).isoformat(),
+                "maxResults": 2500,
+            }
+            if query:
+                params["q"] = query
+        if page_token:
+            params["pageToken"] = page_token
+        response = session.request(
+            "GET",
+            f"https://www.googleapis.com/calendar/v3/calendars/{quote(calendar_id, safe='')}/events",
+            params=params,
+        )
+        payload = json_payload(response)
+        if not isinstance(payload, dict):
+            raise RuntimeError("Calendar events are not an object; refusing partial snapshot")
+        events = _google_records(payload.get("items"), "Calendar event", strict=True)
+        for event in events:
+            event_id = str(event.get("id") or "").strip()
+            if not event_id:
+                raise RuntimeError("Calendar event is missing an id; refusing partial snapshot")
+            if event.get("status") == "cancelled":
+                cache.execute(
+                    "DELETE FROM events WHERE calendar_id=? AND event_id=?",
+                    (calendar_id, event_id),
+                )
+            else:
+                cache.execute(
+                    "INSERT OR REPLACE INTO events(calendar_id,event_id,body) VALUES(?,?,?)",
+                    (calendar_id, event_id, json.dumps(event, sort_keys=True)),
+                )
+        raw_next_page_token = payload.get("nextPageToken")
+        if raw_next_page_token is None:
+            raw_sync_token = payload.get("nextSyncToken")
+            if raw_sync_token is not None:
+                if not isinstance(raw_sync_token, str) or not raw_sync_token.strip():
+                    raise RuntimeError("Calendar events have invalid nextSyncToken")
+                next_sync_token = raw_sync_token.strip()
+            break
+        if isinstance(raw_next_page_token, str) and raw_next_page_token:
+            page_token = raw_next_page_token
+            continue
+        raise RuntimeError("Calendar events have invalid nextPageToken; refusing partial snapshot")
+    return next_sync_token
+
+
+def _fetch_calendar_cached(
+    token_path: Path,
+    project: str,
+    query: str,
+    client: httpx.Client | None,
+    cache_dir: Path,
+) -> Iterable[Document]:
+    cache = _calendar_cache(cache_dir)
+    assert cache is not None
+    scope = _calendar_scope_fingerprint(token_path, project, query)
+    try:
+        with GoogleSession(token_path, client) as session:
+            calendar_records: list[dict[str, Any]] = []
+            page_token: str | None = None
+            while True:
+                params = {"pageToken": page_token} if page_token else {}
+                response = session.request(
+                    "GET",
+                    "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+                    params=params,
+                )
+                payload = json_payload(response)
+                if not isinstance(payload, dict):
+                    raise RuntimeError(
+                        "Calendar listing is not an object; refusing partial snapshot"
+                    )
+                calendar_records.extend(
+                    _google_records(payload.get("items"), "Calendar", strict=True)
+                )
+                raw_next_page_token = payload.get("nextPageToken")
+                if raw_next_page_token is None:
+                    break
+                if isinstance(raw_next_page_token, str) and raw_next_page_token:
+                    page_token = raw_next_page_token
+                    continue
+                raise RuntimeError(
+                    "Calendar listing has invalid nextPageToken; refusing partial snapshot"
+                )
+
+            active_ids: set[str] = set()
+            active_calendars: list[tuple[str, dict[str, Any]]] = []
+            for calendar in calendar_records:
+                calendar_id = str(calendar.get("id") or "").strip()
+                if not calendar_id or calendar.get("deleted") or calendar.get("hidden"):
+                    continue
+                active_ids.add(calendar_id)
+                active_calendars.append((calendar_id, calendar))
+
+            # One source snapshot may span many calendars. Keep all event
+            # mutations and cursor updates in one transaction so a later
+            # calendar failure cannot advance an earlier calendar's token.
+            cache.execute("BEGIN")
+            try:
+                for calendar_id, calendar in active_calendars:
+                    sync_token = _cached_calendar_token(cache, calendar_id, scope)
+                    try:
+                        next_sync_token = _apply_calendar_pages(
+                            session, cache, calendar_id, query, sync_token
+                        )
+                    except httpx.HTTPStatusError as error:
+                        if not sync_token or error.response.status_code != 410:
+                            raise
+                        # Google invalidates tokens after history expiration or
+                        # account changes. Rebuild this calendar atomically.
+                        cache.execute("DELETE FROM events WHERE calendar_id=?", (calendar_id,))
+                        next_sync_token = _apply_calendar_pages(
+                            session, cache, calendar_id, query, None
+                        )
+                    # Validate every cached row before advancing the token. A
+                    # malformed provider record must never bless a partial
+                    # snapshot for the next reconciliation.
+                    tuple(_iter_cached_calendar_documents(cache, calendar_id, calendar, project))
+                    if next_sync_token:
+                        cache.execute(
+                            "INSERT OR REPLACE INTO sync_tokens(calendar_id,scope,token) VALUES(?,?,?)",
+                            (calendar_id, scope, next_sync_token),
+                        )
+                    else:
+                        cache.execute("DELETE FROM sync_tokens WHERE calendar_id=?", (calendar_id,))
+
+                if active_ids:
+                    placeholders = ",".join("?" for _ in active_ids)
+                    values = tuple(sorted(active_ids))
+                    cache.execute(
+                        f"DELETE FROM events WHERE calendar_id NOT IN ({placeholders})", values
+                    )
+                    cache.execute(
+                        f"DELETE FROM sync_tokens WHERE calendar_id NOT IN ({placeholders})", values
+                    )
+                else:
+                    cache.execute("DELETE FROM events")
+                    cache.execute("DELETE FROM sync_tokens")
+                cache.commit()
+            except Exception:
+                cache.rollback()
+                raise
+
+            # Emit only after the complete multi-calendar snapshot and all
+            # cursor updates are durable.
+            for calendar_id, calendar in active_calendars:
+                yield from _iter_cached_calendar_documents(cache, calendar_id, calendar, project)
+    finally:
+        cache.close()
+
+
+def fetch_calendar(
+    token_path: Path,
+    project: str,
+    query: str = "",
+    client: httpx.Client | None = None,
+    max_documents: int | None = None,
+    cache_dir: Path | None = None,
+) -> Iterable[Document]:
+    # Bounded validation is intentionally cache-free: it is a sample, not a
+    # complete snapshot, and must never advance or invalidate a provider cursor.
+    if cache_dir is not None and max_documents is None:
+        yield from _fetch_calendar_cached(token_path, project, query, client, cache_dir)
+        return
+    yield from _fetch_calendar_uncached(token_path, project, query, client, max_documents)
+
+
 def _drive_cache(cache_dir: Path | None) -> sqlite3.Connection | None:
     if cache_dir is None:
         return None
@@ -999,7 +1283,7 @@ def _cached_gmail_message(
     return message
 
 
-def fetch_calendar(
+def _fetch_calendar_uncached(
     token_path: Path,
     project: str,
     query: str = "",

@@ -14,7 +14,9 @@ of the live Cortana runtime. Migration compatibility code remains available for 
 
 The current safe rollout is intentionally selective. The operator has refreshed the validation
 records for the enabled non-code sources at their configured production budgets where the provider
-can complete within the bounded connector deadline, using the installed v0.32.12 parser:
+can complete within the bounded connector deadline. Those records were captured with the then-
+installed v0.32.12 parser; the host now runs v0.34.0, so a future release-specific rerun should
+refresh them before treating them as v0.34.0 execution evidence:
 
 - Apple Notes: `work-notes` 28, `personal-notes` 65, and `special-notes` 8 documents; all are
   `complete=true` at 2,000 documents/128 MiB/900 seconds.

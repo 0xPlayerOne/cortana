@@ -19,20 +19,18 @@ is not part of a visual/UI change.
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.34.0 tag is the fully verified packaged evidence boundary. The audited host has not yet
-  installed v0.34.0 and still runs the previous `/Users/amf/.local/bin/cortana` v0.32.12 with embedding and server services in
-  query-only mode; recurring sync remains disabled. As of 2026-08-16, 13 sources are enabled and
-  12 have fresh `complete=true` validation at their configured budgets. Personal Drive has only a
-  successful 25-document/5 MiB/60-second validation against its configured 2,000-document/128 MiB/
-  900-second budget, so the recurring-sync readiness gate correctly fails closed. No full-corpus
-  reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
-  updater interaction, Developer ID signing, and notarization remain manual gates.
-- The previous installed v0.32.12 host passed the bounded provider-backed `eval --model` evidence
+- The v0.34.0 tag is the fully verified packaged evidence boundary. The audited host now runs
+  `/Users/amf/.local/bin/cortana` v0.34.0 with embedding and server services in query-only mode;
+  recurring sync remains disabled. Current status reports 13 enabled sources, 12 fresh
+  `complete=true` records, and Personal Drive failed closed at its production budget. No
+  full-corpus reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native
+  dialogs, updater interaction, Developer ID signing, and notarization remain manual gates.
+- The then-installed v0.32.12 host passed the bounded provider-backed `eval --model` evidence
   run on 2026-08-16 in 14,437 ms: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
   all passed with no fallback. This is provider-backed fixture evidence only; it does not query
   the personal index or prove packaged GUI behavior.
-- The previous installed v0.32.12 host passed the disposable offline control-plane drill on
+- The then-installed v0.32.12 host passed the disposable offline control-plane drill on
   2026-08-16:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
   verified backup, restore into a second temporary data directory, SQLite verification, and
@@ -176,7 +174,7 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the verified v0.34.0 package passed the credential-free packaged-core
-   evaluator and query-only readiness in release verification. The previous installed v0.32.12 CLI passed
+   evaluator and query-only readiness in release verification. The then-installed v0.32.12 CLI passed
    the bounded provider-backed run on 2026-08-16 in 14,437 ms with planner/synthesis, valid
    citations, cache reuse, and revision invalidation. That run used synthetic fixtures only; no
    provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider

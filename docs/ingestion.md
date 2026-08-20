@@ -206,6 +206,13 @@ configured document cap and never reconcile deletions.
 - A Google source may use `token_env` instead of `token` when the named environment value contains
   an absolute OAuth token JSON path. The Desktop editor stores that path value write-only in its
   managed secret file; it does not accept inline token JSON.
+- Google Calendar full snapshots persist the provider's `nextSyncToken` and the complete event
+  snapshot in the source's private `connector-cache/<source>/calendar.sqlite3` cache. Later full
+  runs request only the provider delta, apply additions, updates, and deletions to the cached
+  snapshot, and emit the resulting complete snapshot so reconciliation remains safe. The cursor
+  is scoped to the token file, workspace, and query configuration; a changed scope or expired
+  Google token causes a clean full rebuild. Bounded validation and capped non-reconciling trials
+  never read or advance this cache.
 - Apple Notes uses the local macOS Notes automation permission and stores no credential. Each
   Apple Notes source may set exact `folders` to include or `exclude_folders` to omit. Use separate
   sources when folders belong to different workspaces; an empty include list means all folders

@@ -1342,7 +1342,11 @@ def test_google_drive_bounded_validation_caps_listing_page_and_documents(
     tmp_path: Path,
 ) -> None:
     token = tmp_path / "token.json"
-    write_token(token, '{"token":"access"}')
+    write_token(
+        token,
+        '{"token":"access","refresh_token":"refresh","client_id":"client",'
+        '"token_uri":"https://oauth2.googleapis.com/token"}',
+    )
     files = [
         {
             "id": f"doc{index}",
@@ -2818,6 +2822,155 @@ def test_google_calendar_normalizes_events(tmp_path: Path) -> None:
     assert documents[0].source_id == "primary:event-1"
     assert "Approve the rollout." in documents[0].content
     assert documents[0].metadata["attendees"] == ["ada@example.test"]
+
+
+def test_google_calendar_reuses_persisted_sync_token_and_snapshot(
+    tmp_path: Path,
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(
+        token,
+        '{"token":"access","refresh_token":"refresh","client_id":"client",'
+        '"token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    cache = tmp_path / "cache"
+    phase = 0
+    event_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal phase
+        if request.url.path.endswith("/calendarList"):
+            return response(
+                {"items": [{"id": "primary", "summary": "Work"}]},
+                request=request,
+            )
+        event_requests.append(request)
+        if phase == 0:
+            return response(
+                {
+                    "items": [
+                        {
+                            "id": "event-1",
+                            "summary": "Keep this event",
+                            "start": {"dateTime": "2026-07-29T12:00:00Z"},
+                            "end": {"dateTime": "2026-07-29T12:30:00Z"},
+                            "updated": "2026-07-29T11:00:00Z",
+                        },
+                        {
+                            "id": "event-2",
+                            "summary": "Remove this event",
+                            "start": {"dateTime": "2026-07-29T13:00:00Z"},
+                            "end": {"dateTime": "2026-07-29T13:30:00Z"},
+                            "updated": "2026-07-29T11:00:00Z",
+                        },
+                    ],
+                    "nextSyncToken": "sync-1",
+                },
+                request=request,
+            )
+        assert request.url.params.get("syncToken") == "sync-1"
+        assert request.url.params.get("showDeleted") == "true"
+        return response(
+            {
+                "items": [
+                    {"id": "event-2", "status": "cancelled"},
+                    {
+                        "id": "event-3",
+                        "summary": "New event",
+                        "start": {"dateTime": "2026-07-30T12:00:00Z"},
+                        "end": {"dateTime": "2026-07-30T12:30:00Z"},
+                        "updated": "2026-07-30T11:00:00Z",
+                    },
+                ],
+                "nextSyncToken": "sync-2",
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    first = list(fetch_calendar(token, "work", client=client, cache_dir=cache))
+    # A normal OAuth refresh changes only the short-lived access token. The
+    # durable calendar cursor must survive that rotation.
+    write_token(
+        token,
+        '{"token":"rotated-access","refresh_token":"refresh","client_id":"client",'
+        '"token_uri":"https://oauth2.googleapis.com/token"}',
+    )
+    phase = 1
+    second = list(fetch_calendar(token, "work", client=client, cache_dir=cache))
+
+    assert [document.source_id for document in first] == [
+        "primary:event-1",
+        "primary:event-2",
+    ]
+    assert [document.source_id for document in second] == [
+        "primary:event-1",
+        "primary:event-3",
+    ]
+    assert len(event_requests) == 2
+    assert "syncToken" not in event_requests[0].url.params
+    assert event_requests[1].url.params["syncToken"] == "sync-1"
+
+
+def test_google_calendar_rebuilds_when_sync_token_expires(tmp_path: Path) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    cache = tmp_path / "cache"
+    phase = 0
+    event_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal phase
+        if request.url.path.endswith("/calendarList"):
+            return response(
+                {"items": [{"id": "primary", "summary": "Work"}]},
+                request=request,
+            )
+        event_requests.append(request)
+        if phase == 0:
+            return response(
+                {
+                    "items": [
+                        {
+                            "id": "old",
+                            "summary": "Old",
+                            "start": {"dateTime": "2026-07-29T12:00:00Z"},
+                            "end": {"dateTime": "2026-07-29T12:30:00Z"},
+                            "updated": "2026-07-29T11:00:00Z",
+                        }
+                    ],
+                    "nextSyncToken": "expired-token",
+                },
+                request=request,
+            )
+        if phase == 1:
+            phase = 2
+            return response({"error": "sync token expired"}, status=410, request=request)
+        assert "syncToken" not in request.url.params
+        return response(
+            {
+                "items": [
+                    {
+                        "id": "replacement",
+                        "summary": "Replacement",
+                        "start": {"dateTime": "2026-07-30T12:00:00Z"},
+                        "end": {"dateTime": "2026-07-30T12:30:00Z"},
+                        "updated": "2026-07-30T11:00:00Z",
+                    }
+                ],
+                "nextSyncToken": "fresh-token",
+            },
+            request=request,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    list(fetch_calendar(token, "work", client=client, cache_dir=cache))
+    phase = 1
+    rebuilt = list(fetch_calendar(token, "work", client=client, cache_dir=cache))
+
+    assert [document.source_id for document in rebuilt] == ["primary:replacement"]
+    assert event_requests[1].url.params["syncToken"] == "expired-token"
+    assert "syncToken" not in event_requests[2].url.params
 
 
 def test_google_calendar_caps_listing_page_and_documents(tmp_path: Path) -> None:
