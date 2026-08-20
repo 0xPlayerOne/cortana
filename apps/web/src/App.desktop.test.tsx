@@ -1492,6 +1492,7 @@ test('Apple Notes sources expose exact include and exclude folder filters', asyn
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    expect(screen.getByRole('button', { name: 'Grant Apple Notes access' })).toBeTruthy()
     fireEvent.click(screen.getByText('Advanced source settings'))
 
     expect(
