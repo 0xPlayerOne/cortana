@@ -84,6 +84,20 @@ Because the protected promotion flattens staging history, its promotion commit p
 `Release-As: 0.34.3` footer explicitly and used a conventional `fix(release):` subject, allowing
 Release Please to discover and merge the version-only PR.
 
+## v0.34.4 release intent (pending publication)
+
+The post-v0.34.3 source tree adds two operational hardening fixes that must be carried by the
+next patch release: approved-corpus answer evaluation now enforces the requested source scope
+against every returned citation, and Desktop service start/restart commands allow the configured
+five-minute cold-start budget instead of failing after one minute. The release candidate has
+passed the protected staging and main validation gates; v0.34.3 remains the latest published
+package until the version-only Release Please PR, release-assets workflow, and strict verifier
+complete.
+
+This release intent changes no credentials, source authorization, indexed data, recurring-sync
+state, or native-memory policy. Native Desktop GUI/OAuth/tray/dialog/updater acceptance and macOS
+Developer ID/notarization remain separate host gates.
+
 ## v0.34.2 release intent (published and verified)
 
 The v0.34.2 release publishes the protected Drive validation improvement and the current
