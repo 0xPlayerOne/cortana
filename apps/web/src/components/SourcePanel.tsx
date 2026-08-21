@@ -483,7 +483,11 @@ export function SourcePanel({
           </p>
         )}
         {hasMoreDocuments && !documentsLoading && (
-          <button type="button" className="load-more-documents" onClick={onLoadMoreDocuments}>
+          <button
+            type="button"
+            className="secondary-button load-more-documents"
+            onClick={onLoadMoreDocuments}
+          >
             Load next page
           </button>
         )}

@@ -139,7 +139,12 @@ export function ContextPanel({
             Build the exact bounded context returned by the HTTP and MCP query layer for this
             workspace scope.
           </p>
-          <button type="button" disabled={contextLoading} onClick={onRetrieveContext}>
+          <button
+            type="button"
+            className="secondary-button"
+            disabled={contextLoading}
+            onClick={onRetrieveContext}
+          >
             {contextLoading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
             {serverContext ? 'Refresh MCP-equivalent context' : 'Build MCP-equivalent context'}
           </button>
@@ -174,7 +179,7 @@ export function ContextPanel({
           type="button"
           aria-label="Copy agent context"
           data-tooltip="Copy agent context"
-          className="quick-tooltip"
+          className="primary-button quick-tooltip"
           onClick={() => void copy()}
         >
           {copied ? <Check size={17} /> : <Copy size={17} />}
