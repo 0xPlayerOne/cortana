@@ -7,6 +7,8 @@ import json
 import os
 import sqlite3
 import subprocess
+import threading
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -1050,8 +1052,54 @@ def test_google_token_path_rejects_symlinked_parent(tmp_path: Path) -> None:
         validate_token_path(linked / "token.json")
 
 
-def test_google_drive_content_concurrency_is_one() -> None:
-    assert google.DRIVE_CONTENT_CONCURRENCY == 1
+def test_google_drive_content_concurrency_is_bounded_parallel() -> None:
+    assert google.DRIVE_CONTENT_CONCURRENCY == 4
+
+
+def test_google_drive_fetches_bodies_in_bounded_parallel_batches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    token = tmp_path / "token.json"
+    write_token(token, '{"token":"access"}')
+    active = 0
+    maximum = 0
+    lock = threading.Lock()
+
+    def fake_content(_session: GoogleSession, _item: dict[str, Any]) -> tuple[str, None]:
+        nonlocal active, maximum
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+        time.sleep(0.03)
+        with lock:
+            active -= 1
+        return "body", None
+
+    monkeypatch.setattr(google, "_safe_drive_content", fake_content)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/drive/v3/files":
+            return response(
+                {
+                    "files": [
+                        {
+                            "id": f"doc-{index}",
+                            "name": f"Document {index}",
+                            "mimeType": "text/plain",
+                            "modifiedTime": "2026-07-29T12:00:00Z",
+                        }
+                        for index in range(8)
+                    ]
+                },
+                request=request,
+            )
+        raise AssertionError(f"unexpected Drive request: {request.url}")
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        documents = list(fetch_drive(token, "work", client=client, max_documents=8))
+
+    assert len(documents) == 8
+    assert 1 < maximum <= google.DRIVE_CONTENT_CONCURRENCY
 
 
 def test_large_pdf_uses_bounded_head_tail_page_sample() -> None:
