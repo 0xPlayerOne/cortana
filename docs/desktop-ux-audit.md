@@ -5,7 +5,7 @@ intentionally separate from runtime migration work:
 legacy scope quarantine remains in place, so changing or deleting indexed data
 is not part of a visual/UI change.
 
-## Current release evidence (2026-08-20)
+## Current release evidence (2026-08-21)
 
 - `v0.34.1` is the current protected source/release, published through the protected promotion
   and Release Please automation. Release-assets workflow `32343629811` completed all 18 assets,
@@ -26,7 +26,7 @@ is not part of a visual/UI change.
   full-corpus reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native
   dialogs, updater interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.34.1 host passed the bounded provider-backed `eval --model` evidence run on
-  2026-08-21 in 18,121 ms: retrieval recall, MRR, case pass rate, citation validity,
+  2026-08-21 in 12,141 ms: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
   all passed with no fallback. This is current provider-backed fixture evidence only; it does not
   query the personal index, authorize source synchronization, or prove packaged GUI behavior.
@@ -109,9 +109,10 @@ Historical records show Work Drive (478 documents/4,527,663 bytes) and Work Gmai
 retry, and Work Gmail now has a bounded 100-message pass (`changed=75`, `unchanged=25`,
 `deleted=0`); neither source has a complete production-budget trial approved for reconciliation or
 recurring sync.
-Personal Drive failed its 2,000-document/128 MiB/900-second validation at the 899-second connector
-timeout. A follow-up 25-document/5 MiB/60-second validation and non-reconciling trial succeeded
-(`changed=1`, `unchanged=24`, `deleted=0`), but that bounded prefix remains below the production gate.
+Personal Drive's latest 25-document/5 MiB/60-second validation on 2026-08-21 failed closed before
+fetching because the configured Google refresh token returned `invalid_grant`. An earlier bounded
+validation and non-reconciling trial succeeded (`changed=1`, `unchanged=24`, `deleted=0`), but that
+historical prefix remains below the production gate and requires explicit owner reauthorization.
 
 The current validation metadata now contains production-budget complete records for Apple Notes
 (28/65/8 documents), Calendar (2,207/1,836/0 events), Buzz (45 records), Work Drive (478
@@ -176,7 +177,7 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    session is available here.
 2. Model-backed provider gate: the verified v0.34.1 package passed the credential-free packaged-core
    evaluator and query-only readiness in release verification. The installed v0.34.1 CLI passed
-   the bounded provider-backed run on 2026-08-21 in 18,121 ms with planner/synthesis, valid
+   the bounded provider-backed run on 2026-08-21 in 12,141 ms with planner/synthesis, valid
    citations, cache reuse, and revision invalidation. That run used synthetic fixtures only; no
    provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider
    outages or slow responses still fail closed, and extractive mode remains the safe production
