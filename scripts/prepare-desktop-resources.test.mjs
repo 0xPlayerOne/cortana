@@ -39,6 +39,13 @@ test('prepares a complete connector tree and leaves no staging directories', () 
     expect(readFileSync(join(destination, 'src', 'cortana', 'connector.py'), 'utf8')).toContain(
       'ok'
     )
+    // Native Rust memory is the only supported memory engine. Generated
+    // connector resources must not resurrect the retired external-memory
+    // package or its console entry points.
+    expect(existsSync(join(destination, 'src', 'cortana', 'memory'))).toBe(false)
+    expect(readFileSync(join(destination, 'pyproject.toml'), 'utf8')).not.toContain(
+      'cortana-memory'
+    )
     expect(readdirSync(join(root, 'apps', 'desktop', 'src-tauri', 'resources'))).toEqual([
       'cortana-connectors',
     ])
