@@ -75,7 +75,7 @@ The v0.34.1 release gate verified the packaged core offline without credentials.
 host now reports v0.34.1, matching the published package. A fresh provider-backed evaluation on
 2026-08-21 using that installed v0.34.1 binary passed retrieval recall, MRR, case pass rate,
 citation validity, planner and synthesis execution, cache reuse, and revision invalidation in
-18,121 ms under the 55,000 ms deadline, with no provider fallback. This is current installed-
+12,141 ms under the 55,000 ms deadline, with no provider fallback. This is current installed-
 runtime fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
 or authorize source synchronization. The evaluator remains opt-in; extractive mode is the
 production default.

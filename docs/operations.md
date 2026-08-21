@@ -539,7 +539,7 @@ Google returned `invalid_grant` while refreshing the configured token. This is a
 reauthorization handoff, not permission to authorize automatically. The earlier bounded sample is
 historical and does not change the recurring-sync gate.
 
-The installed v0.34.1 CLI passed a fresh bounded `eval --model` run on 2026-08-21 in 18,121 ms,
+The installed v0.34.1 CLI passed a fresh bounded `eval --model` run on 2026-08-21 in 12,141 ms,
 including planner/synthesis, valid citations, cache reuse, and revision invalidation without
 provider fallback. This is current synthetic provider-backed evidence only; it does not authorize
 source sync, establish personal-index quality, or replace the separate packaged GUI and signing
