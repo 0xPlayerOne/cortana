@@ -80,7 +80,8 @@ Please PR, release-assets workflow, and packaged-core verifier must complete bef
 called downloadable or verified.
 
 Because the protected promotion flattens staging history, its promotion commit must preserve the
-`Release-As: 0.34.3` footer explicitly so Release Please can open the version-only PR.
+`Release-As: 0.34.3` footer explicitly, and use a conventional `fix(release):` subject, so Release
+Please can discover and open the version-only PR.
 
 ## v0.34.2 release intent (published and verified)
 
