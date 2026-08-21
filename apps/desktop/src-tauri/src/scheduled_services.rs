@@ -7,9 +7,10 @@ use tokio::time::timeout;
 use crate::{schedule, services, settings};
 
 // Core service installation can immediately launch a cold local embedding or
-// server process. Keep the operation bounded while allowing the observed
-// index-open/model-warmup window to complete.
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
+// server process. Keep the operation bounded by the configured five-minute
+// startup ceiling while allowing the observed index-open/model-warmup window
+// to complete.
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 
 /// Install the core service set while applying the Desktop-owned backup
@@ -295,6 +296,6 @@ mod tests {
 
     #[test]
     fn service_install_budget_covers_cold_core_startup() {
-        assert!(COMMAND_TIMEOUT >= Duration::from_secs(60));
+        assert!(COMMAND_TIMEOUT >= Duration::from_secs(5 * 60));
     }
 }
