@@ -9,18 +9,18 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.3
+## Current release: v0.34.4
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.3` is the current protected source and published release. Release-assets workflow
-`32516622075` completed the archive, checksum, updater-signature, manifest, and credential-free
-packaged-core gates; all 18 published assets are verified. v0.34.0 and earlier remain
+`v0.34.4` is the current protected source and published release. Release-assets workflow
+`32525494727` completed the archive, checksum, updater-signature, manifest, and credential-free
+packaged-core gates; all 18 published assets are verified. v0.34.3 and earlier remain
 historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.34.3 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.34.4 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -36,13 +36,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.34.3
+  scripts/verify-desktop-release.sh v0.34.4
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.34.3 source is the release boundary for native agentic memory and the post-v0.31.12
+The v0.34.4 source is the release boundary for native agentic memory and the post-v0.31.12
 hardening, bounded live-index evaluation harness, and readiness-budget diagnostics described below.
 Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
@@ -53,8 +53,8 @@ enabled: 12 have fresh `complete=true` validation at their configured document, 
 budgets. After explicit reauthorization, Personal Drive passed a one-document/64 KiB/60-second
 read-only probe in 11.7 seconds. Its subsequent 2,000-document/128 MiB/900-second run was
 operator-cancelled after 147 documents while serialized PDF body fetching stalled; no index or
-reconciliation writes occurred. The protected v0.34.3 release includes bounded parallel body fetching from
-PR #1594 and is installed; the production-budget gate has not yet been repeated. `readiness --allow-sync-service` therefore remains
+reconciliation writes occurred. The protected v0.34.4 release includes bounded parallel body fetching from
+PR #1594 and the evaluator and Desktop cold-start hardening; the production-budget gate has not yet been repeated. `readiness --allow-sync-service` therefore remains
 closed and recurring sync remains uninstalled; no reconciliation or large sync has been started.
 
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
@@ -84,15 +84,13 @@ Because the protected promotion flattens staging history, its promotion commit p
 `Release-As: 0.34.3` footer explicitly and used a conventional `fix(release):` subject, allowing
 Release Please to discover and merge the version-only PR.
 
-## v0.34.4 release intent (pending publication)
+## v0.34.4 release intent (published and verified)
 
-The post-v0.34.3 source tree adds two operational hardening fixes that must be carried by the
-next patch release: approved-corpus answer evaluation now enforces the requested source scope
-against every returned citation, and Desktop service start/restart commands allow the configured
-five-minute cold-start budget instead of failing after one minute. The release candidate has
-passed the protected staging and main validation gates; v0.34.3 remains the latest published
-package until the version-only Release Please PR, release-assets workflow, and strict verifier
-complete.
+The post-v0.34.3 source tree adds two operational hardening fixes: approved-corpus answer
+evaluation now enforces the requested source scope against every returned citation, and Desktop
+service start/restart commands allow the configured five-minute cold-start budget instead of
+failing after one minute. The protected staging and main promotions, version-only Release Please
+PR, release-assets workflow `32525494727`, and strict 18-asset verifier are complete.
 
 This release intent changes no credentials, source authorization, indexed data, recurring-sync
 state, or native-memory policy. Native Desktop GUI/OAuth/tray/dialog/updater acceptance and macOS
