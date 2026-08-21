@@ -60,22 +60,23 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The protected source and latest published release are **v0.34.2**. Release-assets workflow
-`32500872377` completed all platform packages and the strict 18-asset verifier: all 18 release
-assets, checksums, updater signatures, manifest, and packaged-core checks passed. The v0.34.2
-package carries the v0.34.1 production hardening and the bounded Drive body-fetch improvement
+The protected source and latest published release are **v0.34.3**. Release-assets workflow
+`32516622075` completed all platform packages and the strict 18-asset verifier: all 18 release
+assets, checksums, updater signatures, manifest, and packaged-core checks passed. The v0.34.3
+package carries the v0.34.1 production hardening, the bounded Drive body-fetch improvement
 from the protected `staging` → `main` flow:
 mutating CLI startup and direct JSONL imports serialize on the global lock, imports and
 evaluation fixtures have explicit resource ceilings, remote `/readyz` requires scoped bearer
 access, native memory writes are idempotent and fenced, Desktop settings and schedules serialize
-through a shared per-config lock, and Desktop sidecars publish atomically. v0.32.6 and earlier
-release records remain historical evidence.
+through a shared per-config lock, Desktop sidecars publish atomically, and compact Desktop action
+controls share one tokenized button contract. The Desktop architecture guide records the selective
+shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
-The verified host installation now reports `cortana 0.34.2`, matching the current published package;
+The verified host installation now reports `cortana 0.34.3`, matching the current published package;
 the embedding and HTTP services are running in query-only mode and recurring sync remains
-uninstalled. The installed v0.34.2 binary also passed the bounded provider-backed fixture
-evaluation on 2026-08-21 in 21,040 ms, with planner/synthesis, valid citations, cache reuse, and
-revision invalidation. This remains fixture evidence, not a v0.34.2 personal-index or packaged-
+uninstalled. The installed v0.34.3 binary also passed the bounded provider-backed fixture
+evaluation on 2026-08-21 in 16,420 ms, with planner/synthesis, valid citations, cache reuse, and
+revision invalidation. This remains fixture evidence, not a v0.34.3 personal-index or packaged-
 GUI proof.
 When a checkout and downloaded application report different versions, trust the application version
 for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree
@@ -85,15 +86,15 @@ hardening has shipped.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current protected release is **v0.34.2**. Its
+package for your operating system and CPU. The current protected release is **v0.34.3**. Its
 release-assets workflow is the active archive, checksum, updater-signature, and credential-free
 packaged-core verification gate. The Desktop app still has
 separate manual gates for macOS Developer ID notarization and first-run operating-system
 interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 
-The v0.34.2 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
-x86_64**. v0.34.2 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
+The v0.34.3 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. v0.34.3 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
 this release. Rosetta execution or a core archive is not evidence of Intel Desktop support. A
 future Intel policy change requires a matching signed bundle, updater signature, installer
 verification, and native acceptance evidence.
