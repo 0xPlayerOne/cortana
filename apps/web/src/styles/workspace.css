@@ -658,12 +658,8 @@
   font-size: 18px;
 }
 
-.graph-empty-filter button {
-  min-height: 32px;
-  padding: 0 12px;
-  color: var(--theme-content-text);
-  border: 1px solid var(--theme-content-border);
-  background: var(--theme-content-surface);
+.graph-empty-filter .secondary-button {
+  min-width: 108px;
 }
 
 .graph-view > button {
@@ -808,11 +804,6 @@
   line-height: 1.55;
 }
 
-.empty-state button {
+.empty-state .primary-button {
   margin-top: 20px;
-  padding: 9px 16px;
-  color: #1b1c19;
-  border: 0;
-  background: var(--amber);
-  cursor: pointer;
 }

@@ -1179,28 +1179,56 @@
 .secondary-button {
   display: inline-flex;
   height: var(--btn-action-height);
+  min-width: 108px;
   align-items: center;
   justify-content: center;
   padding: var(--btn-action-padding);
   gap: 7px;
-  color: var(--theme-ink);
-  border: 1px solid var(--amber-soft);
-  background: var(--amber);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.primary-button {
+  color: var(--theme-ink);
+  border-color: var(--amber-soft);
+  background: var(--amber);
+  box-shadow: 0 5px 14px rgb(12 20 36 / 18%);
 }
 
 .secondary-button {
   color: var(--theme-text-primary);
   border-color: var(--line);
-  background: var(--theme-control-bg);
+  background: var(--theme-surface-elevated);
   font-size: 12px;
+}
+
+.primary-button:hover:enabled {
+  border-color: var(--theme-text-primary);
+  background: var(--amber-soft);
+}
+
+.secondary-button:hover:enabled {
+  border-color: var(--amber-soft);
+  background: var(--theme-control-bg-hover);
+}
+
+.primary-button:focus-visible,
+.secondary-button:focus-visible {
+  outline-offset: 2px;
 }
 
 .primary-button:disabled,
 .secondary-button:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  color: var(--theme-content-muted);
+  border-color: var(--line);
+  background: var(--theme-surface);
+  box-shadow: none;
+  opacity: 1;
 }
 
 .toggle-row {
@@ -1632,6 +1660,62 @@
   color: #9fc8a5;
   border: 0;
   background: transparent;
+}
+
+/* Compact operational actions share the same elevated surface as the main
+ * button contract. These selectors cover legacy action markup while the
+ * settings surfaces are migrated incrementally; they prevent raw browser
+ * buttons from falling back to the flat grey control style. */
+.service-actions > button:not(.primary-button):not(.secondary-button),
+.source-card-actions > button:not(.source-icon-button),
+.source-validation-job button,
+.readiness-list button,
+.installer-job button {
+  display: inline-flex;
+  min-width: 0;
+  height: var(--btn-compact-height);
+  align-items: center;
+  justify-content: center;
+  padding: var(--btn-compact-padding);
+  gap: 5px;
+  color: var(--theme-text-primary);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--theme-surface-elevated);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.service-actions > button:not(.primary-button):not(.secondary-button):hover:enabled,
+.source-card-actions > button:not(.source-icon-button):hover:enabled,
+.source-validation-job button:hover:enabled,
+.readiness-list button:hover:enabled,
+.installer-job button:hover:enabled {
+  border-color: var(--amber-soft);
+  background: var(--theme-control-bg-hover);
+}
+
+.service-actions > button:not(.primary-button):not(.secondary-button):focus-visible,
+.source-card-actions > button:not(.source-icon-button):focus-visible,
+.source-validation-job button:focus-visible,
+.readiness-list button:focus-visible,
+.installer-job button:focus-visible {
+  outline-offset: 2px;
+}
+
+.service-actions > button:not(.primary-button):not(.secondary-button):disabled,
+.source-card-actions > button:not(.source-icon-button):disabled,
+.source-validation-job button:disabled,
+.readiness-list button:disabled,
+.installer-job button:disabled {
+  color: var(--theme-content-muted);
+  border-color: var(--line);
+  background: var(--theme-surface);
+  cursor: not-allowed;
+  opacity: 1;
 }
 
 @media (max-width: 900px) {
