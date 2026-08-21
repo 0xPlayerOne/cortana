@@ -111,7 +111,7 @@ export function UtilityView({
 }) {
   const { eyebrow, title, description } = TITLES[kind]
   return (
-    <main className="utility-view">
+    <main id="main-content" className="utility-view">
       <header className="utility-header">
         <div>
           <span className="eyebrow">{eyebrow}</span>

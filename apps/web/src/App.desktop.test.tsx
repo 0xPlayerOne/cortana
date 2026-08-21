@@ -790,10 +790,14 @@ test('audit trail export downloads exactly the loaded redacted events as JSON', 
     expect(Object.keys(payload).sort()).toEqual(['desktop', 'exported_at', 'runtime'])
     expect(Number.isNaN(Date.parse(payload.exported_at))).toBe(false)
 
-    // Deterministic, date-stamped filename on the triggered anchor.
-    expect(anchors).toHaveLength(1)
-    expect(anchors[0].download).toMatch(/^cortana-audit-\d{4}-\d{2}-\d{2}\.json$/)
-    expect(anchors[0].href).toBe(url)
+    // Deterministic, date-stamped filename on the triggered download anchor.
+    // The shell also contains a keyboard skip link, so assert specifically on
+    // download anchors rather than assuming the audit action creates the only
+    // anchor in the document.
+    const downloadAnchors = anchors.filter((candidate) => candidate.download)
+    expect(downloadAnchors).toHaveLength(1)
+    expect(downloadAnchors[0].download).toMatch(/^cortana-audit-\d{4}-\d{2}-\d{2}\.json$/)
+    expect(downloadAnchors[0].href).toBe(url)
 
     // The object URL is released after the download click is processed.
     await act(() => new Promise((resolve) => setTimeout(resolve, 0)))

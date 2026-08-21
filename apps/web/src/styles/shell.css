@@ -1,3 +1,23 @@
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  top: 8px;
+  left: 12px;
+  padding: 8px 12px;
+  transform: translateY(-180%);
+  border: 1px solid var(--theme-content-border);
+  border-radius: var(--radius-sm);
+  background: var(--theme-control-bg);
+  color: var(--theme-control-fg);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 24%);
+  transition: transform 120ms ease;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
 .shell {
   position: relative;
   display: grid;
