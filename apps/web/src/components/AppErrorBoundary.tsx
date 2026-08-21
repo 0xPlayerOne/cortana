@@ -1,6 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
+import { Button } from './ui/Button'
+
 type Props = { children: ReactNode }
 type State = { failed: boolean }
 
@@ -25,9 +27,9 @@ export class AppErrorBoundary extends Component<Props, State> {
         <p>
           The workspace hit an unexpected renderer error. Your local index and settings are safe.
         </p>
-        <button type="button" onClick={() => window.location.reload()}>
+        <Button variant="secondary" onClick={() => window.location.reload()}>
           Reload workspace
-        </button>
+        </Button>
       </main>
     )
   }

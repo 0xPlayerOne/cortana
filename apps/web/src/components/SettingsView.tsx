@@ -23,6 +23,7 @@ import { WorkspaceLogo } from '../workspaceLogos'
 import { readWorkspaceLogoFile, writeWorkspaceLogo } from '../workspaceLogoStore'
 import { SourceIcon } from './sourceIcons'
 import { sourceDisplayName } from './sourceIconData'
+import { Button } from './ui/Button'
 
 import {
   cancelDesktopInstaller,
@@ -1926,9 +1927,9 @@ function AccessSection({
                     }
                   />
                   {secret?.configured && !clearedSecrets.has(principal.token_env) && (
-                    <button type="button" onClick={() => onClearSecret(principal.token_env)}>
+                    <Button variant="compact" onClick={() => onClearSecret(principal.token_env)}>
                       Clear stored token
-                    </button>
+                    </Button>
                   )}
                 </Field>
                 <Field label="ACL labels" hint="comma-separated workspace IDs; * grants all">
@@ -2048,10 +2049,10 @@ function AuditSection() {
           {runtime.length} runtime · {desktop.length} Desktop events
         </span>
         <div className="service-actions">
-          <button type="button" disabled={loading} onClick={() => void refresh()}>
+          <Button variant="compact" disabled={loading} onClick={() => void refresh()}>
             {loading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}
             Refresh
-          </button>
+          </Button>
           <button
             type="button"
             className="secondary-button"
@@ -2416,14 +2417,14 @@ function ReadinessSection({
               <small>Status: {job.status}</small>
             </span>
             {job.status === 'running' && (
-              <button type="button" onClick={() => void cancel()}>
+              <Button variant="compact" onClick={() => void cancel()}>
                 Cancel
-              </button>
+              </Button>
             )}
             {job.retryable && (
-              <button type="button" onClick={() => void install(job.tool, job.tool)}>
+              <Button variant="compact" onClick={() => void install(job.tool, job.tool)}>
                 Retry
-              </button>
+              </Button>
             )}
           </div>
           {job.log && <pre>{job.log}</pre>}
@@ -4651,9 +4652,9 @@ function InitialSyncFlow({
                   : 'This source has no validation record. Run a read-only validation with this budget before syncing.'}
               </span>
               {!busy && (
-                <button type="button" onClick={onValidate}>
+                <Button variant="compact" onClick={onValidate}>
                   Validate for this budget
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -5286,9 +5287,9 @@ function ProviderSection<T extends ProviderValue>({
               }}
             />
             {provider.api_key_env && secret?.configured && !clearedSecrets.has(secret.name) && (
-              <button type="button" onClick={() => onClearSecret(provider.api_key_env!)}>
+              <Button variant="compact" onClick={() => onClearSecret(provider.api_key_env!)}>
                 Clear
-              </button>
+              </Button>
             )}
           </div>
         </Field>
