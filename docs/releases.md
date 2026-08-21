@@ -64,6 +64,21 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
+## v0.34.3 release intent (pending protected release)
+
+The post-v0.34.2 source tree standardizes the remaining compact Desktop action controls across
+source configuration, validation, readiness, and installer surfaces. The controls now share the
+existing tokenized button contract, keyboard focus behavior, disabled states, and error/status
+semantics instead of falling back to browser-default grey buttons. The Desktop architecture guide
+also records a selective shadcn/ui adoption policy: future primitives may be copied only when a
+concrete accessibility or consistency gap exists, mapped to Cortana tokens, without introducing a
+parallel Tailwind/Radix design system.
+
+This release intent changes no credentials, source authorization, indexed data, recurring-sync
+state, or native-memory policy. The protected staging-to-main promotion, version-only Release
+Please PR, release-assets workflow, and packaged-core verifier must complete before `v0.34.3` is
+called downloadable or verified.
+
 ## v0.34.2 release intent (published and verified)
 
 The v0.34.2 release publishes the protected Drive validation improvement and the current
