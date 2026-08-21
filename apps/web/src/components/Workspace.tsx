@@ -636,7 +636,7 @@ function GraphView({
         <Search size={24} aria-hidden="true" />
         <h1>No matching graph nodes</h1>
         <p>Try a workspace, source, or document name.</p>
-        <button type="button" onClick={() => setFilter('')}>
+        <button type="button" className="secondary-button" onClick={() => setFilter('')}>
           Clear filter
         </button>
       </div>
@@ -878,7 +878,7 @@ function EmptyState({
       <h1>{title}</h1>
       <p>{detail}</p>
       {action && (
-        <button type="button" onClick={action}>
+        <button type="button" className="primary-button" onClick={action}>
           Try again
         </button>
       )}

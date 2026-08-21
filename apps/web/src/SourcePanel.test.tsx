@@ -34,7 +34,8 @@ function renderPanel(
   statusError: string,
   sourceJobError = '',
   onRetryStatus?: () => void,
-  workspaceId = 'work'
+  workspaceId = 'work',
+  hasMoreDocuments = false
 ) {
   const docs: BrainDocumentSummary[] = []
   const noJobs: DesktopSourceJob[] = []
@@ -53,7 +54,7 @@ function renderPanel(
       selectedDocument=""
       documentsLoading={false}
       documentsError=""
-      hasMoreDocuments={false}
+      hasMoreDocuments={hasMoreDocuments}
       onSelect={() => {}}
       onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
@@ -65,6 +66,14 @@ function renderPanel(
     />
   )
 }
+
+test('SourcePanel uses the shared secondary action style for pagination', () => {
+  renderPanel(demoStatus, '', '', undefined, 'work', true)
+
+  expect(screen.getByRole('button', { name: 'Load next page' }).className).toContain(
+    'secondary-button'
+  )
+})
 
 test('SourcePanel reports loading while status is still resolving', () => {
   renderPanel(null, '')
