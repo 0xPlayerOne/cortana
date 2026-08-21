@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.4](https://github.com/0xPlayerOne/cortana/compare/v0.34.3...v0.34.4) (2026-08-21)
+
+
+### Bug Fixes
+
+* **release:** promote v0.34.4 operational hardening ([fc481a3](https://github.com/0xPlayerOne/cortana/commit/fc481a3ac9324d760d19ac3383740d3fef5a0a61))
+
 ## [0.34.3](https://github.com/0xPlayerOne/cortana/compare/v0.34.2...v0.34.3) (2026-08-21)
 
 
