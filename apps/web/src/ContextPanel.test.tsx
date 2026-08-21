@@ -138,3 +138,14 @@ test('Context panel copy falls back when the async clipboard API is unavailable'
     })
   }
 })
+
+test('Context panel uses the shared action button contract', () => {
+  renderPanel({ context: 'server context' })
+
+  expect(
+    screen.getByRole('button', { name: 'Refresh MCP-equivalent context' }).className
+  ).toContain('secondary-button')
+  expect(screen.getByRole('button', { name: 'Copy agent context' }).className).toContain(
+    'primary-button'
+  )
+})

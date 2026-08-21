@@ -10,7 +10,11 @@ use tokio::time::timeout;
 
 use crate::settings;
 
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(20);
+// A server restart reopens the local index before binding 7331. On a warm
+// process this is quick, but a cold 1GB+ index can take roughly 30 seconds;
+// keep a bounded safety timeout without turning that valid startup into a
+// false failure.
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 const SERVICE_NAMES: [&str; 4] = ["embedding", "server", "sync", "backup"];
 const CORE_SERVICE_NAMES: [&str; 2] = ["embedding", "server"];
@@ -376,5 +380,10 @@ mod tests {
     fn cloud_embedding_aggregate_actions_skip_the_absent_local_service() {
         assert_eq!(core_service_names(false), vec!["server"]);
         assert_eq!(core_service_names(true), CORE_SERVICE_NAMES.to_vec());
+    }
+
+    #[test]
+    fn service_command_budget_covers_a_cold_server_restart() {
+        assert!(COMMAND_TIMEOUT >= Duration::from_secs(60));
     }
 }
