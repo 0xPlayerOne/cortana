@@ -53,8 +53,8 @@ enabled: 12 have fresh `complete=true` validation at their configured document, 
 budgets. After explicit reauthorization, Personal Drive passed a one-document/64 KiB/60-second
 read-only probe in 11.7 seconds. Its subsequent 2,000-document/128 MiB/900-second run was
 operator-cancelled after 147 documents while serialized PDF body fetching stalled; no index or
-reconciliation writes occurred. The staging tree now includes bounded parallel body fetching from
-PR #1594; install its resulting release before repeating the production-budget gate. `readiness --allow-sync-service` therefore remains
+reconciliation writes occurred. The protected main tree now includes bounded parallel body fetching from
+PR #1594; install the next patch release before repeating the production-budget gate. `readiness --allow-sync-service` therefore remains
 closed and recurring sync remains uninstalled; no reconciliation or large sync has been started.
 
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
