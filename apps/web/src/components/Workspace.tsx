@@ -117,7 +117,7 @@ export function Workspace({
   }, [hasResults, loading, onTabChange, tab])
 
   return (
-    <main className="workspace">
+    <main id="main-content" className="workspace">
       {tab !== 'graph' && (
         <div className="workspace-tabs" role="tablist" aria-label="Result views">
           {tabs

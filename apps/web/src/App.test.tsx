@@ -130,6 +130,15 @@ async function flushAppBootstrap() {
   })
 }
 
+test('provides a keyboard skip link to the active main surface', async () => {
+  render(<App />)
+  await flushAppBootstrap()
+
+  const skipLink = screen.getByRole('link', { name: 'Skip to main content' })
+  expect(skipLink.getAttribute('href')).toBe('#main-content')
+  expect(document.getElementById('main-content')).toBeTruthy()
+})
+
 test('workspace and source selection scopes the source tree and document requests', async () => {
   state.documentsCalls = []
   render(<App />)
