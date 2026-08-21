@@ -60,20 +60,21 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The protected source and latest published release are **v0.34.0**. Release-assets workflow
-`31975576411` completed all platform packages and the strict 18-asset verifier: all 18 release
-assets, checksums, updater signatures, manifest, and packaged-core checks passed. The v0.34.0
-package carries the production safety hardening from the protected `staging` → `main` flow:
+The protected source and latest published release are **v0.34.1**. Release-assets workflow
+`32343629811` completed all platform packages and the strict 18-asset verifier: all 18 release
+assets, checksums, updater signatures, manifest, and packaged-core checks passed. The v0.34.1
+package carries the v0.34.0 production hardening plus the Apple Notes permissions handoff from
+the protected `staging` → `main` flow:
 mutating CLI startup and direct JSONL imports serialize on the global lock, imports and
 evaluation fixtures have explicit resource ceilings, remote `/readyz` requires scoped bearer
 access, native memory writes are idempotent and fenced, Desktop settings and schedules serialize
 through a shared per-config lock, and Desktop sidecars publish atomically. v0.32.6 and earlier
 release records remain historical evidence.
 
-The verified host installation now reports `cortana 0.34.0`, matching the current published package;
+The verified host installation now reports `cortana 0.34.1`, matching the current published package;
 the embedding and HTTP services are running in query-only mode and recurring sync remains
 uninstalled. The provider-backed evaluation records below were collected under the earlier
-v0.32.12 installation and remain historical fixture evidence, not a v0.34.0 personal-index proof.
+v0.32.12 installation and remain historical fixture evidence, not a v0.34.1 personal-index proof.
 When a checkout and downloaded application report different versions, trust the application version
 for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree
 hardening has shipped.
@@ -82,15 +83,15 @@ hardening has shipped.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current protected release is **v0.34.0**. Its
+package for your operating system and CPU. The current protected release is **v0.34.1**. Its
 release-assets workflow is the active archive, checksum, updater-signature, and credential-free
 packaged-core verification gate. The Desktop app still has
 separate manual gates for macOS Developer ID notarization and first-run operating-system
 interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 
-The v0.34.0 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
-x86_64**. v0.34.0 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
+The v0.34.1 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. v0.34.1 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
 this release. Rosetta execution or a core archive is not evidence of Intel Desktop support. A
 future Intel policy change requires a matching signed bundle, updater signature, installer
 verification, and native acceptance evidence.

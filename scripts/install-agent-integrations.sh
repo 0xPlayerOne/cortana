@@ -53,6 +53,11 @@ for root in "${roots[@]}"; do
   fi
 
   if [[ -L "$destination" ]]; then
+    if diff -qr "$skill_source" "$destination" >/dev/null 2>&1; then
+      rollback
+      echo "Cortana skill already current (symlink): $destination"
+      continue
+    fi
     rollback
     echo "Refusing to replace symlinked Cortana skill: $destination" >&2
     exit 1
