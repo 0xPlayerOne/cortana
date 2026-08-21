@@ -140,6 +140,25 @@ renderer requests one of four fixed picker kinds—source directory, OAuth clien
 token destination, or GitHub token destination—and receives a validated absolute path. It has no
 general filesystem permission.
 
+## Web UI component strategy
+
+The webview uses a small, local component contract rather than a second runtime design system.
+Shared tokens in `apps/web/src/styles/tokens.css` define colors, radii, focus rings, spacing, and
+button sizes; the `primary-button`, `secondary-button`, `quick-tooltip`, and icon-button contracts
+are the source of truth for new controls. This keeps the Obsidian-inspired shell, source tree,
+graph, and responsive layout under one stylesheet and avoids a Tailwind migration solely to obtain
+component primitives.
+
+shadcn/ui is compatible with Cortana, but it is an opt-in implementation pattern, not a wholesale
+migration requirement. If a future surface needs a missing primitive, copy the smallest shadcn
+component into the repository and map it to the existing tokens before adding it. Prefer this
+sequence: Button/Tooltip/Dialog for a demonstrated consistency or accessibility gap, then
+DropdownMenu/Tabs/Select where a real settings workflow benefits from the primitive. Do not add a
+parallel Tailwind/Radix stack, replace the shell/tree/graph CSS, or copy components speculatively.
+Every adopted primitive must preserve keyboard behavior, reduced-motion support, the current theme
+variables, and the shared focus/error/status contracts, with a focused regression test and a
+packaged-UI acceptance note.
+
 ## Workspaces and settings
 
 Workspaces are query/project scopes inside one canonical database, rather than separate indexes.
