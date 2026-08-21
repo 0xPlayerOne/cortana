@@ -537,19 +537,13 @@ messages), Personal Gmail (427), Special Gmail (216), and Special Drive (97). Wo
 complete records meet their configured 2,000-document/128 MiB/900-second or Work Calendar
 3,000-document/64 MiB/300-second budgets.
 
-Personal Drive's full-budget validations failed closed twice: the earlier 1,800-second attempt
-reached its 1,799-second connector deadline, and a subsequent run at the current 900-second budget
-reached its 899-second deadline while processing the account's large PDF/media corpus. Both runs
-made zero index or reconciliation writes. A later bounded sample succeeded at 25 documents/
-5 MiB/60 seconds, but remains below the configured budget. Work Drive's latest 900-second
-validation is complete at 478 documents and 4,527,721 bytes. The
-`readiness --allow-sync-service` gate must remain closed until Personal Drive has a fresh complete
-record at its configured budget; no reconciliation or large sync has been run.
-
-On 2026-08-21 the next bounded Personal Drive validation failed closed before reading source data:
-Google returned `invalid_grant` while refreshing the configured token. This is an explicit owner
-reauthorization handoff, not permission to authorize automatically. The earlier bounded sample is
-historical and does not change the recurring-sync gate.
+Personal Drive's earlier 1,800-second and 900-second validations failed closed at their connector
+deadlines while processing a large PDF/media corpus. After explicit reauthorization, a one-document/
+64 KiB/60-second probe succeeded in 11.7 seconds; the next production-budget run was operator-
+cancelled after 147 documents when serialized Drive body fetching stalled on a large PDF. Both
+cancelled attempts made zero index or reconciliation writes. The staging tree now includes bounded
+four-worker fetching from PR #1594; the `readiness --allow-sync-service` gate must remain closed until a fresh complete record
+at the configured budget succeeds. No reconciliation or large sync has been run.
 
 The installed v0.34.1 CLI passed a fresh bounded `eval --model` run on 2026-08-21 in 12,141 ms,
 including planner/synthesis, valid citations, cache reuse, and revision invalidation without

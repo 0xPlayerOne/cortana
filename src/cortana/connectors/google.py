@@ -113,7 +113,11 @@ GOOGLE_TRANSIENT_403_REASONS = {
 GMAIL_DETAIL_RETRIES = 4
 GMAIL_DETAIL_RETRY_BACKOFF_SECONDS = (0.25, 0.75, 1.5, 3.0)
 GMAIL_DETAIL_CONCURRENCY = 4
-DRIVE_CONTENT_CONCURRENCY = 1
+# Drive body fetches are independent after the metadata page is bounded. Keep
+# this deliberately small so PDF/DOCX extraction cannot exhaust memory or
+# provider quotas while avoiding a serialized full-corpus validation when one
+# large document is slow to download or parse.
+DRIVE_CONTENT_CONCURRENCY = 4
 
 
 class _GmailHistoryExpired(Exception):
