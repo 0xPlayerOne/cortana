@@ -58,10 +58,11 @@ is not part of a visual/UI change.
   under the CI-pinned Bun 1.3.14, including the script tests. Its runner groups
   pure suites and executes API-mocking suites in separate Bun processes so one
   mocked bridge cannot leak into another file. The Python package gate passes
-  180 tests, including the retired-model runtime guard. Two non-fatal React
-  `act(...)` warnings remain in Desktop tests and are tracked as UI-hygiene
-  follow-up. These are headless source checks and do not substitute for the
-  still-unverified interactive packaged GUI flows.
+  180 tests, including the retired-model runtime guard. The Desktop visibility
+  and focus regression now dispatches through Testing Library's act-aware event
+  helper; the current Bun 1.3.14 run emits no React `act(...)` warnings. These
+  remain headless source checks and do not substitute for the still-unverified
+  interactive packaged GUI flows.
 - The published v0.31.12 macOS ARM archive was statically inspected on 2026-08-13 (historical):
   `Contents/MacOS/cortana --version` reports `cortana 0.31.12`, the bundle passes
   strict `codesign --verify --deep --strict`, and `spctl --assess` still rejects
