@@ -1667,6 +1667,8 @@
  * settings surfaces are migrated incrementally; they prevent raw browser
  * buttons from falling back to the flat grey control style. */
 .service-actions > button:not(.primary-button):not(.secondary-button),
+.source-card-actions > button:not(.source-icon-button),
+.source-validation-job button,
 .readiness-list button,
 .installer-job button {
   display: inline-flex;
@@ -1688,6 +1690,8 @@
 }
 
 .service-actions > button:not(.primary-button):not(.secondary-button):hover:enabled,
+.source-card-actions > button:not(.source-icon-button):hover:enabled,
+.source-validation-job button:hover:enabled,
 .readiness-list button:hover:enabled,
 .installer-job button:hover:enabled {
   border-color: var(--amber-soft);
@@ -1695,12 +1699,16 @@
 }
 
 .service-actions > button:not(.primary-button):not(.secondary-button):focus-visible,
+.source-card-actions > button:not(.source-icon-button):focus-visible,
+.source-validation-job button:focus-visible,
 .readiness-list button:focus-visible,
 .installer-job button:focus-visible {
   outline-offset: 2px;
 }
 
 .service-actions > button:not(.primary-button):not(.secondary-button):disabled,
+.source-card-actions > button:not(.source-icon-button):disabled,
+.source-validation-job button:disabled,
 .readiness-list button:disabled,
 .installer-job button:disabled {
   color: var(--theme-content-muted);
