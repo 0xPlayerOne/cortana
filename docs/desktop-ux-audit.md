@@ -54,13 +54,14 @@ is not part of a visual/UI change.
   enabled filesystem/code sources are still bounded samples and connector records are below
   their configured full-sync budgets.
 - The complete native Tauri suite passes 130 tests in 2.45 seconds after
-  compilation. The current `bun run test` gate passes 263 tests across 24 files
+  compilation. The current `bun run test` gate passes 264 tests across 24 files
   under the CI-pinned Bun 1.3.14, including the script tests. Its runner groups
   pure suites and executes API-mocking suites in separate Bun processes so one
   mocked bridge cannot leak into another file. The Python package gate passes
-  184 tests, including the retired-model runtime guard. These are
-  headless source checks and do not
-  substitute for the still-unverified interactive packaged GUI flows.
+  180 tests, including the retired-model runtime guard. Two non-fatal React
+  `act(...)` warnings remain in Desktop tests and are tracked as UI-hygiene
+  follow-up. These are headless source checks and do not substitute for the
+  still-unverified interactive packaged GUI flows.
 - The published v0.31.12 macOS ARM archive was statically inspected on 2026-08-13 (historical):
   `Contents/MacOS/cortana --version` reports `cortana 0.31.12`, the bundle passes
   strict `codesign --verify --deep --strict`, and `spctl --assess` still rejects
