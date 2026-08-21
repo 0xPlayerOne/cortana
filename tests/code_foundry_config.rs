@@ -189,9 +189,10 @@ fn job_header(block: &str) -> &str {
 /// desktop clippy, and Linux release compilation plus a fast aggregate job that
 /// keeps the stable "Tauri 2 / Linux" required-check name. The workflow stays
 /// scoped to main-targeted promotion PRs and manual dispatch, skipping
-/// release-please version PRs at job level; final-audit steps keep the same
-/// gate, and the aggregate always runs after needs, treating skipped jobs as
-/// acceptable and failing only on failure or cancellation.
+/// release-please version PRs and exact-tree staging promotion PRs at job
+/// level; final-audit steps keep the same gate, and the aggregate always runs
+/// after needs, treating skipped jobs as acceptable and failing only on
+/// failure or cancellation.
 #[test]
 fn desktop_linux_release_compile_is_gated() {
     let desktop = read(".github/workflows/desktop.yml");
@@ -207,6 +208,7 @@ fn desktop_linux_release_compile_is_gated() {
         "(github.event_name == 'pull_request' &&",
         "github.event.pull_request.base.ref == 'main' &&",
         "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
+        "!startsWith(github.event.pull_request.head.ref, 'promote/')",
     ];
 
     // The six parallel jobs: independent names, runners, timeouts, and

@@ -9,18 +9,18 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.0
+## Current release: v0.34.1
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.0` is the current protected source and published release. Release-assets workflow
-`31975576411` completed the archive, checksum, updater-signature, manifest, and credential-free
-packaged-core gates; all 18 published assets are verified. v0.33.0 and earlier remain
+`v0.34.1` is the current protected source and published release. Release-assets workflow
+`32343629811` completed the archive, checksum, updater-signature, manifest, and credential-free
+packaged-core gates; all 18 published assets are verified. v0.34.0 and earlier remain
 historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.34.0 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.34.1 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -36,13 +36,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.34.0
+  scripts/verify-desktop-release.sh v0.34.1
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.34.0 source is the release boundary for native agentic memory and the post-v0.31.12
+The v0.34.1 source is the release boundary for native agentic memory and the post-v0.31.12
 hardening, bounded live-index evaluation harness, and readiness-budget diagnostics described below.
 Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
@@ -62,22 +62,22 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.34.1 release intent (pending)
+## v0.34.1 release intent (published and verified)
 
-The Apple Notes permissions handoff is the user-facing patch for this release. Keep this
-conventional release signal attached to the protected promotion history so Release Please
-creates the version-only PR after staging reaches main.
+The Apple Notes permissions handoff is the user-facing change in this release. The protected
+promotion and version-only Release Please PR are complete.
 
 The post-v0.34.0 source tree adds a first-class Apple Notes permissions handoff in Desktop. The
 source editor now exposes **Grant Apple Notes access**, opening the macOS Automation privacy pane,
 and the getting-started and ingestion guides document the exact folder-to-workspace setup. The
 handoff fails closed on unsupported platforms and does not read, authorize, or sync Notes by itself.
 
-This metadata-only release signal restores the already-validated Apple Notes `fix(desktop)` change
+This published release restores the already-validated Apple Notes `fix(desktop)` change
 to Release Please's conventional-commit history after the protected exact-tree promotion flattened
 its topic commit. It changes no credentials, source authorization, indexed data, recurring-sync
-state, or Hermes data. The v0.34.1 package remains pending until the protected version PR, release
-assets, signatures, and packaged-core verifier complete.
+state, or Hermes data. The protected promotion, version-only Release Please PR, release-assets
+workflow, signatures, and packaged-core verifier have completed; v0.34.1 is the downloadable
+Apple Notes permissions release.
 
 ## v0.34.0 release intent (published and verified)
 
@@ -369,11 +369,13 @@ The desktop pipeline follows a staged audit policy:
   `Tauri 2 / Linux` aggregate depends on all six and must pass before merge.
   Provenance, the iterator test, dependency auditing, desktop tests, and
   clippy run concurrently so no independent check waits behind another.
-- **Staging-to-main promotion defers only release compilation.** The protected
-  promotion PR keeps the five desktop checks above that validate the staged
-  tree, while the expensive `release` job is reserved for an ordinary main
-  code PR, an explicit workflow dispatch, or the release-assets workflow. This
-  prevents compiling the same desktop release twice for one staged change.
+- **Staging-to-main promotion defers the full desktop audit.** The protected
+  exact-tree promotion PR skips all six expensive desktop jobs because the
+  staged tree already passed the fast validation tier; the stable `Tauri 2 /
+Linux` aggregate still runs and accepts those explicit skips. The expensive
+  jobs remain available for ordinary main code PRs and manual workflow
+  dispatch, while release-assets performs the published-package audit. This
+  prevents rerunning the same long desktop checks during promotion.
 - **Repository quality is owned by Code Foundry Validation / CI.** The
   `desktop_test` and `desktop_clippy` jobs do not rerun the root `type-check` or
   `build` scripts: Code Foundry Validation / CI already runs the Python, Rust,
