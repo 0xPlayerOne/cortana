@@ -5,7 +5,7 @@ intentionally separate from runtime migration work:
 legacy scope quarantine remains in place, so changing or deleting indexed data
 is not part of a visual/UI change.
 
-## Current release evidence (2026-08-20)
+## Current release evidence (2026-08-21)
 
 - `v0.34.1` is the current protected source/release, published through the protected promotion
   and Release Please automation. Release-assets workflow `32343629811` completed all 18 assets,
