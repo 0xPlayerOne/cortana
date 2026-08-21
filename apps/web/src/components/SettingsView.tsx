@@ -3375,7 +3375,6 @@ function SourcesSection({
                   />
                   <span
                     className={`source-service-icon source-service-icon--${source.kind}`}
-                    title={sourceLabel}
                     aria-label={`${sourceLabel} connector`}
                     role="img"
                   >

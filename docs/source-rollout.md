@@ -5,7 +5,7 @@ production-safe source. It is intentionally separate from the code contract:
 connector tests prove behavior, but they do not authorize an account or prove
 that a user's full corpus is ready for reconciliation.
 
-## Current operator state (2026-08-16)
+## Current operator state (2026-08-20; v0.34.1 release)
 
 The local installation remains in manual mode: `ai.cortana.sync` is not installed and no
 recurring job is active. The operator has completed the Hermes import/rebuild and retained a
@@ -14,9 +14,9 @@ of the live Cortana runtime. Migration compatibility code remains available for 
 
 The current safe rollout is intentionally selective. The operator has refreshed the validation
 records for the enabled non-code sources at their configured production budgets where the provider
-can complete within the bounded connector deadline. Those records were captured with the then-
-installed v0.32.12 parser; the host now runs v0.34.0, so a future release-specific rerun should
-refresh them before treating them as v0.34.0 execution evidence:
+can complete within the bounded connector deadline. The records below remain source-validation
+evidence, not authorization to reconcile or install recurring sync; refresh them after any
+configuration or connector change before treating them as current-release execution evidence:
 
 - Apple Notes: `work-notes` 28, `personal-notes` 65, and `special-notes` 8 documents; all are
   `complete=true` at 2,000 documents/128 MiB/900 seconds.

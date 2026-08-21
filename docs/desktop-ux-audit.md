@@ -5,31 +5,31 @@ intentionally separate from runtime migration work:
 legacy scope quarantine remains in place, so changing or deleting indexed data
 is not part of a visual/UI change.
 
-## Current release evidence (2026-08-16)
+## Current release evidence (2026-08-20)
 
-- `v0.34.0` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `31975576411` completed all 18 assets,
+- `v0.34.1` is the current protected source/release, published through the protected promotion
+  and Release Please automation. Release-assets workflow `32343629811` completed all 18 assets,
   checksums, updater signatures, manifest, and packaged-core verification. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The current macOS Apple Silicon package verifier also passed the v0.34.0 Tauri updater
+- The current macOS Apple Silicon package verifier also passed the v0.34.1 Tauri updater
   signature, packaged-core offline evaluation, and strict codesign checks. `spctl --assess` still
   rejects the ad-hoc bundle because Developer ID signing and notarization are not configured; the
   verifier intentionally did not launch the GUI.
-- The supported v0.34.0 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
+- The supported v0.34.1 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.34.0 tag is the fully verified packaged evidence boundary. The audited host now runs
-  `/Users/amf/.local/bin/cortana` v0.34.0 with embedding and server services in query-only mode;
+- The v0.34.1 tag is the fully verified packaged evidence boundary. The audited host now runs
+  `/Users/amf/.local/bin/cortana` v0.34.1 with embedding and server services in query-only mode;
   recurring sync remains disabled. Current status reports 13 enabled sources, 12 fresh
   `complete=true` records, and Personal Drive failed closed at its production budget. No
   full-corpus reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native
   dialogs, updater interaction, Developer ID signing, and notarization remain manual gates.
-- The then-installed v0.32.12 host passed the bounded provider-backed `eval --model` evidence
-  run on 2026-08-16 in 14,437 ms: retrieval recall, MRR, case pass rate, citation validity,
+- The installed v0.34.1 host passed the bounded provider-backed `eval --model` evidence run on
+  2026-08-21 in 18,121 ms: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
-  all passed with no fallback. This is provider-backed fixture evidence only; it does not query
-  the personal index or prove packaged GUI behavior.
+  all passed with no fallback. This is current provider-backed fixture evidence only; it does not
+  query the personal index, authorize source synchronization, or prove packaged GUI behavior.
 - The then-installed v0.32.12 host passed the disposable offline control-plane drill on
   2026-08-16:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
@@ -54,13 +54,14 @@ is not part of a visual/UI change.
   enabled filesystem/code sources are still bounded samples and connector records are below
   their configured full-sync budgets.
 - The complete native Tauri suite passes 130 tests in 2.45 seconds after
-  compilation. The current `bun run test` gate passes 263 tests across 24 files
+  compilation. The current `bun run test` gate passes 264 tests across 24 files
   under the CI-pinned Bun 1.3.14, including the script tests. Its runner groups
   pure suites and executes API-mocking suites in separate Bun processes so one
   mocked bridge cannot leak into another file. The Python package gate passes
-  184 tests, including the retired-model runtime guard. These are
-  headless source checks and do not
-  substitute for the still-unverified interactive packaged GUI flows.
+  180 tests, including the retired-model runtime guard. Two non-fatal React
+  `act(...)` warnings remain in Desktop tests and are tracked as UI-hygiene
+  follow-up. These are headless source checks and do not substitute for the
+  still-unverified interactive packaged GUI flows.
 - The published v0.31.12 macOS ARM archive was statically inspected on 2026-08-13 (historical):
   `Contents/MacOS/cortana --version` reports `cortana 0.31.12`, the bundle passes
   strict `codesign --verify --deep --strict`, and `spctl --assess` still rejects
@@ -88,7 +89,7 @@ is not part of a visual/UI change.
   and Slack is unconfigured. The historical sweep is authorization/reachability
   evidence only and must not be read as current source authorization.
 
-The current v0.34.0 source includes the post-v0.31.12 safety lane, which acquires
+The current v0.34.1 source includes the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, enforces native-memory retention bounds, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -96,7 +97,7 @@ a per-config cross-process lock. These source-tree protections are covered by fo
 regressions; they do not authorize a source, enable recurring sync, or prove the unverified
 GUI/browser/tray/dialog/updater gates above.
 
-The v0.34.0 source adds one operational recovery change for the local embedding supervisor:
+The v0.34.1 source adds one operational recovery change for the local embedding supervisor:
 steady-state checks use the lightweight `/health` endpoint so queued ingestion work cannot look dead;
 startup and restart still require a real vector probe. The earlier v0.32.1 Work Drive trials were
 cancelled after that older supervisor stalled. After v0.32.2 installation, a foreground Work Drive
@@ -173,9 +174,9 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the verified v0.34.0 package passed the credential-free packaged-core
-   evaluator and query-only readiness in release verification. The then-installed v0.32.12 CLI passed
-   the bounded provider-backed run on 2026-08-16 in 14,437 ms with planner/synthesis, valid
+2. Model-backed provider gate: the verified v0.34.1 package passed the credential-free packaged-core
+   evaluator and query-only readiness in release verification. The installed v0.34.1 CLI passed
+   the bounded provider-backed run on 2026-08-21 in 18,121 ms with planner/synthesis, valid
    citations, cache reuse, and revision invalidation. That run used synthetic fixtures only; no
    provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider
    outages or slow responses still fail closed, and extractive mode remains the safe production
@@ -225,7 +226,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.34.0 source or the historical v0.32.6 core; use the
+does not describe the current v0.34.1 source or the historical v0.32.6 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -241,8 +242,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.34.0` source or packaged Desktop behavior. The verified
-  `v0.32.12` asset workflow is historical; the active `v0.34.0` workflow is recorded in the release section above.
+  the current `v0.34.1` source or packaged Desktop behavior. The verified
+  `v0.32.12` asset workflow is historical; the active `v0.34.1` workflow is recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
