@@ -19,15 +19,15 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.6`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `32531597016` completed the 18-asset
+The current protected source and published tag are `v0.34.7`, promoted through the protected
+flow and Release Please automation. Release-assets workflow `32533269847` completed the 18-asset
 release gate, including checksums, updater signatures, manifest, and packaged-core verification.
-The v0.34.6 source carries the native agentic-memory layer and the
+The v0.34.7 source carries the native agentic-memory layer and the
 rollback-safe Hermes migration publication
 and the bounded
 read-only live-index evaluator.
-The published v0.34.6 package is the current downloadable boundary, and the audited host now runs
-v0.34.6 after an upgrade that restarted only Cortana-owned services. Query-only readiness passed
+The published v0.34.7 package is the current downloadable boundary, and the audited host now runs
+v0.34.7 after an upgrade that restarted only Cortana-owned services. Query-only readiness passed
 with the stored embedding generation, ACL, live embedding probe, HTTP liveness, and a verified
 backup; recurring sync remains uninstalled.
 A first
@@ -42,7 +42,7 @@ document, byte, and duration budgets; Work Drive's current record is 4,527,721 b
 900-second budget with zero writes. After explicit reauthorization, Personal Drive passed a
 one-document/64 KiB/60-second read-only probe in 11.7 seconds. Its subsequent production-budget
 probe was operator-cancelled after 147 documents while serialized PDF body fetching stalled; the
-spool was cleaned up and no index or reconciliation writes occurred. The published v0.34.6 release
+spool was cleaned up and no index or reconciliation writes occurred. The published v0.34.7 release
 includes bounded parallel body fetching from PR #1594; the production-budget gate has not yet been
 repeated. Recurring sync remains
 uninstalled, and no reconciliation or large sync has been requested.
@@ -77,8 +77,8 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.34.6 release gate verified the packaged core offline without credentials. A fresh
-provider-backed evaluation on 2026-08-21 using the installed v0.34.6 binary passed retrieval recall,
+The v0.34.7 release gate verified the packaged core offline without credentials. A fresh
+provider-backed evaluation on 2026-08-21 using the installed v0.34.7 binary passed retrieval recall,
 MRR, case pass rate,
 citation validity, planner and synthesis execution, cache reuse, and revision invalidation in
 14,955 ms answer latency under the 55,000 ms deadline, with no provider fallback. This is current installed-
@@ -86,17 +86,17 @@ runtime fixture evidence only: it does not query the personal index, prove packa
 or authorize source synchronization. The evaluator remains opt-in; extractive mode is the
 production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.6. The embedding, HTTP, and backup
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.7. The embedding, HTTP, and backup
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
-After the v0.34.6 install, `cortana readiness --max-backup-age-hours 48` passed on the audited
+After the v0.34.7 install, `cortana readiness --max-backup-age-hours 48` passed on the audited
 host: SQLite integrity, embedding/index generation, ACL, live embedding probe, HTTP liveness,
 backup freshness (16 hours old), query-only sync-service safety, and extractive query mode all
 passed. The command did not enable source validation or recurring sync; that remains a separate
 production-budget gate.
 
-The same installed v0.34.6 binary also passed the disposable native-memory lifecycle drill
+The same installed v0.34.7 binary also passed the disposable native-memory lifecycle drill
 (dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (ACL filtering,
 metadata-only audit, token rotation, and revocation), and the real MCP stdio drill (10 tools,
 workspace ACL filtering, and token rotation). These are synthetic control-plane evidence and do
@@ -127,18 +127,18 @@ enabled sources complete at their configured budgets, while Personal Drive has o
 one-document probe and an interrupted full-budget attempt. The pass did not enable Discord, code,
 Slack, or synthesis.
 
-The v0.34.6 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.34.7 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current v0.34.6 source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.34.7 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.34.6 source; it does
+This protects concurrent Desktop windows/processes in the v0.34.7 source; it does
 not authorize source ingestion or recurring sync.
 
-The v0.34.6 source adds bounded embedding-supervisor recovery: steady-state health checks
+The v0.34.7 source adds bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
