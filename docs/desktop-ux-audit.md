@@ -22,9 +22,11 @@ is not part of a visual/UI change.
 - The v0.34.1 tag is the fully verified packaged evidence boundary. The audited host now runs
   `/Users/amf/.local/bin/cortana` v0.34.1 with embedding and server services in query-only mode;
   recurring sync remains disabled. Current status reports 13 enabled sources, 12 fresh
-  `complete=true` records, and Personal Drive failed closed at its production budget. No
-  full-corpus reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native
-  dialogs, updater interaction, Developer ID signing, and notarization remain manual gates.
+  `complete=true` records, and Personal Drive has only a successful one-document probe after
+  reauthorization; its full-budget run was stopped after 147 documents when serialized PDF
+  fetching stalled. PR #1594 adds bounded parallel body fetching. No full-corpus reconciliation
+  has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater
+  interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.34.1 host passed the bounded provider-backed `eval --model` evidence run on
   2026-08-21 in 12,141 ms: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
@@ -58,7 +60,7 @@ is not part of a visual/UI change.
   under the CI-pinned Bun 1.3.14, including the script tests. Its runner groups
   pure suites and executes API-mocking suites in separate Bun processes so one
   mocked bridge cannot leak into another file. The Python package gate passes
-  180 tests, including the retired-model runtime guard. The Desktop visibility
+  181 tests, including the retired-model runtime guard and bounded Drive-fetch regression. The Desktop visibility
   and focus regression now dispatches through Testing Library's act-aware event
   helper; the current Bun 1.3.14 run emits no React `act(...)` warnings. These
   remain headless source checks and do not substitute for the still-unverified
@@ -110,10 +112,11 @@ Historical records show Work Drive (478 documents/4,527,663 bytes) and Work Gmai
 retry, and Work Gmail now has a bounded 100-message pass (`changed=75`, `unchanged=25`,
 `deleted=0`); neither source has a complete production-budget trial approved for reconciliation or
 recurring sync.
-Personal Drive's latest 25-document/5 MiB/60-second validation on 2026-08-21 failed closed before
-fetching because the configured Google refresh token returned `invalid_grant`. An earlier bounded
-validation and non-reconciling trial succeeded (`changed=1`, `unchanged=24`, `deleted=0`), but that
-historical prefix remains below the production gate and requires explicit owner reauthorization.
+After explicit reauthorization, a one-document/64 KiB/60-second Personal Drive validation succeeded
+in 11.7 seconds with zero writes. The subsequent production-budget run was operator-cancelled after
+147 documents while serialized Drive body fetching stalled on a large PDF; its spool was cleaned up
+and the validation remains below the production gate. PR #1594 adds bounded four-worker fetching;
+repeat the full validation only after that fix is promoted.
 
 The current validation metadata now contains production-budget complete records for Apple Notes
 (28/65/8 documents), Calendar (2,207/1,836/0 events), Buzz (45 records), Work Drive (478
