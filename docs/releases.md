@@ -48,11 +48,13 @@ Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
 being called downloadable-release behavior.
 
-The current source gate is also explicit. On the audited host (2026-08-16), 13 sources are
+The current source gate is also explicit. On the audited host (2026-08-21), 13 sources are
 enabled: 12 have fresh `complete=true` validation at their configured document, byte, and time
-budgets. Personal Drive has a successful bounded 25-document/5 MiB/60-second record, but its
-configured budget is 2,000 documents/128 MiB/900 seconds, so `readiness --allow-sync-service`
-fails closed on that source. Recurring sync remains uninstalled until that source is validated
+budgets. Personal Drive's latest bounded 25-document/5 MiB/60-second validation failed closed
+before fetching because the configured Google refresh token returned `invalid_grant`; an earlier
+bounded sample remains historical and below the 2,000-document/128 MiB/900-second production
+budget. `readiness --allow-sync-service` therefore fails closed on that source. Recurring sync
+remains uninstalled until the owner reauthorizes Personal Drive and it passes a fresh validation
 at its configured budget; no reconciliation or large sync has been started.
 
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke

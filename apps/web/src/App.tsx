@@ -1440,6 +1440,9 @@ export function App() {
         } as CSSProperties
       }
     >
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
       <header className="titlebar">
         <TitleActions
           onOpenSources={() => {

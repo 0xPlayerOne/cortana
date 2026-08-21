@@ -538,7 +538,7 @@ export function SettingsView({
 
   if (!isDesktopApp) {
     return (
-      <main className="settings-view settings-unavailable">
+      <main id="main-content" className="settings-view settings-unavailable">
         <Settings2 size={34} />
         <h1>Desktop settings</h1>
         <p>Install Cortana Desktop to manage local models, secrets, workspaces, and services.</p>
@@ -548,7 +548,7 @@ export function SettingsView({
 
   if (!settings) {
     return (
-      <main className="settings-view settings-unavailable">
+      <main id="main-content" className="settings-view settings-unavailable">
         <Settings2 size={34} />
         <h1 role={error ? 'alert' : 'status'}>{error || 'Loading local settings…'}</h1>
         {error && (
@@ -563,7 +563,7 @@ export function SettingsView({
   const restartFailed = settings.restart_required && serviceActivity?.status === 'failed'
 
   return (
-    <main className="settings-view">
+    <main id="main-content" className="settings-view">
       <header className="settings-header">
         <div>
           <span className="eyebrow">{settings.needs_setup ? 'Guided setup' : 'Control plane'}</span>
