@@ -66,8 +66,8 @@ The authoritative current release and open gates live in [Release history](relea
 
 ## Release boundary
 
-The published `v0.34.2` tag is the current source/release boundary. Its release-assets workflow
-`32500872377` completed the strict 18-asset verifier, including checksums, updater signatures,
+The published `v0.34.3` tag is the current source/release boundary. Its release-assets workflow
+`32516622075` completed the strict 18-asset verifier, including checksums, updater signatures,
 manifest, and packaged-core evidence. A source checkout can contain validated changes
 that are not yet in the installer; only a tag with recorded verifier evidence should be presented
 as downloadable release behavior.
