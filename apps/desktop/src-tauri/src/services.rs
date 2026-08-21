@@ -10,11 +10,11 @@ use tokio::time::timeout;
 
 use crate::settings;
 
-// A server restart reopens the local index before binding 7331. On a warm
-// process this is quick, but a cold 1GB+ index can take roughly 30 seconds;
-// keep a bounded safety timeout without turning that valid startup into a
-// false failure.
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
+// A service restart can reopen the local index and cold-start the embedding
+// model before launchd reports the command complete. The configured embedding
+// startup ceiling is five minutes; use the same bounded budget here so a
+// valid cold start is not reported as a Desktop failure at 60 seconds.
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 const SERVICE_NAMES: [&str; 4] = ["embedding", "server", "sync", "backup"];
 const CORE_SERVICE_NAMES: [&str; 2] = ["embedding", "server"];
@@ -384,6 +384,6 @@ mod tests {
 
     #[test]
     fn service_command_budget_covers_a_cold_server_restart() {
-        assert!(COMMAND_TIMEOUT >= Duration::from_secs(60));
+        assert!(COMMAND_TIMEOUT >= Duration::from_secs(5 * 60));
     }
 }
