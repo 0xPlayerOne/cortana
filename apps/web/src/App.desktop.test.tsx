@@ -654,7 +654,7 @@ test('desktop shell pauses passive health polling while hidden and refreshes on 
       configurable: true,
       value,
     })
-    document.dispatchEvent(new Event('visibilitychange'))
+    fireEvent(document, new Event('visibilitychange'))
   }
   try {
     await act(async () => {
