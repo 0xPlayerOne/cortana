@@ -541,8 +541,8 @@ Personal Drive's earlier 1,800-second and 900-second validations failed closed a
 deadlines while processing a large PDF/media corpus. After explicit reauthorization, a one-document/
 64 KiB/60-second probe succeeded in 11.7 seconds; the next production-budget run was operator-
 cancelled after 147 documents when serialized Drive body fetching stalled on a large PDF. Both
-cancelled attempts made zero index or reconciliation writes. The staging tree now includes bounded
-four-worker fetching from PR #1594; the `readiness --allow-sync-service` gate must remain closed until a fresh complete record
+cancelled attempts made zero index or reconciliation writes. The protected main tree now includes bounded
+four-worker fetching from PR #1594; install the next patch release before retrying, and the `readiness --allow-sync-service` gate must remain closed until a fresh complete record
 at the configured budget succeeds. No reconciliation or large sync has been run.
 
 The installed v0.34.1 CLI passed a fresh bounded `eval --model` run on 2026-08-21 in 12,141 ms,
