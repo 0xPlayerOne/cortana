@@ -168,6 +168,8 @@ queries and expected source IDs. It measures retrieval recall/MRR, ACL-safe sour
 answer citation validity, optional synthesized-mode use, latency, and a repeated-query cache hit.
 It also reports embedding-retrieval degradation and provider-unavailable fallback rates so a
 passing quality report cannot quietly treat a fallback path as provider-backed evidence.
+Answer cases enforce the requested source scope against returned evidence as well as expected and
+forbidden source IDs, so a cited answer from another connector cannot pass the evaluation.
 It never calls ingestion, reconciliation, service management, backup/restore, or a source
 connector. Reports contain only bounded metrics and source IDs; they do not echo queries, answers,
 tokens, or provider error bodies.

@@ -172,3 +172,31 @@ def test_live_evaluation_fails_closed_on_http_errors_without_body_leak() -> None
     assert report["retrieval_cases"][0]["error_status"] == 503
     assert report["answer_cases"][0]["error_status"] == 503
     assert "private provider response" not in json.dumps(report)
+
+
+def test_live_answer_fails_closed_when_evidence_ignores_source_scope() -> None:
+    class WrongSourceClient:
+        @contextmanager
+        def stream(self, _method: str, path: str, *, json: dict, timeout: float):
+            del json
+            assert timeout > 0
+            if path == "/v1/search":
+                yield Response([])
+                return
+            yield Response(
+                {
+                    "answer": "The answer cites the wrong source. [1]",
+                    "evidence": [{"source_id": "personal-secret", "source": "personal"}],
+                    "mode": "synthesized",
+                    "cached": False,
+                }
+            )
+
+    answer_manifest = manifest()
+    answer_manifest["retrieval_cases"] = []
+    report = live.evaluate_manifest(
+        live.validate_manifest(answer_manifest), WrongSourceClient(), require_synthesis=True
+    )
+
+    assert report["passed"] is False
+    assert report["answer_cases"][0]["source_scope_valid"] is False

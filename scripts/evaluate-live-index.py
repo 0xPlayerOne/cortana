@@ -258,6 +258,14 @@ def evaluate_manifest(
         if case["answer"]:
             response = payload if isinstance(payload, dict) else {}
             answer = response.get("answer") if isinstance(response.get("answer"), str) else ""
+            answer_evidence = response.get("evidence", [])
+            source_scope_valid = case["source"] is None or (
+                isinstance(answer_evidence, list)
+                and all(
+                    isinstance(item, dict) and item.get("source") == case["source"]
+                    for item in answer_evidence
+                )
+            )
             citations_valid = _citation_validity(answer, len(returned))
             forbidden_citations_absent = all(
                 f"[{index + 1}]" not in answer
@@ -283,6 +291,7 @@ def evaluate_manifest(
                 and status < 400
                 and not missing
                 and not leaked
+                and source_scope_valid
                 and citations_valid
                 and forbidden_citations_absent
                 and not fallback_provider_unavailable
@@ -297,6 +306,7 @@ def evaluate_manifest(
                     "returned_source_ids": returned,
                     "missing_source_ids": missing,
                     "leaked_source_ids": leaked,
+                    "source_scope_valid": source_scope_valid,
                     "citations_valid": citations_valid,
                     "forbidden_citations_absent": forbidden_citations_absent,
                     "synthesis_used": synthesis_used,
