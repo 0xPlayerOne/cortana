@@ -1918,6 +1918,26 @@ fn backup_verify_and_restore_round_trip() {
         .success();
     Command::cargo_bin("cortana")
         .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args([
+            "memory",
+            "remember",
+            "--kind",
+            "working",
+            "--project",
+            "demo",
+            "--title",
+            "Recovery memory",
+            "--content",
+            "Native memory survives a verified restore",
+            "--dedupe-key",
+            "backup:memory",
+        ])
+        .assert()
+        .success();
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
         .args(["--config"])
         .arg(&config)
         .arg("backup")
@@ -1964,6 +1984,14 @@ fn backup_verify_and_restore_round_trip() {
         .success()
         .stdout(predicate::str::contains("\"title\": \"First\""))
         .stdout(predicate::str::contains("\"title\": \"Second\"").not());
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--offline", "--config"])
+        .arg(&config)
+        .args(["memory", "recall", "memory survives", "--project", "demo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"title\": \"Recovery memory\""));
 }
 
 #[test]
