@@ -50,12 +50,12 @@ being called downloadable-release behavior.
 
 The current source gate is also explicit. On the audited host (2026-08-21), 13 sources are
 enabled: 12 have fresh `complete=true` validation at their configured document, byte, and time
-budgets. Personal Drive's latest bounded 25-document/5 MiB/60-second validation failed closed
-before fetching because the configured Google refresh token returned `invalid_grant`; an earlier
-bounded sample remains historical and below the 2,000-document/128 MiB/900-second production
-budget. `readiness --allow-sync-service` therefore fails closed on that source. Recurring sync
-remains uninstalled until the owner reauthorizes Personal Drive and it passes a fresh validation
-at its configured budget; no reconciliation or large sync has been started.
+budgets. After explicit reauthorization, Personal Drive passed a one-document/64 KiB/60-second
+read-only probe in 11.7 seconds. Its subsequent 2,000-document/128 MiB/900-second run was
+operator-cancelled after 147 documents while serialized PDF body fetching stalled; no index or
+reconciliation writes occurred. The staging tree now includes bounded parallel body fetching from
+PR #1594; install its resulting release before repeating the production-budget gate. `readiness --allow-sync-service` therefore remains
+closed and recurring sync remains uninstalled; no reconciliation or large sync has been started.
 
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
 check for scoped principals, ACL isolation, metadata-only audit responses, and token rotation. It
