@@ -1,0 +1,80 @@
+.cortana-button {
+  display: inline-flex;
+  min-width: 0;
+  height: var(--btn-action-height);
+  align-items: center;
+  justify-content: center;
+  padding: var(--btn-action-padding);
+  gap: 7px;
+  color: var(--theme-text-primary);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--theme-surface-elevated);
+  cursor: pointer;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.cortana-button:hover:enabled {
+  border-color: var(--amber-soft);
+  background: var(--theme-control-bg-hover);
+}
+
+.cortana-button:focus-visible {
+  outline-offset: 2px;
+}
+
+.cortana-button:disabled {
+  color: var(--theme-content-muted);
+  border-color: var(--line);
+  background: var(--theme-surface);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+.cortana-button--primary {
+  color: var(--theme-ink);
+  border-color: var(--amber-soft);
+  background: var(--amber);
+  box-shadow: 0 5px 14px rgb(12 20 36 / 18%);
+}
+
+.cortana-button--primary:hover:enabled {
+  border-color: var(--theme-text-primary);
+  background: var(--amber-soft);
+}
+
+.cortana-button--compact {
+  height: var(--btn-compact-height);
+  padding: var(--btn-compact-padding);
+  gap: 5px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+}
+
+.cortana-button--ghost {
+  height: auto;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  font-weight: 600;
+}
+
+.cortana-button--ghost:hover:enabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--amber-soft);
+}
+
+.cortana-button--icon {
+  width: var(--btn-chrome-size);
+  height: var(--btn-chrome-size);
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.cortana-button--icon:hover:enabled {
+  border-color: transparent;
+}
