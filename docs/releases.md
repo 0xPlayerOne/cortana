@@ -66,8 +66,8 @@ offline synthetic evidence and never authorize a source or touch the live index.
 
 ## v0.34.7 release intent (published and verified)
 
-The v0.34.7 package publishes the validated v0.34.6 source after the protected version-only Release
-Please PR #1665. It contains no runtime, credential, source-authorization, indexed-data,
+The v0.34.7 package is a protected version-only Release Please follow-up to the validated v0.34.6
+source (PR #1665). It contains no runtime, credential, source-authorization, indexed-data,
 recurring-sync, or native-memory changes. Release-assets workflow `32533269847` completed all 18
 platform assets, checksums, updater signatures, manifest, and packaged-core verification. The
 installed CLI was upgraded to v0.34.7; query-only readiness and the bounded provider-backed fixture

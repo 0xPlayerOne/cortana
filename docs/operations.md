@@ -545,7 +545,7 @@ cancelled attempts made zero index or reconciliation writes. The published v0.34
 four-worker fetching from PR #1594 and is now installed; the `readiness --allow-sync-service` gate must remain closed until a fresh complete record
 at the configured budget succeeds. No reconciliation or large sync has been run.
 
-The installed v0.34.7 CLI passed a fresh bounded `eval --model` run on 2026-08-21 with 14,955 ms
+The installed v0.34.7 CLI passed a fresh bounded `eval --model` run on 2026-08-21 with 14,189 ms
 answer latency,
 including planner/synthesis, valid citations, cache reuse, and revision invalidation without
 provider fallback. This is current synthetic provider-backed evidence only; it does not authorize

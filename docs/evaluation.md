@@ -81,7 +81,7 @@ The v0.34.7 release gate verified the packaged core offline without credentials.
 provider-backed evaluation on 2026-08-21 using the installed v0.34.7 binary passed retrieval recall,
 MRR, case pass rate,
 citation validity, planner and synthesis execution, cache reuse, and revision invalidation in
-14,955 ms answer latency under the 55,000 ms deadline, with no provider fallback. This is current installed-
+14,189 ms answer latency under the 55,000 ms deadline, with no provider fallback. This is current installed-
 runtime fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
 or authorize source synchronization. The evaluator remains opt-in; extractive mode is the
 production default.
