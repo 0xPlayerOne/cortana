@@ -25,11 +25,11 @@ is not part of a visual/UI change.
   `complete=true` records, and Personal Drive failed closed at its production budget. No
   full-corpus reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native
   dialogs, updater interaction, Developer ID signing, and notarization remain manual gates.
-- The then-installed v0.32.12 host passed the bounded provider-backed `eval --model` evidence
-  run on 2026-08-16 in 14,437 ms: retrieval recall, MRR, case pass rate, citation validity,
+- The installed v0.34.1 host passed the bounded provider-backed `eval --model` evidence run on
+  2026-08-21 in 18,121 ms: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
-  all passed with no fallback. This is provider-backed fixture evidence only; it does not query
-  the personal index or prove packaged GUI behavior.
+  all passed with no fallback. This is current provider-backed fixture evidence only; it does not
+  query the personal index, authorize source synchronization, or prove packaged GUI behavior.
 - The then-installed v0.32.12 host passed the disposable offline control-plane drill on
   2026-08-16:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
@@ -174,8 +174,8 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the verified v0.34.1 package passed the credential-free packaged-core
-   evaluator and query-only readiness in release verification. The then-installed v0.32.12 CLI passed
-   the bounded provider-backed run on 2026-08-16 in 14,437 ms with planner/synthesis, valid
+   evaluator and query-only readiness in release verification. The installed v0.34.1 CLI passed
+   the bounded provider-backed run on 2026-08-21 in 18,121 ms with planner/synthesis, valid
    citations, cache reuse, and revision invalidation. That run used synthetic fixtures only; no
    provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider
    outages or slow responses still fail closed, and extractive mode remains the safe production

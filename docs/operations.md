@@ -534,10 +534,11 @@ validation is complete at 478 documents and 4,527,721 bytes. The
 `readiness --allow-sync-service` gate must remain closed until Personal Drive has a fresh complete
 record at its configured budget; no reconciliation or large sync has been run.
 
-The historical v0.32.12 CLI also passed a fresh bounded `eval --model` run on 2026-08-16 in 14,437
-ms, including planner/synthesis, valid citations, cache reuse, and revision invalidation without
-provider fallback. This is synthetic provider-backed evidence only; it does not authorize source
-sync, establish personal-index quality, or replace the separate packaged GUI and signing gates.
+The installed v0.34.1 CLI passed a fresh bounded `eval --model` run on 2026-08-21 in 18,121 ms,
+including planner/synthesis, valid citations, cache reuse, and revision invalidation without
+provider fallback. This is current synthetic provider-backed evidence only; it does not authorize
+source sync, establish personal-index quality, or replace the separate packaged GUI and signing
+gates. The earlier v0.32.12 run remains historical evidence in the evaluation guide.
 
 ### Historical rollout observations
 
