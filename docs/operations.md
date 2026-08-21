@@ -208,6 +208,18 @@ memory status reports distinguish valid active records from expired records reta
 The native store is the sole supported memory engine for this release. See
 [Native agentic memory](memory.md) for the lifecycle and interface contract.
 
+Run the disposable lifecycle drill when validating a new binary or local
+installation:
+
+\`\`\`bash
+CORTANA_BINARY=/Users/amf/.local/bin/cortana scripts/native-memory-drill.sh
+\`\`\`
+
+The drill uses an offline temporary store and verifies idempotent deduplication,
+expiry exclusion, bounded export, and redaction. It never reads the live index,
+credentials, or configured source connectors; it is evidence for native-memory
+behavior only, not for source authorization or recurring sync.
+
 Interactive query embeddings have a five-second latency budget. If the local or cloud embedding
 queue is saturated or unavailable, HTTP and MCP retrieval immediately fall back to exact-term FTS
 evidence; returned rows have no `semantic_rank`. The HTTP search response keeps its evidence-array
