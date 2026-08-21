@@ -73,8 +73,10 @@ release records remain historical evidence.
 
 The verified host installation now reports `cortana 0.34.1`, matching the current published package;
 the embedding and HTTP services are running in query-only mode and recurring sync remains
-uninstalled. The provider-backed evaluation records below were collected under the earlier
-v0.32.12 installation and remain historical fixture evidence, not a v0.34.1 personal-index proof.
+uninstalled. The installed v0.34.1 binary also passed the bounded provider-backed fixture
+evaluation on 2026-08-21 in 18,121 ms, with planner/synthesis, valid citations, cache reuse, and
+revision invalidation. This remains fixture evidence, not a v0.34.1 personal-index or packaged-
+GUI proof.
 When a checkout and downloaded application report different versions, trust the application version
 for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree
 hardening has shipped.

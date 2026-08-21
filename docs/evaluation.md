@@ -72,25 +72,22 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
 The v0.34.1 release gate verified the packaged core offline without credentials. The installed
-host now reports v0.34.1, matching the published package. The provider-backed evaluation below was
-collected under the earlier v0.32.12 installation and remains historical fixture-only evidence,
-separate from the packaged-core gate.
-The offline evaluator and query-only readiness pass, while the provider-backed model run remains
-fixture-only evidence. This remains bounded query-layer evidence and does not prove packaged GUI
-behavior, personal-index sync, or Developer ID/notarization trust. The evaluator remains opt-in;
-extractive mode is the production default.
+host now reports v0.34.1, matching the published package. A fresh provider-backed evaluation on
+2026-08-21 using that installed v0.34.1 binary passed retrieval recall, MRR, case pass rate,
+citation validity, planner and synthesis execution, cache reuse, and revision invalidation in
+18,121 ms under the 55,000 ms deadline, with no provider fallback. This is current installed-
+runtime fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
+or authorize source synchronization. The evaluator remains opt-in; extractive mode is the
+production default.
 
 The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.1. The embedding and HTTP services
 are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
-The latest provider-backed fixture evidence was collected on 2026-08-16 with the then-installed
-v0.32.12 CLI using the bounded `eval --model` command. The run passed retrieval recall, MRR, case
-pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
-invalidation; the answer completed in 14,437 ms under the 55,000 ms deadline with no provider
-fallback. This is installed-runtime evidence, but it remains synthetic fixture evidence: it
-does not query the personal index, prove packaged GUI behavior, or authorize source
-synchronization. The preceding v0.32.7 result remains historical evidence in the release record.
+The preceding v0.32.12 fixture run from 2026-08-16 remains historical evidence: it passed
+retrieval recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache
+reuse, and revision invalidation in 14,437 ms with no provider fallback. It does not query the
+personal index, prove packaged GUI behavior, or authorize source synchronization.
 
 Historical v0.32.6 evidence: the then-installed core passed `eval --model` on 2026-08-15 in
 18,178 ms with planner and
