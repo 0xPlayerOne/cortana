@@ -1662,6 +1662,54 @@
   background: transparent;
 }
 
+/* Compact operational actions share the same elevated surface as the main
+ * button contract. These selectors cover legacy action markup while the
+ * settings surfaces are migrated incrementally; they prevent raw browser
+ * buttons from falling back to the flat grey control style. */
+.service-actions > button:not(.primary-button):not(.secondary-button),
+.readiness-list button,
+.installer-job button {
+  display: inline-flex;
+  min-width: 0;
+  height: var(--btn-compact-height);
+  align-items: center;
+  justify-content: center;
+  padding: var(--btn-compact-padding);
+  gap: 5px;
+  color: var(--theme-text-primary);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xs);
+  background: var(--theme-surface-elevated);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.service-actions > button:not(.primary-button):not(.secondary-button):hover:enabled,
+.readiness-list button:hover:enabled,
+.installer-job button:hover:enabled {
+  border-color: var(--amber-soft);
+  background: var(--theme-control-bg-hover);
+}
+
+.service-actions > button:not(.primary-button):not(.secondary-button):focus-visible,
+.readiness-list button:focus-visible,
+.installer-job button:focus-visible {
+  outline-offset: 2px;
+}
+
+.service-actions > button:not(.primary-button):not(.secondary-button):disabled,
+.readiness-list button:disabled,
+.installer-job button:disabled {
+  color: var(--theme-content-muted);
+  border-color: var(--line);
+  background: var(--theme-surface);
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 @media (max-width: 900px) {
   .settings-layout {
     grid-template-columns: 150px minmax(0, 1fr);
