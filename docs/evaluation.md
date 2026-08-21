@@ -35,11 +35,11 @@ enabled-source set is not fully production-validated. The current complete recor
 `work`/`personal`/`special` (2,207/1,836/0), Buzz (45), Work Drive (478), Work Gmail (7,386),
 Personal Gmail (427), Special Gmail (216), and Special Drive (97). All meet their configured
 document, byte, and duration budgets; Work Drive's current record is 4,527,721 bytes at its
-900-second budget with zero writes. Personal Drive has a successful bounded 25-document/5 MiB/
-60-second sample, but remains below its configured 2,000-document/128 MiB/900-second budget; an
-earlier full-budget attempt failed closed under the then-installed v0.32.9 parser while processing
-a large PDF. Recurring sync remains uninstalled, and no reconciliation or large sync has been
-requested.
+900-second budget with zero writes. Personal Drive's latest bounded 25-document/5 MiB/60-second
+validation on 2026-08-21 failed closed before fetching because the configured Google refresh token
+returned `invalid_grant`. An earlier bounded sample succeeded, but remains historical evidence
+below the configured 2,000-document/128 MiB/900-second budget. Recurring sync remains uninstalled,
+and no reconciliation or large sync has been requested.
 
 The older production-budget results below are retained as historical evidence, not current
 authorization. They document prior successful prefixes and failure/recovery behavior, but the
@@ -105,8 +105,8 @@ Drive, Gmail, and Buzz all completed without deletions; Special Calendar natural
 records. The index ended at 12,123 documents/42,638 chunks and query-only readiness passed. This
 is operational ingestion evidence, not a full-corpus quality benchmark. That historical pass
 used smaller bounds than the configured budgets; the current host status now reports 12 of 13
-enabled sources complete at their configured budgets, while Personal Drive remains at the
-successful 25-document/5 MiB/60-second sample and keeps recurring sync disabled. The pass did
+enabled sources complete at their configured budgets, while Personal Drive's latest validation
+failed closed with `invalid_grant` and its earlier successful sample remains below budget. The pass did
 not enable Discord, code, Slack, or synthesis.
 
 The v0.34.1 source retains the post-v0.31.6 Apple Notes executable hardening and

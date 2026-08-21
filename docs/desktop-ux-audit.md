@@ -109,9 +109,10 @@ Historical records show Work Drive (478 documents/4,527,663 bytes) and Work Gmai
 retry, and Work Gmail now has a bounded 100-message pass (`changed=75`, `unchanged=25`,
 `deleted=0`); neither source has a complete production-budget trial approved for reconciliation or
 recurring sync.
-Personal Drive failed its 2,000-document/128 MiB/900-second validation at the 899-second connector
-timeout. A follow-up 25-document/5 MiB/60-second validation and non-reconciling trial succeeded
-(`changed=1`, `unchanged=24`, `deleted=0`), but that bounded prefix remains below the production gate.
+Personal Drive's latest 25-document/5 MiB/60-second validation on 2026-08-21 failed closed before
+fetching because the configured Google refresh token returned `invalid_grant`. An earlier bounded
+validation and non-reconciling trial succeeded (`changed=1`, `unchanged=24`, `deleted=0`), but that
+historical prefix remains below the production gate and requires explicit owner reauthorization.
 
 The current validation metadata now contains production-budget complete records for Apple Notes
 (28/65/8 documents), Calendar (2,207/1,836/0 events), Buzz (45 records), Work Drive (478
