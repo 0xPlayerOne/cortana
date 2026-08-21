@@ -38,8 +38,9 @@ document, byte, and duration budgets; Work Drive's current record is 4,527,721 b
 900-second budget with zero writes. After explicit reauthorization, Personal Drive passed a
 one-document/64 KiB/60-second read-only probe in 11.7 seconds. Its subsequent production-budget
 probe was operator-cancelled after 147 documents while serialized PDF body fetching stalled; the
-spool was cleaned up and no index or reconciliation writes occurred. PR #1594 adds bounded
-parallel body fetching and must be promoted before repeating that gate. Recurring sync remains
+spool was cleaned up and no index or reconciliation writes occurred. The staging tree now includes
+bounded parallel body fetching from PR #1594; install its resulting release before repeating that
+gate. Recurring sync remains
 uninstalled, and no reconciliation or large sync has been requested.
 
 The older production-budget results below are retained as historical evidence, not current

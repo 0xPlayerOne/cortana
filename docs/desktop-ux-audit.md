@@ -24,7 +24,7 @@ is not part of a visual/UI change.
   recurring sync remains disabled. Current status reports 13 enabled sources, 12 fresh
   `complete=true` records, and Personal Drive has only a successful one-document probe after
   reauthorization; its full-budget run was stopped after 147 documents when serialized PDF
-  fetching stalled. PR #1594 adds bounded parallel body fetching. No full-corpus reconciliation
+  fetching stalled. The staging tree now includes bounded parallel body fetching from PR #1594. No full-corpus reconciliation
   has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater
   interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.34.1 host passed the bounded provider-backed `eval --model` evidence run on
@@ -115,8 +115,8 @@ recurring sync.
 After explicit reauthorization, a one-document/64 KiB/60-second Personal Drive validation succeeded
 in 11.7 seconds with zero writes. The subsequent production-budget run was operator-cancelled after
 147 documents while serialized Drive body fetching stalled on a large PDF; its spool was cleaned up
-and the validation remains below the production gate. PR #1594 adds bounded four-worker fetching;
-repeat the full validation only after that fix is promoted.
+and the validation remains below the production gate. Install the release containing the staging
+PR #1594 fix before repeating the full validation.
 
 The current validation metadata now contains production-budget complete records for Apple Notes
 (28/65/8 documents), Calendar (2,207/1,836/0 events), Buzz (45 records), Work Drive (478
