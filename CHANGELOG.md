@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.2](https://github.com/0xPlayerOne/cortana/compare/v0.34.1...v0.34.2) (2026-08-21)
+
+
+### Bug Fixes
+
+* **release:** publish Drive validation improvements ([#1601](https://github.com/0xPlayerOne/cortana/issues/1601)) ([8461797](https://github.com/0xPlayerOne/cortana/commit/8461797843e9b7bc7cdaa50f1075e852e9679e28))
+
 ## [0.34.1](https://github.com/0xPlayerOne/cortana/compare/v0.34.0...v0.34.1) (2026-08-20)
 
 
