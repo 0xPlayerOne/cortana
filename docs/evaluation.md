@@ -290,7 +290,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.34.5 source and verified package
+release evidence; use **Current release boundary** above for the v0.34.7 source and verified package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
