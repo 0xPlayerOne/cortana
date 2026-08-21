@@ -118,6 +118,14 @@ GMAIL_DETAIL_CONCURRENCY = 4
 # provider quotas while avoiding a serialized full-corpus validation when one
 # large document is slow to download or parse.
 DRIVE_CONTENT_CONCURRENCY = 4
+# A malformed or unusually expensive page parser must not hold a Drive source
+# open until its entire connector deadline. The timeout is applied only to PDF
+# text extraction; the downloaded bytes remain bounded separately.
+DRIVE_PDF_EXTRACTION_SECONDS = 30.0
+
+
+class _DrivePdfExtractionTimeout(RuntimeError):
+    """A PDF parser exceeded the cooperative extraction budget."""
 
 
 class _GmailHistoryExpired(Exception):
@@ -2169,7 +2177,16 @@ def _drive_content(session: GoogleSession, item: dict[str, Any]) -> str:
                         )
                     output.write(chunk)
             output.flush()
-            return _extract_pdf_text(PdfReader(output.name, strict=False))
+            try:
+                return _extract_pdf_text(
+                    PdfReader(output.name, strict=False),
+                    deadline=time.monotonic() + DRIVE_PDF_EXTRACTION_SECONDS,
+                )
+            except _DrivePdfExtractionTimeout:
+                # The bytes were downloaded completely, so preserving an
+                # explicit unavailable marker is safer than failing the whole
+                # source snapshot because one parser page is pathological.
+                return _DriveContent(PDF_NO_TEXT_MARKER, None, truncated=True)
     if mime_type == DOCX_MIME_TYPE:
         try:
             with tempfile.NamedTemporaryFile(prefix="cortana-drive-", suffix=".docx") as output:
@@ -2218,15 +2235,24 @@ def _safe_drive_content(session: GoogleSession, item: dict[str, Any]) -> tuple[s
         return "", type(error).__name__
 
 
-def _extract_pdf_text(reader: Any) -> _DriveContent:
+def _check_pdf_deadline(deadline: float | None) -> None:
+    if deadline is not None and time.monotonic() >= deadline:
+        raise _DrivePdfExtractionTimeout("Drive PDF text extraction exceeded its time budget")
+
+
+def _extract_pdf_text(reader: Any, *, deadline: float | None = None) -> _DriveContent:
     """Extract bounded PDF text without letting huge page trees monopolize a run."""
 
+    _check_pdf_deadline(deadline)
     pages = reader.pages
+    _check_pdf_deadline(deadline)
     page_count = len(pages)
     if page_count <= MAX_DRIVE_FULL_PDF_PAGES:
         accumulator = _BoundedTextAccumulator(MAX_DRIVE_STREAM_CHARS)
         for page in pages:
+            _check_pdf_deadline(deadline)
             accumulator.append(page.extract_text() or "")
+            _check_pdf_deadline(deadline)
             accumulator.append("\n\n")
             if accumulator.total_chars > MAX_DRIVE_STREAM_CHARS:
                 # Parsing later pages cannot improve the bounded payload. Keep
@@ -2254,9 +2280,11 @@ def _extract_pdf_text(reader: Any) -> _DriveContent:
     head_parts: list[str] = []
     head_chars = 0
     for index in range(sample_page_count):
+        _check_pdf_deadline(deadline)
         if head_chars >= head_limit:
             break
         text = pages[index].extract_text() or ""
+        _check_pdf_deadline(deadline)
         remaining = head_limit - head_chars
         chunk = text[:remaining]
         if chunk:
@@ -2266,9 +2294,11 @@ def _extract_pdf_text(reader: Any) -> _DriveContent:
     tail_parts_reversed: list[str] = []
     tail_chars = 0
     for index in range(page_count - 1, page_count - sample_page_count - 1, -1):
+        _check_pdf_deadline(deadline)
         if tail_chars >= tail_limit:
             break
         text = pages[index].extract_text() or ""
+        _check_pdf_deadline(deadline)
         remaining = tail_limit - tail_chars
         chunk = text[-remaining:]
         if chunk:
