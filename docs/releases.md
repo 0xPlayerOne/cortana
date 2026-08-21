@@ -9,18 +9,18 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.1
+## Current release: v0.34.2
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.1` is the current protected source and published release. Release-assets workflow
-`32343629811` completed the archive, checksum, updater-signature, manifest, and credential-free
+`v0.34.2` is the current protected source and published release. Release-assets workflow
+`32500872377` completed the archive, checksum, updater-signature, manifest, and credential-free
 packaged-core gates; all 18 published assets are verified. v0.34.0 and earlier remain
 historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.34.1 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.34.2 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -36,13 +36,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.34.1
+  scripts/verify-desktop-release.sh v0.34.2
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.34.1 source is the release boundary for native agentic memory and the post-v0.31.12
+The v0.34.2 source is the release boundary for native agentic memory and the post-v0.31.12
 hardening, bounded live-index evaluation harness, and readiness-budget diagnostics described below.
 Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
@@ -53,8 +53,8 @@ enabled: 12 have fresh `complete=true` validation at their configured document, 
 budgets. After explicit reauthorization, Personal Drive passed a one-document/64 KiB/60-second
 read-only probe in 11.7 seconds. Its subsequent 2,000-document/128 MiB/900-second run was
 operator-cancelled after 147 documents while serialized PDF body fetching stalled; no index or
-reconciliation writes occurred. The protected main tree now includes bounded parallel body fetching from
-PR #1594; install the next patch release before repeating the production-budget gate. `readiness --allow-sync-service` therefore remains
+reconciliation writes occurred. The protected v0.34.2 release includes bounded parallel body fetching from
+PR #1594 and is installed; the production-budget gate has not yet been repeated. `readiness --allow-sync-service` therefore remains
 closed and recurring sync remains uninstalled; no reconciliation or large sync has been started.
 
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
@@ -63,6 +63,19 @@ uses synthetic data only and is not a substitute for the packaged GUI/MCP/manual
 The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP stdio subprocess,
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
+
+## v0.34.2 release intent (published and verified)
+
+The v0.34.2 release publishes the protected Drive validation improvement and the current
+production-ready release boundary. The bounded four-worker Drive body-fetch pool from PR #1594 is
+included in the protected source and installed runtime. The release changes no credentials, source
+authorization, indexed data, or recurring-sync state; Personal Drive remains below its full-budget
+validation gate and recurring sync remains uninstalled.
+
+The protected exact-tree promotion, version-only Release Please PR, release-assets workflow
+`32500872377`, all 18 assets, updater signatures, manifest, and packaged-core verifier completed.
+Native Desktop GUI/OAuth/tray/dialog/updater acceptance and macOS Developer ID/notarization remain
+separate host gates.
 
 ## v0.34.1 release intent (published and verified)
 
