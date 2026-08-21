@@ -7,8 +7,10 @@ import json
 import os
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
+import types
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -1189,6 +1191,52 @@ def test_text_heavy_pdf_stops_after_bounded_payload() -> None:
     assert len(result) <= google.MAX_DRIVE_STREAM_CHARS
     assert google.PDF_EARLY_STOP_MARKER.strip() in result
     assert sum(page.calls for page in pages) < len(pages)
+
+
+def test_pdf_extraction_enforces_a_cooperative_wall_clock_budget() -> None:
+    class SlowPage:
+        def extract_text(self) -> str:
+            time.sleep(0.02)
+            return "slow page"
+
+    with pytest.raises(google._DrivePdfExtractionTimeout):
+        google._extract_pdf_text(
+            type("Reader", (), {"pages": [SlowPage(), SlowPage()]})(),
+            deadline=time.monotonic() + 0.005,
+        )
+
+
+def test_pdf_parser_timeout_preserves_an_explicit_unavailable_marker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def iter_bytes(self):
+            yield b"complete-pdf-body"
+
+    class Session:
+        def stream(self, *_args: object, **_kwargs: object) -> Response:
+            return Response()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "pypdf",
+        types.SimpleNamespace(PdfReader=lambda *_args, **_kwargs: object()),
+    )
+
+    def timeout(*_args: object, **_kwargs: object) -> str:
+        raise google._DrivePdfExtractionTimeout("test timeout")
+
+    monkeypatch.setattr(google, "_extract_pdf_text", timeout)
+    result = google._drive_content(Session(), {"id": "pdf", "mimeType": "application/pdf"})
+
+    assert result == google.PDF_NO_TEXT_MARKER
+    assert result.truncated is True
 
 
 def test_google_gmail_detail_concurrency_is_four() -> None:
