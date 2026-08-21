@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.5](https://github.com/0xPlayerOne/cortana/compare/v0.34.4...v0.34.5) (2026-08-21)
+
+
+### Maintenance
+
+* promote v0.34.4 documentation evidence ([5c5560e](https://github.com/0xPlayerOne/cortana/commit/5c5560e96bab6254573794fdbbd2f6acf24119f9))
+
 ## [0.34.4](https://github.com/0xPlayerOne/cortana/compare/v0.34.3...v0.34.4) (2026-08-21)
 
 
