@@ -9,18 +9,18 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.2
+## Current release: v0.34.3
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.2` is the current protected source and published release. Release-assets workflow
-`32500872377` completed the archive, checksum, updater-signature, manifest, and credential-free
+`v0.34.3` is the current protected source and published release. Release-assets workflow
+`32516622075` completed the archive, checksum, updater-signature, manifest, and credential-free
 packaged-core gates; all 18 published assets are verified. v0.34.0 and earlier remain
 historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.34.2 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.34.3 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -36,13 +36,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.34.2
+  scripts/verify-desktop-release.sh v0.34.3
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.34.2 source is the release boundary for native agentic memory and the post-v0.31.12
+The v0.34.3 source is the release boundary for native agentic memory and the post-v0.31.12
 hardening, bounded live-index evaluation harness, and readiness-budget diagnostics described below.
 Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
@@ -53,7 +53,7 @@ enabled: 12 have fresh `complete=true` validation at their configured document, 
 budgets. After explicit reauthorization, Personal Drive passed a one-document/64 KiB/60-second
 read-only probe in 11.7 seconds. Its subsequent 2,000-document/128 MiB/900-second run was
 operator-cancelled after 147 documents while serialized PDF body fetching stalled; no index or
-reconciliation writes occurred. The protected v0.34.2 release includes bounded parallel body fetching from
+reconciliation writes occurred. The protected v0.34.3 release includes bounded parallel body fetching from
 PR #1594 and is installed; the production-budget gate has not yet been repeated. `readiness --allow-sync-service` therefore remains
 closed and recurring sync remains uninstalled; no reconciliation or large sync has been started.
 
@@ -64,7 +64,7 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.34.3 release intent (pending protected release)
+## v0.34.3 release intent (published and verified)
 
 The post-v0.34.2 source tree standardizes the remaining compact Desktop action controls across
 source configuration, validation, readiness, and installer surfaces. The controls now share the
@@ -74,14 +74,15 @@ also records a selective shadcn/ui adoption policy: future primitives may be cop
 concrete accessibility or consistency gap exists, mapped to Cortana tokens, without introducing a
 parallel Tailwind/Radix design system.
 
-This release intent changes no credentials, source authorization, indexed data, recurring-sync
-state, or native-memory policy. The protected staging-to-main promotion, version-only Release
-Please PR, release-assets workflow, and packaged-core verifier must complete before `v0.34.3` is
-called downloadable or verified.
+This release changes no credentials, source authorization, indexed data, recurring-sync state, or
+native-memory policy. The protected staging-to-main promotion, version-only Release Please PR,
+release-assets workflow `32516622075`, all 18 assets, and packaged-core verifier are complete.
+Native Desktop GUI/OAuth/tray/dialog/updater acceptance and macOS Developer ID/notarization remain
+separate host gates.
 
-Because the protected promotion flattens staging history, its promotion commit must preserve the
-`Release-As: 0.34.3` footer explicitly, and use a conventional `fix(release):` subject, so Release
-Please can discover and open the version-only PR.
+Because the protected promotion flattens staging history, its promotion commit preserved the
+`Release-As: 0.34.3` footer explicitly and used a conventional `fix(release):` subject, allowing
+Release Please to discover and merge the version-only PR.
 
 ## v0.34.2 release intent (published and verified)
 
