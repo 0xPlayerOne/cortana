@@ -86,6 +86,12 @@ The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.3. The embedding
 are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
+After the v0.34.3 install, `cortana readiness --max-backup-age-hours 48` passed on the audited
+host: SQLite integrity, embedding/index generation, ACL, live embedding probe, HTTP liveness,
+backup freshness (13 hours old), query-only sync-service safety, and extractive query mode all
+passed. The command did not enable source validation or recurring sync; that remains a separate
+production-budget gate.
+
 The preceding v0.32.12 fixture run from 2026-08-16 remains historical evidence: it passed
 retrieval recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache
 reuse, and revision invalidation in 14,437 ms with no provider fallback. It does not query the
