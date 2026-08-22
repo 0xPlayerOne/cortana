@@ -46,6 +46,13 @@ reached the 60-second safety bound and failed closed as `budget_exceeded`, with 
 is fresh failure/recovery evidence for the connector boundary, not a production-budget validation;
 the source remains ineligible for reconciliation or recurring sync.
 
+The full current-release bounded sweep on 2026-08-22 reinforces that gate: ten enabled non-code
+profiles validated completely, while the three special Google profiles failed closed with
+`invalid_grant`. Non-reconciling trials passed for Apple Notes, Gmail, Calendar, and Buzz with zero
+deletions; Work Drive and Personal Drive both reached the 60-second safety bound and recorded
+`budget_exceeded`. This is source-operational evidence only and remains below every configured
+production budget.
+
 An approved-corpus, read-only v0.34.18 evaluation against the local query API also ran with
 synthesis explicitly enabled in an isolated temporary server. Scoped retrieval passed with
 recall@k 1.0, MRR 1.0, hybrid retrieval, and no ACL leakage. The provider-backed answer request
