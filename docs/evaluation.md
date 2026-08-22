@@ -20,7 +20,7 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 ### Current release boundary
 
 The current protected source and published tag are `v0.34.10`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `32544658079` is the current 18-asset
+flow and Release Please automation. Release-assets workflow `32544658079` completed the 18-asset
 release gate, including checksums, updater signatures, manifest, and packaged-core verification.
 The v0.34.10 source carries the native agentic-memory layer, the selective shared-button UI
 increment from PR #1678, and the

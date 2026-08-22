@@ -8,8 +8,7 @@ is not part of a visual/UI change.
 ## Current release evidence (2026-08-22)
 
 - `v0.34.10` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `32544658079` is the current 18-asset
-  verification gate,
+  and Release Please automation. Release-assets workflow `32544658079` completed all 18 assets,
   checksums, updater signatures, manifest, and packaged-core verification. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
 - The current macOS Apple Silicon package verifier also passed the v0.34.10 Tauri updater

@@ -61,7 +61,7 @@ separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers 
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
 The protected source and latest published release are **v0.34.10**. Release-assets workflow
-`32544658079` is the current platform-package and strict 18-asset verification gate. The v0.34.10
+`32544658079` completed the platform-package and strict 18-asset verification gate. The v0.34.10
 package carries the v0.34.5 runtime hardening, the bounded Drive body-fetch improvement, and the
 selective shared-button UI increment from PR #1678,
 approved-corpus source-scope enforcement, and the five-minute Desktop cold-start budget
