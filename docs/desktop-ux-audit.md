@@ -22,9 +22,10 @@ is not part of a visual/UI change.
 - The v0.34.14 tag is the packaged evidence boundary. The audited host currently runs
   `/Users/amf/.local/bin/cortana` v0.34.14 with embedding and server services in query-only mode;
   recurring sync remains disabled. Current status reports 13 enabled sources. The pre-upgrade
-  v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds;
-  Personal Gmail timed out and the three Special Google sources failed closed with an expired OAuth
-  grant. Personal Drive passed that bounded probe after reauthorization, but its full-budget run was
+  v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds; a
+  v0.34.14 retry brought Personal Gmail to `complete=true` at the same document/byte bound with a
+  120-second cap. The three Special Google sources still fail closed with an expired OAuth grant.
+  Personal Drive passed that bounded probe after reauthorization, but its full-budget run was
   stopped after 147 documents when serialized PDF fetching stalled. The protected v0.34.9 release
   includes bounded parallel body fetching from PR #1594 and is installed; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
@@ -121,9 +122,9 @@ and the validation remains below the production gate. The published v0.34.14 rel
 protected main-tree PR #1594 fix; the host is ready for a bounded rerun under an external
 watchdog, but no full-corpus reconciliation has been started.
 
-The current validation metadata now contains nine complete bounded records from the pre-upgrade
-2026-08-22 25-document/5 MiB/60-second pass. Personal Gmail timed out at 59 seconds, and the
-three Special Google sources failed closed with the shared OAuth grant's `invalid_grant`; earlier
+The current validation metadata now contains ten complete bounded records: nine from the pre-upgrade
+2026-08-22 25-document/5 MiB/60-second pass and the v0.34.14 Personal Gmail retry at a 120-second
+cap. The three Special Google sources failed closed with the shared OAuth grant's `invalid_grant`; earlier
 production-budget counts for Apple Notes, Calendar, Buzz, Work Drive, Work Gmail, Personal Gmail,
 Special Gmail, and Special Drive remain historical evidence. Personal Drive's 2,000-document/128 MiB/1,800-second validation failed closed at the
 1,799-second connector deadline under the then-installed v0.32.9 parser while processing a large

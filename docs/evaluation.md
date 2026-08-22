@@ -29,15 +29,15 @@ Query-only readiness, `doctor`, deterministic `eval`, the strict release verifie
 verification, and skill parity all passed. Recurring sync remains uninstalled.
 
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
-source set is not fully production-validated. The fresh bounded source records below were collected
-on the pre-upgrade v0.34.13 binary with 25 documents, 5 MiB, and 60 seconds per source. Nine of 13
-enabled non-code profiles returned `complete=true` within those bounds: all Apple Notes scopes, all
-Work Google scopes, Personal Drive, Personal Calendar, and Buzz. `personal-gmail` timed out after
-59 seconds; `special-drive`, `special-gmail`, and `special-calendar` failed closed with Google
-OAuth `invalid_grant`. These records make no index or reconciliation writes and do not meet the
-configured production budgets. Personal Drive's bounded probe passed after reauthorization, but its
-previous full-budget run stalled on a large PDF and was stopped after 147 documents. Recurring sync
-remains uninstalled, and no reconciliation or large sync has been requested.
+source set is not fully production-validated. The pre-upgrade v0.34.13 pass used 25 documents, 5 MiB,
+and 60 seconds per source: nine of 13 enabled non-code profiles returned `complete=true`, while
+`personal-gmail` timed out after 59 seconds and the three Special Google profiles failed closed with
+Google OAuth `invalid_grant`. After installing v0.34.14, a bounded Personal Gmail retry at the same
+25-document/5 MiB scope completed within a 120-second cap, bringing the current bounded total to ten
+complete profiles. These records make no index or reconciliation writes and do not meet configured
+production budgets. Personal Drive's bounded probe passed after reauthorization, but its previous
+full-budget run stalled on a large PDF and was stopped after 147 documents. Recurring sync remains
+uninstalled, and no reconciliation or large sync has been requested.
 
 The older production-budget results below are retained as historical evidence, not current
 authorization. They document prior successful prefixes and failure/recovery behavior, but the
