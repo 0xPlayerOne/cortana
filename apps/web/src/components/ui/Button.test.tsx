@@ -1,4 +1,6 @@
 import { expect, test } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 import { buttonClassName } from './buttonClasses'
 
@@ -14,4 +16,16 @@ test('merges an optional class without dropping the semantic variant', () => {
   expect(buttonClassName('secondary', 'settings-refresh')).toBe(
     'cortana-button cortana-button--secondary settings-refresh'
   )
+})
+
+test('legacy settings selectors leave the shared primitive in control', () => {
+  const settingsCss = readFileSync(
+    fileURLToPath(new URL('../../styles/settings.css', import.meta.url)),
+    'utf8'
+  )
+
+  expect(settingsCss).toContain('source-card-actions button:not(.cortana-button)')
+  expect(settingsCss).toContain('source-validation-job button:not(.cortana-button)')
+  expect(settingsCss).toContain('secret-input button:not(.cortana-button)')
+  expect(settingsCss).toContain('readiness-list button:not(.cortana-button)')
 })
