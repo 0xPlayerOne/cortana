@@ -99,6 +99,13 @@ is not part of a visual/UI change.
   and Slack is unconfigured. The historical sweep is authorization/reachability
   evidence only and must not be read as current source authorization.
 
+- After the v0.34.18 installation, the current Apple Notes folder-scoped sources were validated
+  and exercised with bounded, non-reconciling trials: `work-notes` 25 documents/118,540 bytes,
+  `personal-notes` 25/89,645, and `special-notes` 8/14,046. All three trials passed with zero
+  deletions and preserved their `work`/`personal`/`special` assignments. This is fresh connector
+  evidence below the configured production budgets; the packaged GUI and larger acceptance flow
+  remain separate gates.
+
 The current v0.34.18 source includes the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, enforces native-memory retention bounds, and serializes Desktop
