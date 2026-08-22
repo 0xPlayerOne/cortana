@@ -9,33 +9,33 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.10
+## Current release: v0.34.11
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.10` tag is the current source and release boundary. Release-assets workflow
-`32544658079` completed the strict archive, checksum, updater-signature, manifest, and
-packaged-core verification gate; the local strict verifier confirmed all 18 published assets.
+`v0.34.11` tag is the current source and release boundary. Release-assets workflow
+`32546628726` completed the strict archive, checksum, updater-signature, manifest, and packaged-core
+verification gate; the release workflow and local verification confirmed all 18 published assets.
 
-The v0.34.10 release is a version-only promotion over v0.34.9. It changes release metadata and
+The v0.34.11 release is a version-only promotion over v0.34.10. It changes release metadata and
 does not change credentials, source authorization, indexed data, recurring-sync policy, or native
 memory behavior. The installed host should be upgraded only from the verified platform archive;
 afterward re-check `cortana --version`, health/readiness, and the provider-backed fixture evaluator.
 The packaged GUI, browser OAuth, tray, native dialogs, updater interaction, Developer ID signing,
 notarization, full-budget source validation, and recurring sync remain separate gates.
 
-## v0.34.9 release notes (historical)
+## v0.34.10 release notes (historical)
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.9` was the protected source and published release at the time. Release-assets workflow
-`32540177167` completed the archive, checksum, updater-signature, manifest, and credential-free
+`v0.34.10` was the protected source and published release at the time. Release-assets workflow
+`32544658079` completed the archive, checksum, updater-signature, manifest, and credential-free
 packaged-core gates; all 18 published assets are verified. v0.34.8 and earlier remain
 historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.34.9 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.34.10 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -51,25 +51,25 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.34.9
+  scripts/verify-desktop-release.sh v0.34.10
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.34.9 source was the release boundary for native agentic memory and the post-v0.31.12
+The v0.34.10 source was the release boundary for native agentic memory and the post-v0.31.12
 hardening, bounded live-index evaluation harness, and readiness-budget diagnostics described below.
 Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
 being called downloadable-release behavior.
 
 The historical source gate was also explicit. On 2026-08-22, 13 sources were enabled and the installed
-v0.34.9 CLI refreshed all of them at the safe 25-document/5 MiB/60-second validation bound. Ten
+v0.34.10 CLI refreshed all of them at the safe 25-document/5 MiB/60-second validation bound. Ten
 have fresh `complete=true` bounded records; the three Special Google sources failed closed because
 their shared OAuth grant returned `invalid_grant`. Personal Drive passed the bounded probe after
 explicit reauthorization, but its prior 2,000-document/128 MiB/900-second run was operator-
 cancelled after 147 documents while serialized PDF body fetching stalled; no index or
-reconciliation writes occurred. The protected v0.34.9 release includes bounded parallel body
+reconciliation writes occurred. The protected v0.34.10 release includes bounded parallel body
 fetching from PR #1594 and the evaluator and Desktop cold-start hardening. None of these refreshed
 records proves the configured production budgets, so `readiness --allow-sync-service` remains
 closed and recurring sync remains uninstalled; no reconciliation or large sync has been started.
@@ -81,14 +81,14 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-### v0.34.9 release intent (published and verified; historical)
+### v0.34.10 release intent (published and verified; historical)
 
-The v0.34.9 package is the protected version-only Release Please follow-up to the exact-tree
-promotion PR #1680 and staging reconcile PR #1682. It publishes the selective shared-button UI
+The v0.34.10 package was the protected version-only Release Please follow-up to exact-tree
+promotion PR #1693 and staging reconcile PR #1696. It publishes the selective shared-button UI
 increment from PR #1678 without changing credentials, source authorization, indexed data,
-recurring-sync policy, or native-memory behavior. Release-assets workflow `32540177167` completed
+recurring-sync policy, or native-memory behavior. Release-assets workflow `32544658079` completed
 all 18 platform assets, checksums, updater signatures, manifest, and packaged-core verification.
-The installed CLI was upgraded to v0.34.9; query-only readiness and the bounded provider-backed
+The installed CLI was upgraded to v0.34.10; query-only readiness and the bounded provider-backed
 fixture evaluation remain separate evidence from the still-open packaged-GUI, source,
 provider-corpus, and macOS trust gates.
 
