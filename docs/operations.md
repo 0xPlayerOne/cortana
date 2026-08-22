@@ -311,6 +311,11 @@ freshly-created drill directory. Set `CORTANA_KEEP_DRILL=1` to retain the exact 
 The drill proves the offline CLI control plane only; it is not a proof of the Desktop GUI, OAuth
 flows, tray integration, or updater behavior, none of which it exercises.
 
+The installed v0.34.14 binary passed this drill on 2026-08-22. It created and searched the
+disposable fixture, exported metadata-only audit output, verified a backup, restored it into a
+second temporary data directory, and searched the restored index. The run never read or mutated
+the live configuration, index, credentials, or source connectors.
+
 The historical v0.32.12 host passed this drill on 2026-08-16. That installed-runtime result confirms
 the disposable control-plane and recovery path; it does not authorize source synchronization or
 replace native GUI, browser OAuth, tray, updater, or macOS trust acceptance.
