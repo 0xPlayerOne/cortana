@@ -2,6 +2,7 @@ import { Check, Copy, LoaderCircle, RefreshCw, X } from 'lucide-react'
 
 import type { AnswerResponse, BrainStatus, ContextBundle, Evidence } from '../types'
 import { useClipboardCopy } from '../useClipboardCopy'
+import { Button } from './ui/Button'
 
 export function ContextPanel({
   open,
@@ -41,15 +42,15 @@ export function ContextPanel({
     <aside className={`context-panel ${open ? 'mobile-open' : ''}`}>
       <div className="context-heading">
         <strong>Agent context</strong>
-        <button
-          type="button"
+        <Button
+          variant="icon"
           aria-label="Close agent context"
           data-tooltip="Close agent context"
           className="quick-tooltip"
           onClick={onClose}
         >
           <X size={17} />
-        </button>
+        </Button>
       </div>
       <div className="context-scroll">
         <section className="query-summary">
@@ -139,15 +140,10 @@ export function ContextPanel({
             Build the exact bounded context returned by the HTTP and MCP query layer for this
             workspace scope.
           </p>
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={contextLoading}
-            onClick={onRetrieveContext}
-          >
+          <Button variant="secondary" disabled={contextLoading} onClick={onRetrieveContext}>
             {contextLoading ? <LoaderCircle className="spin" size={15} /> : <RefreshCw size={15} />}
             {serverContext ? 'Refresh MCP-equivalent context' : 'Build MCP-equivalent context'}
-          </button>
+          </Button>
           {contextError && (
             <p className="context-error" role="alert">
               {contextError}
@@ -175,11 +171,11 @@ export function ContextPanel({
         </section>
       </div>
       <div className="copy-area">
-        <button
-          type="button"
+        <Button
+          variant="primary"
           aria-label="Copy agent context"
           data-tooltip="Copy agent context"
-          className="primary-button quick-tooltip"
+          className="quick-tooltip"
           onClick={() => void copy()}
         >
           {copied ? <Check size={17} /> : <Copy size={17} />}
@@ -188,7 +184,7 @@ export function ContextPanel({
             : serverContext
               ? 'Copy MCP-equivalent context'
               : 'Copy preview context'}
-        </button>
+        </Button>
         {copyError && (
           <p className="context-error" role="alert">
             {copyError}
