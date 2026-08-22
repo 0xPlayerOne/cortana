@@ -9,18 +9,18 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.7
+## Current release: v0.34.9
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.7` is the current protected source and published release. Release-assets workflow
-`32533269847` completed the archive, checksum, updater-signature, manifest, and credential-free
-packaged-core gates; all 18 published assets are verified. v0.34.6 and earlier remain
+`v0.34.9` is the current protected source and published release. Release-assets workflow
+`32540177167` completed the archive, checksum, updater-signature, manifest, and credential-free
+packaged-core gates; all 18 published assets are verified. v0.34.8 and earlier remain
 historical evidence.
 
 ### Supported Desktop platforms
 
-The v0.34.7 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+The v0.34.9 Desktop support policy is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
 x86_64**. The release intentionally does not publish an Intel macOS Desktop bundle, so Intel
 macOS is unsupported rather than merely unverified. Rosetta execution and the macOS core archive
 do not change that policy. Adding Intel support requires a matching app bundle, strict codesign,
@@ -36,13 +36,13 @@ To re-check the published release without touching the live index or starting a 
 
 ```bash
 GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
-  scripts/verify-desktop-release.sh v0.34.7
+  scripts/verify-desktop-release.sh v0.34.9
 ```
 
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.34.7 source is the release boundary for native agentic memory and the post-v0.31.12
+The v0.34.9 source is the release boundary for native agentic memory and the post-v0.31.12
 hardening, bounded live-index evaluation harness, and readiness-budget diagnostics described below.
 Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
@@ -53,7 +53,7 @@ enabled: 12 have fresh `complete=true` validation at their configured document, 
 budgets. After explicit reauthorization, Personal Drive passed a one-document/64 KiB/60-second
 read-only probe in 11.7 seconds. Its subsequent 2,000-document/128 MiB/900-second run was
 operator-cancelled after 147 documents while serialized PDF body fetching stalled; no index or
-reconciliation writes occurred. The protected v0.34.7 release includes bounded parallel body fetching from
+reconciliation writes occurred. The protected v0.34.9 release includes bounded parallel body fetching from
 PR #1594 and the evaluator and Desktop cold-start hardening; the production-budget gate has not yet been repeated. `readiness --allow-sync-service` therefore remains
 closed and recurring sync remains uninstalled; no reconciliation or large sync has been started.
 
@@ -64,15 +64,23 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.34.7 release intent (published and verified)
+## v0.34.9 release intent (published and verified)
 
-The v0.34.7 package is a protected version-only Release Please follow-up to the validated v0.34.6
-source (PR #1665). It contains no runtime, credential, source-authorization, indexed-data,
-recurring-sync, or native-memory changes. Release-assets workflow `32533269847` completed all 18
-platform assets, checksums, updater signatures, manifest, and packaged-core verification. The
-installed CLI was upgraded to v0.34.7; query-only readiness and the bounded provider-backed fixture
-evaluation remain separate evidence from the still-open packaged-GUI, source, provider-corpus, and
-macOS trust gates.
+The v0.34.9 package is the protected version-only Release Please follow-up to the exact-tree
+promotion PR #1680 and staging reconcile PR #1682. It publishes the selective shared-button UI
+increment from PR #1678 without changing credentials, source authorization, indexed data,
+recurring-sync policy, or native-memory behavior. Release-assets workflow `32540177167` completed
+all 18 platform assets, checksums, updater signatures, manifest, and packaged-core verification.
+The installed CLI was upgraded to v0.34.9; query-only readiness and the bounded provider-backed
+fixture evaluation remain separate evidence from the still-open packaged-GUI, source,
+provider-corpus, and macOS trust gates.
+
+## v0.34.8 release intent (published and verified; historical)
+
+The v0.34.8 package published the validated Drive PDF extraction hardening from PR #1673 and the
+current staging metadata reconciliation from PR #1677. Its strict release-assets and packaged-core
+verification passed before the v0.34.9 UI promotion; the installed v0.34.8 runtime remains
+historical evidence only.
 
 ## v0.34.6 release intent (published and verified; historical)
 
