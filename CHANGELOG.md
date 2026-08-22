@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.9](https://github.com/0xPlayerOne/cortana/compare/v0.34.8...v0.34.9) (2026-08-22)
+
+
+### promote
+
+* exact validated staging tree to main (v0.34.9) ([#1680](https://github.com/0xPlayerOne/cortana/issues/1680)) ([0902355](https://github.com/0xPlayerOne/cortana/commit/0902355dc8c63f7bfdf59febfe3ec7c8935e7385))
+
 ## [0.34.8](https://github.com/0xPlayerOne/cortana/compare/v0.34.7...v0.34.8) (2026-08-21)
 
 
