@@ -5,7 +5,7 @@ production-safe source. It is intentionally separate from the code contract:
 connector tests prove behavior, but they do not authorize an account or prove
 that a user's full corpus is ready for reconciliation.
 
-## Current operator state (2026-08-22; v0.34.10 release)
+## Current operator state (2026-08-22; v0.34.11 release)
 
 The local installation remains in manual mode: `ai.cortana.sync` is not installed and no
 recurring job is active. The operator has completed the Hermes import/rebuild and retained a
@@ -29,7 +29,7 @@ bounded current-release evidence, not authorization to reconcile or install recu
 - Special Google sources: `special-drive`, `special-gmail`, and `special-calendar`; failed
   closed with `Google authorization expired or was denied; reauthorize this source`.
 
-The installed v0.34.10 release includes the bounded four-worker Drive body-fetch pool and regression
+The installed v0.34.11 release includes the bounded four-worker Drive body-fetch pool and regression
 coverage from PR #1594. The earlier production-budget Personal Drive run was stopped after 147
 documents while a large PDF stalled; it made zero index or reconciliation writes. No current
 production-budget validation is claimed for Personal Drive or any other source after this bounded
