@@ -86,6 +86,13 @@ at the 30-second request ceiling, so no provider-backed personal answer was acce
 enable production synthesis or treat this run as full-corpus quality evidence until a repeatable
 approved-corpus evaluation meets the retrieval, citation, synthesis, latency, and fallback gates.
 
+A subsequent private, read-only v0.34.18 evaluation against the approved `work` / `work-notes`
+scope passed the retrieval-only thresholds: recall@k 1.0, MRR 1.0, retrieval pass rate 1.0,
+zero forbidden-source leaks, hybrid retrieval without degradation, repeated-query cache hit rate
+1.0, and a 158 ms maximum request latency. The manifest and query remain untracked and the report
+contains only bounded metrics and source IDs. This strengthens current retrieval and folder-scope
+evidence, but it is not provider-backed synthesis evidence and does not authorize recurring sync.
+
 The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.18. The embedding, HTTP, and backup
 services are running with recurring sync uninstalled. The isolated `/healthz` and `/readyz` probes,
 `doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
@@ -125,6 +132,14 @@ used smaller bounds than the configured budgets; the current host status now rep
 enabled sources complete within the refreshed bounded limits, while the three Special Google
 sources require reauthorization and Personal Drive still lacks a production-budget validation.
 The pass did not enable Discord, code, Slack, or synthesis.
+
+On 2026-08-22, the installed v0.34.18 binary also completed a current-release Apple Notes
+validation and bounded non-reconciling trial for each configured folder scope. `work-notes`
+returned 25 documents (118,540 bytes), `personal-notes` returned 25 (89,645 bytes), and
+`special-notes` returned 8 (14,046 bytes); all three records were `complete=true` within the
+25-document/5 MiB/60-second bound and the trials reported no deletions. This confirms the
+workspace folder routing and current connector path, but remains below the configured production
+budgets and does not authorize recurring sync.
 
 The v0.34.18 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
