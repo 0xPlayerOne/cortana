@@ -35,6 +35,11 @@ is not part of a visual/UI change.
   fell back safely to extractive mode. The earlier v0.34.12 run passed planner/synthesis, citations,
   cache reuse, and revision invalidation. These are provider-backed fixture evidence only; they do
   not query the personal index, authorize source synchronization, or prove packaged GUI behavior.
+- The installed v0.34.14 binary passed the disposable native-memory, shared-agent HTTP, shared-agent
+  MCP, and offline Desktop control-plane drills on 2026-08-22. The drills use temporary synthetic
+  indexes and verify dedupe/expiry/forget, workspace ACLs, metadata-only audit output, token
+  rotation/revocation, bounded retrieval, backup/restore, and post-restore verification. They do
+  not prove packaged GUI, OAuth, tray, native-dialog, updater, or operating-system trust behavior.
 - The then-installed v0.32.12 host passed the disposable offline control-plane drill on
   2026-08-16:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
