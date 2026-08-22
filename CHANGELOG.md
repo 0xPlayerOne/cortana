@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.13](https://github.com/0xPlayerOne/cortana/compare/v0.34.12...v0.34.13) (2026-08-22)
+
+
+### Bug Fixes
+
+* **ui:** standardize settings action controls ([#1709](https://github.com/0xPlayerOne/cortana/issues/1709)) ([b6805e2](https://github.com/0xPlayerOne/cortana/commit/b6805e2d4fa8451045507138b54df0111e22e8ca))
+
 ## [0.34.12](https://github.com/0xPlayerOne/cortana/compare/v0.34.11...v0.34.12) (2026-08-22)
 
 
