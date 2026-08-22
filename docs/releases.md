@@ -48,13 +48,15 @@ Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
 being called downloadable-release behavior.
 
-The current source gate is also explicit. On the audited host (2026-08-21), 13 sources are
-enabled: 12 have fresh `complete=true` validation at their configured document, byte, and time
-budgets. After explicit reauthorization, Personal Drive passed a one-document/64 KiB/60-second
-read-only probe in 11.7 seconds. Its subsequent 2,000-document/128 MiB/900-second run was
-operator-cancelled after 147 documents while serialized PDF body fetching stalled; no index or
-reconciliation writes occurred. The protected v0.34.9 release includes bounded parallel body fetching from
-PR #1594 and the evaluator and Desktop cold-start hardening; the production-budget gate has not yet been repeated. `readiness --allow-sync-service` therefore remains
+The current source gate is also explicit. On 2026-08-22, 13 sources are enabled and the installed
+v0.34.9 CLI refreshed all of them at the safe 25-document/5 MiB/60-second validation bound. Ten
+have fresh `complete=true` bounded records; the three Special Google sources failed closed because
+their shared OAuth grant returned `invalid_grant`. Personal Drive passed the bounded probe after
+explicit reauthorization, but its prior 2,000-document/128 MiB/900-second run was operator-
+cancelled after 147 documents while serialized PDF body fetching stalled; no index or
+reconciliation writes occurred. The protected v0.34.9 release includes bounded parallel body
+fetching from PR #1594 and the evaluator and Desktop cold-start hardening. None of these refreshed
+records proves the configured production budgets, so `readiness --allow-sync-service` remains
 closed and recurring sync remains uninstalled; no reconciliation or large sync has been started.
 
 The repository also includes `scripts/shared-agent-auth-drill.sh`, a disposable offline HTTP smoke
