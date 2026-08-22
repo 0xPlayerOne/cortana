@@ -9,20 +9,20 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.17
+## Current release: v0.34.18
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.17` tag is the current source and release boundary. Release-assets workflow
-`32593385885` completed the strict archive, checksum, updater-signature, manifest, and packaged-core
-verification gate; all 18 published assets are verified.
+`v0.34.18` tag is the current source and release boundary. Its release-assets workflow completed
+the strict archive, checksum, updater-signature, manifest, and packaged-core verification gate;
+all 18 published assets are verified.
 
-The v0.34.17 release promotes the exact staging tree through protected promotion PR #1745 and
-the version-only Release Please PR #1746. It changes no credentials, source authorization, indexed
-data, recurring-sync policy, or native-memory behavior. The installed host was upgraded from
-v0.34.16 using the verified Apple Silicon archive; `cortana --version`, readiness, native-memory,
-shared-agent, MCP, and control-plane drills passed afterward. The embedding service requires a
-short model warm-up after restart before health becomes ready.
+The v0.34.18 release is a documentation and release-metadata follow-up to the verified v0.34.17
+runtime. It changes no credentials, source authorization, indexed data, recurring-sync policy, or
+native-memory behavior. The installed host was upgraded from v0.34.17 using the verified Apple
+Silicon archive; `cortana --version`, readiness, native-memory, shared-agent, MCP, and control-plane
+drills passed afterward. The embedding service requires a short model warm-up after restart before
+health becomes ready.
 
 The installed `cortana eval --model` fixture passed planner and synthesis execution, citations,
 cache reuse, and revision invalidation in 12,827 ms without provider fallback. This is synthetic
@@ -30,6 +30,15 @@ fixture evidence. A bounded live approved-index evaluation still found recall 1.
 and a synthesis-enabled attempt timed out; extractive mode remains the safe production default.
 The packaged GUI, browser OAuth, tray, native dialogs, updater interaction, Developer ID signing,
 notarization, full-budget source validation, and recurring sync remain separate gates.
+
+## v0.34.17 release notes (historical)
+
+The v0.34.17 runtime release promoted the exact staging tree through protected promotion PR #1745
+and the version-only Release Please PR #1746. Release-assets workflow `32593385885` completed
+the strict archive, checksum, updater-signature, manifest, and packaged-core verification gate;
+all 18 published assets were verified. The installed host passed readiness, native-memory,
+shared-agent, MCP, and control-plane drills. The approved-corpus provider gate remained open,
+and extractive mode remained the safe production default.
 
 ## v0.34.10 release notes (historical)
 
