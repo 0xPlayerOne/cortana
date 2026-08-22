@@ -208,6 +208,14 @@ def test_non_retryable_trial_failure_fails_fast(tmp_path: Path) -> None:
     assert len(drive_trials) == 1, drive_trials
 
 
+def test_budget_exceeded_trial_failure_is_classified_as_budget(tmp_path: Path) -> None:
+    _require_bash()
+    result, _ = _run_smoke(tmp_path, "--sync", sync_error="budget_exceeded")
+    assert result.returncode == 1
+    assert "drive\tgoogle-drive\ttrue\tpassed\tfailed" in result.stdout
+    assert "configured budget exceeded after 1 attempt(s)" in result.stdout
+
+
 def test_filesystem_trials_require_include_filesystem(tmp_path: Path) -> None:
     _require_bash()
     result, log = _run_smoke(tmp_path, "--sync")
