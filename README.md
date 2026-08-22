@@ -61,9 +61,8 @@ separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers 
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
 The protected source and latest published release are **v0.34.21**. Release-assets workflow
-[`32605080974`](https://github.com/0xPlayerOne/cortana/actions/runs/32605080974) is publishing the
-platform-package and strict 18-asset verification gate for v0.34.21; final verification remains
-pending until its hosted verifier completes. The v0.34.21
+[`32605080974`](https://github.com/0xPlayerOne/cortana/actions/runs/32605080974) completed the
+platform-package and strict 18-asset verification gate for v0.34.21. The v0.34.21
 package carries the v0.34.5 runtime hardening, the bounded Drive body-fetch improvement, and the
 selective shared-button UI increment from PR #1678,
 approved-corpus source-scope enforcement, and the five-minute Desktop cold-start budget

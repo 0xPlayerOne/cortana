@@ -14,9 +14,9 @@ under the automated manifest flow.
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
 `v0.34.21` tag is the current source and release boundary. Release-assets workflow
-[`32605080974`](https://github.com/0xPlayerOne/cortana/actions/runs/32605080974) is publishing the
+[`32605080974`](https://github.com/0xPlayerOne/cortana/actions/runs/32605080974) completed the
 strict archive, checksum, updater-signature, manifest, and packaged-core verification gate; all
-18 assets must pass the independent strict verifier before this release is called fully verified.
+18 assets passed the independent strict verifier.
 
 The v0.34.21 release is a metadata-only follow-up to the verified v0.34.20 runtime. It changes no
 credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.

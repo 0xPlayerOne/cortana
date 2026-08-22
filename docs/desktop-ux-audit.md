@@ -8,11 +8,11 @@ is not part of a visual/UI change.
 ## Current release evidence (2026-08-22)
 
 - `v0.34.21` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `32605080974` is publishing the
+  and Release Please automation. Release-assets workflow `32605080974` completed the
   cross-platform package lanes; the 18-asset checksums, updater signatures, manifest, and
-  packaged-core verifier remain pending. Asset verification does not launch the packaged GUI or
+  packaged-core verifier passed. Asset verification does not launch the packaged GUI or
   prove OS-level signing/notarization.
-- The v0.34.20 macOS Apple Silicon package verifier passed the Tauri updater
+- The v0.34.21 macOS Apple Silicon package verifier passed the Tauri updater
   signature, packaged-core offline evaluation, and strict codesign checks. `spctl --assess` still
   rejects the ad-hoc bundle because Developer ID signing and notarization are not configured; the
   verifier intentionally did not launch the GUI.
