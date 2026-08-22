@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.16](https://github.com/0xPlayerOne/cortana/compare/v0.34.15...v0.34.16) (2026-08-22)
+
+
+### Maintenance
+
+* promote reconciled staging documentation ([f4222e2](https://github.com/0xPlayerOne/cortana/commit/f4222e2c851c8a1e0dbfa591040b3475c461c4d6))
+
 ## [0.34.15](https://github.com/0xPlayerOne/cortana/compare/v0.34.14...v0.34.15) (2026-08-22)
 
 
