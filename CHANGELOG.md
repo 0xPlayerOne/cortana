@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.34.14](https://github.com/0xPlayerOne/cortana/compare/v0.34.13...v0.34.14) (2026-08-22)
+
+
+### Documentation
+
+* align current v0.34.13 release boundary ([#1714](https://github.com/0xPlayerOne/cortana/issues/1714)) ([783a7c1](https://github.com/0xPlayerOne/cortana/commit/783a7c12b93209e17853acfde839f674e062012a))
+* align README with installed v0.34.13 ([#1718](https://github.com/0xPlayerOne/cortana/issues/1718)) ([c98eef3](https://github.com/0xPlayerOne/cortana/commit/c98eef3b7f36af5df2d13036cd9d498f1671097c))
+* record verified v0.34.13 installation ([#1717](https://github.com/0xPlayerOne/cortana/issues/1717)) ([e1fee1e](https://github.com/0xPlayerOne/cortana/commit/e1fee1e8719359c85d97bf21fd6be94504eecad2))
+
 ## [0.34.13](https://github.com/0xPlayerOne/cortana/compare/v0.34.12...v0.34.13) (2026-08-22)
 
 
