@@ -567,8 +567,9 @@ records; Buzz completed 25 records. Every run reported zero deletions. The index
 documents and 42,638 chunks. Query-only readiness passed and `readiness --allow-sync-service`
 failed closed for the then-current bounded records. These are historical bounded,
 non-reconciling observations only; recurring sync remains uninstalled. The current host status is
-tracked above in the release/evaluation evidence: 12 of 13 enabled sources now have fresh
-configured-budget validation, while Personal Drive remains under-budget.
+tracked above in the release/evaluation evidence: 10 of 13 enabled sources now have fresh bounded
+validation, while the three Special Google sources require reauthorization and Personal Drive
+remains below its configured production budget.
 
 The v0.34.5 source uses the local embedding `/health` endpoint for steady-state
 liveness and keep the real vector probe for startup/restart. The installed v0.32.4 Work Drive retry
