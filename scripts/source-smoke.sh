@@ -188,7 +188,7 @@ classify_failure() {
     printf 'authorization denied'
   elif grep -Eqi 'no such file or directory|does not exist|not found|must be a regular|missing .* (file|path)' "$log_path"; then
     printf 'credential or path missing'
-  elif grep -Eqi 'exceeds .*budget|safety bound|budget exceeded' "$log_path"; then
+  elif grep -Eqi 'exceeds .*budget|safety bound|budget exceeded|budget_exceeded|budget-exceeded' "$log_path"; then
     printf 'configured budget exceeded'
   else
     printf 'connector or validation error'
