@@ -739,8 +739,8 @@
   gap: 8px;
 }
 
-.source-card-actions button,
-.source-validation-job button {
+.source-card-actions button:not(.cortana-button),
+.source-validation-job button:not(.cortana-button) {
   display: inline-flex;
   height: var(--btn-compact-height);
   align-items: center;
@@ -760,8 +760,8 @@
   padding: 0;
 }
 
-.source-card-actions button:disabled,
-.source-validation-job button:disabled {
+.source-card-actions button:not(.cortana-button):disabled,
+.source-validation-job button:not(.cortana-button):disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -1166,7 +1166,7 @@
   flex: 1;
 }
 
-.secret-input button {
+.secret-input button:not(.cortana-button) {
   padding: 0 10px;
   color: #d9b46f;
   border: 1px solid #5d4a27;
@@ -1354,7 +1354,7 @@
   white-space: nowrap;
 }
 
-.readiness-list button {
+.readiness-list button:not(.cortana-button) {
   padding: 5px 10px;
   color: #777973;
   border: 1px solid #444541;

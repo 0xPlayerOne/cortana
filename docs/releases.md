@@ -9,15 +9,15 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.14
+## Current release: v0.34.16
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.14` tag is the current source and release boundary. Release-assets workflow
-`32560090908` completed the strict archive, checksum, updater-signature, manifest, and packaged-core
+`v0.34.16` tag is the current source and release boundary. Release-assets workflow
+`32589317192` completed the strict archive, checksum, updater-signature, manifest, and packaged-core
 verification gate; all 18 published assets are verified.
 
-The v0.34.14 release is a version-only promotion over v0.34.13. It changes release metadata and
+The v0.34.16 release is a version-only promotion over v0.34.15. It changes release metadata and
 does not change credentials, source authorization, indexed data, recurring-sync policy, or native
 memory behavior. The installed host should be upgraded only from the verified platform archive;
 afterward re-check `cortana --version`, health/readiness, and the provider-backed fixture evaluator.
