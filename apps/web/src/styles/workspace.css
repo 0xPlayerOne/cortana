@@ -548,7 +548,7 @@
   font-size: 11px;
 }
 
-.graph-pagination .secondary-button {
+.graph-pagination .cortana-button--secondary {
   min-height: 30px;
 }
 
@@ -658,7 +658,7 @@
   font-size: 18px;
 }
 
-.graph-empty-filter .secondary-button {
+.graph-empty-filter .cortana-button--secondary {
   min-width: 108px;
 }
 
