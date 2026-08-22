@@ -40,6 +40,20 @@ production budgets. Personal Drive's bounded probe passed after reauthorization,
 full-budget run stalled on a large PDF and was stopped after 147 documents. Recurring sync remains
 uninstalled, and no reconciliation or large sync has been requested.
 
+The current v0.34.18 Personal Drive follow-up confirms the distinction: validation passed at the
+25-document/5 MiB/60-second smoke bound (234,160 bytes), while the separate non-reconciling trial
+reached the 60-second safety bound and failed closed as `budget_exceeded`, with no deletions. This
+is fresh failure/recovery evidence for the connector boundary, not a production-budget validation;
+the source remains ineligible for reconciliation or recurring sync.
+
+An approved-corpus, read-only v0.34.18 evaluation against the local query API also ran with
+synthesis explicitly enabled in an isolated temporary server. Scoped retrieval passed with
+recall@k 1.0, MRR 1.0, hybrid retrieval, and no ACL leakage. The provider-backed answer request
+timed out at the 25-second request bound on both the initial and repeated call, reported provider
+fallback, and did not use synthesis or the answer cache. The overall provider-backed gate therefore
+failed closed while the deterministic extractive default remains healthy; this is current live
+operational evidence, not a quality pass or authorization to enable provider synthesis by default.
+
 The older production-budget results below are retained as historical evidence, not current
 authorization. They document prior successful prefixes and failure/recovery behavior, but the
 on-disk validation record and its configuration fingerprint are the authoritative gate.
