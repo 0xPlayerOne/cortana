@@ -14,6 +14,7 @@ import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 import { isDesktopApp, openDesktopUrl } from '../api'
 import { isFavoriteDocument, toggleFavoriteDocument } from '../favoriteDocuments'
 import { safeSourceLink } from '../sourceLinks'
+import { Button } from './ui/Button'
 import type {
   AnswerResponse,
   BrainDocument,
@@ -878,9 +879,9 @@ function EmptyState({
       <h1>{title}</h1>
       <p>{detail}</p>
       {action && (
-        <button type="button" className="primary-button" onClick={action}>
+        <Button variant="primary" onClick={action}>
           Try again
-        </button>
+        </Button>
       )}
     </div>
   )

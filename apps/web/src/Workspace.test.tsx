@@ -121,7 +121,9 @@ test('graph failures expose a retry action', () => {
   )
 
   expect(screen.getByRole('heading', { name: 'Graph unavailable' })).toBeTruthy()
-  expect(screen.getByRole('button', { name: 'Try again' }).className).toContain('primary-button')
+  expect(screen.getByRole('button', { name: 'Try again' }).className).toContain(
+    'cortana-button--primary'
+  )
   fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
   expect(retries).toBe(1)
 })
