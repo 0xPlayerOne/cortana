@@ -94,7 +94,7 @@ backup freshness (18 hours old), query-only sync-service safety, and extractive 
 passed. The command did not enable source validation or recurring sync; that remains a separate
 production-budget gate.
 
-The same installed v0.34.9 binary also passed the disposable native-memory lifecycle drill
+On 2026-08-22, the same installed v0.34.9 binary also passed the disposable native-memory lifecycle drill
 (dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (ACL filtering,
 metadata-only audit, token rotation, and revocation), and the real MCP stdio drill (10 tools,
 workspace ACL filtering, and token rotation). These are synthetic control-plane evidence and do
