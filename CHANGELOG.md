@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.15](https://github.com/0xPlayerOne/cortana/compare/v0.34.14...v0.34.15) (2026-08-22)
+
+
+### Maintenance
+
+* promote current staging documentation ([ac430c6](https://github.com/0xPlayerOne/cortana/commit/ac430c6a400ce2cab97be1f7652875427cdaae39))
+
 ## [0.34.14](https://github.com/0xPlayerOne/cortana/compare/v0.34.13...v0.34.14) (2026-08-22)
 
 
