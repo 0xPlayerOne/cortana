@@ -144,8 +144,8 @@ general filesystem permission.
 
 The webview uses a small, local component contract rather than a second runtime design system.
 Shared tokens in `apps/web/src/styles/tokens.css` define colors, radii, focus rings, spacing, and
-button sizes; the `primary-button`, `secondary-button`, `quick-tooltip`, and icon-button contracts
-are the source of truth for new controls. This keeps the Obsidian-inspired shell, source tree,
+button sizes; the `.cortana-button` classes, `Button` component, `buttonClasses.ts`, `quick-tooltip`,
+and icon-button contracts are the source of truth for new controls. This keeps the Obsidian-inspired shell, source tree,
 graph, and responsive layout under one stylesheet and avoids a Tailwind migration solely to obtain
 component primitives.
 
