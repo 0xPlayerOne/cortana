@@ -61,7 +61,7 @@ separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers 
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
 The protected source and latest published release are **v0.34.16**. Release-assets workflow
-`32589317192` is the current platform-package and strict 18-asset verification gate. The v0.34.16
+`32589317192` completed the platform-package and strict 18-asset verification gate. The v0.34.16
 package carries the v0.34.5 runtime hardening, the bounded Drive body-fetch improvement, and the
 selective shared-button UI increment from PR #1678,
 approved-corpus source-scope enforcement, and the five-minute Desktop cold-start budget
@@ -73,11 +73,10 @@ through a shared per-config lock, Desktop sidecars publish atomically, and compa
 controls share one tokenized button contract. The Desktop architecture guide records the selective
 shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
-The audited host installation remains on `cortana 0.34.15` until the v0.34.16 release assets are
-verified and installed. Embedding, HTTP, and backup services are healthy in query-only mode;
-recurring sync remains uninstalled. The v0.34.15 readiness, native-memory, shared-agent, and
-control-plane evidence remains the current operational evidence boundary until that upgrade. The
-installed v0.34.15 binary also
+The audited host installation now reports `cortana 0.34.16`, matching the latest verified package.
+Embedding, HTTP, and backup services are healthy in query-only mode; recurring sync remains
+uninstalled. The v0.34.16 readiness, native-memory, shared-agent, and control-plane evidence is
+recorded in the linked operations and evaluation guides. The installed v0.34.16 binary also
 passed the deterministic offline fixture evaluation and packaged-core verification. The latest
 provider-backed attempt on the pre-upgrade v0.34.13 host failed closed after 48,681 ms because the
 configured model gateway provider was unavailable; the prior v0.34.12 fixture run passed retrieval,

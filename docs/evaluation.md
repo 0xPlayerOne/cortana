@@ -20,14 +20,14 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 ### Current release boundary
 
 The current protected source and published tag are `v0.34.16`, promoted through the protected
-staging → main flow and Release Please automation. Release-assets workflow `32589317192` is the
-current 18-asset release gate for checksums, updater signatures, manifest, and packaged-core
-verification. The release is a metadata-only promotion over v0.34.15; it does not change
-credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.
-The audited host remains on v0.34.15 until the v0.34.16 assets are verified and installed; the
-v0.34.15 query-only readiness, `doctor`, deterministic `eval`, strict verifier, packaged-core
-verification, and skill-parity results remain the current installed-runtime evidence. Recurring
-sync remains uninstalled.
+staging → main flow and Release Please automation. Release-assets workflow `32589317192` completed
+the 18-asset release gate for checksums, updater signatures, manifest, and packaged-core verification.
+The release is a metadata-only promotion over v0.34.15; it does not change credentials, source
+authorization, indexed data, recurring-sync policy, or native-memory behavior. The audited host now
+runs v0.34.16 after an upgrade that restarted only Cortana-owned services. Query-only readiness,
+`doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
+and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
+uninstalled.
 
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
 source set is not fully production-validated. The previous v0.34.13 pass used 25 documents, 5 MiB,
@@ -79,13 +79,13 @@ reuse, and revision invalidation in 12,228 ms with no provider fallback. Both ar
 evidence only; neither queries the personal index, proves packaged GUI behavior, or authorizes source
 synchronization. The evaluator remains opt-in and extractive mode remains the production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.15. The embedding, HTTP, and backup
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.16. The embedding, HTTP, and backup
 services are running with recurring sync uninstalled. The isolated `/healthz` and `/readyz` probes,
 `doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
 installation evidence, not proof of native GUI, browser OAuth, updater, or operating-system trust
 behavior.
 
-On 2026-08-22, the installed v0.34.15 binary passed the disposable native-memory lifecycle drill
+On 2026-08-22, the installed v0.34.16 binary passed the disposable native-memory lifecycle drill
 (dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (query/status/admin
 scope separation, ACL filtering, metadata-only audit, token rotation, and revocation), and the real
 MCP stdio drill (10 tools, workspace ACL filtering, and token rotation). The same binary passed the

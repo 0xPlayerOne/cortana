@@ -8,10 +8,10 @@ is not part of a visual/UI change.
 ## Current release evidence (2026-08-22)
 
 - `v0.34.16` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `32589317192` is the active 18-asset
+  and Release Please automation. Release-assets workflow `32589317192` completed the 18-asset
   checksums, updater signatures, manifest, and packaged-core verification. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The prior v0.34.15 macOS Apple Silicon package verifier passed the Tauri updater
+- The v0.34.16 macOS Apple Silicon package verifier passed the Tauri updater
   signature, packaged-core offline evaluation, and strict codesign checks. `spctl --assess` still
   rejects the ad-hoc bundle because Developer ID signing and notarization are not configured; the
   verifier intentionally did not launch the GUI.
@@ -20,7 +20,7 @@ is not part of a visual/UI change.
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
 - The v0.34.16 tag is the source/release boundary. The audited host currently runs
-  `/Users/amf/.local/bin/cortana` v0.34.15 with embedding and server services in query-only mode;
+  `/Users/amf/.local/bin/cortana` v0.34.16 with embedding and server services in query-only mode;
   recurring sync remains disabled. Current status reports 13 enabled sources. The pre-upgrade
   v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds; a
   v0.34.15 retry brought Personal Gmail to `complete=true` at the same document/byte bound with a
@@ -35,7 +35,7 @@ is not part of a visual/UI change.
   fell back safely to extractive mode. The earlier v0.34.12 run passed planner/synthesis, citations,
   cache reuse, and revision invalidation. These are provider-backed fixture evidence only; they do
   not query the personal index, authorize source synchronization, or prove packaged GUI behavior.
-- The installed v0.34.15 binary passed the disposable native-memory, shared-agent HTTP, shared-agent
+- The installed v0.34.16 binary passed the disposable native-memory, shared-agent HTTP, shared-agent
   MCP, and offline Desktop control-plane drills on 2026-08-22. The drills use temporary synthetic
   indexes and verify dedupe/expiry/forget, workspace ACLs, metadata-only audit output, token
   rotation/revocation, bounded retrieval, backup/restore, and post-restore verification. They do

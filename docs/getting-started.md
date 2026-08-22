@@ -24,8 +24,8 @@ authorize an account, download a connector corpus, start a sync, or enable a sch
 
 Before you begin, use a supported release package for your operating system and CPU and keep at
 least one backup location available. The protected v0.34.16 Desktop release is published and its
-18-asset verifier `32589317192` is the current release gate; use the release page's completed
-status before treating its installers as fully verified by the release gate. It
+18-asset verifier `32589317192` has completed; its installers are fully verified by the release
+gate. It
 supports macOS Apple Silicon
 (arm64), Linux x86_64, and Windows x86_64; an Intel macOS Desktop package is not published or
 supported. Core archives have their own target matrix and do not expand Desktop support. No

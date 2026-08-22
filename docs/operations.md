@@ -311,7 +311,7 @@ freshly-created drill directory. Set `CORTANA_KEEP_DRILL=1` to retain the exact 
 The drill proves the offline CLI control plane only; it is not a proof of the Desktop GUI, OAuth
 flows, tray integration, or updater behavior, none of which it exercises.
 
-The installed v0.34.15 binary passed this drill on 2026-08-22. It created and searched the
+The installed v0.34.16 binary passed this drill on 2026-08-22. It created and searched the
 disposable fixture, exported metadata-only audit output, verified a backup, restored it into a
 second temporary data directory, and searched the restored index. The run never read or mutated
 the live configuration, index, credentials, or source connectors.
@@ -532,7 +532,7 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-22; v0.34.16 release boundary; v0.34.15 installed)
+### Current local source rollout snapshot (2026-08-22; published and installed v0.34.16)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
 source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
