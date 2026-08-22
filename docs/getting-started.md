@@ -23,8 +23,8 @@ The installer preserves an existing configuration, index, backups, and secrets. 
 authorize an account, download a connector corpus, start a sync, or enable a scheduler by itself.
 
 Before you begin, use a supported release package for your operating system and CPU and keep at
-least one backup location available. The protected v0.34.13 Desktop release is published and its
-18-asset verifier `32554817618` has completed; its installers are fully verified by the release
+least one backup location available. The protected v0.34.14 Desktop release is published and its
+18-asset verifier `32560090908` has completed; its installers are fully verified by the release
 gate. It
 supports macOS Apple Silicon
 (arm64), Linux x86_64, and Windows x86_64; an Intel macOS Desktop package is not published or
@@ -37,7 +37,7 @@ notes in the [Desktop audit](desktop-ux-audit.md).
 
 1. **Download Cortana Desktop.** Open the [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest)
    and choose the installer for your operating system and CPU. The current protected release is
-   **v0.34.13**; [Release history](releases.md) records its verifier state and historical patches.
+   **v0.34.14**; [Release history](releases.md) records its verifier state and historical patches.
 2. **Install and launch.** Approve the optional tooling that Cortana offers to install. Choose a
    local Qwen-compatible embedding runtime if you want local embeddings; choose a cloud provider
    if you do not want local model tooling.

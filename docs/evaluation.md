@@ -19,33 +19,25 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.13`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `32554817618` completed the current
-18-asset release gate for checksums, updater signatures, manifest, and packaged-core verification.
-The v0.34.13 source carries the native agentic-memory layer, the selective shared-button UI
-increment from PR #1678, and the
-rollback-safe Hermes migration publication
-and the bounded
-read-only live-index evaluator.
-The published v0.34.13 package is the current downloadable boundary, and the audited host now runs
-v0.34.13 after an upgrade that restarted only Cortana-owned services. Query-only readiness passed
-with the stored embedding generation, ACL, live embedding probe, HTTP liveness, and a verified
-backup; recurring sync remains uninstalled.
-A first
-operator-approved retrieval manifest has now passed against the running local work index;
-approved-corpus answer/synthesis evaluation remains separate and is not a packaged-GUI proof.
-An explicit `readiness --allow-sync-service` check remains intentionally closed because the current
-enabled-source set is not fully production-validated. The bounded source records below were collected
-before the v0.34.12/v0.34.13 metadata-only upgrades and remain the authoritative no-sync evidence. On 2026-08-22 the installed v0.34.11 binary
-refreshed all 13 enabled non-code sources with the safe 25-document/5 MiB/60-second bounds. Ten
-records are `complete=true` within those bounds: all Apple Notes scopes, all Work Google scopes,
-all Personal Google scopes, and Buzz. The three Special Google scopes (`special-drive`,
-`special-gmail`, and `special-calendar`) failed closed because their shared OAuth grant returned
-`invalid_grant`. These bounded records make no index or reconciliation writes and do not meet the
-configured production budgets. After explicit reauthorization, Personal Drive passed this bounded
-probe; its prior production-budget probe was operator-cancelled after 147 documents while
-serialized PDF body fetching stalled. Recurring sync remains uninstalled, and no reconciliation or
-large sync has been requested.
+The current protected source and published tag are `v0.34.14`, promoted through the protected
+staging → main flow and Release Please automation. Release-assets workflow `32560090908` completed
+the current 18-asset release gate for checksums, updater signatures, manifest, and packaged-core
+verification. The release is a metadata-only promotion over v0.34.13; it does not change
+credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.
+The audited host now runs v0.34.14 after an upgrade that restarted only Cortana-owned services.
+Query-only readiness, `doctor`, deterministic `eval`, the strict release verifier, packaged-core
+verification, and skill parity all passed. Recurring sync remains uninstalled.
+
+An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
+source set is not fully production-validated. The fresh bounded source records below were collected
+on the pre-upgrade v0.34.13 binary with 25 documents, 5 MiB, and 60 seconds per source. Nine of 13
+enabled non-code profiles returned `complete=true` within those bounds: all Apple Notes scopes, all
+Work Google scopes, Personal Drive, Personal Calendar, and Buzz. `personal-gmail` timed out after
+59 seconds; `special-drive`, `special-gmail`, and `special-calendar` failed closed with Google
+OAuth `invalid_grant`. These records make no index or reconciliation writes and do not meet the
+configured production budgets. Personal Drive's bounded probe passed after reauthorization, but its
+previous full-budget run stalled on a large PDF and was stopped after 147 documents. Recurring sync
+remains uninstalled, and no reconciliation or large sync has been requested.
 
 The older production-budget results below are retained as historical evidence, not current
 authorization. They document prior successful prefixes and failure/recovery behavior, but the
@@ -77,24 +69,20 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.34.13 release gate verifies the packaged core offline without credentials. A fresh
-provider-backed evaluation on 2026-08-22 using the installed v0.34.12 binary before the metadata-only
-v0.34.13 upgrade passed retrieval recall,
-MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
-invalidation in 12,228 ms answer latency under the 55,000 ms deadline, with no provider fallback. This is current installed-
-runtime fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
-or authorize source synchronization. The evaluator remains opt-in; extractive mode is the
-production default.
+The v0.34.14 release gate verifies the packaged core offline without credentials. The latest
+provider-backed attempt on the pre-upgrade v0.34.13 host failed closed after 48,681 ms: retrieval
+metrics passed, but the configured model gateway reported provider unavailability, so synthesis was
+not used and the answer fell back to extractive mode. The prior v0.34.12 fixture run passed
+retrieval recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache
+reuse, and revision invalidation in 12,228 ms with no provider fallback. Both are synthetic fixture
+evidence only; neither queries the personal index, proves packaged GUI behavior, or authorizes source
+synchronization. The evaluator remains opt-in and extractive mode remains the production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.13. The embedding, HTTP, and backup
-services are running with recurring sync uninstalled. This is local installation evidence, not
-proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
-
-After the v0.34.13 install, `cortana readiness --max-backup-age-hours 48` passed on the audited
-host: SQLite integrity, embedding/index generation, ACL, live embedding probe, HTTP liveness,
-backup freshness (21 hours old), query-only sync-service safety, and extractive query mode all
-passed. The command did not enable source validation or recurring sync; that remains a separate
-production-budget gate.
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.14. The embedding, HTTP, and backup
+services are running with recurring sync uninstalled. The isolated `/healthz` and `/readyz` probes,
+`doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
+installation evidence, not proof of native GUI, browser OAuth, updater, or operating-system trust
+behavior.
 
 On 2026-08-22, the pre-upgrade v0.34.12 binary also passed the disposable native-memory lifecycle drill
 (dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (ACL filtering,
@@ -127,18 +115,18 @@ enabled sources complete within the refreshed bounded limits, while the three Sp
 sources require reauthorization and Personal Drive still lacks a production-budget validation.
 The pass did not enable Discord, code, Slack, or synthesis.
 
-The v0.34.13 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.34.14 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current v0.34.13 source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.34.14 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.34.13 source; it does
+This protects concurrent Desktop windows/processes in the v0.34.14 source; it does
 not authorize source ingestion or recurring sync.
 
-The v0.34.13 source adds bounded embedding-supervisor recovery: steady-state health checks
+The v0.34.14 source adds bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -303,7 +291,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.34.13 source and verified package
+release evidence; use **Current release boundary** above for the v0.34.14 source and verified package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in

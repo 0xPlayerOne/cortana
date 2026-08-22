@@ -7,33 +7,33 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-22)
 
-- `v0.34.13` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `32554817618` is the active 18-asset
+- `v0.34.14` is the current protected source/release, published through the protected promotion
+  and Release Please automation. Release-assets workflow `32560090908` is the active 18-asset
   checksums, updater signatures, manifest, and packaged-core verification. Asset verification does not launch the
   packaged GUI or prove OS-level signing/notarization.
-- The current macOS Apple Silicon package verifier also passed the v0.34.13 Tauri updater
+- The current macOS Apple Silicon package verifier also passed the v0.34.14 Tauri updater
   signature, packaged-core offline evaluation, and strict codesign checks. `spctl --assess` still
   rejects the ad-hoc bundle because Developer ID signing and notarization are not configured; the
   verifier intentionally did not launch the GUI.
-- The supported v0.34.13 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
+- The supported v0.34.14 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.34.13 tag is the packaged evidence boundary. The audited host currently runs
-  `/Users/amf/.local/bin/cortana` v0.34.13 with embedding and server services in query-only mode;
-  recurring sync remains disabled. Current status reports 13 enabled sources and a fresh
-  current-release bounded validation pass: 10 `complete=true` records at 25 documents/5 MiB/60
-  seconds, while the three Special Google sources fail closed with an expired OAuth grant.
-  Personal Drive passed that bounded probe after reauthorization, but its full-budget run was
+- The v0.34.14 tag is the packaged evidence boundary. The audited host currently runs
+  `/Users/amf/.local/bin/cortana` v0.34.14 with embedding and server services in query-only mode;
+  recurring sync remains disabled. Current status reports 13 enabled sources. The pre-upgrade
+  v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds;
+  Personal Gmail timed out and the three Special Google sources failed closed with an expired OAuth
+  grant. Personal Drive passed that bounded probe after reauthorization, but its full-budget run was
   stopped after 147 documents when serialized PDF fetching stalled. The protected v0.34.9 release
   includes bounded parallel body fetching from PR #1594 and is installed; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The pre-upgrade v0.34.12 host passed the bounded provider-backed `eval --model` evidence run on
-  2026-08-22 with 12,228 ms answer latency: retrieval recall, MRR, case pass rate, citation validity,
-  planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
-  all passed with no fallback. This is current provider-backed fixture evidence only; it does not
-  query the personal index, authorize source synchronization, or prove packaged GUI behavior.
+- The latest pre-upgrade v0.34.13 host `eval --model` attempt failed closed after 48,681 ms because
+  the configured model gateway provider was unavailable; retrieval metrics passed, but synthesis
+  fell back safely to extractive mode. The earlier v0.34.12 run passed planner/synthesis, citations,
+  cache reuse, and revision invalidation. These are provider-backed fixture evidence only; they do
+  not query the personal index, authorize source synchronization, or prove packaged GUI behavior.
 - The then-installed v0.32.12 host passed the disposable offline control-plane drill on
   2026-08-16:
   initialization, bounded two-document ingest, hybrid search/context, metadata-only audit export,
@@ -94,7 +94,7 @@ is not part of a visual/UI change.
   and Slack is unconfigured. The historical sweep is authorization/reachability
   evidence only and must not be read as current source authorization.
 
-The current v0.34.13 source includes the post-v0.31.12 safety lane, which acquires
+The current v0.34.14 source includes the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, enforces native-memory retention bounds, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -102,7 +102,7 @@ a per-config cross-process lock. These source-tree protections are covered by fo
 regressions; they do not authorize a source, enable recurring sync, or prove the unverified
 GUI/browser/tray/dialog/updater gates above.
 
-The v0.34.13 source includes the operational recovery change for the local embedding supervisor:
+The v0.34.14 source includes the operational recovery change for the local embedding supervisor:
 steady-state checks use the lightweight `/health` endpoint so queued ingestion work cannot look dead;
 startup and restart still require a real vector probe. The earlier v0.32.1 Work Drive trials were
 cancelled after that older supervisor stalled. After v0.32.2 installation, a foreground Work Drive
@@ -117,15 +117,15 @@ recurring sync.
 After explicit reauthorization, a one-document/64 KiB/60-second Personal Drive validation succeeded
 in 11.7 seconds with zero writes. The subsequent production-budget run was operator-cancelled after
 147 documents while serialized Drive body fetching stalled on a large PDF; its spool was cleaned up
-and the validation remains below the production gate. The published v0.34.13 release contains the
+and the validation remains below the production gate. The published v0.34.14 release contains the
 protected main-tree PR #1594 fix; the host is ready for a bounded rerun under an external
 watchdog, but no full-corpus reconciliation has been started.
 
-The current validation metadata now contains ten complete bounded records from the 2026-08-22
-25-document/5 MiB/60-second pass. The three Special Google sources failed closed with the shared
-OAuth grant's `invalid_grant`; earlier production-budget counts for Apple Notes, Calendar, Buzz,
-Work Drive, Work Gmail, Personal Gmail, Special Gmail, and Special Drive remain historical
-evidence. Personal Drive's 2,000-document/128 MiB/1,800-second validation failed closed at the
+The current validation metadata now contains nine complete bounded records from the pre-upgrade
+2026-08-22 25-document/5 MiB/60-second pass. Personal Gmail timed out at 59 seconds, and the
+three Special Google sources failed closed with the shared OAuth grant's `invalid_grant`; earlier
+production-budget counts for Apple Notes, Calendar, Buzz, Work Drive, Work Gmail, Personal Gmail,
+Special Gmail, and Special Drive remain historical evidence. Personal Drive's 2,000-document/128 MiB/1,800-second validation failed closed at the
 1,799-second connector deadline under the then-installed v0.32.9 parser while processing a large
 PDF; its current bounded probe succeeded after reauthorization.
 The recurring sync service remains uninstalled, and no reconciliation or large sync has been run.
@@ -183,14 +183,15 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the verified v0.34.13 package passed the credential-free packaged-core
-   evaluator and query-only readiness in release verification. The installed v0.34.12 CLI passed
-   the bounded provider-backed run on 2026-08-22 with 12,228 ms answer latency, planner/synthesis, valid
-   citations, cache reuse, and revision invalidation. That run used synthetic fixtures only; no
-   provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider
-   outages or slow responses still fail closed, and extractive mode remains the safe production
-   default. The current package also passes `doctor` and the disposable control-plane/recovery
-   drills, while the GUI remains unlaunched.
+2. Model-backed provider gate: the verified v0.34.14 package passed the credential-free packaged-core
+   evaluator and query-only readiness in release verification. The latest installed v0.34.13 CLI
+   attempt failed closed after 48,681 ms because the configured model gateway provider was
+   unavailable; retrieval passed and the answer used the extractive fallback. The earlier v0.34.12
+   fixture run passed planner/synthesis, valid citations, cache reuse, and revision invalidation.
+   These runs used synthetic fixtures only; no provider-backed evaluation against a personal index
+   or the packaged GUI is claimed. Provider outages or slow responses still fail closed, and
+   extractive mode remains the safe production default. The current package also passes `doctor`
+   and the disposable control-plane/recovery drills, while the GUI remains unlaunched.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.
@@ -222,7 +223,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
    Drive failed both its earlier 1,799-second and later configured 899-second connector deadlines;
    bounded 25-document/5 MiB validation and non-reconciling trial evidence remains below the
    configured production budget. Personal Gmail now has
-   production-budget validation
+   historical production-budget validation
    (430 documents/1,563,456 bytes) plus a bounded 100-document-cap trial with zero deletions,
    and Special Gmail has historical production-budget validation (214 documents/995,335 bytes)
    plus the same bounded trial result. These capped prefixes prove selected
@@ -235,7 +236,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.34.13 source or the historical v0.32.6 core; use the
+does not describe the current v0.34.14 source or the historical v0.32.6 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -251,8 +252,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.34.13` source or packaged Desktop behavior. The verified
-  `v0.32.12` asset workflow is historical; the active `v0.34.13` workflow is recorded in the release section above.
+  the current `v0.34.14` source or packaged Desktop behavior. The verified
+  `v0.32.12` asset workflow is historical; the active `v0.34.14` workflow is recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
