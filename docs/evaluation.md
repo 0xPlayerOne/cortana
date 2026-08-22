@@ -40,6 +40,12 @@ production budgets. Personal Drive's bounded probe passed after reauthorization,
 full-budget run stalled on a large PDF and was stopped after 147 documents. Recurring sync remains
 uninstalled, and no reconciliation or large sync has been requested.
 
+The current v0.34.18 Personal Drive follow-up confirms the distinction: validation passed at the
+25-document/5 MiB/60-second smoke bound (234,160 bytes), while the separate non-reconciling trial
+reached the 60-second safety bound and failed closed as `budget_exceeded`, with no deletions. This
+is fresh failure/recovery evidence for the connector boundary, not a production-budget validation;
+the source remains ineligible for reconciliation or recurring sync.
+
 The older production-budget results below are retained as historical evidence, not current
 authorization. They document prior successful prefixes and failure/recovery behavior, but the
 on-disk validation record and its configuration fingerprint are the authoritative gate.
