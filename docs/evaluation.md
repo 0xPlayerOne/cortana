@@ -19,12 +19,12 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.18`, promoted through the protected
+The current protected source and published tag are `v0.34.19`, promoted through the protected
 staging → main flow and Release Please automation. The release-assets workflow completed
 the 18-asset release gate for checksums, updater signatures, manifest, and packaged-core verification.
 The release is a metadata-only promotion over v0.34.15; it does not change credentials, source
 authorization, indexed data, recurring-sync policy, or native-memory behavior. The audited host now
-runs v0.34.18 after an upgrade that restarted only Cortana-owned services. Query-only readiness,
+runs v0.34.19 after an upgrade that restarted only Cortana-owned services. Query-only readiness,
 `doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
 and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
 uninstalled.
@@ -40,7 +40,7 @@ production budgets. Personal Drive's bounded probe passed after reauthorization,
 full-budget run stalled on a large PDF and was stopped after 147 documents. Recurring sync remains
 uninstalled, and no reconciliation or large sync has been requested.
 
-The current v0.34.18 Personal Drive follow-up confirms the distinction: validation passed at the
+The current v0.34.19 Personal Drive follow-up confirms the distinction: validation passed at the
 25-document/5 MiB/60-second smoke bound (234,160 bytes), while the separate non-reconciling trial
 reached the 60-second safety bound and failed closed as `budget_exceeded`, with no deletions. This
 is fresh failure/recovery evidence for the connector boundary, not a production-budget validation;
@@ -53,7 +53,7 @@ deletions; Work Drive and Personal Drive both reached the 60-second safety bound
 `budget_exceeded`. This is source-operational evidence only and remains below every configured
 production budget.
 
-An approved-corpus, read-only v0.34.18 evaluation against the local query API also ran with
+An approved-corpus, read-only v0.34.19 evaluation against the local query API also ran with
 synthesis explicitly enabled in an isolated temporary server. Scoped retrieval passed with
 recall@k 1.0, MRR 1.0, hybrid retrieval, and no ACL leakage. The provider-backed answer request
 timed out at the 25-second request bound on both the initial and repeated call, reported provider
@@ -91,15 +91,15 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.34.18 release gate verifies the packaged core offline without credentials. A fresh
-provider-backed `cortana eval --model` run against the installed v0.34.18 binary passed retrieval
+The v0.34.19 release gate verifies the packaged core offline without credentials. A fresh
+provider-backed `cortana eval --model` run against the installed v0.34.19 binary passed retrieval
 recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and
 revision invalidation in 12,827 ms under the 55,000 ms bound, with no provider fallback. This is
 synthetic fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
 or authorize source synchronization. The approved-corpus provider-backed evaluation remains an open
 operator gate; the evaluator remains opt-in and extractive mode remains the production default.
 
-The fresh bounded approved-index evaluation on the installed v0.34.18 query API is recorded
+The fresh bounded approved-index evaluation on the installed v0.34.19 query API is recorded
 separately from the fixture gate. It preserved workspace/source isolation, citation validity,
 cache reuse, and an extractive answer with recall@k 1.0, but the expected source ranked fourth
 (MRR 0.25), below the production threshold. An isolated synthesis-enabled attempt also timed out
@@ -107,20 +107,20 @@ at the 30-second request ceiling, so no provider-backed personal answer was acce
 enable production synthesis or treat this run as full-corpus quality evidence until a repeatable
 approved-corpus evaluation meets the retrieval, citation, synthesis, latency, and fallback gates.
 
-A subsequent private, read-only v0.34.18 evaluation against the approved `work` / `work-notes`
+A subsequent private, read-only v0.34.19 evaluation against the approved `work` / `work-notes`
 scope passed the retrieval-only thresholds: recall@k 1.0, MRR 1.0, retrieval pass rate 1.0,
 zero forbidden-source leaks, hybrid retrieval without degradation, repeated-query cache hit rate
 1.0, and a 158 ms maximum request latency. The manifest and query remain untracked and the report
 contains only bounded metrics and source IDs. This strengthens current retrieval and folder-scope
 evidence, but it is not provider-backed synthesis evidence and does not authorize recurring sync.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.18. The embedding, HTTP, and backup
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.19. The embedding, HTTP, and backup
 services are running with recurring sync uninstalled. The isolated `/healthz` and `/readyz` probes,
 `doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
 installation evidence, not proof of native GUI, browser OAuth, updater, or operating-system trust
 behavior.
 
-On 2026-08-22, the installed v0.34.18 binary passed the disposable native-memory lifecycle drill
+On 2026-08-22, the installed v0.34.19 binary passed the disposable native-memory lifecycle drill
 (dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (query/status/admin
 scope separation, ACL filtering, metadata-only audit, token rotation, and revocation), and the real
 MCP stdio drill (10 tools, workspace ACL filtering, and token rotation). The same binary passed the
@@ -154,7 +154,7 @@ enabled sources complete within the refreshed bounded limits, while the three Sp
 sources require reauthorization and Personal Drive still lacks a production-budget validation.
 The pass did not enable Discord, code, Slack, or synthesis.
 
-On 2026-08-22, the installed v0.34.18 binary also completed a current-release Apple Notes
+On 2026-08-22, the installed v0.34.19 binary also completed a current-release Apple Notes
 validation and bounded non-reconciling trial for each configured folder scope. `work-notes`
 returned 25 documents (118,540 bytes), `personal-notes` returned 25 (89,645 bytes), and
 `special-notes` returned 8 (14,046 bytes); all three records were `complete=true` within the
@@ -162,18 +162,18 @@ returned 25 documents (118,540 bytes), `personal-notes` returned 25 (89,645 byte
 workspace folder routing and current connector path, but remains below the configured production
 budgets and does not authorize recurring sync.
 
-The v0.34.18 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.34.19 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current v0.34.18 source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.34.19 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.34.18 source; it does
+This protects concurrent Desktop windows/processes in the v0.34.19 source; it does
 not authorize source ingestion or recurring sync.
 
-The v0.34.18 source adds bounded embedding-supervisor recovery: steady-state health checks
+The v0.34.19 source adds bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -338,7 +338,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.34.18 source and verified package
+release evidence; use **Current release boundary** above for the v0.34.19 source and verified package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
