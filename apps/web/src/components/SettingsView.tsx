@@ -553,9 +553,9 @@ export function SettingsView({
         <Settings2 size={34} />
         <h1 role={error ? 'alert' : 'status'}>{error || 'Loading local settings…'}</h1>
         {error && (
-          <button type="button" className="secondary-button" onClick={retrySettingsLoad}>
+          <Button variant="secondary" onClick={retrySettingsLoad}>
             <RefreshCw size={15} /> Retry settings
-          </button>
+          </Button>
         )}
       </main>
     )
@@ -587,24 +587,24 @@ export function SettingsView({
             </select>
           </label>
           {dirty && (
-            <button
+            <Button
+              variant="secondary"
               type="button"
-              className="secondary-button"
               disabled={saving}
               onClick={() => void discard()}
             >
               <X size={15} /> Discard
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="primary"
             type="submit"
-            className="primary-button"
             form="settings-form"
             disabled={saving || !dirty}
             title={dirty ? undefined : 'Make a change before saving'}
           >
             <Save size={16} /> {saving ? 'Saving…' : 'Save changes'}
-          </button>
+          </Button>
         </div>
       </header>
       {settings.needs_setup && (
@@ -819,21 +819,13 @@ export function SettingsView({
           {!error && settings.restart_required && serviceActivity?.status !== 'running' && (
             <>
               {restartFailed && (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => restartServices(settings)}
-                >
+                <Button variant="secondary" type="button" onClick={() => restartServices(settings)}>
                   <RefreshCw size={14} /> Retry restart
-                </button>
+                </Button>
               )}
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => setSection('services')}
-              >
+              <Button variant="secondary" type="button" onClick={() => setSection('services')}>
                 Open services
-              </button>
+              </Button>
             </>
           )}
         </div>
@@ -1717,9 +1709,9 @@ function UpdatesSection({
             )}
             Check now
           </Button>
-          <button
+          <Button
+            variant="primary"
             type="button"
-            className="primary-button"
             disabled={!canInstall || Boolean(busy) || updateInFlight}
             onClick={() => void install()}
           >
@@ -1727,7 +1719,7 @@ function UpdatesSection({
             {update?.restart_required || update?.phase === 'installed'
               ? 'Restart required'
               : 'Install and restart'}
-          </button>
+          </Button>
         </div>
       </div>
       {percent !== null && (
@@ -1956,9 +1948,9 @@ function AccessSection({
           )
         })}
       </div>
-      <button type="button" className="secondary-button" onClick={add}>
+      <Button variant="secondary" onClick={add}>
         <Plus size={15} /> Add principal
-      </button>
+      </Button>
       <p className="settings-note">
         Settings take effect after the server restarts. Desktop requests select a matching private
         native credential by scope without exposing it to web content.
@@ -2041,14 +2033,9 @@ function AuditSection() {
             {loading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}
             Refresh
           </Button>
-          <button
-            type="button"
-            className="secondary-button"
-            disabled={loading}
-            onClick={exportAudit}
-          >
+          <Button variant="secondary" type="button" disabled={loading} onClick={exportAudit}>
             <Download size={14} /> Export
-          </button>
+          </Button>
         </div>
       </div>
       {error && (
@@ -2285,19 +2272,14 @@ function ReadinessSection({
       description="A read-only scan checks local tools and Cortana's production gates. It never starts a connector, installs a schedule, or writes indexed data."
     >
       <div className="readiness-actions">
-        <button
-          type="button"
-          className="secondary-button"
-          disabled={readinessInFlight}
-          onClick={scan}
-        >
+        <Button variant="secondary" type="button" disabled={readinessInFlight} onClick={scan}>
           {readinessInFlight ? (
             <LoaderCircle className="spin" size={15} />
           ) : (
             <RefreshCw size={15} />
           )}
           {readinessInFlight ? 'Checking system…' : readiness ? 'Run again' : 'Run readiness scan'}
-        </button>
+        </Button>
         {readiness && (
           <span>
             Last checked {new Date(readiness.scanned_at_unix_seconds * 1000).toLocaleTimeString()}
@@ -2369,14 +2351,14 @@ function ReadinessSection({
                   that the vectors are interchangeable; otherwise rebuild or import a new
                   generation.
                 </span>
-                <button
+                <Button
+                  variant="secondary"
                   type="button"
-                  className="secondary-button"
                   disabled={readinessInFlight}
                   onClick={() => void migrateGeneration()}
                 >
                   {migratingGeneration ? 'Adopting generation…' : 'Adopt stored generation'}
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -2386,9 +2368,9 @@ function ReadinessSection({
                 Runtime checks are not passing. Confirm the API and embedding services are installed
                 and running before retrying readiness.
               </span>
-              <button type="button" className="secondary-button" onClick={onOpenServices}>
+              <Button variant="secondary" onClick={onOpenServices}>
                 Check Services
-              </button>
+              </Button>
             </div>
           )}
         </>
@@ -2615,14 +2597,14 @@ function WorkspaceSection({
           {logoError}
         </p>
       )}
-      <button
+      <Button
+        variant="secondary"
         type="button"
-        className="secondary-button"
         disabled={settings.workspaces.length >= 3}
         onClick={addWorkspace}
       >
         <Plus size={15} /> Add workspace ({settings.workspaces.length}/3)
-      </button>
+      </Button>
     </SettingsSection>
   )
 }
@@ -3254,14 +3236,14 @@ function SourcesSection({
           {settings.sources.filter((source) => source.enabled).length} enabled ·{' '}
           {settings.sources.length} configured
         </span>
-        <button
+        <Button
+          variant="secondary"
           type="button"
-          className="secondary-button"
           disabled={settings.sources.length >= 128}
           onClick={addSource}
         >
           <Plus size={15} /> Add source
-        </button>
+        </Button>
       </div>
 
       <div className="source-workspace-tabs" role="tablist" aria-label="Source workspace">
@@ -3652,9 +3634,9 @@ function SourcesSection({
                       wide
                     >
                       <div className="source-repository-chooser">
-                        <button
+                        <Button
+                          variant="secondary"
                           type="button"
-                          className="secondary-button"
                           aria-label="Discover communities"
                           disabled={
                             !canValidate || sourceLocked || buzzCommunitiesLoading === source.name
@@ -3667,7 +3649,7 @@ function SourcesSection({
                             <RefreshCw size={14} />
                           )}{' '}
                           Discover communities
-                        </button>
+                        </Button>
                         {buzzCommunities[source.name] && (
                           <div className="source-repository-options">
                             {buzzCommunities[source.name].communities.length === 0 ? (
@@ -3846,9 +3828,9 @@ function SourcesSection({
                         wide
                       >
                         <div className="source-repository-chooser">
-                          <button
+                          <Button
+                            variant="secondary"
                             type="button"
-                            className="secondary-button"
                             disabled={
                               !canValidate ||
                               sourceLocked ||
@@ -3862,7 +3844,7 @@ function SourcesSection({
                               <RefreshCw size={14} />
                             )}{' '}
                             Discover repositories
-                          </button>
+                          </Button>
                           {githubRepositories[source.name] && (
                             <div className="source-repository-options">
                               {githubRepositories[source.name].items.length === 0 ? (
@@ -3929,9 +3911,9 @@ function SourcesSection({
                           wide
                         >
                           <div className="source-repository-chooser">
-                            <button
+                            <Button
+                              variant="secondary"
                               type="button"
-                              className="secondary-button"
                               aria-label="Discover servers"
                               disabled={
                                 !canValidate ||
@@ -3946,7 +3928,7 @@ function SourcesSection({
                                 <RefreshCw size={14} />
                               )}{' '}
                               Discover servers
-                            </button>
+                            </Button>
                             {discordServers[source.name] && (
                               <div className="source-repository-options">
                                 {discordServers[source.name].guilds.length === 0 ? (
@@ -3984,9 +3966,9 @@ function SourcesSection({
                           wide
                         >
                           <div className="source-repository-chooser">
-                            <button
+                            <Button
+                              variant="secondary"
                               type="button"
-                              className="secondary-button"
                               aria-label="Discover channels"
                               disabled={
                                 !canValidate ||
@@ -4001,12 +3983,12 @@ function SourcesSection({
                                 <RefreshCw size={14} />
                               )}{' '}
                               Discover channels
-                            </button>
+                            </Button>
                             {discordChannels[source.name] && (
                               <div className="source-repository-options">
-                                <button
+                                <Button
+                                  variant="secondary"
                                   type="button"
-                                  className="secondary-button"
                                   aria-label="Select all Discord text channels"
                                   disabled={sourceLocked || !source.editable}
                                   onClick={() =>
@@ -4018,7 +4000,7 @@ function SourcesSection({
                                   }
                                 >
                                   Select all text channels
-                                </button>
+                                </Button>
                                 <small>
                                   Selects text and announcement channels in assigned servers; voice,
                                   forum, stage, and category channels are excluded.
@@ -4240,9 +4222,9 @@ function SourcesSection({
                             wide
                           >
                             <div className="source-repository-chooser">
-                              <button
+                              <Button
+                                variant="secondary"
                                 type="button"
-                                className="secondary-button"
                                 aria-label="Discover workspaces"
                                 disabled={
                                   !canValidate ||
@@ -4257,7 +4239,7 @@ function SourcesSection({
                                   <RefreshCw size={14} />
                                 )}{' '}
                                 Discover workspaces
-                              </button>
+                              </Button>
                               {slackWorkspaces[source.name] && (
                                 <div className="source-repository-options">
                                   {slackWorkspaces[source.name].teams.length === 0 ? (
@@ -5192,16 +5174,16 @@ function ProviderSection<T extends ProviderValue>({
     <div className="model-field">
       {modelMode === 'custom' ? modelInput : modelSelect}
       <div className="model-refresh">
-        <button
+        <Button
+          variant="secondary"
           type="button"
-          className="secondary-button"
           aria-label={`Refresh ${title} models from provider`}
           disabled={modelsLoading}
           onClick={onRefreshModels}
         >
           {modelsLoading ? <LoaderCircle className="spin" size={14} /> : <RefreshCw size={14} />}{' '}
           Refresh models
-        </button>
+        </Button>
       </div>
       {modelsError && (
         <p className="settings-inline-error" role="alert">
