@@ -1336,39 +1336,37 @@ function ServicesSection({
               : 'Checking services…'}
         </span>
         <div className="service-actions">
-          <button
-            type="button"
+          <Button
+            variant="compact"
             disabled={actionInFlight || report?.supported !== true}
             onClick={() => void groupAction('start')}
           >
             <Play size={14} /> Start all
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="compact"
             disabled={actionInFlight || report?.supported !== true}
             onClick={() => void groupAction('stop')}
           >
             <CircleStop size={14} /> Stop all
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="compact"
             disabled={actionInFlight || report?.supported !== true}
             onClick={() => void groupAction('restart')}
           >
             <RefreshCw size={14} /> Restart all
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
+          </Button>
+          <Button
+            variant="compact"
             disabled={actionInFlight}
             onClick={() => void refresh()}
           >
             <RefreshCw size={14} /> Refresh
-          </button>
+          </Button>
           {needsCoreInstall && (
-            <button
-              type="button"
-              className="primary-button"
+            <Button
+              variant="primary"
               disabled={actionInFlight}
               onClick={() => void install()}
             >
@@ -1378,12 +1376,11 @@ function ServicesSection({
                 <Download size={14} />
               )}{' '}
               Install core services
-            </button>
+            </Button>
           )}
           {syncScheduleNeedsApply && (
-            <button
-              type="button"
-              className="secondary-button"
+            <Button
+              variant="compact"
               disabled={actionInFlight || report?.supported !== true}
               onClick={() => void installSync()}
             >
@@ -1395,7 +1392,7 @@ function ServicesSection({
               {scheduleApplyPending && !needsSyncInstall
                 ? 'Apply recurring sync schedule'
                 : 'Enable recurring sync'}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -1443,9 +1440,8 @@ function ServicesSection({
             />
           </div>
           <div className="service-actions">
-            <button
-              type="button"
-              className="secondary-button"
+            <Button
+              variant="compact"
               disabled={
                 actionInFlight ||
                 scheduleSaving ||
@@ -1457,7 +1453,7 @@ function ServicesSection({
             >
               {scheduleSaving ? <LoaderCircle className="spin" size={14} /> : <Save size={14} />}{' '}
               Save schedule
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -1470,8 +1466,8 @@ function ServicesSection({
           </p>
         </div>
         <div className="service-actions">
-          <button
-            type="button"
+          <Button
+            variant="compact"
             disabled={actionInFlight || dirty}
             onClick={() => void databaseAction('backup')}
             title={dirty ? 'Save or discard draft changes first' : 'Export database backup'}
@@ -1482,10 +1478,9 @@ function ServicesSection({
               <Download size={14} />
             )}{' '}
             Backup database
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
+          </Button>
+          <Button
+            variant="compact"
             disabled={
               actionInFlight ||
               dirty ||
@@ -1509,7 +1504,7 @@ function ServicesSection({
               <Upload size={14} />
             )}{' '}
             Restore database
-          </button>
+          </Button>
         </div>
       </div>
       {(databaseResult || databaseError) && (
@@ -1547,27 +1542,27 @@ function ServicesSection({
                 {failed ? ` · last exit ${service.last_exit_status}` : ''}
               </p>
               <div className="service-actions">
-                <button
-                  type="button"
+                <Button
+                  variant="compact"
                   disabled={!report.supported || !service.installed || running || actionInFlight}
                   onClick={() => void serviceAction(service, 'start')}
                 >
                   <Play size={14} /> Start
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="compact"
                   disabled={!report.supported || !service.loaded || actionInFlight}
                   onClick={() => void serviceAction(service, 'stop')}
                 >
                   <CircleStop size={14} /> Stop
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="compact"
                   disabled={!report.supported || !service.installed || actionInFlight}
                   onClick={() => void serviceAction(service, 'restart')}
                 >
                   <RefreshCw size={14} /> Restart
-                </button>
+                </Button>
               </div>
             </article>
           )
@@ -4659,16 +4654,15 @@ function InitialSyncFlow({
             </div>
           )}
           <div className="initial-sync-actions">
-            <button
-              type="button"
-              className="primary-button"
+            <Button
+              variant="primary"
               disabled={
                 !plan.enabled || plan.validation_covers_budget !== true || busy || flow.planning
               }
               onClick={onStart}
             >
               <Zap size={15} /> Start initial sync
-            </button>
+            </Button>
             <span>
               Execution requires explicit confirmation and reuses the native validation-gated,
               no-reconcile source-job boundary.
