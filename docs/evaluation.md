@@ -143,10 +143,11 @@ avoid queueing vector requests, while startup and restart still require a real v
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
 
-### Current approved-index retrieval evidence (2026-08-21)
+### Current approved-index retrieval evidence (2026-08-22 UTC; local wall clock 2026-08-21)
 
-On 2026-08-21 a private, one-case manifest was run against the installed v0.34.9 query API
-using an approved work Apple Notes scope. The read-only harness passed hybrid retrieval and the
+The run timestamp is normalized to 2026-08-22 UTC (the local wall clock was the evening of
+2026-08-21). A private, one-case manifest was run against the installed v0.34.9 query API using
+an approved work Apple Notes scope. The read-only harness passed hybrid retrieval and the
 extractive answer path with recall@k 1.0, MRR 1.0, retrieval and answer pass rates 1.0, citation
 validity 1.0, zero retrieval or provider fallback, a repeated-query cache-hit rate of 1.0, and a
 326 ms maximum request latency. The runtime correctly reported `synthesis_used = false`; this is
