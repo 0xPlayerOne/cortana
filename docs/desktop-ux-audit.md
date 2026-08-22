@@ -258,7 +258,7 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-the current `v0.34.16` source or packaged Desktop behavior. The verified
+  the current `v0.34.16` source or packaged Desktop behavior. The verified
   `v0.32.12` asset workflow is historical; the active `v0.34.16` workflow is recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
