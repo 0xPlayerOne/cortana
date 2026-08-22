@@ -20,7 +20,7 @@ is not part of a visual/UI change.
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
 - The v0.34.13 tag is the packaged evidence boundary. The audited host currently runs
-  `/Users/amf/.local/bin/cortana` v0.34.12 with embedding and server services in query-only mode;
+  `/Users/amf/.local/bin/cortana` v0.34.13 with embedding and server services in query-only mode;
   recurring sync remains disabled. Current status reports 13 enabled sources and a fresh
   current-release bounded validation pass: 10 `complete=true` records at 25 documents/5 MiB/60
   seconds, while the three Special Google sources fail closed with an expired OAuth grant.
@@ -29,7 +29,7 @@ is not part of a visual/UI change.
   includes bounded parallel body fetching from PR #1594 and is installed; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The installed v0.34.12 host passed the bounded provider-backed `eval --model` evidence run on
+- The pre-upgrade v0.34.12 host passed the bounded provider-backed `eval --model` evidence run on
   2026-08-22 with 12,228 ms answer latency: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
   all passed with no fallback. This is current provider-backed fixture evidence only; it does not
