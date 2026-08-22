@@ -1763,9 +1763,12 @@ test('Services settings stay a process-health surface with no source enablement 
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
 
   // Process health actions are the Services surface.
-  expect(screen.getByRole('button', { name: /Start all/ })).toBeTruthy()
-  expect(screen.getByRole('button', { name: /Stop all/ })).toBeTruthy()
-  expect(screen.getByRole('button', { name: /Restart all/ })).toBeTruthy()
+  for (const label of [/Start all/, /Stop all/, /Restart all/]) {
+    expect(screen.getByRole('button', { name: label }).className).toContain('cortana-button')
+    expect(screen.getByRole('button', { name: label }).className).toContain(
+      'cortana-button--compact'
+    )
+  }
 
   // No per-source enable/disable control lives in Services: no switch, and
   // the only checkbox is the desktop autostart launch preference, which is
@@ -1929,7 +1932,10 @@ test('services settings exports a verified database backup with explicit confirm
     fireEvent.click(screen.getByRole('button', { name: 'Services' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Backup database' }))
+    const backup = screen.getByRole('button', { name: 'Backup database' })
+    expect(backup.className).toContain('cortana-button')
+    expect(backup.className).toContain('cortana-button--compact')
+    fireEvent.click(backup)
     await waitFor(() => expect(state.databaseBackupCalls).toBe(1))
     expect(
       screen.getByText(/Verified backup exported to \/tmp\/cortana-backup\.sqlite3/)
