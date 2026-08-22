@@ -14,8 +14,8 @@ under the automated manifest flow.
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
 `v0.34.13` tag is the current source and release boundary. Release-assets workflow
-`32554817618` is the active strict archive, checksum, updater-signature, manifest, and packaged-core
-verification gate; consult this workflow before treating every platform installer as fully verified.
+`32554817618` completed the strict archive, checksum, updater-signature, manifest, and packaged-core
+verification gate; all 18 published assets are verified.
 
 The v0.34.13 release is a version-only promotion over v0.34.12. It changes release metadata and
 does not change credentials, source authorization, indexed data, recurring-sync policy, or native

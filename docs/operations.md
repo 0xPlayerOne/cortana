@@ -527,7 +527,7 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-22; published v0.34.13; host v0.34.12)
+### Current local source rollout snapshot (2026-08-22; published and installed v0.34.13)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
 source-validation records below were captured on the immediately preceding v0.34.11 runtime and
@@ -550,7 +550,7 @@ includes bounded four-worker fetching from PR #1594 and is now installed; the
 complete record at its configured budget and the Special Google grant is repaired. No
 reconciliation or large sync has been run.
 
-The installed v0.34.12 CLI passed a fresh bounded `eval --model` run on 2026-08-22 with 12,228 ms
+The pre-upgrade v0.34.12 CLI passed a fresh bounded `eval --model` run on 2026-08-22 with 12,228 ms
 answer latency,
 including planner/synthesis, valid citations, cache reuse, and revision invalidation without
 provider fallback. This is current synthetic provider-backed evidence only; it does not authorize
