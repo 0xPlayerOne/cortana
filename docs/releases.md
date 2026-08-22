@@ -28,7 +28,7 @@ notarization, full-budget source validation, and recurring sync remain separate 
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.9` is the current protected source and published release. Release-assets workflow
+`v0.34.9` was the protected source and published release at the time. Release-assets workflow
 `32540177167` completed the archive, checksum, updater-signature, manifest, and credential-free
 packaged-core gates; all 18 published assets are verified. v0.34.8 and earlier remain
 historical evidence.
@@ -57,13 +57,13 @@ GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
 The current-release section is the operational source of truth. Entries below preserve historical
 release and incident evidence and should be labeled historical when a newer patch is published.
 
-The v0.34.9 source is the release boundary for native agentic memory and the post-v0.31.12
+The v0.34.9 source was the release boundary for native agentic memory and the post-v0.31.12
 hardening, bounded live-index evaluation harness, and readiness-budget diagnostics described below.
 Future source-tree changes
 must still use the protected staging and promotion flow, followed by the release verifier, before
 being called downloadable-release behavior.
 
-The current source gate is also explicit. On 2026-08-22, 13 sources are enabled and the installed
+The historical source gate was also explicit. On 2026-08-22, 13 sources were enabled and the installed
 v0.34.9 CLI refreshed all of them at the safe 25-document/5 MiB/60-second validation bound. Ten
 have fresh `complete=true` bounded records; the three Special Google sources failed closed because
 their shared OAuth grant returned `invalid_grant`. Personal Drive passed the bounded probe after
