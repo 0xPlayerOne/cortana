@@ -19,16 +19,17 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.12`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `32552400854` completed the current 18-asset
-release gate, including checksums, updater signatures, manifest, and packaged-core verification.
-The v0.34.12 source carries the native agentic-memory layer, the selective shared-button UI
+The current protected source and published tag are `v0.34.13`, promoted through the protected
+flow and Release Please automation. Release-assets workflow `32554817618` is the current 18-asset
+release gate for checksums, updater signatures, manifest, and packaged-core verification.
+The v0.34.13 source carries the native agentic-memory layer, the selective shared-button UI
 increment from PR #1678, and the
 rollback-safe Hermes migration publication
 and the bounded
 read-only live-index evaluator.
-The published v0.34.12 package is the current downloadable boundary, and the audited host now runs
-v0.34.12 after an upgrade that restarted only Cortana-owned services. Query-only readiness passed
+The published v0.34.13 package is the current downloadable boundary. The audited host evidence below
+still refers to the installed v0.34.12 binary until the v0.34.13 asset gate and local upgrade complete.
+Query-only readiness passed
 with the stored embedding generation, ACL, live embedding probe, HTTP liveness, and a verified
 backup; recurring sync remains uninstalled.
 A first
@@ -36,7 +37,7 @@ operator-approved retrieval manifest has now passed against the running local wo
 approved-corpus answer/synthesis evaluation remains separate and is not a packaged-GUI proof.
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the current
 enabled-source set is not fully production-validated. The bounded source records below were collected
-before this metadata-only v0.34.12 upgrade and remain the authoritative no-sync evidence. On 2026-08-22 the installed v0.34.11 binary
+before the v0.34.12/v0.34.13 metadata-only upgrades and remain the authoritative no-sync evidence. On 2026-08-22 the installed v0.34.11 binary
 refreshed all 13 enabled non-code sources with the safe 25-document/5 MiB/60-second bounds. Ten
 records are `complete=true` within those bounds: all Apple Notes scopes, all Work Google scopes,
 all Personal Google scopes, and Buzz. The three Special Google scopes (`special-drive`,
@@ -77,7 +78,7 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.34.12 release gate verifies the packaged core offline without credentials. A fresh
+The v0.34.13 release gate verifies the packaged core offline without credentials. A fresh
 provider-backed evaluation on 2026-08-22 using the installed v0.34.12 binary passed retrieval recall,
 MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
 invalidation in 12,228 ms answer latency under the 55,000 ms deadline, with no provider fallback. This is current installed-
@@ -126,18 +127,18 @@ enabled sources complete within the refreshed bounded limits, while the three Sp
 sources require reauthorization and Personal Drive still lacks a production-budget validation.
 The pass did not enable Discord, code, Slack, or synthesis.
 
-The v0.34.12 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.34.13 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current v0.34.12 source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.34.13 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.34.12 source; it does
+This protects concurrent Desktop windows/processes in the v0.34.13 source; it does
 not authorize source ingestion or recurring sync.
 
-The v0.34.12 source adds bounded embedding-supervisor recovery: steady-state health checks
+The v0.34.13 source adds bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -302,7 +303,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.34.12 source and verified package
+release evidence; use **Current release boundary** above for the v0.34.13 source and verified package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
