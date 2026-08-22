@@ -3065,8 +3065,13 @@ async fn sync_configured_sources(
                 println!("synced source={} deleted={deleted}", source.name);
             }
             Err(error) => {
-                store.finish_sync(&run_id, failure_status(&error), None, None, None)?;
-                eprintln!("source sync failed: source={} error={error:#}", source.name);
+                let status = failure_status(&error);
+                store.finish_sync(&run_id, status, None, None, None)?;
+                eprintln!(
+                    "source sync failed: source={} status={} error={error:#}",
+                    source.name,
+                    status.as_str()
+                );
                 failures.push(source.name.clone());
             }
         }
@@ -3895,19 +3900,23 @@ mod tests {
         use anyhow::anyhow;
 
         match failure_status(&anyhow!("operation cancelled by operator")) {
-            SyncRunStatus::Cancelled => {}
+            status @ SyncRunStatus::Cancelled => assert_eq!(status.as_str(), "cancelled"),
             _ => panic!("expected cancelled classification"),
         }
         match failure_status(&anyhow!("connector upstream timed out after 300 seconds")) {
-            SyncRunStatus::BudgetExceeded => {}
+            status @ SyncRunStatus::BudgetExceeded => {
+                assert_eq!(status.as_str(), "budget_exceeded")
+            }
             _ => panic!("expected budget_exceeded classification"),
         }
         match failure_status(&anyhow!("source work-doc exceeded the 60 second budget")) {
-            SyncRunStatus::BudgetExceeded => {}
+            status @ SyncRunStatus::BudgetExceeded => {
+                assert_eq!(status.as_str(), "budget_exceeded")
+            }
             _ => panic!("expected budget_exceeded classification"),
         };
         match failure_status(&anyhow!("unexpected ingestion pipeline failure")) {
-            SyncRunStatus::Failed => {}
+            status @ SyncRunStatus::Failed => assert_eq!(status.as_str(), "failed"),
             _ => panic!("expected failed classification"),
         };
     }
