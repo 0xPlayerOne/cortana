@@ -9,7 +9,23 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.9
+## Current release: v0.34.10
+
+Download the Desktop app or a matching core archive from the
+[latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
+`v0.34.10` tag is the current source and release boundary. Release-assets workflow
+`32544658079` is the strict archive, checksum, updater-signature, manifest, and packaged-core
+verification gate; do not treat the package as fully verified until that workflow and
+`scripts/verify-desktop-release.sh` report success.
+
+The v0.34.10 release is a version-only promotion over v0.34.9. It changes release metadata and
+does not change credentials, source authorization, indexed data, recurring-sync policy, or native
+memory behavior. The installed host should be upgraded only from the verified platform archive;
+afterward re-check `cortana --version`, health/readiness, and the provider-backed fixture evaluator.
+The packaged GUI, browser OAuth, tray, native dialogs, updater interaction, Developer ID signing,
+notarization, full-budget source validation, and recurring sync remain separate gates.
+
+## v0.34.9 release notes (historical)
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
@@ -66,7 +82,7 @@ The companion `scripts/shared-agent-mcp-drill.py` exercises the real shipped MCP
 including workspace ACL filtering, file-backed token rotation, and revocation. Both drills are
 offline synthetic evidence and never authorize a source or touch the live index.
 
-## v0.34.9 release intent (published and verified)
+### v0.34.9 release intent (published and verified; historical)
 
 The v0.34.9 package is the protected version-only Release Please follow-up to the exact-tree
 promotion PR #1680 and staging reconcile PR #1682. It publishes the selective shared-button UI
