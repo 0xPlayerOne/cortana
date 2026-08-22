@@ -31,6 +31,7 @@ import { describeSourceJobProgress, recentCompletedJobs } from '../sourceJobs'
 import { describeSyncRunProgress } from '../operations'
 import { shortcutLabel } from '../shortcuts'
 import { useClipboardCopy } from '../useClipboardCopy'
+import { Button } from './ui/Button'
 
 export type UtilityKind = 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
 
@@ -353,9 +354,9 @@ function InboxView({
         </section>
       )}
       <div className="utility-actions">
-        <button type="button" className="secondary-button" onClick={onOpenSettings}>
+        <Button variant="secondary" onClick={onOpenSettings}>
           <Settings size={15} /> Manage ingestion in settings
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -459,9 +460,9 @@ function ConversationsView({
         </section>
       )}
       <div className="utility-actions">
-        <button type="button" className="secondary-button" onClick={onSearchFocus}>
+        <Button variant="secondary" onClick={onSearchFocus}>
           <Search size={15} /> Search the brain
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -541,15 +542,14 @@ function AgentToolsView({
               </div>
             )}
             <div className="utility-actions">
-              <button
-                type="button"
-                className="secondary-button"
+              <Button
+                variant="secondary"
                 aria-label="Copy MCP-equivalent context"
                 onClick={() => void copy()}
               >
                 {copied ? <Check size={15} /> : <Copy size={15} />}
                 {copied ? 'Context copied' : 'Copy MCP-equivalent context'}
-              </button>
+              </Button>
               {copyError && (
                 <p className="utility-error" role="alert">
                   {copyError}
@@ -691,9 +691,9 @@ function IndexView({
         </div>
       </section>
       <div className="utility-actions">
-        <button type="button" className="secondary-button" onClick={onOpenSettings}>
+        <Button variant="secondary" onClick={onOpenSettings}>
           <Settings size={15} /> Open settings
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -772,9 +772,8 @@ function HelpView({
         </div>
         {desktopAvailable && (
           <div className="utility-actions">
-            <button
-              type="button"
-              className="secondary-button"
+            <Button
+              variant="secondary"
               onClick={() => {
                 setProjectError('')
                 void Promise.resolve(onOpenProject()).catch((caught: unknown) => {
@@ -787,7 +786,7 @@ function HelpView({
               }}
             >
               <ExternalLink size={15} /> Open project page
-            </button>
+            </Button>
           </div>
         )}
         {projectError && (
@@ -866,9 +865,9 @@ function UtilityEmpty({
       {actions.length > 0 && (
         <div className="utility-actions utility-actions-center">
           {actions.map(({ label, icon: actionIcon, onClick }) => (
-            <button type="button" className="secondary-button" key={label} onClick={onClick}>
+            <Button variant="secondary" key={label} onClick={onClick}>
               {actionIcon} {label}
-            </button>
+            </Button>
           ))}
         </div>
       )}
