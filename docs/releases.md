@@ -9,18 +9,18 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.19
+## Current release: v0.34.20
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.19` tag is the current source and release boundary. Release-assets workflow
-[`32601930711`](https://github.com/0xPlayerOne/cortana/actions/runs/32601930711) completed the
+`v0.34.20` tag is the current source and release boundary. Release-assets workflow
+[`32603677864`](https://github.com/0xPlayerOne/cortana/actions/runs/32603677864) completed the
 strict archive, checksum, updater-signature, manifest, and packaged-core verification gate; all
-18 published assets are verified.
+18 published assets passed the independent strict verifier.
 
-The v0.34.19 release is a documentation and release-metadata follow-up to the verified v0.34.18
+The v0.34.20 release is a UI consistency and release-metadata follow-up to the verified v0.34.19
 runtime. It changes no credentials, source authorization, indexed data, recurring-sync policy, or
-native-memory behavior. The installed host was upgraded from v0.34.18 using the published Apple
+native-memory behavior. The installed host was upgraded from v0.34.19 using the published Apple
 Silicon archive; `cortana --version`, readiness, native-memory, shared-agent, MCP, and control-plane
 drills passed afterward. The embedding service requires a short model warm-up after restart before
 health becomes ready.
