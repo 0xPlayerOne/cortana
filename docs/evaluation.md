@@ -20,16 +20,15 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 ### Current release boundary
 
 The current protected source and published tag are `v0.34.13`, promoted through the protected
-flow and Release Please automation. Release-assets workflow `32554817618` is the current 18-asset
-release gate for checksums, updater signatures, manifest, and packaged-core verification.
+flow and Release Please automation. Release-assets workflow `32554817618` completed the current
+18-asset release gate for checksums, updater signatures, manifest, and packaged-core verification.
 The v0.34.13 source carries the native agentic-memory layer, the selective shared-button UI
 increment from PR #1678, and the
 rollback-safe Hermes migration publication
 and the bounded
 read-only live-index evaluator.
-The published v0.34.13 package is the current downloadable boundary. The audited host evidence below
-still refers to the installed v0.34.12 binary until the v0.34.13 asset gate and local upgrade complete.
-Query-only readiness passed
+The published v0.34.13 package is the current downloadable boundary, and the audited host now runs
+v0.34.13 after an upgrade that restarted only Cortana-owned services. Query-only readiness passed
 with the stored embedding generation, ACL, live embedding probe, HTTP liveness, and a verified
 backup; recurring sync remains uninstalled.
 A first
@@ -79,24 +78,25 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
 The v0.34.13 release gate verifies the packaged core offline without credentials. A fresh
-provider-backed evaluation on 2026-08-22 using the installed v0.34.12 binary passed retrieval recall,
+provider-backed evaluation on 2026-08-22 using the installed v0.34.12 binary before the metadata-only
+v0.34.13 upgrade passed retrieval recall,
 MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
 invalidation in 12,228 ms answer latency under the 55,000 ms deadline, with no provider fallback. This is current installed-
 runtime fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
 or authorize source synchronization. The evaluator remains opt-in; extractive mode is the
 production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.12. The embedding, HTTP, and backup
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.13. The embedding, HTTP, and backup
 services are running with recurring sync uninstalled. This is local installation evidence, not
 proof of native GUI, browser OAuth, updater, or operating-system trust behavior.
 
-After the v0.34.12 install, `cortana readiness --max-backup-age-hours 48` passed on the audited
+After the v0.34.13 install, `cortana readiness --max-backup-age-hours 48` passed on the audited
 host: SQLite integrity, embedding/index generation, ACL, live embedding probe, HTTP liveness,
 backup freshness (21 hours old), query-only sync-service safety, and extractive query mode all
 passed. The command did not enable source validation or recurring sync; that remains a separate
 production-budget gate.
 
-On 2026-08-22, the installed v0.34.12 binary also passed the disposable native-memory lifecycle drill
+On 2026-08-22, the pre-upgrade v0.34.12 binary also passed the disposable native-memory lifecycle drill
 (dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (ACL filtering,
 metadata-only audit, token rotation, and revocation), and the real MCP stdio drill (10 tools,
 workspace ACL filtering, and token rotation). These are synthetic control-plane evidence and do
