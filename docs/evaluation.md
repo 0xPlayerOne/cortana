@@ -86,6 +86,13 @@ at the 30-second request ceiling, so no provider-backed personal answer was acce
 enable production synthesis or treat this run as full-corpus quality evidence until a repeatable
 approved-corpus evaluation meets the retrieval, citation, synthesis, latency, and fallback gates.
 
+A subsequent private, read-only v0.34.18 evaluation against the approved `work` / `work-notes`
+scope passed the retrieval-only thresholds: recall@k 1.0, MRR 1.0, retrieval pass rate 1.0,
+zero forbidden-source leaks, hybrid retrieval without degradation, repeated-query cache hit rate
+1.0, and a 158 ms maximum request latency. The manifest and query remain untracked and the report
+contains only bounded metrics and source IDs. This strengthens current retrieval and folder-scope
+evidence, but it is not provider-backed synthesis evidence and does not authorize recurring sync.
+
 The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.18. The embedding, HTTP, and backup
 services are running with recurring sync uninstalled. The isolated `/healthz` and `/readyz` probes,
 `doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
