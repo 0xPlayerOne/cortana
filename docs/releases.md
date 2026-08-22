@@ -24,6 +24,20 @@ afterward re-check `cortana --version`, health/readiness, and the provider-backe
 The packaged GUI, browser OAuth, tray, native dialogs, updater interaction, Developer ID signing,
 notarization, full-budget source validation, and recurring sync remain separate gates.
 
+## v0.34.17 release intent (pending protected release)
+
+The post-v0.34.16 source publishes the shared-button UI hardening across the remaining Settings
+operational controls and records the current provider-backed evaluation boundary. The bounded live
+approved-index trial verified workspace/source scoping, citation validity, cache reuse, and an
+extractive answer without fallback, but the configured synthesis provider was not used and the
+retrieval MRR threshold was not met. Provider-backed approved-corpus synthesis therefore remains an
+open production gate rather than an implied claim.
+
+This release intent changes no credentials, source authorization, indexed data, recurring-sync
+state, or native-memory policy. The protected staging-to-main promotion, version-only Release
+Please PR, release-assets workflow, and packaged-core verifier must complete before `v0.34.17` is
+called downloadable or verified.
+
 ## v0.34.10 release notes (historical)
 
 Download the Desktop app or a matching core archive from the
