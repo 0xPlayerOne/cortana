@@ -30,11 +30,10 @@ is not part of a visual/UI change.
   includes bounded parallel body fetching from PR #1594; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The latest pre-upgrade v0.34.13 host `eval --model` attempt failed closed after 48,681 ms because
-  the configured model gateway provider was unavailable; retrieval metrics passed, but synthesis
-  fell back safely to extractive mode. The earlier v0.34.12 run passed planner/synthesis, citations,
-  cache reuse, and revision invalidation. These are provider-backed fixture evidence only; they do
-  not query the personal index, authorize source synchronization, or prove packaged GUI behavior.
+- The installed v0.34.16 host `eval --model` run passed planner and synthesis execution, citations,
+  cache reuse, and revision invalidation in 18,636 ms without provider fallback. This is provider-backed
+  synthetic fixture evidence only; it does not query the personal index, authorize source
+  synchronization, or prove packaged GUI behavior. The approved-corpus provider gate remains open.
 - The installed v0.34.16 binary passed the disposable native-memory, shared-agent HTTP, shared-agent
   MCP, and offline Desktop control-plane drills on 2026-08-22. The drills use temporary synthetic
   indexes and verify dedupe/expiry/forget, workspace ACLs, metadata-only audit output, token
@@ -189,15 +188,12 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the prior verified v0.34.15 package passed the credential-free packaged-core
-   evaluator and query-only readiness in release verification. The latest installed v0.34.13 CLI
-   attempt failed closed after 48,681 ms because the configured model gateway provider was
-   unavailable; retrieval passed and the answer used the extractive fallback. The earlier v0.34.12
-   fixture run passed planner/synthesis, valid citations, cache reuse, and revision invalidation.
-   These runs used synthetic fixtures only; no provider-backed evaluation against a personal index
-   or the packaged GUI is claimed. Provider outages or slow responses still fail closed, and
-   extractive mode remains the safe production default. The current package also passes `doctor`
-   and the disposable control-plane/recovery drills, while the GUI remains unlaunched.
+2. Model-backed provider gate: the installed v0.34.16 host now passes the bounded synthetic
+   provider-backed fixture evaluator in 18,636 ms with planner/synthesis use, valid citations, cache
+   reuse, and revision invalidation. No provider-backed evaluation against an approved personal
+   index or the packaged GUI is claimed yet. Provider outages or slow responses still fail closed,
+   and extractive mode remains the safe production default. The current package also passes
+   `doctor` and the disposable control-plane/recovery drills, while the GUI remains unlaunched.
 3. Provider-advertised model metadata is implemented and bounded by
    `cortana provider-models`; keep the provider capability contract covered as
    supported query/answer providers evolve.

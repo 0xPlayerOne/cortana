@@ -553,12 +553,12 @@ boundary includes bounded four-worker fetching from PR #1594; the
 complete record at its configured budget and the Special Google grant is repaired. No
 reconciliation or large sync has been run.
 
-The latest pre-upgrade v0.34.13 CLI `eval --model` attempt failed closed after 48,681 ms because the
-configured model gateway provider was unavailable; retrieval metrics passed, but the answer used the
-safe extractive fallback. The earlier v0.34.12 run passed planner/synthesis, valid citations, cache
-reuse, and revision invalidation without provider fallback. Both are synthetic provider-backed
-fixture evidence only; neither authorizes source sync, establishes personal-index quality, or
-replaces the separate packaged GUI and signing gates. The evaluator remains opt-in.
+A fresh provider-backed `cortana eval --model` run on the installed v0.34.16 binary passed planner
+and synthesis execution, valid citations, cache reuse, and revision invalidation in 18,636 ms under
+the 55,000 ms bound, without provider fallback. This is synthetic fixture evidence only; it neither
+authorizes source sync nor establishes personal-index quality, and it does not replace the separate
+packaged GUI and signing gates. The approved-corpus provider gate remains open and the evaluator
+remains opt-in.
 
 ### Historical rollout observations
 

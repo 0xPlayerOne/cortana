@@ -70,14 +70,13 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.34.16 release gate verifies the packaged core offline without credentials. The latest
-provider-backed attempt on the pre-upgrade v0.34.13 host failed closed after 48,681 ms: retrieval
-metrics passed, but the configured model gateway reported provider unavailability, so synthesis was
-not used and the answer fell back to extractive mode. The prior v0.34.12 fixture run passed
-retrieval recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache
-reuse, and revision invalidation in 12,228 ms with no provider fallback. Both are synthetic fixture
-evidence only; neither queries the personal index, proves packaged GUI behavior, or authorizes source
-synchronization. The evaluator remains opt-in and extractive mode remains the production default.
+The v0.34.16 release gate verifies the packaged core offline without credentials. A fresh
+provider-backed `cortana eval --model` run against the installed v0.34.16 binary passed retrieval
+recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and
+revision invalidation in 18,636 ms under the 55,000 ms bound, with no provider fallback. This is
+synthetic fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
+or authorize source synchronization. The approved-corpus provider-backed evaluation remains an open
+operator gate; the evaluator remains opt-in and extractive mode remains the production default.
 
 The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.16. The embedding, HTTP, and backup
 services are running with recurring sync uninstalled. The isolated `/healthz` and `/readyz` probes,
@@ -135,10 +134,10 @@ avoid queueing vector requests, while startup and restart still require a real v
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
 
-### Current approved-index retrieval evidence (2026-08-22 UTC; local wall clock 2026-08-21)
+### Prior approved-index retrieval evidence (2026-08-22 UTC; v0.34.11 API)
 
 The run timestamp is normalized to 2026-08-22 UTC (the local wall clock was the evening of
-2026-08-21). A private, one-case manifest was run against the installed v0.34.11 query API using
+2026-08-21). A private, one-case manifest was run against the then-installed v0.34.11 query API using
 an approved work Apple Notes scope. The read-only harness passed hybrid retrieval and the
 extractive answer path with recall@k 1.0, MRR 1.0, retrieval and answer pass rates 1.0, citation
 validity 1.0, zero retrieval or provider fallback, a repeated-query cache-hit rate of 1.0, and a

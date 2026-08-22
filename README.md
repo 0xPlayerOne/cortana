@@ -77,11 +77,10 @@ The audited host installation now reports `cortana 0.34.16`, matching the latest
 Embedding, HTTP, and backup services are healthy in query-only mode; recurring sync remains
 uninstalled. The v0.34.16 readiness, native-memory, shared-agent, and control-plane evidence is
 recorded in the linked operations and evaluation guides. The installed v0.34.16 binary also
-passed the deterministic offline fixture evaluation and packaged-core verification. The latest
-provider-backed attempt on the pre-upgrade v0.34.13 host failed closed after 48,681 ms because the
-configured model gateway provider was unavailable; the prior v0.34.12 fixture run passed retrieval,
-citations, planner/synthesis, cache reuse, and revision invalidation. Extractive mode therefore
-remains the safe default. This remains fixture evidence, not personal-index or packaged-GUI proof.
+passed the deterministic offline fixture evaluation and packaged-core verification. A fresh
+`cortana eval --model` run on 2026-08-22 passed planner and synthesis execution, citations, cache
+reuse, and revision invalidation in 18,636 ms without provider fallback. This is synthetic fixture
+evidence, not personal-index or packaged-GUI proof; the approved-corpus provider gate remains open.
 When a checkout and downloaded application report different versions, trust the application version
 for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree
 hardening has shipped.
