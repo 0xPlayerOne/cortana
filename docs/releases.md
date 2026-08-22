@@ -9,34 +9,27 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.16
+## Current release: v0.34.17
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.16` tag is the current source and release boundary. Release-assets workflow
-`32589317192` completed the strict archive, checksum, updater-signature, manifest, and packaged-core
+`v0.34.17` tag is the current source and release boundary. Release-assets workflow
+`32593385885` completed the strict archive, checksum, updater-signature, manifest, and packaged-core
 verification gate; all 18 published assets are verified.
 
-The v0.34.16 release is a version-only promotion over v0.34.15. It changes release metadata and
-does not change credentials, source authorization, indexed data, recurring-sync policy, or native
-memory behavior. The installed host should be upgraded only from the verified platform archive;
-afterward re-check `cortana --version`, health/readiness, and the provider-backed fixture evaluator.
+The v0.34.17 release promotes the exact staging tree through protected promotion PR #1745 and
+the version-only Release Please PR #1746. It changes no credentials, source authorization, indexed
+data, recurring-sync policy, or native-memory behavior. The installed host was upgraded from
+v0.34.16 using the verified Apple Silicon archive; `cortana --version`, readiness, native-memory,
+shared-agent, MCP, and control-plane drills passed afterward. The embedding service requires a
+short model warm-up after restart before health becomes ready.
+
+The installed `cortana eval --model` fixture passed planner and synthesis execution, citations,
+cache reuse, and revision invalidation in 12,827 ms without provider fallback. This is synthetic
+fixture evidence. A bounded live approved-index evaluation still found recall 1.0 but MRR 0.25,
+and a synthesis-enabled attempt timed out; extractive mode remains the safe production default.
 The packaged GUI, browser OAuth, tray, native dialogs, updater interaction, Developer ID signing,
 notarization, full-budget source validation, and recurring sync remain separate gates.
-
-## v0.34.17 release intent (pending protected release)
-
-The post-v0.34.16 source publishes the shared-button UI hardening across the remaining Settings
-operational controls and records the current provider-backed evaluation boundary. The bounded live
-approved-index trial verified workspace/source scoping, citation validity, cache reuse, and an
-extractive answer without fallback, but the configured synthesis provider was not used and the
-retrieval MRR threshold was not met. Provider-backed approved-corpus synthesis therefore remains an
-open production gate rather than an implied claim.
-
-This release intent changes no credentials, source authorization, indexed data, recurring-sync
-state, or native-memory policy. The protected staging-to-main promotion, version-only Release
-Please PR, release-assets workflow, and packaged-core verifier must complete before `v0.34.17` is
-called downloadable or verified.
 
 ## v0.34.10 release notes (historical)
 
