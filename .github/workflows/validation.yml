@@ -49,7 +49,12 @@ jobs:
         id: classify
         env:
           FOUNDRY_EVENT_NAME: ${{ github.event_name }}
-          FOUNDRY_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          # An exact-tree promotion has already passed the complete fast
+          # staging CI/test gate. Reuse that tier on the main promotion PR
+          # instead of rerunning the expensive audit/CodeQL fan-out against
+          # the byte-identical tree. Release Please version PRs keep the
+          # normal release-tier classification.
+          FOUNDRY_BASE_REF: ${{ startsWith(github.event.pull_request.head.ref, 'promote/exact-staging-') && 'staging' || github.event.pull_request.base.ref }}
           FOUNDRY_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: node "$RUNNER_TEMP/code-foundry/src/runtime.mjs" validation mode >> "$GITHUB_OUTPUT"
 
