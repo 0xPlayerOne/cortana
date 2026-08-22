@@ -1704,7 +1704,8 @@ function UpdatesSection({
           </small>
         </div>
         <div className="service-actions">
-          <button
+          <Button
+            variant="secondary"
             type="button"
             disabled={Boolean(busy) || updateInFlight}
             onClick={() => void check()}
@@ -1715,7 +1716,7 @@ function UpdatesSection({
               <RefreshCw size={14} />
             )}
             Check now
-          </button>
+          </Button>
           <button
             type="button"
             className="primary-button"
@@ -2337,13 +2338,14 @@ function ReadinessSection({
                   {tool.path && <code>{tool.path}</code>}
                 </div>
                 {!tool.available && tool.install_supported && (
-                  <button
+                  <Button
+                    variant="compact"
                     type="button"
                     disabled={job?.status === 'running' || job?.status === 'cancelling'}
                     onClick={() => void install(tool.id, tool.label)}
                   >
                     Install
-                  </button>
+                  </Button>
                 )}
               </article>
             ))}
@@ -3812,13 +3814,14 @@ function SourcesSection({
                           {source.token_env &&
                             secret?.configured &&
                             !clearedSecrets.has(secret.name) && (
-                              <button
+                              <Button
+                                variant="compact"
                                 type="button"
                                 disabled={sourceLocked}
                                 onClick={() => onClearSecret(source.token_env!)}
                               >
                                 Clear
-                              </button>
+                              </Button>
                             )}
                         </div>
                       </Field>
@@ -4155,13 +4158,14 @@ function SourcesSection({
                             {source.token_env &&
                               secret?.configured &&
                               !clearedSecrets.has(secret.name) && (
-                                <button
+                                <Button
+                                  variant="compact"
                                   type="button"
                                   disabled={sourceLocked}
                                   onClick={() => onClearSecret(source.token_env!)}
                                 >
                                   Clear
-                                </button>
+                                </Button>
                               )}
                           </div>
                         </Field>
@@ -4462,16 +4466,18 @@ function SourcesSection({
               <small>{observedJob.summary}</small>
             </span>
             {['running', 'cancelling'].includes(observedJob.status) && (
-              <button
+              <Button
+                variant="compact"
                 type="button"
                 disabled={observedJob.status === 'cancelling'}
                 onClick={() => void cancel()}
               >
                 <CircleStop size={14} /> Cancel
-              </button>
+              </Button>
             )}
             {observedJob.retryable && (
-              <button
+              <Button
+                variant="compact"
                 type="button"
                 disabled={!canValidate || Boolean(activeJob)}
                 onClick={() => {
@@ -4489,7 +4495,7 @@ function SourcesSection({
                 }}
               >
                 <RefreshCw size={14} /> Retry
-              </button>
+              </Button>
             )}
           </div>
           {observedJob.log && <pre>{observedJob.log}</pre>}
@@ -5610,7 +5616,8 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
           </p>
         </div>
         <div className="service-actions">
-          <button
+          <Button
+            variant="secondary"
             type="button"
             disabled={Boolean(portableBusy) || dirty}
             title={dirty ? 'Save or discard draft changes before exporting' : 'Export settings'}
@@ -5622,8 +5629,9 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
               <Download size={14} />
             )}
             Export
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
             type="button"
             disabled={Boolean(portableBusy)}
             onClick={() => void importSettings()}
@@ -5634,8 +5642,9 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
               <Upload size={14} />
             )}
             Import preview
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="secondary"
             type="button"
             disabled={Boolean(portableBusy)}
             onClick={() => void openSecretFile()}
@@ -5646,7 +5655,7 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
               <FolderOpen size={14} />
             )}
             Open secret file
-          </button>
+          </Button>
         </div>
       </div>
       {(portableNotice || portableError) && (
