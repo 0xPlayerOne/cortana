@@ -19,20 +19,21 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.14`, promoted through the protected
-staging → main flow and Release Please automation. Release-assets workflow `32560090908` completed
-the current 18-asset release gate for checksums, updater signatures, manifest, and packaged-core
-verification. The release is a metadata-only promotion over v0.34.13; it does not change
-credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.
-The audited host now runs v0.34.14 after an upgrade that restarted only Cortana-owned services.
-Query-only readiness, `doctor`, deterministic `eval`, the strict release verifier, packaged-core
-verification, and skill parity all passed. Recurring sync remains uninstalled.
+The current protected source and published tag are `v0.34.16`, promoted through the protected
+staging → main flow and Release Please automation. Release-assets workflow `32589317192` completed
+the 18-asset release gate for checksums, updater signatures, manifest, and packaged-core verification.
+The release is a metadata-only promotion over v0.34.15; it does not change credentials, source
+authorization, indexed data, recurring-sync policy, or native-memory behavior. The audited host now
+runs v0.34.16 after an upgrade that restarted only Cortana-owned services. Query-only readiness,
+`doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
+and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
+uninstalled.
 
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
-source set is not fully production-validated. The pre-upgrade v0.34.13 pass used 25 documents, 5 MiB,
+source set is not fully production-validated. The previous v0.34.13 pass used 25 documents, 5 MiB,
 and 60 seconds per source: nine of 13 enabled non-code profiles returned `complete=true`, while
 `personal-gmail` timed out after 59 seconds and the three Special Google profiles failed closed with
-Google OAuth `invalid_grant`. After installing v0.34.14, a bounded Personal Gmail retry at the same
+Google OAuth `invalid_grant`. After installing v0.34.15, a bounded Personal Gmail retry at the same
 25-document/5 MiB scope completed within a 120-second cap, bringing the current bounded total to ten
 complete profiles. These records make no index or reconciliation writes and do not meet configured
 production budgets. Personal Drive's bounded probe passed after reauthorization, but its previous
@@ -69,7 +70,7 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.34.14 release gate verifies the packaged core offline without credentials. The latest
+The v0.34.16 release gate verifies the packaged core offline without credentials. The latest
 provider-backed attempt on the pre-upgrade v0.34.13 host failed closed after 48,681 ms: retrieval
 metrics passed, but the configured model gateway reported provider unavailability, so synthesis was
 not used and the answer fell back to extractive mode. The prior v0.34.12 fixture run passed
@@ -78,13 +79,13 @@ reuse, and revision invalidation in 12,228 ms with no provider fallback. Both ar
 evidence only; neither queries the personal index, proves packaged GUI behavior, or authorizes source
 synchronization. The evaluator remains opt-in and extractive mode remains the production default.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.14. The embedding, HTTP, and backup
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.16. The embedding, HTTP, and backup
 services are running with recurring sync uninstalled. The isolated `/healthz` and `/readyz` probes,
 `doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
 installation evidence, not proof of native GUI, browser OAuth, updater, or operating-system trust
 behavior.
 
-On 2026-08-22, the installed v0.34.14 binary passed the disposable native-memory lifecycle drill
+On 2026-08-22, the installed v0.34.16 binary passed the disposable native-memory lifecycle drill
 (dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (query/status/admin
 scope separation, ACL filtering, metadata-only audit, token rotation, and revocation), and the real
 MCP stdio drill (10 tools, workspace ACL filtering, and token rotation). The same binary passed the
@@ -118,18 +119,18 @@ enabled sources complete within the refreshed bounded limits, while the three Sp
 sources require reauthorization and Personal Drive still lacks a production-budget validation.
 The pass did not enable Discord, code, Slack, or synthesis.
 
-The v0.34.14 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.34.16 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current v0.34.14 source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.34.16 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.34.14 source; it does
+This protects concurrent Desktop windows/processes in the v0.34.16 source; it does
 not authorize source ingestion or recurring sync.
 
-The v0.34.14 source adds bounded embedding-supervisor recovery: steady-state health checks
+The v0.34.16 source adds bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -294,7 +295,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.34.14 source and verified package
+release evidence; use **Current release boundary** above for the v0.34.16 source and verified package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in

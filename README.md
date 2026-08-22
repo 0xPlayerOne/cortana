@@ -60,8 +60,8 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The protected source and latest published release are **v0.34.14**. Release-assets workflow
-`32560090908` completed the platform-package and strict 18-asset verification gate. The v0.34.14
+The protected source and latest published release are **v0.34.16**. Release-assets workflow
+`32589317192` completed the platform-package and strict 18-asset verification gate. The v0.34.16
 package carries the v0.34.5 runtime hardening, the bounded Drive body-fetch improvement, and the
 selective shared-button UI increment from PR #1678,
 approved-corpus source-scope enforcement, and the five-minute Desktop cold-start budget
@@ -73,10 +73,10 @@ through a shared per-config lock, Desktop sidecars publish atomically, and compa
 controls share one tokenized button contract. The Desktop architecture guide records the selective
 shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
-The audited host installation now reports `cortana 0.34.14`, matching the latest published package.
+The audited host installation now reports `cortana 0.34.16`, matching the latest verified package.
 Embedding, HTTP, and backup services are healthy in query-only mode; recurring sync remains
-uninstalled. Readiness passed with the stored embedding generation, ACL, live embedding probe,
-query API, and a verified backup within the 48-hour limit. The installed v0.34.14 binary also
+uninstalled. The v0.34.16 readiness, native-memory, shared-agent, and control-plane evidence is
+recorded in the linked operations and evaluation guides. The installed v0.34.16 binary also
 passed the deterministic offline fixture evaluation and packaged-core verification. The latest
 provider-backed attempt on the pre-upgrade v0.34.13 host failed closed after 48,681 ms because the
 configured model gateway provider was unavailable; the prior v0.34.12 fixture run passed retrieval,
@@ -90,15 +90,15 @@ hardening has shipped.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current protected release is **v0.34.14**. Its
+package for your operating system and CPU. The current protected release is **v0.34.16**. Its
 release-assets workflow is the active archive, checksum, updater-signature, and credential-free
 packaged-core verification gate. The Desktop app still has
 separate manual gates for macOS Developer ID notarization and first-run operating-system
 interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 
-The v0.34.14 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
-x86_64**. v0.34.14 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
+The v0.34.16 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. v0.34.16 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
 this release. Rosetta execution or a core archive is not evidence of Intel Desktop support. A
 future Intel policy change requires a matching signed bundle, updater signature, installer
 verification, and native acceptance evidence.
