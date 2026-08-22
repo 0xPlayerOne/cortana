@@ -84,11 +84,14 @@ services are running with recurring sync uninstalled. The isolated `/healthz` an
 installation evidence, not proof of native GUI, browser OAuth, updater, or operating-system trust
 behavior.
 
-On 2026-08-22, the pre-upgrade v0.34.12 binary also passed the disposable native-memory lifecycle drill
-(dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (ACL filtering,
-metadata-only audit, token rotation, and revocation), and the real MCP stdio drill (10 tools,
-workspace ACL filtering, and token rotation). These are synthetic control-plane evidence and do
-not replace native packaged-GUI acceptance or live approved-corpus evaluation.
+On 2026-08-22, the installed v0.34.14 binary passed the disposable native-memory lifecycle drill
+(dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (query/status/admin
+scope separation, ACL filtering, metadata-only audit, token rotation, and revocation), and the real
+MCP stdio drill (10 tools, workspace ACL filtering, and token rotation). The same binary passed the
+offline Desktop control-plane drill (bounded ingest, hybrid search/context, metadata-only audit,
+verified backup, restore, SQLite verification, and post-restore search). These are synthetic,
+temporary-directory control-plane evidence and do not replace native packaged-GUI acceptance or
+live approved-corpus evaluation.
 
 The preceding v0.32.12 fixture run from 2026-08-16 remains historical evidence: it passed
 retrieval recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache
