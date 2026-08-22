@@ -73,12 +73,13 @@ through a shared per-config lock, Desktop sidecars publish atomically, and compa
 controls share one tokenized button contract. The Desktop architecture guide records the selective
 shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
-The audited host installation now reports `cortana 0.34.12`, matching the latest published package.
+The audited host installation now reports `cortana 0.34.13`, matching the latest published package.
 Embedding, HTTP, and backup services are healthy in query-only mode; recurring sync remains
 uninstalled. Readiness passed with the stored embedding generation, ACL, live embedding probe,
-query API, and a verified backup 21 hours old. The installed binary also passed the bounded
-provider-backed fixture evaluation on 2026-08-22: retrieval, citations, planner/synthesis,
-cache reuse, and revision invalidation all passed in 13,211 ms under the 55-second deadline. This remains
+query API, and a verified backup 23 hours old. The installed v0.34.13 binary also passed the
+deterministic offline fixture evaluation after upgrade. The latest bounded provider-backed fixture
+evaluation was recorded immediately before the metadata-only upgrade on v0.34.12; it passed
+retrieval, citations, planner/synthesis, cache reuse, and revision invalidation. This remains
 fixture evidence, not personal-index or packaged-GUI proof.
 When a checkout and downloaded application report different versions, trust the application version
 for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree
