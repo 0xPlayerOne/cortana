@@ -1357,19 +1357,11 @@ function ServicesSection({
           >
             <RefreshCw size={14} /> Restart all
           </Button>
-          <Button
-            variant="compact"
-            disabled={actionInFlight}
-            onClick={() => void refresh()}
-          >
+          <Button variant="compact" disabled={actionInFlight} onClick={() => void refresh()}>
             <RefreshCw size={14} /> Refresh
           </Button>
           {needsCoreInstall && (
-            <Button
-              variant="primary"
-              disabled={actionInFlight}
-              onClick={() => void install()}
-            >
+            <Button variant="primary" disabled={actionInFlight} onClick={() => void install()}>
               {busy === 'install' ? (
                 <LoaderCircle className="spin" size={14} />
               ) : (

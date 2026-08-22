@@ -1689,7 +1689,8 @@
   white-space: nowrap;
 }
 
-.service-actions > button:not(.primary-button):not(.secondary-button):not(.cortana-button):hover:enabled,
+.service-actions
+  > button:not(.primary-button):not(.secondary-button):not(.cortana-button):hover:enabled,
 .source-card-actions > button:not(.source-icon-button):not(.cortana-button):hover:enabled,
 .source-validation-job button:not(.cortana-button):hover:enabled,
 .readiness-list button:not(.cortana-button):hover:enabled,
@@ -1698,7 +1699,8 @@
   background: var(--theme-control-bg-hover);
 }
 
-.service-actions > button:not(.primary-button):not(.secondary-button):not(.cortana-button):focus-visible,
+.service-actions
+  > button:not(.primary-button):not(.secondary-button):not(.cortana-button):focus-visible,
 .source-card-actions > button:not(.source-icon-button):not(.cortana-button):focus-visible,
 .source-validation-job button:not(.cortana-button):focus-visible,
 .readiness-list button:not(.cortana-button):focus-visible,
