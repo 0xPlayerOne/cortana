@@ -78,7 +78,7 @@ Embedding, HTTP, and backup services are healthy in query-only mode; recurring s
 uninstalled. Readiness passed with the stored embedding generation, ACL, live embedding probe,
 query API, and a verified backup 18 hours old. The installed binary also passed the bounded
 provider-backed fixture evaluation on 2026-08-22: retrieval, citations, planner/synthesis,
-cache reuse, and revision invalidation all passed in 16,797 ms under the 55-second deadline. This remains
+cache reuse, and revision invalidation all passed in 18,789 ms under the 55-second deadline. This remains
 fixture evidence, not personal-index or packaged-GUI proof.
 When a checkout and downloaded application report different versions, trust the application version
 for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree

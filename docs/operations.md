@@ -547,7 +547,7 @@ includes bounded four-worker fetching from PR #1594 and is now installed; the
 complete record at its configured budget and the Special Google grant is repaired. No
 reconciliation or large sync has been run.
 
-The installed v0.34.10 CLI passed a fresh bounded `eval --model` run on 2026-08-22 with 16,797 ms
+The installed v0.34.10 CLI passed a fresh bounded `eval --model` run on 2026-08-22 with 18,789 ms
 answer latency,
 including planner/synthesis, valid citations, cache reuse, and revision invalidation without
 provider fallback. This is current synthetic provider-backed evidence only; it does not authorize

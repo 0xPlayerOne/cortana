@@ -79,7 +79,7 @@ the recurring-sync gate.
 The v0.34.10 release gate verifies the packaged core offline without credentials. A fresh
 provider-backed evaluation on 2026-08-22 using the installed v0.34.10 binary passed retrieval recall,
 MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and revision
-invalidation in 16,797 ms answer latency under the 55,000 ms deadline, with no provider fallback. This is current installed-
+invalidation in 18,789 ms answer latency under the 55,000 ms deadline, with no provider fallback. This is current installed-
 runtime fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
 or authorize source synchronization. The evaluator remains opt-in; extractive mode is the
 production default.

@@ -30,7 +30,7 @@ is not part of a visual/UI change.
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.34.10 host passed the bounded provider-backed `eval --model` evidence run on
-  2026-08-22 with 16,797 ms answer latency: retrieval recall, MRR, case pass rate, citation validity,
+  2026-08-22 with 18,789 ms answer latency: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
   all passed with no fallback. This is current provider-backed fixture evidence only; it does not
   query the personal index, authorize source synchronization, or prove packaged GUI behavior.
@@ -185,7 +185,7 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    session is available here.
 2. Model-backed provider gate: the verified v0.34.10 package passed the credential-free packaged-core
    evaluator and query-only readiness in release verification. The installed v0.34.10 CLI passed
-   the bounded provider-backed run on 2026-08-22 with 16,797 ms answer latency, planner/synthesis, valid
+   the bounded provider-backed run on 2026-08-22 with 18,789 ms answer latency, planner/synthesis, valid
    citations, cache reuse, and revision invalidation. That run used synthetic fixtures only; no
    provider-backed evaluation against a personal index or the packaged GUI is claimed. Provider
    outages or slow responses still fail closed, and extractive mode remains the safe production
