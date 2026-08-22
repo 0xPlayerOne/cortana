@@ -192,6 +192,7 @@ test('graph exposes bounded pagination when another page is available', () => {
 
   expect(screen.getByText('Showing 12 of 13 documents · 0 links')).toBeTruthy()
   const loadMore = screen.getByRole('button', { name: 'Load more nodes' })
+  expect(loadMore.className).toContain('cortana-button--secondary')
   fireEvent.click(loadMore)
   expect(loads).toBe(1)
 })
