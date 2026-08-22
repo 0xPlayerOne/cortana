@@ -46,6 +46,15 @@ sync, and no deletions were recorded. Personal Drive therefore remains below its
 2,000-document/128 MiB/900-second production gate until a full-budget run can be completed under
 an external watchdog.
 
+On 2026-08-22, the installed v0.34.18 binary refreshed the bounded validation sweep for all
+13 enabled non-code profiles. Ten profiles returned `complete=true` within 25 documents, 5 MiB,
+and 60 seconds: all three Apple Notes scopes, all three work Google sources, all three personal
+Google sources, and Buzz. The three special Google profiles failed closed with `invalid_grant`.
+The matching non-reconciling trials passed for Apple Notes, work/personal Gmail and Calendar, and
+Buzz, with zero deletions. Work Drive and Personal Drive both failed closed at the 60-second
+budget; the special Google trials were skipped after validation failed. Recurring sync remains
+uninstalled, and these bounded records do not authorize reconciliation or a production-budget run.
+
 The published v0.34.18 release boundary includes the bounded four-worker Drive body-fetch pool and regression
 coverage from PR #1594. The earlier production-budget Personal Drive run was stopped after 147
 documents while a large PDF stalled; it made zero index or reconciliation writes. No current
