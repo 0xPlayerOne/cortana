@@ -17,6 +17,7 @@ import { operationalSources, sourceHealth, type OperationalSource } from '../ope
 import { WorkspaceLogo } from '../workspaceLogos'
 import { SourceIcon } from './sourceIcons'
 import { sourceDisplayName } from './sourceIconData'
+import { Button } from './ui/Button'
 import type {
   BrainDocumentSummary,
   BrainStatus,
@@ -483,13 +484,9 @@ export function SourcePanel({
           </p>
         )}
         {hasMoreDocuments && !documentsLoading && (
-          <button
-            type="button"
-            className="secondary-button load-more-documents"
-            onClick={onLoadMoreDocuments}
-          >
+          <Button variant="secondary" className="load-more-documents" onClick={onLoadMoreDocuments}>
             Load next page
-          </button>
+          </Button>
         )}
       </section>
     </aside>
