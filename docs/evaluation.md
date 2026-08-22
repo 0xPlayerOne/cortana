@@ -126,6 +126,14 @@ enabled sources complete within the refreshed bounded limits, while the three Sp
 sources require reauthorization and Personal Drive still lacks a production-budget validation.
 The pass did not enable Discord, code, Slack, or synthesis.
 
+On 2026-08-22, the installed v0.34.18 binary also completed a current-release Apple Notes
+validation and bounded non-reconciling trial for each configured folder scope. `work-notes`
+returned 25 documents (118,540 bytes), `personal-notes` returned 25 (89,645 bytes), and
+`special-notes` returned 8 (14,046 bytes); all three records were `complete=true` within the
+25-document/5 MiB/60-second bound and the trials reported no deletions. This confirms the
+workspace folder routing and current connector path, but remains below the configured production
+budgets and does not authorize recurring sync.
+
 The v0.34.18 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
