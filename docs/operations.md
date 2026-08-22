@@ -77,14 +77,14 @@ evidence is required.
 Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
 8 MiB maximum line. Use separate reviewed batches for larger migrations.
 
-On the current v0.34.13 source tree, mutating CLI startup acquires the same global `sync.lock`
+On the current v0.34.14 source tree, mutating CLI startup acquires the same global `sync.lock`
 before opening the store. This covers schema/backfill/fingerprint work as well as the later import
-or sync operation. This is included in the published v0.34.13 source release.
+or sync operation. This is included in the published v0.34.14 source release.
 
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
 so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
-included in the published v0.34.13 source release; keep the same lock requirement when running a newer
+included in the published v0.34.14 source release; keep the same lock requirement when running a newer
 source checkout or development build.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
@@ -514,8 +514,8 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The v0.34.13 verifier records this packaged-core gate in addition to the
-archive/signature/checksum/updater-manifest checks in workflow `32554817618`.
+`passed: true`. The v0.34.14 verifier records this packaged-core gate in addition to the
+archive/signature/checksum/updater-manifest checks in workflow `32560090908`.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
 
@@ -527,35 +527,33 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-22; published and installed v0.34.13)
+### Current local source rollout snapshot (2026-08-22; published and installed v0.34.14)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
-source-validation records below were captured on the immediately preceding v0.34.11 runtime and
-are intentionally inherited by the metadata-only v0.34.12/v0.34.13 updates; no source reads were rerun.
-On
-2026-08-22, the installed v0.34.11 CLI refreshed all 13 enabled non-code sources with the safe
-25-document/5 MiB/60-second validation bounds. Ten records are `complete=true` within those
-bounds: all Apple Notes scopes, all Work Google scopes, all Personal Google scopes, and Buzz.
-The three Special Google scopes (`special-drive`, `special-gmail`, and `special-calendar`) failed
-closed because the shared `special.json` OAuth grant returned `invalid_grant`. This refresh does
-not prove any configured production budget and makes no index or reconciliation writes.
+source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
+60-second bound plus a v0.34.14 Personal Gmail retry at the same scope with a 120-second cap. Ten of
+13 enabled non-code profiles are now `complete=true`: all Apple Notes scopes, all Work Google scopes,
+Personal Drive, Personal Gmail, Personal Calendar, and Buzz. The three Special Google scopes
+(`special-drive`, `special-gmail`, and `special-calendar`) failed closed because the shared
+`special.json` OAuth grant returned `invalid_grant`. These records do not prove any configured
+production budget and make no index or reconciliation writes.
 
 Personal Drive's earlier 1,800-second and 900-second validations failed closed at their connector
 deadlines while processing a large PDF/media corpus. After explicit reauthorization, the current
 bounded probe succeeded at 25 documents/5 MiB/60 seconds; the next production-budget run was
 operator-cancelled after 147 documents when serialized Drive body fetching stalled on a large PDF.
-Both cancelled attempts made zero index or reconciliation writes. The published v0.34.13 release
+Both cancelled attempts made zero index or reconciliation writes. The published v0.34.14 release
 includes bounded four-worker fetching from PR #1594 and is now installed; the
 `readiness --allow-sync-service` gate must remain closed until every enabled source has a fresh
 complete record at its configured budget and the Special Google grant is repaired. No
 reconciliation or large sync has been run.
 
-The pre-upgrade v0.34.12 CLI passed a fresh bounded `eval --model` run on 2026-08-22 with 12,228 ms
-answer latency,
-including planner/synthesis, valid citations, cache reuse, and revision invalidation without
-provider fallback. This is current synthetic provider-backed evidence only; it does not authorize
-source sync, establish personal-index quality, or replace the separate packaged GUI and signing
-gates. The earlier v0.32.12 run remains historical evidence in the evaluation guide.
+The latest pre-upgrade v0.34.13 CLI `eval --model` attempt failed closed after 48,681 ms because the
+configured model gateway provider was unavailable; retrieval metrics passed, but the answer used the
+safe extractive fallback. The earlier v0.34.12 run passed planner/synthesis, valid citations, cache
+reuse, and revision invalidation without provider fallback. Both are synthetic provider-backed
+fixture evidence only; neither authorizes source sync, establishes personal-index quality, or
+replaces the separate packaged GUI and signing gates. The evaluator remains opt-in.
 
 ### Historical rollout observations
 
@@ -601,7 +599,7 @@ older releases, but current entry points must not silently drift.
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.34.13
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.34.14
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
