@@ -21,12 +21,14 @@ is not part of a visual/UI change.
   provide Intel Desktop evidence.
 - The v0.34.9 tag is the fully verified packaged evidence boundary. The audited host now runs
   `/Users/amf/.local/bin/cortana` v0.34.9 with embedding and server services in query-only mode;
-  recurring sync remains disabled. Current status reports 13 enabled sources, 12 fresh
-  `complete=true` records, and Personal Drive has only a successful one-document probe after
-  reauthorization; its full-budget run was stopped after 147 documents when serialized PDF
-  fetching stalled. The protected v0.34.9 release includes bounded parallel body fetching from PR #1594 and is installed; no full-corpus reconciliation
-  has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs, updater
-  interaction, Developer ID signing, and notarization remain manual gates.
+  recurring sync remains disabled. Current status reports 13 enabled sources and a fresh
+  current-release bounded validation pass: 10 `complete=true` records at 25 documents/5 MiB/60
+  seconds, while the three Special Google sources fail closed with an expired OAuth grant.
+  Personal Drive passed that bounded probe after reauthorization, but its full-budget run was
+  stopped after 147 documents when serialized PDF fetching stalled. The protected v0.34.9 release
+  includes bounded parallel body fetching from PR #1594 and is installed; no full-corpus
+  reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
+  updater interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.34.9 host passed the bounded provider-backed `eval --model` evidence run on
   2026-08-22 with 16,797 ms answer latency: retrieval recall, MRR, case pass rate, citation validity,
   planner/synthesis execution, cache reuse, revision invalidation, and bounded provider behavior
@@ -119,12 +121,13 @@ and the validation remains below the production gate. The published v0.34.9 rele
 protected main-tree PR #1594 fix; the host is ready for a bounded rerun under an external
 watchdog, but no full-corpus reconciliation has been started.
 
-The current validation metadata now contains production-budget complete records for Apple Notes
-(28/65/8 documents), Calendar (2,207/1,836/0 events), Buzz (45 records), Work Drive (478
-documents/4,527,721 bytes), Work Gmail (7,386 messages), Personal Gmail (427 messages), Special
-Gmail (216 messages), and Special Drive (97 documents). Personal Drive's 2,000-document/128 MiB/
-1,800-second validation failed closed at the 1,799-second connector deadline under the
-then-installed v0.32.9 parser while processing a large PDF.
+The current validation metadata now contains ten complete bounded records from the 2026-08-22
+25-document/5 MiB/60-second pass. The three Special Google sources failed closed with the shared
+OAuth grant's `invalid_grant`; earlier production-budget counts for Apple Notes, Calendar, Buzz,
+Work Drive, Work Gmail, Personal Gmail, Special Gmail, and Special Drive remain historical
+evidence. Personal Drive's 2,000-document/128 MiB/1,800-second validation failed closed at the
+1,799-second connector deadline under the then-installed v0.32.9 parser while processing a large
+PDF; its current bounded probe succeeded after reauthorization.
 The recurring sync service remains uninstalled, and no reconciliation or large sync has been run.
 
 Historical bounded source-smoke and non-reconciling trials remain useful connector evidence, but do
