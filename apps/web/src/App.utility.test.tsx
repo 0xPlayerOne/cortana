@@ -657,6 +657,34 @@ test('Conversations shows the session state and offers search focus', async () =
   expect(screen.getByText('How do releases work?')).toBeTruthy()
 })
 
+test('utility actions use the shared token-backed button primitive', () => {
+  render(
+    <UtilityView
+      kind="help"
+      status={demoStatus}
+      sourceJobs={[]}
+      query=""
+      answer={null}
+      evidence={[]}
+      loading={false}
+      error=""
+      contextBundle={null}
+      contextLoading={false}
+      contextError=""
+      contextTokens={0}
+      desktopAvailable
+      onSearchFocus={() => {}}
+      onRetrieveContext={() => {}}
+      onOpenSettings={() => {}}
+      onOpenProject={() => {}}
+    />
+  )
+
+  const openProject = screen.getByRole('button', { name: 'Open project page' })
+  expect(openProject.className).toContain('cortana-button')
+  expect(openProject.className).toContain('cortana-button--secondary')
+})
+
 test('search history arrows navigate previous and next queries', async () => {
   state.answer = (query?: string) =>
     Promise.resolve({
