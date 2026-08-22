@@ -5,7 +5,7 @@ production-safe source. It is intentionally separate from the code contract:
 connector tests prove behavior, but they do not authorize an account or prove
 that a user's full corpus is ready for reconciliation.
 
-## Current operator state (2026-08-22; v0.34.14 release)
+## Current operator state (2026-08-22; v0.34.16 release boundary; v0.34.15 installed)
 
 The local installation remains in manual mode: `ai.cortana.sync` is not installed and no
 recurring job is active. The operator has completed the Hermes import/rebuild and retained a
@@ -14,7 +14,7 @@ of the live Cortana runtime. Migration compatibility code remains available for 
 
 The current safe rollout is intentionally selective. On 2026-08-22 the operator ran a fresh
 v0.34.13 bounded validation pass for every enabled non-code source using the safe defaults
-of 25 documents, 5 MiB, and 60 seconds, followed by a v0.34.14 Personal Gmail retry at the same
+of 25 documents, 5 MiB, and 60 seconds, followed by a v0.34.15 Personal Gmail retry at the same
 document/byte bound with a 120-second cap. Validation does not embed, index, reconcile, or delete
 records. Ten sources now return `complete=true`; the three special-workspace Google sources failed
 closed because the shared `special.json` OAuth grant returned `invalid_grant`. These records are
@@ -31,7 +31,7 @@ bounded evidence, not authorization to reconcile or install recurring sync:
 - Special Google sources: `special-drive`, `special-gmail`, and `special-calendar`; failed
   closed with `Google authorization expired or was denied; reauthorize this source`.
 
-The published v0.34.14 release includes the bounded four-worker Drive body-fetch pool and regression
+The published v0.34.16 release boundary includes the bounded four-worker Drive body-fetch pool and regression
 coverage from PR #1594. The earlier production-budget Personal Drive run was stopped after 147
 documents while a large PDF stalled; it made zero index or reconciliation writes. No current
 production-budget validation is claimed for Personal Drive or any other source after this bounded
