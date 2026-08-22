@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.10](https://github.com/0xPlayerOne/cortana/compare/v0.34.9...v0.34.10) (2026-08-22)
+
+
+### Maintenance
+
+* promote exact staging UI tree to main ([#1693](https://github.com/0xPlayerOne/cortana/issues/1693)) ([4343b1f](https://github.com/0xPlayerOne/cortana/commit/4343b1f7a34f99a6f957053fb7d1a327ffa64400))
+
 ## [0.34.9](https://github.com/0xPlayerOne/cortana/compare/v0.34.8...v0.34.9) (2026-08-22)
 
 
