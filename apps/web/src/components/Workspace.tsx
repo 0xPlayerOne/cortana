@@ -637,9 +637,9 @@ function GraphView({
         <Search size={24} aria-hidden="true" />
         <h1>No matching graph nodes</h1>
         <p>Try a workspace, source, or document name.</p>
-        <button type="button" className="secondary-button" onClick={() => setFilter('')}>
+        <Button variant="secondary" onClick={() => setFilter('')}>
           Clear filter
-        </button>
+        </Button>
       </div>
     )
   }
@@ -727,26 +727,20 @@ function GraphView({
       )}
       {graph?.next_cursor && onLoadMore && (
         <div className="graph-pagination">
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={onLoadMore}
-            disabled={graphAppendLoading}
-          >
+          <Button variant="secondary" onClick={onLoadMore} disabled={graphAppendLoading}>
             {graphAppendLoading ? 'Loading more nodes…' : 'Load more nodes'}
-          </button>
+          </Button>
           <span>More nodes remain outside this bounded view.</span>
         </div>
       )}
       {!graph?.next_cursor && filteredNodes.length > visibleCount && (
         <div className="graph-pagination">
-          <button
-            type="button"
-            className="secondary-button"
+          <Button
+            variant="secondary"
             onClick={() => setVisibleCount((count) => Math.min(count + 12, filteredNodes.length))}
           >
             Show more nodes
-          </button>
+          </Button>
           <span>Showing a bounded window for responsive rendering.</span>
         </div>
       )}
@@ -818,13 +812,9 @@ function GraphView({
             </ul>
           )}
           {selectedNode.document_id && (
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => onSelectDocument(selectedNode.document_id!)}
-            >
+            <Button variant="secondary" onClick={() => onSelectDocument(selectedNode.document_id!)}>
               Open document
-            </button>
+            </Button>
           )}
         </aside>
       )}

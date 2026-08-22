@@ -71,7 +71,7 @@ test('SourcePanel uses the shared secondary action style for pagination', () => 
   renderPanel(demoStatus, '', '', undefined, 'work', true)
 
   expect(screen.getByRole('button', { name: 'Load next page' }).className).toContain(
-    'secondary-button'
+    'cortana-button--secondary'
   )
 })
 
