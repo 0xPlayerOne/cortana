@@ -529,21 +529,23 @@ native-dialog/updater acceptance.
 
 ### Current local source rollout snapshot (2026-08-22; v0.34.9)
 
-The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). Current
-production-budget validation records are complete for Apple Notes (`work`/`personal`/`special`:
-28/65/8 documents), Calendar (2,207/1,836/0 events), Buzz (45 records), Work Gmail (7,386
-messages), Personal Gmail (427), Special Gmail (216), and Special Drive (97). Work Gmail uses its configured
-10,000-document/64 MiB/600-second budget; the other
-complete records meet their configured 2,000-document/128 MiB/900-second or Work Calendar
-3,000-document/64 MiB/300-second budgets.
+The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). On
+2026-08-22, the installed v0.34.9 CLI refreshed all 13 enabled non-code sources with the safe
+25-document/5 MiB/60-second validation bounds. Ten records are `complete=true` within those
+bounds: all Apple Notes scopes, all Work Google scopes, all Personal Google scopes, and Buzz.
+The three Special Google scopes (`special-drive`, `special-gmail`, and `special-calendar`) failed
+closed because the shared `special.json` OAuth grant returned `invalid_grant`. This refresh does
+not prove any configured production budget and makes no index or reconciliation writes.
 
 Personal Drive's earlier 1,800-second and 900-second validations failed closed at their connector
-deadlines while processing a large PDF/media corpus. After explicit reauthorization, a one-document/
-64 KiB/60-second probe succeeded in 11.7 seconds; the next production-budget run was operator-
-cancelled after 147 documents when serialized Drive body fetching stalled on a large PDF. Both
-cancelled attempts made zero index or reconciliation writes. The published v0.34.9 release includes bounded
-four-worker fetching from PR #1594 and is now installed; the `readiness --allow-sync-service` gate must remain closed until a fresh complete record
-at the configured budget succeeds. No reconciliation or large sync has been run.
+deadlines while processing a large PDF/media corpus. After explicit reauthorization, the current
+bounded probe succeeded at 25 documents/5 MiB/60 seconds; the next production-budget run was
+operator-cancelled after 147 documents when serialized Drive body fetching stalled on a large PDF.
+Both cancelled attempts made zero index or reconciliation writes. The published v0.34.9 release
+includes bounded four-worker fetching from PR #1594 and is now installed; the
+`readiness --allow-sync-service` gate must remain closed until every enabled source has a fresh
+complete record at its configured budget and the Special Google grant is repaired. No
+reconciliation or large sync has been run.
 
 The installed v0.34.9 CLI passed a fresh bounded `eval --model` run on 2026-08-22 with 16,797 ms
 answer latency,

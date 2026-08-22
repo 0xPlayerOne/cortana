@@ -35,18 +35,16 @@ A first
 operator-approved retrieval manifest has now passed against the running local work index;
 approved-corpus answer/synthesis evaluation remains separate and is not a packaged-GUI proof.
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the current
-enabled-source set is not fully production-validated. The current complete records are: Apple Notes
-`work-notes`/`personal-notes`/`special-notes` (28/65/8), Calendar
-`work`/`personal`/`special` (2,207/1,836/0), Buzz (45), Work Drive (478), Work Gmail (7,386),
-Personal Gmail (427), Special Gmail (216), and Special Drive (97). All meet their configured
-document, byte, and duration budgets; Work Drive's current record is 4,527,721 bytes at its
-900-second budget with zero writes. After explicit reauthorization, Personal Drive passed a
-one-document/64 KiB/60-second read-only probe in 11.7 seconds. Its subsequent production-budget
-probe was operator-cancelled after 147 documents while serialized PDF body fetching stalled; the
-spool was cleaned up and no index or reconciliation writes occurred. The published v0.34.9 release
-includes bounded parallel body fetching from PR #1594; the production-budget gate has not yet been
-repeated. Recurring sync remains
-uninstalled, and no reconciliation or large sync has been requested.
+enabled-source set is not fully production-validated. On 2026-08-22 the installed v0.34.9 binary
+refreshed all 13 enabled non-code sources with the safe 25-document/5 MiB/60-second bounds. Ten
+records are `complete=true` within those bounds: all Apple Notes scopes, all Work Google scopes,
+all Personal Google scopes, and Buzz. The three Special Google scopes (`special-drive`,
+`special-gmail`, and `special-calendar`) failed closed because their shared OAuth grant returned
+`invalid_grant`. These bounded records make no index or reconciliation writes and do not meet the
+configured production budgets. After explicit reauthorization, Personal Drive passed this bounded
+probe; its prior production-budget probe was operator-cancelled after 147 documents while
+serialized PDF body fetching stalled. Recurring sync remains uninstalled, and no reconciliation or
+large sync has been requested.
 
 The older production-budget results below are retained as historical evidence, not current
 authorization. They document prior successful prefixes and failure/recovery behavior, but the
@@ -122,10 +120,10 @@ validation-required, non-reconciling 25-document/5 MiB/60-second caps. Apple Not
 Drive, Gmail, and Buzz all completed without deletions; Special Calendar naturally returned zero
 records. The index ended at 12,123 documents/42,638 chunks and query-only readiness passed. This
 is operational ingestion evidence, not a full-corpus quality benchmark. That historical pass
-used smaller bounds than the configured budgets; the current host status now reports 12 of 13
-enabled sources complete at their configured budgets, while Personal Drive has only a successful
-one-document probe and an interrupted full-budget attempt. The pass did not enable Discord, code,
-Slack, or synthesis.
+used smaller bounds than the configured budgets; the current host status now reports 10 of 13
+enabled sources complete within the refreshed bounded limits, while the three Special Google
+sources require reauthorization and Personal Drive still lacks a production-budget validation.
+The pass did not enable Discord, code, Slack, or synthesis.
 
 The v0.34.9 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is

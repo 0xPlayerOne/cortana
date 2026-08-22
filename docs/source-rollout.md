@@ -12,44 +12,37 @@ recurring job is active. The operator has completed the Hermes import/rebuild an
 dated rollback backup; active legacy rows, launch agents, and parallel legacy stores are not part
 of the live Cortana runtime. Migration compatibility code remains available for older installs.
 
-The current safe rollout is intentionally selective. The operator has refreshed the validation
-records for the enabled non-code sources at their configured production budgets where the provider
-can complete within the bounded connector deadline. The records below remain source-validation
-evidence, not authorization to reconcile or install recurring sync; refresh them after any
-configuration or connector change before treating them as current-release execution evidence:
+The current safe rollout is intentionally selective. On 2026-08-22 the operator ran a fresh
+current-release bounded validation pass for every enabled non-code source using the safe defaults
+of 25 documents, 5 MiB, and 60 seconds. Validation does not embed, index, reconcile, or delete
+records. Ten sources returned `complete=true`; the three special-workspace Google sources failed
+closed because the shared `special.json` OAuth grant returned `invalid_grant`. These records are
+bounded current-release evidence, not authorization to reconcile or install recurring sync:
 
-- Apple Notes: `work-notes` 28, `personal-notes` 65, and `special-notes` 8 documents; all are
-  `complete=true` at 2,000 documents/128 MiB/900 seconds.
-- Google Calendar: `work-calendar` 2,207 events at 3,000/64 MiB/300 seconds;
-  `personal-calendar` 1,836 events and `special-calendar` 0 events at 2,000/128 MiB/900 seconds;
-  all are complete.
-- Buzz: 45 records at 2,000/128 MiB/900 seconds; complete.
-- Work Gmail: 7,386 messages at 10,000/64 MiB/600 seconds; complete.
-- Personal Gmail: 427 messages at 2,000/128 MiB/900 seconds; complete.
-- Special Gmail: 216 messages at 2,000/128 MiB/900 seconds; complete.
-- Special Drive: 97 documents at 2,000/128 MiB/900 seconds; complete.
+- Apple Notes: `work-notes` 25, `personal-notes` 25, and `special-notes` 8 documents; complete.
+- Work Google sources: `work-drive`, `work-gmail`, and `work-calendar`; 25-document bounded
+  snapshots; complete.
+- Personal Google sources: `personal-drive`, `personal-gmail`, and `personal-calendar`;
+  25-document bounded snapshots; complete. This confirms the earlier Personal Drive OAuth repair
+  for a bounded probe, but does not prove its 2,000-document production budget.
+- Buzz: 25 records; complete.
+- Special Google sources: `special-drive`, `special-gmail`, and `special-calendar`; failed
+  closed with `Google authorization expired or was denied; reauthorize this source`.
 
-After the explicit owner reauthorization on 2026-08-21, a one-document/64 KiB/60-second
-Personal Drive probe succeeded in 11.7 seconds with zero writes. The subsequent production-budget
-probe (2,000 documents/128 MiB/900 seconds) was stopped by the operator after 147 documents while
-serialized Drive body fetching remained stalled on a large PDF; its spool and validation state were
-cleaned up and no index or reconciliation writes occurred. The protected v0.34.9 release includes the
-bounded four-worker body-fetch pool and regression coverage from PR #1594; the release is installed,
-but the production-budget validation has not yet been repeated. Work Drive completed its 2,000-document/
-128 MiB/900-second validation with 478
-documents and 4,527,721 bytes, `complete=true`, and zero writes. Personal Drive remains the only
-enabled source without a production-budget validation, so recurring sync stays uninstalled.
-Discord and all code/filesystem
-roots remain disabled by operator choice, and Slack is not configured. The recurring sync service
-remains uninstalled until every enabled source has a fresh complete validation at its configured
-budget.
+The installed v0.34.9 release includes the bounded four-worker Drive body-fetch pool and regression
+coverage from PR #1594. The earlier production-budget Personal Drive run was stopped after 147
+documents while a large PDF stalled; it made zero index or reconciliation writes. No current
+production-budget validation is claimed for Personal Drive or any other source after this bounded
+refresh. Discord and all code/filesystem roots remain disabled by operator choice, Slack is not
+configured, and the recurring sync service remains uninstalled until every enabled source has a
+fresh complete validation at its configured budget and the special-workspace OAuth grant is repaired.
 
 | Source                                                                     | Current evidence                                                                                                                                                                                                                                                                                                                                                                                                                               | Next action                                                                                                                                                                                               |
 | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Apple Notes (`work-notes`, `personal-notes`, `special-notes`)              | Complete folder-scoped validation: 28 `Nifty League` notes in `work`, 65 personal notes after excluding `Nifty League` and Pink Binder folders, and 8 `The Pink Binder` notes in `special`; all meet the 2,000/128 MiB/900-second budget.                                                                                                                                                                                                      | Keep exact folder filters; run a small non-reconciling trial before any future reconciliation.                                                                                                            |
-| Google Calendar (`work-calendar`, `personal-calendar`, `special-calendar`) | Complete production-budget validation returned 2,207, 1,836, and 0 events respectively.                                                                                                                                                                                                                                                                                                                                                        | Keep trials non-reconciling until the remaining source gates close.                                                                                                                                       |
-| Buzz                                                                       | Complete production-budget validation returned 45 records at 2,000/128 MiB/900 seconds.                                                                                                                                                                                                                                                                                                                                                        | Keep the source non-reconciling until the remaining source gates close.                                                                                                                                   |
-| Google Drive/Gmail                                                         | Work Drive is complete at 478/4,527,721 bytes; Work Gmail is complete at 7,386/34,487,878 bytes; Personal Gmail is complete at 427/1,489,922 bytes; Special Gmail is complete at 216/1,004,868 bytes; Special Drive is complete at 97/290,353 bytes. Personal Drive has a successful one-document/64 KiB/60-second probe after reauthorization, but its full-budget run was stopped after 147 documents while serialized PDF fetching stalled. | v0.34.9 is installed with the PR #1594 fix; rerun the 2,000-document/128 MiB/900-second validation under an external watchdog. Do not treat the capped probe or interrupted run as a production snapshot. |
+| Apple Notes (`work-notes`, `personal-notes`, `special-notes`)              | Current bounded folder-scoped validation returned 25 `Nifty League` notes in `work`, 25 personal notes, and 8 `The Pink Binder` notes in `special`; each is complete within the 25-document/5 MiB/60-second bound.                                                                                                                                                                                                      | Keep exact folder filters; run a small non-reconciling trial before any future reconciliation, then repeat validation at the intended production budget.                                                                                                            |
+| Google Calendar (`work-calendar`, `personal-calendar`, `special-calendar`) | Current bounded validation returned 25, 25, and an authorization failure respectively. The successful work/personal records are complete only within the 25-document/5 MiB/60-second bound.                                                                                                                                                                                                                                                                                                                                                        | Reauthorize the special Google account, then repeat bounded validation and a non-reconciling trial. Keep all runs non-reconciling until production-budget gates close.                                                                                                                                       |
+| Buzz                                                                       | Current bounded validation returned 25 records at 25 documents/5 MiB/60 seconds; complete within that bound.                                                                                                                                                                                                                                                                                                                                                        | Keep the source non-reconciling until the remaining source gates close.                                                                                                                                   |
+| Google Drive/Gmail                                                         | Work and Personal Google sources passed current bounded validation at 25 documents/5 MiB/60 seconds. The three Special Google sources failed closed with `invalid_grant`; earlier production-budget counts are historical. | Reauthorize the `special` Google token, then rerun validation. Separately repeat Personal Drive's 2,000-document/128 MiB/900-second validation under an external watchdog. Do not treat bounded probes or historical counts as production snapshots. |
 | Discord                                                                    | Disabled by operator decision while the prior bot/RPC authorization is unavailable.                                                                                                                                                                                                                                                                                                                                                            | Keep disabled until a fresh owner authorization is completed.                                                                                                                                             |
 | Slack                                                                      | Not configured in this installation.                                                                                                                                                                                                                                                                                                                                                                                                           | Remains an optional connector for other users.                                                                                                                                                            |
 | Code/filesystem roots                                                      | Disabled by operator decision to defer the largest syncs.                                                                                                                                                                                                                                                                                                                                                                                      | Keep disabled until a separate code-index rollout is approved.                                                                                                                                            |
