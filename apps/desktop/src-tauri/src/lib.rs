@@ -36,6 +36,8 @@ const MAX_DOCUMENT_CURSOR_LENGTH: usize = 1024;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
 const MAX_BACKEND_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 const PROJECT_URL: &str = "https://github.com/0xPlayerOne/cortana";
+const STATUS_WARMUP_MESSAGE: &str =
+    "Cortana is warming up; live status will be available shortly";
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
@@ -92,6 +94,16 @@ impl BackendClient {
             .map_err(|error| format!("Cortana runtime is unavailable: {error}"))?;
         let status = response.status();
         if !status.is_success() {
+            if status == reqwest::StatusCode::SERVICE_UNAVAILABLE
+                && response
+                    .content_length()
+                    .is_some_and(|length| length <= STATUS_WARMUP_MESSAGE.len() as u64 + 64)
+            {
+                let body = response.text().await.unwrap_or_default();
+                if body.trim() == STATUS_WARMUP_MESSAGE {
+                    return Err(STATUS_WARMUP_MESSAGE.into());
+                }
+            }
             return Err(format!(
                 "Cortana runtime request failed with status {}",
                 status.as_u16()
@@ -120,6 +132,20 @@ impl BackendClient {
         }
         serde_json::from_slice(&body)
             .map_err(|error| format!("Cortana runtime returned an invalid response: {error}"))
+    }
+}
+
+#[cfg(test)]
+mod backend_tests {
+    use super::STATUS_WARMUP_MESSAGE;
+
+    #[test]
+    fn warmup_message_is_stable_and_bounded() {
+        assert_eq!(
+            STATUS_WARMUP_MESSAGE,
+            "Cortana is warming up; live status will be available shortly"
+        );
+        assert!(STATUS_WARMUP_MESSAGE.len() < 256);
     }
 }
 

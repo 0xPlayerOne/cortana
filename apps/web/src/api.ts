@@ -332,7 +332,18 @@ export async function getStatus(signal?: AbortSignal): Promise<BrainStatus> {
   if (isDemoMode) return demoStatus
   if (isTauri()) return invokeDesktop<BrainStatus>('brain_status', undefined, signal)
   const response = await authorizedFetch('/v1/status', { signal })
-  if (!response.ok) throw new Error(`Status request failed (${response.status})`)
+  if (!response.ok) {
+    // A local embedding restart can temporarily block the first statistics
+    // snapshot while the model warms. Preserve the server's bounded retry
+    // guidance instead of labeling a healthy-but-warming index as offline.
+    if (response.status === 503) {
+      const detail = (await response.text().catch(() => '')).trim()
+      if (detail === 'Cortana is warming up; live status will be available shortly') {
+        throw new Error(detail)
+      }
+    }
+    throw new Error(`Status request failed (${response.status})`)
+  }
   return (await response.json()) as BrainStatus
 }
 
