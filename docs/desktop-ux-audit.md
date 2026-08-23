@@ -32,7 +32,7 @@ is not part of a visual/UI change.
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.34.30 host `eval --model` run passed planner and synthesis execution, citations,
-  cache reuse, and revision invalidation in 20,369 ms without provider fallback. This is provider-backed
+  cache reuse, and revision invalidation in 18,495 ms without provider fallback. This is provider-backed
   synthetic fixture evidence only; it does not query the personal index, authorize source
   synchronization, or prove packaged GUI behavior. The approved-corpus provider gate remains open.
 - The pre-upgrade v0.34.25 binary passed the disposable native-memory, shared-agent HTTP, shared-agent

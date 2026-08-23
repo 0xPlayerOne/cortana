@@ -28,7 +28,7 @@ Query-only readiness,
 `doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
 and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
 uninstalled. A fresh v0.34.30 `eval --model` run also passed planner/synthesis execution, citation
-validation, cache reuse, and revision invalidation in 20,369 ms without provider fallback; this is
+validation, cache reuse, and revision invalidation in 18,495 ms without provider fallback; this is
 synthetic fixture evidence only.
 
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
