@@ -17,6 +17,8 @@ import {
   TerminalSquare,
 } from 'lucide-react'
 
+import { Button } from './ui/Button'
+
 export function TitleActions({
   context = false,
   onOpenSources,
@@ -41,50 +43,51 @@ export function TitleActions({
   if (context) {
     return (
       <div className="title-actions">
-        <button
-          type="button"
+        <Button
+          variant="icon"
           aria-label="Filter documents"
           data-tooltip="Filter documents"
           className="quick-tooltip"
           onClick={onOpenFilters}
         >
           <Filter size={18} />
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="icon"
           aria-label="Open conversations"
           data-tooltip="Open conversations"
           className="quick-tooltip"
           onClick={onOpenHistory}
         >
           <Clock3 size={18} />
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="icon"
           className="mobile-button quick-tooltip"
           aria-label="Open agent context"
           data-tooltip="Open agent context"
           onClick={onOpenContext}
         >
           <PanelRightClose size={18} />
-        </button>
+        </Button>
       </div>
     )
   }
 
   return (
     <>
-      <button
-        type="button"
+      <Button
+        variant="icon"
         className="mobile-button quick-tooltip"
         aria-label="Open sources"
         data-tooltip="Open sources"
         onClick={onOpenSources}
       >
         <Menu size={19} />
-      </button>
+      </Button>
       <div className="history-buttons" role="group" aria-label="Search history">
-        <button
+        <Button
+          variant="icon"
           aria-label="Previous search query"
           data-tooltip="Previous search query"
           className="quick-tooltip"
@@ -93,8 +96,9 @@ export function TitleActions({
           type="button"
         >
           <ArrowLeft size={18} />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="icon"
           aria-label="Next search query"
           data-tooltip="Next search query"
           className="quick-tooltip"
@@ -103,7 +107,7 @@ export function TitleActions({
           type="button"
         >
           <ArrowRight size={18} />
-        </button>
+        </Button>
       </div>
     </>
   )
@@ -210,8 +214,8 @@ function RailButton({
 }) {
   const title = disabled ? `${label}: available once a search returns evidence` : label
   return (
-    <button
-      type="button"
+    <Button
+      variant="icon"
       className={`rail-button ${active ? 'active' : ''} quick-tooltip`}
       aria-label={label}
       data-tooltip={title}
@@ -219,6 +223,6 @@ function RailButton({
       onClick={onClick}
     >
       <Icon size={20} />
-    </button>
+    </Button>
   )
 }
