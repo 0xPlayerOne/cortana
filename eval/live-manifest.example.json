@@ -18,8 +18,7 @@
       "source": "REPLACE_WITH_SOURCE",
       "top_k": 5,
       "expected_source_ids": ["REPLACE_WITH_EXPECTED_SOURCE_ID"],
-      "forbidden_source_ids": ["REPLACE_WITH_FORBIDDEN_SOURCE_ID"],
-      "required_answer_terms": ["REPLACE_WITH_REQUIRED_ANSWER_TERM"]
+      "forbidden_source_ids": ["REPLACE_WITH_FORBIDDEN_SOURCE_ID"]
     }
   ],
   "answer_cases": [
@@ -30,7 +29,8 @@
       "source": "REPLACE_WITH_SOURCE",
       "top_k": 5,
       "expected_source_ids": ["REPLACE_WITH_EXPECTED_SOURCE_ID"],
-      "forbidden_source_ids": ["REPLACE_WITH_FORBIDDEN_SOURCE_ID"]
+      "forbidden_source_ids": ["REPLACE_WITH_FORBIDDEN_SOURCE_ID"],
+      "required_answer_terms": ["REPLACE_WITH_REQUIRED_ANSWER_TERM"]
     }
   ]
 }
