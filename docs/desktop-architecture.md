@@ -145,9 +145,12 @@ general filesystem permission.
 The webview uses a small, local component contract rather than a second runtime design system.
 Shared tokens in `apps/web/src/styles/tokens.css` define colors, radii, focus rings, spacing, and
 button sizes; the `.cortana-button` classes, `Button` component, `buttonClasses.ts`, `quick-tooltip`,
-and icon-button contracts are the source of truth for new controls. This keeps the Obsidian-inspired shell, source tree,
-graph, and responsive layout under one stylesheet and avoids a Tailwind migration solely to obtain
-component primitives.
+and icon-button contracts are the source of truth for new controls. The shared variants are `primary`,
+`secondary`, `compact`, `ghost`, `icon`, and semantic `danger`; destructive actions use `danger`
+instead of an ambiguous neutral control, and the global button reset removes browser-native grey
+chrome from specialized controls. This keeps the Obsidian-inspired shell, source tree, graph, and
+responsive layout under one stylesheet and avoids a Tailwind migration solely to obtain component
+primitives.
 
 shadcn/ui is compatible with Cortana, but it is an opt-in implementation pattern, not a wholesale
 migration requirement. If a future surface needs a missing primitive, copy the smallest shadcn

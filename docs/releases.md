@@ -9,20 +9,20 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.25
+## Current release: v0.34.26
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.25` tag is the current source and release boundary. Release-assets workflow
-[`32614440784`](https://github.com/0xPlayerOne/cortana/actions/runs/32614440784) published the
+`v0.34.26` tag is the current source and release boundary. Release-assets workflow
+[`32616159899`](https://github.com/0xPlayerOne/cortana/actions/runs/32616159899) published the
 archive, checksum, updater-signature, manifest, and packaged-core artifacts. The independent strict
 verifier passed all 18 assets, archive checksums, updater signatures, the updater manifest, and
 packaged-core/resource inspection on the audited macOS host; published Linux binary execution is
 skipped on non-Linux hosts.
 
-The v0.34.25 release is a metadata-only follow-up to the verified v0.34.24 runtime. It changes no
+The v0.34.26 release is a metadata-only follow-up to the verified v0.34.25 runtime. It changes no
 credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.
-The audited host now reports `cortana 0.34.25`; its `cortana --version`, readiness, native-memory,
+The audited host remains installed at `cortana 0.34.25`; its `cortana --version`, readiness, native-memory,
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
 The installed v0.34.25 `eval --model` fixture also passed planner and synthesis execution, valid

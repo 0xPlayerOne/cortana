@@ -229,6 +229,15 @@ textarea {
     color 120ms ease;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  button,
+  input,
+  select,
+  textarea {
+    transition: none;
+  }
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -262,6 +271,10 @@ input {
 button {
   color: inherit;
   cursor: pointer;
+  border: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 button:focus-visible,

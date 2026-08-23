@@ -14,6 +14,8 @@
   font-weight: 650;
   line-height: 1;
   white-space: nowrap;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .cortana-button:hover:enabled {
@@ -43,6 +45,18 @@
 .cortana-button--primary:hover:enabled {
   border-color: var(--theme-text-primary);
   background: var(--amber-soft);
+}
+
+.cortana-button.cortana-button--danger {
+  color: var(--theme-error-fg);
+  border-color: var(--theme-error-border);
+  background: var(--theme-error-bg);
+}
+
+.cortana-button.cortana-button--danger:hover:enabled {
+  color: var(--theme-control-fg);
+  border-color: var(--theme-error-fg);
+  background: color-mix(in srgb, var(--theme-error-bg) 78%, var(--theme-error-border));
 }
 
 .cortana-button--compact {
