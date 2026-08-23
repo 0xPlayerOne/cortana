@@ -1862,7 +1862,8 @@ function AccessSection({
               <header>
                 <KeyRound size={16} />
                 <strong>{principal.principal || `Principal ${index + 1}`}</strong>
-                <button
+                <Button
+                  variant="icon"
                   type="button"
                   className="quick-tooltip"
                   aria-label={`Remove ${principal.principal}`}
@@ -1877,7 +1878,7 @@ function AccessSection({
                   }
                 >
                   <Trash2 size={15} />
-                </button>
+                </Button>
               </header>
               <div className="form-grid">
                 <Field label="Principal name">
@@ -2520,7 +2521,8 @@ function WorkspaceSection({
                 />
               </label>
               {settings.workspaces.length > 1 && (
-                <button
+                <Button
+                  variant="icon"
                   type="button"
                   className="quick-tooltip"
                   aria-label={`Remove ${workspace.name}`}
@@ -2538,7 +2540,7 @@ function WorkspaceSection({
                   }
                 >
                   <Trash2 size={15} />
-                </button>
+                </Button>
               )}
             </div>
             <Field label="Display name">
@@ -3382,7 +3384,8 @@ function SourcesSection({
                 </label>
                 <div className="source-card-actions">
                   {hasBrowserSetup(source.kind) && (
-                    <button
+                    <Button
+                      variant="icon"
                       type="button"
                       className="source-icon-button quick-tooltip"
                       aria-label={setupActionLabel(source.kind)}
@@ -3391,13 +3394,14 @@ function SourcesSection({
                       onClick={() => void openSetup(source)}
                     >
                       <ExternalLink size={14} />
-                    </button>
+                    </Button>
                   )}
                   {(isGoogleSource(source.kind) ||
                     source.kind === 'github' ||
                     source.kind === 'discord' ||
                     source.kind === 'slack') && (
-                    <button
+                    <Button
+                      variant="icon"
                       type="button"
                       className="source-icon-button quick-tooltip"
                       aria-label="Authorize"
@@ -3417,9 +3421,10 @@ function SourcesSection({
                       ) : (
                         <KeyRound size={14} />
                       )}
-                    </button>
+                    </Button>
                   )}
-                  <button
+                  <Button
+                    variant="icon"
                     type="button"
                     className="source-icon-button quick-tooltip"
                     aria-label="Validate"
@@ -3432,8 +3437,9 @@ function SourcesSection({
                     ) : (
                       <Play size={14} />
                     )}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="icon"
                     type="button"
                     className="source-icon-button quick-tooltip"
                     aria-label="Trial sync"
@@ -3448,8 +3454,9 @@ function SourcesSection({
                     ) : (
                       <Play size={14} />
                     )}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="icon"
                     type="button"
                     className="source-icon-button quick-tooltip"
                     aria-label="Initial sync"
@@ -3464,8 +3471,9 @@ function SourcesSection({
                     ) : (
                       <Zap size={14} />
                     )}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="icon"
                     type="button"
                     className="source-icon-button quick-tooltip"
                     aria-label={`Remove ${source.name}`}
@@ -3486,7 +3494,7 @@ function SourcesSection({
                     }}
                   >
                     <Trash2 size={14} />
-                  </button>
+                  </Button>
                 </div>
               </header>
 
@@ -3614,7 +3622,8 @@ function SourcesSection({
                             changeSource(index, { root: event.target.value || null })
                           }
                         />
-                        <button
+                        <Button
+                          variant="icon"
                           type="button"
                           disabled={sourceLocked || !source.editable}
                           aria-label="Choose source directory"
@@ -3623,7 +3632,7 @@ function SourcesSection({
                           onClick={() => void choosePath(index, 'directory', 'root')}
                         >
                           <FolderOpen size={14} />
-                        </button>
+                        </Button>
                       </div>
                     </Field>
                   )}
@@ -3718,7 +3727,8 @@ function SourcesSection({
                               changeSource(index, { token_path: event.target.value || null })
                             }
                           />
-                          <button
+                          <Button
+                            variant="icon"
                             type="button"
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose Google token destination"
@@ -3727,7 +3737,7 @@ function SourcesSection({
                             onClick={() => void choosePath(index, 'google-token', 'token_path')}
                           >
                             <FolderOpen size={14} />
-                          </button>
+                          </Button>
                         </div>
                       </Field>
                       <Field
@@ -3746,7 +3756,8 @@ function SourcesSection({
                               })
                             }
                           />
-                          <button
+                          <Button
+                            variant="icon"
                             type="button"
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose Google OAuth client JSON"
@@ -3757,7 +3768,7 @@ function SourcesSection({
                             }
                           >
                             <FolderOpen size={14} />
-                          </button>
+                          </Button>
                         </div>
                       </Field>
                       <Field
@@ -3886,7 +3897,8 @@ function SourcesSection({
                               changeSource(index, { token_path: event.target.value || null })
                             }
                           />
-                          <button
+                          <Button
+                            variant="icon"
                             type="button"
                             disabled={sourceLocked || !source.editable}
                             aria-label="Choose GitHub token destination"
@@ -3895,7 +3907,7 @@ function SourcesSection({
                             onClick={() => void choosePath(index, 'github-token', 'token_path')}
                           >
                             <FolderOpen size={14} />
-                          </button>
+                          </Button>
                         </div>
                       </Field>
                     </>
@@ -4168,7 +4180,8 @@ function SourcesSection({
                                   changeSource(index, { token_path: event.target.value || null })
                                 }
                               />
-                              <button
+                              <Button
+                                variant="icon"
                                 type="button"
                                 disabled={sourceLocked || !source.editable}
                                 aria-label="Choose Discord RPC token destination"
@@ -4179,7 +4192,7 @@ function SourcesSection({
                                 }
                               >
                                 <FolderOpen size={14} />
-                              </button>
+                              </Button>
                             </div>
                           </Field>
                           <Field
@@ -4198,7 +4211,8 @@ function SourcesSection({
                                   })
                                 }
                               />
-                              <button
+                              <Button
+                                variant="icon"
                                 type="button"
                                 disabled={sourceLocked || !source.editable}
                                 aria-label="Choose Discord RPC client JSON"
@@ -4209,7 +4223,7 @@ function SourcesSection({
                                 }
                               >
                                 <FolderOpen size={14} />
-                              </button>
+                              </Button>
                             </div>
                           </Field>
                         </>
@@ -4281,7 +4295,8 @@ function SourcesSection({
                                   changeSource(index, { token_path: event.target.value || null })
                                 }
                               />
-                              <button
+                              <Button
+                                variant="icon"
                                 type="button"
                                 disabled={sourceLocked || !source.editable}
                                 aria-label="Choose Slack OAuth token destination"
@@ -4290,7 +4305,7 @@ function SourcesSection({
                                 onClick={() => void choosePath(index, 'slack-token', 'token_path')}
                               >
                                 <FolderOpen size={14} />
-                              </button>
+                              </Button>
                             </div>
                           </Field>
                           <Field
@@ -4309,7 +4324,8 @@ function SourcesSection({
                                   })
                                 }
                               />
-                              <button
+                              <Button
+                                variant="icon"
                                 type="button"
                                 disabled={sourceLocked || !source.editable}
                                 aria-label="Choose Slack OAuth client JSON"
@@ -4320,7 +4336,7 @@ function SourcesSection({
                                 }
                               >
                                 <FolderOpen size={14} />
-                              </button>
+                              </Button>
                             </div>
                           </Field>
                         </>
@@ -4549,7 +4565,8 @@ function InitialSyncFlow({
           <span className="eyebrow">Guided initial sync</span>
           <strong>{source.name}</strong>
         </div>
-        <button
+        <Button
+          variant="icon"
           type="button"
           aria-label="Close initial sync plan"
           data-tooltip="Close initial sync plan"
@@ -4557,7 +4574,7 @@ function InitialSyncFlow({
           onClick={onClose}
         >
           <X size={15} />
-        </button>
+        </Button>
       </header>
       <div className="initial-sync-budgets" role="radiogroup" aria-label="Initial sync budget">
         {INITIAL_SYNC_BUDGETS.map((tier) => (
