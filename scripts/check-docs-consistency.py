@@ -34,6 +34,11 @@ CURRENT_SECTIONS = {
     ),
     Path("docs/desktop-ux-audit.md"): ("## Current release evidence", "## Requirement matrix"),
     Path("docs/operations.md"): ("## Release verification", "## macOS launchd"),
+    Path("docs/source-rollout.md"): ("## Current operator state", "## Per-source rollout matrix"),
+    Path("docs/ingestion.md"): ("## Current release boundary", "## Configure and run"),
+    Path("docs/integrations.md"): ("## Current release boundary", "## Install the portable skill"),
+    Path("docs/query.md"): ("## Current release boundary", "## Canonical document browser"),
+    Path("docs/memory.md"): ("## Current release boundary", "## Memory model"),
 }
 
 
