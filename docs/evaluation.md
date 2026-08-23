@@ -20,14 +20,13 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 ### Current release boundary
 
 The current protected source and published tag are `v0.34.36`, promoted through the protected
-staging → main flow and Release Please automation. Release-assets workflow `32659532068` has
-published the macOS/Linux package lanes and is still completing Windows; strict cross-platform
-verification is pending. The release does not change credentials, source authorization,
+staging → main flow and Release Please automation. Release-assets workflow `32659532068` published
+all supported platform lanes; strict cross-platform verification passed all 18 assets, signatures,
+checksums, manifest, and packaged-core checks. The release does not change credentials, source authorization,
 indexed data, recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.36.
 Query-only readiness,
 `doctor`, deterministic `eval`, packaged-core verification, skill parity, and the disposable
-native-memory/shared-agent/control-plane drills all passed. The strict cross-platform release
-verifier remains pending until the Windows assets complete. Recurring sync remains
+native-memory/shared-agent/control-plane drills all passed. The strict package gate is complete. Recurring sync remains
 uninstalled. The prior v0.34.35 `eval --model` provider gate passed on 2026-08-23 in 9,824 ms
 with planner/synthesis, valid citations, cache reuse, and revision invalidation. Earlier v0.34.32
 runs included one invalid-citation failure that correctly fell back to extractive mode; these are

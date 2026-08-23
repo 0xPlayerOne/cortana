@@ -16,9 +16,9 @@ Download the Desktop app or a matching core archive from the
 `v0.34.36` tag is the current source and release boundary. Release Please PR #1943 merged the
 metadata-only follow-up to the exact v0.34.36 promotion. Release-assets workflow
 [`32659532068`](https://github.com/0xPlayerOne/cortana/actions/runs/32659532068) has published
-the macOS/Linux core and Desktop lanes and is still completing the Windows lane. The independent
-strict verifier is pending until all required assets are present; no missing Windows asset is
-treated as verified by the partial release.
+all macOS/Linux/Windows core and Desktop lanes. The independent strict verifier passed all 18
+assets, checksums, updater signatures, manifest checks, and packaged-core checks; the published
+package is complete. This verifies package integrity, not native GUI, OAuth, or OS trust acceptance.
 
 The v0.34.36 release carries forward the verified v0.34.34 runtime evidence and the protected UI
 action-button hardening from PR #1864. It changes no credentials, source authorization, indexed data,
@@ -47,8 +47,8 @@ The v0.34.36 marker carries the embedding warmup status hardening from PRs #1935
 local-model startup, `/v1/status` now reports a bounded retryable 503 with safe warmup guidance
 instead of an opaque server error; the webview and native Desktop client preserve that guidance.
 This marker does not authorize sources, enable recurring sync, change indexed data, or alter
-native-memory policy. The package is published; cross-platform asset verification remains pending
-until the Windows lane completes.
+native-memory policy. The package and cross-platform asset verification are complete; native GUI,
+OAuth, and OS trust acceptance remain separate manual gates.
 
 ## v0.34.29 release intent (published and verified; historical)
 

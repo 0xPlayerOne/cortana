@@ -61,7 +61,8 @@ separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers 
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
 The protected source and latest published release are **v0.34.36**. Release Please PR #1943 is
-merged; the partial asset state and pending strict verifier are recorded in [Release history](docs/releases.md).
+merged; release-assets workflow #32659532068 and the independent strict verifier completed all
+18 published assets, checksums, updater signatures, manifest checks, and packaged-core checks.
 Native Desktop acceptance and host installation remain separate gates.
 The v0.34.36 package is a metadata-only follow-up to v0.34.34 and carries its verified runtime evidence and the approved-answer-term
 evaluation contract from PR #1840, alongside the v0.34.5 runtime hardening,
@@ -96,8 +97,8 @@ hardening has shipped.
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
 package for your operating system and CPU. The current published release is **v0.34.36**; its
-macOS/Linux core and Desktop lanes are published, while the Windows lane and strict cross-platform
-verifier are still completing. The Desktop app still has
+macOS/Linux/Windows core and Desktop lanes are published and the strict cross-platform verifier has
+passed all 18 assets. The Desktop app still has
 separate manual gates for macOS Developer ID notarization and first-run operating-system
 interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
