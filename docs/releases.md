@@ -24,7 +24,7 @@ skipped on non-Linux hosts.
 The v0.34.35 release carries forward the verified v0.34.34 runtime evidence and the protected UI
 action-button hardening from PR #1864. It changes no credentials, source authorization, indexed data,
 recurring-sync policy, or native-memory behavior.
-The audited host now runs `cortana 0.34.34`; its `cortana --version`, readiness, native-memory,
+The audited host now runs `cortana 0.34.35`; its `cortana --version`, readiness, native-memory,
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
 The installed v0.34.35 `eval --model` fixture is not yet a reproducible provider gate. One direct
