@@ -71,10 +71,13 @@
   width: var(--btn-chrome-size);
   height: var(--btn-chrome-size);
   padding: 0;
-  border-color: transparent;
-  background: transparent;
+  color: var(--theme-text-secondary);
+  border-color: var(--line);
+  background: var(--theme-control-bg);
 }
 
 .cortana-button--icon:hover:enabled {
-  border-color: transparent;
+  color: var(--theme-text-primary);
+  border-color: var(--amber-soft);
+  background: var(--theme-control-bg-hover);
 }
