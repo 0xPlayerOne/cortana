@@ -48,7 +48,7 @@
   color: var(--muted);
 }
 
-.history-buttons button {
+.history-buttons button:not(.cortana-button) {
   display: grid;
   width: 28px;
   height: 28px;
@@ -60,12 +60,12 @@
   cursor: pointer;
 }
 
-.history-buttons button:disabled {
+.history-buttons button:not(.cortana-button):disabled {
   cursor: not-allowed;
   opacity: 0.35;
 }
 
-.history-buttons button:hover:enabled {
+.history-buttons button:not(.cortana-button):hover:enabled {
   color: var(--theme-text-primary);
 }
 
@@ -106,12 +106,12 @@
   gap: 4px;
 }
 
-.title-actions button,
-.panel-heading button,
-.context-heading button,
+.title-actions button:not(.cortana-button),
+.panel-heading button:not(.cortana-button),
+.context-heading button:not(.cortana-button),
 .breadcrumbs button,
 .breadcrumbs a,
-.mobile-button {
+.mobile-button:not(.cortana-button) {
   display: grid;
   width: var(--btn-chrome-size);
   height: var(--btn-chrome-size);
@@ -122,10 +122,10 @@
   cursor: pointer;
 }
 
-.title-actions button:hover,
-.panel-heading button:hover,
-.context-heading button:hover,
-.mobile-button:hover {
+.title-actions button:not(.cortana-button):hover,
+.panel-heading button:not(.cortana-button):hover,
+.context-heading button:not(.cortana-button):hover,
+.mobile-button:not(.cortana-button):hover {
   background: var(--theme-control-bg-hover);
 }
 
