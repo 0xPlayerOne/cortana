@@ -34,6 +34,11 @@ invalid-citation response, while a subsequent direct run and four instrumented r
 Cortana used the safe extractive fallback for the failed run. These are synthetic provider records
 only, not approved-corpus quality evidence.
 
+A fresh installed v0.34.32 `eval --model` run on 2026-08-23 also passed in 15,023 ms with planner
+and synthesis, valid citations, cache reuse, and revision invalidation. This strengthens the
+bounded provider-health record but remains synthetic fixture evidence; it does not establish
+approved-corpus quality or authorize synthesis by default.
+
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
 source set is not fully production-validated. The previous v0.34.13 pass used 25 documents, 5 MiB,
 and 60 seconds per source: nine of 13 enabled non-code profiles returned `complete=true`, while
