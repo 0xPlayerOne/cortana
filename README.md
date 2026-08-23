@@ -60,11 +60,11 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The protected source and latest published release are **v0.34.26**. Release-assets workflow
-[`32616159899`](https://github.com/0xPlayerOne/cortana/actions/runs/32616159899) published the
-cross-platform package set for v0.34.26; the strict verifier passed all 18 assets, signatures,
-checksums, manifest, and packaged-core/resource inspection. The v0.34.26 package is a
-metadata-only follow-up to the v0.34.25 runtime evidence and carries the v0.34.5 runtime hardening,
+The protected source and latest published release are **v0.34.27**. Release-assets workflow
+[`32618262456`](https://github.com/0xPlayerOne/cortana/actions/runs/32618262456) is publishing the
+cross-platform package set for v0.34.27; the strict 18-asset verifier is the final release gate.
+The v0.34.27 package carries the v0.34.26 runtime evidence and the approved-answer-term evaluation
+contract from PR #1840, alongside the v0.34.5 runtime hardening,
 the bounded Drive body-fetch improvement, and the
 shared action-button hardening from PR #1814,
 approved-corpus source-scope enforcement, and the five-minute Desktop cold-start budget
@@ -76,7 +76,7 @@ through a shared per-config lock, Desktop sidecars publish atomically, and compa
 controls share one tokenized button contract. The Desktop architecture guide records the selective
 shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
-The audited host installation still reports `cortana 0.34.25`; v0.34.26 has not been installed on
+The audited host installation still reports `cortana 0.34.25`; v0.34.27 has not been installed on
 that host yet. Embedding and HTTP services are
 healthy in query-only mode; readiness confirms a fresh verified backup, while the backup scheduler
 is not running and recurring sync remains uninstalled. The v0.34.20 readiness,
@@ -95,15 +95,15 @@ hardening has shipped.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current protected release is **v0.34.26**. Its
+package for your operating system and CPU. The current protected release is **v0.34.27**. Its
 release-assets workflow is the verified archive, checksum, updater-signature, and credential-free
 packaged-core verification gate. The Desktop app still has
 separate manual gates for macOS Developer ID notarization and first-run operating-system
 interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 
-The v0.34.26 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
-x86_64**. v0.34.26 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
+The v0.34.27 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. v0.34.27 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
 this release. Rosetta execution or a core archive is not evidence of Intel Desktop support. A
 future Intel policy change requires a matching signed bundle, updater signature, installer
 verification, and native acceptance evidence.

@@ -5,7 +5,7 @@ production-safe source. It is intentionally separate from the code contract:
 connector tests prove behavior, but they do not authorize an account or prove
 that a user's full corpus is ready for reconciliation.
 
-## Current operator state (2026-08-23; v0.34.25 release and installed runtime)
+## Current operator state (2026-08-23; v0.34.27 published, v0.34.25 installed runtime)
 
 The local installation remains in manual mode: `ai.cortana.sync` is not installed and no
 recurring job is active. The operator has completed the Hermes import/rebuild and retained a
@@ -56,7 +56,7 @@ Buzz, with zero deletions. Work Drive and Personal Drive both failed closed at t
 budget; the special Google trials were skipped after validation failed. Recurring sync remains
 uninstalled, and these bounded records do not authorize reconciliation or a production-budget run.
 
-The published v0.34.25 release boundary retains the bounded four-worker Drive body-fetch pool and regression
+The published v0.34.27 release boundary retains the bounded four-worker Drive body-fetch pool and regression
 coverage from PR #1594. The earlier production-budget Personal Drive run was stopped after 147
 documents while a large PDF stalled; it made zero index or reconciliation writes. No current
 production-budget validation is claimed for Personal Drive or any other source after this bounded

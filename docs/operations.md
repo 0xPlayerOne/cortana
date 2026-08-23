@@ -377,10 +377,10 @@ explicit agent operations.
 
 ## Release verification
 
-The current published release is `v0.34.26`; release-assets workflow `32616159899` and the strict
-18-asset verifier passed. The audited host remains installed at v0.34.25, so host-install and
-personal-source evidence below is explicitly evidence for that installed runtime rather than a
-claim that v0.34.26 has been installed locally.
+The current published release is `v0.34.27`; release-assets workflow `32618262456` is the current
+18-asset package and strict-verifier gate. The audited host remains installed at v0.34.25, so
+host-install and personal-source evidence below is explicitly evidence for that installed runtime
+rather than a claim that v0.34.27 has been installed locally.
 
 Published releases have a final cross-platform asset gate. It checks that the core archives,
 checksums, signed macOS/Linux/Windows desktop installers, and every updater platform entry are
@@ -537,7 +537,7 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-23; published and installed v0.34.25)
+### Current local source rollout snapshot (2026-08-23; published v0.34.27, installed v0.34.25)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
 source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
@@ -609,7 +609,7 @@ older releases, but current entry points must not silently drift.
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.34.25
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.34.27
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified

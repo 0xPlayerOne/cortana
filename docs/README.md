@@ -9,8 +9,8 @@ and contributor path.
 
 | Area                           | Current boundary                                                                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Downloadable package           | `v0.34.26`; release-assets workflow `32616159899` verified all 18 assets, signatures, checksums, manifest, and packaged core                      |
-| Source checkout                | Tracks the protected v0.34.26 tree; the tag is published and strict verification passed; the audited host remains installed at v0.34.25           |
+| Downloadable package           | `v0.34.27`; release-assets workflow `32618262456` is the current cross-platform asset and strict-verifier gate                                      |
+| Source checkout                | Tracks the protected v0.34.27 tree; the tag is published; the audited host remains installed at v0.34.25                                           |
 | Default runtime                | Query-only; no source authorization, full sync, or recurring schedule is enabled automatically; native memory is explicit-write only              |
 | Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                     |
 | Knowledge browser              | Obsidian-style workspace/source/document navigation with bounded hierarchical graph pages and local type filters                                  |
