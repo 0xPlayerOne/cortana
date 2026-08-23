@@ -7,20 +7,21 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-22)
 
-- `v0.34.22` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `32606500860` completed the
+- `v0.34.23` is the current protected source/release, published through the protected promotion
+  and Release Please automation. Release-assets workflow `32608361505` is publishing the
   cross-platform package lanes; the 18-asset checksums, updater signatures, manifest, and
-  packaged-core verifier passed. Asset verification does not launch the packaged GUI or
+  packaged-core verifier remain pending. Asset verification does not launch the packaged GUI or
   prove OS-level signing/notarization.
-- The v0.34.22 macOS Apple Silicon package verifier passed the Tauri updater
+- The v0.34.23 macOS Apple Silicon package verifier is pending the hosted asset verifier; the
+  v0.34.22 package verifier passed the Tauri updater
   signature, packaged-core offline evaluation, and strict codesign checks. `spctl --assess` still
   rejects the ad-hoc bundle because Developer ID signing and notarization are not configured; the
   verifier intentionally did not launch the GUI.
-- The supported v0.34.22 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
+- The supported v0.34.23 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.34.22 tag is the source/release boundary. The audited host currently runs
+- The v0.34.23 tag is the source/release boundary. The audited host currently runs
   `/Users/amf/.local/bin/cortana` v0.34.22 with embedding and server services in query-only mode;
   recurring sync remains disabled. Current status reports 13 enabled sources. The pre-upgrade
   v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds; a
