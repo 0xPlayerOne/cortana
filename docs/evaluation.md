@@ -19,20 +19,20 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.38`, merged directly to `main` with
-feature-PR squash merges and Release Please automation. Release-assets workflow `32670939285` published
+The current protected source and published tag are `v0.34.40`, merged directly to `main` with
+feature-PR squash merges and Release Please automation. Release-assets workflow `32675543606` published
 all supported platform lanes; strict cross-platform verification passed all 18 assets, signatures,
 checksums, manifest, and packaged-core checks. The release does not change credentials, source authorization,
-indexed data, recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.38.
+indexed data, recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.40.
 Query-only readiness,
 `doctor`, deterministic `eval`, packaged-core verification, skill parity, and the disposable
 native-memory/shared-agent/control-plane drills all passed. The strict package gate is complete. Recurring sync remains
-uninstalled. The current v0.34.38 `eval --model` provider gate passed on 2026-08-23 in 25,682 ms
+uninstalled. The current v0.34.40 `eval --model` provider gate passed on 2026-08-24 in 13,090 ms
 with planner/synthesis, valid citations, cache reuse, and revision invalidation. Earlier v0.34.35
 and v0.34.32 runs include intermittent invalid-citation failures that correctly fell back to
 extractive mode; these are synthetic provider records only, not approved-corpus quality evidence.
 
-A fresh installed v0.34.38 `eval --model` run on 2026-08-23 passed in 25,682 ms with planner and
+A fresh installed v0.34.40 `eval --model` run on 2026-08-24 passed in 13,090 ms with planner and
 synthesis, valid citations, cache reuse, and revision invalidation. This strengthens the bounded
 provider-health record but remains synthetic fixture evidence; it does not establish approved-
 corpus quality or authorize synthesis by default.
@@ -61,7 +61,7 @@ deletions; Work Drive and Personal Drive both reached the 60-second safety bound
 `budget_exceeded`. This is source-operational evidence only and remains below every configured
 production budget.
 
-After installing v0.34.38, a fresh validation-only sweep on 2026-08-23 repeated the same
+After installing v0.34.40, a fresh validation-only sweep on 2026-08-24 repeated the same
 25-document/5 MiB/60-second bound without opening the index or running a trial sync: 10 of 13
 enabled non-code profiles passed, including Personal Drive, while `special-drive`, `special-gmail`,
 and `special-calendar` failed closed with authorization denied. The result confirms the current
@@ -129,7 +129,7 @@ zero forbidden-source leaks, hybrid retrieval without degradation, repeated-quer
 contains only bounded metrics and source IDs. This strengthens current retrieval and folder-scope
 evidence, but it is not provider-backed synthesis evidence and does not authorize recurring sync.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.38. The embedding and HTTP services
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.40. The embedding and HTTP services
 are running; readiness confirms a fresh verified backup while the installed backup scheduler is idle
 between intervals and recurring sync remains uninstalled. The isolated `/healthz` and `/readyz` probes,
 `doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
@@ -179,18 +179,18 @@ returned 25 (89,645 bytes), and `special-notes` returned 8 (14,046 bytes), with 
 Together these results confirm workspace folder routing and the current connector path, but remain
 below the configured production budgets and do not authorize recurring sync.
 
-The current v0.34.38 source retains the post-v0.31.6 Apple Notes executable hardening and
+The current v0.34.40 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current v0.34.38 source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.34.40 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.34.38 source; it does
+This protects concurrent Desktop windows/processes in the v0.34.40 source; it does
 not authorize source ingestion or recurring sync.
 
-The current v0.34.38 source retains bounded embedding-supervisor recovery: steady-state health checks
+The current v0.34.40 source retains bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -359,7 +359,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.34.38 source and package
+release evidence; use **Current release boundary** above for the v0.34.40 source and package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
