@@ -49,6 +49,11 @@ filters are bounded, each tool returns at most 50 evidence rows, and the context
 independent token budget (`--limit` 1–50, `--max-tokens` 256–64,000, defaulting to the configured
 `[query].context_tokens` budget of 8,000).
 
+The MCP server advertises every input property with a strict JSON Schema. In particular, the
+`remember.provenance` field accepts arbitrary JSON at runtime but is advertised as an object schema
+so strict MCP clients can complete `tools/list` validation before invoking any tool. Cortana keeps
+the value unchanged for audit and provenance consumers.
+
 | Interface                                       | Entry points                                                                                                                                                                                                                                          |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | MCP stdio (`cortana --config <path> mcp`)       | `context`, `remember`, `recall`, `forget`, `export_memory`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                                                                   |
