@@ -19,16 +19,16 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.28`, promoted through the protected
-staging → main flow and Release Please automation. Release-assets workflow `32620368448` published
-all cross-platform package lanes; its 18-asset checksums, updater signatures, manifest, and
+The current protected source and published tag are `v0.34.29`, promoted through the protected
+staging → main flow and Release Please automation. Release-assets workflow `32623886575` published
+the cross-platform package lanes; the 18-asset checksums, updater signatures, manifest, and
 packaged-core verifier passed. The release does not change credentials, source authorization,
-indexed data, recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.28; it restarted
-only Cortana-owned services. Query-only readiness,
+indexed data, recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.29.
+Query-only readiness,
 `doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
 and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
-uninstalled. A fresh v0.34.28 `eval --model` run also passed planner/synthesis execution, citation
-validation, cache reuse, and revision invalidation in 15,279 ms without provider fallback; this is
+uninstalled. A fresh v0.34.29 `eval --model` run also passed planner/synthesis execution, citation
+validation, cache reuse, and revision invalidation in 20,369 ms without provider fallback; this is
 synthetic fixture evidence only.
 
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
