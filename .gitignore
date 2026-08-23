@@ -70,6 +70,10 @@ pnpm-debug.log*
 .direnv/
 .envrc
 .vercel/
+.devin/
+.hermes/
+.pi/
+# .agents/ is committed for team sharing — do NOT ignore it
 mise.local.toml
 .mise.local.toml
 mise.local.lock

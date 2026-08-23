@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "description": "Locked skill set for cortana. Skills live in .agents/skills/ and are committed for team sharing. Cortana is a Rust + Python + TypeScript/React project.",
+  "globalSkillsKept": [
+    "cortana",
+    "agent-md-refactor",
+    "agent-skill-stack",
+    "gh-cli",
+    "conventional-commit",
+    "grill-me",
+    "i-have-adhd",
+    "context-engineering",
+    "vision",
+    "systematic-debugging"
+  ],
+  "skills": [
+    "code-review",
+    "frontend-ui-engineering",
+    "incremental-implementation",
+    "security-and-hardening",
+    "test-driven-development",
+    "typescript-advanced-types",
+    "verification-before-completion"
+  ]
+}
