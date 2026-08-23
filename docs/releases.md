@@ -31,6 +31,9 @@ The protected main tree now also contains the shared action-button hardening fro
 promoted through PR #1819. The next patch release will publish that UI change without altering
 credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.
 
+This conventional release marker is carried through the protected promotion so the next patch
+release can publish the already-verified UI hardening without relying on flattened commit history.
+
 ## v0.34.21 release notes (historical)
 
 The v0.34.21 release was a metadata-only follow-up to the verified v0.34.20 runtime. Its
