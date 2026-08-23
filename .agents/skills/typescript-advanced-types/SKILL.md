@@ -28,29 +28,29 @@ Comprehensive guidance for mastering TypeScript's advanced type system including
 
 ```typescript
 function identity<T>(value: T): T {
-  return value;
+  return value
 }
 
-const num = identity<number>(42); // Type: number
-const str = identity<string>("hello"); // Type: string
-const auto = identity(true); // Type inferred: boolean
+const num = identity<number>(42) // Type: number
+const str = identity<string>('hello') // Type: string
+const auto = identity(true) // Type inferred: boolean
 ```
 
 **Generic Constraints:**
 
 ```typescript
 interface HasLength {
-  length: number;
+  length: number
 }
 
 function logLength<T extends HasLength>(item: T): T {
-  console.log(item.length);
-  return item;
+  console.log(item.length)
+  return item
 }
 
-logLength("hello"); // OK: string has length
-logLength([1, 2, 3]); // OK: array has length
-logLength({ length: 10 }); // OK: object has length
+logLength('hello') // OK: string has length
+logLength([1, 2, 3]) // OK: array has length
+logLength({ length: 10 }) // OK: object has length
 // logLength(42);             // Error: number has no length
 ```
 
@@ -58,10 +58,10 @@ logLength({ length: 10 }); // OK: object has length
 
 ```typescript
 function merge<T, U>(obj1: T, obj2: U): T & U {
-  return { ...obj1, ...obj2 };
+  return { ...obj1, ...obj2 }
 }
 
-const merged = merge({ name: "John" }, { age: 30 });
+const merged = merge({ name: 'John' }, { age: 30 })
 // Type: { name: string } & { age: number }
 ```
 
@@ -72,31 +72,31 @@ const merged = merge({ name: "John" }, { age: 30 });
 **Basic Conditional Type:**
 
 ```typescript
-type IsString<T> = T extends string ? true : false;
+type IsString<T> = T extends string ? true : false
 
-type A = IsString<string>; // true
-type B = IsString<number>; // false
+type A = IsString<string> // true
+type B = IsString<number> // false
 ```
 
 **Extracting Return Types:**
 
 ```typescript
-type ReturnType<T> = T extends (...args: any[]) => infer R ? R : never;
+type ReturnType<T> = T extends (...args: any[]) => infer R ? R : never
 
 function getUser() {
-  return { id: 1, name: "John" };
+  return { id: 1, name: 'John' }
 }
 
-type User = ReturnType<typeof getUser>;
+type User = ReturnType<typeof getUser>
 // Type: { id: number; name: string; }
 ```
 
 **Distributive Conditional Types:**
 
 ```typescript
-type ToArray<T> = T extends any ? T[] : never;
+type ToArray<T> = T extends any ? T[] : never
 
-type StrOrNumArray = ToArray<string | number>;
+type StrOrNumArray = ToArray<string | number>
 // Type: string[] | number[]
 ```
 
@@ -104,19 +104,19 @@ type StrOrNumArray = ToArray<string | number>;
 
 ```typescript
 type TypeName<T> = T extends string
-  ? "string"
+  ? 'string'
   : T extends number
-    ? "number"
+    ? 'number'
     : T extends boolean
-      ? "boolean"
+      ? 'boolean'
       : T extends undefined
-        ? "undefined"
+        ? 'undefined'
         : T extends Function
-          ? "function"
-          : "object";
+          ? 'function'
+          : 'object'
 
-type T1 = TypeName<string>; // "string"
-type T2 = TypeName<() => void>; // "function"
+type T1 = TypeName<string> // "string"
+type T2 = TypeName<() => void> // "function"
 ```
 
 ### 3. Mapped Types
@@ -127,15 +127,15 @@ type T2 = TypeName<() => void>; // "function"
 
 ```typescript
 type Readonly<T> = {
-  readonly [P in keyof T]: T[P];
-};
-
-interface User {
-  id: number;
-  name: string;
+  readonly [P in keyof T]: T[P]
 }
 
-type ReadonlyUser = Readonly<User>;
+interface User {
+  id: number
+  name: string
+}
+
+type ReadonlyUser = Readonly<User>
 // Type: { readonly id: number; readonly name: string; }
 ```
 
@@ -143,10 +143,10 @@ type ReadonlyUser = Readonly<User>;
 
 ```typescript
 type Partial<T> = {
-  [P in keyof T]?: T[P];
-};
+  [P in keyof T]?: T[P]
+}
 
-type PartialUser = Partial<User>;
+type PartialUser = Partial<User>
 // Type: { id?: number; name?: string; }
 ```
 
@@ -154,15 +154,15 @@ type PartialUser = Partial<User>;
 
 ```typescript
 type Getters<T> = {
-  [K in keyof T as `get${Capitalize<string & K>}`]: () => T[K];
-};
-
-interface Person {
-  name: string;
-  age: number;
+  [K in keyof T as `get${Capitalize<string & K>}`]: () => T[K]
 }
 
-type PersonGetters = Getters<Person>;
+interface Person {
+  name: string
+  age: number
+}
+
+type PersonGetters = Getters<Person>
 // Type: { getName: () => string; getAge: () => number; }
 ```
 
@@ -170,17 +170,17 @@ type PersonGetters = Getters<Person>;
 
 ```typescript
 type PickByType<T, U> = {
-  [K in keyof T as T[K] extends U ? K : never]: T[K];
-};
-
-interface Mixed {
-  id: number;
-  name: string;
-  age: number;
-  active: boolean;
+  [K in keyof T as T[K] extends U ? K : never]: T[K]
 }
 
-type OnlyNumbers = PickByType<Mixed, number>;
+interface Mixed {
+  id: number
+  name: string
+  age: number
+  active: boolean
+}
+
+type OnlyNumbers = PickByType<Mixed, number>
 // Type: { id: number; age: number; }
 ```
 
@@ -191,18 +191,18 @@ type OnlyNumbers = PickByType<Mixed, number>;
 **Basic Template Literal:**
 
 ```typescript
-type EventName = "click" | "focus" | "blur";
-type EventHandler = `on${Capitalize<EventName>}`;
+type EventName = 'click' | 'focus' | 'blur'
+type EventHandler = `on${Capitalize<EventName>}`
 // Type: "onClick" | "onFocus" | "onBlur"
 ```
 
 **String Manipulation:**
 
 ```typescript
-type UppercaseGreeting = Uppercase<"hello">; // "HELLO"
-type LowercaseGreeting = Lowercase<"HELLO">; // "hello"
-type CapitalizedName = Capitalize<"john">; // "John"
-type UncapitalizedName = Uncapitalize<"John">; // "john"
+type UppercaseGreeting = Uppercase<'hello'> // "HELLO"
+type LowercaseGreeting = Lowercase<'HELLO'> // "hello"
+type CapitalizedName = Capitalize<'john'> // "John"
+type UncapitalizedName = Uncapitalize<'John'> // "john"
 ```
 
 **Path Building:**
@@ -210,21 +210,21 @@ type UncapitalizedName = Uncapitalize<"John">; // "john"
 ```typescript
 type Path<T> = T extends object
   ? {
-      [K in keyof T]: K extends string ? `${K}` | `${K}.${Path<T[K]>}` : never;
+      [K in keyof T]: K extends string ? `${K}` | `${K}.${Path<T[K]>}` : never
     }[keyof T]
-  : never;
+  : never
 
 interface Config {
   server: {
-    host: string;
-    port: number;
-  };
+    host: string
+    port: number
+  }
   database: {
-    url: string;
-  };
+    url: string
+  }
 }
 
-type ConfigPath = Path<Config>;
+type ConfigPath = Path<Config>
 // Type: "server" | "database" | "server.host" | "server.port" | "database.url"
 ```
 
@@ -234,31 +234,31 @@ type ConfigPath = Path<Config>;
 
 ```typescript
 // Partial<T> - Make all properties optional
-type PartialUser = Partial<User>;
+type PartialUser = Partial<User>
 
 // Required<T> - Make all properties required
-type RequiredUser = Required<PartialUser>;
+type RequiredUser = Required<PartialUser>
 
 // Readonly<T> - Make all properties readonly
-type ReadonlyUser = Readonly<User>;
+type ReadonlyUser = Readonly<User>
 
 // Pick<T, K> - Select specific properties
-type UserName = Pick<User, "name" | "email">;
+type UserName = Pick<User, 'name' | 'email'>
 
 // Omit<T, K> - Remove specific properties
-type UserWithoutPassword = Omit<User, "password">;
+type UserWithoutPassword = Omit<User, 'password'>
 
 // Exclude<T, U> - Exclude types from union
-type T1 = Exclude<"a" | "b" | "c", "a">; // "b" | "c"
+type T1 = Exclude<'a' | 'b' | 'c', 'a'> // "b" | "c"
 
 // Extract<T, U> - Extract types from union
-type T2 = Extract<"a" | "b" | "c", "a" | "b">; // "a" | "b"
+type T2 = Extract<'a' | 'b' | 'c', 'a' | 'b'> // "a" | "b"
 
 // NonNullable<T> - Exclude null and undefined
-type T3 = NonNullable<string | null | undefined>; // string
+type T3 = NonNullable<string | null | undefined> // string
 
 // Record<K, T> - Create object type with keys K and values T
-type PageInfo = Record<"home" | "about", { title: string }>;
+type PageInfo = Record<'home' | 'about', { title: string }>
 ```
 
 ## Detailed worked examples and patterns
@@ -282,21 +282,17 @@ Detailed sections (starting with `## Advanced Patterns`) live in `references/det
 
 ```typescript
 // Type assertion tests
-type AssertEqual<T, U> = [T] extends [U]
-  ? [U] extends [T]
-    ? true
-    : false
-  : false;
+type AssertEqual<T, U> = [T] extends [U] ? ([U] extends [T] ? true : false) : false
 
-type Test1 = AssertEqual<string, string>; // true
-type Test2 = AssertEqual<string, number>; // false
-type Test3 = AssertEqual<string | number, string>; // false
+type Test1 = AssertEqual<string, string> // true
+type Test2 = AssertEqual<string, number> // false
+type Test3 = AssertEqual<string | number, string> // false
 
 // Expect error helper
-type ExpectError<T extends never> = T;
+type ExpectError<T extends never> = T
 
 // Example usage
-type ShouldError = ExpectError<AssertEqual<string, number>>;
+type ShouldError = ExpectError<AssertEqual<string, number>>
 ```
 
 ## Common Pitfalls
