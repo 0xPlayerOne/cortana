@@ -103,6 +103,7 @@ def manifest() -> dict:
                 "source": "runbooks",
                 "expected_source_ids": ["work-release"],
                 "forbidden_source_ids": ["personal-secret"],
+                "required_answer_terms": ["release is verified"],
             }
         ],
     }
@@ -124,6 +125,7 @@ def test_live_evaluation_measures_retrieval_answer_citations_and_cache() -> None
     assert report["metrics"]["provider_fallback_rate"] == 0.0
     assert report["retrieval_cases"][0]["retrieval_mode"] == "hybrid"
     assert report["answer_cases"][0]["citations_valid"] is True
+    assert report["answer_cases"][0]["answer_terms_valid"] is True
     assert len(client.calls) == 3
     assert "limit" in client.calls[0][1]
     assert "limit" not in client.calls[1][1]
@@ -200,3 +202,18 @@ def test_live_answer_fails_closed_when_evidence_ignores_source_scope() -> None:
 
     assert report["passed"] is False
     assert report["answer_cases"][0]["source_scope_valid"] is False
+
+
+def test_live_answer_fails_closed_when_required_terms_are_missing() -> None:
+    answer_manifest = manifest()
+    answer_manifest["retrieval_cases"] = []
+    answer_manifest["answer_cases"][0]["required_answer_terms"] = [
+        "a phrase the provider did not answer"
+    ]
+    report = live.evaluate_manifest(live.validate_manifest(answer_manifest), Client())
+
+    assert report["passed"] is False
+    assert report["answer_cases"][0]["answer_terms_valid"] is False
+    assert report["answer_cases"][0]["answer_terms_checked"] == 1
+    assert report["answer_cases"][0]["answer_terms_missing"] == 1
+    assert "a phrase the provider did not answer" not in json.dumps(report)

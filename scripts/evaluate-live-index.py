@@ -27,6 +27,8 @@ MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 MAX_CASES = 100
 MAX_QUERY_BYTES = 16 * 1024
 MAX_ID_BYTES = 512
+MAX_ANSWER_TERMS = 32
+MAX_ANSWER_TERM_BYTES = 256
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 MAX_TOTAL_SECONDS = 300.0
 MAX_REQUEST_SECONDS = 60.0
@@ -68,6 +70,29 @@ def _source_ids(value: Any, label: str) -> list[str]:
     return result
 
 
+def _answer_terms(value: Any, label: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > MAX_ANSWER_TERMS:
+        raise ManifestError(f"{label} must be a list of at most {MAX_ANSWER_TERMS} terms")
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ManifestError(f"{label} contains an invalid term")
+        if len(item.encode("utf-8")) > MAX_ANSWER_TERM_BYTES:
+            raise ManifestError(
+                f"{label} contains a term over the {MAX_ANSWER_TERM_BYTES} byte limit"
+            )
+        if any(character in item for character in "\r\n\x00"):
+            raise ManifestError(f"{label} contains a control character")
+        normalized = item.casefold()
+        if normalized not in seen:
+            seen.add(normalized)
+            result.append(item)
+    return result
+
+
 def _case(value: Any, label: str, *, answer: bool = False) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ManifestError(f"{label} must be an object")
@@ -93,6 +118,11 @@ def _case(value: Any, label: str, *, answer: bool = False) -> dict[str, Any]:
         "forbidden_source_ids": _source_ids(
             value.get("forbidden_source_ids"), f"{label}.forbidden_source_ids"
         ),
+        "required_answer_terms": _answer_terms(
+            value.get("required_answer_terms"), f"{label}.required_answer_terms"
+        )
+        if answer
+        else [],
         "answer": answer,
     }
 
@@ -272,6 +302,12 @@ def evaluate_manifest(
                 for index, source_id in enumerate(returned)
                 if source_id in forbidden
             )
+            required_terms = case["required_answer_terms"]
+            answer_lower = answer.casefold()
+            answer_terms_missing = sum(
+                term.casefold() not in answer_lower for term in required_terms
+            )
+            answer_terms_valid = answer_terms_missing == 0
             synthesis_used = response.get("mode") == "synthesized"
             warnings = response.get("warnings", [])
             fallback_provider_unavailable = isinstance(warnings, list) and any(
@@ -294,6 +330,7 @@ def evaluate_manifest(
                 and source_scope_valid
                 and citations_valid
                 and forbidden_citations_absent
+                and answer_terms_valid
                 and not fallback_provider_unavailable
                 and (not require_synthesis or synthesis_used)
             )
@@ -308,6 +345,9 @@ def evaluate_manifest(
                     "leaked_source_ids": leaked,
                     "source_scope_valid": source_scope_valid,
                     "citations_valid": citations_valid,
+                    "answer_terms_checked": len(required_terms),
+                    "answer_terms_missing": answer_terms_missing,
+                    "answer_terms_valid": answer_terms_valid,
                     "forbidden_citations_absent": forbidden_citations_absent,
                     "synthesis_used": synthesis_used,
                     "fallback_provider_unavailable": fallback_provider_unavailable,

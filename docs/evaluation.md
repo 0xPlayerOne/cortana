@@ -239,6 +239,10 @@ Copy `eval/live-manifest.example.json` to a private, untracked file and replace 
 with queries and expected IDs from an explicitly approved representative corpus. Run it against a
 running query API with the smallest useful manifest:
 
+Answer cases may also include a bounded `required_answer_terms` list. Terms are matched
+case-insensitively against the provider answer, while reports expose only checked and missing
+counts so approved answer text and evaluation terms are not echoed into artifacts.
+
 ```bash
 cp eval/live-manifest.example.json /private/path/cortana-live-manifest.json
 # Edit the private manifest with approved queries and expected/forbidden source IDs.
