@@ -38,8 +38,8 @@ explicit decisions.
 
 The project is ready for a production claim only when all of these are true:
 
-1. The current source tree and published release have passed the protected staging → main flow,
-   the strict release verifier, and the documented archive/package checks.
+1. The current source tree and published release have passed the direct-to-`main` pull-request
+   flow, the strict release verifier, and the documented archive/package checks.
 2. A real supported Desktop build has passed manual acceptance for first-run tooling approval,
    OAuth/browser flows, source controls, workspace isolation, service start/stop, tray/background
    behavior, native dialogs, backup/restore, updater installation, and the supported operating

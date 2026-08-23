@@ -313,15 +313,13 @@ current-release section above for sign-off status.
 - The historical v0.30.10 Rust library suite passed 253 tests with
   no failures;
   this is a separate core-runtime count and is not added to the Desktop-native count above.
-- The protected promotion workflow remains authoritative: feature PRs target `staging`, then a
-  separate staging-to-main promotion produces the release on `main`. Desktop checks remain
-  headless CI evidence; they do not claim packaged GUI, browser, OS-service, or signed-updater
-  behavior. The older v0.29.8 readiness figures are historical and are not re-asserted.
-- The remote branch policy now matches that staging-release flow: the active `code-foundry-main`
-  and `code-foundry-staging` rulesets block deletion and non-fast-forward updates, require
-  `Validation / Gate`, and require `Tauri 2 / Linux` for protected promotion; staging permits
-  only squash feature merges. This is repository-policy evidence, not a packaged GUI or
-  manual-drill result.
+- The direct-to-main workflow remains authoritative: feature PRs target `main` and squash after
+  the required checks. Desktop checks remain headless CI evidence; they do not claim packaged GUI,
+  browser, OS-service, or signed-updater behavior. The older v0.29.8 readiness figures are
+  historical and are not re-asserted.
+- The remote branch policy now protects `main` against deletion and non-fast-forward updates,
+  requires `Validation / Gate`, and requires `Tauri 2 / Linux` for code PRs. This is
+  repository-policy evidence, not a packaged GUI or manual-drill result.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
   about 130 seconds and the backup scan about 80 seconds. `GET /healthz` is only an

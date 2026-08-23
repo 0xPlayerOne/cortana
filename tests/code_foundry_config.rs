@@ -138,6 +138,7 @@ fn release_version_files_stay_aligned() {
 
 #[test]
 fn release_merge_policy_matches_runtime_contract() {
+    assert_eq!(config_value("git_workflow"), "direct");
     assert_eq!(config_value("merge_strategy"), "squash");
     assert_eq!(config_value("release_merge_strategy"), "rebase");
 }
@@ -257,18 +258,17 @@ fn job_header(block: &str) -> &str {
 /// GTK iterator (release mode), Rust dependency auditing, desktop tests,
 /// desktop clippy, and Linux release compilation plus a fast aggregate job that
 /// keeps the stable "Tauri 2 / Linux" required-check name. The workflow stays
-/// scoped to main-targeted promotion PRs and manual dispatch, skipping
-/// release-please version PRs and exact-tree staging promotion PRs at job
-/// level; final-audit steps keep the same gate, and the aggregate always runs
-/// after needs, treating skipped jobs as acceptable and failing only on
-/// failure or cancellation.
+/// scoped to main-targeted PRs and manual dispatch, skipping Release Please
+/// version PRs at job level; final-audit steps keep the same gate, and the
+/// aggregate always runs after needs, treating skipped jobs as acceptable and
+/// failing only on failure or cancellation.
 #[test]
 fn desktop_linux_release_compile_is_gated() {
     let desktop = read(".github/workflows/desktop.yml");
 
     // Workflow topology assertions.
     assert!(desktop.contains("pull_request:"));
-    assert!(desktop.contains("branches: [main, staging]"));
+    assert!(desktop.contains("branches: [main]"));
     assert!(!desktop.contains("\n  push:"));
     assert!(desktop.contains("workflow_dispatch:"));
 
@@ -277,7 +277,6 @@ fn desktop_linux_release_compile_is_gated() {
         "(github.event_name == 'pull_request' &&",
         "github.event.pull_request.base.ref == 'main' &&",
         "!startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')",
-        "!startsWith(github.event.pull_request.head.ref, 'promote/')",
     ];
 
     // The six parallel jobs: independent names, runners, timeouts, and
@@ -562,28 +561,12 @@ fn desktop_audit_caches_cargo_audit_binary() {
 }
 
 #[test]
-fn staging_promotion_caller_matches_staging_release_topology() {
-    let release_pr = read(".github/workflows/release-pr.yml");
+fn direct_topology_removes_staging_promotion_caller() {
     assert!(
-        release_pr.contains("branches: [staging]"),
-        "staging promotion caller must trigger only on staging pushes:\n{release_pr}"
-    );
-    assert!(
-        release_pr.contains(&format!(
-            "uses: 0xPlayerOne/code-foundry/.github/workflows/release-pr.yml@{}",
-            runtime_ref()
-        )),
-        "staging promotion caller must pin the configured reusable workflow:\n{release_pr}"
-    );
-    for secret in ["CODE_FOUNDRY_TOKEN", "RELEASE_PLEASE_TOKEN"] {
-        assert!(
-            release_pr.contains(&format!("{secret}: ${{{{ secrets.{secret} }}}}")),
-            "staging promotion caller must pass `{secret}`:\n{release_pr}"
-        );
-    }
-    assert!(
-        release_pr.contains("pull-requests: write"),
-        "staging promotion caller must be allowed to create/update its PR:\n{release_pr}"
+        !repo_root()
+            .join(".github/workflows/release-pr.yml")
+            .exists(),
+        "direct topology must not retain a staging promotion caller"
     );
 }
 
