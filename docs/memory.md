@@ -5,6 +5,12 @@ source-backed knowledge and explicit agent memory. Documents and code remain
 evidence; memories are small, deliberate conclusions that agents choose to
 retain.
 
+## Current release boundary
+
+The current protected source and published package are `v0.34.30`. Native memory remains the only
+supported memory engine: it is local, explicit-write, ACL-filtered, auditable, exportable, and
+separate from source knowledge. External memory providers are not product dependencies.
+
 ## Memory model
 
 Each memory has one of five types:
