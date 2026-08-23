@@ -7,7 +7,7 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-23)
 
-- `v0.34.31` is the current protected source/release, published through the protected promotion and
+- `v0.34.32` is the current protected source/release, published through the protected promotion and
   Release Please automation. Release-assets workflow `32642844805` published the cross-platform
   package lanes; the strict verifier passed all 18 checksums, updater signatures, manifest, and
   packaged-core/resource checks. Asset verification does not launch the packaged GUI or prove
@@ -16,12 +16,12 @@ is not part of a visual/UI change.
   offline evaluation, and strict codesign checks. `spctl --assess` still
   rejects the ad-hoc bundle because Developer ID signing and notarization are not configured; the
   verifier intentionally did not launch the GUI.
-- The supported v0.34.31 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
+- The supported v0.34.32 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.34.31 tag is the source/release boundary. The audited host currently runs
-  `/Users/amf/.local/bin/cortana` v0.34.31 with embedding and server services in query-only mode;
+- The v0.34.32 tag is the source/release boundary. The audited host currently runs
+  `/Users/amf/.local/bin/cortana` v0.34.32 with embedding and server services in query-only mode;
   recurring sync remains disabled. Current status reports 13 enabled sources. The pre-upgrade
   v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds; a
   v0.34.15 retry brought Personal Gmail to `complete=true` at the same document/byte bound with a
@@ -31,7 +31,7 @@ is not part of a visual/UI change.
   includes bounded parallel body fetching from PR #1594; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The installed v0.34.31 provider-backed fixture gate is intermittent: one direct run failed closed
+- The installed v0.34.32 provider-backed fixture gate is intermittent: one direct run failed closed
   at 15,915 ms because the configured `auto-free` provider returned invalid citations, then a
   subsequent direct run and four instrumented reruns passed in 10,137–17,033 ms. Cortana used the
   safe extractive fallback for the failed run. These are synthetic records only; they do not query
@@ -110,7 +110,7 @@ is not part of a visual/UI change.
   `work`/`personal`/`special` assignments. This is fresh connector evidence below the configured
   production budgets; the packaged GUI and larger acceptance flow remain separate gates.
 
-The current v0.34.31 source includes the post-v0.31.12 safety lane, which acquires
+The current v0.34.32 source includes the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, enforces native-memory retention bounds, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -118,7 +118,7 @@ a per-config cross-process lock. These source-tree protections are covered by fo
 regressions; they do not authorize a source, enable recurring sync, or prove the unverified
 GUI/browser/tray/dialog/updater gates above.
 
-The current v0.34.31 source includes the operational recovery change for the local embedding supervisor:
+The current v0.34.32 source includes the operational recovery change for the local embedding supervisor:
 steady-state checks use the lightweight `/health` endpoint so queued ingestion work cannot look dead;
 startup and restart still require a real vector probe. The earlier v0.32.1 Work Drive trials were
 cancelled after that older supervisor stalled. After v0.32.2 installation, a foreground Work Drive
@@ -199,7 +199,7 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.34.31 host now passes the bounded synthetic
+2. Model-backed provider gate: the installed v0.34.32 host now passes the bounded synthetic
    provider-backed fixture evaluator in 13,834 ms with planner/synthesis use, valid citations, cache
    reuse, and revision invalidation. No provider-backed evaluation against an approved personal
    index or the packaged GUI is claimed yet. Provider outages or slow responses still fail closed,
@@ -249,7 +249,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.34.31 source or the historical v0.32.6 core; use the
+does not describe the current v0.34.32 source or the historical v0.32.6 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -265,8 +265,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.34.31` source or packaged Desktop behavior. The verified
-  `v0.32.12` asset workflow is historical; the active `v0.34.31` workflow is recorded in the release section above.
+  the current `v0.34.32` source or packaged Desktop behavior. The verified
+  `v0.32.12` asset workflow is historical; the active `v0.34.32` workflow is recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected
