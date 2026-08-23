@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.30](https://github.com/0xPlayerOne/cortana/compare/v0.34.29...v0.34.30) (2026-08-23)
+
+
+### Maintenance
+
+* **main:** synchronize staging v0.34.29 documentation ([#1875](https://github.com/0xPlayerOne/cortana/issues/1875)) ([206aad7](https://github.com/0xPlayerOne/cortana/commit/206aad7a5d6f08f936f6448d745e40183fda9b1c))
+
 ## [0.34.29](https://github.com/0xPlayerOne/cortana/compare/v0.34.28...v0.34.29) (2026-08-23)
 
 
