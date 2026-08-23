@@ -197,7 +197,7 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    control-plane and backup/restore paths are now verified, and the native acceptance suite covers
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
-2. Model-backed provider gate: the installed v0.34.21 host now passes the bounded synthetic
+2. Model-backed provider gate: the installed v0.34.22 host now passes the bounded synthetic
    provider-backed fixture evaluator in 13,974 ms with planner/synthesis use, valid citations, cache
    reuse, and revision invalidation. No provider-backed evaluation against an approved personal
    index or the packaged GUI is claimed yet. Provider outages or slow responses still fail closed,
