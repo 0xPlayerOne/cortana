@@ -53,6 +53,8 @@ The MCP server advertises every input property with a strict JSON Schema. In par
 `remember.provenance` field accepts arbitrary JSON at runtime but is advertised as an object schema
 so strict MCP clients can complete `tools/list` validation before invoking any tool. Cortana keeps
 the value unchanged for audit and provenance consumers.
+The protocol regression test keeps this advertised schema contract from regressing as new memory
+fields are added.
 
 | Interface                                       | Entry points                                                                                                                                                                                                                                          |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
