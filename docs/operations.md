@@ -77,14 +77,14 @@ evidence is required.
 Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
 8 MiB maximum line. Use separate reviewed batches for larger migrations.
 
-On the current v0.34.22 source tree, mutating CLI startup acquires the same global `sync.lock`
+On the current v0.34.23 source tree, mutating CLI startup acquires the same global `sync.lock`
 before opening the store. This covers schema/backfill/fingerprint work as well as the later import
-or sync operation. This is included in the published v0.34.22 source release.
+or sync operation. This is included in the published v0.34.23 source release.
 
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
 so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
-included in the published v0.34.22 source release; keep the same lock requirement when running a newer
+included in the published v0.34.23 source release; keep the same lock requirement when running a newer
 source checkout or development build.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
@@ -519,7 +519,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The v0.34.22 verifier recorded this packaged-core gate in addition to the
+`passed: true`. The v0.34.23 verifier will record this packaged-core gate in addition to the
 archive/signature/checksum/updater-manifest checks in the release-assets workflow.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
@@ -532,7 +532,7 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-22; published and installed v0.34.22)
+### Current local source rollout snapshot (2026-08-22; published v0.34.23; installed v0.34.22)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
 source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
@@ -604,7 +604,7 @@ older releases, but current entry points must not silently drift.
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.34.22
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.34.23
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified

@@ -19,13 +19,14 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.22`, promoted through the protected
-staging → main flow and Release Please automation. Release-assets workflow `32606500860` completed
+The current protected source and published tag are `v0.34.23`, promoted through the protected
+staging → main flow and Release Please automation. Release-assets workflow `32608361505` is
+publishing
 all cross-platform package lanes; its 18-asset checksums, updater signatures, manifest, and
-packaged-core gate passed the strict verifier. The release is a metadata-only promotion over
-v0.34.21; it does not change credentials, source authorization, indexed data, recurring-sync policy,
-or native-memory behavior. The audited host now runs v0.34.22 after upgrading from v0.34.21 and
-restarting only Cortana-owned services. Query-only readiness,
+packaged-core gate remain pending until the strict verifier completes. The release is a metadata-only
+promotion over v0.34.22; it does not change credentials, source authorization, indexed data,
+recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.22; it restarted
+only Cortana-owned services. Query-only readiness,
 `doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
 and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
 uninstalled.
@@ -92,7 +93,7 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.34.22 release gate verifies the packaged core offline without credentials. A fresh
+The v0.34.23 release gate will verify the packaged core offline without credentials. The fresh
 provider-backed `cortana eval --model` run against the installed v0.34.22 binary passed retrieval
 recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and
 revision invalidation in 13,974 ms under the 55,000 ms bound, with no provider fallback. This is
