@@ -61,8 +61,9 @@ separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers 
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
 The protected source and latest published release are **v0.34.27**. Release-assets workflow
-[`32618262456`](https://github.com/0xPlayerOne/cortana/actions/runs/32618262456) is publishing the
-cross-platform package set for v0.34.27; the strict 18-asset verifier is the final release gate.
+[`32618262456`](https://github.com/0xPlayerOne/cortana/actions/runs/32618262456) published the
+cross-platform package set for v0.34.27; the strict verifier passed all 18 assets, signatures,
+checksums, manifest, and packaged-core/resource inspection.
 The v0.34.27 package carries the v0.34.26 runtime evidence and the approved-answer-term evaluation
 contract from PR #1840, alongside the v0.34.5 runtime hardening,
 the bounded Drive body-fetch improvement, and the
@@ -76,16 +77,15 @@ through a shared per-config lock, Desktop sidecars publish atomically, and compa
 controls share one tokenized button contract. The Desktop architecture guide records the selective
 shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
-The audited host installation still reports `cortana 0.34.25`; v0.34.27 has not been installed on
-that host yet. Embedding and HTTP services are
+The audited host installation now reports `cortana 0.34.27`; embedding and HTTP services are
 healthy in query-only mode; readiness confirms a fresh verified backup, while the backup scheduler
 is not running and recurring sync remains uninstalled. The v0.34.20 readiness,
 native-memory, shared-agent, MCP, and control-plane evidence remains valid because v0.34.21,
 v0.34.22, v0.34.23, v0.34.24, v0.34.25, and v0.34.26 change only release metadata or release-flow/UI
-contracts. The installed v0.34.25 binary also
-passed the deterministic offline fixture evaluation and packaged-core verification. A fresh
-`cortana eval --model` run on 2026-08-23 passed planner and synthesis execution, citations, cache
-reuse, and revision invalidation in 10,095 ms without provider fallback. This is synthetic fixture
+contracts. The installed v0.34.27 binary passed the deterministic offline fixture evaluation and
+packaged-core verification. A fresh `cortana eval --model` run on 2026-08-23 passed planner and
+synthesis execution, citations, cache reuse, and revision invalidation in 12,082 ms without provider
+fallback. This is synthetic fixture
 evidence, not personal-index or packaged-GUI proof; the approved-corpus provider gate remains open.
 When a checkout and downloaded application report different versions, trust the application version
 for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree

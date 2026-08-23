@@ -8,8 +8,8 @@ is not part of a visual/UI change.
 ## Current release evidence (2026-08-23)
 
 - `v0.34.27` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `32618262456` is the current
-  cross-platform package gate; its strict verifier must pass all 18 checksums, updater signatures,
+  and Release Please automation. Release-assets workflow `32618262456` published the
+  cross-platform package lanes; its strict verifier passed all 18 checksums, updater signatures,
   manifest, and packaged-core/resource checks. Asset verification does not launch the packaged GUI or
   prove OS-level signing/notarization.
 - The v0.34.25 macOS Apple Silicon package verifier passed the Tauri updater signature, packaged-core
@@ -21,7 +21,7 @@ is not part of a visual/UI change.
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
 - The v0.34.27 tag is the source/release boundary. The audited host currently runs
-  `/Users/amf/.local/bin/cortana` v0.34.25 with embedding and server services in query-only mode;
+  `/Users/amf/.local/bin/cortana` v0.34.27 with embedding and server services in query-only mode;
   recurring sync remains disabled. Current status reports 13 enabled sources. The pre-upgrade
   v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds; a
   v0.34.15 retry brought Personal Gmail to `complete=true` at the same document/byte bound with a
@@ -31,8 +31,8 @@ is not part of a visual/UI change.
   includes bounded parallel body fetching from PR #1594; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The installed v0.34.25 host `eval --model` run passed planner and synthesis execution, citations,
-  cache reuse, and revision invalidation in 10,095 ms without provider fallback. This is provider-backed
+- The installed v0.34.27 host `eval --model` run passed planner and synthesis execution, citations,
+  cache reuse, and revision invalidation in 12,082 ms without provider fallback. This is provider-backed
   synthetic fixture evidence only; it does not query the personal index, authorize source
   synchronization, or prove packaged GUI behavior. The approved-corpus provider gate remains open.
 - The installed v0.34.25 binary passed the disposable native-memory, shared-agent HTTP, shared-agent

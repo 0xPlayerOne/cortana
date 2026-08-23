@@ -377,10 +377,9 @@ explicit agent operations.
 
 ## Release verification
 
-The current published release is `v0.34.27`; release-assets workflow `32618262456` is the current
-18-asset package and strict-verifier gate. The audited host remains installed at v0.34.25, so
-host-install and personal-source evidence below is explicitly evidence for that installed runtime
-rather than a claim that v0.34.27 has been installed locally.
+The current published release is `v0.34.27`; release-assets workflow `32618262456` and the strict
+18-asset verifier passed. The audited host now runs v0.34.27, so host-install and personal-source
+evidence below is explicitly evidence for that installed runtime.
 
 Published releases have a final cross-platform asset gate. It checks that the core archives,
 checksums, signed macOS/Linux/Windows desktop installers, and every updater platform entry are
@@ -524,7 +523,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The v0.34.25 verifier recorded this packaged-core gate in addition to the
+`passed: true`. The v0.34.27 verifier recorded this packaged-core gate in addition to the
 archive/signature/checksum/updater-manifest checks in the release-assets workflow.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
@@ -537,7 +536,7 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-23; published v0.34.27, installed v0.34.25)
+### Current local source rollout snapshot (2026-08-23; published and installed v0.34.27)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
 source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
@@ -558,8 +557,8 @@ boundary includes bounded four-worker fetching from PR #1594; the
 complete record at its configured budget and the Special Google grant is repaired. No
 reconciliation or large sync has been run.
 
-A fresh provider-backed `cortana eval --model` run on the installed v0.34.25 binary passed planner
-and synthesis execution, valid citations, cache reuse, and revision invalidation in 10,095 ms under
+A fresh provider-backed `cortana eval --model` run on the installed v0.34.27 binary passed planner
+and synthesis execution, valid citations, cache reuse, and revision invalidation in 12,082 ms under
 the 55,000 ms bound, without provider fallback. This is synthetic fixture evidence only; it neither
 authorizes source sync nor establishes personal-index quality, and it does not replace the separate
 packaged GUI and signing gates. The approved-corpus provider gate remains open and the evaluator

@@ -23,8 +23,8 @@ The installer preserves an existing configuration, index, backups, and secrets. 
 authorize an account, download a connector corpus, start a sync, or enable a scheduler by itself.
 
 Before you begin, use a supported release package for your operating system and CPU and keep at
-least one backup location available. The protected v0.34.27 Desktop release is published; its
-18-asset package-integrity verifier is the required release gate, while OS-level signing and
+least one backup location available. The protected v0.34.27 Desktop release is published and its
+18-asset package-integrity verifier has passed; OS-level signing and
 notarization remain separate acceptance gates. It
 supports macOS Apple Silicon
 (arm64), Linux x86_64, and Windows x86_64; an Intel macOS Desktop package is not published or
