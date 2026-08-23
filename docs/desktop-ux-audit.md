@@ -7,8 +7,8 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-23)
 
-- `v0.34.30` is the current protected source/release, published through the protected promotion and
-  Release Please automation. Release-assets workflow `32625481582` published the cross-platform
+- `v0.34.31` is the current protected source/release, published through the protected promotion and
+  Release Please automation. Release-assets workflow `32642844805` published the cross-platform
   package lanes; the strict verifier passed all 18 checksums, updater signatures, manifest, and
   packaged-core/resource checks. Asset verification does not launch the packaged GUI or prove
   OS-level signing/notarization.
@@ -16,12 +16,12 @@ is not part of a visual/UI change.
   offline evaluation, and strict codesign checks. `spctl --assess` still
   rejects the ad-hoc bundle because Developer ID signing and notarization are not configured; the
   verifier intentionally did not launch the GUI.
-- The supported v0.34.30 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
+- The supported v0.34.31 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
   x86_64. No Intel macOS Desktop bundle is published; Intel macOS is an explicit unsupported
   target for this release, not a passing or pending GUI gate. Rosetta or the core archive does not
   provide Intel Desktop evidence.
-- The v0.34.30 tag is the source/release boundary. The audited host currently runs
-  `/Users/amf/.local/bin/cortana` v0.34.30 with embedding and server services in query-only mode;
+- The v0.34.31 tag is the source/release boundary. The audited host currently runs
+  `/Users/amf/.local/bin/cortana` v0.34.31 with embedding and server services in query-only mode;
   recurring sync remains disabled. Current status reports 13 enabled sources. The pre-upgrade
   v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds; a
   v0.34.15 retry brought Personal Gmail to `complete=true` at the same document/byte bound with a
@@ -31,8 +31,8 @@ is not part of a visual/UI change.
   includes bounded parallel body fetching from PR #1594; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The installed v0.34.30 host `eval --model` run passed planner and synthesis execution, citations,
-  cache reuse, and revision invalidation in 18,495 ms without provider fallback. This is provider-backed
+- The installed v0.34.31 host `eval --model` run passed planner and synthesis execution, citations,
+  cache reuse, and revision invalidation in 13,834 ms without provider fallback. This is provider-backed
   synthetic fixture evidence only; it does not query the personal index, authorize source
   synchronization, or prove packaged GUI behavior. The approved-corpus provider gate remains open.
 - The pre-upgrade v0.34.25 binary passed the disposable native-memory, shared-agent HTTP, shared-agent

@@ -77,14 +77,14 @@ evidence is required.
 Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
 8 MiB maximum line. Use separate reviewed batches for larger migrations.
 
-On the current v0.34.30 source tree, mutating CLI startup acquires the same global `sync.lock`
+On the current v0.34.31 source tree, mutating CLI startup acquires the same global `sync.lock`
 before opening the store. This covers schema/backfill/fingerprint work as well as the later import
-or sync operation. This is included in the published v0.34.30 source release.
+or sync operation. This is included in the published v0.34.31 source release.
 
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
 so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
-included in the published v0.34.30 source release; keep the same lock requirement when running a newer
+included in the published v0.34.31 source release; keep the same lock requirement when running a newer
 source checkout or development build.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
@@ -377,8 +377,8 @@ explicit agent operations.
 
 ## Release verification
 
-The current published release is `v0.34.30`; release-assets workflow `32625481582` and the strict
-18-asset verifier passed. The audited host now runs v0.34.30, so host-install and personal-source
+The current published release is `v0.34.31`; release-assets workflow `32642844805` and the strict
+18-asset verifier passed. The audited host now runs v0.34.31, so host-install and personal-source
 evidence below is explicitly evidence for that installed runtime.
 
 Published releases have a final cross-platform asset gate. It checks that the core archives,
@@ -536,7 +536,7 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-23; published and installed v0.34.30)
+### Current local source rollout snapshot (2026-08-23; published and installed v0.34.31)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
 source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
@@ -551,14 +551,14 @@ Personal Drive's earlier 1,800-second and 900-second validations failed closed a
 deadlines while processing a large PDF/media corpus. After explicit reauthorization, the current
 bounded probe succeeded at 25 documents/5 MiB/60 seconds; the next production-budget run was
 operator-cancelled after 147 documents when serialized Drive body fetching stalled on a large PDF.
-Both cancelled attempts made zero index or reconciliation writes. The published v0.34.30 release
+Both cancelled attempts made zero index or reconciliation writes. The published v0.34.31 release
 boundary includes bounded four-worker fetching from PR #1594; the
 `readiness --allow-sync-service` gate must remain closed until every enabled source has a fresh
 complete record at its configured budget and the Special Google grant is repaired. No
 reconciliation or large sync has been run.
 
-A fresh provider-backed `cortana eval --model` run on the installed v0.34.30 binary passed planner
-and synthesis execution, valid citations, cache reuse, and revision invalidation in 18,495 ms under
+A fresh provider-backed `cortana eval --model` run on the installed v0.34.31 binary passed planner
+and synthesis execution, valid citations, cache reuse, and revision invalidation in 13,834 ms under
 the 55,000 ms bound, without provider fallback. This is synthetic fixture evidence only; it neither
 authorizes source sync nor establishes personal-index quality, and it does not replace the separate
 packaged GUI and signing gates. The approved-corpus provider gate remains open and the evaluator

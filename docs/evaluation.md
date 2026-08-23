@@ -19,16 +19,16 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.30`, promoted through the protected
-staging → main flow and Release Please automation. Release-assets workflow `32625481582` published
+The current protected source and published tag are `v0.34.31`, promoted through the protected
+staging → main flow and Release Please automation. Release-assets workflow `32642844805` published
 the cross-platform package lanes; the 18-asset checksums, updater signatures, manifest, and
 packaged-core verifier passed. The release does not change credentials, source authorization,
-indexed data, recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.30.
+indexed data, recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.31.
 Query-only readiness,
 `doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
 and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
-uninstalled. A fresh v0.34.30 `eval --model` run also passed planner/synthesis execution, citation
-validation, cache reuse, and revision invalidation in 18,495 ms without provider fallback; this is
+uninstalled. A fresh v0.34.31 `eval --model` run also passed planner/synthesis execution, citation
+validation, cache reuse, and revision invalidation in 13,834 ms without provider fallback; this is
 synthetic fixture evidence only.
 
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
