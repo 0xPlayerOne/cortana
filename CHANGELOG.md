@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.34.25](https://github.com/0xPlayerOne/cortana/compare/v0.34.24...v0.34.25) (2026-08-23)
+
+
+### Bug Fixes
+
+* **release:** promote release merge contract ([#1830](https://github.com/0xPlayerOne/cortana/issues/1830)) ([d01b687](https://github.com/0xPlayerOne/cortana/commit/d01b6877f87a6f0e8fb342d9549c99e470d1f75b))
+* **release:** promote v0.34.25 to main ([#1827](https://github.com/0xPlayerOne/cortana/issues/1827)) ([d833bb0](https://github.com/0xPlayerOne/cortana/commit/d833bb0dfc0c1bacb7413b67a8d51e7d3c1bb75a))
+
 ## [0.34.24](https://github.com/0xPlayerOne/cortana/compare/v0.34.23...v0.34.24) (2026-08-23)
 
 
