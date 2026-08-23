@@ -77,14 +77,14 @@ evidence is required.
 Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
 8 MiB maximum line. Use separate reviewed batches for larger migrations.
 
-On the current v0.34.25 source tree, mutating CLI startup acquires the same global `sync.lock`
+On the current v0.34.27 source tree, mutating CLI startup acquires the same global `sync.lock`
 before opening the store. This covers schema/backfill/fingerprint work as well as the later import
-or sync operation. This is included in the published v0.34.25 source release.
+or sync operation. This is included in the published v0.34.27 source release.
 
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
 so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
-included in the published v0.34.25 source release; keep the same lock requirement when running a newer
+included in the published v0.34.27 source release; keep the same lock requirement when running a newer
 source checkout or development build.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
@@ -311,7 +311,7 @@ freshly-created drill directory. Set `CORTANA_KEEP_DRILL=1` to retain the exact 
 The drill proves the offline CLI control plane only; it is not a proof of the Desktop GUI, OAuth
 flows, tray integration, or updater behavior, none of which it exercises.
 
-The installed v0.34.25 binary passed this drill on 2026-08-23. It created and searched the
+The pre-upgrade v0.34.25 binary passed this drill on 2026-08-23. It created and searched the
 disposable fixture, exported metadata-only audit output, verified a backup, restored it into a
 second temporary data directory, and searched the restored index. The run never read or mutated
 the live configuration, index, credentials, or source connectors.
@@ -502,7 +502,7 @@ verification is mandatory by default; set `CORTANA_REQUIRE_MINISIGN=0` only for 
 work where `minisign` is intentionally unavailable.
 
 ```bash
-  GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.34.25
+  GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.34.27
 ```
 
 It checks the bundle version, executes only the bundled core's `--version`
@@ -551,7 +551,7 @@ Personal Drive's earlier 1,800-second and 900-second validations failed closed a
 deadlines while processing a large PDF/media corpus. After explicit reauthorization, the current
 bounded probe succeeded at 25 documents/5 MiB/60 seconds; the next production-budget run was
 operator-cancelled after 147 documents when serialized Drive body fetching stalled on a large PDF.
-Both cancelled attempts made zero index or reconciliation writes. The published v0.34.25 release
+Both cancelled attempts made zero index or reconciliation writes. The published v0.34.27 release
 boundary includes bounded four-worker fetching from PR #1594; the
 `readiness --allow-sync-service` gate must remain closed until every enabled source has a fresh
 complete record at its configured budget and the Special Google grant is repaired. No
