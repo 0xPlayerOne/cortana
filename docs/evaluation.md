@@ -19,13 +19,13 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.22`, promoted through the protected
-staging → main flow and Release Please automation. Release-assets workflow `32606500860` completed
+The current protected source and published tag are `v0.34.23`, promoted through the protected
+staging → main flow and Release Please automation. Release-assets workflow `32608361505` completed
 all cross-platform package lanes; its 18-asset checksums, updater signatures, manifest, and
 packaged-core gate passed the strict verifier. The release is a metadata-only promotion over
-v0.34.21; it does not change credentials, source authorization, indexed data, recurring-sync policy,
-or native-memory behavior. The audited host now runs v0.34.22 after upgrading from v0.34.21 and
-restarting only Cortana-owned services. Query-only readiness,
+v0.34.22; it does not change credentials, source authorization, indexed data, recurring-sync policy,
+or native-memory behavior. The audited host now runs v0.34.23; it restarted
+only Cortana-owned services. Query-only readiness,
 `doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
 and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
 uninstalled.
@@ -92,10 +92,10 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.34.22 release gate verifies the packaged core offline without credentials. A fresh
-provider-backed `cortana eval --model` run against the installed v0.34.22 binary passed retrieval
+The v0.34.23 release gate verifies the packaged core offline without credentials. The fresh
+provider-backed `cortana eval --model` run against the installed v0.34.23 binary passed retrieval
 recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and
-revision invalidation in 13,974 ms under the 55,000 ms bound, with no provider fallback. This is
+revision invalidation in 16,777 ms under the 55,000 ms bound, with no provider fallback. This is
 synthetic fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
 or authorize source synchronization. The approved-corpus provider-backed evaluation remains an open
 operator gate; the evaluator remains opt-in and extractive mode remains the production default.
@@ -115,7 +115,7 @@ zero forbidden-source leaks, hybrid retrieval without degradation, repeated-quer
 contains only bounded metrics and source IDs. This strengthens current retrieval and folder-scope
 evidence, but it is not provider-backed synthesis evidence and does not authorize recurring sync.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.22. The embedding, HTTP, and backup
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.23. The embedding, HTTP, and backup
 services are running with recurring sync uninstalled. The isolated `/healthz` and `/readyz` probes,
 `doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
 installation evidence, not proof of native GUI, browser OAuth, updater, or operating-system trust

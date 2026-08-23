@@ -9,22 +9,22 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.22
+## Current release: v0.34.23
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.22` tag is the current source and release boundary. Release-assets workflow
-[`32606500860`](https://github.com/0xPlayerOne/cortana/actions/runs/32606500860) completed the
+`v0.34.23` tag is the current source and release boundary. Release-assets workflow
+[`32608361505`](https://github.com/0xPlayerOne/cortana/actions/runs/32608361505) completed the
 strict archive, checksum, updater-signature, manifest, and packaged-core verification gate; all
 18 assets passed the independent strict verifier.
 
-The v0.34.22 release is a metadata-only follow-up to the verified v0.34.21 runtime. It changes no
+The v0.34.23 release is a metadata-only follow-up to the verified v0.34.22 runtime. It changes no
 credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.
-The audited host now reports `cortana 0.34.22`; its `cortana --version`, readiness, native-memory,
+The audited host now reports `cortana 0.34.23`; its `cortana --version`, readiness, native-memory,
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
-The installed v0.34.22 `eval --model` fixture also passed planner and synthesis execution, valid
-citations, cache reuse, and revision invalidation in 13,974 ms without provider fallback; this is
+The installed v0.34.23 `eval --model` fixture also passed planner and synthesis execution, valid
+citations, cache reuse, and revision invalidation in 16,777 ms without provider fallback; this is
 synthetic fixture evidence only.
 
 ## v0.34.21 release notes (historical)
