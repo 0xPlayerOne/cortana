@@ -2,6 +2,12 @@
 
 Cortana separates agent retrieval from human-facing answers.
 
+## Current release boundary
+
+The current protected source and published package are `v0.34.30`. Query-only retrieval, native
+memory separation, ACL filtering, bounded context, citations, cache invalidation, and extractive
+fallback remain the safe defaults; provider-backed synthesis is still an explicit opt-in.
+
 - MCP, CLI `search`/`context`, `/v1/search`, and `/v1/context` are low-latency retrieval
   primitives. They never require a language model. Context surfaces also attach relevant native
   agent memories from the same ACL-filtered SQLite store.
