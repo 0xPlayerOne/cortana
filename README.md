@@ -60,10 +60,10 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The protected source and latest published release are **v0.34.32**. Release Please PR #1905 is
+The protected source and latest published release are **v0.34.33**. Release Please PR #1911 is
 merged; release asset and strict verifier evidence are recorded in [Release history](docs/releases.md).
 Native Desktop acceptance and host installation remain separate gates.
-The v0.34.32 package is a metadata-only follow-up to v0.34.31 and carries its verified runtime evidence and the approved-answer-term
+The v0.34.33 package is a metadata-only follow-up to v0.34.32 and carries its verified runtime evidence and the approved-answer-term
 evaluation contract from PR #1840, alongside the v0.34.5 runtime hardening,
 the bounded Drive body-fetch improvement, and the
 final shell action-button hardening from PR #1864,
@@ -76,12 +76,12 @@ through a shared per-config lock, Desktop sidecars publish atomically, and compa
 controls share one tokenized button contract. The Desktop architecture guide records the selective
 shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
-The audited host installation now reports `cortana 0.34.32`; embedding and HTTP services are
+The audited host installation now reports `cortana 0.34.33`; embedding and HTTP services are
 healthy in query-only mode; readiness confirms a fresh verified backup, while the installed backup
 scheduler is idle between intervals and recurring sync remains uninstalled. The v0.34.20 readiness,
 native-memory, shared-agent, MCP, and control-plane evidence remains valid because v0.34.21,
 v0.34.22, v0.34.23, v0.34.24, v0.34.25, and v0.34.26 change only release metadata or release-flow/UI
-contracts. The installed v0.34.32 binary passed the deterministic offline fixture evaluation and
+contracts. The installed v0.34.33 binary passed the deterministic offline fixture evaluation and
 packaged-core verification. On 2026-08-23, one direct `cortana eval --model` run failed closed at
 15,915 ms because the configured `auto-free` provider returned an invalid-citation response;
 Cortana safely used extractive fallback. A subsequent direct run and four instrumented reruns
@@ -95,14 +95,14 @@ hardening has shipped.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current verified release is **v0.34.32**; its
+package for your operating system and CPU. The current verified release is **v0.34.33**; its
 release-assets and packaged-core checks passed, while the Desktop app still has
 separate manual gates for macOS Developer ID notarization and first-run operating-system
 interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 
-The v0.34.32 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
-x86_64**. v0.34.32 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
+The v0.34.33 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. v0.34.33 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
 this release. Rosetta execution or a core archive is not evidence of Intel Desktop support. A
 future Intel policy change requires a matching signed bundle, updater signature, installer
 verification, and native acceptance evidence.
