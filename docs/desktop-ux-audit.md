@@ -9,8 +9,8 @@ is not part of a visual/UI change.
 
 - `v0.34.36` is the current protected source/release, published through the protected promotion and
   Release Please automation. Release-assets workflow `32659532068` has published the macOS/Linux
-  package lanes and is still completing Windows; the strict cross-platform verifier is pending.
-  Asset verification does not launch the packaged GUI or prove
+  package lanes; the strict cross-platform verifier passed all 18 assets, signatures, checksums,
+  manifest, and packaged-core checks. Asset verification does not launch the packaged GUI or prove
   OS-level signing/notarization.
 - The v0.34.25 macOS Apple Silicon package verifier passed the Tauri updater signature, packaged-core
   offline evaluation, and strict codesign checks. `spctl --assess` still
