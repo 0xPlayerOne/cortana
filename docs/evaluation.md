@@ -27,9 +27,12 @@ indexed data, recurring-sync policy, or native-memory behavior. The audited host
 Query-only readiness,
 `doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
 and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
-uninstalled. A fresh v0.34.31 `eval --model` run also passed planner/synthesis execution, citation
-validation, cache reuse, and revision invalidation in 13,834 ms without provider fallback; this is
-synthetic fixture evidence only.
+uninstalled. The v0.34.31 `eval --model` provider gate is currently intermittent: one direct run on
+2026-08-23 failed closed at 15,915 ms because the configured `auto-free` provider returned an
+invalid-citation response, while a subsequent direct run and four instrumented reruns passed in
+10,137–17,033 ms with planner/synthesis, valid citations, cache reuse, and revision invalidation.
+Cortana used the safe extractive fallback for the failed run. These are synthetic provider records
+only, not approved-corpus quality evidence.
 
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
 source set is not fully production-validated. The previous v0.34.13 pass used 25 documents, 5 MiB,

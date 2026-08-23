@@ -27,9 +27,11 @@ recurring-sync policy, or native-memory behavior.
 The audited host now runs `cortana 0.34.31`; its `cortana --version`, readiness, native-memory,
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
-The installed v0.34.31 `eval --model` fixture also passed planner and synthesis execution, valid
-citations, cache reuse, and revision invalidation in 13,834 ms without provider fallback; this is
-synthetic fixture evidence only.
+The installed v0.34.31 `eval --model` fixture is not yet a reproducible provider gate. One direct
+run on 2026-08-23 failed closed at 15,915 ms because the configured `auto-free` provider returned
+an invalid-citation response; Cortana used the safe extractive fallback. A subsequent direct run
+and four instrumented reruns passed in 10,137–17,033 ms. These are intermittent synthetic-provider
+records only; approved-corpus answer/synthesis evidence remains open.
 
 The protected main tree contains the shared action-button hardening from PR #1864, promoted through
 exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reconciliation PR
