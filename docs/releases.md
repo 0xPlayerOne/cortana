@@ -24,7 +24,7 @@ The audited host now reports `cortana 0.34.23`; its `cortana --version`, readine
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
 The installed v0.34.23 `eval --model` fixture also passed planner and synthesis execution, valid
-citations, cache reuse, and revision invalidation in 16,777 ms without provider fallback; this is
+citations, cache reuse, and revision invalidation in 24,663 ms without provider fallback; this is
 synthetic fixture evidence only.
 
 ## v0.34.21 release notes (historical)

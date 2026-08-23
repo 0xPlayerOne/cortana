@@ -12,9 +12,8 @@ is not part of a visual/UI change.
   cross-platform package lanes; the 18-asset checksums, updater signatures, manifest, and
   packaged-core verifier passed. Asset verification does not launch the packaged GUI or
   prove OS-level signing/notarization.
-- The v0.34.23 macOS Apple Silicon package verifier passed the Tauri updater, packaged-core
-  offline evaluation, and strict codesign checks; the v0.34.22 package verifier passed the Tauri updater
-  signature, packaged-core offline evaluation, and strict codesign checks. `spctl --assess` still
+- The v0.34.23 macOS Apple Silicon package verifier passed the Tauri updater signature, packaged-core
+  offline evaluation, and strict codesign checks. `spctl --assess` still
   rejects the ad-hoc bundle because Developer ID signing and notarization are not configured; the
   verifier intentionally did not launch the GUI.
 - The supported v0.34.23 Desktop matrix is macOS Apple Silicon (arm64), Linux x86_64, and Windows
@@ -33,7 +32,7 @@ is not part of a visual/UI change.
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.34.23 host `eval --model` run passed planner and synthesis execution, citations,
-  cache reuse, and revision invalidation in 16,777 ms without provider fallback. This is provider-backed
+  cache reuse, and revision invalidation in 24,663 ms without provider fallback. This is provider-backed
   synthetic fixture evidence only; it does not query the personal index, authorize source
   synchronization, or prove packaged GUI behavior. The approved-corpus provider gate remains open.
 - The installed v0.34.23 binary passed the disposable native-memory, shared-agent HTTP, shared-agent
@@ -101,7 +100,7 @@ is not part of a visual/UI change.
   and Slack is unconfigured. The historical sweep is authorization/reachability
   evidence only and must not be read as current source authorization.
 
-- After the v0.34.21 installation, the current Apple Notes folder-scoped sources were revalidated
+- After the v0.34.22 installation, the current Apple Notes folder-scoped sources were revalidated
   with the bounded source-smoke command: `work-notes`, `personal-notes`, and `special-notes` all
   passed at the 25-document/5 MiB/60-second bound. The companion non-reconciling trial measurements
   immediately before this metadata-only release were `work-notes` 25 documents/118,540 bytes,
@@ -109,7 +108,7 @@ is not part of a visual/UI change.
   `work`/`personal`/`special` assignments. This is fresh connector evidence below the configured
   production budgets; the packaged GUI and larger acceptance flow remain separate gates.
 
-The current v0.34.22 source includes the post-v0.31.12 safety lane, which acquires
+The current v0.34.23 source includes the post-v0.31.12 safety lane, which acquires
 the global `sync.lock` before mutating CLI startup, bounds direct JSONL imports and custom fixture
 parsing before resource-heavy work, enforces native-memory retention bounds, and serializes Desktop
 sidecar preparation with atomic publication. Native Desktop settings and schedule writes also share
@@ -117,7 +116,7 @@ a per-config cross-process lock. These source-tree protections are covered by fo
 regressions; they do not authorize a source, enable recurring sync, or prove the unverified
 GUI/browser/tray/dialog/updater gates above.
 
-The v0.34.22 source includes the operational recovery change for the local embedding supervisor:
+The v0.34.23 source includes the operational recovery change for the local embedding supervisor:
 steady-state checks use the lightweight `/health` endpoint so queued ingestion work cannot look dead;
 startup and restart still require a real vector probe. The earlier v0.32.1 Work Drive trials were
 cancelled after that older supervisor stalled. After v0.32.2 installation, a foreground Work Drive
@@ -199,7 +198,7 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.34.23 host now passes the bounded synthetic
-   provider-backed fixture evaluator in 16,777 ms with planner/synthesis use, valid citations, cache
+   provider-backed fixture evaluator in 24,663 ms with planner/synthesis use, valid citations, cache
    reuse, and revision invalidation. No provider-backed evaluation against an approved personal
    index or the packaged GUI is claimed yet. Provider outages or slow responses still fail closed,
    and extractive mode remains the safe production default. The current package also passes
@@ -248,7 +247,7 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 ### Historical/provider audit (archived evidence through v0.30.10)
 
 The evidence in this section is retained for incident and migration history. It
-does not describe the current v0.34.22 source or the historical v0.32.6 core; use the
+does not describe the current v0.34.23 source or the historical v0.32.6 core; use the
 current-release section above for sign-off status.
 
 - A tracked-source scan found no Spark model, provider, configuration, or dependency. The only
@@ -264,8 +263,8 @@ current-release section above for sign-off status.
 - The v0.30.10 release snapshot (tag commit `b46dda8`, workflow `31515684053`)
   is historical evidence. It completed its then-current asset and signature
   checks, and the then-installed CLI reported `cortana 0.30.10`; neither proves
-  the current `v0.34.21` source or packaged Desktop behavior. The verified
-  `v0.32.12` asset workflow is historical; the active `v0.34.21` workflow is recorded in the release section above.
+  the current `v0.34.23` source or packaged Desktop behavior. The verified
+  `v0.32.12` asset workflow is historical; the active `v0.34.23` workflow is recorded in the release section above.
 - Historical v0.30.0, v0.30.2, and v0.30.7 evidence remains useful for release
   investigations, but it must not be read as current-release proof.
 - A static drill of the published `Cortana_0.29.64_aarch64.app.tar.gz` archive found the expected

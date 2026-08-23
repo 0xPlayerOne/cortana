@@ -95,7 +95,7 @@ the recurring-sync gate.
 The v0.34.23 release gate verifies the packaged core offline without credentials. The fresh
 provider-backed `cortana eval --model` run against the installed v0.34.23 binary passed retrieval
 recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and
-revision invalidation in 16,777 ms under the 55,000 ms bound, with no provider fallback. This is
+revision invalidation in 24,663 ms under the 55,000 ms bound, with no provider fallback. This is
 synthetic fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
 or authorize source synchronization. The approved-corpus provider-backed evaluation remains an open
 operator gate; the evaluator remains opt-in and extractive mode remains the production default.
@@ -115,13 +115,14 @@ zero forbidden-source leaks, hybrid retrieval without degradation, repeated-quer
 contains only bounded metrics and source IDs. This strengthens current retrieval and folder-scope
 evidence, but it is not provider-backed synthesis evidence and does not authorize recurring sync.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.23. The embedding, HTTP, and backup
-services are running with recurring sync uninstalled. The isolated `/healthz` and `/readyz` probes,
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.23. The embedding and HTTP services
+are running; readiness confirms a fresh verified backup while the backup scheduler and recurring sync
+remain uninstalled. The isolated `/healthz` and `/readyz` probes,
 `doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
 installation evidence, not proof of native GUI, browser OAuth, updater, or operating-system trust
 behavior.
 
-On 2026-08-22, the installed v0.34.21 binary passed the disposable native-memory lifecycle drill
+On 2026-08-22, the installed v0.34.22 binary passed the disposable native-memory lifecycle drill
 (dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (query/status/admin
 scope separation, ACL filtering, metadata-only audit, token rotation, and revocation), and the real
 MCP stdio drill (10 tools, workspace ACL filtering, and token rotation). The same binary passed the
@@ -155,7 +156,7 @@ enabled sources complete within the refreshed bounded limits, while the three Sp
 sources require reauthorization and Personal Drive still lacks a production-budget validation.
 The pass did not enable Discord, code, Slack, or synthesis.
 
-On 2026-08-22, the installed v0.34.21 binary revalidated all three configured Apple Notes folder
+On 2026-08-22, the installed v0.34.22 binary revalidated all three configured Apple Notes folder
 scopes with the bounded source-smoke command: `work-notes`, `personal-notes`, and `special-notes`
 all passed validation at the 25-document/5 MiB/60-second bound. The companion non-reconciling
 trial measurements were captured immediately before the metadata-only v0.34.20 release against
@@ -164,18 +165,18 @@ returned 25 (89,645 bytes), and `special-notes` returned 8 (14,046 bytes), with 
 Together these results confirm workspace folder routing and the current connector path, but remain
 below the configured production budgets and do not authorize recurring sync.
 
-The v0.34.22 source retains the post-v0.31.6 Apple Notes executable hardening and
+The v0.34.23 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current v0.34.22 source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.34.23 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.34.22 source; it does
+This protects concurrent Desktop windows/processes in the v0.34.23 source; it does
 not authorize source ingestion or recurring sync.
 
-The v0.34.22 source adds bounded embedding-supervisor recovery: steady-state health checks
+The v0.34.23 source adds bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -340,7 +341,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.34.22 source and package
+release evidence; use **Current release boundary** above for the v0.34.23 source and package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
