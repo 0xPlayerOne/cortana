@@ -1031,10 +1031,10 @@ async fn ready_with_probe_timeout(state: AppState, probe_timeout: Duration) -> i
 
 async fn ready_with_probe_timeouts(
     state: AppState,
-    stats_timeout: Duration,
+    store_timeout: Duration,
     probe_timeout: Duration,
 ) -> impl IntoResponse {
-    let result = match store_stats_with_timeout(state.store.clone(), stats_timeout).await {
+    let result = match store_probe_with_timeout(state.store.clone(), store_timeout).await {
         Ok(_) => probe_with_timeout(state.embedder.as_ref(), probe_timeout).await,
         Err(error) => Err(error),
     };
@@ -1052,6 +1052,10 @@ async fn ready_with_probe_timeouts(
     }
 }
 
+async fn store_probe_with_timeout(store: Store, timeout: Duration) -> Result<()> {
+    blocking_stats_with_timeout(move || store.probe(), timeout).await
+}
+
 async fn store_stats_with_timeout(store: Store, timeout: Duration) -> Result<StoreStats> {
     blocking_stats_with_timeout(move || store.stats(), timeout).await
 }
@@ -1063,6 +1067,21 @@ async fn store_stats_scoped_with_timeout(
     timeout: Duration,
 ) -> Result<StoreStats> {
     blocking_stats_with_timeout(move || store.stats_scoped(&acl, &source_keys), timeout).await
+}
+
+async fn memory_stats_with_timeout(
+    store: Store,
+    principal_acl: Option<Vec<String>>,
+    timeout: Duration,
+) -> Result<crate::memory::MemoryStats> {
+    blocking_stats_with_timeout(
+        move || match principal_acl {
+            Some(acl) => store.memory_stats_scoped(&acl),
+            None => store.memory_stats(),
+        },
+        timeout,
+    )
+    .await
 }
 
 async fn blocking_stats_with_timeout<F, T>(stats: F, timeout: Duration) -> Result<T>
@@ -1162,11 +1181,15 @@ async fn status(
     };
     let workspaces = fallback_workspaces(&visible_workspaces, source_projects);
     let counters = state.metrics.counters_for(&principal, owner);
-    let memory = if owner {
-        state.store.memory_stats()
-    } else {
-        state.store.memory_stats_scoped(&principal.visible_acl())
-    }
+    // Memory statistics use the same SQLite read mutex as corpus statistics.
+    // Keep this synchronous work off the async request worker so a contended
+    // database cannot stall /healthz or other control-plane requests.
+    let memory = memory_stats_with_timeout(
+        state.store.clone(),
+        (!owner).then(|| principal.visible_acl()),
+        READY_STORE_STATS_TIMEOUT,
+    )
+    .await
     .unwrap_or_default();
     Ok(Json(Status {
         status: "ok",

@@ -19,7 +19,7 @@ use crate::{
     config::Config,
     context,
     embed::Embedder,
-    memory::MemoryInput,
+    memory::{MemoryInput, MemoryStats},
     retrieval,
     store::Store,
 };
@@ -885,13 +885,16 @@ impl BrainServer {
         } {
             Ok(stats) => {
                 let count = usize::try_from(stats.documents).ok();
+                let memory = memory_stats_with_timeout(
+                    self.store.clone(),
+                    (!principal.is_owner()).then(|| acl.clone()),
+                    STATS_TIMEOUT,
+                )
+                .await
+                .unwrap_or_default();
                 let result = serde_json::to_string(&BrainStatus {
                     stats,
-                    memory: if principal.is_owner() {
-                        self.store.memory_stats().unwrap_or_default()
-                    } else {
-                        self.store.memory_stats_scoped(&acl).unwrap_or_default()
-                    },
+                    memory,
                     configured_sources: self
                         .configured_sources
                         .iter()
@@ -956,6 +959,26 @@ where
         Ok(Err(error)) => Err(anyhow::anyhow!("MCP stats probe worker failed: {error}")),
         Err(_) => Err(anyhow::anyhow!(
             "MCP stats probe timed out after {timeout:?}"
+        )),
+    }
+}
+
+async fn memory_stats_with_timeout(
+    store: Store,
+    principal_acl: Option<Vec<String>>,
+    timeout: Duration,
+) -> anyhow::Result<MemoryStats> {
+    let task = tokio::task::spawn_blocking(move || match principal_acl {
+        Some(acl) => store.memory_stats_scoped(&acl),
+        None => store.memory_stats(),
+    });
+    match tokio::time::timeout(timeout, task).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => Err(anyhow::anyhow!(
+            "MCP memory stats probe worker failed: {error}"
+        )),
+        Err(_) => Err(anyhow::anyhow!(
+            "MCP memory stats probe timed out after {timeout:?}"
         )),
     }
 }

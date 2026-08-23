@@ -59,6 +59,11 @@ fn bump_memory_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
 pub struct Store {
     connection: Arc<Mutex<Connection>>,
     read_connection: Arc<Mutex<Connection>>,
+    /// A dedicated control-plane connection keeps liveness/readiness probes
+    /// independent from the shared read connection used by document and
+    /// status queries. A slow full-corpus read must not make the service look
+    /// unavailable when the database itself is still responsive.
+    probe_connection: Arc<Mutex<Connection>>,
     memory_max_active: Arc<AtomicUsize>,
 }
 
@@ -311,11 +316,33 @@ impl Store {
         secure_database_files(path)?;
         let read_connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         read_connection.busy_timeout(DATABASE_BUSY_TIMEOUT)?;
+        let probe_connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        probe_connection.busy_timeout(Duration::from_millis(250))?;
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
             read_connection: Arc::new(Mutex::new(read_connection)),
+            probe_connection: Arc::new(Mutex::new(probe_connection)),
             memory_max_active: Arc::new(AtomicUsize::new(memory::DEFAULT_MEMORY_MAX_ACTIVE)),
         })
+    }
+
+    /// Run a cheap control-plane probe without contending with the shared
+    /// read connection. This verifies that schema metadata is available while
+    /// avoiding expensive document/grouped-statistics queries.
+    pub fn probe(&self) -> Result<()> {
+        let connection = self
+            .probe_connection
+            .lock()
+            .expect("probe connection lock poisoned");
+        let revision: Option<String> = connection
+            .query_row(
+                "SELECT value FROM meta WHERE key='corpus_revision'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        anyhow::ensure!(revision.is_some(), "database metadata is unavailable");
+        Ok(())
     }
 
     /// Configure the active-memory ceiling on this process-wide store handle.
@@ -4326,6 +4353,17 @@ mod tests {
             .expect("stats must not wait on the primary mutex");
         assert_eq!(stats.documents, 0);
         assert_eq!(stats.chunks, 0);
+    }
+
+    #[test]
+    fn probe_uses_a_dedicated_connection_when_the_shared_read_connection_is_busy() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let _read_connection_guard = store.read_connection.lock().expect("read connection lock");
+
+        store
+            .probe()
+            .expect("control-plane probe must not wait on shared reads");
     }
 
     #[test]
