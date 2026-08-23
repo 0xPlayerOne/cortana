@@ -60,14 +60,15 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The protected source and latest published release are **v0.34.28**. Release-assets workflow
-[`32620368448`](https://github.com/0xPlayerOne/cortana/actions/runs/32620368448) published the
-cross-platform package set for v0.34.28; the strict verifier passed all 18 assets, signatures,
-checksums, manifest, and packaged-core/resource inspection.
-The v0.34.28 package carries the v0.34.27 runtime evidence and the approved-answer-term evaluation
-contract from PR #1840, alongside the v0.34.5 runtime hardening,
+The protected source and latest published release are **v0.34.29**. Release Please PR #1870 is
+merged; release-assets workflow [`32623886575`](https://github.com/0xPlayerOne/cortana/actions/runs/32623886575)
+published all 18 assets, and the strict verifier passed their signatures, checksums, manifest, and
+packaged-core/resource inspection. Native Desktop acceptance and host installation remain separate
+gates.
+The v0.34.29 package carries the verified v0.34.28 runtime evidence and the approved-answer-term
+evaluation contract from PR #1840, alongside the v0.34.5 runtime hardening,
 the bounded Drive body-fetch improvement, and the
-shared action-button hardening from PR #1814,
+final shell action-button hardening from PR #1864,
 approved-corpus source-scope enforcement, and the five-minute Desktop cold-start budget
 from the protected `staging` → `main` flow:
 mutating CLI startup and direct JSONL imports serialize on the global lock, imports and
@@ -77,14 +78,14 @@ through a shared per-config lock, Desktop sidecars publish atomically, and compa
 controls share one tokenized button contract. The Desktop architecture guide records the selective
 shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
-The audited host installation now reports `cortana 0.34.28`; embedding and HTTP services are
+The audited host installation now reports `cortana 0.34.29`; embedding and HTTP services are
 healthy in query-only mode; readiness confirms a fresh verified backup, while the backup scheduler
 is not running and recurring sync remains uninstalled. The v0.34.20 readiness,
 native-memory, shared-agent, MCP, and control-plane evidence remains valid because v0.34.21,
 v0.34.22, v0.34.23, v0.34.24, v0.34.25, and v0.34.26 change only release metadata or release-flow/UI
-contracts. The installed v0.34.28 binary passed the deterministic offline fixture evaluation and
+contracts. The installed v0.34.29 binary passed the deterministic offline fixture evaluation and
 packaged-core verification. A fresh `cortana eval --model` run on 2026-08-23 passed planner and
-synthesis execution, citations, cache reuse, and revision invalidation in 15,279 ms without provider
+synthesis execution, citations, cache reuse, and revision invalidation in 20,369 ms without provider
 fallback. This is synthetic fixture
 evidence, not personal-index or packaged-GUI proof; the approved-corpus provider gate remains open.
 When a checkout and downloaded application report different versions, trust the application version
@@ -95,15 +96,14 @@ hardening has shipped.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current protected release is **v0.34.28**. Its
-release-assets workflow is the verified archive, checksum, updater-signature, and credential-free
-packaged-core verification gate. The Desktop app still has
+package for your operating system and CPU. The current verified release is **v0.34.29**; its
+release-assets and packaged-core checks passed, while the Desktop app still has
 separate manual gates for macOS Developer ID notarization and first-run operating-system
 interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 
-The v0.34.28 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
-x86_64**. v0.34.28 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
+The v0.34.29 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. v0.34.29 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
 this release. Rosetta execution or a core archive is not evidence of Intel Desktop support. A
 future Intel policy change requires a matching signed bundle, updater signature, installer
 verification, and native acceptance evidence.
