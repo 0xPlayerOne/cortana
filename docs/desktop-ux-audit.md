@@ -31,10 +31,12 @@ is not part of a visual/UI change.
   includes bounded parallel body fetching from PR #1594; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The installed v0.34.31 host `eval --model` run passed planner and synthesis execution, citations,
-  cache reuse, and revision invalidation in 13,834 ms without provider fallback. This is provider-backed
-  synthetic fixture evidence only; it does not query the personal index, authorize source
-  synchronization, or prove packaged GUI behavior. The approved-corpus provider gate remains open.
+- The installed v0.34.31 provider-backed fixture gate is intermittent: one direct run failed closed
+  at 15,915 ms because the configured `auto-free` provider returned invalid citations, then a
+  subsequent direct run and four instrumented reruns passed in 10,137–17,033 ms. Cortana used the
+  safe extractive fallback for the failed run. These are synthetic records only; they do not query
+  the personal index, authorize synchronization, or prove packaged GUI behavior. The approved-
+  corpus provider gate remains open.
 - The pre-upgrade v0.34.25 binary passed the disposable native-memory, shared-agent HTTP, shared-agent
   MCP, and offline Desktop control-plane drills on 2026-08-22. The drills use temporary synthetic
   indexes and verify dedupe/expiry/forget, workspace ACLs, metadata-only audit output, token
