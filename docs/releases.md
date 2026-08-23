@@ -44,6 +44,12 @@ package includes the already-verified UI hardening without relying on flattened 
 The v0.34.35 marker publishes the reconciled release metadata while preserving the readiness startup retry hardening merged in PR #1914. It does
 not authorize sources, enable recurring sync, change indexed data, or alter native-memory policy.
 
+The next patch marker carries the embedding warmup status hardening from PRs #1935 and #1937. During
+local-model startup, `/v1/status` now reports a bounded retryable 503 with safe warmup guidance
+instead of an opaque server error; the webview and native Desktop client preserve that guidance.
+This marker does not authorize sources, enable recurring sync, change indexed data, or alter
+native-memory policy. The v0.34.36 package is pending the protected Release Please flow.
+
 ## v0.34.29 release intent (published and verified; historical)
 
 The post-v0.34.28 source carries the shell action-button hardening from PR #1864. Rail navigation,
