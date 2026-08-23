@@ -67,8 +67,8 @@ The authoritative current release and open gates live in [Release history](relea
 ## Release boundary
 
 The published `v0.34.36` tag is the current source/release boundary. Release-assets workflow
-`32659532068` is still completing the Windows lane, so the strict cross-platform verifier is
-pending. A
+`32659532068` published all supported platform assets and the strict cross-platform verifier passed
+all 18 assets, signatures, checksums, manifest checks, and packaged-core checks. A
 source checkout can contain validated changes that are not yet in the installer;
 only a tag with recorded verifier evidence should be presented
 as downloadable release behavior.

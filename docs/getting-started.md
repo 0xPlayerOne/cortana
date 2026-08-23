@@ -23,8 +23,8 @@ The installer preserves an existing configuration, index, backups, and secrets. 
 authorize an account, download a connector corpus, start a sync, or enable a scheduler by itself.
 
 Before you begin, use a supported release package for your operating system and CPU and keep at
-least one backup location available. The v0.34.36 release is published; its Windows asset lane and
-strict package-integrity verifier are still pending. OS-level signing and
+least one backup location available. The v0.34.36 release is published; all supported platform
+assets and the strict package-integrity verifier passed all 18 assets. OS-level signing and
 notarization remain separate acceptance gates. It
 supports macOS Apple Silicon
 (arm64), Linux x86_64, and Windows x86_64; an Intel macOS Desktop package is not published or
