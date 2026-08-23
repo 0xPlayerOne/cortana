@@ -41,6 +41,10 @@ policy, or native-memory behavior.
 The conventional release marker was carried through the protected promotion so the published
 package includes the already-verified UI hardening without relying on flattened commit history.
 
+The next patch marker carries the readiness startup retry hardening merged in PR #1914. It only
+publishes the already-validated runtime fix; it does not authorize sources, enable recurring sync,
+change indexed data, or alter native-memory policy.
+
 ## v0.34.29 release intent (published and verified; historical)
 
 The post-v0.34.28 source carries the shell action-button hardening from PR #1864. Rail navigation,
@@ -413,7 +417,7 @@ the validated `staging` tree to `main`, where final audit and release gates run.
 The repository uses Code Foundry's `staging-release` workflow. Topic branches
 start from `staging` and merge there with squash after the fast validation tier.
 Code Foundry opens or maintains a separate `staging` → `main` promotion PR;
-that PR rebases into the protected release branch after the final audit and
+that PR squashes into the protected release branch after the final audit and
 release review pass. Release Please version PRs also target `main` and rebase
 through the same protected flow.
 
@@ -429,9 +433,9 @@ covered by the package-version regression test, keeping Python lock metadata
 aligned with the shared release manifest after an automated release.
 
 The merge methods are intentionally distinct: topic PRs squash into `staging`,
-while both the staging promotion PR and Release Please PR rebase into `main`.
-This keeps `main` linear and makes post-release staging reconciliation
-deterministic.
+the staging promotion PR squashes into `main`, and Release Please PRs rebase
+into `main`. This keeps `main` linear and makes post-release staging
+reconciliation deterministic.
 
 ## 0.19.0 release-history recovery
 
