@@ -547,7 +547,7 @@ Personal Drive's earlier 1,800-second and 900-second validations failed closed a
 deadlines while processing a large PDF/media corpus. After explicit reauthorization, the current
 bounded probe succeeded at 25 documents/5 MiB/60 seconds; the next production-budget run was
 operator-cancelled after 147 documents when serialized Drive body fetching stalled on a large PDF.
-Both cancelled attempts made zero index or reconciliation writes. The published v0.34.22 release
+Both cancelled attempts made zero index or reconciliation writes. The published v0.34.23 release
 boundary includes bounded four-worker fetching from PR #1594; the
 `readiness --allow-sync-service` gate must remain closed until every enabled source has a fresh
 complete record at its configured budget and the Special Google grant is repaired. No
