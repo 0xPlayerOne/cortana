@@ -85,7 +85,7 @@ native-memory, shared-agent, MCP, and control-plane evidence remains valid becau
 v0.34.22, v0.34.23, v0.34.24, v0.34.25, and v0.34.26 change only release metadata or release-flow/UI
 contracts. The installed v0.34.30 binary passed the deterministic offline fixture evaluation and
 packaged-core verification. A fresh `cortana eval --model` run on 2026-08-23 passed planner and
-synthesis execution, citations, cache reuse, and revision invalidation in 20,369 ms without provider
+synthesis execution, citations, cache reuse, and revision invalidation in 18,495 ms without provider
 fallback. This is synthetic fixture
 evidence, not personal-index or packaged-GUI proof; the approved-corpus provider gate remains open.
 When a checkout and downloaded application report different versions, trust the application version

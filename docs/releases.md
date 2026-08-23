@@ -28,7 +28,7 @@ The audited host now runs `cortana 0.34.30`; its `cortana --version`, readiness,
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
 The installed v0.34.30 `eval --model` fixture also passed planner and synthesis execution, valid
-citations, cache reuse, and revision invalidation in 20,369 ms without provider fallback; this is
+citations, cache reuse, and revision invalidation in 18,495 ms without provider fallback; this is
 synthetic fixture evidence only.
 
 The protected main tree contains the shared action-button hardening from PR #1864, promoted through
