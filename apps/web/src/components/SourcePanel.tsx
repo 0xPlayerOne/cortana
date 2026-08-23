@@ -132,33 +132,33 @@ export function SourcePanel({
     <aside className={`source-panel ${open ? 'mobile-open' : ''}`}>
       <div className="panel-heading">
         <strong>Sources</strong>
-        <button
-          type="button"
+        <Button
+          variant="icon"
           className="mobile-close quick-tooltip"
           aria-label="Close sources"
           data-tooltip="Close sources"
           onClick={onClose}
         >
           <X size={17} />
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="icon"
           className="quick-tooltip"
           aria-label="Add source"
           data-tooltip="Add source"
           onClick={onOpenSourcesSettings}
         >
           +
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="icon"
           className="quick-tooltip"
           aria-label="Source settings"
           data-tooltip="Source settings"
           onClick={onOpenSourcesSettings}
         >
           <Settings size={16} />
-        </button>
+        </Button>
       </div>
       <label className="sidebar-workspace-select">
         <span>Workspace</span>

@@ -172,6 +172,22 @@ test('titlebar controls perform real navigation actions', async () => {
   )
 })
 
+test('navigation and source-header actions use the shared icon-button primitive', async () => {
+  await renderApp()
+
+  for (const label of [
+    'Search',
+    'Filter documents',
+    'Open sources',
+    'Add source',
+    'Source settings',
+  ]) {
+    expect(screen.getByRole('button', { name: label }).className).toContain(
+      'cortana-button cortana-button--icon'
+    )
+  }
+})
+
 test('Graph is a full-screen rail view and Timeline is result-only', async () => {
   await renderApp()
 
