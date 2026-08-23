@@ -8,6 +8,7 @@ test('maps the shared button variants to stable semantic classes', () => {
   expect(buttonClassName('compact')).toBe('cortana-button cortana-button--compact')
   expect(buttonClassName('ghost')).toBe('cortana-button cortana-button--ghost')
   expect(buttonClassName('icon')).toBe('cortana-button cortana-button--icon')
+  expect(buttonClassName('danger')).toBe('cortana-button cortana-button--danger')
 })
 
 test('merges an optional class without dropping the semantic variant', () => {

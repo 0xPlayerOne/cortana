@@ -7,8 +7,8 @@ is not part of a visual/UI change.
 
 ## Current release evidence (2026-08-23)
 
-- `v0.34.25` is the current protected source/release, published through the protected promotion
-  and Release Please automation. Release-assets workflow `32614440784` published the
+- `v0.34.26` is the current protected source/release, published through the protected promotion
+  and Release Please automation. Release-assets workflow `32616159899` published the
   cross-platform package lanes; the strict verifier passed all 18 checksums, updater signatures,
   manifest, and packaged-core/resource checks. Asset verification does not launch the packaged GUI or
   prove OS-level signing/notarization.

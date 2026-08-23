@@ -377,6 +377,11 @@ explicit agent operations.
 
 ## Release verification
 
+The current published release is `v0.34.26`; release-assets workflow `32616159899` and the strict
+18-asset verifier passed. The audited host remains installed at v0.34.25, so host-install and
+personal-source evidence below is explicitly evidence for that installed runtime rather than a
+claim that v0.34.26 has been installed locally.
+
 Published releases have a final cross-platform asset gate. It checks that the core archives,
 checksums, signed macOS/Linux/Windows desktop installers, and every updater platform entry are
 present for the same tag before the release workflow succeeds. It also inspects the core archives
