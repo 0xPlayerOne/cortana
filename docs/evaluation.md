@@ -27,12 +27,12 @@ indexed data, recurring-sync policy, or native-memory behavior. The audited host
 Query-only readiness,
 `doctor`, deterministic `eval`, packaged-core verification, skill parity, and the disposable
 native-memory/shared-agent/control-plane drills all passed. The strict package gate is complete. Recurring sync remains
-uninstalled. The prior v0.34.35 `eval --model` provider gate passed on 2026-08-23 in 9,824 ms
-with planner/synthesis, valid citations, cache reuse, and revision invalidation. Earlier v0.34.32
-runs included one invalid-citation failure that correctly fell back to extractive mode; these are
-synthetic provider records only, not approved-corpus quality evidence.
+uninstalled. The current v0.34.37 `eval --model` provider gate passed on 2026-08-23 in 25,682 ms
+with planner/synthesis, valid citations, cache reuse, and revision invalidation. Earlier v0.34.35
+and v0.34.32 runs include intermittent invalid-citation failures that correctly fell back to
+extractive mode; these are synthetic provider records only, not approved-corpus quality evidence.
 
-A fresh installed v0.34.35 `eval --model` run on 2026-08-23 passed in 9,824 ms with planner and
+A fresh installed v0.34.37 `eval --model` run on 2026-08-23 passed in 25,682 ms with planner and
 synthesis, valid citations, cache reuse, and revision invalidation. This strengthens the bounded
 provider-health record but remains synthetic fixture evidence; it does not establish approved-
 corpus quality or authorize synthesis by default.

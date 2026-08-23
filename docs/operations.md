@@ -559,13 +559,14 @@ boundary includes bounded four-worker fetching from PR #1594; the
 complete record at its configured budget and the Special Google grant is repaired. No
 reconciliation or large sync has been run.
 
-The installed v0.34.37 provider-backed `cortana eval --model` gate is intermittent: one direct run
-failed closed at 15,915 ms because the configured `auto-free` provider returned invalid citations,
-then a subsequent direct run and four instrumented reruns passed in 10,137–17,033 ms under the
-55,000 ms bound. Cortana used the safe extractive fallback for the failed run. These are synthetic
-records only; they neither authorize source sync nor establish personal-index quality, and they do
-not replace the packaged GUI and signing gates. The approved-corpus provider gate remains open and
-the evaluator remains opt-in.
+The installed v0.34.37 provider-backed `cortana eval --model` gate passed on 2026-08-23 in
+25,682 ms with planner/synthesis, valid citations, cache reuse, and revision invalidation under the
+55,000 ms bound. An earlier direct run failed closed at 15,915 ms because the configured `auto-free`
+provider returned invalid citations, then a subsequent direct run and four instrumented reruns
+passed in 10,137–17,033 ms. Cortana used the safe extractive fallback for the failed run. These are
+synthetic records only; they neither authorize source sync nor establish personal-index quality,
+and they do not replace the packaged GUI and signing gates. The approved-corpus provider gate
+remains open and the evaluator remains opt-in.
 
 ### Historical rollout observations
 
