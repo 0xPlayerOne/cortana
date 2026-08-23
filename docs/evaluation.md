@@ -20,7 +20,7 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 ### Current release boundary
 
 The current protected source and published tag are `v0.34.32`, promoted through the protected
-staging → main flow and Release Please automation. Release-assets workflow `32642844805` published
+staging → main flow and Release Please automation. Release-assets workflow `32648129839` published
 the cross-platform package lanes; the 18-asset checksums, updater signatures, manifest, and
 packaged-core verifier passed. The release does not change credentials, source authorization,
 indexed data, recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.32.

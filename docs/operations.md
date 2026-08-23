@@ -377,7 +377,7 @@ explicit agent operations.
 
 ## Release verification
 
-The current published release is `v0.34.32`; release-assets workflow `32642844805` and the strict
+The current published release is `v0.34.32`; release-assets workflow `32648129839` and the strict
 18-asset verifier passed. The audited host now runs v0.34.32, so host-install and personal-source
 evidence below is explicitly evidence for that installed runtime.
 

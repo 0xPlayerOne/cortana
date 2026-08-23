@@ -15,7 +15,7 @@ Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
 `v0.34.32` tag is the current source and release boundary. Release Please PR #1905 merged the
 metadata-only follow-up to the exact v0.34.31 promotion. Release-assets workflow
-[`32642844805`](https://github.com/0xPlayerOne/cortana/actions/runs/32642844805) published
+[`32648129839`](https://github.com/0xPlayerOne/cortana/actions/runs/32648129839) published
 all 18 cross-platform archive, checksum, updater-signature, manifest, and packaged-core assets.
 The independent strict verifier passed all 18 assets, core checksums, updater signatures, the
 updater manifest, and packaged-core/resource inspection; published Linux binary execution is
@@ -35,7 +35,7 @@ records only; approved-corpus answer/synthesis evidence remains open.
 
 The protected main tree contains the shared action-button hardening from PR #1864, promoted through
 exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reconciliation PR
-#1872, the exact-tree promotion PR #1904, and the v0.34.32 Release Please PR #1905. These changes do not alter credentials, source authorization, indexed data, recurring-sync
+#1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, and the protected staging reconciliation PR #1906. These changes do not alter credentials, source authorization, indexed data, recurring-sync
 policy, or native-memory behavior.
 
 The conventional release marker was carried through the protected promotion so the published
