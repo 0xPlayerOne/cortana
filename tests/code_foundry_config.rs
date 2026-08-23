@@ -67,6 +67,75 @@ fn config_pins_runtime_ref() {
     );
 }
 
+fn assigned_version(path: &str, prefix: &str) -> String {
+    read(path)
+        .lines()
+        .find_map(|line| {
+            let value = line.trim().strip_prefix(prefix)?.trim();
+            let value = value.strip_prefix('"')?.split('"').next()?;
+            (!value.is_empty()).then(|| value.to_string())
+        })
+        .unwrap_or_else(|| panic!("missing version assignment `{prefix}` in {path}"))
+}
+
+fn package_lock_version(path: &str, package: &str) -> String {
+    let mut package_seen = false;
+    for line in read(path).lines() {
+        let trimmed = line.trim();
+        if trimmed == format!("name = \"{package}\"") {
+            package_seen = true;
+            continue;
+        }
+        if package_seen {
+            if let Some(value) = trimmed.strip_prefix("version = \"") {
+                return value
+                    .split('"')
+                    .next()
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_else(|| panic!("empty version for {package} in {path}"))
+                    .to_string();
+            }
+            if trimmed.starts_with("name = \"") || trimmed == "[[package]]" {
+                break;
+            }
+        }
+    }
+    panic!("missing package `{package}` version in {path}");
+}
+
+/// Release Please updates several independent package manifests. Keep a
+/// repository-level guard so a future release cannot publish a mixed-version
+/// Desktop bundle or connector package when one extra-file entry drifts.
+#[test]
+fn release_version_files_stay_aligned() {
+    let expected = assigned_version("Cargo.toml", "version = ");
+    for (path, prefix) in [
+        ("pyproject.toml", "version = "),
+        ("apps/desktop/src-tauri/Cargo.toml", "version = "),
+    ] {
+        assert_eq!(assigned_version(path, prefix), expected, "{path}");
+    }
+    for path in ["apps/web/package.json", "apps/desktop/package.json"] {
+        assert_eq!(assigned_version(path, "\"version\": "), expected, "{path}");
+    }
+    assert_eq!(
+        assigned_version("apps/desktop/src-tauri/tauri.conf.json", "\"version\": "),
+        expected,
+        "apps/desktop/src-tauri/tauri.conf.json"
+    );
+    assert_eq!(
+        assigned_version("src/cortana/__init__.py", "__version__ = "),
+        expected,
+        "src/cortana/__init__.py"
+    );
+    assert_eq!(package_lock_version("Cargo.lock", "cortana"), expected);
+    assert_eq!(
+        package_lock_version("apps/desktop/src-tauri/Cargo.lock", "cortana-desktop"),
+        expected
+    );
+    assert_eq!(package_lock_version("uv.lock", "cortana-brain"), expected);
+}
+
 #[test]
 fn release_merge_policy_matches_runtime_contract() {
     assert_eq!(config_value("merge_strategy"), "squash");
