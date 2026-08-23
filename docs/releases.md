@@ -37,6 +37,15 @@ source authorization, indexed data, recurring-sync policy, or native-memory beha
 The conventional release marker was carried through the protected promotion so the published
 package includes the already-verified UI hardening without relying on flattened commit history.
 
+## v0.34.29 release intent (pending protected release)
+
+The post-v0.34.28 source carries the shell action-button hardening from PR #1864. Rail navigation,
+titlebar actions, search-history controls, and source-header actions now use the shared token-backed
+icon-button primitive, with regression coverage for the standardized controls. This release intent
+changes no credentials, source authorization, indexed data, recurring-sync state, or native-memory
+policy. The protected staging-to-main promotion, Release Please version PR, release-assets workflow,
+and packaged-core verifier must complete before v0.34.29 is called downloadable or verified.
+
 ## v0.34.21 release notes (historical)
 
 The v0.34.21 release was a metadata-only follow-up to the verified v0.34.20 runtime. Its
