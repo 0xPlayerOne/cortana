@@ -19,12 +19,12 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.25`, promoted through the protected
-staging → main flow and Release Please automation. Release-assets workflow `32614440784` published
+The current protected source and published tag are `v0.34.26`, promoted through the protected
+staging → main flow and Release Please automation. Release-assets workflow `32616159899` published
 all cross-platform package lanes; its 18-asset checksums, updater signatures, manifest, and
 packaged-core gate passed the strict verifier. The release is a metadata-only promotion over
 v0.34.24; it does not change credentials, source authorization, indexed data, recurring-sync policy,
-or native-memory behavior. The audited host now runs v0.34.25; it restarted
+or native-memory behavior. The audited host remains installed at v0.34.25; it restarted
 only Cortana-owned services. Query-only readiness,
 `doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
 and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
