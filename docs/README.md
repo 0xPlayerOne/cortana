@@ -7,15 +7,15 @@ and contributor path.
 
 ## Current status
 
-| Area                           | Current boundary                                                                                                                                   |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Downloadable package           | `v0.34.35`; release-assets workflow `32655800967` and the strict verifier passed all 18 assets, signatures, checksums, manifest, and packaged core |
-| Source checkout                | Tracks the protected v0.34.35 tree; the tag is published and strictly verified; the audited host runs v0.34.35                                     |
-| Default runtime                | Query-only; no source authorization, full sync, or recurring schedule is enabled automatically; native memory is explicit-write only               |
-| Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                      |
-| Knowledge browser              | Obsidian-style workspace/source/document navigation with bounded hierarchical graph pages and local type filters                                   |
-| Operational visibility         | Query-only service status, health/readiness probes, source progress, and explicit stale-stat warnings during temporary SQLite contention           |
-| Still requires host acceptance | Packaged GUI/browser OAuth, tray and native dialogs, updater install, macOS Developer ID/notarization, and complete full-budget source validation  |
+| Area                           | Current boundary                                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Downloadable package           | `v0.34.36`; release-assets workflow `32659532068` is still completing the Windows lane; strict cross-platform verification is pending             |
+| Source checkout                | Tracks the protected v0.34.36 tree; the tag is published; the audited host runs v0.34.36; strict asset verification is pending                    |
+| Default runtime                | Query-only; no source authorization, full sync, or recurring schedule is enabled automatically; native memory is explicit-write only              |
+| Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                     |
+| Knowledge browser              | Obsidian-style workspace/source/document navigation with bounded hierarchical graph pages and local type filters                                  |
+| Operational visibility         | Query-only service status, health/readiness probes, source progress, and explicit stale-stat warnings during temporary SQLite contention          |
+| Still requires host acceptance | Packaged GUI/browser OAuth, tray and native dialogs, updater install, macOS Developer ID/notarization, and complete full-budget source validation |
 
 This table is the documentation boundary for the project. Update it whenever a release, safety gate,
 or first-run workflow changes; keep historical measurements in the linked audit and release pages
