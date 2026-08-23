@@ -311,7 +311,7 @@ freshly-created drill directory. Set `CORTANA_KEEP_DRILL=1` to retain the exact 
 The drill proves the offline CLI control plane only; it is not a proof of the Desktop GUI, OAuth
 flows, tray integration, or updater behavior, none of which it exercises.
 
-The installed v0.34.22 binary passed this drill on 2026-08-22. It created and searched the
+The installed v0.34.23 binary passed this drill on 2026-08-22. It created and searched the
 disposable fixture, exported metadata-only audit output, verified a backup, restored it into a
 second temporary data directory, and searched the restored index. The run never read or mutated
 the live configuration, index, credentials, or source connectors.
@@ -519,7 +519,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The v0.34.23 verifier will record this packaged-core gate in addition to the
+`passed: true`. The v0.34.23 verifier recorded this packaged-core gate in addition to the
 archive/signature/checksum/updater-manifest checks in the release-assets workflow.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
@@ -532,7 +532,7 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-22; published v0.34.23; installed v0.34.22)
+### Current local source rollout snapshot (2026-08-22; published and installed v0.34.23)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
 source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
@@ -553,8 +553,8 @@ boundary includes bounded four-worker fetching from PR #1594; the
 complete record at its configured budget and the Special Google grant is repaired. No
 reconciliation or large sync has been run.
 
-A fresh provider-backed `cortana eval --model` run on the installed v0.34.22 binary passed planner
-and synthesis execution, valid citations, cache reuse, and revision invalidation in 13,974 ms under
+A fresh provider-backed `cortana eval --model` run on the installed v0.34.23 binary passed planner
+and synthesis execution, valid citations, cache reuse, and revision invalidation in 16,777 ms under
 the 55,000 ms bound, without provider fallback. This is synthetic fixture evidence only; it neither
 authorizes source sync nor establishes personal-index quality, and it does not replace the separate
 packaged GUI and signing gates. The approved-corpus provider gate remains open and the evaluator

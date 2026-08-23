@@ -61,9 +61,8 @@ separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers 
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
 The protected source and latest published release are **v0.34.23**. Release-assets workflow
-[`32608361505`](https://github.com/0xPlayerOne/cortana/actions/runs/32608361505) is publishing the
-platform-package and strict 18-asset verification gate for v0.34.23; final verification remains
-pending until its hosted verifier completes. The v0.34.23
+[`32608361505`](https://github.com/0xPlayerOne/cortana/actions/runs/32608361505) completed the
+platform-package and strict 18-asset verification gate for v0.34.23. The v0.34.23
 package carries the v0.34.5 runtime hardening, the bounded Drive body-fetch improvement, and the
 selective shared-button UI increment from PR #1678,
 approved-corpus source-scope enforcement, and the five-minute Desktop cold-start budget
@@ -75,13 +74,13 @@ through a shared per-config lock, Desktop sidecars publish atomically, and compa
 controls share one tokenized button contract. The Desktop architecture guide records the selective
 shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
-The audited host installation now reports `cortana 0.34.22`. Embedding, HTTP, and backup services
+The audited host installation now reports `cortana 0.34.23`. Embedding, HTTP, and backup services
 are healthy in query-only mode; recurring sync remains uninstalled. The v0.34.20 readiness,
-native-memory, shared-agent, MCP, and control-plane evidence remains valid because v0.34.21 and
-v0.34.22 change only release metadata. The installed v0.34.22 binary also
+native-memory, shared-agent, MCP, and control-plane evidence remains valid because v0.34.21,
+v0.34.22, and v0.34.23 change only release metadata. The installed v0.34.23 binary also
 passed the deterministic offline fixture evaluation and packaged-core verification. A fresh
 `cortana eval --model` run on 2026-08-22 passed planner and synthesis execution, citations, cache
-reuse, and revision invalidation in 13,974 ms without provider fallback. This is synthetic fixture
+reuse, and revision invalidation in 16,777 ms without provider fallback. This is synthetic fixture
 evidence, not personal-index or packaged-GUI proof; the approved-corpus provider gate remains open.
 When a checkout and downloaded application report different versions, trust the application version
 for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree
