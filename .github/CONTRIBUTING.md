@@ -54,7 +54,7 @@ docs/*  test/*  refactor/*         │              │
 | `staging`                                                      | Integration branch       | Target normal pull requests here; required fast checks must pass.                     |
 | `feat/*`, `fix/*`, `chore/*`, `refactor/*`, `docs/*`, `test/*` | Focused work             | Branch from `staging`; keep changes small and reviewable.                             |
 
-The Git workflow is `staging-release`: topic branches **squash** into `staging`, the staging-to-main promotion PR **rebases** into `main` (`merge_strategy: rebase`), and the Release Please version PR **rebases** into `main` (`release_merge_strategy: rebase`). Release automation never defaults to a merge method and never merges with `--admin`; `code-foundry doctor` and `code-foundry sync` fail closed on any other strategy.
+The Git workflow is `staging-release`: topic branches **squash** into `staging`, the staging-to-main promotion PR **squashes** into `main` (`merge_strategy: squash`), and the Release Please version PR **squashes** into `main` (`release_merge_strategy: squash`). Squash preserves the exact promoted tree while matching the repository's protected auto-merge policy; rebase is not enabled for these protected flows. Release automation never defaults to a merge method and never merges with `--admin`; `code-foundry doctor` and `code-foundry sync` fail closed on any other strategy.
 
 ## Before you start
 
@@ -113,7 +113,7 @@ For maintainers, trusted contributors, and automation agents:
 
 8. Push the branch and open a pull request into `staging`.
 9. Address review feedback and failed checks on the same branch.
-10. Merge with a squash after the fast staging checks pass and the change is ready; promotion and release PRs use rebase into `main`.
+10. Merge with a squash after the fast staging checks pass and the change is ready; promotion and release PRs also use squash into `main`.
 
 ### Internal agent handoff
 
@@ -182,8 +182,8 @@ Security checks can be skipped when repository visibility or the GitHub plan doe
 | Change | Target | Merge method | Merge gate |
 |----------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Working branch | `staging` | Squash | Fast required checks pass |
-| `staging` → `main` promotion PR | `main` | Rebase (`merge_strategy`) | Final audit, release review, and required checks pass |
-| Release Please version PR | `main` | Rebase (`release_merge_strategy`, fails closed) | Validation gate and release policy pass |
+| `staging` → `main` promotion PR | `main` | Squash (`merge_strategy`) | Final audit, release review, and required checks pass |
+| Release Please version PR | `main` | Squash (`release_merge_strategy`, fails closed) | Validation gate and release policy pass |
 Reviewers focus on correctness, security, maintainability, test coverage, operational impact, and compatibility. Authors remain responsible for responding to feedback and verifying the final commit.
 
 ## Security and emergencies

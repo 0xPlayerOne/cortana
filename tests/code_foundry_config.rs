@@ -69,8 +69,8 @@ fn config_pins_runtime_ref() {
 
 #[test]
 fn release_merge_policy_matches_runtime_contract() {
-    assert_eq!(config_value("merge_strategy"), "rebase");
-    assert_eq!(config_value("release_merge_strategy"), "rebase");
+    assert_eq!(config_value("merge_strategy"), "squash");
+    assert_eq!(config_value("release_merge_strategy"), "squash");
 }
 
 /// Rust CodeQL shards across the three standalone Cargo manifests: the root
