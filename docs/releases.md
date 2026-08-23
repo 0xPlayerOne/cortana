@@ -9,29 +9,29 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.27
+## Current release: v0.34.28
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.27` tag is the current source and release boundary. Release-assets workflow
-[`32618262456`](https://github.com/0xPlayerOne/cortana/actions/runs/32618262456) published the
+`v0.34.28` tag is the current source and release boundary. Release-assets workflow
+[`32620368448`](https://github.com/0xPlayerOne/cortana/actions/runs/32620368448) published the
 archive, checksum, updater-signature, manifest, and packaged-core artifacts. The independent strict
 verifier passed all 18 assets, archive checksums, updater signatures, the updater manifest, and
 packaged-core/resource inspection; published Linux binary execution is skipped on non-Linux hosts.
 
-The v0.34.27 release carries forward the verified v0.34.25 runtime evidence and the v0.34.26
+The v0.34.28 release carries forward the verified v0.34.27 runtime evidence and the v0.34.27
 protected tree. It changes no credentials, source authorization, indexed data, recurring-sync policy,
 or native-memory behavior.
-The audited host now runs `cortana 0.34.27`; its `cortana --version`, readiness, native-memory,
+The audited host now runs `cortana 0.34.28`; its `cortana --version`, readiness, native-memory,
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
-The installed v0.34.27 `eval --model` fixture also passed planner and synthesis execution, valid
-citations, cache reuse, and revision invalidation in 12,082 ms without provider fallback; this is
+The installed v0.34.28 `eval --model` fixture also passed planner and synthesis execution, valid
+citations, cache reuse, and revision invalidation in 15,279 ms without provider fallback; this is
 synthetic fixture evidence only.
 
 The protected main tree also contains the shared action-button hardening from PR #1814, the
 release-merge contract correction from PR #1828, and the exact staging reconciliation through PR
-#1847 followed by the v0.34.27 Release Please PR #1848. These changes do not alter credentials,
+#1854 followed by the v0.34.28 Release Please PR #1855. These changes do not alter credentials,
 source authorization, indexed data, recurring-sync policy, or native-memory behavior.
 
 The conventional release marker was carried through the protected promotion so the published
