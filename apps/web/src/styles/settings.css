@@ -739,31 +739,11 @@
   gap: 8px;
 }
 
-.source-card-actions button:not(.cortana-button),
-.source-validation-job button:not(.cortana-button) {
-  display: inline-flex;
-  height: var(--btn-compact-height);
-  align-items: center;
-  padding: var(--btn-compact-padding);
-  gap: 5px;
-  color: var(--theme-text-primary);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xs);
-  background: var(--theme-control-bg);
-  cursor: pointer;
-  font-size: 10px;
-}
-
 .source-card-actions .source-icon-button {
   width: var(--btn-icon-size);
+  height: var(--btn-icon-size);
   justify-content: center;
   padding: 0;
-}
-
-.source-card-actions button:not(.cortana-button):disabled,
-.source-validation-job button:not(.cortana-button):disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 
 .source-form-grid {
@@ -1166,15 +1146,6 @@
   flex: 1;
 }
 
-.secret-input button:not(.cortana-button) {
-  padding: 0 10px;
-  color: #d9b46f;
-  border: 1px solid #5d4a27;
-  background: #282217;
-  cursor: pointer;
-  font-size: 11px;
-}
-
 .toggle-row {
   display: flex;
   align-items: flex-start;
@@ -1298,13 +1269,6 @@
   white-space: nowrap;
 }
 
-.readiness-list button:not(.cortana-button) {
-  padding: 5px 10px;
-  color: #777973;
-  border: 1px solid #444541;
-  background: transparent;
-}
-
 .installer-job {
   margin-top: 12px;
   padding: 13px 15px;
@@ -1328,14 +1292,6 @@
 .installer-job small {
   color: var(--muted);
   text-transform: capitalize;
-}
-
-.installer-job button {
-  padding: 5px 10px;
-  color: #deddd7;
-  border: 1px solid var(--line);
-  background: #2a2b28;
-  cursor: pointer;
 }
 
 .installer-job pre {
@@ -1604,61 +1560,6 @@
   color: #9fc8a5;
   border: 0;
   background: transparent;
-}
-
-/* Compact operational actions share the same elevated surface as the main
- * button contract. These selectors cover intentionally specialized controls
- * that have not yet adopted the shared Button primitive. */
-.service-actions > button:not(.cortana-button),
-.source-card-actions > button:not(.source-icon-button):not(.cortana-button),
-.source-validation-job button:not(.cortana-button),
-.readiness-list button:not(.cortana-button),
-.installer-job button:not(.cortana-button) {
-  display: inline-flex;
-  min-width: 0;
-  height: var(--btn-compact-height);
-  align-items: center;
-  justify-content: center;
-  padding: var(--btn-compact-padding);
-  gap: 5px;
-  color: var(--theme-text-primary);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-xs);
-  background: var(--theme-surface-elevated);
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.service-actions > button:not(.cortana-button):hover:enabled,
-.source-card-actions > button:not(.source-icon-button):not(.cortana-button):hover:enabled,
-.source-validation-job button:not(.cortana-button):hover:enabled,
-.readiness-list button:not(.cortana-button):hover:enabled,
-.installer-job button:not(.cortana-button):hover:enabled {
-  border-color: var(--amber-soft);
-  background: var(--theme-control-bg-hover);
-}
-
-.service-actions > button:not(.cortana-button):focus-visible,
-.source-card-actions > button:not(.source-icon-button):not(.cortana-button):focus-visible,
-.source-validation-job button:not(.cortana-button):focus-visible,
-.readiness-list button:not(.cortana-button):focus-visible,
-.installer-job button:not(.cortana-button):focus-visible {
-  outline-offset: 2px;
-}
-
-.service-actions > button:not(.cortana-button):disabled,
-.source-card-actions > button:not(.source-icon-button):not(.cortana-button):disabled,
-.source-validation-job button:not(.cortana-button):disabled,
-.readiness-list button:not(.cortana-button):disabled,
-.installer-job button:not(.cortana-button):disabled {
-  color: var(--theme-content-muted);
-  border-color: var(--line);
-  background: var(--theme-surface);
-  cursor: not-allowed;
-  opacity: 1;
 }
 
 @media (max-width: 900px) {
