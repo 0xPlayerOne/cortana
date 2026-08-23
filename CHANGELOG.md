@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.37](https://github.com/0xPlayerOne/cortana/compare/v0.34.36...v0.34.37) (2026-08-23)
+
+
+### Maintenance
+
+* **ci:** update Code Foundry and use direct main workflow ([#1958](https://github.com/0xPlayerOne/cortana/issues/1958)) ([4a2c5fb](https://github.com/0xPlayerOne/cortana/commit/4a2c5fb259e64024cce218f4effa7c8a16954da1))
+
 ## [0.34.36](https://github.com/0xPlayerOne/cortana/compare/v0.34.35...v0.34.36) (2026-08-23)
 
 

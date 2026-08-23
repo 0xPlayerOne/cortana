@@ -69,7 +69,7 @@ evaluation contract from PR #1840, alongside the v0.34.5 runtime hardening,
 the bounded Drive body-fetch improvement, and the
 final shell action-button hardening from PR #1864,
 approved-corpus source-scope enforcement, and the five-minute Desktop cold-start budget
-from the protected `staging` → `main` flow:
+from the direct-to-`main` squash-merge flow:
 mutating CLI startup and direct JSONL imports serialize on the global lock, imports and
 evaluation fixtures have explicit resource ceilings, remote `/readyz` requires scoped bearer
 access, native memory writes are idempotent and fenced, Desktop settings and schedules serialize
