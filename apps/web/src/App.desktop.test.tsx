@@ -1473,6 +1473,12 @@ test('source settings show a compact workspace-first row with collapsed advanced
     fireEvent.click(summary)
     expect(details.open).toBe(true)
     expect(screen.getByLabelText('Source label')).toBeTruthy()
+
+    for (const label of ['Validate', 'Trial sync', 'Initial sync', 'Remove work-code']) {
+      const action = screen.getByRole('button', { name: label })
+      expect(action.className).toContain('cortana-button')
+      expect(action.className).toContain('cortana-button--icon')
+    }
   } finally {
     state.settings = originalSettings
   }
