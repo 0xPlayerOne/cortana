@@ -1128,7 +1128,7 @@ async fn status(
                     "database statistics are temporarily stale; showing the last successful snapshot",
                 ),
             ),
-            None => return Err(internal_error(error)),
+            None => return Err(status_stats_error(error)),
         },
     };
     let source_projects = if owner {
@@ -1863,6 +1863,18 @@ fn internal_error(error: anyhow::Error) -> (StatusCode, String) {
     )
 }
 
+fn status_stats_error(error: anyhow::Error) -> (StatusCode, String) {
+    let detail = error.to_string();
+    if detail.contains("stats probe timed out") {
+        tracing::warn!(%error, "Cortana status snapshot is temporarily unavailable");
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Cortana is warming up; live status will be available shortly".into(),
+        );
+    }
+    internal_error(error)
+}
+
 fn default_limit() -> usize {
     10
 }
@@ -1969,6 +1981,27 @@ mod tests {
     #[test]
     fn internal_errors_do_not_expose_server_details() {
         let (status, message) = internal_error(anyhow!(
+            "open /Users/private/.config/cortana/store.sqlite3: permission denied"
+        ));
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(message, "Cortana could not complete the request");
+        assert!(!message.contains("/Users/private"));
+    }
+
+    #[test]
+    fn status_stats_timeout_is_reported_as_retryable_warmup() {
+        let (status, message) =
+            status_stats_error(anyhow!("readiness stats probe timed out after 2s"));
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            message,
+            "Cortana is warming up; live status will be available shortly"
+        );
+    }
+
+    #[test]
+    fn status_stats_failures_remain_generic_and_do_not_expose_details() {
+        let (status, message) = status_stats_error(anyhow!(
             "open /Users/private/.config/cortana/store.sqlite3: permission denied"
         ));
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);

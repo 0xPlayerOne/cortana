@@ -655,6 +655,10 @@ the CLI before it installs the sync schedule.
 Desktop service install and start/stop/restart commands use a bounded five-minute cold-start budget
 so a local embedding model can warm without being reported as a false failure; a genuine timeout
 still terminates the isolated helper process and remains visible as a retryable error.
+During that warm-up window, `/v1/status` may return `503 Service Unavailable` with a bounded
+warm-up message while `/healthz` remains a liveness-only `200`; the Desktop preserves that message
+and retries the status snapshot instead of labeling the index permanently offline. Other status
+failures remain generic and fail closed.
 Desktop-at-login is a separate setting: enabling it starts the tray/control plane, not ingestion.
 Desktop **Start all**, **Stop all**, and **Restart all** operate only on the embedding and server
 jobs. Sync and backup are deliberately excluded from those aggregate actions.
