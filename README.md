@@ -84,10 +84,11 @@ is not running and recurring sync remains uninstalled. The v0.34.20 readiness,
 native-memory, shared-agent, MCP, and control-plane evidence remains valid because v0.34.21,
 v0.34.22, v0.34.23, v0.34.24, v0.34.25, and v0.34.26 change only release metadata or release-flow/UI
 contracts. The installed v0.34.31 binary passed the deterministic offline fixture evaluation and
-packaged-core verification. A fresh `cortana eval --model` run on 2026-08-23 passed planner and
-synthesis execution, citations, cache reuse, and revision invalidation in 13,834 ms without provider
-fallback. This is synthetic fixture
-evidence, not personal-index or packaged-GUI proof; the approved-corpus provider gate remains open.
+packaged-core verification. On 2026-08-23, one direct `cortana eval --model` run failed closed at
+15,915 ms because the configured `auto-free` provider returned an invalid-citation response;
+Cortana safely used extractive fallback. A subsequent direct run and four instrumented reruns
+passed in 10,137–17,033 ms. This is intermittent synthetic provider evidence, not personal-index
+or packaged-GUI proof; the approved-corpus provider gate remains open.
 When a checkout and downloaded application report different versions, trust the application version
 for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree
 hardening has shipped.
