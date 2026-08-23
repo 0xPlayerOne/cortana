@@ -281,26 +281,75 @@ where
 }
 
 async fn embedding_check(embedder: &dyn Embedder, startup_timeout: Duration) -> ReadinessCheck {
-    match tokio::time::timeout(startup_timeout, embedder.probe()).await {
-        Ok(Ok(())) => ReadinessCheck {
-            name: "embedding-provider".into(),
-            passed: true,
-            detail: "embedding probe returned a vector".into(),
-        },
-        Ok(Err(error)) => ReadinessCheck {
-            name: "embedding-provider".into(),
-            passed: false,
-            detail: error.to_string(),
-        },
-        Err(_) => ReadinessCheck {
-            name: "embedding-provider".into(),
-            passed: false,
-            detail: format!(
-                "embedding probe exceeded {} seconds",
-                startup_timeout.as_secs()
-            ),
-        },
+    let deadline = tokio::time::Instant::now() + startup_timeout;
+    let mut transient_attempts = 0usize;
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() {
+            return ReadinessCheck {
+                name: "embedding-provider".into(),
+                passed: false,
+                detail: format!(
+                    "embedding probe exceeded {} seconds",
+                    startup_timeout.as_secs()
+                ),
+            };
+        }
+        match tokio::time::timeout(remaining, embedder.probe()).await {
+            Ok(Ok(())) => {
+                return ReadinessCheck {
+                    name: "embedding-provider".into(),
+                    passed: true,
+                    detail: if transient_attempts == 0 {
+                        "embedding probe returned a vector".into()
+                    } else {
+                        format!(
+                            "embedding probe returned a vector after {transient_attempts} transient retries"
+                        )
+                    },
+                };
+            }
+            Ok(Err(error)) if is_transient_embedding_error(&error) => {
+                transient_attempts += 1;
+                let delay = Duration::from_secs(1)
+                    .min(deadline.saturating_duration_since(tokio::time::Instant::now()));
+                if delay.is_zero() {
+                    continue;
+                }
+                tracing::warn!(
+                    attempt = transient_attempts,
+                    error = %error,
+                    "embedding readiness probe encountered a transient provider error; retrying"
+                );
+                tokio::time::sleep(delay).await;
+            }
+            Ok(Err(error)) => {
+                return ReadinessCheck {
+                    name: "embedding-provider".into(),
+                    passed: false,
+                    detail: error.to_string(),
+                };
+            }
+            Err(_) => {
+                return ReadinessCheck {
+                    name: "embedding-provider".into(),
+                    passed: false,
+                    detail: format!(
+                        "embedding probe exceeded {} seconds",
+                        startup_timeout.as_secs()
+                    ),
+                };
+            }
+        }
     }
+}
+
+fn is_transient_embedding_error(error: &anyhow::Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<reqwest::Error>()
+            .is_some_and(|error| error.is_connect() || error.is_timeout() || error.is_request())
+    })
 }
 
 async fn api_check(api_url: &str) -> ReadinessCheck {
@@ -549,6 +598,7 @@ fn source_validation_check(config: &Config, allow_sync_service: bool) -> Readine
 #[cfg(test)]
 mod tests {
     use std::fs::File;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use tempfile::tempdir;
 
@@ -573,6 +623,38 @@ mod tests {
         }
     }
 
+    struct EventuallyReadyEmbedder {
+        remaining_failures: AtomicUsize,
+        client: reqwest::Client,
+        unavailable_url: String,
+    }
+
+    #[async_trait::async_trait]
+    impl Embedder for EventuallyReadyEmbedder {
+        async fn embed(&self, _input: &[String]) -> anyhow::Result<Vec<Vec<f32>>> {
+            if self
+                .remaining_failures
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+                    value.checked_sub(1)
+                })
+                .is_ok()
+            {
+                let error = self
+                    .client
+                    .get(&self.unavailable_url)
+                    .send()
+                    .await
+                    .expect_err("the probe endpoint should be unavailable");
+                return Err(error.into());
+            }
+            Ok(vec![vec![0.25]])
+        }
+
+        fn fingerprint(&self) -> String {
+            "eventually-ready-embedder".into()
+        }
+    }
+
     #[tokio::test]
     async fn embedding_check_passes_when_probe_finishes_after_15s_within_budget() {
         let embedder = DelayedProbeEmbedder {
@@ -594,6 +676,26 @@ mod tests {
         let check = embedding_check(&embedder, Duration::from_secs(10)).await;
         assert!(!check.passed);
         assert_eq!(check.detail, "embedding probe exceeded 10 seconds");
+    }
+
+    #[tokio::test]
+    async fn embedding_check_retries_transient_provider_failures_until_ready() {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("reserve test port");
+        let unavailable_url = format!("http://{}/", listener.local_addr().expect("test address"));
+        drop(listener);
+        let embedder = EventuallyReadyEmbedder {
+            remaining_failures: AtomicUsize::new(2),
+            client: reqwest::Client::builder()
+                .connect_timeout(Duration::from_millis(100))
+                .build()
+                .expect("test client"),
+            unavailable_url,
+        };
+
+        let check = embedding_check(&embedder, Duration::from_secs(3)).await;
+
+        assert!(check.passed, "{check:?}");
+        assert!(check.detail.contains("2 transient retries"));
     }
 
     #[test]
