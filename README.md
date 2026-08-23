@@ -60,12 +60,12 @@ tools, Desktop workspace, and CLI are one system; connectors are replaceable inp
 separate databases. Local Qwen embeddings and OpenAI-compatible cloud providers share the same
 contract, while content-addressed caching avoids repeating work when source content is unchanged.
 
-The protected source and latest published release are **v0.34.30**. Release Please PR #1876 is
-merged; release-assets workflow [`32625481582`](https://github.com/0xPlayerOne/cortana/actions/runs/32625481582)
+The protected source and latest published release are **v0.34.31**. Release Please PR #1884 is
+merged; release-assets workflow [`32642844805`](https://github.com/0xPlayerOne/cortana/actions/runs/32642844805)
 published all 18 assets, and the strict verifier passed their signatures, checksums, manifest, and
 packaged-core/resource inspection. Native Desktop acceptance and host installation remain separate
 gates.
-The v0.34.30 package is a metadata-only follow-up to v0.34.29 and carries its verified runtime evidence and the approved-answer-term
+The v0.34.31 package is a metadata-only follow-up to v0.34.30 and carries its verified runtime evidence and the approved-answer-term
 evaluation contract from PR #1840, alongside the v0.34.5 runtime hardening,
 the bounded Drive body-fetch improvement, and the
 final shell action-button hardening from PR #1864,
@@ -83,11 +83,12 @@ healthy in query-only mode; readiness confirms a fresh verified backup, while th
 is not running and recurring sync remains uninstalled. The v0.34.20 readiness,
 native-memory, shared-agent, MCP, and control-plane evidence remains valid because v0.34.21,
 v0.34.22, v0.34.23, v0.34.24, v0.34.25, and v0.34.26 change only release metadata or release-flow/UI
-contracts. The installed v0.34.30 binary passed the deterministic offline fixture evaluation and
-packaged-core verification. A fresh `cortana eval --model` run on 2026-08-23 passed planner and
-synthesis execution, citations, cache reuse, and revision invalidation in 20,369 ms without provider
-fallback. This is synthetic fixture
-evidence, not personal-index or packaged-GUI proof; the approved-corpus provider gate remains open.
+contracts. The installed v0.34.31 binary passed the deterministic offline fixture evaluation and
+packaged-core verification. On 2026-08-23, one direct `cortana eval --model` run failed closed at
+15,915 ms because the configured `auto-free` provider returned an invalid-citation response;
+Cortana safely used extractive fallback. A subsequent direct run and four instrumented reruns
+passed in 10,137–17,033 ms. This is intermittent synthetic provider evidence, not personal-index
+or packaged-GUI proof; the approved-corpus provider gate remains open.
 When a checkout and downloaded application report different versions, trust the application version
 for end-user behavior and use [Release history](docs/releases.md) to determine which source-tree
 hardening has shipped.
@@ -96,14 +97,14 @@ hardening has shipped.
 
 For normal use, download Cortana from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest) and choose the
-package for your operating system and CPU. The current verified release is **v0.34.30**; its
+package for your operating system and CPU. The current verified release is **v0.34.31**; its
 release-assets and packaged-core checks passed, while the Desktop app still has
 separate manual gates for macOS Developer ID notarization and first-run operating-system
 interactions; those limits are documented in the
 [Desktop audit](docs/desktop-ux-audit.md).
 
-The v0.34.30 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
-x86_64**. v0.34.30 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
+The v0.34.31 Desktop support matrix is **macOS Apple Silicon (arm64), Linux x86_64, and Windows
+x86_64**. v0.34.31 does not publish an Intel macOS Desktop bundle; Intel macOS is unsupported for
 this release. Rosetta execution or a core archive is not evidence of Intel Desktop support. A
 future Intel policy change requires a matching signed bundle, updater signature, installer
 verification, and native acceptance evidence.

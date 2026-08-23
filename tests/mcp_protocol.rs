@@ -69,6 +69,16 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
             "the public MCP tool surface changed; update this contract test deliberately"
         );
 
+        let remember = tools
+            .iter()
+            .find(|tool| tool.name == "remember")
+            .expect("remember tool must be present");
+        let remember_schema = serde_json::to_value(&*remember.input_schema)?;
+        assert!(
+            remember_schema["properties"]["provenance"].is_object(),
+            "remember.provenance must be an object schema so strict MCP clients accept tools/list"
+        );
+
         // tools/call for brain_status must succeed with a structured JSON text result.
         let result: CallToolResult = client
             .call_tool(CallToolRequestParams::new("brain_status"))
