@@ -9,42 +9,45 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.28
+## Current release: v0.34.29
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.28` tag is the current source and release boundary. Release-assets workflow
-[`32620368448`](https://github.com/0xPlayerOne/cortana/actions/runs/32620368448) published the
-archive, checksum, updater-signature, manifest, and packaged-core artifacts. The independent strict
-verifier passed all 18 assets, archive checksums, updater signatures, the updater manifest, and
-packaged-core/resource inspection; published Linux binary execution is skipped on non-Linux hosts.
+`v0.34.29` tag is the current source and release boundary. Release Please PR #1870 and the exact
+staging promotion PR #1869 are merged, and staging was reconciled through PR #1872. Release-assets
+workflow [`32623886575`](https://github.com/0xPlayerOne/cortana/actions/runs/32623886575) published
+all 18 cross-platform archive, checksum, updater-signature, manifest, and packaged-core assets.
+The independent strict verifier passed all 18 assets, core checksums, updater signatures, the
+updater manifest, and packaged-core/resource inspection; published Linux binary execution is
+skipped on non-Linux hosts.
 
-The v0.34.28 release carries forward the verified v0.34.27 runtime evidence and the v0.34.27
-protected tree. It changes no credentials, source authorization, indexed data, recurring-sync policy,
-or native-memory behavior.
-The audited host now runs `cortana 0.34.28`; its `cortana --version`, readiness, native-memory,
+The v0.34.29 release carries forward the verified v0.34.28 runtime evidence and the protected UI
+action-button hardening from PR #1864. It changes no credentials, source authorization, indexed data,
+recurring-sync policy, or native-memory behavior.
+The audited host now runs `cortana 0.34.29`; its `cortana --version`, readiness, native-memory,
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
-The installed v0.34.28 `eval --model` fixture also passed planner and synthesis execution, valid
-citations, cache reuse, and revision invalidation in 15,279 ms without provider fallback; this is
+The installed v0.34.29 `eval --model` fixture also passed planner and synthesis execution, valid
+citations, cache reuse, and revision invalidation in 20,369 ms without provider fallback; this is
 synthetic fixture evidence only.
 
-The protected main tree also contains the shared action-button hardening from PR #1814, the
-release-merge contract correction from PR #1828, and the exact staging reconciliation through PR
-#1854 followed by the v0.34.28 Release Please PR #1855. These changes do not alter credentials,
-source authorization, indexed data, recurring-sync policy, or native-memory behavior.
+The protected main tree contains the shared action-button hardening from PR #1864, promoted through
+exact-tree PR #1869, the v0.34.29 Release Please PR #1870, and staging metadata reconciliation PR
+#1872. These changes do not alter credentials, source authorization, indexed data, recurring-sync
+policy, or native-memory behavior.
 
 The conventional release marker was carried through the protected promotion so the published
 package includes the already-verified UI hardening without relying on flattened commit history.
 
-## v0.34.29 release intent (pending protected release)
+## v0.34.29 release intent (published and verified)
 
 The post-v0.34.28 source carries the shell action-button hardening from PR #1864. Rail navigation,
 titlebar actions, search-history controls, and source-header actions now use the shared token-backed
 icon-button primitive, with regression coverage for the standardized controls. This release intent
 changes no credentials, source authorization, indexed data, recurring-sync state, or native-memory
-policy. The protected staging-to-main promotion, Release Please version PR, release-assets workflow,
-and packaged-core verifier must complete before v0.34.29 is called downloadable or verified.
+policy. The release-assets workflow and packaged-core verifier are complete. Native Desktop
+acceptance, host installation, source production-budget validation, provider-corpus evaluation, and
+macOS Developer ID/notarization remain separate gates.
 
 ## v0.34.21 release notes (historical)
 

@@ -77,14 +77,14 @@ evidence is required.
 Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
 8 MiB maximum line. Use separate reviewed batches for larger migrations.
 
-On the current v0.34.28 source tree, mutating CLI startup acquires the same global `sync.lock`
+On the current v0.34.29 source tree, mutating CLI startup acquires the same global `sync.lock`
 before opening the store. This covers schema/backfill/fingerprint work as well as the later import
-or sync operation. This is included in the published v0.34.28 source release.
+or sync operation. This is included in the published v0.34.29 source release.
 
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
 so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
-included in the published v0.34.28 source release; keep the same lock requirement when running a newer
+included in the published v0.34.29 source release; keep the same lock requirement when running a newer
 source checkout or development build.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
@@ -377,8 +377,8 @@ explicit agent operations.
 
 ## Release verification
 
-The current published release is `v0.34.28`; release-assets workflow `32620368448` and the strict
-18-asset verifier passed. The audited host now runs v0.34.28, so host-install and personal-source
+The current published release is `v0.34.29`; release-assets workflow `32623886575` and the strict
+18-asset verifier passed. The audited host now runs v0.34.29, so host-install and personal-source
 evidence below is explicitly evidence for that installed runtime.
 
 Published releases have a final cross-platform asset gate. It checks that the core archives,
