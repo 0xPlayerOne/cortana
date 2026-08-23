@@ -60,8 +60,9 @@ synthesis explicitly enabled in an isolated temporary server. Scoped retrieval p
 recall@k 1.0, MRR 1.0, hybrid retrieval, and no ACL leakage. The provider-backed answer request
 timed out at the 25-second request bound on both the initial and repeated call, reported provider
 fallback, and did not use synthesis or the answer cache. The overall provider-backed gate therefore
-failed closed while the deterministic extractive default remains healthy; this is current live
-operational evidence, not a quality pass or authorization to enable provider synthesis by default.
+failed closed while the deterministic extractive default remains healthy; this is historical live
+operational evidence from the v0.34.20 runtime, not a current-release quality pass or authorization
+to enable provider synthesis by default.
 
 The older production-budget results below are retained as historical evidence, not current
 authorization. They document prior successful prefixes and failure/recovery behavior, but the
