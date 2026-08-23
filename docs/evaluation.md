@@ -58,6 +58,12 @@ deletions; Work Drive and Personal Drive both reached the 60-second safety bound
 `budget_exceeded`. This is source-operational evidence only and remains below every configured
 production budget.
 
+After installing v0.34.32, a fresh validation-only sweep on 2026-08-23 repeated the same
+25-document/5 MiB/60-second bound without opening the index or running a trial sync: 10 of 13
+enabled non-code profiles passed, including Personal Drive, while `special-drive`, `special-gmail`,
+and `special-calendar` failed closed with authorization denied. The result confirms the current
+release preserves the source gate; it does not authorize reconciliation or recurring sync.
+
 An approved-corpus, read-only v0.34.20 evaluation against the local query API also ran with
 synthesis explicitly enabled in an isolated temporary server. Scoped retrieval passed with
 recall@k 1.0, MRR 1.0, hybrid retrieval, and no ACL leakage. The provider-backed answer request
