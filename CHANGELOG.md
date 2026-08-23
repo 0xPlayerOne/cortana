@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.36](https://github.com/0xPlayerOne/cortana/compare/v0.34.35...v0.34.36) (2026-08-23)
+
+
+### Bug Fixes
+
+* **release:** promote v0.34.36 status warmup ([#1942](https://github.com/0xPlayerOne/cortana/issues/1942)) ([69a1e36](https://github.com/0xPlayerOne/cortana/commit/69a1e36fb8ee62dd757d740fd23f915b69976309))
+
 ## [0.34.35](https://github.com/0xPlayerOne/cortana/compare/v0.34.34...v0.34.35) (2026-08-23)
 
 
