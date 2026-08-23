@@ -8,6 +8,12 @@ tools; see [the skill](../skills/cortana/SKILL.md) for the full retrieval protoc
 [the query guide](query.md) for pipeline details. This guide covers installation and client
 configuration only.
 
+## Current release boundary
+
+The current protected source and published package are `v0.34.30`. The portable skill, MCP, HTTP,
+and CLI contracts below are version-aligned with that release. Installing the skill does not expose
+credentials, authorize a source, enable recurring sync, or change client configuration implicitly.
+
 ## Install the portable skill
 
 `scripts/install-agent-integrations.sh` installs the skill into the current Codex and
