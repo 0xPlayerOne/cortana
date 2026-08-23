@@ -115,8 +115,9 @@ zero forbidden-source leaks, hybrid retrieval without degradation, repeated-quer
 contains only bounded metrics and source IDs. This strengthens current retrieval and folder-scope
 evidence, but it is not provider-backed synthesis evidence and does not authorize recurring sync.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.23. The embedding, HTTP, and backup
-services are running with recurring sync uninstalled. The isolated `/healthz` and `/readyz` probes,
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.23. The embedding and HTTP services
+are running; readiness confirms a fresh verified backup while the backup scheduler and recurring sync
+remain uninstalled. The isolated `/healthz` and `/readyz` probes,
 `doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
 installation evidence, not proof of native GUI, browser OAuth, updater, or operating-system trust
 behavior.
