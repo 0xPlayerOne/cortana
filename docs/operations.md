@@ -502,7 +502,7 @@ verification is mandatory by default; set `CORTANA_REQUIRE_MINISIGN=0` only for 
 work where `minisign` is intentionally unavailable.
 
 ```bash
-  GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.34.28
+  GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.34.31
 ```
 
 It checks the bundle version, executes only the bundled core's `--version`
@@ -523,7 +523,7 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The v0.34.28 verifier recorded this packaged-core gate in addition to the
+`passed: true`. The v0.34.31 verifier recorded this packaged-core gate in addition to the
 archive/signature/checksum/updater-manifest checks in the release-assets workflow.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
