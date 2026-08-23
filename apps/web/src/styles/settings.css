@@ -741,6 +741,7 @@
 
 .source-card-actions .source-icon-button {
   width: var(--btn-icon-size);
+  height: var(--btn-icon-size);
   justify-content: center;
   padding: 0;
 }
