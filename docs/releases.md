@@ -9,23 +9,30 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.21
+## Current release: v0.34.22
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.21` tag is the current source and release boundary. Release-assets workflow
-[`32605080974`](https://github.com/0xPlayerOne/cortana/actions/runs/32605080974) is publishing the
+`v0.34.22` tag is the current source and release boundary. Release-assets workflow
+[`32606500860`](https://github.com/0xPlayerOne/cortana/actions/runs/32606500860) completed the
 strict archive, checksum, updater-signature, manifest, and packaged-core verification gate; all
-18 assets must pass the independent strict verifier before this release is called fully verified.
+18 assets passed the independent strict verifier.
 
-The v0.34.21 release is a metadata-only follow-up to the verified v0.34.20 runtime. It changes no
+The v0.34.22 release is a metadata-only follow-up to the verified v0.34.21 runtime. It changes no
 credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.
-The audited host now reports `cortana 0.34.21`; its `cortana --version`, readiness, native-memory,
+The audited host now reports `cortana 0.34.22`; its `cortana --version`, readiness, native-memory,
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
-The installed v0.34.21 `eval --model` fixture also passed planner and synthesis execution, valid
-citations, cache reuse, and revision invalidation in 12,733 ms without provider fallback; this is
+The installed v0.34.22 `eval --model` fixture also passed planner and synthesis execution, valid
+citations, cache reuse, and revision invalidation in 13,974 ms without provider fallback; this is
 synthetic fixture evidence only.
+
+## v0.34.21 release notes (historical)
+
+The v0.34.21 release was a metadata-only follow-up to the verified v0.34.20 runtime. Its
+18-asset release workflow `32605080974` and strict package verifiers passed; the installed host
+passed query-only readiness, deterministic evaluation, and the disposable memory/shared-agent/
+control-plane drills. These records remain valid evidence for the metadata-equivalent v0.34.22.
 
 ## v0.34.20 release notes (historical)
 
