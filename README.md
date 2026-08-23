@@ -77,8 +77,8 @@ controls share one tokenized button contract. The Desktop architecture guide rec
 shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
 The audited host installation now reports `cortana 0.34.32`; embedding and HTTP services are
-healthy in query-only mode; readiness confirms a fresh verified backup, while the backup scheduler
-is not running and recurring sync remains uninstalled. The v0.34.20 readiness,
+healthy in query-only mode; readiness confirms a fresh verified backup, while the installed backup
+scheduler is idle between intervals and recurring sync remains uninstalled. The v0.34.20 readiness,
 native-memory, shared-agent, MCP, and control-plane evidence remains valid because v0.34.21,
 v0.34.22, v0.34.23, v0.34.24, v0.34.25, and v0.34.26 change only release metadata or release-flow/UI
 contracts. The installed v0.34.32 binary passed the deterministic offline fixture evaluation and
