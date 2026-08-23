@@ -377,10 +377,10 @@ explicit agent operations.
 
 ## Release verification
 
-The current published release is `v0.34.36`; release-assets workflow `32659532068` is still
-completing the Windows lane, so strict cross-platform verification is pending. The audited host
-now runs v0.34.36, so host-install and personal-source evidence below is explicitly evidence for
-that installed runtime.
+The current published release is `v0.34.36`; release-assets workflow `32659532068` completed all
+platform lanes and the independent strict verifier passed all 18 assets, checksums, updater
+signatures, manifest checks, and packaged-core checks. The audited host now runs v0.34.36, so
+host-install and personal-source evidence below is explicitly evidence for that installed runtime.
 
 Published releases have a final cross-platform asset gate. It checks that the core archives,
 checksums, signed macOS/Linux/Windows desktop installers, and every updater platform entry are
@@ -524,9 +524,9 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The v0.34.36 core archive already passed this packaged-core gate; the full
-archive/signature/checksum/updater-manifest release gate remains pending until the Windows assets
-are complete.
+`passed: true`. The v0.34.36 core archive and the full archive/signature/checksum/updater-manifest
+release gate both passed in release-assets workflow `32659532068`. This remains separate from GUI,
+OAuth, tray/dialog, updater-install, and macOS Developer ID/notarization acceptance.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
 
