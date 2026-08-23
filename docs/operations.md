@@ -554,7 +554,7 @@ complete record at its configured budget and the Special Google grant is repaire
 reconciliation or large sync has been run.
 
 A fresh provider-backed `cortana eval --model` run on the installed v0.34.23 binary passed planner
-and synthesis execution, valid citations, cache reuse, and revision invalidation in 16,777 ms under
+and synthesis execution, valid citations, cache reuse, and revision invalidation in 24,663 ms under
 the 55,000 ms bound, without provider fallback. This is synthetic fixture evidence only; it neither
 authorizes source sync nor establishes personal-index quality, and it does not replace the separate
 packaged GUI and signing gates. The approved-corpus provider gate remains open and the evaluator
