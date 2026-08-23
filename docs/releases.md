@@ -9,46 +9,47 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.36
+## Current release: v0.34.37
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.36` tag is the current source and release boundary. Release Please PR #1943 merged the
-metadata-only follow-up to the exact v0.34.36 promotion. Release-assets workflow
-[`32659532068`](https://github.com/0xPlayerOne/cortana/actions/runs/32659532068) has published
+`v0.34.37` tag is the current source and release boundary. Release Please PR #1960 published the
+version marker through the direct-`main` workflow after the Code Foundry migration. The retained
+`staging` ref was then reconciled through protected PR #1964 with an exact current-main tree.
+Release-assets workflow
+[`32668798980`](https://github.com/0xPlayerOne/cortana/actions/runs/32668798980) published
 all macOS/Linux/Windows core and Desktop lanes. The independent strict verifier passed all 18
 assets, checksums, updater signatures, manifest checks, and packaged-core checks; the published
 package is complete. This verifies package integrity, not native GUI, OAuth, or OS trust acceptance.
 
-The v0.34.36 release carries forward the verified v0.34.34 runtime evidence and the protected UI
-action-button hardening from PR #1864. It changes no credentials, source authorization, indexed data,
-recurring-sync policy, or native-memory behavior.
-The audited host now runs `cortana 0.34.36`; its `cortana --version`, readiness, native-memory,
-shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
-The embedding service requires a short model warm-up after restart before health becomes ready.
-The installed v0.34.36 `eval --model` fixture is not yet a reproducible provider gate. The prior
-v0.34.35 run on 2026-08-23 failed closed at 15,915 ms because the configured `auto-free` provider returned
-an invalid-citation response; Cortana used the safe extractive fallback. A subsequent direct run
-and four instrumented reruns passed in 10,137–17,033 ms. These are intermittent synthetic-provider
-records only; approved-corpus answer/synthesis evidence remains open.
+The v0.34.37 release carries forward the verified v0.34.36 runtime evidence and adds the
+control-plane readiness hardening from PR #1954: `/readyz` uses a dedicated lightweight SQLite
+probe, while HTTP and MCP status counters use bounded blocking work. It changes no credentials,
+source authorization, indexed data, recurring-sync policy, or native-memory behavior.
+The audited host now runs `cortana 0.34.37`; its binary, controlled service restart, readiness,
+native-memory, shared-agent, MCP, and control-plane checks are current. The embedding service
+requires a short model warm-up after restart before health becomes ready.
+A fresh v0.34.37 `cortana eval --model` run on 2026-08-23 passed in 25,682 ms with
+planner/synthesis, valid citations, cache reuse, and revision invalidation. The prior v0.34.35
+run failed closed at 15,915 ms because the configured `auto-free` provider returned an
+invalid-citation response; Cortana used the safe extractive fallback. These are synthetic-provider
+records only; approved-corpus answer/synthesis evidence remains open and synthesis remains opt-in.
 
 The protected main tree contains the shared action-button hardening from PR #1864, promoted through
 exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reconciliation PR
-#1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, the v0.34.33 Release Please PR #1911, the readiness startup fix from PR #1914, the v0.34.34 Release Please PR #1923, and the v0.34.36 Release Please PR #1943. These changes do not alter credentials, source authorization, indexed data, recurring-sync
+#1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, the v0.34.33 Release Please PR #1911, the readiness startup fix from PR #1914, the v0.34.34 Release Please PR #1923, the v0.34.36 Release Please PR #1943, and the v0.34.37 Release Please PR #1960. These changes do not alter credentials, source authorization, indexed data, recurring-sync
 policy, or native-memory behavior.
 
-The conventional release marker was carried through the protected promotion so the published
-package includes the already-verified UI hardening without relying on flattened commit history.
+The v0.34.37 marker carries the bounded readiness/status hardening while preserving the
+direct-`main` merge strategy. It does not authorize sources, enable recurring sync, change indexed
+data, or alter native-memory policy. The package and cross-platform asset verification are complete;
+native GUI, OAuth, and OS trust acceptance remain separate manual gates.
 
-The v0.34.36 marker publishes the reconciled release metadata while preserving the readiness startup retry hardening merged in PR #1914. It does
-not authorize sources, enable recurring sync, change indexed data, or alter native-memory policy.
+## v0.34.36 release notes (historical)
 
-The v0.34.36 marker carries the embedding warmup status hardening from PRs #1935 and #1937. During
-local-model startup, `/v1/status` now reports a bounded retryable 503 with safe warmup guidance
-instead of an opaque server error; the webview and native Desktop client preserve that guidance.
-This marker does not authorize sources, enable recurring sync, change indexed data, or alter
-native-memory policy. The package and cross-platform asset verification are complete; native GUI,
-OAuth, and OS trust acceptance remain separate manual gates.
+The v0.34.36 metadata release carried forward the verified v0.34.34 runtime evidence and the
+protected UI action-button hardening from PR #1864. Its package verification and host evidence are
+historical; current source, package, and installed-runtime claims belong to v0.34.37 above.
 
 ## v0.34.29 release intent (published and verified; historical)
 
