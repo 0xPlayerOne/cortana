@@ -19,16 +19,16 @@ emits JSON and exits nonzero when a threshold fails. The required fixture covers
 
 ### Current release boundary
 
-The current protected source and published tag are `v0.34.30`, promoted through the protected
-staging → main flow and Release Please automation. Release-assets workflow `32625481582` published
+The current protected source and published tag are `v0.34.31`, promoted through the protected
+staging → main flow and Release Please automation. Release-assets workflow `32642844805` published
 the cross-platform package lanes; the 18-asset checksums, updater signatures, manifest, and
 packaged-core verifier passed. The release does not change credentials, source authorization,
-indexed data, recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.30.
+indexed data, recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.31.
 Query-only readiness,
 `doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
 and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
-uninstalled. A fresh v0.34.30 `eval --model` run also passed planner/synthesis execution, citation
-validation, cache reuse, and revision invalidation in 18,495 ms without provider fallback; this is
+uninstalled. A fresh v0.34.31 `eval --model` run also passed planner/synthesis execution, citation
+validation, cache reuse, and revision invalidation in 13,834 ms without provider fallback; this is
 synthetic fixture evidence only.
 
 An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
@@ -60,8 +60,9 @@ synthesis explicitly enabled in an isolated temporary server. Scoped retrieval p
 recall@k 1.0, MRR 1.0, hybrid retrieval, and no ACL leakage. The provider-backed answer request
 timed out at the 25-second request bound on both the initial and repeated call, reported provider
 fallback, and did not use synthesis or the answer cache. The overall provider-backed gate therefore
-failed closed while the deterministic extractive default remains healthy; this is current live
-operational evidence, not a quality pass or authorization to enable provider synthesis by default.
+failed closed while the deterministic extractive default remains healthy; this is historical live
+operational evidence from the v0.34.20 runtime, not a current-release quality pass or authorization
+to enable provider synthesis by default.
 
 The older production-budget results below are retained as historical evidence, not current
 authorization. They document prior successful prefixes and failure/recovery behavior, but the
@@ -93,7 +94,7 @@ restarted the router, and query-only readiness passed afterward. A subsequent v0
 100-document/16 MiB/300-second bound completed `changed=0`, `unchanged=100`, and `deleted=0`.
 This closes the bounded retry observation but not the complete 478-document production trial or
 the recurring-sync gate.
-The v0.34.28 release gate verifies the packaged core offline without credentials. The fresh
+Historical v0.34.28 release-gate evidence verified the packaged core offline without credentials. The fresh
 provider-backed `cortana eval --model` run against the installed v0.34.28 binary passed retrieval
 recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and
 revision invalidation in 15,279 ms under the 55,000 ms bound, with no provider fallback. This is
@@ -116,7 +117,7 @@ zero forbidden-source leaks, hybrid retrieval without degradation, repeated-quer
 contains only bounded metrics and source IDs. This strengthens current retrieval and folder-scope
 evidence, but it is not provider-backed synthesis evidence and does not authorize recurring sync.
 
-The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.28. The embedding and HTTP services
+The audited host now runs `/Users/amf/.local/bin/cortana` v0.34.31. The embedding and HTTP services
 are running; readiness confirms a fresh verified backup while the backup scheduler and recurring sync
 remain uninstalled. The isolated `/healthz` and `/readyz` probes,
 `doctor`, and `readiness --max-backup-age-hours 48` passed after the upgrade. This is local
@@ -166,18 +167,18 @@ returned 25 (89,645 bytes), and `special-notes` returned 8 (14,046 bytes), with 
 Together these results confirm workspace folder routing and the current connector path, but remain
 below the configured production budgets and do not authorize recurring sync.
 
-The v0.34.28 source retains the post-v0.31.6 Apple Notes executable hardening and
+The current v0.34.31 source retains the post-v0.31.6 Apple Notes executable hardening and
 Buzz source-directory/log-size guards. The published archive evaluation above is
 not packaged-GUI evidence.
 
 The model fixture remains synthetic and does not authorize sources or recurring sync.
 
-The current v0.34.28 source tree also serializes Desktop settings and service-schedule writes through a
+The current v0.34.31 source tree also serializes Desktop settings and service-schedule writes through a
 shared per-config lock, held across validation, backups, atomic replacement, and audit writing.
-This protects concurrent Desktop windows/processes in the v0.34.28 source; it does
+This protects concurrent Desktop windows/processes in the v0.34.31 source; it does
 not authorize source ingestion or recurring sync.
 
-The v0.34.28 source adds bounded embedding-supervisor recovery: steady-state health checks
+The current v0.34.31 source retains bounded embedding-supervisor recovery: steady-state health checks
 avoid queueing vector requests, while startup and restart still require a real vector probe. The
 cancelled v0.32.2 Work Drive trial is an operational throughput observation, not a failed
 retrieval-quality result; a longer bounded retry is required before advancing that source gate.
@@ -346,7 +347,7 @@ continue through citation validation fail-closed.
 ### Historical provider-run notes (archived)
 
 The run records below are retained for incident and migration history. They are not current
-release evidence; use **Current release boundary** above for the v0.34.28 source and package
+release evidence; use **Current release boundary** above for the v0.34.31 source and package
 state.
 
 An earlier configured-provider attempt at source commit `339240e` passed the bounded model gate in
