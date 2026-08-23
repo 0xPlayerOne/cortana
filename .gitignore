@@ -77,6 +77,10 @@ mise.local.lock
 *.code-workspace
 
 # Repository-specific rules
+.devin/
+.hermes/
+.pi/
+# .agents/ is committed for team sharing — do NOT ignore it
 apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/binaries/
 apps/desktop/src-tauri/resources/

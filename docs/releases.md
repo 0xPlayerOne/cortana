@@ -50,11 +50,6 @@ This marker does not authorize sources, enable recurring sync, change indexed da
 native-memory policy. The package and cross-platform asset verification are complete; native GUI,
 OAuth, and OS trust acceptance remain separate manual gates.
 
-The next patch release carries the control-plane readiness hardening validated in staging: `/readyz`
-uses a dedicated SQLite probe, while HTTP and MCP status memory counters run behind bounded blocking
-probes so a contended corpus read cannot stall liveness or readiness responses. This change does not
-authorize sources, enable recurring sync, alter credentials, or modify indexed data.
-
 ## v0.34.29 release intent (published and verified; historical)
 
 The post-v0.34.28 source carries the shell action-button hardening from PR #1864. Rail navigation,
@@ -418,34 +413,28 @@ version PR, published assets, and strict 18-asset verifier have completed succes
 
 Generated version pull requests are restricted to changelog and configured
 version files, then merged automatically without running the code-change test
-matrix. Topic pull requests target the protected `staging` branch and run the
-fast validation tier before merge. A separate protected promotion PR carries
-the validated `staging` tree to `main`, where final audit and release gates run.
+matrix. Topic pull requests target the protected `main` branch and squash after
+the required validation gates. Release Please version PRs also target `main`
+and rebase through the protected release contract.
 
-## Staging-release invariant
+## Direct-main invariant
 
-The repository uses Code Foundry's `staging-release` workflow. Topic branches
-start from `staging` and merge there with squash after the fast validation tier.
-Code Foundry opens or maintains a separate `staging` → `main` promotion PR;
-that PR squashes into the protected release branch after the final audit and
-release review pass. Release Please version PRs also target `main` and rebase
-through the same protected flow.
+The repository uses Code Foundry's `direct` workflow. Topic branches start from
+`main` and merge there with squash after the required validation gates. Release
+Please version PRs also target `main` and rebase through the protected release
+contract.
 
 The release caller (`release.yml`) triggers only on pushes to `main` and
 delegates the Release Please contract to the pinned Code Foundry runtime. The
-staging promotion caller triggers from `staging` and creates the protected
-promotion PR; it does not publish a release or bypass branch protection.
-After a release, Code Foundry reconciles `staging` with the new `main` tree
-through its protected reconciliation path.
+No staging promotion caller or branch reconciliation is required.
 
 The `uv.lock` project entry carries a Release Please version annotation and is
 covered by the package-version regression test, keeping Python lock metadata
 aligned with the shared release manifest after an automated release.
 
-The merge methods are intentionally distinct: topic PRs squash into `staging`,
-the staging promotion PR squashes into `main`, and Release Please PRs rebase
-into `main`. This keeps `main` linear and makes post-release staging
-reconciliation deterministic.
+The merge methods are intentionally distinct: topic PRs squash into `main`,
+while Release Please version PRs rebase into `main`. This keeps the protected
+release branch linear without a second integration branch.
 
 ## 0.19.0 release-history recovery
 
@@ -535,12 +524,11 @@ manual Desktop and source-authorization gates remain separate.
 
 ## Desktop release gates
 
-The desktop pipeline follows a staged audit policy:
+The desktop pipeline follows a direct-main audit policy:
 
-- **Staging PRs keep desktop feedback fast.** `desktop.yml` exposes the stable
-  `Tauri 2 / Linux` aggregate for both `staging` and `main`, but its six
-  expensive jobs are final-audit jobs and stay skipped on staging PRs. Code
-  Foundry's fast staging tier remains the single quick validation path.
+- **Main PRs run the desktop aggregate.** `desktop.yml` exposes the stable
+  `Tauri 2 / Linux` aggregate for main-targeted pull requests. Its six
+  independent jobs provide the final desktop audit before merge.
 - **Main code PRs require the desktop aggregate.** Ordinary main-targeted code
   pull requests run six independent jobs: `gtk_provenance`, `gtk_iterator`,
   `security_audit` (pinned Rust dependency audit), `desktop_test`,
@@ -548,13 +536,9 @@ The desktop pipeline follows a staged audit policy:
   `Tauri 2 / Linux` aggregate depends on all six and must pass before merge.
   Provenance, the iterator test, dependency auditing, desktop tests, and
   clippy run concurrently so no independent check waits behind another.
-- **Staging-to-main promotion defers the full desktop audit.** The protected
-  exact-tree promotion PR skips all six expensive desktop jobs because the
-  staged tree already passed the fast validation tier; the stable `Tauri 2 /
-Linux` aggregate still runs and accepts those explicit skips. The expensive
-  jobs remain available for ordinary main code PRs and manual workflow
-  dispatch, while release-assets performs the published-package audit. This
-  prevents rerunning the same long desktop checks during promotion.
+- **Release Please PRs stay lightweight.** Version-only release PRs skip the
+  expensive desktop jobs; manual workflow dispatch remains available for a
+  full audit, while release-assets performs the published-package audit.
 - **Repository quality is owned by Code Foundry Validation / CI.** The
   `desktop_test` and `desktop_clippy` jobs do not rerun the root `type-check` or
   `build` scripts: Code Foundry Validation / CI already runs the Python, Rust,

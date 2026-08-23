@@ -2,7 +2,7 @@ name: Desktop
 
 on:
   pull_request:
-    branches: [main, staging]
+    branches: [main]
   # Explicit manual final audit path: dispatch this workflow to force the
   # Linux release compilation on any branch, independent of PR state.
   workflow_dispatch:
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Keep the required aggregate check present on every integration/release PR
+  # Keep the required aggregate check present on every main/release PR
   # without starting the expensive desktop jobs for backend-only changes.
   changes:
     name: Detect desktop changes
@@ -74,15 +74,14 @@ jobs:
   gtk_provenance:
     name: GTK Provenance
     needs: changes
-    # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
-    # staging tier; keep these jobs for main PRs and explicit dispatches only.
+    # Desktop-specific jobs are final-audit work; keep these jobs for main PRs
+    # and explicit dispatches only.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
-       !startsWith(github.event.pull_request.head.ref, 'promote/')))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -123,15 +122,14 @@ jobs:
   gtk_iterator:
     name: GTK iterator (release)
     needs: changes
-    # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
-    # staging tier; keep these jobs for main PRs and explicit dispatches only.
+    # Desktop-specific jobs are final-audit work; keep these jobs for main PRs
+    # and explicit dispatches only.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
-       !startsWith(github.event.pull_request.head.ref, 'promote/')))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -178,8 +176,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
-       !startsWith(github.event.pull_request.head.ref, 'promote/')))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -219,15 +216,14 @@ jobs:
   desktop_test:
     name: Desktop Tests
     needs: changes
-    # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
-    # staging tier; keep these jobs for main PRs and explicit dispatches only.
+    # Desktop-specific jobs are final-audit work; keep these jobs for main PRs
+    # and explicit dispatches only.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
-       !startsWith(github.event.pull_request.head.ref, 'promote/')))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -269,15 +265,14 @@ jobs:
   desktop_clippy:
     name: Desktop Clippy
     needs: changes
-    # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
-    # staging tier; keep these jobs for main PRs and explicit dispatches only.
+    # Desktop-specific jobs are final-audit work; keep these jobs for main PRs
+    # and explicit dispatches only.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
-       !startsWith(github.event.pull_request.head.ref, 'promote/')))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -319,17 +314,14 @@ jobs:
   release:
     name: Release Compilation
     needs: changes
-    # Desktop-specific jobs are final-audit work. Code Foundry owns the fast
-    # staging tier; defer only the expensive release compilation for the
-    # staging->main promotion branch because desktop checks already passed on
-    # staging. Ordinary main code PRs still receive the complete final audit.
+    # Desktop-specific jobs are final-audit work. Ordinary main code PRs
+    # receive the complete final audit; manual dispatch remains available.
     if: >-
       needs.changes.outputs.desktop == 'true' && (
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
        github.event.pull_request.base.ref == 'main' &&
-       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
-       !startsWith(github.event.pull_request.head.ref, 'promote/')))
+       !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main')))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -363,27 +355,24 @@ jobs:
             ${{ runner.os }}-rust-${{ hashFiles('apps/desktop/src-tauri/Cargo.lock') }}-
             ${{ runner.os }}-rust-
       # Linux release compilation is reserved for ordinary main code PRs and
-      # explicit manual final audits. It is intentionally skipped on staging
-      # feature PRs, Release Please version-only PRs, and staging->main
-      # promotion PRs whose desktop checks already passed on staging.
+      # explicit manual final audits. It is skipped for Release Please
+      # version-only PRs.
       - name: Compile release desktop
         # Final gate: run for ordinary main code PRs and manual dispatch, not
-        # release-please version PRs or staging->main promotion PRs.
+        # Release Please version-only PRs.
         if: >-
           github.event_name == 'workflow_dispatch' ||
           (github.event_name == 'pull_request' &&
            github.event.pull_request.base.ref == 'main' &&
-           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main') &&
-           !startsWith(github.event.pull_request.head.ref, 'promote/'))
+           !startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
         env:
           CORTANA_DESKTOP_TARGET: x86_64-unknown-linux-gnu
         run: bun run desktop:build
 
   # Fast aggregate carrying the stable required check name. It always runs
   # after its dependencies so the check turns red on failure or cancellation
-  # instead of silently skipping. Skipped dependencies (staging fast-tier PRs
-  # and release-please version-only PRs; the promotion's release compilation
-  # is also intentionally deferred) are acceptable and leave the check green.
+  # instead of silently skipping. Skipped dependencies (Release Please
+  # version-only PRs) are acceptable and leave the check green.
   aggregate:
     name: Tauri 2 / Linux
     needs:
