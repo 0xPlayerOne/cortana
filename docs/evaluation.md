@@ -25,8 +25,8 @@ publishing
 all cross-platform package lanes; its 18-asset checksums, updater signatures, manifest, and
 packaged-core gate remain pending until the strict verifier completes. The release is a metadata-only
 promotion over v0.34.22; it does not change credentials, source authorization, indexed data,
-recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.22 while the
-restarting only Cortana-owned services. Query-only readiness,
+recurring-sync policy, or native-memory behavior. The audited host now runs v0.34.22; it restarted
+only Cortana-owned services. Query-only readiness,
 `doctor`, deterministic `eval`, the strict release verifier, packaged-core verification, skill parity,
 and the disposable native-memory/shared-agent/control-plane drills all passed. Recurring sync remains
 uninstalled.
