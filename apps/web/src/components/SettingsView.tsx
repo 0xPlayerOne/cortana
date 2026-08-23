@@ -1863,7 +1863,7 @@ function AccessSection({
                 <KeyRound size={16} />
                 <strong>{principal.principal || `Principal ${index + 1}`}</strong>
                 <Button
-                  variant="icon"
+                  variant="danger"
                   type="button"
                   className="quick-tooltip"
                   aria-label={`Remove ${principal.principal}`}
@@ -1908,7 +1908,7 @@ function AccessSection({
                     }
                   />
                   {secret?.configured && !clearedSecrets.has(principal.token_env) && (
-                    <Button variant="compact" onClick={() => onClearSecret(principal.token_env)}>
+                    <Button variant="danger" onClick={() => onClearSecret(principal.token_env)}>
                       Clear stored token
                     </Button>
                   )}
@@ -2522,7 +2522,7 @@ function WorkspaceSection({
               </label>
               {settings.workspaces.length > 1 && (
                 <Button
-                  variant="icon"
+                  variant="danger"
                   type="button"
                   className="quick-tooltip"
                   aria-label={`Remove ${workspace.name}`}
@@ -3473,7 +3473,7 @@ function SourcesSection({
                     )}
                   </Button>
                   <Button
-                    variant="icon"
+                    variant="danger"
                     type="button"
                     className="source-icon-button quick-tooltip"
                     aria-label={`Remove ${source.name}`}
@@ -3808,7 +3808,7 @@ function SourcesSection({
                             secret?.configured &&
                             !clearedSecrets.has(secret.name) && (
                               <Button
-                                variant="compact"
+                                variant="danger"
                                 type="button"
                                 disabled={sourceLocked}
                                 onClick={() => onClearSecret(source.token_env!)}
@@ -4153,7 +4153,7 @@ function SourcesSection({
                               secret?.configured &&
                               !clearedSecrets.has(secret.name) && (
                                 <Button
-                                  variant="compact"
+                                  variant="danger"
                                   type="button"
                                   disabled={sourceLocked}
                                   onClick={() => onClearSecret(source.token_env!)}
