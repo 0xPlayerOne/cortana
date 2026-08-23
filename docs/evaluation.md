@@ -95,7 +95,7 @@ the recurring-sync gate.
 The v0.34.23 release gate verifies the packaged core offline without credentials. The fresh
 provider-backed `cortana eval --model` run against the installed v0.34.23 binary passed retrieval
 recall, MRR, case pass rate, citation validity, planner and synthesis execution, cache reuse, and
-revision invalidation in 16,777 ms under the 55,000 ms bound, with no provider fallback. This is
+revision invalidation in 24,663 ms under the 55,000 ms bound, with no provider fallback. This is
 synthetic fixture evidence only: it does not query the personal index, prove packaged GUI behavior,
 or authorize source synchronization. The approved-corpus provider-backed evaluation remains an open
 operator gate; the evaluator remains opt-in and extractive mode remains the production default.

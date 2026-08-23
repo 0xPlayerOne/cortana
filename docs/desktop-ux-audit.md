@@ -32,7 +32,7 @@ is not part of a visual/UI change.
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.34.23 host `eval --model` run passed planner and synthesis execution, citations,
-  cache reuse, and revision invalidation in 16,777 ms without provider fallback. This is provider-backed
+  cache reuse, and revision invalidation in 24,663 ms without provider fallback. This is provider-backed
   synthetic fixture evidence only; it does not query the personal index, authorize source
   synchronization, or prove packaged GUI behavior. The approved-corpus provider gate remains open.
 - The installed v0.34.23 binary passed the disposable native-memory, shared-agent HTTP, shared-agent
@@ -198,7 +198,7 @@ a 300-second bound. This closes the bounded retry observation but does not prove
    the command handlers; the GUI-only portions remain unverified because no callable Computer Use
    session is available here.
 2. Model-backed provider gate: the installed v0.34.23 host now passes the bounded synthetic
-   provider-backed fixture evaluator in 16,777 ms with planner/synthesis use, valid citations, cache
+   provider-backed fixture evaluator in 24,663 ms with planner/synthesis use, valid citations, cache
    reuse, and revision invalidation. No provider-backed evaluation against an approved personal
    index or the packaged GUI is claimed yet. Provider outages or slow responses still fail closed,
    and extractive mode remains the safe production default. The current package also passes
