@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.32](https://github.com/0xPlayerOne/cortana/compare/v0.34.31...v0.34.32) (2026-08-23)
+
+
+### Bug Fixes
+
+* **release:** promote MCP schema compatibility ([#1904](https://github.com/0xPlayerOne/cortana/issues/1904)) ([3ac90d7](https://github.com/0xPlayerOne/cortana/commit/3ac90d70b29cde1eabf742811cbec72cc2872c3c))
+
 ## [0.34.31](https://github.com/0xPlayerOne/cortana/compare/v0.34.30...v0.34.31) (2026-08-23)
 
 
