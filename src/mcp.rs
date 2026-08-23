@@ -67,6 +67,12 @@ pub struct MemoryRememberParams {
     confidence: Option<f32>,
     importance: Option<f32>,
     acl: Option<Vec<String>>,
+    // `serde_json::Value` intentionally preserves arbitrary JSON provenance
+    // from existing clients. Advertise it as an object to MCP consumers,
+    // because schemars represents an untyped Value as the boolean schema
+    // `true`, which causes strict clients to reject the entire tools/list
+    // response before they can call any tool.
+    #[schemars(with = "Option<std::collections::BTreeMap<String, serde_json::Value>>")]
     provenance: Option<serde_json::Value>,
     supersedes_id: Option<String>,
     valid_until: Option<String>,
