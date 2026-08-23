@@ -9,30 +9,33 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.23
+## Current release: v0.34.25
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.23` tag is the current source and release boundary. Release-assets workflow
-[`32608361505`](https://github.com/0xPlayerOne/cortana/actions/runs/32608361505) completed the
-strict archive, checksum, updater-signature, manifest, and packaged-core verification gate; all
-18 assets passed the independent strict verifier.
+`v0.34.25` tag is the current source and release boundary. Release-assets workflow
+[`32614440784`](https://github.com/0xPlayerOne/cortana/actions/runs/32614440784) published the
+archive, checksum, updater-signature, manifest, and packaged-core artifacts. The independent strict
+verifier passed all 18 assets, archive checksums, updater signatures, the updater manifest, and
+packaged-core/resource inspection on the audited macOS host; published Linux binary execution is
+skipped on non-Linux hosts.
 
-The v0.34.23 release is a metadata-only follow-up to the verified v0.34.22 runtime. It changes no
+The v0.34.25 release is a metadata-only follow-up to the verified v0.34.24 runtime. It changes no
 credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.
-The audited host now reports `cortana 0.34.23`; its `cortana --version`, readiness, native-memory,
+The audited host now reports `cortana 0.34.25`; its `cortana --version`, readiness, native-memory,
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
-The installed v0.34.23 `eval --model` fixture also passed planner and synthesis execution, valid
-citations, cache reuse, and revision invalidation in 24,663 ms without provider fallback; this is
+The installed v0.34.25 `eval --model` fixture also passed planner and synthesis execution, valid
+citations, cache reuse, and revision invalidation in 10,095 ms without provider fallback; this is
 synthetic fixture evidence only.
 
-The protected main tree now also contains the shared action-button hardening from PR #1814,
-promoted through PR #1819. The next patch release will publish that UI change without altering
-credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.
+The protected main tree also contains the shared action-button hardening from PR #1814, the
+release-merge contract correction from PR #1828, and the exact staging reconciliation through PR
+#1832. These changes do not alter credentials, source authorization, indexed data, recurring-sync
+policy, or native-memory behavior.
 
-This conventional release marker is carried through the protected promotion so the next patch
-release can publish the already-verified UI hardening without relying on flattened commit history.
+The conventional release marker was carried through the protected promotion so the published
+package includes the already-verified UI hardening without relying on flattened commit history.
 
 ## v0.34.21 release notes (historical)
 
