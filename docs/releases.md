@@ -9,25 +9,25 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.34
+## Current release: v0.34.35
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.34` tag is the current source and release boundary. Release Please PR #1923 merged the
+`v0.34.35` tag is the current source and release boundary. Release Please PR #1928 merged the
 metadata-only follow-up to the exact v0.34.34 promotion. Release-assets workflow
-[`32654111401`](https://github.com/0xPlayerOne/cortana/actions/runs/32654111401) published
+[`32655800967`](https://github.com/0xPlayerOne/cortana/actions/runs/32655800967) published
 all 18 cross-platform archive, checksum, updater-signature, manifest, and packaged-core assets.
 The independent strict verifier passed all 18 assets, core checksums, updater signatures, the
 updater manifest, and packaged-core/resource inspection; published Linux binary execution is
 skipped on non-Linux hosts.
 
-The v0.34.34 release carries forward the verified v0.34.33 runtime evidence and the protected UI
+The v0.34.35 release carries forward the verified v0.34.34 runtime evidence and the protected UI
 action-button hardening from PR #1864. It changes no credentials, source authorization, indexed data,
 recurring-sync policy, or native-memory behavior.
 The audited host now runs `cortana 0.34.34`; its `cortana --version`, readiness, native-memory,
 shared-agent, MCP, and control-plane drills remain valid because application content is unchanged.
 The embedding service requires a short model warm-up after restart before health becomes ready.
-The installed v0.34.34 `eval --model` fixture is not yet a reproducible provider gate. One direct
+The installed v0.34.35 `eval --model` fixture is not yet a reproducible provider gate. One direct
 run on 2026-08-23 failed closed at 15,915 ms because the configured `auto-free` provider returned
 an invalid-citation response; Cortana used the safe extractive fallback. A subsequent direct run
 and four instrumented reruns passed in 10,137–17,033 ms. These are intermittent synthetic-provider
@@ -35,13 +35,13 @@ records only; approved-corpus answer/synthesis evidence remains open.
 
 The protected main tree contains the shared action-button hardening from PR #1864, promoted through
 exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reconciliation PR
-#1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, the v0.34.33 Release Please PR #1911, the readiness startup fix from PR #1914, and the v0.34.34 Release Please PR #1923. These changes do not alter credentials, source authorization, indexed data, recurring-sync
+#1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, the v0.34.33 Release Please PR #1911, the readiness startup fix from PR #1914, the v0.34.34 Release Please PR #1923, and the v0.34.35 Release Please PR #1928. These changes do not alter credentials, source authorization, indexed data, recurring-sync
 policy, or native-memory behavior.
 
 The conventional release marker was carried through the protected promotion so the published
 package includes the already-verified UI hardening without relying on flattened commit history.
 
-The v0.34.34 marker publishes the readiness startup retry hardening merged in PR #1914. It does
+The v0.34.35 marker publishes the reconciled release metadata while preserving the readiness startup retry hardening merged in PR #1914. It does
 not authorize sources, enable recurring sync, change indexed data, or alter native-memory policy.
 
 ## v0.34.29 release intent (published and verified; historical)
