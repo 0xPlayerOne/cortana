@@ -50,6 +50,11 @@ This marker does not authorize sources, enable recurring sync, change indexed da
 native-memory policy. The package and cross-platform asset verification are complete; native GUI,
 OAuth, and OS trust acceptance remain separate manual gates.
 
+The next patch release carries the control-plane readiness hardening validated in staging: `/readyz`
+uses a dedicated SQLite probe, while HTTP and MCP status memory counters run behind bounded blocking
+probes so a contended corpus read cannot stall liveness or readiness responses. This change does not
+authorize sources, enable recurring sync, alter credentials, or modify indexed data.
+
 ## v0.34.29 release intent (published and verified; historical)
 
 The post-v0.34.28 source carries the shell action-button hardening from PR #1864. Rail navigation,
