@@ -27,6 +27,10 @@ The installed v0.34.23 `eval --model` fixture also passed planner and synthesis 
 citations, cache reuse, and revision invalidation in 24,663 ms without provider fallback; this is
 synthetic fixture evidence only.
 
+The protected main tree now also contains the shared action-button hardening from PR #1814,
+promoted through PR #1819. The next patch release will publish that UI change without altering
+credentials, source authorization, indexed data, recurring-sync policy, or native-memory behavior.
+
 ## v0.34.21 release notes (historical)
 
 The v0.34.21 release was a metadata-only follow-up to the verified v0.34.20 runtime. Its
