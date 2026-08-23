@@ -76,7 +76,7 @@ through a shared per-config lock, Desktop sidecars publish atomically, and compa
 controls share one tokenized button contract. The Desktop architecture guide records the selective
 shadcn/ui policy; v0.32.6 and earlier release records remain historical evidence.
 
-The audited host installation now reports `cortana 0.34.34`; embedding and HTTP services are
+The audited host installation now reports `cortana 0.34.35`; embedding and HTTP services are
 healthy in query-only mode; readiness confirms a fresh verified backup, while the installed backup
 scheduler is idle between intervals and recurring sync remains uninstalled. The v0.34.20 readiness,
 native-memory, shared-agent, MCP, and control-plane evidence remains valid because v0.34.21,
