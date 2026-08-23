@@ -1,5 +1,12 @@
 # Ingestion
 
+## Current release boundary
+
+The current protected source and published package are `v0.34.30`. This metadata-only release
+retains the bounded connector, cursor, cache, retry, cancellation, and deletion-safety contracts
+described below. It does not authorize accounts, enable disabled sources, reconcile the index, or
+install recurring sync; source validation remains an explicit, bounded operator gate.
+
 Cortana treats every connector as a snapshot producer. Each successful run emits normalized
 `Document` JSON Lines with stable source IDs. Cortana embeds only records whose searchable payload
 changed, atomically replaces their chunks, and reconciles records that disappeared from the
