@@ -258,17 +258,18 @@ fn job_header(block: &str) -> &str {
 /// GTK iterator (release mode), Rust dependency auditing, desktop tests,
 /// desktop clippy, and Linux release compilation plus a fast aggregate job that
 /// keeps the stable "Tauri 2 / Linux" required-check name. The workflow stays
-/// scoped to main-targeted PRs and manual dispatch, skipping Release Please
-/// version PRs at job level; final-audit steps keep the same gate, and the
-/// aggregate always runs after needs, treating skipped jobs as acceptable and
-/// failing only on failure or cancellation.
+/// scoped to both protected PR targets and manual dispatch. Staging keeps the
+/// required aggregate fast while main retains the final-audit job guards;
+/// Release Please version PRs stay skipped at job level. The aggregate always
+/// runs after needs, treating skipped jobs as acceptable and failing only on
+/// failure or cancellation.
 #[test]
 fn desktop_linux_release_compile_is_gated() {
     let desktop = read(".github/workflows/desktop.yml");
 
     // Workflow topology assertions.
     assert!(desktop.contains("pull_request:"));
-    assert!(desktop.contains("branches: [main]"));
+    assert!(desktop.contains("branches: [main, staging]"));
     assert!(!desktop.contains("\n  push:"));
     assert!(desktop.contains("workflow_dispatch:"));
 
