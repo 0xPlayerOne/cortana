@@ -37,16 +37,13 @@ synthesis, valid citations, cache reuse, and revision invalidation. This strengt
 provider-health record but remains synthetic fixture evidence; it does not establish approved-
 corpus quality or authorize synthesis by default.
 
-An explicit `readiness --allow-sync-service` check remains intentionally closed because the enabled
-source set is not fully production-validated. The previous v0.34.13 pass used 25 documents, 5 MiB,
-and 60 seconds per source: nine of 13 enabled non-code profiles returned `complete=true`, while
-`personal-gmail` timed out after 59 seconds and the three Special Google profiles failed closed with
-Google OAuth `invalid_grant`. After installing v0.34.15, a bounded Personal Gmail retry at the same
-25-document/5 MiB scope completed within a 120-second cap, bringing the current bounded total to ten
-complete profiles. These records make no index or reconciliation writes and do not meet configured
-production budgets. Personal Drive's bounded probe passed after reauthorization, but its previous
-full-budget run stalled on a large PDF and was stopped after 147 documents. Recurring sync remains
-uninstalled, and no reconciliation or large sync has been requested.
+The earlier v0.34.13/v0.34.15 readiness result is retained as historical bounded evidence. After
+reauthorizing the shared Special Google grant on 2026-08-24, the installed v0.34.42 binary completed
+production-budget validation for all 13 enabled non-code profiles, including `special-drive` (98 /
+290,445 bytes), `special-gmail` (213 / 980,116 bytes), and `special-calendar` (0 / 0 bytes). Every
+validation made zero index, embedding, or reconciliation writes. `readiness --allow-sync-service`
+now passes the complete source-validation gate; recurring sync remains uninstalled and no
+reconciliation or large sync has been requested.
 
 The v0.34.20 Personal Drive follow-up confirms the distinction: validation passed at the
 25-document/5 MiB/60-second smoke bound (234,160 bytes), while the separate non-reconciling trial
@@ -54,27 +51,25 @@ reached the 60-second safety bound and failed closed as `budget_exceeded`, with 
 is fresh failure/recovery evidence for the connector boundary, not a production-budget validation;
 the source remains ineligible for reconciliation or recurring sync.
 
-The full current-release bounded sweep on 2026-08-22 reinforces that gate: ten enabled non-code
+The historical v0.34.42 bounded sweep on 2026-08-22 reinforces that earlier gate: ten enabled non-code
 profiles validated completely, while the three special Google profiles failed closed with
 `invalid_grant`. Non-reconciling trials passed for Apple Notes, Gmail, Calendar, and Buzz with zero
 deletions; Work Drive and Personal Drive both reached the 60-second safety bound and recorded
 `budget_exceeded` at that bounded trial limit. This was source-operational evidence only; the later
 current-release Personal Drive production-budget validation is recorded below.
 
-After installing v0.34.42, a fresh validation-only sweep on 2026-08-24 repeated the same
-25-document/5 MiB/60-second bound without opening the index or running a trial sync: 10 of 13
-enabled non-code profiles passed, including Personal Drive, while `special-drive`, `special-gmail`,
-and `special-calendar` failed closed with authorization denied. The result confirms the current
-release preserves the source gate; it does not authorize reconciliation or recurring sync.
+After installing v0.34.42, a fresh validation-only sweep on 2026-08-24 first repeated the historical
+25-document/5 MiB/60-second bound without opening the index or running a trial sync. Following the
+shared Special reauthorization, the three Special profiles were revalidated at their configured
+production budgets and all returned `complete=true` with zero writes. The current source gate now
+passes; it still does not authorize reconciliation or recurring sync.
 
 The v0.34.42 refresh recorded zero document, embedding, or reconciliation writes for every
-successful validation. A subsequent current-release production-budget validation of
-`personal-drive` completed 1,639 documents and 13,440,509 bytes within the configured
-2,000-document/128 MiB/900-second limit and recorded `complete=true`. `readiness
---allow-sync-service` remains intentionally closed because the other enabled sources still have
-only bounded validation and all three Special Google profiles still report `invalid_grant`.
-Query-only readiness passed independently, so the installation remains safe to operate while the
-source gate is open.
+successful validation. Current production-budget records include `personal-drive` (1,639 /
+13,440,509 bytes), `special-drive` (98 / 290,445), `special-gmail` (213 / 980,116), and
+`special-calendar` (0 / 0), all with `complete=true` at their configured limits. Query-only and
+sync-enabled readiness both pass their respective checks, but the scheduler remains uninstalled
+until recurring operation is explicitly approved.
 
 An approved-corpus, read-only v0.34.20 evaluation against the local query API also ran with
 synthesis explicitly enabled in an isolated temporary server. Scoped retrieval passed with

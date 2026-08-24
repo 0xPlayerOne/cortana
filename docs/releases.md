@@ -44,8 +44,10 @@ seconds), `work-calendar` (2,220 / 1,832,878 within 3,000 / 64 MiB / 300 seconds
 `complete=true` with zero document, embedding, or reconciliation writes. The three folder-scoped
 Apple Notes sources and Buzz also passed their configured production budgets: `work-notes` 28 /
 122,114 bytes, `personal-notes` 66 / 136,208, `special-notes` 8 / 14,046, and Buzz 45 / 375,824.
-The three Special Google profiles fail closed with `invalid_grant`; recurring sync remains
-uninstalled.
+After reauthorizing the shared Special Google grant, `special-drive` completed 98 / 290,445 bytes,
+`special-gmail` 213 / 980,116, and `special-calendar` 0 / 0 at their configured budgets, all with
+`complete=true` and zero writes. `readiness --allow-sync-service` now passes; recurring sync remains
+uninstalled pending explicit operator approval.
 
 The protected main tree contains the shared action-button hardening from PR #1864, promoted through
 exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reconciliation PR

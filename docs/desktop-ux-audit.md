@@ -22,27 +22,25 @@ is not part of a visual/UI change.
   provide Intel Desktop evidence.
 - The v0.34.42 tag is the source/release boundary. The audited host currently runs
   `/Users/amf/.local/bin/cortana` v0.34.42 with embedding and server services in query-only mode;
-  recurring sync remains disabled. Current status reports 13 enabled sources. The pre-upgrade
-  v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds; a
-  v0.34.15 retry brought Personal Gmail to `complete=true` at the same document/byte bound with a
-  120-second cap. The three Special Google sources still fail closed with an expired OAuth grant.
+  recurring sync remains disabled. Current status reports 13 enabled sources. The earlier v0.34.13
+  and v0.34.15 bounded passes are historical evidence. After the shared Special Google grant was
+  reauthorized on 2026-08-24, all 13 enabled non-code sources have current production-budget
+  `complete=true` validation.
   Current v0.34.42 production-budget validation completed for Personal Drive (1,639 documents /
   13,440,509 bytes within 2,000 / 128 MiB / 900 seconds), Work Drive (516 / 4,581,462 within the
   same limits), Work Gmail (7,388 / 34,530,230 within 10,000 / 64 MiB / 600 seconds), Work Calendar
   (2,220 / 1,832,878 within 3,000 / 64 MiB / 300 seconds), Personal Gmail (431 / 1,493,536 within
   2,000 / 128 MiB / 900 seconds), Personal Calendar (1,815 / 360,659 within the same limits),
   Apple Notes (`work-notes` 28 / 122,114, `personal-notes` 66 / 136,208, `special-notes` 8 / 14,046),
-  and Buzz (45 / 375,824), all with zero writes. The
-  protected v0.34.9 release includes bounded parallel body fetching from PR #1594; no full-corpus
+  Buzz (45 / 375,824), Special Drive (98 / 290,445), Special Gmail (213 / 980,116), and Special
+  Calendar (0 / 0), all with zero writes. The
+  protected v0.34.42 release includes bounded parallel body fetching from PR #1594; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
-- The installed v0.34.42 binary refreshed all 13 enabled non-code profiles at the bounded
-  25-document/5 MiB/60-second validation limit: 10 completed successfully and the three Special
-  Google profiles failed closed with `invalid_grant`. Personal Drive, Work Drive, Work Gmail, Work
-  Calendar, Personal Gmail, and Personal Calendar were subsequently validated at their configured
-  production budgets (1,639 / 13,440,509; 516 / 4,581,462; 7,388 / 34,530,230; 2,220 / 1,832,878;
-  431 / 1,493,536; and 1,815 / 360,659 respectively), as were all three folder-scoped Apple Notes
-  sources and Buzz. All validation runs reported zero document, embedding, and reconciliation writes.
+- The installed v0.34.42 binary first refreshed all 13 enabled non-code profiles at the bounded
+  25-document/5 MiB/60-second validation limit. After reauthorization, Special Drive (98 / 290,445),
+  Special Gmail (213 / 980,116), and Special Calendar (0 / 0) were revalidated at their configured
+  production budgets. All validation runs reported zero document, embedding, and reconciliation writes.
   Query-only readiness, native-memory, shared-agent,
   MCP, and control-plane drills also passed after the controlled service restart; these headless
   checks do not substitute for packaged GUI acceptance.
@@ -151,13 +149,13 @@ The current v0.34.42 production-budget rerun completed 1,639 documents and 13,44
 `complete=true` and zero writes. This closes the Personal Drive validation gate but does not
 authorize a reconciliation or recurring sync by itself.
 
-The current validation metadata now contains nine complete bounded records and one complete
-production-budget Personal Drive record. The three Special Google sources failed closed with the
-shared OAuth grant's `invalid_grant`; earlier production-budget counts for Apple Notes, Calendar,
-Buzz, Work Drive, Work Gmail, Personal Gmail, Special Gmail, and Special Drive remain historical
-evidence. Personal Drive's earlier 2,000-document/128 MiB/1,800-second validation failed closed at
-the 1,799-second connector deadline under the then-installed v0.32.9 parser while processing a
-large PDF; the current v0.34.42 rerun completed within its configured limits.
+The historical validation metadata snapshot below contains nine complete bounded records and one
+complete production-budget Personal Drive record. After the shared OAuth grant was reauthorized,
+the current v0.34.42 metadata contains complete production-budget records for all 13 enabled
+non-code sources, including Special Drive (98 / 290,445), Special Gmail (213 / 980,116), and
+Special Calendar (0 / 0). Personal Drive's earlier 2,000-document/128 MiB/1,800-second validation
+failed closed at the 1,799-second connector deadline under the then-installed v0.32.9 parser while
+processing a large PDF; the current v0.34.42 rerun completed within its configured limits.
 The recurring sync service remains uninstalled, and no reconciliation or large sync has been run.
 
 Historical bounded source-smoke and non-reconciling trials remain useful connector evidence, but do
@@ -238,25 +236,13 @@ buzz-communities SOURCE` reads the read-only `agents/teams.json` identity file w
 6. Complete source authorization and full validation coverage before recurring sync. The current
    operator installation has 13 enabled sources: Apple Notes, Drive, Gmail, Calendar, and Buzz;
    Discord and all code/filesystem roots are disabled by operator choice, and Slack is not
-   configured. Apple Notes has complete folder-scoped validation and bounded no-reconcile
-   snapshots; Calendar has complete validation with bounded 100-event Work, Personal, and Special
-   trials; Buzz has a
-   completed bounded no-reconcile snapshot. Historical records show Special Drive with a
-   production-budget validation (97 documents, 290,353 bytes) and a completed 97-document
-   non-reconciling trial with zero deletions. Current Work Drive and Work Gmail records show
-   production-budget validation (478/4,527,721 bytes and 7,386/34,487,878 bytes respectively).
-   The earlier v0.32.2 Work Drive trial was cancelled while queued embedding work was still
-   completing, but the later complete 478-document validation is now authoritative. Personal
-   Drive failed both its earlier 1,799-second and later configured 899-second connector deadlines;
-   bounded 25-document/5 MiB validation and non-reconciling trial evidence remains below the
-   configured production budget. Personal Gmail now has
-   historical production-budget validation
-   (430 documents/1,563,456 bytes) plus a bounded 100-document-cap trial with zero deletions,
-   and Special Gmail has historical production-budget validation (214 documents/995,335 bytes)
-   plus the same bounded trial result. These capped prefixes prove selected
-   connector behavior, not full-corpus readiness. Recurring sync must remain uninstalled until
-   every enabled source has a fresh `complete=true` validation at its configured production
-   budget.
+   configured. After reauthorizing the shared Special Google grant on 2026-08-24, all 13 enabled
+   non-code profiles have fresh production-budget `complete=true` validation with zero document,
+   embedding, and reconciliation writes: Special Drive (98 / 290,445 bytes), Special Gmail
+   (213 / 980,116), and Special Calendar (0 / 0) join the previously recorded Work, Personal,
+   Apple Notes, and Buzz records. `readiness --allow-sync-service` passes the source gate, but
+   recurring sync remains uninstalled until the operator explicitly approves a non-reconciling
+   trial and recurring policy.
 
 ## Evidence limits
 
