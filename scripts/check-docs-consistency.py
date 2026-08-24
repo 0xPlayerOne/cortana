@@ -55,9 +55,16 @@ def current_release_version(text: str) -> str:
     return matches[0].group("version")
 
 
+def display_path(path: Path) -> Path:
+    try:
+        return path.relative_to(ROOT)
+    except ValueError:
+        return path
+
+
 def check_planning_authority(path: Path, text: str) -> list[str]:
     errors: list[str] = []
-    rel = path.relative_to(ROOT)
+    rel = display_path(path)
 
     if MILESTONE_LINK not in text:
         errors.append(f"{rel}: missing canonical GitHub milestones link")
