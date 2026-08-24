@@ -25,9 +25,7 @@ PLANNING_AUTHORITY_FILES = [
 MILESTONE_LINK = "https://github.com/0xPlayerOne/cortana/milestones"
 ISSUE_LINK = "https://github.com/0xPlayerOne/cortana/issues"
 
-CURRENT_RELEASE_PATTERN = re.compile(
-    r"(?m)^## Current release: v(?P<version>\d+\.\d+\.\d+)\s*$"
-)
+CURRENT_RELEASE_PATTERN = re.compile(r"(?m)^## Current release: v(?P<version>\d+\.\d+\.\d+)\s*$")
 
 FORBIDDEN_PLANNING_HEADINGS = [
     re.compile(r"(?mi)^##+\s+Current status\s*$"),
@@ -49,8 +47,7 @@ def current_release_version(text: str) -> str:
     matches = list(CURRENT_RELEASE_PATTERN.finditer(text))
     if len(matches) != 1:
         raise AssertionError(
-            "docs/releases.md must contain exactly one "
-            "'## Current release: vX.Y.Z' heading"
+            "docs/releases.md must contain exactly one '## Current release: vX.Y.Z' heading"
         )
     return matches[0].group("version")
 
@@ -74,10 +71,7 @@ def check_planning_authority(path: Path, text: str) -> list[str]:
     for pattern in FORBIDDEN_PLANNING_HEADINGS:
         match = pattern.search(text)
         if match:
-            errors.append(
-                f"{rel}: contains forbidden parallel-planning heading "
-                f"{match.group(0)!r}"
-            )
+            errors.append(f"{rel}: contains forbidden parallel-planning heading {match.group(0)!r}")
 
     return errors
 
