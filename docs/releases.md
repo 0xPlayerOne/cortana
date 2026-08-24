@@ -36,11 +36,16 @@ run failed closed at 15,915 ms because the configured `auto-free` provider retur
 invalid-citation response; Cortana used the safe extractive fallback. These are synthetic-provider
 records only; approved-corpus answer/synthesis evidence remains open and synthesis remains opt-in.
 
-The current v0.34.42 source rollout also completed a production-budget, read-only validation for
-`personal-drive`: 1,639 documents and 13,440,509 bytes were inspected within the configured
-2,000-document/128 MiB/900-second limits, with `complete=true` and zero document, embedding, or
-reconciliation writes. The remaining enabled sources have only bounded validation and the three
-Special Google profiles still fail closed with `invalid_grant`; recurring sync remains uninstalled.
+The current v0.34.42 source rollout completed production-budget, read-only validation for
+`personal-drive` (1,639 documents / 13,440,509 bytes within 2,000 / 128 MiB / 900 seconds),
+`work-drive` (516 / 4,581,462), `work-gmail` (7,388 / 34,530,230 within 10,000 / 64 MiB / 600
+seconds), `work-calendar` (2,220 / 1,832,878 within 3,000 / 64 MiB / 300 seconds),
+`personal-gmail` (431 / 1,493,536), and `personal-calendar` (1,815 / 360,659). Each is
+`complete=true` with zero document, embedding, or reconciliation writes. The three folder-scoped
+Apple Notes sources and Buzz also passed their configured production budgets: `work-notes` 28 /
+122,114 bytes, `personal-notes` 66 / 136,208, `special-notes` 8 / 14,046, and Buzz 45 / 375,824.
+The three Special Google profiles fail closed with `invalid_grant`; recurring sync remains
+uninstalled.
 
 The protected main tree contains the shared action-button hardening from PR #1864, promoted through
 exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reconciliation PR
