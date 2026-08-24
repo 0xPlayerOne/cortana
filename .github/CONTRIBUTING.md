@@ -158,13 +158,13 @@ Keep pull requests focused and reviewable. Include screenshots or recordings for
 
 ## Workflow and check behavior
 
-| Event                                              | Expected automation                                                                                                           |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Pull request targeting `main`                      | Audit validation: CI, full tests, Security, and CodeQL, ending in `Validation / Gate`                                         |
-| Exact Release Please pull request targeting `main` | Release-policy validation only, ending in `Validation / Gate`                                                                 |
-| Scheduled or manual validation                     | Full audit tier                                                                                                               |
-| Push to a working branch                           | Draft PR workflow                                                                                                             |
-| Push to `main`                                     | Release workflow; canonical validation already ran on the merged PR                                                           |
+| Event                                              | Expected automation                                                                   |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Pull request targeting `main`                      | Audit validation: CI, full tests, Security, and CodeQL, ending in `Validation / Gate` |
+| Exact Release Please pull request targeting `main` | Release-policy validation only, ending in `Validation / Gate`                         |
+| Scheduled or manual validation                     | Full audit tier                                                                       |
+| Push to a working branch                           | Draft PR workflow                                                                     |
+| Push to `main`                                     | Release workflow; canonical validation already ran on the merged PR                   |
 
 The single validation caller uses `main` as the protected integration and release target. It keys
 concurrency by event and pull-request head. A newer update to the same pull request cancels its
