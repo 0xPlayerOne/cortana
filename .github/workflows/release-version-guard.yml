@@ -2,7 +2,7 @@ name: Release Version Guard
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, staging]
     types:
       - opened
       - synchronize

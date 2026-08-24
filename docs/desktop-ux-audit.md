@@ -317,8 +317,9 @@ current-release section above for sign-off status.
   the required checks. Desktop checks remain headless CI evidence; they do not claim packaged GUI,
   browser, OS-service, or signed-updater behavior. The older v0.29.8 readiness figures are
   historical and are not re-asserted.
-- The remote branch policy now protects `main` against deletion and non-fast-forward updates,
-  requires `Validation / Gate`, and requires `Tauri 2 / Linux` for code PRs. This is
+- The remote branch policy now protects `main` and `staging` against deletion and non-fast-forward
+  updates, requires `Validation / Gate`, and requires `Tauri 2 / Linux` for code PRs. Staging
+  receives the fast aggregate; main runs the final desktop audit. This is
   repository-policy evidence, not a packaged GUI or manual-drill result.
 - Full `cortana readiness` is a read-only, comprehensive check that includes roughly 1 GB of
   SQLite integrity and backup scanning. In the observed run, the database integrity scan took
