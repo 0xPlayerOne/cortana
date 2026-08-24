@@ -544,7 +544,12 @@ manual Desktop and source-authorization gates remain separate.
 
 ## Desktop release gates
 
-The desktop pipeline follows a direct-main audit policy:
+The desktop pipeline follows a protected two-lane policy:
+
+- **Staging PRs run the required fast aggregate.** `desktop.yml` listens to `staging` so the
+  protected branch always receives the stable `Tauri 2 / Linux` result. Its job-level guards skip
+  the long Linux audit jobs on staging; this keeps staging suitable for rapid integration while
+  still failing closed if the aggregate itself is cancelled or fails.
 
 - **Main PRs run the desktop aggregate.** `desktop.yml` exposes the stable
   `Tauri 2 / Linux` aggregate for main-targeted pull requests. Its six
