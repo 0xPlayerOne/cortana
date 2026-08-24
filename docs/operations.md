@@ -77,14 +77,14 @@ evidence is required.
 Direct JSONL imports are also bounded: 2,000 documents, 128 MiB of content, 15 minutes, and an
 8 MiB maximum line. Use separate reviewed batches for larger migrations.
 
-On the current v0.34.40 source tree, mutating CLI startup acquires the same global `sync.lock`
+On the current v0.34.41 source tree, mutating CLI startup acquires the same global `sync.lock`
 before opening the store. This covers schema/backfill/fingerprint work as well as the later import
-or sync operation. This is included in the published v0.34.40 source release.
+or sync operation. This is included in the published v0.34.41 source release.
 
 Desktop settings and service-schedule saves use a shared owner-only per-config lock. The lock is
 held across validation, secret/config or schedule backups, atomic replacement, and audit writing,
 so concurrent Desktop windows or processes cannot lose updates or interleave credentials. This is
-included in the published v0.34.40 source release; keep the same lock requirement when running a newer
+included in the published v0.34.41 source release; keep the same lock requirement when running a newer
 source checkout or development build.
 
 HTTP requests emit structured tracing spans to stderr. Set `RUST_LOG`, for example
@@ -377,9 +377,9 @@ explicit agent operations.
 
 ## Release verification
 
-The current published release is `v0.34.40`; release-assets workflow `32675543606` completed all
+The current published release is `v0.34.41`; release-assets workflow `32678200301` completed all
 platform lanes and the independent strict verifier passed all 18 assets, checksums, updater
-signatures, manifest checks, and packaged-core checks. The audited host now runs v0.34.40, so
+signatures, manifest checks, and packaged-core checks. The audited host now runs v0.34.41, so
 host-install and personal-source evidence below is explicitly evidence for that installed runtime.
 
 Published releases have a final cross-platform asset gate. It checks that the core archives,
@@ -503,7 +503,7 @@ verification is mandatory by default; set `CORTANA_REQUIRE_MINISIGN=0` only for 
 work where `minisign` is intentionally unavailable.
 
 ```bash
-  GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.34.40
+  GH_REPO=0xPlayerOne/cortana bun run desktop:verify:mac v0.34.41
 ```
 
 It checks the bundle version, executes only the bundled core's `--version`
@@ -524,8 +524,8 @@ ID notarization), so `spctl --assess` still rejects it and notarization remains 
 
 The current source release verifiers also execute the exact packaged `cortana` core's deterministic
 `--offline eval` against a temporary configuration, with a hard 60-second timeout and a required JSON
-`passed: true`. The v0.34.40 core archive and the full archive/signature/checksum/updater-manifest
-release gate both passed in release-assets workflow `32675543606`. This remains separate from GUI,
+`passed: true`. The v0.34.41 core archive and the full archive/signature/checksum/updater-manifest
+release gate both passed in release-assets workflow `32678200301`. This remains separate from GUI,
 OAuth, tray/dialog, updater-install, and macOS Developer ID/notarization acceptance.
 The new check is credential-free; it does not open the live index, launch the GUI, exercise
 OAuth/tray/dialog/updater interactions, or authorize ingestion.
@@ -538,7 +538,7 @@ and searched the restored index. It never touched the live index, credentials, c
 or service scheduler; it is control-plane/recovery evidence only and not packaged GUI/OAuth/tray/
 native-dialog/updater acceptance.
 
-### Current local source rollout snapshot (2026-08-24; published and installed v0.34.40)
+### Current local source rollout snapshot (2026-08-24; published and installed v0.34.41)
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
 source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
@@ -553,14 +553,14 @@ Personal Drive's earlier 1,800-second and 900-second validations failed closed a
 deadlines while processing a large PDF/media corpus. After explicit reauthorization, the current
 bounded probe succeeded at 25 documents/5 MiB/60 seconds; the next production-budget run was
 operator-cancelled after 147 documents when serialized Drive body fetching stalled on a large PDF.
-Both cancelled attempts made zero index or reconciliation writes. The published v0.34.40 release
+Both cancelled attempts made zero index or reconciliation writes. The published v0.34.41 release
 boundary includes bounded four-worker fetching from PR #1594; the
 `readiness --allow-sync-service` gate must remain closed until every enabled source has a fresh
 complete record at its configured budget and the Special Google grant is repaired. No
 reconciliation or large sync has been run.
 
-The installed v0.34.40 provider-backed `cortana eval --model` gate passed on 2026-08-24 in
-13,090 ms with planner/synthesis, valid citations, cache reuse, and revision invalidation under the
+The installed v0.34.41 provider-backed `cortana eval --model` gate passed on 2026-08-24 in
+17,472 ms with planner/synthesis, valid citations, cache reuse, and revision invalidation under the
 55,000 ms bound. An earlier direct run failed closed at 15,915 ms because the configured `auto-free`
 provider returned invalid citations, then a subsequent direct run and four instrumented reruns
 passed in 10,137–17,033 ms. Cortana used the safe extractive fallback for the failed run. These are
@@ -612,7 +612,7 @@ older releases, but current entry points must not silently drift.
 Re-run the read-only verifier for the current release with:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.34.40
+GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 scripts/verify-desktop-release.sh v0.34.41
 ```
 
 For historical incident investigation, the v0.29.69 release can still be verified
