@@ -9,24 +9,22 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.43
+## Current release: v0.34.44
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.43` tag is the current source and release boundary. Documentation authority changes from
-PR #2093 reached `main` through the direct workflow, and Release Please PR #2094 published the
-version-only marker.
+`v0.34.44` tag is the current source and release boundary. It is a version-only Release Please
+marker generated after the direct-main workflow and documentation reconciliation reached `main`.
 Release-assets workflow
-[`32774696426`](https://github.com/0xPlayerOne/cortana/actions/runs/32774696426) published
+[`32786195441`](https://github.com/0xPlayerOne/cortana/actions/runs/32786195441) published
 all macOS/Linux/Windows core and Desktop lanes. The independent strict verifier passed all 18
 assets, checksums, updater signatures, manifest checks, and packaged-core checks; the package is
 complete. This verifies package integrity, not native GUI, OAuth, or OS trust acceptance.
 
-The v0.34.43 release carries forward the verified v0.34.42 runtime and source-validation evidence
-and adds no application behavior beyond documentation and release metadata. The control-plane
-readiness hardening from PR #1954 uses a dedicated lightweight SQLite probe, while HTTP and MCP
-status counters use bounded blocking work. It changes no credentials, source authorization,
-indexed data, recurring-sync policy, or native-memory behavior.
+The v0.34.44 marker carries forward the verified v0.34.43 runtime and source-validation evidence
+and adds no application behavior beyond release metadata. The direct-main workflow and stale
+staging-lane cleanup are documented in the merged promotion PR. It changes no credentials, source
+authorization, indexed data, recurring-sync policy, or native-memory behavior.
 The audited host now runs `cortana 0.34.42`; its binary, controlled service restart, readiness,
 native-memory, shared-agent, MCP, and control-plane checks all passed. The embedding service
 requires a short model warm-up after restart before health becomes ready.
@@ -54,56 +52,57 @@ exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reco
 #1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, the v0.34.33
 Release Please PR #1911, the readiness startup fix from PR #1914, the v0.34.34 Release Please PR
 #1923, the v0.34.36 Release Please PR #1943, the v0.34.40 Release Please PR #1975, the v0.34.41
-Release Please PR #1985, documentation authority PR #2093, and v0.34.43 Release Please PR #2094.
+Release Please PR #1985, documentation authority PR #2093, direct-workflow cleanup PR #2100, and
+the v0.34.44 Release Please marker.
 These changes do not alter credentials, source authorization, indexed data, recurring-sync policy,
 or native-memory behavior.
 
-The v0.34.43 marker carries the bounded readiness/status hardening while preserving the
-direct-`main` merge strategy. It does not authorize sources, enable recurring sync, change indexed
-data, or alter native-memory policy. The package and cross-platform asset verification are complete;
-native GUI, OAuth, and OS trust acceptance remain separate manual gates.
+The v0.34.44 marker preserves the direct-`main` merge strategy. It does not authorize sources,
+enable recurring sync, change indexed data, or alter native-memory policy. The package and
+cross-platform asset verification are complete; native GUI, OAuth, and OS trust acceptance remain
+separate manual gates.
 
-### v0.34.43 post-release reconciliation incident
+### v0.34.43 post-release reconciliation incident (historical)
 
 The release publication itself succeeded. The subsequent Code Foundry run
 [`32774655565`](https://github.com/0xPlayerOne/cortana/actions/runs/32774655565) failed only in its
 post-release reconciliation job: it classified old `staging` history as unpromoted, attempted to
 replay commit `9a5b3a7`, and encountered broad conflicts. The published tag and 18 verified assets
 remain valid, but the retained branch history is not a clean starting point for another development
-cycle. GitHub issue [#2099](https://github.com/0xPlayerOne/cortana/issues/2099) owns exact-tree
-comparison, preservation of any genuinely missing work, protected-flow alignment, and idempotence
-proof. No force push or automatic conflict resolution is authorized by this release record.
+cycle. Issue [#2099](https://github.com/0xPlayerOne/cortana/issues/2099) was closed after PR #2100
+proved the exact-tree state, removed the obsolete staging ref/ruleset, and passed a clean Code
+Foundry reconciliation run. No force push or automatic conflict resolution was used.
 
 ## v0.34.40 release notes (historical)
 
 The v0.34.40 metadata release carried forward the verified v0.34.39 runtime evidence. Its package,
 host, and synthetic evaluation claims are historical; current source and package claims belong to
-v0.34.43 above, while the latest installed-host evidence remains v0.34.42.
+v0.34.44 above, while the latest installed-host evidence remains v0.34.42.
 
 ## v0.34.39 release notes (historical)
 
 The v0.34.39 metadata release carried forward the verified v0.34.38 runtime evidence. Its package
-and host claims are historical; current source and package claims belong to v0.34.43 above, while
+and host claims are historical; current source and package claims belong to v0.34.44 above, while
 the latest installed-host evidence remains v0.34.42.
 
 ## v0.34.38 release notes (historical)
 
 The v0.34.38 metadata release carried the control-plane readiness hardening from PR #1954 and
 its verified runtime, source-validation, and synthetic provider evidence. Its package and host
-claims are historical; current source and package claims belong to v0.34.43 above, while the latest
+claims are historical; current source and package claims belong to v0.34.44 above, while the latest
 installed-host evidence remains v0.34.42.
 
 ## v0.34.37 release notes (historical)
 
 The v0.34.37 metadata release carried forward the verified v0.34.36 runtime evidence. Its package
-and host claims are historical; current source and package claims belong to v0.34.43 above, while
+and host claims are historical; current source and package claims belong to v0.34.44 above, while
 the latest installed-host evidence remains v0.34.42.
 
 ## v0.34.36 release notes (historical)
 
 The v0.34.36 metadata release carried forward the verified v0.34.34 runtime evidence and the
 protected UI action-button hardening from PR #1864. Its package verification and host evidence are
-historical; current source and package claims belong to v0.34.43 above, while the latest
+historical; current source and package claims belong to v0.34.44 above, while the latest
 installed-host evidence remains v0.34.42.
 
 ## v0.34.29 release intent (published and verified; historical)
