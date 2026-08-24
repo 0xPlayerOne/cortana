@@ -58,8 +58,8 @@ The full current-release bounded sweep on 2026-08-22 reinforces that gate: ten e
 profiles validated completely, while the three special Google profiles failed closed with
 `invalid_grant`. Non-reconciling trials passed for Apple Notes, Gmail, Calendar, and Buzz with zero
 deletions; Work Drive and Personal Drive both reached the 60-second safety bound and recorded
-`budget_exceeded`. This is source-operational evidence only and remains below every configured
-production budget.
+`budget_exceeded` at that bounded trial limit. This was source-operational evidence only; the later
+current-release Personal Drive production-budget validation is recorded below.
 
 After installing v0.34.42, a fresh validation-only sweep on 2026-08-24 repeated the same
 25-document/5 MiB/60-second bound without opening the index or running a trial sync: 10 of 13
@@ -68,10 +68,13 @@ and `special-calendar` failed closed with authorization denied. The result confi
 release preserves the source gate; it does not authorize reconciliation or recurring sync.
 
 The v0.34.42 refresh recorded zero document, embedding, or reconciliation writes for every
-successful validation. `readiness --allow-sync-service` remains intentionally closed: the
-successful records are smaller than each source's configured production budget, and all three
-Special Google profiles still report `invalid_grant`. Query-only readiness passed independently,
-so the installation remains safe to operate while the source gate is open.
+successful validation. A subsequent current-release production-budget validation of
+`personal-drive` completed 1,639 documents and 13,440,509 bytes within the configured
+2,000-document/128 MiB/900-second limit and recorded `complete=true`. `readiness
+--allow-sync-service` remains intentionally closed because the other enabled sources still have
+only bounded validation and all three Special Google profiles still report `invalid_grant`.
+Query-only readiness passed independently, so the installation remains safe to operate while the
+source gate is open.
 
 An approved-corpus, read-only v0.34.20 evaluation against the local query API also ran with
 synthesis explicitly enabled in an isolated temporary server. Scoped retrieval passed with
@@ -162,9 +165,11 @@ synthesis enabled, valid citations, cache reuse, revision invalidation, and no p
 This remains provider-backed fixture evidence: it does not query the personal index or prove
 packaged GUI behavior. Query-only readiness passed against the installed index with database
 integrity, embedding/index generation, ACL, provider, API, and backup-freshness checks; the
-separate `--allow-sync-service` gate fails closed because `personal-drive` has only a bounded
-25-document/5 MiB validation after its production-budget connector timeout, against the configured
-2,000-document, 128 MiB budget, so the recurring sync service remains uninstalled.
+separate `--allow-sync-service` gate fails closed because the remaining enabled sources have only
+bounded validation and the three Special Google profiles require reauthorization. Personal Drive
+now has a current complete production-budget validation at 1,639 documents and 13,440,509 bytes
+against its configured 2,000-document/128 MiB budget, but that validation alone does not authorize
+recurring sync.
 
 After that evaluation, a source-scoped live pass rechecked all enabled non-code sources with
 validation-required, non-reconciling 25-document/5 MiB/60-second caps. Apple Notes, calendars,
@@ -173,7 +178,9 @@ records. The index ended at 12,123 documents/42,638 chunks and query-only readin
 is operational ingestion evidence, not a full-corpus quality benchmark. That historical pass
 used smaller bounds than the configured budgets; the current host status now reports 10 of 13
 enabled sources complete within the refreshed bounded limits, while the three Special Google
-sources require reauthorization and Personal Drive still lacks a production-budget validation.
+sources require reauthorization. Personal Drive's later current-release production-budget
+validation completed 1,639 documents and 13,440,509 bytes without writes; the remaining source
+production gates are still open.
 The pass did not enable Discord, code, Slack, or synthesis.
 
 On 2026-08-22, the installed v0.34.22 binary revalidated all three configured Apple Notes folder
