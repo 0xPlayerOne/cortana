@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.43](https://github.com/0xPlayerOne/cortana/compare/v0.34.42...v0.34.43) (2026-08-24)
+
+
+### Documentation
+
+* make GitHub authoritative for planning and status ([#2093](https://github.com/0xPlayerOne/cortana/issues/2093)) ([e557db6](https://github.com/0xPlayerOne/cortana/commit/e557db623273b327a1bc18d89393f77b990ba754)), closes [#2028](https://github.com/0xPlayerOne/cortana/issues/2028)
+
 ## [0.34.42](https://github.com/0xPlayerOne/cortana/compare/v0.34.41...v0.34.42) (2026-08-24)
 
 
