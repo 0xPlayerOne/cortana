@@ -543,12 +543,15 @@ native-dialog/updater acceptance.
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
 source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
 60-second bound plus a v0.34.15 Personal Gmail retry at the same scope with a 120-second cap. Ten of
-13 enabled non-code profiles are now `complete=true`: all Apple Notes scopes, all Work Google scopes,
-Personal Drive, Personal Gmail, Personal Calendar, and Buzz. Personal Drive's current record is a
-production-budget validation; the other successful records remain bounded. The three Special Google scopes
-(`special-drive`, `special-gmail`, and `special-calendar`) failed closed because the shared
-`special.json` OAuth grant returned `invalid_grant`. Personal Drive is the current production-budget
-exception; the other successful records remain bounded and make no index or reconciliation writes.
+10 of 13 enabled non-code profiles are now `complete=true`: all Apple Notes scopes, all Work Google scopes,
+Personal Drive, Personal Gmail, Personal Calendar, and Buzz. Current production-budget records now
+cover Personal Drive (1,639 documents / 13,440,509 bytes), Work Drive (516 / 4,581,462), Work Gmail
+(7,388 / 34,530,230), Work Calendar (2,220 / 1,832,878), Personal Gmail (431 / 1,493,536), and
+Personal Calendar (1,815 / 360,659), Apple Notes (`work-notes` 28 / 122,114, `personal-notes` 66 /
+136,208, `special-notes` 8 / 14,046), and Buzz (45 / 375,824). Every non-special enabled source is
+now complete at its configured production budget, with zero index or reconciliation writes. The
+three Special Google scopes (`special-drive`, `special-gmail`, and `special-calendar`) failed closed
+because the shared `special.json` OAuth grant returned `invalid_grant`.
 
 Personal Drive's earlier 1,800-second and 900-second validations failed closed at their connector
 deadlines while processing a large PDF/media corpus. After explicit reauthorization, a current

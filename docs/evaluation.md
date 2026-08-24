@@ -166,10 +166,14 @@ This remains provider-backed fixture evidence: it does not query the personal in
 packaged GUI behavior. Query-only readiness passed against the installed index with database
 integrity, embedding/index generation, ACL, provider, API, and backup-freshness checks; the
 separate `--allow-sync-service` gate fails closed because the remaining enabled sources have only
-bounded validation and the three Special Google profiles require reauthorization. Personal Drive
-now has a current complete production-budget validation at 1,639 documents and 13,440,509 bytes
-against its configured 2,000-document/128 MiB budget, but that validation alone does not authorize
-recurring sync.
+bounded validation and the three Special Google profiles require reauthorization. Current complete
+production-budget validations include Personal Drive (1,639 documents / 13,440,509 bytes at
+2,000 / 128 MiB / 900 seconds), Work Drive (516 / 4,581,462 at the same budget), Work Gmail
+(7,388 / 34,530,230 at 10,000 / 64 MiB / 600 seconds), Work Calendar (2,220 / 1,832,878 at
+3,000 / 64 MiB / 300 seconds), Personal Gmail (431 / 1,493,536 at 2,000 / 128 MiB / 900 seconds),
+and Personal Calendar (1,815 / 360,659 at the same budget), Apple Notes (`work-notes` 28 / 122,114,
+`personal-notes` 66 / 136,208, `special-notes` 8 / 14,046), and Buzz (45 / 375,824). These records
+still do not authorize recurring sync while any enabled source remains below budget or unauthorized.
 
 After that evaluation, a source-scoped live pass rechecked all enabled non-code sources with
 validation-required, non-reconciling 25-document/5 MiB/60-second caps. Apple Notes, calendars,
@@ -178,9 +182,9 @@ records. The index ended at 12,123 documents/42,638 chunks and query-only readin
 is operational ingestion evidence, not a full-corpus quality benchmark. That historical pass
 used smaller bounds than the configured budgets; the current host status now reports 10 of 13
 enabled sources complete within the refreshed bounded limits, while the three Special Google
-sources require reauthorization. Personal Drive's later current-release production-budget
-validation completed 1,639 documents and 13,440,509 bytes without writes; the remaining source
-production gates are still open.
+sources require reauthorization. Current production-budget validation has completed for Personal
+Drive, Work Drive, Work Gmail, Work Calendar, Personal Gmail, Personal Calendar, Apple Notes, and Buzz
+without writes; the remaining source production gate is the Special Google authorization.
 The pass did not enable Discord, code, Slack, or synthesis.
 
 On 2026-08-22, the installed v0.34.22 binary revalidated all three configured Apple Notes folder
