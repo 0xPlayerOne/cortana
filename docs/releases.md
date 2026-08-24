@@ -9,28 +9,28 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.41
+## Current release: v0.34.42
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.41` tag is the current source and release boundary. Release Please PR #1985 published the
-version marker through the direct-`main` workflow after the required-check workflow fix in PR #1983.
+`v0.34.42` tag is the current source and release boundary. Release Please's version-only promotion
+published the marker through the direct-`main` workflow after the required-check workflow fix in PR #1983.
 The retained `staging` ref remains a separate protected promotion lane.
 Release-assets workflow
-[`32678200301`](https://github.com/0xPlayerOne/cortana/actions/runs/32678200301) published
+[`32680743937`](https://github.com/0xPlayerOne/cortana/actions/runs/32680743937) published
 all macOS/Linux/Windows core and Desktop lanes. The independent strict verifier passed all 18
 assets, checksums, updater signatures, manifest checks, and packaged-core checks; the package is
 complete. This verifies package integrity, not native GUI, OAuth, or OS trust acceptance.
 
-The v0.34.41 release carries forward the verified v0.34.40 runtime evidence and adds no
+The v0.34.42 release carries forward the verified v0.34.41 runtime evidence and adds no
 application behavior beyond the release metadata. The control-plane readiness hardening from PR #1954
 uses a dedicated lightweight SQLite
 probe, while HTTP and MCP status counters use bounded blocking work. It changes no credentials,
 source authorization, indexed data, recurring-sync policy, or native-memory behavior.
-The audited host now runs `cortana 0.34.41`; its binary, controlled service restart, readiness,
+The audited host now runs `cortana 0.34.42`; its binary, controlled service restart, readiness,
 native-memory, shared-agent, MCP, and control-plane checks all passed. The embedding service
 requires a short model warm-up after restart before health becomes ready.
-A fresh v0.34.41 `cortana eval --model` run on 2026-08-24 passed in 17,472 ms with
+A fresh v0.34.42 `cortana eval --model` run on 2026-08-24 passed in 16,286 ms with
 planner/synthesis, valid citations, cache reuse, and revision invalidation. The prior v0.34.35
 run failed closed at 15,915 ms because the configured `auto-free` provider returned an
 invalid-citation response; Cortana used the safe extractive fallback. These are synthetic-provider
@@ -41,7 +41,7 @@ exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reco
 #1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, the v0.34.33 Release Please PR #1911, the readiness startup fix from PR #1914, the v0.34.34 Release Please PR #1923, the v0.34.36 Release Please PR #1943, the v0.34.40 Release Please PR #1975, and the v0.34.41 Release Please PR #1985. These changes do not alter credentials, source authorization, indexed data, recurring-sync
 policy, or native-memory behavior.
 
-The v0.34.41 marker carries the bounded readiness/status hardening while preserving the
+The v0.34.42 marker carries the bounded readiness/status hardening while preserving the
 direct-`main` merge strategy. It does not authorize sources, enable recurring sync, change indexed
 data, or alter native-memory policy. The package and cross-platform asset verification are complete;
 native GUI, OAuth, and OS trust acceptance remain separate manual gates.
@@ -50,31 +50,31 @@ native GUI, OAuth, and OS trust acceptance remain separate manual gates.
 
 The v0.34.40 metadata release carried forward the verified v0.34.39 runtime evidence. Its package,
 host, and synthetic evaluation claims are historical; current source, package, and installed-runtime
-claims belong to v0.34.41 above.
+claims belong to v0.34.42 above.
 
 ## v0.34.39 release notes (historical)
 
 The v0.34.39 metadata release carried forward the verified v0.34.38 runtime evidence. Its package
 and host claims are historical; current source, package, and installed-runtime claims belong to
-v0.34.41 above.
+v0.34.42 above.
 
 ## v0.34.38 release notes (historical)
 
 The v0.34.38 metadata release carried the control-plane readiness hardening from PR #1954 and
 its verified runtime, source-validation, and synthetic provider evidence. Its package and host
-claims are historical; current source, package, and installed-runtime claims belong to v0.34.41 above.
+claims are historical; current source, package, and installed-runtime claims belong to v0.34.42 above.
 
 ## v0.34.37 release notes (historical)
 
 The v0.34.37 metadata release carried forward the verified v0.34.36 runtime evidence. Its package
 and host claims are historical; current source, package, and installed-runtime claims belong to
-v0.34.41 above.
+v0.34.42 above.
 
 ## v0.34.36 release notes (historical)
 
 The v0.34.36 metadata release carried forward the verified v0.34.34 runtime evidence and the
 protected UI action-button hardening from PR #1864. Its package verification and host evidence are
-historical; current source, package, and installed-runtime claims belong to v0.34.41 above.
+historical; current source, package, and installed-runtime claims belong to v0.34.42 above.
 
 ## v0.34.29 release intent (published and verified; historical)
 
