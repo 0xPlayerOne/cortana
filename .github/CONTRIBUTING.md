@@ -23,11 +23,12 @@ Agents must follow these rules before changing code:
 7. Report exact validation results, skipped checks, known limitations, and remaining risks.
 8. Never commit secrets, credentials, local environment files, generated artifacts, or machine-specific paths.
 9. Keep user-facing documentation synchronized with the change. For a feature or safety change,
-   update the relevant guide and check [the documentation index](../docs/README.md), the root
-   [README](../README.md), and any current-release evidence page that now describes the behavior.
-   For a release, update the current-release section in `docs/releases.md`, `docs/evaluation.md`,
-   `docs/operations.md`, and `docs/desktop-ux-audit.md`; preserve older measurements as explicitly
-   historical evidence.
+   update the relevant guide and check [the documentation index](../docs/README.md) and root
+   [README](../README.md) when durable behavior or document ownership changes. GitHub milestones
+   and issues remain authoritative for current work and status. For a release, update the
+   current-release section in `docs/releases.md` and link any evaluation, operations,
+   source-rollout, or packaged-Desktop evidence from that release record or the owning issue;
+   do not add parallel status sections to durable guides.
 
 Agents must not:
 
@@ -158,13 +159,14 @@ Keep pull requests focused and reviewable. Include screenshots or recordings for
 ## Workflow and check behavior
 
 | Event | Expected automation |
-|------------------------------------------------------------------------------------------------------------------------------------------------|
+| --- | --- |
 | Pull request targeting `staging` | Fast protected integration validation, ending in `Validation / Gate`; expensive Desktop jobs stay reserved for the final lane |
 | Pull request targeting `main` | Audit validation: CI, full tests, Security, and CodeQL, ending in `Validation / Gate` |
 | Exact Release Please pull request targeting `main` | Release-policy validation only, ending in `Validation / Gate` |
 | Scheduled or manual validation | Full audit tier |
 | Push to a working branch | Draft PR workflow |
 | Push to `main` | Release workflow; canonical validation already ran on the merged PR |
+
 The single validation caller listens to both protected targets. Staging is the fast integration lane;
 main remains the final audit lane. It keys concurrency by event and pull-request head. A newer update
 to the same pull request cancels its superseded validation run; scheduled and manual audits remain
@@ -182,9 +184,10 @@ Security checks can be skipped when repository visibility or the GitHub plan doe
 ## Review and merge protocol
 
 | Change | Target | Merge method | Merge gate |
-|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --- | --- | --- | --- |
 | Working branch | `main` | Squash | All applicable required checks pass |
 | Release Please version PR | `main` | Rebase (`release_merge_strategy`, fails closed) | Validation gate and release policy pass |
+
 Reviewers focus on correctness, security, maintainability, test coverage, operational impact, and compatibility. Authors remain responsible for responding to feedback and verifying the final commit.
 
 ## Security and emergencies
