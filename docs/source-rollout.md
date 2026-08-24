@@ -1,168 +1,230 @@
-# Source rollout plan
+# Source rollout
 
-This is the operator plan for moving Cortana from a configured connector to a
-production-safe source. It is intentionally separate from the code contract:
-connector tests prove behavior, but they do not authorize an account or prove
-that a user's full corpus is ready for reconciliation.
+This document defines the durable procedure for moving a configured connector into approved Cortana use. It does not list the current enabled inventory or act as a roadmap.
 
-## Current operator state (2026-08-24; v0.34.42 published and installed runtime)
+Current source work, owners, blockers, rollout decisions, and acceptance evidence belong in [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues). Tagged and dated evidence belongs in [Release history](releases.md) or the owning issue.
 
-The local installation remains in manual mode: `ai.cortana.sync` is not installed and no
-recurring job is active. The operator has completed the Hermes import/rebuild and retained a
-dated rollback backup; active legacy rows, launch agents, and parallel legacy stores are not part
-of the live Cortana runtime. Migration compatibility code remains available for older installs.
+## Core rule
 
-The earlier v0.34.13 and v0.34.15 runs are retained as historical bounded evidence. Validation does
-not embed, index, reconcile, or delete records. On 2026-08-24, `authorize-google special-drive`
-refreshed the shared `special.json` grant with read-only Drive, Gmail, and Calendar scopes. Fresh
-v0.34.42 production-budget validations then completed for all 13 enabled non-code profiles. The
-records below are evidence, not authorization to reconcile or install recurring sync:
+Connector implementation proves that a source type can satisfy Cortana's contract. It does not authorize an account, source scope, ingestion run, reconciliation, or recurring schedule.
 
-- Apple Notes: `work-notes` 28 / 122,114 bytes, `personal-notes` 66 / 136,208, and `special-notes`
-  8 / 14,046; all are `complete=true` within the configured 2,000-document / 128 MiB / 900-second
-  budget, with zero writes.
-- Work Google sources now have current production-budget validation: `work-drive` 516 documents /
-  4,581,462 bytes at 2,000 / 128 MiB / 900 seconds, `work-gmail` 7,388 / 34,530,230 at 10,000 /
-  64 MiB / 600 seconds, and `work-calendar` 2,220 / 1,832,878 at 3,000 / 64 MiB / 300 seconds.
-  Each is `complete=true` with zero writes.
-- Personal Google sources: `personal-drive` 1,639 / 13,440,509 bytes, `personal-gmail` 431 /
-  1,493,536, and `personal-calendar` 1,815 / 360,659; all are `complete=true` within the configured
-  2,000-document / 128 MiB / 900-second budget, with zero writes.
-- Buzz: 45 records / 375,824 bytes; `complete=true` within the configured 2,000-document / 128 MiB /
-  900-second budget, with zero writes.
-- Special Google sources: `special-drive` 98 / 290,445 bytes, `special-gmail` 213 / 980,116 bytes,
-  and `special-calendar` 0 / 0 bytes; all are `complete=true` within the configured 2,000-document /
-  128 MiB / 900-second budget, with zero writes.
+The lifecycle is:
 
-After the v0.34.42 installation, the operator retained the three Apple Notes folder-scoped
-sources with the current binary. Read-only validation passed for `work-notes`, `personal-notes`, and
-`special-notes` at the 25-document/5 MiB/60-second bound. The separate bounded, non-reconciling
-trial measurements immediately before the metadata-only release were: `work-notes` 25 documents
-(118,540 bytes), `personal-notes` 25 documents (89,645 bytes), and `special-notes` 8 documents
-(14,046 bytes). The trials preserved the `work`/`personal`/`special` assignments and made no
-deletions. This is fresh current-release connector evidence below the production-budget snapshot;
-recurring sync remains uninstalled.
+1. configure;
+2. authorize;
+3. discover and select scope;
+4. validate read-only;
+5. run a bounded non-reconciling trial;
+6. inspect indexed evidence and operations;
+7. complete validation at the intended production budget;
+8. decide reconciliation policy;
+9. decide recurring synchronization policy;
+10. disable, revoke, or remove safely when needed.
 
-The installed v0.34.42 binary first refreshed all 13 enabled non-code profiles at the bounded
-25-document/5 MiB/60-second limit. Those records remain historical bounded evidence; the
-production-budget records above are authoritative for the current source gate. Every validation
-reported zero document, embedding, and reconciliation writes and does not authorize a
-production-budget sync or recurring schedule by itself.
+Each step is explicit and independently auditable.
 
-The same bounded smoke budget was then applied to `personal-drive`. Validation passed with 25
-documents (234,160 bytes), but the separate non-reconciling trial reached the 60-second safety
-bound and failed closed as `budget_exceeded`. It did not authorize reconciliation or recurring
-sync, and no deletions were recorded. A later current-release read-only production-budget
-validation completed 1,639 documents and 13,440,509 bytes, recorded `complete=true`, and made
-zero document, embedding, or reconciliation writes. This closes the Personal Drive validation
-gate, but does not authorize a trial, reconciliation, or recurring sync by itself.
+## Source identity and scope
 
-On 2026-08-24, after the shared Special grant was refreshed, the installed v0.34.42 binary
-completed production-budget validation for `special-drive` (98 / 290,445 bytes), `special-gmail`
-(213 / 980,116 bytes), and `special-calendar` (0 / 0 bytes), all with `complete=true` and zero
-writes. `readiness --allow-sync-service` now passes the complete source-validation gate. Recurring
-sync remains uninstalled because enabling a scheduler or reconciliation is still an explicit
-operator decision.
+Each configured source has:
 
-The published v0.34.42 release boundary retains the bounded four-worker Drive body-fetch pool and regression
-coverage from PR #1594. Current production-budget validations include Personal Drive (1,639 documents /
-13,440,509 bytes), Work Drive (516 / 4,581,462), Work Gmail (7,388 / 34,530,230), Work Calendar
-(2,220 / 1,832,878), Personal Calendar (1,815 / 360,659), Apple Notes (`work-notes` 28 / 122,114;
-`personal-notes` 66 / 136,208; `special-notes` 8 / 14,046), and Buzz (45 / 375,824), all with zero
-index or reconciliation writes. Every enabled non-code source now has a current complete
-production-budget record. Discord and all code/filesystem roots remain disabled by operator choice,
-Slack is not configured, and the recurring sync service remains uninstalled until the operator
-explicitly approves a trial and recurring policy.
+- one stable source name;
+- one connector kind;
+- one workspace/project;
+- one approved account, root, repository, folder, calendar, channel, community, or equivalent scope;
+- one default ACL or a narrower source-provided ACL;
+- bounded document, byte, time, response, spool, and concurrency settings;
+- credential references or a provider-native authorization record;
+- a configuration fingerprint.
 
-| Source                                                                     | Current evidence                                                                                                                                                                                                                                                              | Next action                                                                                                                 |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Apple Notes (`work-notes`, `personal-notes`, `special-notes`)              | Current v0.34.42 production-budget validation returned `work-notes` 28 / 122,114 bytes, `personal-notes` 66 / 136,208, and `special-notes` 8 / 14,046, all complete with zero writes; exact folder routing is preserved.                                                      | Keep exact folder filters; retain non-reconciling mode until the operator explicitly approves a trial and recurring policy. |
-| Google Calendar (`work-calendar`, `personal-calendar`, `special-calendar`) | `work-calendar` passed 2,220 / 1,832,878 bytes; `personal-calendar` passed 1,815 / 360,659; `special-calendar` passed 0 / 0. All current records are complete at their configured budgets with zero writes.                                                                   | Keep all runs non-reconciling until the operator explicitly approves a trial and recurring policy.                          |
-| Buzz                                                                       | Current v0.34.42 production-budget validation returned 45 records / 375,824 bytes, complete within 2,000 / 128 MiB / 900 seconds, with zero writes.                                                                                                                           | Keep the source non-reconciling until the operator explicitly approves a trial and recurring policy.                        |
-| Google Drive/Gmail                                                         | `work-drive` passed 516 / 4,581,462; `work-gmail` 7,388 / 34,530,230; Personal Drive 1,639 / 13,440,509; Personal Gmail 431 / 1,493,536; `special-drive` 98 / 290,445; `special-gmail` 213 / 980,116. All are complete within configured production budgets with zero writes. | Keep all runs non-reconciling until the operator explicitly approves a trial and recurring policy.                          |
-| Discord                                                                    | Disabled by operator decision while the prior bot/RPC authorization is unavailable.                                                                                                                                                                                           | Keep disabled until a fresh owner authorization is completed.                                                               |
-| Slack                                                                      | Not configured in this installation.                                                                                                                                                                                                                                          | Remains an optional connector for other users.                                                                              |
-| Code/filesystem roots                                                      | Disabled by operator decision to defer the largest syncs.                                                                                                                                                                                                                     | Keep disabled until a separate code-index rollout is approved.                                                              |
+Changing scope, credentials, inclusion rules, budgets, or other material configuration invalidates prior validation authority.
 
-A source is eligible for a recurring or reconciling run only when its current record in
-`source-validations.json` has `status = "succeeded"`, `complete = true`, the current configuration
-fingerprint, and document/byte/time limits at least as large as the requested run. Sampled
-(`complete = false`) and legacy-unknown records are valid evidence for bounded non-reconciling
-trials only.
+## Configure
 
-The earlier 2026-08-15 Work Drive retry emitted all 478 connector records but failed closed when the local
-embedding connection dropped during ingestion. It used `--no-reconcile`, made no deletions, and the
-embedding supervisor recovered; query-only readiness passed afterward. A subsequent v0.32.4 run with
-`--max-documents 100 --max-bytes 16777216 --max-seconds 300 --no-reconcile --require-validation`
-completed 100 unchanged documents with `changed=0` and `deleted=0`. This is a successful bounded
-trial and exercises the transport-retry path, but it is not a complete 478-document production trial
-and does not authorize reconciliation or recurring sync.
+Configuration creates or updates the source definition without reading or indexing source content.
 
-On 2026-08-15 the operator completed a fresh bounded, non-reconciling pass for every enabled
-non-code source using 25 documents, 5 MiB, and 60 seconds per source. Work/Personal/Special
-Apple Notes, Drive, Gmail, Calendar, and Buzz all succeeded; Special Calendar returned zero
-records; every run reported zero deletions. The index ended at 12,123 documents and 42,638
-chunks, query-only readiness passed, and the installation remains manual/query-only. These
-records are below production budgets, so code roots, Discord, Slack, reconciliation, and
-recurring sync remain explicitly gated.
+Review:
 
-Historical note: on 2026-08-16 a separate read-only Personal Drive probe completed 100 documents
-at 390,182 bytes with a 300-second cap and zero index writes. This remains bounded connector
-evidence, not a production validation; the current configured gate is 2,000 documents/128 MiB/
-900 seconds and still does not authorize reconciliation or recurring sync.
+- workspace/project assignment;
+- ACL label;
+- account or host boundary;
+- exact include/exclude rules;
+- intended production budget;
+- connector-specific credentials or native authorization references;
+- whether the source is enabled for validation or ingestion.
 
-## Per-source rollout matrix
+Disabling a source stops future reads. It does not silently delete indexed evidence.
 
-| Source family   | Authorization boundary                                                                       | Implemented contract                                                                                                                                                     | Safe next gate                                                                                | Production gate                                                                       |
-| --------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Google Drive    | Desktop OAuth client + owner-only refresh-token file                                         | Pagination, provider changes cursor for unfiltered snapshots, bounded exports/PDFs, cache reuse, retries, stale-cache fallback, deletion reconciliation, ACL propagation | Authorize one named source, validate with a small budget, then run one `--no-reconcile` trial | Full listing/detail/conversion validation at configured budget with `complete=true`   |
-| Gmail           | Desktop OAuth client + owner-only refresh-token file                                         | Provider history cursor for unfiltered snapshots, bounded detail fetches, transient retries, cache reuse, permission-failure guard, reconciliation, ACL propagation      | Same one-source validation and bounded trial                                                  | Complete message snapshot at configured budget; no unresolved detail or cursor errors |
-| Google Calendar | Desktop OAuth client + owner-only refresh-token file                                         | Calendar pagination, recurring-series compaction, bounded events, cursor and listing validation, reconciliation, ACL propagation                                         | Validate one calendar source before any trial                                                 | Complete event snapshot at configured budget                                          |
-| Apple Notes     | macOS Automation permission; no stored credential                                            | Executable/path checks, exact include/exclude folder filters, bounded exports, stable IDs, ACL propagation                                                               | Approve host Notes access, validate each folder-scoped source, inspect status                 | Complete Notes validation at the intended full budget for every enabled folder scope  |
-| Buzz            | Read-only local `agents/teams.json` identity plus retention data                             | Regular-file/symlink/size guards, bounded community discovery, read-only connector, progress and failure reporting                                                       | Confirm the identity file and select communities in Desktop                                   | Complete Buzz snapshot at configured budget                                           |
-| Discord         | Signed-in Discord Desktop RPC + owner-only OAuth/token files                                 | Bounded guild/channel discovery, workspace assignment, snapshot cache, edit/delete refresh, cancellation, fail-closed RPC deadlines                                      | Keep Discord Desktop running; authorize one source and validate selected channels             | Complete channel snapshot at configured budget; RPC authorization must remain current |
-| Slack           | Browser OAuth user token for workspace assignment plus configured bot token for message sync | PKCE flow, team discovery, bounded channel/message retrieval, cursor/cache refresh, retries, cancellation, reconciliation, ACL propagation                               | Configure the Slack app callback, authorize one workspace, validate one source                | Complete channel snapshot at configured budget with bot-token access                  |
-| Filesystem/code | Owner-selected local roots; no OAuth                                                         | Metadata preflight, stable IDs, bounded reads, sampling, cancellation, ACL propagation, deletion reconciliation for complete snapshots                                   | Use `--sample` and a small non-reconciling trial                                              | Full-root validation without sampling, then complete reconciling snapshot             |
+## Authorize
 
-## Repeatable operator sequence
+Authorization uses the provider-specific mechanism:
 
-For each source, perform these steps in order and record the result in the
-Desktop audit panel or the metadata-only audit export:
+- browser OAuth or callback;
+- device flow;
+- Desktop RPC;
+- host permission;
+- environment-backed token;
+- owner-selected filesystem path;
+- read-only local application identity.
 
-1. Confirm the source's workspace, ACL label, root/account, and intended budget.
-2. Complete only that source's authorization or host-permission step.
-3. Run `cortana validate-source SOURCE` with explicit small limits.
-4. Inspect `/v1/status` or Desktop source status; do not proceed on a stale,
-   failed, sampled, unknown, or mismatched record.
-5. Run one bounded `cortana sync --source SOURCE --require-validation
---no-reconcile` trial and review cited results.
-6. Increase limits only after the trial's cursor, cache, ACL, progress,
-   cancellation, and failure behavior are understood.
-7. Run a complete validation at the intended production budget. Only an explicit
-   `complete=true` record permits reconciliation or recurring sync.
+Authorization must not perform ingestion, embeddings, reconciliation, or scheduling. Secrets remain provider-, runtime-, keychain-, environment-, or owner-private-file owned according to the connector contract.
 
-The source smoke script is useful for a metadata-only sweep, but it does not
-replace per-source authorization or production-budget validation:
+## Discover and select scope
 
-```bash
-scripts/source-smoke.sh --config "$HOME/.config/cortana/config.toml"
-```
+Where the provider supports discovery, the user selects the exact approved scope before validation:
 
-Never use `--allow-sync-service` as a shortcut. It acknowledges an intentionally
-installed recurring service; it does not authorize a source and must fail closed
-until every enabled source meets the complete-validation gate.
+- Drive folders or account;
+- repositories;
+- Notes folders;
+- calendars;
+- Slack teams and channels;
+- Discord servers and channels;
+- Buzz communities;
+- filesystem/code roots.
+
+Discovery responses are bounded and contain no reusable secrets. Selection is workspace-scoped and cannot grant visibility to another workspace.
+
+## Read-only validation
+
+Validation exercises authorization, configuration, listing, parsing, conversion, cursor behavior, and resource limits without:
+
+- writing documents;
+- creating embeddings;
+- changing the index;
+- reconciling deletions;
+- installing a schedule.
+
+A validation record includes:
+
+- source and configuration fingerprint;
+- status and completion state;
+- document and byte counts;
+- applied budgets;
+- start and completion times;
+- connector outcome;
+- zero-write confirmation;
+- freshness.
+
+A sampled or capped validation may authorize only an equal-or-smaller non-reconciling trial. It never authorizes complete ingestion, reconciliation, or recurring synchronization.
+
+## Bounded initial trial
+
+The initial trial must:
+
+- name one approved source;
+- require matching validation;
+- use explicit document, byte, and time budgets;
+- use non-reconciling mode;
+- state expected write impact;
+- have a verified backup and rollback procedure;
+- record progress, retries, cancellation, resource use, and results.
+
+Review after the run:
+
+- changed, unchanged, failed, cancelled, budget-exceeded, and deleted counts;
+- cursor and cache behavior;
+- embedding reuse;
+- source identity and links;
+- exact canonical content;
+- workspace and ACL isolation;
+- cited retrieval;
+- service health and query availability;
+- database and backup verification.
+
+A partial prefix may remain indexed when it is valid. A partial, failed, cancelled, timed-out, capped, sampled, or explicitly non-reconciling run must report zero authoritative deletions.
+
+## Complete validation
+
+Before any complete or recurring policy is considered, the source must have a fresh validation that:
+
+- covers the intended complete scope;
+- uses budgets at least as large as the proposed run;
+- reports `complete=true`;
+- matches the current configuration fingerprint;
+- has no unresolved authorization, detail-fetch, cursor, conversion, or scope errors.
+
+Complete validation proves only that the source can be read under that configuration. It does not itself authorize ingestion, reconciliation, or scheduling.
+
+## Reconciliation
+
+Reconciliation removes canonical records that are absent from a complete authoritative snapshot. It is a destructive capability and requires all of the following:
+
+- explicit operator approval;
+- a fresh matching complete validation;
+- a complete reconciling run;
+- stable source/source_id identity;
+- no sampled, capped, failed, cancelled, timed-out, or unresolved provider state;
+- backup and rollback evidence;
+- deletion counts and audit evidence.
+
+One source failure cannot authorize deletion for another source. Cursor optimization may reduce reads but cannot weaken complete-snapshot guarantees.
+
+## Recurring synchronization
+
+Recurring synchronization is a separate policy decision. The policy defines:
+
+- eligible sources;
+- cadence and jitter;
+- quiet hours;
+- concurrency and resource ceilings;
+- validation freshness;
+- backup prerequisites;
+- retry and backoff;
+- notification and escalation;
+- reconciliation mode;
+- canary activation;
+- pause, resume, disable, and uninstall behavior.
+
+Installing general Cortana services must not install recurring synchronization implicitly. Disabling the scheduler preserves the index, source configuration, credentials, and manual query operation.
+
+## Failure and recovery
+
+Connectors may retry only safe idempotent reads for bounded transport, timeout, rate-limit, and approved provider failures.
+
+On failure or cancellation:
+
+- stop future work;
+- record the explicit outcome;
+- preserve valid completed-prefix writes;
+- release locks and bounded spools;
+- retain query availability where possible;
+- make no authoritative deletions;
+- provide a safe retry or remediation path.
+
+Authorization, ACL, configuration, scope, and validation failures fail fast and closed.
+
+## Source-family contract
+
+| Source family    | Authorization boundary                        | Scope examples                                 | Required production evidence                                                                       |
+| ---------------- | --------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Google Drive     | Browser OAuth and owner-private refresh token | Account, folder, exported documents            | Complete listing/detail/conversion validation, bounded trial, ACL and source-link checks           |
+| Gmail            | Browser OAuth and owner-private refresh token | Account, labels or provider-supported snapshot | Complete message/detail validation, history/cursor checks, bounded trial, thread/provenance checks |
+| Google Calendar  | Browser OAuth and owner-private refresh token | Account and selected calendars                 | Complete event validation, recurring-series bounds, empty-snapshot distinction, bounded trial      |
+| Apple Notes      | Host-native permission                        | Exact included and excluded folders            | Complete folder-scoped validation, exact routing, bounded trial                                    |
+| GitHub           | Device flow or token reference                | Selected repositories                          | Repository selection, revision identity, bounded trial, code provenance                            |
+| Filesystem/code  | Owner-selected local root                     | Exact roots and excludes                       | Full-root validation without sampling before complete policy; generated/vendor/worktree exclusions |
+| Slack            | Browser OAuth plus message-sync credential    | Team and channels                              | Team/channel authorization, complete validation, bounded message trial                             |
+| Discord          | Signed-in Desktop RPC and private token state | Servers and channels                           | Current authorization, complete selected-channel validation, bounded trial                         |
+| Buzz             | Read-only local identity/application data     | Communities                                    | Identity-file validation, selected-community validation, bounded trial                             |
+| External command | Explicit executable and config                | Adapter-defined                                | Connector certification, JSONL conformance, budgets, cancellation, completeness, secret handling   |
 
 ## Evidence to retain
 
-Keep the following with each rollout review:
+Retain non-secret evidence sufficient to reproduce the decision:
 
-- source name, workspace, kind, and configuration fingerprint;
-- authorization method and timestamp, without tokens or private paths;
-- validation status, completeness, limits, document/byte counts, and age;
-- trial outcome, cursor/cache behavior, ACL scope, cancellation and failure result;
-- cited query spot-check and metadata-only audit export;
-- explicit approval before enabling a complete reconciliation or recurring job.
+- source name, kind, workspace, and ACL;
+- configuration fingerprint;
+- authorization method and time;
+- validation completeness, budgets, counts, and age;
+- trial command or request envelope;
+- changed/unchanged/deleted counts;
+- progress, cancellation, retry, and failure results;
+- resource and cache observations;
+- cited spot checks;
+- backup and rollback verification;
+- explicit approval for reconciliation or recurring scheduling.
 
-This plan does not silently authorize a new source, scheduler, reconciliation, or data deletion.
-The Apple Notes rollout above is the completed operator-approved exception; all other production
-gates remain explicit and source-scoped so an interrupted run cannot turn into an unbounded sync.
+Do not retain raw tokens, credential paths, source content, private query text, or unnecessary absolute paths in issues or audit metadata.
+
+## Planning boundary
+
+The procedure above is durable. The current source inventory, pending trials, activation order, owners, and blockers belong only in [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues).

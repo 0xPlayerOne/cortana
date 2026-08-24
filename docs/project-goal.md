@@ -1,82 +1,74 @@
 # Project goal
 
-Cortana is a private, local-first second brain for a person and the agents that work with them.
-It turns approved notes, messages, documents, calendars, and code into one canonical evidence store
-that can be searched, browsed, cited, and safely reused across agents.
+Cortana is a private, local-first second brain for a person and the agents that work with them. It turns explicitly approved notes, messages, documents, calendars, code, and other sources into one canonical evidence store that can be searched, browsed, cited, and safely reused across supported agents.
 
-## The user promise
+## User promise
 
-Install Cortana, create a workspace, approve one source, validate a small read-only sample, and ask
-one cited question. The Desktop app should make that path understandable without requiring users to
-learn about connectors, embeddings, MCP, or service managers first.
+A new user should be able to:
 
-Cortana is intentionally not an unrestricted crawler, hosted personal-data warehouse, or automatic
-backup. A new installation is query-only. Account authorization, source reads, embedding work,
-reconciliation, recurring sync, shared-agent access, and explicit memory writes are separate
-explicit decisions.
+1. install Cortana Desktop;
+2. create a workspace;
+3. authorize one source;
+4. run a bounded read-only validation;
+5. confirm one small non-reconciling initial sync;
+6. browse the resulting document;
+7. ask one cited question.
 
-## What the system provides
+The supported path must not require the user to understand connector subprocesses, embedding infrastructure, SQLite, MCP, or operating-system service managers.
 
-- A Tauri Desktop app for workspaces, source setup, service health, progress, backups, updates, and
-  an Obsidian-inspired document browser.
-- A canonical store with provenance, source/workspace scope, ACL filtering, audit metadata, and
-  compatibility migration for the Hermes-era index.
-- Configurable connectors for Google Drive, Gmail, Calendar, Apple Notes, GitHub code, filesystem
-  and code roots, Discord, Slack, and Buzz.
-- Local Qwen text/code embeddings or an OpenAI-compatible cloud provider, with content-addressed
-  reuse so unchanged material does not pay for another embedding request.
-- Hybrid lexical and semantic retrieval through the Desktop UI, MCP, HTTP, and CLI, with bounded
-  context bundles, citations, cache telemetry, and a deterministic extractive fallback.
-- A vertically integrated native agentic-memory layer in the same store for explicit semantic,
-  episodic, procedural, preference, and working memories, with expiry, supersession, ACL
-  enforcement, audit metadata, scoped export, and cache invalidation shared with knowledge
-  retrieval. Cortana's own store is the sole supported memory engine for this release.
-- A paginated hierarchical knowledge graph that exposes workspace, source, and document
-  relationships without loading the entire corpus into memory.
+## Product promise
 
-## Completion means evidence, not just code
+Cortana provides:
 
-The project is ready for a production claim only when all of these are true:
+- a local canonical evidence store with source identity, provenance, workspace scope, ACLs, timestamps, and exact content;
+- configurable source connectors with explicit authorization, validation, budgets, incremental ingestion, reconciliation safety, cancellation, and status;
+- hybrid semantic and lexical retrieval through Desktop, MCP, HTTP, and CLI;
+- bounded ContextBundles that keep source evidence and native memory visibly separate;
+- content-addressed embedding reuse and revision-aware derived caches;
+- native semantic, episodic, procedural, preference, and expiry-bounded working memory;
+- explicit remember, recall, forget, export, expiry, dedupe, supersession, provenance, and backup semantics;
+- an Obsidian-inspired Desktop workspace for sources, documents, graph exploration, memory, services, backups, and updates;
+- a narrow agent interface that works across supported harnesses without making any harness the canonical brain.
 
-1. The current source tree and published release have passed the direct-to-`main` pull-request
-   flow, the strict release verifier, and the documented archive/package checks.
-2. A real supported Desktop build has passed manual acceptance for first-run tooling approval,
-   OAuth/browser flows, source controls, workspace isolation, service start/stop, tray/background
-   behavior, native dialogs, backup/restore, updater installation, and the supported operating
-   system trust requirements.
-3. Every enabled source has a fresh, complete validation at its intended full budget. Sampled or
-   incomplete validation never authorizes reconciliation or recurring sync.
-4. Shared-agent principals have explicit scopes, ACL tests, rotation/revocation procedures, audit
-   evidence, and no cross-workspace leakage.
-5. Provider-backed retrieval evaluation covers the packaged core and representative approved data;
-   fixture-only evaluation remains a useful regression gate, not a production proof. The repository
-   ships a bounded read-only live-index harness (`scripts/evaluate-live-index.py`) for this
-   operator-controlled evidence; the first retrieval-only run is recorded in the evaluation
-   guide, while approved-corpus answer/synthesis evidence is still required before claiming this
-   gate fully closed.
-6. Native memory retention, deletion, ACL, idempotence, export, and packaged-UI evidence are
-   covered by the same canonical-store contract.
-7. Hermes migration compatibility remains available for explicit imports, but the live installation
-   must not run a parallel legacy stack. Active legacy rows, launch agents, and machine-level
-   directories are removed only after import/rebuild and a verified rollback backup; the migration
-   helpers remain in the source tree for controlled recovery of older installations.
+## Authority boundaries
 
-The authoritative current release and open gates live in [Release history](releases.md),
-[Evaluation](evaluation.md), [Operations](operations.md), and the [Desktop UX audit](desktop-ux-audit.md).
+- External sources remain authoritative for their original content.
+- Cortana owns its normalized local evidence, derived indexes, native memory, and ContextBundles.
+- Native memory contains bounded conclusions, not full source documents or transcripts.
+- Harness scratchpads, Agent HQ ProjectState, Control Plane ContextPackages, workflow checkpoints, and native sessions remain owned by their respective systems.
+- Evidence may support citations. Native memory is operational context and cannot substitute for source evidence.
+- Retrieval does not mutate evidence, memory, ProjectState, or task state.
 
-## Release boundary
+## Safety principles
 
-The published `v0.34.42` tag is the current source/release boundary. Release-assets workflow
-`32680743937` published all supported platform assets; the strict cross-platform verifier passed
-all 18 assets, signatures, checksums, manifest checks, and packaged-core checks. A
-source checkout can contain validated changes that are not yet in the installer;
-only a tag with recorded verifier evidence should be presented
-as downloadable release behavior.
+- A fresh installation starts query-only.
+- Authorization, validation, ingestion, reconciliation, recurring scheduling, model use, shared-agent access, backup restore, and memory writes are separate explicit actions.
+- Partial or failed source operations never gain deletion authority.
+- Embedding or synthesis failure degrades safely.
+- Workspace and ACL boundaries are enforced before content is serialized.
+- Credentials and private content are excluded from default audit telemetry.
+- The Desktop renderer receives only narrow, typed, allowlisted native capabilities.
+- Derived graph or memory representations retain provenance, scope, confidence where applicable, and invalidation behavior.
+- The standalone local product remains useful without Agent HQ, the Control Plane, a hosted service, or an external memory engine.
 
-## Where to start
+## Completion criteria
 
-- End users: [Getting started](getting-started.md).
-- Operators: [Operations](operations.md).
-- Source setup: [Ingestion](ingestion.md) and [Source rollout](source-rollout.md).
-- Agent builders: [Agent integrations](integrations.md) and [Query](query.md).
-- Contributors: [Development instructions](../.github/CONTRIBUTING.md).
+Product claims must be supported by the appropriate evidence lane:
+
+- deterministic tests for contracts and regressions;
+- approved-corpus evaluation for representative retrieval and answer quality;
+- source-specific validation and bounded trials for connector activation;
+- real packaged-app acceptance for Desktop behavior;
+- artifact signing and operating-system checks for distribution trust;
+- backup and recovery drills for durability;
+- least-privilege integration tests for shared agents and first-party clients.
+
+The exact live status of those criteria belongs in GitHub, not this document.
+
+## Planning and evidence ownership
+
+[GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) are canonical for current scope, sequence, ownership, dates, dependencies, blockers, status, and task-level acceptance evidence.
+
+[Release history](releases.md) owns tagged release evidence. [Evaluation](evaluation.md), [Operations](operations.md), [Source rollout](source-rollout.md), and [Desktop UX audit](desktop-ux-audit.md) define methods and evidence-retention rules.
+
+See [Planning and tracking](planning.md).
