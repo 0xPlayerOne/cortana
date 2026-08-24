@@ -4,24 +4,24 @@ Cortana documentation is divided by authority. Each document should define one d
 
 ## Start here
 
-| Need | Canonical document |
-| --- | --- |
-| Product purpose and user promise | [Project goal](project-goal.md) |
-| Install and first use | [Getting started](getting-started.md) |
+| Need                                                    | Canonical document                                                                                                                        |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Product purpose and user promise                        | [Project goal](project-goal.md)                                                                                                           |
+| Install and first use                                   | [Getting started](getting-started.md)                                                                                                     |
 | Current work, ownership, sequence, blockers, and status | [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) |
-| Tagged release evidence | [Release history](releases.md) |
-| Source lifecycle and connector rules | [Ingestion](ingestion.md) |
-| Source activation procedure | [Source rollout](source-rollout.md) |
-| Retrieval, context, synthesis, and caching | [Query](query.md) |
-| Native memory lifecycle | [Memory](memory.md) |
-| Agent setup and interface use | [Integrations](integrations.md) |
-| Desktop architecture and privilege boundary | [Desktop architecture](desktop-architecture.md) |
-| Desktop packaged-product acceptance | [Desktop UX audit](desktop-ux-audit.md) |
-| Services, readiness, backup, restore, and recovery | [Operations](operations.md) |
-| Evaluation methods and evidence | [Evaluation](evaluation.md) |
-| Planning and documentation ownership | [Planning and tracking](planning.md) |
-| Architecture diagrams | [Architecture](architecture/) |
-| Extension policy | [Extensions](EXTENSIONS.md) |
+| Tagged release evidence                                 | [Release history](releases.md)                                                                                                            |
+| Source lifecycle and connector rules                    | [Ingestion](ingestion.md)                                                                                                                 |
+| Source activation procedure                             | [Source rollout](source-rollout.md)                                                                                                       |
+| Retrieval, context, synthesis, and caching              | [Query](query.md)                                                                                                                         |
+| Native memory lifecycle                                 | [Memory](memory.md)                                                                                                                       |
+| Agent setup and interface use                           | [Integrations](integrations.md)                                                                                                           |
+| Desktop architecture and privilege boundary             | [Desktop architecture](desktop-architecture.md)                                                                                           |
+| Desktop packaged-product acceptance                     | [Desktop UX audit](desktop-ux-audit.md)                                                                                                   |
+| Services, readiness, backup, restore, and recovery      | [Operations](operations.md)                                                                                                               |
+| Evaluation methods and evidence                         | [Evaluation](evaluation.md)                                                                                                               |
+| Planning and documentation ownership                    | [Planning and tracking](planning.md)                                                                                                      |
+| Architecture diagrams                                   | [Architecture](architecture/)                                                                                                             |
+| Extension policy                                        | [Extensions](EXTENSIONS.md)                                                                                                               |
 
 ## Authority model
 
