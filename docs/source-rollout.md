@@ -194,18 +194,18 @@ Authorization, ACL, configuration, scope, and validation failures fail fast and 
 
 ## Source-family contract
 
-| Source family | Authorization boundary | Scope examples | Required production evidence |
-| --- | --- | --- | --- |
-| Google Drive | Browser OAuth and owner-private refresh token | Account, folder, exported documents | Complete listing/detail/conversion validation, bounded trial, ACL and source-link checks |
-| Gmail | Browser OAuth and owner-private refresh token | Account, labels or provider-supported snapshot | Complete message/detail validation, history/cursor checks, bounded trial, thread/provenance checks |
-| Google Calendar | Browser OAuth and owner-private refresh token | Account and selected calendars | Complete event validation, recurring-series bounds, empty-snapshot distinction, bounded trial |
-| Apple Notes | Host-native permission | Exact included and excluded folders | Complete folder-scoped validation, exact routing, bounded trial |
-| GitHub | Device flow or token reference | Selected repositories | Repository selection, revision identity, bounded trial, code provenance |
-| Filesystem/code | Owner-selected local root | Exact roots and excludes | Full-root validation without sampling before complete policy; generated/vendor/worktree exclusions |
-| Slack | Browser OAuth plus message-sync credential | Team and channels | Team/channel authorization, complete validation, bounded message trial |
-| Discord | Signed-in Desktop RPC and private token state | Servers and channels | Current authorization, complete selected-channel validation, bounded trial |
-| Buzz | Read-only local identity/application data | Communities | Identity-file validation, selected-community validation, bounded trial |
-| External command | Explicit executable and config | Adapter-defined | Connector certification, JSONL conformance, budgets, cancellation, completeness, secret handling |
+| Source family    | Authorization boundary                        | Scope examples                                 | Required production evidence                                                                       |
+| ---------------- | --------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Google Drive     | Browser OAuth and owner-private refresh token | Account, folder, exported documents            | Complete listing/detail/conversion validation, bounded trial, ACL and source-link checks           |
+| Gmail            | Browser OAuth and owner-private refresh token | Account, labels or provider-supported snapshot | Complete message/detail validation, history/cursor checks, bounded trial, thread/provenance checks |
+| Google Calendar  | Browser OAuth and owner-private refresh token | Account and selected calendars                 | Complete event validation, recurring-series bounds, empty-snapshot distinction, bounded trial      |
+| Apple Notes      | Host-native permission                        | Exact included and excluded folders            | Complete folder-scoped validation, exact routing, bounded trial                                    |
+| GitHub           | Device flow or token reference                | Selected repositories                          | Repository selection, revision identity, bounded trial, code provenance                            |
+| Filesystem/code  | Owner-selected local root                     | Exact roots and excludes                       | Full-root validation without sampling before complete policy; generated/vendor/worktree exclusions |
+| Slack            | Browser OAuth plus message-sync credential    | Team and channels                              | Team/channel authorization, complete validation, bounded message trial                             |
+| Discord          | Signed-in Desktop RPC and private token state | Servers and channels                           | Current authorization, complete selected-channel validation, bounded trial                         |
+| Buzz             | Read-only local identity/application data     | Communities                                    | Identity-file validation, selected-community validation, bounded trial                             |
+| External command | Explicit executable and config                | Adapter-defined                                | Connector certification, JSONL conformance, budgets, cancellation, completeness, secret handling   |
 
 ## Evidence to retain
 
