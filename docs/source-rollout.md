@@ -17,8 +17,9 @@ initial bounded validation pass for every enabled non-code source using the safe
 of 25 documents, 5 MiB, and 60 seconds, followed by a v0.34.15 Personal Gmail retry at the same
 document/byte bound with a 120-second cap. Validation does not embed, index, reconcile, or delete
 records. Ten sources now return `complete=true`; the three special-workspace Google sources failed
-closed because the shared `special.json` OAuth grant returned `invalid_grant`. These records are
-bounded evidence, not authorization to reconcile or install recurring sync:
+closed because the shared `special.json` OAuth grant returned `invalid_grant`. The bounded records
+are evidence, not authorization to reconcile or install recurring sync; the later Personal Drive
+production-budget record is described below and is still not a sync authorization:
 
 - Apple Notes: `work-notes` 25, `personal-notes` 25, and `special-notes` 8 documents; complete.
 - Work Google sources: `work-drive`, `work-gmail`, and `work-calendar`; 25-document bounded
