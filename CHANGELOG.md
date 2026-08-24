@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.44](https://github.com/0xPlayerOne/cortana/compare/v0.34.43...v0.34.44) (2026-08-24)
+
+
+### Documentation
+
+* align v0.34.43 release and direct workflow ([#2100](https://github.com/0xPlayerOne/cortana/issues/2100)) ([9bec8d0](https://github.com/0xPlayerOne/cortana/commit/9bec8d08c56c0abd24cb9aaab26cc7b489980525))
+
 ## [0.34.43](https://github.com/0xPlayerOne/cortana/compare/v0.34.42...v0.34.43) (2026-08-24)
 
 
