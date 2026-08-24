@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.46](https://github.com/0xPlayerOne/cortana/compare/v0.34.45...v0.34.46) (2026-08-24)
+
+
+### Maintenance
+
+* **license:** switch repository to Apache 2.0 ([#2105](https://github.com/0xPlayerOne/cortana/issues/2105)) ([9681f2f](https://github.com/0xPlayerOne/cortana/commit/9681f2f502b1ff72b6ba054a9ee78e3d40d4aa4b))
+
 ## [0.34.45](https://github.com/0xPlayerOne/cortana/compare/v0.34.44...v0.34.45) (2026-08-24)
 
 
