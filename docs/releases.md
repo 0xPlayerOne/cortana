@@ -96,14 +96,15 @@ installed-host evidence remains v0.34.42.
 ## v0.34.37 release notes (historical)
 
 The v0.34.37 metadata release carried forward the verified v0.34.36 runtime evidence. Its package
-and host claims are historical; current source, package, and installed-runtime claims belong to
-v0.34.42 above.
+and host claims are historical; current source and package claims belong to v0.34.43 above, while
+the latest installed-host evidence remains v0.34.42.
 
 ## v0.34.36 release notes (historical)
 
 The v0.34.36 metadata release carried forward the verified v0.34.34 runtime evidence and the
 protected UI action-button hardening from PR #1864. Its package verification and host evidence are
-historical; current source, package, and installed-runtime claims belong to v0.34.42 above.
+historical; current source and package claims belong to v0.34.43 above, while the latest
+installed-host evidence remains v0.34.42.
 
 ## v0.34.29 release intent (published and verified; historical)
 
