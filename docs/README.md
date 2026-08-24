@@ -1,83 +1,71 @@
 # Cortana documentation
 
-Cortana is a local-first, agent-native second brain. [Getting started](getting-started.md) is the
-shortest path from download to a first bounded query; this index routes you to the right guide
-after installation. The [root README](../README.md) explains the project purpose, architecture,
-and contributor path.
-
-## Current status
-
-| Area                           | Current boundary                                                                                                                                          |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Downloadable package           | `v0.34.42`; release-assets workflow `32680743937` and the strict verifier passed all 18 assets, signatures, checksums, manifest, and packaged-core checks |
-| Source checkout                | Tracks the protected v0.34.42 tree; the tag is published; the audited host runs v0.34.42; published-package verification is complete                      |
-| Default runtime                | Query-only; no source authorization, full sync, or recurring schedule is enabled automatically; native memory is explicit-write only                      |
-| Safe first milestone           | One workspace, one source, bounded validation, one non-reconciling trial, and one cited query                                                             |
-| Knowledge browser              | Obsidian-style workspace/source/document navigation with bounded hierarchical graph pages and local type filters                                          |
-| Operational visibility         | Query-only service status, health/readiness probes, source progress, and explicit stale-stat warnings during temporary SQLite contention                  |
-| Still requires host acceptance | Packaged GUI/browser OAuth, tray and native dialogs, updater install, macOS Developer ID/notarization, and complete full-budget source validation         |
-
-This table is the documentation boundary for the project. Update it whenever a release, safety gate,
-or first-run workflow changes; keep historical measurements in the linked audit and release pages
-instead of silently rewriting them.
+Cortana documentation is divided by authority. Each document should define one durable concern and avoid duplicating current planning or release status.
 
 ## Start here
 
-- [Project goal](project-goal.md) — the product purpose, user promise, and evidence-based
-  definition of production readiness.
-- [Getting started](getting-started.md) — the simple Desktop-first path from download to a cited
-  first result.
-- [Download and first launch](../README.md#desktop-first-launch-recommended) — the same path in
-  the root project overview.
-- [Operations](operations.md) — start and stop services, inspect readiness and telemetry, manage
-  backups, configure authentication, and recover safely.
-- [Agent integrations](integrations.md) — install the portable skill and connect MCP, HTTP, or CLI
-  clients with optional scoped principals.
+| Need | Canonical document |
+| --- | --- |
+| Product purpose and user promise | [Project goal](project-goal.md) |
+| Install and first use | [Getting started](getting-started.md) |
+| Current work, ownership, sequence, blockers, and status | [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) |
+| Tagged release evidence | [Release history](releases.md) |
+| Source lifecycle and connector rules | [Ingestion](ingestion.md) |
+| Source activation procedure | [Source rollout](source-rollout.md) |
+| Retrieval, context, synthesis, and caching | [Query](query.md) |
+| Native memory lifecycle | [Memory](memory.md) |
+| Agent setup and interface use | [Integrations](integrations.md) |
+| Desktop architecture and privilege boundary | [Desktop architecture](desktop-architecture.md) |
+| Desktop packaged-product acceptance | [Desktop UX audit](desktop-ux-audit.md) |
+| Services, readiness, backup, restore, and recovery | [Operations](operations.md) |
+| Evaluation methods and evidence | [Evaluation](evaluation.md) |
+| Planning and documentation ownership | [Planning and tracking](planning.md) |
+| Architecture diagrams | [Architecture](architecture/) |
+| Extension policy | [Extensions](EXTENSIONS.md) |
 
-## Configure the system
+## Authority model
 
-- [Ingestion](ingestion.md) — source adapters, workspaces, budgets, cursors, ACLs, deletion
-  reconciliation, and validation gates.
-- [Source rollout plan](source-rollout.md) — per-source authorization, bounded trials, production
-  validation, and the explicit recurring-sync gate.
-- [Query](query.md) — hybrid retrieval, local Qwen or cloud embeddings, synthesis, cache behavior,
-  degraded operation, and the bounded hierarchical knowledge graph.
-- [Native memory](memory.md) — memory types, provenance, ACLs, lifecycle, MCP, HTTP, and CLI usage.
-- [Evaluation](evaluation.md) — the bounded model, release, readiness, and evidence requirements.
-- [Configuration example](../config.example.toml) — a redacted starting point for local, cloud,
-  multi-workspace, and local service settings.
+### GitHub
 
-## Desktop and architecture
+[GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) are canonical for:
 
-- [Desktop guide](../apps/desktop/README.md) — native settings, source authorization, services,
-  tray behavior, updater boundaries, and contributor commands.
-- [Desktop architecture](desktop-architecture.md) — Tauri trust boundaries, sidecars, lifecycle,
-  and packaging.
-- [Desktop UX audit](desktop-ux-audit.md) — current evidence, completed UX requirements, and
-  explicitly open manual gates.
-- [Memory](memory.md) — the vertically integrated native agent-memory layer.
+- current product and implementation status;
+- milestone scope and sequence;
+- ownership and assignees;
+- dates and dependencies;
+- blockers and risks;
+- task-level acceptance criteria and evidence;
+- superseded or deferred work.
 
-## Releases and contribution
+Canonical documents must not maintain parallel milestone lists, current-status tables, or issue backlogs.
 
-- [Release history](releases.md) — current release, asset verification, promotion flow, and
-  historical recovery notes.
-- [Development instructions](../.github/CONTRIBUTING.md) — branch, test, and protected PR flow.
-- [Extension points](EXTENSIONS.md) — how repository-owned workflows coexist with Code Foundry.
+### Product and architecture documents
 
-## Safety boundary
+Product documents define what and why. Technical design documents define how. Specifications define exact schemas and contracts. ADRs explain durable decisions and their consequences.
 
-The first-run path is query-only. Documentation examples intentionally use bounded validation and
-non-reconciling trial syncs. A failed readiness or source-validation check is a stop condition;
-never bypass it by enabling a schedule or increasing limits. Full-corpus validation, recurring
-sync, shared-agent principals, and native GUI acceptance each require
-their own evidence and explicit operator approval.
+These documents may define acceptance requirements, safety gates, invariants, and ownership boundaries. They must not claim that a gate currently passes unless they link to immutable release or test evidence owned elsewhere.
 
-## Documentation source of truth
+### Release and evidence documents
 
-When a user-facing feature, source, release, safety gate, or operating procedure changes, update
-the smallest relevant guide and then refresh this index and the root README links if the first-run
-path changed. Current-release evidence belongs in [Release history](releases.md),
-[Evaluation](evaluation.md), and the [Desktop UX audit](desktop-ux-audit.md); historical evidence
-must be labeled historical rather than silently overwritten. The graph contract belongs in
-[Query](query.md), and status/readiness semantics belong in [Operations](operations.md), so a
-feature should not be documented only in a changelog or UI audit.
+[Release history](releases.md) preserves immutable, version-specific evidence. [Evaluation](evaluation.md), [Operations](operations.md), [Source rollout](source-rollout.md), and [Desktop UX audit](desktop-ux-audit.md) define methods and the evidence that must be retained.
+
+Dated evidence may be linked from a release record or GitHub issue. It should not become a competing roadmap.
+
+## Documentation rules
+
+- Keep source-backed evidence separate from native memory.
+- Keep release/package integrity separate from packaged GUI and operating-system acceptance.
+- Keep authorization, validation, ingestion, reconciliation, scheduling, and deletion as distinct actions.
+- Mark derived or inferred graph and memory representations explicitly.
+- Preserve exact source provenance and stable terminology.
+- Link the first meaningful reference to the owning document instead of redefining it.
+- Move unresolved implementation work to GitHub issues.
+- Record durable architecture changes in ADRs.
+- Do not include credentials, private paths, query text, source content, or personal evaluation manifests in documentation or default audit output.
+
+## Planning links
+
+- [Milestones](https://github.com/0xPlayerOne/cortana/milestones)
+- [Issues](https://github.com/0xPlayerOne/cortana/issues)
+- [Pull requests](https://github.com/0xPlayerOne/cortana/pulls)
+- [Latest release](https://github.com/0xPlayerOne/cortana/releases/latest)
