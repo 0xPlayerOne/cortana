@@ -542,25 +542,23 @@ native-dialog/updater acceptance.
 
 The operator installation is still manual/query-only (`ai.cortana.sync` is not installed). The
 source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
-60-second bound plus a v0.34.15 Personal Gmail retry at the same scope with a 120-second cap. Ten of
-10 of 13 enabled non-code profiles are now `complete=true`: all Apple Notes scopes, all Work Google scopes,
-Personal Drive, Personal Gmail, Personal Calendar, and Buzz. Current production-budget records now
-cover Personal Drive (1,639 documents / 13,440,509 bytes), Work Drive (516 / 4,581,462), Work Gmail
-(7,388 / 34,530,230), Work Calendar (2,220 / 1,832,878), Personal Gmail (431 / 1,493,536), and
-Personal Calendar (1,815 / 360,659), Apple Notes (`work-notes` 28 / 122,114, `personal-notes` 66 /
-136,208, `special-notes` 8 / 14,046), and Buzz (45 / 375,824). Every non-special enabled source is
-now complete at its configured production budget, with zero index or reconciliation writes. The
-three Special Google scopes (`special-drive`, `special-gmail`, and `special-calendar`) failed closed
-because the shared `special.json` OAuth grant returned `invalid_grant`.
+60-second bound plus a v0.34.15 Personal Gmail retry at the same scope with a 120-second cap. After
+the shared Special Google grant was reauthorized on 2026-08-24, all 13 of 13 enabled non-code
+profiles are `complete=true`. Current production-budget records now cover Personal Drive (1,639
+documents / 13,440,509 bytes), Work Drive (516 / 4,581,462), Work Gmail (7,388 / 34,530,230), Work
+Calendar (2,220 / 1,832,878), Personal Gmail (431 / 1,493,536), Personal Calendar (1,815 / 360,659),
+Special Drive (98 / 290,445), Special Gmail (213 / 980,116), Special Calendar (0 / 0), Apple Notes
+(`work-notes` 28 / 122,114, `personal-notes` 66 / 136,208, `special-notes` 8 / 14,046), and Buzz
+(45 / 375,824). Every enabled non-code source is now complete at its configured production budget,
+with zero index or reconciliation writes. `readiness --allow-sync-service` passes the source gate;
+the scheduler remains uninstalled pending explicit recurring-policy approval.
 
 Personal Drive's earlier 1,800-second and 900-second validations failed closed at their connector
 deadlines while processing a large PDF/media corpus. After explicit reauthorization, a current
 v0.34.42 production-budget validation completed 1,639 documents and 13,440,509 bytes within the
 configured 2,000-document/128 MiB/900-second limits, with `complete=true` and zero index or
 reconciliation writes. The published v0.34.42 release boundary includes bounded four-worker
-fetching from PR #1594; the `readiness --allow-sync-service` gate must remain closed until every
-enabled source has a fresh complete record at its configured budget and the Special Google grant
-is repaired. No reconciliation or large sync has been run.
+fetching from PR #1594. No reconciliation or large sync has been run.
 
 The installed v0.34.42 provider-backed `cortana eval --model` gate passed on 2026-08-24 in
 16,286 ms with planner/synthesis, valid citations, cache reuse, and revision invalidation under the
@@ -584,9 +582,8 @@ records; Buzz completed 25 records. Every run reported zero deletions. The index
 documents and 42,638 chunks. Query-only readiness passed and `readiness --allow-sync-service`
 failed closed for the then-current bounded records. These are historical bounded,
 non-reconciling observations only; recurring sync remains uninstalled. The current host status is
-tracked above in the release/evaluation evidence: Personal Drive now has a fresh complete
-production-budget validation, the other successful sources remain bounded, and the three Special
-Google sources require reauthorization.
+tracked above in the release/evaluation evidence; later v0.34.42 records include complete
+production-budget validation for all three Special Google sources after reauthorization.
 
 The v0.34.5 source uses the local embedding `/health` endpoint for steady-state
 liveness and keep the real vector probe for startup/restart. The installed v0.32.4 Work Drive retry
