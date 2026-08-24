@@ -26,16 +26,23 @@ is not part of a visual/UI change.
   v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds; a
   v0.34.15 retry brought Personal Gmail to `complete=true` at the same document/byte bound with a
   120-second cap. The three Special Google sources still fail closed with an expired OAuth grant.
-  Personal Drive's current v0.34.42 production-budget validation completed 1,639 documents and
-  13,440,509 bytes within its 2,000-document/128 MiB/900-second limits, with zero writes. The
+  Current v0.34.42 production-budget validation completed for Personal Drive (1,639 documents /
+  13,440,509 bytes within 2,000 / 128 MiB / 900 seconds), Work Drive (516 / 4,581,462 within the
+  same limits), Work Gmail (7,388 / 34,530,230 within 10,000 / 64 MiB / 600 seconds), Work Calendar
+  (2,220 / 1,832,878 within 3,000 / 64 MiB / 300 seconds), Personal Gmail (431 / 1,493,536 within
+  2,000 / 128 MiB / 900 seconds), Personal Calendar (1,815 / 360,659 within the same limits),
+  Apple Notes (`work-notes` 28 / 122,114, `personal-notes` 66 / 136,208, `special-notes` 8 / 14,046),
+  and Buzz (45 / 375,824), all with zero writes. The
   protected v0.34.9 release includes bounded parallel body fetching from PR #1594; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.34.42 binary refreshed all 13 enabled non-code profiles at the bounded
   25-document/5 MiB/60-second validation limit: 10 completed successfully and the three Special
-  Google profiles failed closed with `invalid_grant`. Personal Drive was subsequently validated
-  at its full 2,000-document/128 MiB/900-second production budget (1,639 documents, 13,440,509
-  bytes). All validation runs reported zero document, embedding, and reconciliation writes.
+  Google profiles failed closed with `invalid_grant`. Personal Drive, Work Drive, Work Gmail, Work
+  Calendar, Personal Gmail, and Personal Calendar were subsequently validated at their configured
+  production budgets (1,639 / 13,440,509; 516 / 4,581,462; 7,388 / 34,530,230; 2,220 / 1,832,878;
+  431 / 1,493,536; and 1,815 / 360,659 respectively), as were all three folder-scoped Apple Notes
+  sources and Buzz. All validation runs reported zero document, embedding, and reconciliation writes.
   Query-only readiness, native-memory, shared-agent,
   MCP, and control-plane drills also passed after the controlled service restart; these headless
   checks do not substitute for packaged GUI acceptance.
