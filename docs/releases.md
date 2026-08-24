@@ -9,24 +9,24 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.42
+## Current release: v0.34.43
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.42` tag is the current source and release boundary. Release Please's version-only promotion
-published the marker through the direct-`main` workflow after the required-check workflow fix in PR #1983.
-The retained `staging` ref remains a separate protected promotion lane.
+`v0.34.43` tag is the current source and release boundary. Documentation authority changes from
+PR #2093 reached `main` through the direct workflow, and Release Please PR #2094 published the
+version-only marker.
 Release-assets workflow
-[`32680743937`](https://github.com/0xPlayerOne/cortana/actions/runs/32680743937) published
+[`32774696426`](https://github.com/0xPlayerOne/cortana/actions/runs/32774696426) published
 all macOS/Linux/Windows core and Desktop lanes. The independent strict verifier passed all 18
 assets, checksums, updater signatures, manifest checks, and packaged-core checks; the package is
 complete. This verifies package integrity, not native GUI, OAuth, or OS trust acceptance.
 
-The v0.34.42 release carries forward the verified v0.34.41 runtime evidence and adds no
-application behavior beyond the release metadata. The control-plane readiness hardening from PR #1954
-uses a dedicated lightweight SQLite
-probe, while HTTP and MCP status counters use bounded blocking work. It changes no credentials,
-source authorization, indexed data, recurring-sync policy, or native-memory behavior.
+The v0.34.43 release carries forward the verified v0.34.42 runtime and source-validation evidence
+and adds no application behavior beyond documentation and release metadata. The control-plane
+readiness hardening from PR #1954 uses a dedicated lightweight SQLite probe, while HTTP and MCP
+status counters use bounded blocking work. It changes no credentials, source authorization,
+indexed data, recurring-sync policy, or native-memory behavior.
 The audited host now runs `cortana 0.34.42`; its binary, controlled service restart, readiness,
 native-memory, shared-agent, MCP, and control-plane checks all passed. The embedding service
 requires a short model warm-up after restart before health becomes ready.
@@ -36,8 +36,8 @@ run failed closed at 15,915 ms because the configured `auto-free` provider retur
 invalid-citation response; Cortana used the safe extractive fallback. These are synthetic-provider
 records only; approved-corpus answer/synthesis evidence remains open and synthesis remains opt-in.
 
-The current v0.34.42 source rollout completed production-budget, read-only validation for
-`personal-drive` (1,639 documents / 13,440,509 bytes within 2,000 / 128 MiB / 900 seconds),
+The source-rollout evidence carried into v0.34.43 completed production-budget, read-only validation
+for `personal-drive` (1,639 documents / 13,440,509 bytes within 2,000 / 128 MiB / 900 seconds),
 `work-drive` (516 / 4,581,462), `work-gmail` (7,388 / 34,530,230 within 10,000 / 64 MiB / 600
 seconds), `work-calendar` (2,220 / 1,832,878 within 3,000 / 64 MiB / 300 seconds),
 `personal-gmail` (431 / 1,493,536), and `personal-calendar` (1,815 / 360,659). Each is
@@ -51,43 +51,60 @@ uninstalled pending explicit operator approval.
 
 The protected main tree contains the shared action-button hardening from PR #1864, promoted through
 exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reconciliation PR
-#1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, the v0.34.33 Release Please PR #1911, the readiness startup fix from PR #1914, the v0.34.34 Release Please PR #1923, the v0.34.36 Release Please PR #1943, the v0.34.40 Release Please PR #1975, and the v0.34.41 Release Please PR #1985. These changes do not alter credentials, source authorization, indexed data, recurring-sync
-policy, or native-memory behavior.
+#1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, the v0.34.33
+Release Please PR #1911, the readiness startup fix from PR #1914, the v0.34.34 Release Please PR
+#1923, the v0.34.36 Release Please PR #1943, the v0.34.40 Release Please PR #1975, the v0.34.41
+Release Please PR #1985, documentation authority PR #2093, and v0.34.43 Release Please PR #2094.
+These changes do not alter credentials, source authorization, indexed data, recurring-sync policy,
+or native-memory behavior.
 
-The v0.34.42 marker carries the bounded readiness/status hardening while preserving the
+The v0.34.43 marker carries the bounded readiness/status hardening while preserving the
 direct-`main` merge strategy. It does not authorize sources, enable recurring sync, change indexed
 data, or alter native-memory policy. The package and cross-platform asset verification are complete;
 native GUI, OAuth, and OS trust acceptance remain separate manual gates.
 
+### v0.34.43 post-release reconciliation incident
+
+The release publication itself succeeded. The subsequent Code Foundry run
+[`32774655565`](https://github.com/0xPlayerOne/cortana/actions/runs/32774655565) failed only in its
+post-release reconciliation job: it classified old `staging` history as unpromoted, attempted to
+replay commit `9a5b3a7`, and encountered broad conflicts. The published tag and 18 verified assets
+remain valid, but the retained branch history is not a clean starting point for another development
+cycle. GitHub issue [#2099](https://github.com/0xPlayerOne/cortana/issues/2099) owns exact-tree
+comparison, preservation of any genuinely missing work, protected-flow alignment, and idempotence
+proof. No force push or automatic conflict resolution is authorized by this release record.
+
 ## v0.34.40 release notes (historical)
 
 The v0.34.40 metadata release carried forward the verified v0.34.39 runtime evidence. Its package,
-host, and synthetic evaluation claims are historical; current source, package, and installed-runtime
-claims belong to v0.34.42 above.
+host, and synthetic evaluation claims are historical; current source and package claims belong to
+v0.34.43 above, while the latest installed-host evidence remains v0.34.42.
 
 ## v0.34.39 release notes (historical)
 
 The v0.34.39 metadata release carried forward the verified v0.34.38 runtime evidence. Its package
-and host claims are historical; current source, package, and installed-runtime claims belong to
-v0.34.42 above.
+and host claims are historical; current source and package claims belong to v0.34.43 above, while
+the latest installed-host evidence remains v0.34.42.
 
 ## v0.34.38 release notes (historical)
 
 The v0.34.38 metadata release carried the control-plane readiness hardening from PR #1954 and
 its verified runtime, source-validation, and synthetic provider evidence. Its package and host
-claims are historical; current source, package, and installed-runtime claims belong to v0.34.42 above.
+claims are historical; current source and package claims belong to v0.34.43 above, while the latest
+installed-host evidence remains v0.34.42.
 
 ## v0.34.37 release notes (historical)
 
 The v0.34.37 metadata release carried forward the verified v0.34.36 runtime evidence. Its package
-and host claims are historical; current source, package, and installed-runtime claims belong to
-v0.34.42 above.
+and host claims are historical; current source and package claims belong to v0.34.43 above, while
+the latest installed-host evidence remains v0.34.42.
 
 ## v0.34.36 release notes (historical)
 
 The v0.34.36 metadata release carried forward the verified v0.34.34 runtime evidence and the
 protected UI action-button hardening from PR #1864. Its package verification and host evidence are
-historical; current source, package, and installed-runtime claims belong to v0.34.42 above.
+historical; current source and package claims belong to v0.34.43 above, while the latest
+installed-host evidence remains v0.34.42.
 
 ## v0.34.29 release intent (published and verified; historical)
 
@@ -465,7 +482,9 @@ contract.
 
 The release caller (`release.yml`) triggers only on pushes to `main` and
 delegates the Release Please contract to the pinned Code Foundry runtime. The
-No staging promotion caller or branch reconciliation is required.
+normal direct workflow requires no staging promotion caller or branch reconciliation. A retained
+legacy branch must not be treated as an active integration lane or replayed into `main` without an
+explicit evidence-backed migration.
 
 The `uv.lock` project entry carries a Release Please version annotation and is
 covered by the package-version regression test, keeping Python lock metadata
