@@ -30,8 +30,9 @@ source authorization, indexed data, recurring-sync policy, or native-memory beha
 The audited host now runs `cortana 0.34.40`; its binary, controlled service restart, readiness,
 native-memory, shared-agent, MCP, and control-plane checks are current. The embedding service
 requires a short model warm-up after restart before health becomes ready.
-A fresh v0.34.40 `cortana eval --model` run on 2026-08-24 passed in 13,090 ms with
-planner/synthesis, valid citations, cache reuse, and revision invalidation. The prior v0.34.35
+A fresh v0.34.40 `cortana eval --model` run on 2026-08-24 passed in 22,464 ms with
+planner/synthesis, valid citations, cache reuse, and revision invalidation; earlier fresh runs
+passed in 13,090–26,983 ms. The prior v0.34.35
 run failed closed at 15,915 ms because the configured `auto-free` provider returned an
 invalid-citation response; Cortana used the safe extractive fallback. These are synthetic-provider
 records only; approved-corpus answer/synthesis evidence remains open and synthesis remains opt-in.

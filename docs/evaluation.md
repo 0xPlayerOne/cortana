@@ -27,12 +27,13 @@ indexed data, recurring-sync policy, or native-memory behavior. The audited host
 Query-only readiness,
 `doctor`, deterministic `eval`, packaged-core verification, skill parity, and the disposable
 native-memory/shared-agent/control-plane drills all passed. The strict package gate is complete. Recurring sync remains
-uninstalled. The current v0.34.40 `eval --model` provider gate passed on 2026-08-24 in 13,090 ms
-with planner/synthesis, valid citations, cache reuse, and revision invalidation. Earlier v0.34.35
+uninstalled. The latest recorded v0.34.40 `eval --model` provider gate passed on 2026-08-24 in
+22,464 ms with planner/synthesis, valid citations, cache reuse, and revision invalidation; earlier
+fresh runs passed in 13,090–26,983 ms. Earlier v0.34.35
 and v0.34.32 runs include intermittent invalid-citation failures that correctly fell back to
 extractive mode; these are synthetic provider records only, not approved-corpus quality evidence.
 
-A fresh installed v0.34.40 `eval --model` run on 2026-08-24 passed in 13,090 ms with planner and
+A fresh installed v0.34.40 `eval --model` run on 2026-08-24 passed in 22,464 ms with planner and
 synthesis, valid citations, cache reuse, and revision invalidation. This strengthens the bounded
 provider-health record but remains synthetic fixture evidence; it does not establish approved-
 corpus quality or authorize synthesis by default.
@@ -136,7 +137,7 @@ between intervals and recurring sync remains uninstalled. The isolated `/healthz
 installation evidence, not proof of native GUI, browser OAuth, updater, or operating-system trust
 behavior.
 
-On 2026-08-22, the installed v0.34.22 binary passed the disposable native-memory lifecycle drill
+On 2026-08-24, the installed v0.34.40 binary passed the disposable native-memory lifecycle drill
 (dedupe, recall, expiry, export, and forget), the scoped HTTP authorization drill (query/status/admin
 scope separation, ACL filtering, metadata-only audit, token rotation, and revocation), and the real
 MCP stdio drill (10 tools, workspace ACL filtering, and token rotation). The same binary passed the

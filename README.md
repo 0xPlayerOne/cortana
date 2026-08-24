@@ -83,9 +83,9 @@ scheduler is idle between intervals and recurring sync remains uninstalled. The 
 native-memory, shared-agent, MCP, and control-plane evidence remains valid because v0.34.21,
 v0.34.22, v0.34.23, v0.34.24, v0.34.25, and v0.34.26 change only release metadata or release-flow/UI
 contracts. The installed v0.34.40 binary passed the deterministic offline fixture evaluation and
-packaged-core verification. A fresh v0.34.40 `cortana eval --model` run on 2026-08-24 passed in
-13,090 ms with planner/synthesis, valid citations, cache reuse, and revision invalidation. A prior
-direct run passed in 25,682 ms; on the same day, one earlier direct run failed closed at
+packaged-core verification. The latest recorded v0.34.40 `cortana eval --model` run on 2026-08-24
+passed in 22,464 ms with planner/synthesis, valid citations, cache reuse, and revision invalidation;
+earlier fresh runs passed in 13,090–26,983 ms. A prior direct run passed in 25,682 ms; on the same day, one earlier direct run failed closed at
 15,915 ms because the configured `auto-free` provider returned an invalid-citation response;
 Cortana safely used extractive fallback. A subsequent direct run and four instrumented reruns
 passed in 10,137–17,033 ms. These are synthetic provider records, not personal-index or packaged-

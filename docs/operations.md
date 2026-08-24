@@ -311,7 +311,7 @@ freshly-created drill directory. Set `CORTANA_KEEP_DRILL=1` to retain the exact 
 The drill proves the offline CLI control plane only; it is not a proof of the Desktop GUI, OAuth
 flows, tray integration, or updater behavior, none of which it exercises.
 
-The pre-upgrade v0.34.25 binary passed this drill on 2026-08-23. It created and searched the
+The installed v0.34.40 binary passed this drill on 2026-08-24. It created and searched the
 disposable fixture, exported metadata-only audit output, verified a backup, restored it into a
 second temporary data directory, and searched the restored index. The run never read or mutated
 the live configuration, index, credentials, or source connectors.
@@ -332,7 +332,7 @@ The drill uses a fresh temporary config, private synthetic tokens, and two synth
 proves query/status/admin scope separation, work-versus-personal ACL isolation, metadata-only audit
 responses, and atomic token rotation/revocation. It is offline and non-destructive: it does not read
 the live index, contact connectors, authorize accounts, enable recurring sync, or launch the Desktop
-app. The historical v0.32.12 host passed this drill on 2026-08-16, including old-token rejection and
+app. The installed v0.34.40 binary passed this drill on 2026-08-24, including old-token rejection and
 rotated-token acceptance after `/v1/auth/reload`. A successful drill is evidence for the HTTP contract
 only; keep the MCP tests and packaged GUI,
 browser OAuth, tray, native-dialog, updater, and operating-system trust gates separate.
@@ -559,9 +559,10 @@ boundary includes bounded four-worker fetching from PR #1594; the
 complete record at its configured budget and the Special Google grant is repaired. No
 reconciliation or large sync has been run.
 
-The installed v0.34.40 provider-backed `cortana eval --model` gate passed on 2026-08-24 in
-13,090 ms with planner/synthesis, valid citations, cache reuse, and revision invalidation under the
-55,000 ms bound. An earlier direct run failed closed at 15,915 ms because the configured `auto-free`
+The latest recorded installed v0.34.40 provider-backed `cortana eval --model` gate passed on
+2026-08-24 in 22,464 ms with planner/synthesis, valid citations, cache reuse, and revision
+invalidation under the 55,000 ms bound; earlier fresh runs passed in 13,090–26,983 ms. An earlier
+direct run failed closed at 15,915 ms because the configured `auto-free`
 provider returned invalid citations, then a subsequent direct run and four instrumented reruns
 passed in 10,137–17,033 ms. Cortana used the safe extractive fallback for the failed run. These are
 synthetic records only; they neither authorize source sync nor establish personal-index quality,
