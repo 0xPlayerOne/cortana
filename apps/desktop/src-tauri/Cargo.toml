@@ -1,6 +1,6 @@
 [package]
 name = "cortana-desktop"
-version = "0.34.40"
+version = "0.34.41"
 edition = "2024"
 rust-version = "1.88"
 description = "Tauri control plane for the Cortana local second brain"

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.41](https://github.com/0xPlayerOne/cortana/compare/v0.34.40...v0.34.41) (2026-08-24)
+
+
+### Bug Fixes
+
+* **ci:** run required checks on staging PRs ([#1983](https://github.com/0xPlayerOne/cortana/issues/1983)) ([e5316b2](https://github.com/0xPlayerOne/cortana/commit/e5316b296570a4e91d613a25bd8fe5924d6c15c0))
+
 ## [0.34.40](https://github.com/0xPlayerOne/cortana/compare/v0.34.39...v0.34.40) (2026-08-24)
 
 
