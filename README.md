@@ -115,4 +115,4 @@ Do not authorize live sources, run broad ingestion, install recurring synchroniz
 
 ## License
 
-Cortana is licensed under [AGPL-3.0](LICENSE).
+Cortana is licensed under [Apache License 2.0](LICENSE).
