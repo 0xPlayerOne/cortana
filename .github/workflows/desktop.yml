@@ -2,7 +2,10 @@ name: Desktop
 
 on:
   pull_request:
-    branches: [main]
+    # Emit the required aggregate for both protected lanes. Staging runs the
+    # lightweight aggregate; the job-level guards below reserve long desktop
+    # audits for main and explicit dispatches.
+    branches: [main, staging]
   # Explicit manual final audit path: dispatch this workflow to force the
   # Linux release compilation on any branch, independent of PR state.
   workflow_dispatch:
