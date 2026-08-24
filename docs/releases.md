@@ -36,6 +36,12 @@ run failed closed at 15,915 ms because the configured `auto-free` provider retur
 invalid-citation response; Cortana used the safe extractive fallback. These are synthetic-provider
 records only; approved-corpus answer/synthesis evidence remains open and synthesis remains opt-in.
 
+The current v0.34.42 source rollout also completed a production-budget, read-only validation for
+`personal-drive`: 1,639 documents and 13,440,509 bytes were inspected within the configured
+2,000-document/128 MiB/900-second limits, with `complete=true` and zero document, embedding, or
+reconciliation writes. The remaining enabled sources have only bounded validation and the three
+Special Google profiles still fail closed with `invalid_grant`; recurring sync remains uninstalled.
+
 The protected main tree contains the shared action-button hardening from PR #1864, promoted through
 exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reconciliation PR
 #1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, the v0.34.33 Release Please PR #1911, the readiness startup fix from PR #1914, the v0.34.34 Release Please PR #1923, the v0.34.36 Release Please PR #1943, the v0.34.40 Release Please PR #1975, and the v0.34.41 Release Please PR #1985. These changes do not alter credentials, source authorization, indexed data, recurring-sync

@@ -544,20 +544,20 @@ The operator installation is still manual/query-only (`ai.cortana.sync` is not i
 source-validation records below include a pre-upgrade v0.34.13 pass at the safe 25-document/5 MiB/
 60-second bound plus a v0.34.15 Personal Gmail retry at the same scope with a 120-second cap. Ten of
 13 enabled non-code profiles are now `complete=true`: all Apple Notes scopes, all Work Google scopes,
-Personal Drive, Personal Gmail, Personal Calendar, and Buzz. The three Special Google scopes
+Personal Drive, Personal Gmail, Personal Calendar, and Buzz. Personal Drive's current record is a
+production-budget validation; the other successful records remain bounded. The three Special Google scopes
 (`special-drive`, `special-gmail`, and `special-calendar`) failed closed because the shared
-`special.json` OAuth grant returned `invalid_grant`. These records do not prove any configured
-production budget and make no index or reconciliation writes.
+`special.json` OAuth grant returned `invalid_grant`. Personal Drive is the current production-budget
+exception; the other successful records remain bounded and make no index or reconciliation writes.
 
 Personal Drive's earlier 1,800-second and 900-second validations failed closed at their connector
-deadlines while processing a large PDF/media corpus. After explicit reauthorization, the current
-bounded probe succeeded at 25 documents/5 MiB/60 seconds; the next production-budget run was
-operator-cancelled after 147 documents when serialized Drive body fetching stalled on a large PDF.
-Both cancelled attempts made zero index or reconciliation writes. The published v0.34.42 release
-boundary includes bounded four-worker fetching from PR #1594; the
-`readiness --allow-sync-service` gate must remain closed until every enabled source has a fresh
-complete record at its configured budget and the Special Google grant is repaired. No
-reconciliation or large sync has been run.
+deadlines while processing a large PDF/media corpus. After explicit reauthorization, a current
+v0.34.42 production-budget validation completed 1,639 documents and 13,440,509 bytes within the
+configured 2,000-document/128 MiB/900-second limits, with `complete=true` and zero index or
+reconciliation writes. The published v0.34.42 release boundary includes bounded four-worker
+fetching from PR #1594; the `readiness --allow-sync-service` gate must remain closed until every
+enabled source has a fresh complete record at its configured budget and the Special Google grant
+is repaired. No reconciliation or large sync has been run.
 
 The installed v0.34.42 provider-backed `cortana eval --model` gate passed on 2026-08-24 in
 16,286 ms with planner/synthesis, valid citations, cache reuse, and revision invalidation under the
@@ -581,9 +581,9 @@ records; Buzz completed 25 records. Every run reported zero deletions. The index
 documents and 42,638 chunks. Query-only readiness passed and `readiness --allow-sync-service`
 failed closed for the then-current bounded records. These are historical bounded,
 non-reconciling observations only; recurring sync remains uninstalled. The current host status is
-tracked above in the release/evaluation evidence: 10 of 13 enabled sources now have fresh bounded
-validation, while the three Special Google sources require reauthorization and Personal Drive
-remains below its configured production budget.
+tracked above in the release/evaluation evidence: Personal Drive now has a fresh complete
+production-budget validation, the other successful sources remain bounded, and the three Special
+Google sources require reauthorization.
 
 The v0.34.5 source uses the local embedding `/health` endpoint for steady-state
 liveness and keep the real vector probe for startup/restart. The installed v0.32.4 Work Drive retry

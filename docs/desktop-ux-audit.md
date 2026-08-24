@@ -26,15 +26,17 @@ is not part of a visual/UI change.
   v0.34.13 bounded pass produced 9 `complete=true` records at 25 documents/5 MiB/60 seconds; a
   v0.34.15 retry brought Personal Gmail to `complete=true` at the same document/byte bound with a
   120-second cap. The three Special Google sources still fail closed with an expired OAuth grant.
-  Personal Drive passed that bounded probe after reauthorization, but its full-budget run was
-  stopped after 147 documents when serialized PDF fetching stalled. The protected v0.34.9 release
-  includes bounded parallel body fetching from PR #1594; no full-corpus
+  Personal Drive's current v0.34.42 production-budget validation completed 1,639 documents and
+  13,440,509 bytes within its 2,000-document/128 MiB/900-second limits, with zero writes. The
+  protected v0.34.9 release includes bounded parallel body fetching from PR #1594; no full-corpus
   reconciliation has been started. The packaged GUI, browser OAuth, tray/menu, native dialogs,
   updater interaction, Developer ID signing, and notarization remain manual gates.
 - The installed v0.34.42 binary refreshed all 13 enabled non-code profiles at the bounded
   25-document/5 MiB/60-second validation limit: 10 completed successfully and the three Special
-  Google profiles failed closed with `invalid_grant`. The successful validations reported zero
-  document, embedding, and reconciliation writes. Query-only readiness, native-memory, shared-agent,
+  Google profiles failed closed with `invalid_grant`. Personal Drive was subsequently validated
+  at its full 2,000-document/128 MiB/900-second production budget (1,639 documents, 13,440,509
+  bytes). All validation runs reported zero document, embedding, and reconciliation writes.
+  Query-only readiness, native-memory, shared-agent,
   MCP, and control-plane drills also passed after the controlled service restart; these headless
   checks do not substitute for packaged GUI acceptance.
 - The installed v0.34.42 provider-backed fixture gate passed in 16,286 ms with planner/synthesis,
@@ -136,19 +138,19 @@ retry, and Work Gmail now has a bounded 100-message pass (`changed=75`, `unchang
 `deleted=0`); neither source has a complete production-budget trial approved for reconciliation or
 recurring sync.
 After explicit reauthorization, a one-document/64 KiB/60-second Personal Drive validation succeeded
-in 11.7 seconds with zero writes. The subsequent production-budget run was operator-cancelled after
-147 documents while serialized Drive body fetching stalled on a large PDF; its spool was cleaned up
-and the validation remains below the production gate. The published v0.34.20 release contains the
-protected main-tree PR #1594 fix; the host is ready for a bounded rerun under an external
-watchdog, but no full-corpus reconciliation has been started.
+in 11.7 seconds with zero writes. An earlier production-budget run was operator-cancelled after
+147 documents while serialized Drive body fetching stalled on a large PDF; its spool was cleaned up.
+The current v0.34.42 production-budget rerun completed 1,639 documents and 13,440,509 bytes with
+`complete=true` and zero writes. This closes the Personal Drive validation gate but does not
+authorize a reconciliation or recurring sync by itself.
 
-The current validation metadata now contains ten complete bounded records: nine from the pre-upgrade
-2026-08-22 25-document/5 MiB/60-second pass and the v0.34.15 Personal Gmail retry at a 120-second
-cap. The three Special Google sources failed closed with the shared OAuth grant's `invalid_grant`; earlier
-production-budget counts for Apple Notes, Calendar, Buzz, Work Drive, Work Gmail, Personal Gmail,
-Special Gmail, and Special Drive remain historical evidence. Personal Drive's 2,000-document/128 MiB/1,800-second validation failed closed at the
-1,799-second connector deadline under the then-installed v0.32.9 parser while processing a large
-PDF; its current bounded probe succeeded after reauthorization.
+The current validation metadata now contains nine complete bounded records and one complete
+production-budget Personal Drive record. The three Special Google sources failed closed with the
+shared OAuth grant's `invalid_grant`; earlier production-budget counts for Apple Notes, Calendar,
+Buzz, Work Drive, Work Gmail, Personal Gmail, Special Gmail, and Special Drive remain historical
+evidence. Personal Drive's earlier 2,000-document/128 MiB/1,800-second validation failed closed at
+the 1,799-second connector deadline under the then-installed v0.32.9 parser while processing a
+large PDF; the current v0.34.42 rerun completed within its configured limits.
 The recurring sync service remains uninstalled, and no reconciliation or large sync has been run.
 
 Historical bounded source-smoke and non-reconciling trials remain useful connector evidence, but do
