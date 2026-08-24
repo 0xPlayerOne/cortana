@@ -2,10 +2,9 @@ name: Code Foundry
 
 on:
   pull_request:
-    # Staging is the fast, protected integration lane; main is the final
-    # audit lane. The mode-aware reusable workflow keeps the staging run
-    # bounded while preserving the same required aggregate check name.
-    branches: [main, staging]
+    # Main is the protected integration and audit lane. Release-only and
+    # scheduled modes keep their narrower behavior through the orchestrator.
+    branches: [main]
     types:
       - opened
       - synchronize
