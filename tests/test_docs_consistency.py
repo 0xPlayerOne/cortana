@@ -21,9 +21,7 @@ def test_current_release_heading_is_unambiguous() -> None:
         module.current_release_version("")
 
     with pytest.raises(AssertionError):
-        module.current_release_version(
-            "## Current release: v1.2.3\n## Current release: v1.2.4\n"
-        )
+        module.current_release_version("## Current release: v1.2.3\n## Current release: v1.2.4\n")
 
 
 def test_planning_authority_requires_both_links(tmp_path: Path) -> None:
@@ -33,10 +31,7 @@ def test_planning_authority_requires_both_links(tmp_path: Path) -> None:
     assert any("milestones link" in error for error in errors)
     assert any("issues link" in error for error in errors)
 
-    text = (
-        f"[Milestones]({module.MILESTONE_LINK})\n"
-        f"[Issues]({module.ISSUE_LINK})\n"
-    )
+    text = f"[Milestones]({module.MILESTONE_LINK})\n[Issues]({module.ISSUE_LINK})\n"
     assert module.check_planning_authority(path, text) == []
 
 
@@ -52,15 +47,9 @@ def test_planning_authority_requires_both_links(tmp_path: Path) -> None:
         "## Open Technical Decisions",
     ],
 )
-def test_parallel_planning_headings_are_rejected(
-    tmp_path: Path, heading: str
-) -> None:
+def test_parallel_planning_headings_are_rejected(tmp_path: Path, heading: str) -> None:
     path = tmp_path / "doc.md"
-    text = (
-        f"[Milestones]({module.MILESTONE_LINK})\n"
-        f"[Issues]({module.ISSUE_LINK})\n"
-        f"{heading}\n"
-    )
+    text = f"[Milestones]({module.MILESTONE_LINK})\n[Issues]({module.ISSUE_LINK})\n{heading}\n"
     errors = module.check_planning_authority(path, text)
     assert any("forbidden parallel-planning heading" in error for error in errors)
 
