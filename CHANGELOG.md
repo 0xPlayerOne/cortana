@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.34.45](https://github.com/0xPlayerOne/cortana/compare/v0.34.44...v0.34.45) (2026-08-24)
+
+
+### Documentation
+
+* align current release boundary with v0.34.44 ([#2103](https://github.com/0xPlayerOne/cortana/issues/2103)) ([9ed9a40](https://github.com/0xPlayerOne/cortana/commit/9ed9a405e8458f4ec75fa227dc8ab18c2d836a05))
+
 ## [0.34.44](https://github.com/0xPlayerOne/cortana/compare/v0.34.43...v0.34.44) (2026-08-24)
 
 
