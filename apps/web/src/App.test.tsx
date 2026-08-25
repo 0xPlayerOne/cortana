@@ -147,10 +147,13 @@ test('Reflect presents grounded reflection separately from ordinary search', asy
   state.reflection = (objective, project) =>
     Promise.resolve({
       contract_version: 'memory-reflection.v1',
+      request_digest: 'request-digest',
       status: 'completed',
       objective,
       project,
       memory_revision: 9,
+      privacy_scope_digest: 'scope-digest',
+      provider: { policy: 'deterministic-only', selected: 'deterministic', status: 'succeeded' },
       claims: [
         {
           text: 'The launch checklist requires a rollback owner.',
@@ -166,9 +169,13 @@ test('Reflect presents grounded reflection separately from ordinary search', asy
           supporting_memory_ids: ['memory-1'],
         },
       ],
+      chronology: [],
+      proposed_candidates: [],
       evidence_ids: [],
       metrics: {
+        memories_considered: 1,
         memories_included: 1,
+        evidence_considered: 0,
         evidence_included: 0,
         estimated_tokens: 24,
         canonical_memory_mutated: false,
@@ -188,7 +195,10 @@ test('Reflect presents grounded reflection separately from ordinary search', asy
 
   await waitFor(() => expect(state.reflectionCalls).toHaveLength(1))
   expect(state.reflectionCalls[0]?.objective).toBe('Review launch risk')
-  await waitFor(() => expect(reflectButton.hasAttribute('disabled')).toBe(false))
+  await waitFor(() =>
+    expect(screen.getByText('The launch checklist requires a rollback owner.')).toBeTruthy()
+  )
+  expect(screen.getAllByText(/Supporting memory: memory-1/).length).toBeGreaterThan(0)
   expect(state.answer).toBeNull()
 })
 

@@ -415,19 +415,23 @@ export async function getReflection(
   source?: string,
   signal?: AbortSignal
 ): Promise<ReflectResponse> {
+  const request = {
+    objective,
+    project: project || null,
+    memory: { limit: 32 },
+    include_evidence: true,
+    token_budget: 2048,
+    provider_policy: 'deterministic-only',
+    deadline_ms: 5000,
+    source: source || null,
+  }
+  if (isTauri()) {
+    return invokeDesktop<ReflectResponse>('brain_reflect', { request }, signal)
+  }
   const response = await authorizedFetch('/v1/memory/reflect', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      objective,
-      project: project || null,
-      memory: { limit: 32 },
-      include_evidence: true,
-      token_budget: 2048,
-      provider_policy: 'deterministic-only',
-      deadline_ms: 5000,
-      source: source || null,
-    }),
+    body: JSON.stringify(request),
     signal,
   })
   if (!response.ok) throw new Error(`Reflection failed (${response.status})`)

@@ -252,6 +252,13 @@ async fn brain_context(
 }
 
 #[tauri::command]
+async fn brain_reflect(backend: State<'_, BackendClient>, request: Value) -> Result<Value, String> {
+    backend
+        .request(Method::POST, "/v1/memory/reflect", Some(request))
+        .await
+}
+
+#[tauri::command]
 async fn brain_documents(
     backend: State<'_, BackendClient>,
     request: DocumentListRequest,
@@ -1172,6 +1179,7 @@ pub fn run() {
             brain_status,
             brain_answer,
             brain_context,
+            brain_reflect,
             brain_documents,
             brain_document,
             brain_graph,

@@ -7,7 +7,7 @@
 //! principal first, then pass only the bounded, scoped inputs to this module.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
@@ -38,8 +38,25 @@ pub const MAX_REFLECTION_PATTERNS: usize = 16;
 pub const MAX_REFLECTION_TENSIONS: usize = 16;
 pub const MAX_REFLECTION_RECOMMENDATIONS: usize = 16;
 pub const MAX_REFLECTION_CANDIDATES: usize = 8;
+
+static ACTIVE_PROVIDERS: OnceLock<Mutex<BTreeSet<usize>>> = OnceLock::new();
+
+fn acquire_provider(provider: &Arc<dyn ReflectionProvider>) -> Option<usize> {
+    let key = Arc::as_ptr(provider) as *const () as usize;
+    let active = ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(BTreeSet::new()));
+    active.lock().ok()?.insert(key).then_some(key)
+}
+
+fn release_provider(key: usize) {
+    if let Some(active) = ACTIVE_PROVIDERS.get()
+        && let Ok(mut active) = active.lock()
+    {
+        active.remove(&key);
+    }
+}
 pub const MAX_REFLECTION_DEADLINE_MS: u64 = 30_000;
 pub const MAX_REFLECTION_TEXT_BYTES: usize = 512;
+const MAX_REFLECTION_INPUT_TEXT_BYTES: usize = 2_048;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -263,27 +280,48 @@ pub async fn reflect_authorized(
     owner: bool,
 ) -> Result<ReflectResponse> {
     validate_request(request)?;
+    let started = Instant::now();
+    let revision = store.memory_revision()?;
     let memories = authorized_memories(store, request, principal_acl, owner)?;
+    let remaining = Duration::from_millis(request.deadline_ms)
+        .checked_sub(started.elapsed())
+        .ok_or_else(|| anyhow::anyhow!("reflection deadline exceeded while reading memory"))?;
     let evidence = if request.include_evidence {
         let project = request.project.as_deref().ok_or_else(|| {
             anyhow::anyhow!("reflection requires a project filter when evidence is included")
         })?;
-        crate::retrieval::retrieve_scoped(
-            store,
-            embedder,
-            &request.objective,
-            Some(project),
-            request.source.as_deref(),
-            MAX_REFLECTION_EVIDENCE_LIMIT,
-            principal_acl,
+        tokio::time::timeout(
+            remaining,
+            crate::retrieval::retrieve_scoped(
+                store,
+                embedder,
+                &request.objective,
+                Some(project),
+                request.source.as_deref(),
+                MAX_REFLECTION_EVIDENCE_LIMIT,
+                principal_acl,
+            ),
         )
-        .await?
+        .await
+        .map_err(|_| anyhow::anyhow!("reflection deadline exceeded while retrieving evidence"))??
     } else {
         Vec::new()
     };
-    let revision = store.memory_revision()?;
+    anyhow::ensure!(
+        store.memory_revision()? == revision,
+        "memory changed while reflection inputs were being collected"
+    );
+    let mut bounded_request = request.clone();
+    bounded_request.deadline_ms = u64::try_from(
+        Duration::from_millis(request.deadline_ms)
+            .checked_sub(started.elapsed())
+            .ok_or_else(|| anyhow::anyhow!("reflection deadline exceeded before synthesis"))?
+            .as_millis(),
+    )
+    .unwrap_or(1)
+    .max(1);
     reflect(
-        request,
+        &bounded_request,
         &ReflectionInputs {
             memories: &memories,
             evidence: &evidence,
@@ -358,8 +396,14 @@ pub fn reflect_with_provider(
 ) -> Result<ReflectResponse> {
     validate_request(request)?;
     let started = Instant::now();
-    let selected = authorize_and_select_memories(request, inputs)?;
-    let evidence = select_evidence(request, inputs)?;
+    let selected = authorize_and_select_memories(request, inputs)?
+        .into_iter()
+        .map(bound_memory_input)
+        .collect::<Vec<_>>();
+    let evidence = select_evidence(request, inputs)?
+        .into_iter()
+        .map(bound_evidence_input)
+        .collect::<Vec<_>>();
     let request_digest = stable_json_digest(request);
     let scope_digest = privacy_scope_digest(
         request.project.as_deref(),
@@ -377,47 +421,81 @@ pub fn reflect_with_provider(
 
     if request.provider_policy != ProviderPolicy::DeterministicOnly {
         if let Some(provider) = provider {
-            let (sender, receiver) = mpsc::sync_channel(1);
-            let provider_request = request.clone();
-            let provider_memories = selected.clone();
-            let provider_evidence = evidence.clone();
-            std::thread::spawn(move || {
-                let _ = sender.send(provider.reflect(
-                    &provider_request,
-                    &provider_memories,
-                    &provider_evidence,
-                ));
-            });
-            let remaining =
-                Duration::from_millis(request.deadline_ms).saturating_sub(started.elapsed());
-            match receiver.recv_timeout(remaining) {
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    provider_outcome.status = "deadline_exceeded".into();
-                    provider_outcome.detail = Some("reflection provider exceeded deadline".into());
-                    if request.provider_policy == ProviderPolicy::RequireProvider {
-                        return Ok(empty_response(
-                            request,
-                            request_digest,
-                            scope_digest,
-                            inputs.memory_revision,
-                            ReflectStatus::DeadlineExceeded,
-                            provider_outcome,
-                            selected.len(),
-                            inputs.evidence.len(),
-                            evidence.len(),
-                        ));
+            if let Some(provider_key) = acquire_provider(&provider) {
+                let (sender, receiver) = mpsc::sync_channel(1);
+                let provider_request = request.clone();
+                let provider_memories = selected.clone();
+                let provider_evidence = evidence.clone();
+                std::thread::spawn(move || {
+                    let result =
+                        provider.reflect(&provider_request, &provider_memories, &provider_evidence);
+                    let _ = sender.send(result);
+                    release_provider(provider_key);
+                });
+                let remaining =
+                    Duration::from_millis(request.deadline_ms).saturating_sub(started.elapsed());
+                match receiver.recv_timeout(remaining) {
+                    Err(mpsc::RecvTimeoutError::Timeout) => {
+                        provider_outcome.status = "deadline_exceeded".into();
+                        provider_outcome.detail =
+                            Some("reflection provider exceeded deadline".into());
+                        if request.provider_policy == ProviderPolicy::RequireProvider {
+                            return Ok(empty_response(
+                                request,
+                                request_digest,
+                                scope_digest,
+                                inputs.memory_revision,
+                                ReflectStatus::DeadlineExceeded,
+                                provider_outcome,
+                                selected.len(),
+                                inputs.evidence.len(),
+                                evidence.len(),
+                            ));
+                        }
                     }
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    provider_outcome.status = "failed".into();
-                    provider_outcome.detail = Some("reflection provider disconnected".into());
-                }
-                Ok(Ok(output)) => {
-                    if let Err(error) =
-                        validate_provider_output(request, &output, &selected, &evidence)
-                    {
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
                         provider_outcome.status = "failed".into();
-                        provider_outcome.detail = Some(error.to_string());
+                        provider_outcome.detail = Some("reflection provider disconnected".into());
+                    }
+                    Ok(Ok(output)) => {
+                        if let Err(error) =
+                            validate_provider_output(request, &output, &selected, &evidence)
+                        {
+                            provider_outcome.status = "failed".into();
+                            provider_outcome.detail = Some(error.to_string());
+                            if request.provider_policy == ProviderPolicy::RequireProvider {
+                                return Ok(empty_response(
+                                    request,
+                                    request_digest,
+                                    scope_digest,
+                                    inputs.memory_revision,
+                                    ReflectStatus::ProviderFailed,
+                                    provider_outcome,
+                                    selected.len(),
+                                    inputs.evidence.len(),
+                                    evidence.len(),
+                                ));
+                            }
+                        } else {
+                            provider_outcome.status = "succeeded".into();
+                            let response = response_from_output(
+                                request,
+                                request_digest,
+                                scope_digest,
+                                inputs.memory_revision,
+                                ReflectStatus::Completed,
+                                provider_outcome,
+                                output,
+                                &selected,
+                                &evidence,
+                                inputs.evidence.len(),
+                            )?;
+                            return Ok(response);
+                        }
+                    }
+                    Ok(Err(error)) => {
+                        provider_outcome.status = "failed".into();
+                        provider_outcome.detail = Some(sanitize_detail(&error));
                         if request.provider_policy == ProviderPolicy::RequireProvider {
                             return Ok(empty_response(
                                 request,
@@ -431,39 +509,24 @@ pub fn reflect_with_provider(
                                 evidence.len(),
                             ));
                         }
-                    } else {
-                        provider_outcome.status = "succeeded".into();
-                        let response = response_from_output(
-                            request,
-                            request_digest,
-                            scope_digest,
-                            inputs.memory_revision,
-                            ReflectStatus::Completed,
-                            provider_outcome,
-                            output,
-                            &selected,
-                            &evidence,
-                            inputs.evidence.len(),
-                        )?;
-                        return Ok(response);
                     }
                 }
-                Ok(Err(error)) => {
-                    provider_outcome.status = "failed".into();
-                    provider_outcome.detail = Some(sanitize_detail(&error));
-                    if request.provider_policy == ProviderPolicy::RequireProvider {
-                        return Ok(empty_response(
-                            request,
-                            request_digest,
-                            scope_digest,
-                            inputs.memory_revision,
-                            ReflectStatus::ProviderFailed,
-                            provider_outcome,
-                            selected.len(),
-                            inputs.evidence.len(),
-                            evidence.len(),
-                        ));
-                    }
+            } else {
+                provider_outcome.status = "busy".into();
+                provider_outcome.detail =
+                    Some("reflection provider already has an active request".into());
+                if request.provider_policy == ProviderPolicy::RequireProvider {
+                    return Ok(empty_response(
+                        request,
+                        request_digest,
+                        scope_digest,
+                        inputs.memory_revision,
+                        ReflectStatus::ProviderFailed,
+                        provider_outcome,
+                        selected.len(),
+                        inputs.evidence.len(),
+                        evidence.len(),
+                    ));
                 }
             }
         } else {
@@ -877,7 +940,27 @@ fn response_from_output(
         }
         break;
     }
+    anyhow::ensure!(
+        response.metrics.estimated_tokens <= request.token_budget,
+        "reflection response metadata exceeds token budget"
+    );
     Ok(response)
+}
+
+fn bound_memory_input(mut memory: MemoryRecord) -> MemoryRecord {
+    memory.title = safe_excerpt(&memory.title, MAX_REFLECTION_TEXT_BYTES);
+    memory.content = safe_excerpt(&memory.content, MAX_REFLECTION_INPUT_TEXT_BYTES);
+    memory.acl.clear();
+    memory.provenance = serde_json::Value::Null;
+    memory
+}
+
+fn bound_evidence_input(mut evidence: Evidence) -> Evidence {
+    evidence.title = safe_excerpt(&evidence.title, MAX_REFLECTION_TEXT_BYTES);
+    evidence.content = safe_excerpt(&evidence.content, MAX_REFLECTION_INPUT_TEXT_BYTES);
+    evidence.source_id.clear();
+    evidence.uri = None;
+    evidence
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -952,6 +1035,14 @@ fn validate_provider_output(
     );
     let memory_ids: BTreeSet<&str> = memories.iter().map(|item| item.id.as_str()).collect();
     let evidence_ids: BTreeSet<&str> = evidence.iter().map(|item| item.chunk_id.as_str()).collect();
+    let serialized_output = serde_json::to_string(output)?;
+    for item in evidence {
+        let fingerprint = safe_excerpt(&item.content, 32);
+        anyhow::ensure!(
+            fingerprint.len() < 16 || !serialized_output.contains(&fingerprint),
+            "provider output echoes private evidence content"
+        );
+    }
     for claim in &output.claims {
         validate_text("claim.text", &claim.text, MAX_REFLECTION_TEXT_BYTES)?;
         anyhow::ensure!(
@@ -1379,7 +1470,7 @@ mod tests {
                 _: &[MemoryRecord],
                 _: &[Evidence],
             ) -> Result<ProviderReflection, String> {
-                std::thread::sleep(Duration::from_millis(50));
+                std::thread::sleep(Duration::from_millis(250));
                 Ok(ProviderReflection::default())
             }
         }
@@ -1395,9 +1486,15 @@ mod tests {
         let mut request = request();
         request.provider_policy = ProviderPolicy::RequireProvider;
         request.deadline_ms = 1;
-        let response = reflect_with_provider(&request, &inputs, Some(Arc::new(Slow)))
-            .expect("deadline outcome");
+        let slow: Arc<dyn ReflectionProvider> = Arc::new(Slow);
+        let response =
+            reflect_with_provider(&request, &inputs, Some(slow.clone())).expect("deadline outcome");
         assert_eq!(response.status, ReflectStatus::DeadlineExceeded);
+        request.deadline_ms = 5_000;
+        let response =
+            reflect_with_provider(&request, &inputs, Some(slow)).expect("busy provider outcome");
+        assert_eq!(response.status, ReflectStatus::ProviderFailed);
+        assert_eq!(response.provider.status, "busy");
 
         struct Invalid;
         impl ReflectionProvider for Invalid {

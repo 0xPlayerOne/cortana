@@ -10,6 +10,7 @@ afterEach(cleanup)
 const props = {
   query: 'release',
   answer: null,
+  reflection: null,
   evidence: [],
   selected: 0,
   loading: false,

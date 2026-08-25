@@ -74,6 +74,7 @@ import type {
   DesktopSourceJob,
   DesktopUpdate,
   Evidence,
+  ReflectResponse,
 } from './types'
 
 const STATUS_REFRESH_MS = 15_000
@@ -87,6 +88,7 @@ export function App() {
   const [status, setStatus] = useState<BrainStatus | null>(null)
   const [evidence, setEvidence] = useState<Evidence[]>([])
   const [answer, setAnswer] = useState<AnswerResponse | null>(null)
+  const [reflection, setReflection] = useState<ReflectResponse | null>(null)
   const [selected, setSelected] = useState(0)
   const [source, setSource] = useState(() => (isDesktopApp ? readSourceSelectionPreference() : ''))
   const [loading, setLoading] = useState(true)
@@ -826,6 +828,7 @@ export function App() {
     setDocumentsError('')
     setDocumentLoading(false)
     setAnswer(null)
+    setReflection(null)
     setEvidence([])
     setSelected(0)
     setActiveDocument(null)
@@ -877,6 +880,7 @@ export function App() {
         return
       }
       setAnswer(next)
+      setReflection(null)
       setContextBundle(null)
       setEvidence(next.evidence)
       setActiveQuery(value)
@@ -888,6 +892,7 @@ export function App() {
       }
       setError(caught instanceof Error ? caught.message : 'Search failed')
       setAnswer(null)
+      setReflection(null)
       setEvidence([])
     } finally {
       if (
@@ -921,24 +926,8 @@ export function App() {
       )
       if (searchRequestRef.current !== requestId || searchScopeRef.current !== requestedScope)
         return
-      const sections = [
-        ...reflection.claims.map((item) => item.text),
-        ...reflection.patterns.map((item) => item.statement),
-        ...reflection.tensions.map((item) => item.statement),
-        ...reflection.recommendations.map((item) => item.statement),
-      ]
-      setAnswer({
-        contract_version: reflection.contract_version,
-        query: value,
-        answer: sections.join('\n\n') || 'No grounded reflection was available for this scope.',
-        evidence: [],
-        plan: { queries: [value], model_generated: false },
-        mode: 'extractive',
-        cached: false,
-        latency_ms: 0,
-        warnings: reflection.status === 'completed' ? [] : [reflection.status],
-        memory_revision: reflection.memory_revision,
-      })
+      setAnswer(null)
+      setReflection(reflection)
       setEvidence([])
       setActiveQuery(value)
       setSelected(0)
@@ -1558,7 +1547,7 @@ export function App() {
       <Navigation
         view={view}
         workspaceTab={workspaceTab}
-        resultAvailable={answer !== null || evidence.length > 0}
+        resultAvailable={answer !== null || reflection !== null || evidence.length > 0}
         onNavigate={navigate}
         onSearch={focusSearch}
         onOpenGraph={openGraph}
@@ -1733,6 +1722,7 @@ export function App() {
           <Workspace
             query={activeQuery}
             answer={answer}
+            reflection={reflection}
             evidence={evidence}
             selected={selected}
             loading={loading}

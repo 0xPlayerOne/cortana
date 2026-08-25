@@ -42,17 +42,28 @@ describe('reflection transport', () => {
       return Promise.resolve(
         Response.json({
           contract_version: 'memory-reflection.v1',
+          request_digest: 'request-digest',
           status: 'completed',
           objective: 'Review launch risk',
           project: 'work',
           memory_revision: 4,
+          privacy_scope_digest: 'scope-digest',
+          provider: {
+            policy: 'deterministic-only',
+            selected: 'deterministic',
+            status: 'succeeded',
+          },
           claims: [],
           patterns: [],
           tensions: [],
           recommendations: [],
+          chronology: [],
+          proposed_candidates: [],
           evidence_ids: [],
           metrics: {
+            memories_considered: 0,
             memories_included: 0,
+            evidence_considered: 0,
             evidence_included: 0,
             estimated_tokens: 0,
             canonical_memory_mutated: false,
