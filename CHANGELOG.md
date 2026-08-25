@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.0](https://github.com/0xPlayerOne/cortana/compare/v0.36.0...v0.37.0) (2026-08-25)
+
+
+### Features
+
+* **m4:** harden desktop trust, recovery, and shared UX ([#2118](https://github.com/0xPlayerOne/cortana/issues/2118)) ([6afacf6](https://github.com/0xPlayerOne/cortana/commit/6afacf6273690a182d10161faa98058932910a6a))
+
 ## [0.36.0](https://github.com/0xPlayerOne/cortana/compare/v0.35.3...v0.36.0) (2026-08-25)
 
 
