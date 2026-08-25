@@ -674,6 +674,7 @@ async fn authorize(
     mut request: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
+    let started = Instant::now();
     let path = request.uri().path();
     let auth = state.auth_snapshot();
     // Liveness is intentionally public so local service managers can probe it.
@@ -713,6 +714,18 @@ async fn authorize(
         _ => QUERY_SCOPE,
     };
     if !principal.has_scope(required_scope) {
+        if path.ends_with("/consolidate") && path.starts_with("/v1/memory/candidates/") {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.consolidate",
+                None,
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+        }
         return StatusCode::FORBIDDEN.into_response();
     }
     request.extensions_mut().insert(principal);
@@ -3089,20 +3102,44 @@ mod tests {
             .expect("metrics response");
         assert_eq!(authorized.status(), StatusCode::OK);
 
-        let memory_denied =
-            router(state.with_auth_policy(AuthPolicy::from_config(&config).expect("policy")))
-                .oneshot(
-                    Request::builder()
-                        .method("POST")
-                        .uri("/v1/memory/recall")
-                        .header(header::AUTHORIZATION, "Bearer secret")
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .body(Body::from(r#"{"query":"release notes"}"#))
-                        .expect("memory request"),
-                )
-                .await
-                .expect("memory denial response");
+        let memory_denied = router(
+            state
+                .clone()
+                .with_auth_policy(AuthPolicy::from_config(&config).expect("policy")),
+        )
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/recall")
+                .header(header::AUTHORIZATION, "Bearer secret")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"query":"release notes"}"#))
+                .expect("memory request"),
+        )
+        .await
+        .expect("memory denial response");
         assert_eq!(memory_denied.status(), StatusCode::FORBIDDEN);
+        let consolidation_denied = router(
+            state
+                .clone()
+                .with_auth_policy(AuthPolicy::from_config(&config).expect("policy")),
+        )
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/memory/candidates/hidden/consolidate")
+                .header(header::AUTHORIZATION, "Bearer secret")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"policy":{"enabled":false}}"#))
+                .expect("consolidation request"),
+        )
+        .await
+        .expect("consolidation denial response");
+        assert_eq!(consolidation_denied.status(), StatusCode::FORBIDDEN);
+        let events = state.store.audit_events(10).expect("audit events");
+        assert!(events.iter().any(|event| {
+            event.action == "memory.candidate.consolidate" && event.outcome == "forbidden"
+        }));
     }
 
     #[tokio::test]

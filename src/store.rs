@@ -2142,11 +2142,16 @@ impl Store {
             params![id, policy_identity, now],
         )?;
         if stale_jobs > 0 {
-            transaction.execute(
-                "INSERT INTO audit_events(timestamp,principal,action,project,source,outcome,result_count,latency_ms)
-                 VALUES(?1,'system','memory.consolidation.policy',?2,'candidate','cancelled',?3,0)",
-                params![now, &candidate.project, i64::try_from(stale_jobs).unwrap_or(i64::MAX)],
-            )?;
+            record_audit_in_transaction(
+                &transaction,
+                "system",
+                "memory.consolidation.policy",
+                Some(&candidate.project),
+                Some("candidate"),
+                "cancelled",
+                Some(stale_jobs),
+                10_000,
+            );
         }
         let legacy_terminal: Option<(String, i64, Option<String>)> = transaction
             .query_row(
@@ -4302,6 +4307,42 @@ fn optional_write<T>(
         }
         Err(error) => Err(error.into()),
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn record_audit_in_transaction(
+    transaction: &Transaction<'_>,
+    principal: &str,
+    action: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+    outcome: &str,
+    result_count: Option<usize>,
+    max_events: usize,
+) -> bool {
+    if max_events == 0 {
+        return false;
+    }
+    if transaction
+        .execute(
+            "INSERT INTO audit_events(timestamp,principal,action,project,source,outcome,result_count,latency_ms)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,0)",
+            params![
+                Utc::now().to_rfc3339(), principal, action, project, source, outcome,
+                result_count.map(|count| i64::try_from(count).unwrap_or(i64::MAX)),
+            ],
+        )
+        .is_err()
+    {
+        return false;
+    }
+    let _ = transaction.execute(
+        "DELETE FROM audit_events WHERE id IN (
+           SELECT id FROM audit_events ORDER BY id DESC LIMIT -1 OFFSET ?1
+         )",
+        [i64::try_from(max_events).unwrap_or(i64::MAX)],
+    );
+    true
 }
 
 fn verify_database(path: &Path) -> Result<()> {
