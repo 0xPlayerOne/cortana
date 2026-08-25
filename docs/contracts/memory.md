@@ -65,6 +65,31 @@ only to that principal (or the owner). Session candidates fail closed until the 
 a verified session binding. Creator identities support authorization and rate limiting but are not
 serialized in candidate responses.
 
+### Approval-aware consolidation
+
+Promotion from `memory_candidates` is disabled by default and is controlled by the versioned
+policy `cortana.memory.consolidation.v1`. The policy records confidence/importance thresholds,
+queue and retry bounds, active-capacity limits, and working/durable retention ceilings. A
+consolidation decision records only the candidate id, classification, policy version, decision,
+reason code, priority, and expiry; explanations never copy candidate content into audit output.
+
+The decision state is one of `auto-retain`, `approve`, `review`, `reject`, or `working`:
+
+- only non-sensitive, in-scope, non-conflicting candidates above policy thresholds may
+  `auto-retain`;
+- explicit approval may retain a below-threshold candidate, subject to the same ACL, capacity,
+  expiry, and canonical write invariants;
+- sensitive, contradictory, low-confidence, and cross-scope candidates cannot auto-commit;
+- `working` records are bounded by the working retention ceiling and never become durable by
+  retrying the queue;
+- rejected, cancelled, expired, and dead-letter candidates remain metadata-only lifecycle history.
+
+Canonical promotion uses the same transactional remember path as explicit writes. The candidate
+status, memory row, FTS row, revision increment, and consolidation job are committed atomically;
+an identical policy/candidate retry is a no-op. Jobs are bounded, priority ordered, retry limited,
+pausable, cancellable, and dead-lettered after the retry ceiling. Disabling consolidation does not
+change explicit memory writes, recall, source retrieval, export, or deletion behavior.
+
 ## Scope
 
 Scope is one of `session`, `principal`, `workspace/project`, or explicitly approved owner-global.

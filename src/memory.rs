@@ -446,6 +446,8 @@ pub(crate) fn valid_until_is_active(valid_until: Option<&str>, now: &str) -> boo
 pub(crate) fn is_authorization_error(error: &anyhow::Error) -> bool {
     let message = error.to_string();
     message == "memory ACL denied"
+        || message == "candidate ACL denied"
+        || message == "owner-global candidate scope requires owner authorization"
         || message.contains("outside principal visibility")
         || message.contains("ACL exceeds principal visibility")
 }
