@@ -9,7 +9,7 @@ retain.
 
 ## Current release boundary
 
-The current protected source and published package are `v0.34.44`. Native memory remains the only
+The current protected source and published package are `v0.39.0`. Native memory remains the only
 supported memory engine: it is local, explicit-write, ACL-filtered, auditable, exportable, and
 separate from source knowledge. External memory providers are not product dependencies.
 

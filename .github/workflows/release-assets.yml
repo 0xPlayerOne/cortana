@@ -229,8 +229,7 @@ jobs:
     needs: [binaries, desktop]
     if: >-
       always() &&
-      needs.binaries.result == 'success' &&
-      needs.desktop.result == 'success'
+      (needs.binaries.result == 'success' || needs.desktop.result == 'success')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -247,7 +246,13 @@ jobs:
           # the asset target while main supplies the maintained tooling.
           ref: main
       - name: Generate merged updater manifest
-        run: python3 scripts/generate-updater-manifest.py "$RELEASE_TAG" --output "$RUNNER_TEMP/latest.json"
+        # Keep the updater endpoint valid when one platform's package gate
+        # fails. Missing targets are omitted from the manifest, so supported
+        # platforms can still receive signed updates. The strict `verify` job
+        # below remains fail-closed for an incomplete cross-platform release.
+        run: >-
+          python3 scripts/generate-updater-manifest.py "$RELEASE_TAG"
+          --allow-partial --output "$RUNNER_TEMP/latest.json"
       - name: Upload merged updater manifest
         run: gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/latest.json" --repo "$GH_REPO" --clobber
 
