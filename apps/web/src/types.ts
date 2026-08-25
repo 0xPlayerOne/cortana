@@ -412,6 +412,12 @@ export type DesktopSettingsUpdate = Pick<
   secrets: Array<{ name: string; value?: string; clear?: boolean }>
 }
 
+export type DesktopSecretStorageMigration = {
+  backend: 'native'
+  migrated: number
+  file_values_removed: boolean
+}
+
 export type DesktopPortableSettings = Omit<DesktopSettingsUpdate, 'secrets'>
 
 export type DesktopSettingsExport = {
@@ -527,6 +533,7 @@ export type DesktopInfo = {
 export type DesktopServiceReport = {
   platform: string
   supported: boolean
+  activity?: DesktopServiceActivity | null
   services: Array<{
     name: 'embedding' | 'server' | 'sync' | 'backup'
     label: string
@@ -559,8 +566,11 @@ export type DesktopSchedule = {
 export type DesktopServiceActivity = {
   target: string
   action: 'install' | 'start' | 'stop' | 'restart'
-  status: 'running' | 'succeeded' | 'failed'
+  status: 'running' | 'succeeded' | 'failed' | 'cancelled'
   detail: string | null
+  started_at_unix_seconds?: number
+  elapsed_ms?: number | null
+  last_output?: string | null
 }
 
 export type DesktopInstallJob = {

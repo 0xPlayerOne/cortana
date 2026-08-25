@@ -191,7 +191,8 @@ export function SourcePanel({
                 {describeSourceJobProgress(job)}
               </span>
               {onCancelSourceJob && (
-                <button
+                <Button
+                  variant="icon"
                   type="button"
                   className="source-job-cancel quick-tooltip"
                   aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
@@ -200,7 +201,7 @@ export function SourcePanel({
                   onClick={() => onCancelSourceJob(job.id)}
                 >
                   <CircleStop size={12} />
-                </button>
+                </Button>
               )}
             </div>
           ))}
@@ -212,9 +213,14 @@ export function SourcePanel({
           {onRetrySourceJobs && (
             <>
               {' '}
-              <button type="button" className="link-button" onClick={onRetrySourceJobs}>
+              <Button
+                variant="ghost"
+                type="button"
+                className="link-button"
+                onClick={onRetrySourceJobs}
+              >
                 Retry source jobs
-              </button>
+              </Button>
             </>
           )}
         </p>
@@ -233,9 +239,9 @@ export function SourcePanel({
         <p className="document-list-error" role="status">
           {statusError} Showing the last known source index.{' '}
           {onRetryStatus && (
-            <button type="button" className="link-button" onClick={onRetryStatus}>
+            <Button variant="ghost" type="button" className="link-button" onClick={onRetryStatus}>
               Retry status
-            </button>
+            </Button>
           )}
         </p>
       )}
@@ -247,9 +253,9 @@ export function SourcePanel({
         <p className="document-list-error" role="status">
           {statusError}{' '}
           {onRetryStatus && (
-            <button type="button" className="link-button" onClick={onRetryStatus}>
+            <Button variant="ghost" type="button" className="link-button" onClick={onRetryStatus}>
               Retry status
-            </button>
+            </Button>
           )}
         </p>
       ) : !projects.length ? (
@@ -287,7 +293,8 @@ export function SourcePanel({
                 return (
                   <div className="source-node" key={key}>
                     <div className="source-row">
-                      <button
+                      <Button
+                        variant="icon"
                         type="button"
                         className="tree-toggle quick-tooltip"
                         aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.name}`}
@@ -303,7 +310,7 @@ export function SourcePanel({
                         }}
                       >
                         {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
-                      </button>
+                      </Button>
                       <button
                         type="button"
                         className={`source-select ${isSelected ? 'selected' : ''}`}
@@ -318,7 +325,8 @@ export function SourcePanel({
                         <small>{item.documents.toLocaleString()}</small>
                       </button>
                       {onOpenSourceSetup && needsProviderSetup && (
-                        <button
+                        <Button
+                          variant="icon"
                           type="button"
                           className="source-action quick-tooltip"
                           aria-label={`Open ${item.name} setup`}
@@ -342,10 +350,11 @@ export function SourcePanel({
                           }}
                         >
                           <ExternalLink size={13} />
-                        </button>
+                        </Button>
                       )}
                       {onAuthorizeSource && needsBrowserAuthorization && (
-                        <button
+                        <Button
+                          variant="icon"
                           type="button"
                           className="source-action quick-tooltip"
                           aria-label={`Authorize ${item.name}`}
@@ -367,7 +376,7 @@ export function SourcePanel({
                           }}
                         >
                           <KeyRound size={13} />
-                        </button>
+                        </Button>
                       )}
                       {onToggleSource && item.kind !== 'indexed' && (
                         <button
@@ -445,23 +454,29 @@ export function SourcePanel({
             aria-label="Filter documents"
           />
           {documentQuery !== '' && (
-            <button
+            <Button
+              variant="icon"
               type="button"
               className="document-filter-clear"
               aria-label="Clear document filter"
               onClick={() => onDocumentQueryChange('')}
             >
               <X size={14} />
-            </button>
+            </Button>
           )}
         </label>
         {documentsError ? (
           <p className="document-list-error" role="alert">
             {documentsError}{' '}
             {onRetryDocuments && (
-              <button type="button" className="link-button" onClick={onRetryDocuments}>
+              <Button
+                variant="ghost"
+                type="button"
+                className="link-button"
+                onClick={onRetryDocuments}
+              >
                 Retry documents
-              </button>
+              </Button>
             )}
           </p>
         ) : documents.length ? (

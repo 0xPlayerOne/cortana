@@ -30,8 +30,13 @@ reinstall the matching Desktop release; it never falls back to a `cortana` execu
 Secrets and source credentials remain outside the renderer. The settings bridge returns only
 configured/unset metadata and accepts write-only named secret updates. It refuses symlinked config
 or secret files, externally managed secret paths, insecure remote HTTP endpoints, malformed TOML
-sections, broad data roots, and unbounded inputs. It writes owner-only files atomically, keeps a
-rollback copy of the previous config, and appends metadata-only audit events.
+sections, broad data roots, and unbounded inputs. Desktop can explicitly migrate referenced values
+from its owner-only `secrets.env` into the platform credential store (macOS Keychain, Windows
+Credential Manager, or Linux Secret Service); the migration verifies each write, removes only the
+managed file values, records no secret in audit data, and rolls back native writes on publication
+failure. Environment-backed and externally managed private-file paths remain available to the
+headless runtime and are never silently migrated. File/config writes are atomic, the previous
+config has a rollback copy, and all operational events are metadata-only.
 
 The renderer can edit typed provider, cache, timeout, ingestion-budget, workspace, and storage
 fields. It cannot edit connector command arrays or service commands because those fields cross
@@ -178,12 +183,15 @@ that scope. The sidebar groups paginated documents under workspace and source no
 document opens canonical content rather than a retrieved chunk. Editing a workspace may not orphan
 a configured source: source assignments must be moved before their workspace ID can be removed.
 
-Provider secrets are stored in Cortana's managed `secrets.env` file with mode `0600` on Unix. An
-existing external `runtime.env_file` remains readable by the runtime but is intentionally
-read-only in Desktop. When a saved source, provider, or agent reference is removed, Desktop
-retires that now-unreferenced value from its managed file while leaving external files untouched.
-Advanced settings shows the effective owner-only secret-file path so operators can verify which
-file supplies provider and connector variables without exposing any secret values.
+Provider secrets default to Cortana's managed `secrets.env` file with mode `0600` on Unix. Desktop
+offers an explicit, idempotent migration of referenced provider values into the platform
+credential store; once the native backend marker is published, write-only updates and reads use
+that store, while environment-backed headless deployments remain supported. An existing external
+`runtime.env_file` remains readable by the runtime but is intentionally read-only and ineligible
+for Desktop migration. When a saved source, provider, or agent reference is removed, Desktop
+retires that now-unreferenced value from its managed backend while leaving external files
+untouched. Advanced settings shows only the effective owner-only file path when the file backend is
+active and never exposes any secret values.
 Embedding settings also reports whether a local service executable is explicitly configured or
 will be derived from the model and loopback endpoint; Desktop preserves explicit command arrays
 but never accepts arbitrary shell commands from the renderer.
@@ -263,10 +271,12 @@ the active configuration. Core and recurring installs pass those saved intervals
 runtime; changing an installed schedule surfaces a separate explicit apply action rather than
 silently rewriting a running job.
 Each approved installer command is capped at ten minutes; a timeout is recorded as a retryable
-failure with bounded, sanitized output.
-The shell owns a compact service-activity snapshot and mirrors it in the status bar, keeping an
-install or start/stop/restart request visible while the operator changes sections or returns to
-the knowledge view; completion and sanitized failures link back to the Services panel.
+failure with bounded, sanitized output. Service actions are serialized so a retry cannot overlap a
+running action, and the latest running, succeeded, failed, or cancelled record is persisted in the
+metadata-only audit log. The shell restores that bounded activity snapshot from native status and
+mirrors it in the status bar, keeping an install or start/stop/restart request visible while the
+operator changes sections or returns to the knowledge view; completion and sanitized failures link
+back to the Services panel.
 The same shell-owned boundary retains native memory status while the operator changes settings
 sections. Health checks read the last saved local configuration and native memory statistics; the
 Desktop never contacts a separate memory service.

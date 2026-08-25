@@ -51,6 +51,14 @@ truncated snapshot can never trigger deletion reconciliation. Arbitrary external
 plain JSONL contract and never receive connector flags; their output is enforced by the live spool
 bound and the spool preflight.
 
+For an operator trial that already has a fresh, larger validation record, use
+`scripts/source-smoke.sh --sync --reuse-validation`. This mode lets each guarded
+`sync --require-validation --no-reconcile` verify the existing authority without
+replacing it with the trial's smaller limits. The ordinary smoke mode performs a
+bounded validation first; that is appropriate for a disposable trial, but the
+source must be revalidated at its production budget before readiness or recurring
+policy can pass.
+
 Configured source names are index namespaces. This prevents two Gmail accounts, Drive accounts, or
 Slack workspaces from deleting or colliding with one another. The original adapter kind is retained
 in metadata for provenance. Names are unique, lower-case, and limited to 64 letters, numbers,

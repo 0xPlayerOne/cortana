@@ -2145,6 +2145,32 @@ test('service activity survives leaving Settings while a native action is runnin
   }
 })
 
+test('shell restores the latest durable service activity from native status', async () => {
+  const previousActivity = serviceReport.activity
+  serviceReport.activity = {
+    target: 'embedding',
+    action: 'restart',
+    status: 'failed',
+    detail: 'embedding service failed to restart',
+    started_at_unix_seconds: 10,
+    elapsed_ms: 420,
+    last_output: 'token=<redacted>',
+  }
+  try {
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByText('Service: restart embedding · failed')).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open service activity' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
+    expect(
+      screen.getByText(/Restart embedding failed: embedding service failed to restart/)
+    ).toBeTruthy()
+  } finally {
+    serviceReport.activity = previousActivity
+  }
+})
+
 test('readiness activity survives leaving Settings while a scan is running', async () => {
   const originalScan = state.readinessScan
   let resolveScan:

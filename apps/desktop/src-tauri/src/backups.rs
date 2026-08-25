@@ -447,6 +447,7 @@ mod tests {
         services::ServiceReport {
             platform: "test".into(),
             supported,
+            activity: None,
             services: ["embedding", "server", "sync", "backup"]
                 .into_iter()
                 .map(|name| services::ServiceStatus {

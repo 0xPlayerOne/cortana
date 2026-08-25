@@ -23,6 +23,7 @@ mod provider_models;
 mod readiness;
 mod schedule;
 mod scheduled_services;
+mod secure_storage;
 mod services;
 mod settings;
 mod source_jobs;
@@ -704,6 +705,16 @@ fn desktop_settings_save(
 }
 
 #[tauri::command]
+fn desktop_secret_storage_migrate(
+    approved: bool,
+) -> Result<settings::SecretStorageMigration, String> {
+    if !approved {
+        return Err("secure-storage migration requires explicit approval".into());
+    }
+    settings::migrate_secrets_to_secure_storage()
+}
+
+#[tauri::command]
 async fn desktop_settings_export(
     app: AppHandle,
 ) -> Result<Option<settings::PortableExport>, String> {
@@ -1185,6 +1196,7 @@ pub fn run() {
             desktop_update_install,
             desktop_settings_get,
             desktop_settings_save,
+            desktop_secret_storage_migrate,
             desktop_settings_export,
             desktop_settings_import,
             desktop_path_pick,
@@ -1355,6 +1367,7 @@ mod tests {
                 desktop_info,
                 desktop_settings_get,
                 desktop_settings_save,
+                desktop_secret_storage_migrate,
                 desktop_source_authorization_start,
                 desktop_source_initial_sync,
                 desktop_source_setup_open,
