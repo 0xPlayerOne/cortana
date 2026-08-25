@@ -38,6 +38,24 @@ class Client:
     def post(self, path: str, *, json: dict, timeout: float) -> Response:
         assert timeout > 0
         self.calls.append((path, json))
+        if path == "/v1/context":
+            return Response(
+                {
+                    "context": "private context must never appear in the report",
+                    "evidence": [{"source_id": "work-release", "source": "runbooks"}],
+                    "metrics": {
+                        "retrieved": 2,
+                        "included": 1,
+                        "omitted": 1,
+                        "memories_retrieved": 0,
+                        "memories_included": 0,
+                        "memories_omitted": 0,
+                        "estimated_tokens": 200,
+                        "max_tokens": 256,
+                    },
+                    "retrieval_mode": "lexical-fallback",
+                }
+            )
         if path == "/v1/search":
             response = Response(
                 [
@@ -248,3 +266,78 @@ def test_live_answer_fails_closed_when_required_terms_are_missing() -> None:
     assert report["answer_cases"][0]["answer_terms_checked"] == 1
     assert report["answer_cases"][0]["answer_terms_missing"] == 1
     assert "a phrase the provider did not answer" not in json.dumps(report)
+
+
+def test_context_baseline_records_token_bounds_fallback_and_latency_metrics() -> None:
+    context_manifest = manifest()
+    context_manifest["retrieval_cases"] = []
+    context_manifest["answer_cases"] = []
+    context_manifest["context_cases"] = [
+        {
+            "name": "bounded-work-context",
+            "query": "private query omitted from reports",
+            "project": "work",
+            "source": "runbooks",
+            "top_k": 5,
+            "max_tokens": 256,
+            "expected_source_ids": ["work-release"],
+            "forbidden_source_ids": ["personal-secret"],
+        }
+    ]
+
+    report = live.evaluate_manifest(live.validate_manifest(context_manifest), Client())
+
+    assert report["passed"] is True
+    assert report["metrics"]["context_pass_rate"] == 1.0
+    assert report["metrics"]["retrieval_fallback_rate"] == 1.0
+    assert report["metrics"]["token_inclusion_rate"] == 0.5
+    assert report["metrics"]["token_omission_rate"] == 0.5
+    assert report["metrics"]["token_budget_compliance_rate"] == 1.0
+    assert report["metrics"]["latency_ms_p50"] >= 0
+    assert report["context_cases"][0]["retrieval_mode"] == "lexical-fallback"
+    assert report["context_cases"][0]["token_budget_valid"] is True
+    assert "private query omitted" not in json.dumps(report)
+    assert "private context must never" not in json.dumps(report)
+
+
+def test_scope_and_citation_metrics_fail_closed_for_forbidden_evidence() -> None:
+    class LeakingClient(Client):
+        def post(self, path: str, *, json: dict, timeout: float) -> Response:
+            self.calls.append((path, json))
+            if path == "/v1/search":
+                return Response(
+                    [
+                        {
+                            "source_id": "personal-secret",
+                            "source": "personal",
+                            "project": "personal",
+                        }
+                    ]
+                )
+            return Response(
+                {
+                    "answer": "Do not expose this. [1]",
+                    "evidence": [
+                        {
+                            "source_id": "personal-secret",
+                            "source": "personal",
+                            "project": "personal",
+                        }
+                    ],
+                    "mode": "extractive",
+                    "cached": False,
+                }
+            )
+
+    leaking_manifest = manifest()
+    leaking_manifest["retrieval_cases"][0]["forbidden_projects"] = ["personal"]
+    leaking_manifest["retrieval_cases"][0]["forbidden_sources"] = ["personal"]
+    leaking_manifest["answer_cases"][0]["forbidden_projects"] = ["personal"]
+    leaking_manifest["answer_cases"][0]["forbidden_sources"] = ["personal"]
+    report = live.evaluate_manifest(live.validate_manifest(leaking_manifest), LeakingClient())
+
+    assert report["passed"] is False
+    assert report["metrics"]["forbidden_source_leak_count"] == 6
+    assert report["metrics"]["invalid_citation_count"] == 0
+    assert report["retrieval_cases"][0]["project_scope_valid"] is False
+    assert report["answer_cases"][0]["forbidden_project_leaks"] == ["personal"]
