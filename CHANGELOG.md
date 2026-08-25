@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.0](https://github.com/0xPlayerOne/cortana/compare/v0.37.5...v0.38.0) (2026-08-25)
+
+
+### Features
+
+* **eval:** record approved corpus provenance ([abfc8c1](https://github.com/0xPlayerOne/cortana/commit/abfc8c178f806a0db70b8e2afcafcd1fc1bf542a))
+
 ## [0.37.5](https://github.com/0xPlayerOne/cortana/compare/v0.37.4...v0.37.5) (2026-08-25)
 
 
