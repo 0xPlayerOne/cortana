@@ -90,6 +90,8 @@ pub struct QueryRuntimeStatus {
     pub result_limit: usize,
     pub cache_ttl_seconds: u64,
     pub answer_timeout_seconds: u64,
+    pub retrieval_ranking_version: String,
+    pub reranker_enabled: bool,
 }
 
 #[async_trait]
@@ -226,6 +228,12 @@ impl AnswerEngine {
         config.output_tokens = config.output_tokens.clamp(64, 8_000);
         config.request_concurrency = config.request_concurrency.clamp(1, 16);
         config.answer_timeout_seconds = config.answer_timeout_seconds.clamp(1, 55);
+        let tuning = config.retrieval_tuning();
+        config.candidate_multiplier = tuning.candidate_multiplier;
+        config.semantic_weight = tuning.semantic_weight;
+        config.lexical_weight = tuning.lexical_weight;
+        config.idf_weight = tuning.idf_weight;
+        config.recency_weight = tuning.recency_weight;
         Self {
             store,
             embedder,
@@ -247,6 +255,8 @@ impl AnswerEngine {
             result_limit: self.config.result_limit,
             cache_ttl_seconds: self.config.cache_ttl_seconds,
             answer_timeout_seconds: self.config.answer_timeout_seconds,
+            retrieval_ranking_version: retrieval::RETRIEVAL_RANKING_VERSION.into(),
+            reranker_enabled: self.config.reranker_enabled,
         }
     }
 
@@ -271,6 +281,26 @@ impl AnswerEngine {
         principal_acl: &[String],
         memory_acl: Option<&[String]>,
     ) -> Result<AnswerResponse> {
+        self.answer_scoped_with_memory_authorized(request, principal_acl, memory_acl, false)
+            .await
+    }
+
+    pub async fn answer_scoped_with_memory_as_owner(
+        &self,
+        request: AnswerRequest,
+        principal_acl: &[String],
+    ) -> Result<AnswerResponse> {
+        self.answer_scoped_with_memory_authorized(request, principal_acl, Some(&["*".into()]), true)
+            .await
+    }
+
+    async fn answer_scoped_with_memory_authorized(
+        &self,
+        request: AnswerRequest,
+        principal_acl: &[String],
+        memory_acl: Option<&[String]>,
+        memory_owner: bool,
+    ) -> Result<AnswerResponse> {
         anyhow::ensure!(!request.query.trim().is_empty(), "query must not be empty");
         anyhow::ensure!(
             request.query.len() <= retrieval::MAX_QUERY_BYTES,
@@ -288,6 +318,7 @@ impl AnswerEngine {
             memory_revision,
             principal_acl,
             memory_acl,
+            memory_owner,
         )?;
         if let Some(cached) = self
             .store
@@ -327,7 +358,7 @@ impl AnswerEngine {
             }
         };
         let searches = plan.queries.iter().map(|query| {
-            retrieval::retrieve_scoped_with_status(
+            retrieval::retrieve_scoped_with_status_tuned(
                 &self.store,
                 &self.embedder,
                 query,
@@ -335,6 +366,7 @@ impl AnswerEngine {
                 request.source.as_deref(),
                 self.config.retrieval_limit.min(50),
                 principal_acl,
+                self.retrieval_tuning(),
             )
         });
         let results = match tokio::time::timeout(remaining(deadline), join_all(searches)).await {
@@ -368,21 +400,32 @@ impl AnswerEngine {
             ));
         }
         let memories = match memory_acl {
-            Some(memory_acl) => self
-                .store
-                .recall_memories(
-                    &request.query,
-                    request.project.as_deref(),
-                    None,
-                    self.config
-                        .result_limit
-                        .min(crate::memory::MAX_MEMORY_RECALL_LIMIT),
-                    memory_acl,
-                )
-                .unwrap_or_else(|error| {
+            Some(memory_acl) => {
+                let recalled = if memory_owner {
+                    self.store.recall_memories_as_owner(
+                        &request.query,
+                        request.project.as_deref(),
+                        None,
+                        self.config
+                            .result_limit
+                            .min(crate::memory::MAX_MEMORY_RECALL_LIMIT),
+                    )
+                } else {
+                    self.store.recall_memories(
+                        &request.query,
+                        request.project.as_deref(),
+                        None,
+                        self.config
+                            .result_limit
+                            .min(crate::memory::MAX_MEMORY_RECALL_LIMIT),
+                        memory_acl,
+                    )
+                };
+                recalled.unwrap_or_else(|error| {
                     warnings.push(format!("memory fallback: {error}"));
                     Vec::new()
-                }),
+                })
+            }
             None => Vec::new(),
         };
         let (answer, mode) = match tokio::time::timeout(
@@ -532,6 +575,7 @@ impl AnswerEngine {
         memory_revision: Option<u64>,
         principal_acl: &[String],
         memory_acl: Option<&[String]>,
+        memory_owner: bool,
     ) -> Result<String> {
         let mut principal_acl = principal_acl.to_vec();
         principal_acl.sort();
@@ -546,11 +590,14 @@ impl AnswerEngine {
             "model": self.model.as_ref().map(|_| self.config.model.as_str()),
             "model_url": self.model.as_ref().map(|_| self.config.base_url.as_str()),
             "embedding": self.embedder.fingerprint(),
+            "retrieval_ranking": retrieval::RETRIEVAL_RANKING_VERSION,
+            "retrieval_tuning": self.retrieval_tuning(),
             "query": normalize_query_for_cache(&request.query),
             "project": request.project,
             "source": request.source,
             "acl": principal_acl,
             "memory_acl": memory_acl_values,
+            "memory_owner": memory_owner,
             "max_planned_queries": self.config.max_planned_queries,
             "retrieval_limit": self.config.retrieval_limit,
             "result_limit": self.config.result_limit,
@@ -560,6 +607,10 @@ impl AnswerEngine {
         }))?;
         let digest = Sha256::digest(material);
         Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+    }
+
+    pub fn retrieval_tuning(&self) -> retrieval::RetrievalTuning {
+        self.config.retrieval_tuning()
     }
 }
 
@@ -1458,10 +1509,10 @@ mod tests {
             source: None,
         };
         let work = engine
-            .cache_key(&request, 1, None, &["work".into()], None)
+            .cache_key(&request, 1, None, &["work".into()], None, false)
             .expect("work key");
         let personal = engine
-            .cache_key(&request, 1, None, &["personal".into()], None)
+            .cache_key(&request, 1, None, &["personal".into()], None, false)
             .expect("personal key");
         assert_ne!(work, personal);
     }
@@ -1715,6 +1766,7 @@ mod tests {
                 None,
                 &["*".into()],
                 None,
+                false,
             )
             .expect("cache key");
         store

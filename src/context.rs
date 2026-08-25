@@ -50,6 +50,16 @@ pub struct ContextMetrics {
     pub memories_omitted: usize,
     pub estimated_tokens: usize,
     pub max_tokens: usize,
+    /// Estimated tokens in the untruncated evidence/memory payload before
+    /// context budgeting. This is a size metric only; no content is emitted.
+    #[serde(default)]
+    pub source_tokens: usize,
+    /// Tokens omitted by context budgeting and formatting overhead.
+    #[serde(default)]
+    pub reduced_tokens: usize,
+    /// Bounded source-to-context reduction ratio in the range 0.0–1.0.
+    #[serde(default)]
+    pub reduction_ratio: f32,
 }
 
 #[derive(Serialize)]
@@ -176,6 +186,7 @@ pub fn build_with_retrieval_and_memory(
 ) -> ContextBundle {
     let max_tokens = max_tokens.clamp(MIN_CONTEXT_TOKENS, MAX_CONTEXT_TOKENS);
     let max_chars = max_tokens.saturating_mul(CHARS_PER_TOKEN);
+    let source_tokens = estimate_source_tokens(query, evidence, memories);
     let query_prefix = "# Cortana evidence context\n\nQuery: ";
     let instructions = if memories.is_empty() {
         "\n\nUse only the evidence below for factual claims. Cite sources with [n]."
@@ -231,6 +242,12 @@ pub fn build_with_retrieval_and_memory(
     }
 
     let estimated_tokens = estimate_tokens(&context);
+    let reduced_tokens = source_tokens.saturating_sub(estimated_tokens);
+    let reduction_ratio = if source_tokens == 0 {
+        0.0
+    } else {
+        (reduced_tokens as f32 / source_tokens as f32).clamp(0.0, 1.0)
+    };
     let metadata = ContextMetadata {
         token_budget: max_tokens,
         created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
@@ -257,6 +274,9 @@ pub fn build_with_retrieval_and_memory(
             memories_omitted: memories.len().saturating_sub(included_memories.len()),
             estimated_tokens,
             max_tokens,
+            source_tokens,
+            reduced_tokens,
+            reduction_ratio,
         },
         evidence: included,
         memories: included_memories,
@@ -274,6 +294,24 @@ pub fn build_with_retrieval_and_memory(
 
 pub fn estimate_tokens(value: &str) -> usize {
     value.len().div_ceil(CHARS_PER_TOKEN).max(1)
+}
+
+fn estimate_source_tokens(
+    query: &str,
+    evidence: &[Evidence],
+    memories: &[MemorySearchResult],
+) -> usize {
+    let evidence_tokens = evidence
+        .iter()
+        .map(|item| estimate_tokens(&item.content))
+        .sum::<usize>();
+    let memory_tokens = memories
+        .iter()
+        .map(|item| estimate_tokens(&item.memory.content))
+        .sum::<usize>();
+    evidence_tokens
+        .saturating_add(memory_tokens)
+        .saturating_add(estimate_tokens(query))
 }
 
 fn evidence_prefix(index: usize, item: &Evidence) -> String {
@@ -359,6 +397,8 @@ mod tests {
         assert_eq!(bundle.metrics.included, 1);
         assert_eq!(bundle.metrics.omitted, 0);
         assert_eq!(bundle.metrics.memories_included, 0);
+        assert!(bundle.metrics.source_tokens > 0);
+        assert!(bundle.metrics.reduction_ratio >= 0.0);
         assert_eq!(bundle.evidence, rows);
         assert_eq!(bundle.retrieval_mode, "hybrid");
         assert!(bundle.retrieval_warning.is_none());
@@ -380,6 +420,8 @@ mod tests {
         assert!(bundle.context.contains("[…truncated]"));
         assert!(bundle.metrics.estimated_tokens <= 256);
         assert!(bundle.context.len() <= 256 * CHARS_PER_TOKEN);
+        assert!(bundle.metrics.reduced_tokens > 0);
+        assert!(bundle.metrics.reduction_ratio > 0.0);
     }
 
     #[test]

@@ -56,6 +56,7 @@ pub struct AppState {
     ingestion: Arc<IngestionStatus>,
     workspaces: Arc<Vec<WorkspaceConfig>>,
     answer: AnswerEngine,
+    retrieval_tuning: retrieval::RetrievalTuning,
     memory_defaults: crate::memory::MemoryDefaults,
     audit_max_events: usize,
     auth_config_path: Option<std::path::PathBuf>,
@@ -101,6 +102,7 @@ impl AppState {
             ingestion: Arc::new(IngestionStatus::default()),
             workspaces: Arc::new(Vec::new()),
             answer,
+            retrieval_tuning: retrieval::RetrievalTuning::default(),
             memory_defaults: crate::memory::MemoryDefaults::default(),
             audit_max_events: crate::config::AuthConfig::default().audit_max_events,
             auth_config_path: None,
@@ -116,10 +118,12 @@ impl AppState {
             importance: config.memory.default_importance,
         };
         self.audit_max_events = config.auth.audit_max_events;
+        self.retrieval_tuning = config.query.retrieval_tuning();
         self
     }
 
     pub fn with_answer_engine(mut self, answer: AnswerEngine) -> Self {
+        self.retrieval_tuning = answer.retrieval_tuning();
         self.answer = answer;
         self
     }
@@ -619,6 +623,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/v1/memory/candidates",
             post(propose_memory_candidate).get(list_memory_candidates),
+        )
+        .route(
+            "/v1/memory/candidates/export",
+            get(export_memory_candidates),
         )
         .route(
             "/v1/memory/candidates/{id}/cancel",
@@ -1350,10 +1358,17 @@ async fn answer(
     let memory_acl = principal
         .has_scope(MEMORY_SCOPE)
         .then_some(visible_acl.as_slice());
-    let result = state
-        .answer
-        .answer_scoped_with_memory(request, &visible_acl, memory_acl)
-        .await;
+    let result = if principal.is_owner() && memory_acl.is_some() {
+        state
+            .answer
+            .answer_scoped_with_memory_as_owner(request, &visible_acl)
+            .await
+    } else {
+        state
+            .answer
+            .answer_scoped_with_memory(request, &visible_acl, memory_acl)
+            .await
+    };
     let (outcome, count) = match &result {
         Ok(response) => {
             if response.retrieval_degraded {
@@ -1403,7 +1418,7 @@ async fn search(
     let started = Instant::now();
     state.metrics.record(&principal, PrincipalMetric::Search);
     let acl = principal.visible_acl();
-    match retrieval::retrieve_scoped_with_status(
+    match retrieval::retrieve_scoped_with_status_tuned(
         &state.store,
         &state.embedder,
         &request.query,
@@ -1411,6 +1426,7 @@ async fn search(
         request.source.as_deref(),
         request.limit.min(50),
         &acl,
+        state.retrieval_tuning,
     )
     .await
     {
@@ -1433,6 +1449,28 @@ async fn search(
                     "false"
                 }),
             );
+            response.headers_mut().insert(
+                "x-cortana-retrieval-ranking",
+                HeaderValue::from_static(retrieval.diagnostics.contract_version),
+            );
+            for (name, value) in [
+                (
+                    "x-cortana-retrieval-candidates",
+                    retrieval.diagnostics.fused_candidates,
+                ),
+                (
+                    "x-cortana-retrieval-deduplicated",
+                    retrieval.diagnostics.deduplicated_candidates,
+                ),
+                (
+                    "x-cortana-retrieval-returned",
+                    retrieval.diagnostics.returned,
+                ),
+            ] {
+                if let Ok(value) = HeaderValue::try_from(value.to_string()) {
+                    response.headers_mut().insert(name, value);
+                }
+            }
             record_audit(
                 &state,
                 &principal,
@@ -1476,7 +1514,7 @@ async fn context(
     let started = Instant::now();
     state.metrics.record(&principal, PrincipalMetric::Context);
     let acl = principal.visible_acl();
-    let retrieval = match retrieval::retrieve_scoped_with_status(
+    let retrieval = match retrieval::retrieve_scoped_with_status_tuned(
         &state.store,
         &state.embedder,
         &request.query,
@@ -1484,6 +1522,7 @@ async fn context(
         request.source.as_deref(),
         request.limit.min(50),
         &acl,
+        state.retrieval_tuning,
     )
     .await
     {
@@ -1509,19 +1548,26 @@ async fn context(
             .record(&principal, PrincipalMetric::RetrievalFallback);
     }
     let memories = if principal.has_scope(MEMORY_SCOPE) {
-        state
-            .store
-            .recall_memories(
+        let recalled = if principal.is_owner() {
+            state.store.recall_memories_as_owner(
+                &request.query,
+                request.project.as_deref(),
+                None,
+                request.limit.min(crate::memory::MAX_MEMORY_RECALL_LIMIT),
+            )
+        } else {
+            state.store.recall_memories(
                 &request.query,
                 request.project.as_deref(),
                 None,
                 request.limit.min(crate::memory::MAX_MEMORY_RECALL_LIMIT),
                 &acl,
             )
-            .unwrap_or_else(|error| {
-                tracing::warn!(%error, "native memory recall unavailable while building context");
-                Vec::new()
-            })
+        };
+        recalled.unwrap_or_else(|error| {
+            tracing::warn!(%error, "native memory recall unavailable while building context");
+            Vec::new()
+        })
     } else {
         Vec::new()
     };
@@ -1701,18 +1747,33 @@ async fn recall_memories(
     validate_query(&request.query)?;
     validate_retrieval_scope(request.project.as_deref(), None)?;
     let started = Instant::now();
-    match state.store.recall_memories_with_axes(
-        &request.query,
-        request.project.as_deref(),
-        request.kind.as_deref(),
-        request.content_type.as_deref(),
-        request.retention_tier.as_deref(),
-        request.scope.as_deref(),
-        request
-            .limit
-            .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
-        &principal.visible_acl(),
-    ) {
+    let recalled = if principal.is_owner() {
+        state.store.recall_memories_with_axes_as_owner(
+            &request.query,
+            request.project.as_deref(),
+            request.kind.as_deref(),
+            request.content_type.as_deref(),
+            request.retention_tier.as_deref(),
+            request.scope.as_deref(),
+            request
+                .limit
+                .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
+        )
+    } else {
+        state.store.recall_memories_with_axes(
+            &request.query,
+            request.project.as_deref(),
+            request.kind.as_deref(),
+            request.content_type.as_deref(),
+            request.retention_tier.as_deref(),
+            request.scope.as_deref(),
+            request
+                .limit
+                .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
+            &principal.visible_acl(),
+        )
+    };
+    match recalled {
         Ok(memories) => {
             record_audit(
                 &state,
@@ -1793,9 +1854,12 @@ async fn propose_memory_candidate(
         provenance: request.provenance,
         expires_at: request.expires_at,
     };
-    let result = state
-        .store
-        .propose_memory_candidate(&input, &visible_acl, principal.is_owner());
+    let result = state.store.propose_memory_candidate(
+        &input,
+        &principal.name,
+        &visible_acl,
+        principal.is_owner(),
+    );
     match result {
         Ok(candidate) => {
             record_audit(
@@ -1837,7 +1901,9 @@ async fn list_memory_candidates(
         params.observation_kind.as_deref(),
         params.scope.as_deref(),
         params.limit,
+        &principal.name,
         &principal.visible_acl(),
+        principal.is_owner(),
     ) {
         Ok(candidates) => {
             record_audit(
@@ -1865,6 +1931,38 @@ async fn list_memory_candidates(
             );
             Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
         }
+    }
+}
+
+async fn export_memory_candidates(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumQuery(params): AxumQuery<MemoryCandidateListParams>,
+) -> Result<Json<Vec<crate::observation::ObservationCandidate>>, (StatusCode, String)> {
+    let started = Instant::now();
+    match state.store.export_memory_candidates(
+        params.project.as_deref(),
+        params.observation_kind.as_deref(),
+        params.scope.as_deref(),
+        params.limit,
+        &principal.name,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    ) {
+        Ok(candidates) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.export",
+                params.project.as_deref(),
+                None,
+                "succeeded",
+                Some(candidates.len()),
+                started,
+            );
+            Ok(Json(candidates))
+        }
+        Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
     }
 }
 
@@ -1967,12 +2065,14 @@ async fn update_memory_candidate(
     let result = if redact {
         state.store.redact_memory_candidate_scoped(
             id,
+            &principal.name,
             &principal.visible_acl(),
             principal.is_owner(),
         )
     } else {
         state.store.cancel_memory_candidate_scoped(
             id,
+            &principal.name,
             &principal.visible_acl(),
             principal.is_owner(),
         )
@@ -2099,15 +2199,27 @@ async fn export_memories(
 ) -> Result<Json<Vec<crate::memory::MemoryRecord>>, (StatusCode, String)> {
     validate_retrieval_scope(params.project.as_deref(), None)?;
     let started = Instant::now();
-    match state.store.export_memories_with_axes(
-        params.project.as_deref(),
-        params.kind.as_deref(),
-        params.content_type.as_deref(),
-        params.retention_tier.as_deref(),
-        params.scope.as_deref(),
-        params.limit,
-        &principal.visible_acl(),
-    ) {
+    let exported = if principal.is_owner() {
+        state.store.export_memories_with_axes_as_owner(
+            params.project.as_deref(),
+            params.kind.as_deref(),
+            params.content_type.as_deref(),
+            params.retention_tier.as_deref(),
+            params.scope.as_deref(),
+            params.limit,
+        )
+    } else {
+        state.store.export_memories_with_axes(
+            params.project.as_deref(),
+            params.kind.as_deref(),
+            params.content_type.as_deref(),
+            params.retention_tier.as_deref(),
+            params.scope.as_deref(),
+            params.limit,
+            &principal.visible_acl(),
+        )
+    };
+    match exported {
         Ok(memories) => {
             record_audit(
                 &state,
@@ -4109,6 +4221,20 @@ mod tests {
                 .get("x-cortana-retrieval-degraded")
                 .and_then(|value| value.to_str().ok()),
             Some("true")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-cortana-retrieval-ranking")
+                .and_then(|value| value.to_str().ok()),
+            Some("cortana.retrieval.ranking.v2")
+        );
+        assert!(
+            response
+                .headers()
+                .get("x-cortana-retrieval-candidates")
+                .and_then(|value| value.to_str().ok())
+                .is_some()
         );
         let body = to_bytes(response.into_body(), 1024 * 1024)
             .await

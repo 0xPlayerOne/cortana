@@ -60,6 +60,7 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
                 "classify_memory_candidate",
                 "context",
                 "export_memory",
+                "export_memory_candidates",
                 "forget",
                 "list_memory_candidates",
                 "propose_memory_candidate",

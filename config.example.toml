@@ -39,6 +39,14 @@ model = "auto-efficient"
 max_planned_queries = 4
 retrieval_limit = 10
 result_limit = 20
+# Retrieval quality knobs are deterministic, bounded, and included in answer-cache keys.
+candidate_multiplier = 8
+semantic_weight = 1.0
+lexical_weight = 1.2
+idf_weight = 0.08
+recency_weight = 0.1
+# Reserved for an evaluated, bounded reranker; keep disabled until its provider contract lands.
+reranker_enabled = false # deterministic local second pass; no provider calls
 context_tokens = 8000
 output_tokens = 1200
 request_timeout_seconds = 45
