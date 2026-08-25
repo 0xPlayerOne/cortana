@@ -63,6 +63,9 @@ The baseline harness accepts three read-only case classes: `retrieval_cases` cal
 `answer_cases` call `/v1/answer` and validate citations against returned evidence. Context cases
 must provide a `max_tokens` value between 256 and 64,000. A case may also declare
 `forbidden_projects` and `forbidden_sources`; any returned matching scope is a hard failure.
+Each successful context case is repeated once within the operator budget. The report records only
+boolean `digest_reused` and `content_unchanged` outcomes, so unchanged pinned inputs can be
+measured without retaining query or context content.
 Evidence responses do not expose project labels in every API version, so scope checks are
 enforced when labels are present and the request's authenticated ACL remains authoritative.
 
