@@ -294,14 +294,14 @@ Safety thresholds such as ACL leaks, unauthorized deletion, and accepted invalid
 
 ## Product-claim evidence matrix
 
-| Claim | Deterministic gate | Private/manual gate | Hard failure |
-| --- | --- | --- | --- |
-| Canonical entities and migrations | Rust store/model contract tests and migration fixtures | Backup/restore drill for the supported release | Lost canonical field or unrecoverable migration |
-| ContextBundle pinning | Digest, revision, scope-isolation, and compatibility tests | Agent replay against an approved manifest | Accepted stale, mismatched, degraded, or unauthorized bundle |
-| Connector safety | JSONL certification, budgets, cancellation, and reconciliation tests | Bounded source trial for each account/source | Deletion after partial/stale/failed run |
-| Memory lifecycle | Remember/recall/expiry/forget/supersession/ACL tests | Approved-corpus memory quality and review-load evidence | Unauthorized recall/write or ungrounded automatic write |
-| Public API compatibility | HTTP/MCP/CLI schema snapshots and envelope tests | Disposable client/provider conformance run | Credential/path disclosure or incompatible unannounced change |
-| Desktop trust | Headless native tests and package verifier | Real install, updater, OS trust, and accessibility acceptance | Package/runtime mismatch or unsafe native privilege |
+| Claim                             | Deterministic gate                                                   | Private/manual gate                                           | Hard failure                                                  |
+| --------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------- |
+| Canonical entities and migrations | Rust store/model contract tests and migration fixtures               | Backup/restore drill for the supported release                | Lost canonical field or unrecoverable migration               |
+| ContextBundle pinning             | Digest, revision, scope-isolation, and compatibility tests           | Agent replay against an approved manifest                     | Accepted stale, mismatched, degraded, or unauthorized bundle  |
+| Connector safety                  | JSONL certification, budgets, cancellation, and reconciliation tests | Bounded source trial for each account/source                  | Deletion after partial/stale/failed run                       |
+| Memory lifecycle                  | Remember/recall/expiry/forget/supersession/ACL tests                 | Approved-corpus memory quality and review-load evidence       | Unauthorized recall/write or ungrounded automatic write       |
+| Public API compatibility          | HTTP/MCP/CLI schema snapshots and envelope tests                     | Disposable client/provider conformance run                    | Credential/path disclosure or incompatible unannounced change |
+| Desktop trust                     | Headless native tests and package verifier                           | Real install, updater, OS trust, and accessibility acceptance | Package/runtime mismatch or unsafe native privilege           |
 
 Every M2 contract names its deterministic fixture and its separate private/manual gate. A green CI
 run is not evidence that a live source, private corpus, packaged GUI, or operating-system trust gate

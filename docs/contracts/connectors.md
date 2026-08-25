@@ -18,7 +18,7 @@ The Rust core accepts one JSONL `Document` per line:
   "updated_at": "2026-01-01T00:00:00Z",
   "project": "work",
   "acl": ["work"],
-  "metadata": {"mime_type": "text/plain"}
+  "metadata": { "mime_type": "text/plain" }
 }
 ```
 

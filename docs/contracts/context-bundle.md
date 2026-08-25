@@ -8,24 +8,24 @@ The contract is `cortana.context.v1`.
 
 Every HTTP `/v1/context`, MCP `context`, and CLI `context --json` response contains the same fields:
 
-| Field | Type | Rule |
-| --- | --- | --- |
-| `contract_version` | string | `cortana.context.v1` |
-| `context_bundle_id` | string | Stable `ctx_` + SHA-256 digest of the canonical payload |
-| `canonical_digest` | string | Lowercase SHA-256 of canonical serialization |
-| `created_at` | RFC3339 UTC | Creation time; not used as identity |
-| `token_budget` | integer | Effective bounded budget, 256–64,000 tokens |
-| `query` | string | Bounded request query; never included in audit telemetry |
-| `evidence` | array | ACL-filtered source evidence with citations |
-| `memories` | array | Optional ACL-filtered operational memory, never a citation |
-| `metrics` | object | Retrieved/included/omitted counts and token estimate |
-| `retrieval_mode` | string | `hybrid`, `lexical-fallback`, or another registered mode |
-| `degradation` | object/null | Stable code and bounded detail when fallback/degraded |
-| `corpus_revision` | integer | Canonical corpus revision at build time |
-| `memory_revision` | integer/null | Included only when memory scope is granted |
-| `embedding_fingerprint` | string/null | Provider/model generation, never a credential |
-| `retrieval_contract_version` | string | `cortana.retrieval.v1` |
-| `privacy_scope_digest` | string | Hash of normalized project/source/ACL scope, not raw scope data |
+| Field                        | Type         | Rule                                                            |
+| ---------------------------- | ------------ | --------------------------------------------------------------- |
+| `contract_version`           | string       | `cortana.context.v1`                                            |
+| `context_bundle_id`          | string       | Stable `ctx_` + SHA-256 digest of the canonical payload         |
+| `canonical_digest`           | string       | Lowercase SHA-256 of canonical serialization                    |
+| `created_at`                 | RFC3339 UTC  | Creation time; not used as identity                             |
+| `token_budget`               | integer      | Effective bounded budget, 256–64,000 tokens                     |
+| `query`                      | string       | Bounded request query; never included in audit telemetry        |
+| `evidence`                   | array        | ACL-filtered source evidence with citations                     |
+| `memories`                   | array        | Optional ACL-filtered operational memory, never a citation      |
+| `metrics`                    | object       | Retrieved/included/omitted counts and token estimate            |
+| `retrieval_mode`             | string       | `hybrid`, `lexical-fallback`, or another registered mode        |
+| `degradation`                | object/null  | Stable code and bounded detail when fallback/degraded           |
+| `corpus_revision`            | integer      | Canonical corpus revision at build time                         |
+| `memory_revision`            | integer/null | Included only when memory scope is granted                      |
+| `embedding_fingerprint`      | string/null  | Provider/model generation, never a credential                   |
+| `retrieval_contract_version` | string       | `cortana.retrieval.v1`                                          |
+| `privacy_scope_digest`       | string       | Hash of normalized project/source/ACL scope, not raw scope data |
 
 The legacy `retrieval_warning` field remains readable for older clients and mirrors the bounded
 degradation detail. New clients must use `degradation`.

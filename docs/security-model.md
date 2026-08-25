@@ -23,28 +23,28 @@ configured bearer agent, a Desktop renderer, a connector subprocess, and a futur
 
 ## Threats and controls
 
-| Threat | Required control | Current evidence boundary |
-| --- | --- | --- |
-| Prompt injection in evidence | Treat indexed text as data; synthesis cites only authorized evidence | Retrieval/answer tests |
-| Cross-workspace leakage | ACL intersection before query, context, memory, cache, export, and status serialization | Rust auth/API/MCP tests |
-| Credential exfiltration | Secrets remain in owner-controlled env/keychain/private files; public payloads omit them | Auth and payload tests |
-| Unsafe remote exposure | Loopback default; remote bind requires bearer policy and explicit config | readiness/API tests |
-| Incomplete reconciliation | Only fresh, complete, config-matched snapshots reconcile; partial runs never delete | ingestion/store tests |
-| Symlink/path escape | Reject symlinked connector paths and bound spool reads/writes | connector validation tests |
-| Malicious provider response | Bound response bytes, timeouts, redirects, citations, and fallback | embedding/query tests |
-| Supply-chain/update compromise | Pinned actions/runtime, checksums, updater signatures, package verification | release workflows |
-| Destructive restore/forget | Explicit operator action, verified backup, metadata audit, revision invalidation | operations/memory tests |
+| Threat                         | Required control                                                                         | Current evidence boundary  |
+| ------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------- |
+| Prompt injection in evidence   | Treat indexed text as data; synthesis cites only authorized evidence                     | Retrieval/answer tests     |
+| Cross-workspace leakage        | ACL intersection before query, context, memory, cache, export, and status serialization  | Rust auth/API/MCP tests    |
+| Credential exfiltration        | Secrets remain in owner-controlled env/keychain/private files; public payloads omit them | Auth and payload tests     |
+| Unsafe remote exposure         | Loopback default; remote bind requires bearer policy and explicit config                 | readiness/API tests        |
+| Incomplete reconciliation      | Only fresh, complete, config-matched snapshots reconcile; partial runs never delete      | ingestion/store tests      |
+| Symlink/path escape            | Reject symlinked connector paths and bound spool reads/writes                            | connector validation tests |
+| Malicious provider response    | Bound response bytes, timeouts, redirects, citations, and fallback                       | embedding/query tests      |
+| Supply-chain/update compromise | Pinned actions/runtime, checksums, updater signatures, package verification              | release workflows          |
+| Destructive restore/forget     | Explicit operator action, verified backup, metadata audit, revision invalidation         | operations/memory tests    |
 
 ## Authorization matrix
 
-| Operation | Query | Status | Memory | Admin |
-| --- | ---: | ---: | ---: | ---: |
-| Search/evidence | yes | no | no | yes |
-| Context without memory | yes | no | no | yes |
-| Context with memory | yes | no | yes | yes |
-| Remember/recall/forget/export memory | no | no | yes | yes |
-| Source/status/readiness | no | yes | no | yes |
-| Auth reload, audit, settings, restore, scheduling | no | no | no | yes |
+| Operation                                         | Query | Status | Memory | Admin |
+| ------------------------------------------------- | ----: | -----: | -----: | ----: |
+| Search/evidence                                   |   yes |     no |     no |   yes |
+| Context without memory                            |   yes |     no |     no |   yes |
+| Context with memory                               |   yes |     no |    yes |   yes |
+| Remember/recall/forget/export memory              |    no |     no |    yes |   yes |
+| Source/status/readiness                           |    no |    yes |     no |   yes |
+| Auth reload, audit, settings, restore, scheduling |    no |     no |     no |   yes |
 
 Workspace selection is not a permission. A principal must carry both the operation scope and an ACL
 that intersects the requested project/source. Failed authorization returns a stable denial without

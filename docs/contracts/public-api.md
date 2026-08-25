@@ -19,13 +19,13 @@ semantic fields, authorization behavior, limits, revisions, and degradation stat
 
 ## Surface mapping
 
-| Operation | HTTP | MCP | CLI | Canonical result |
-| --- | --- | --- | --- | --- |
-| Search | `POST /v1/search` | `search` | `search --json` | evidence list + retrieval metadata |
-| Context | `POST /v1/context` | `context` | `context --json` | [ContextBundle](context-bundle.md) |
-| Memory recall | `POST /v1/memory/recall` | `memory_recall` | `memory recall --json` | scoped memory records |
-| Status | `GET /v1/status` | `brain_status` | `status --json` | bounded health/store/source metadata |
-| Audit | `GET /v1/audit` | `audit` | `audit export` | metadata-only audit records |
+| Operation     | HTTP                     | MCP             | CLI                    | Canonical result                     |
+| ------------- | ------------------------ | --------------- | ---------------------- | ------------------------------------ |
+| Search        | `POST /v1/search`        | `search`        | `search --json`        | evidence list + retrieval metadata   |
+| Context       | `POST /v1/context`       | `context`       | `context --json`       | [ContextBundle](context-bundle.md)   |
+| Memory recall | `POST /v1/memory/recall` | `memory_recall` | `memory recall --json` | scoped memory records                |
+| Status        | `GET /v1/status`         | `brain_status`  | `status --json`        | bounded health/store/source metadata |
+| Audit         | `GET /v1/audit`          | `audit`         | `audit export`         | metadata-only audit records          |
 
 MCP schemas and generated Desktop TypeScript fixtures must be derived from these fields without
 importing private Rust/store internals. Provider-backed answers remain opt-in and must preserve the

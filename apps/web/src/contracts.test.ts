@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 
-import { CONTEXT_CONTRACT_VERSION, isContextBundleV1, RETRIEVAL_CONTRACT_VERSION } from './contracts'
+import {
+  CONTEXT_CONTRACT_VERSION,
+  isContextBundleV1,
+  RETRIEVAL_CONTRACT_VERSION,
+} from './contracts'
 
 describe('public contract fixtures', () => {
   it('accepts the required v1 ContextBundle envelope', () => {
