@@ -23,6 +23,9 @@ pub const MAX_MEMORY_ACL_BYTES: usize = 256;
 pub const MAX_MEMORY_RECALL_LIMIT: usize = 100;
 pub const MAX_MEMORY_EXPORT_LIMIT: usize = 100_000;
 pub const DEFAULT_MEMORY_MAX_ACTIVE: usize = 100_000;
+pub const DEFAULT_MEMORY_CONTENT_TYPE: &str = "semantic";
+pub const DEFAULT_MEMORY_RETENTION_TIER: &str = "durable";
+pub const DEFAULT_MEMORY_SCOPE: &str = "workspace";
 
 #[derive(Clone, Copy, Debug)]
 pub struct MemoryDefaults {
@@ -74,6 +77,171 @@ impl MemoryKind {
     }
 }
 
+/// Semantic content type. `working` remains a compatibility alias for a
+/// semantic record with a working retention tier; it is intentionally not a
+/// fifth content type.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MemoryContentType {
+    Episodic,
+    Semantic,
+    Procedural,
+    Preference,
+}
+
+impl MemoryContentType {
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "episodic" => Ok(Self::Episodic),
+            "semantic" => Ok(Self::Semantic),
+            "procedural" => Ok(Self::Procedural),
+            "preference" => Ok(Self::Preference),
+            other => bail!(
+                "unsupported memory content type `{other}`; expected episodic, semantic, procedural, or preference"
+            ),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Episodic => "episodic",
+            Self::Semantic => "semantic",
+            Self::Procedural => "procedural",
+            Self::Preference => "preference",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum MemoryRetentionTier {
+    Working,
+    Durable,
+}
+
+impl MemoryRetentionTier {
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "working" => Ok(Self::Working),
+            "durable" => Ok(Self::Durable),
+            other => {
+                bail!("unsupported memory retention tier `{other}`; expected working or durable")
+            }
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Working => "working",
+            Self::Durable => "durable",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum MemoryScope {
+    Session,
+    Principal,
+    Workspace,
+    OwnerGlobal,
+}
+
+impl MemoryScope {
+    pub fn parse(value: &str) -> Result<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "session" => Ok(Self::Session),
+            "principal" => Ok(Self::Principal),
+            "workspace" | "project" => Ok(Self::Workspace),
+            "owner-global" | "global" => Ok(Self::OwnerGlobal),
+            other => bail!(
+                "unsupported memory scope `{other}`; expected session, principal, workspace, or owner-global"
+            ),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Session => "session",
+            Self::Principal => "principal",
+            Self::Workspace => "workspace",
+            Self::OwnerGlobal => "owner-global",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MemoryAxes {
+    pub content_type: MemoryContentType,
+    pub retention_tier: MemoryRetentionTier,
+    pub scope: MemoryScope,
+}
+
+impl MemoryAxes {
+    /// Derive the separated axes from the pre-M6 public `kind` field.
+    pub fn from_legacy_kind(kind: &str) -> Result<Self> {
+        let legacy = MemoryKind::parse(kind)?;
+        Ok(match legacy {
+            MemoryKind::Working => Self {
+                content_type: MemoryContentType::Semantic,
+                retention_tier: MemoryRetentionTier::Working,
+                scope: MemoryScope::Workspace,
+            },
+            MemoryKind::Episodic => Self {
+                content_type: MemoryContentType::Episodic,
+                retention_tier: MemoryRetentionTier::Durable,
+                scope: MemoryScope::Workspace,
+            },
+            MemoryKind::Semantic => Self {
+                content_type: MemoryContentType::Semantic,
+                retention_tier: MemoryRetentionTier::Durable,
+                scope: MemoryScope::Workspace,
+            },
+            MemoryKind::Procedural => Self {
+                content_type: MemoryContentType::Procedural,
+                retention_tier: MemoryRetentionTier::Durable,
+                scope: MemoryScope::Workspace,
+            },
+            MemoryKind::Preference => Self {
+                content_type: MemoryContentType::Preference,
+                retention_tier: MemoryRetentionTier::Durable,
+                scope: MemoryScope::Workspace,
+            },
+        })
+    }
+
+    pub fn with_overrides(
+        legacy_kind: &str,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+    ) -> Result<Self> {
+        let legacy = Self::from_legacy_kind(legacy_kind)?;
+        Ok(Self {
+            content_type: content_type
+                .map(MemoryContentType::parse)
+                .transpose()?
+                .unwrap_or(legacy.content_type),
+            retention_tier: retention_tier
+                .map(MemoryRetentionTier::parse)
+                .transpose()?
+                .unwrap_or(legacy.retention_tier),
+            scope: scope
+                .map(MemoryScope::parse)
+                .transpose()?
+                .unwrap_or(legacy.scope),
+        })
+    }
+
+    pub fn legacy_kind(self) -> &'static str {
+        if self.retention_tier == MemoryRetentionTier::Working {
+            "working"
+        } else {
+            self.content_type.as_str()
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MemoryInput {
     pub kind: String,
@@ -105,6 +273,9 @@ pub struct MemoryInput {
 pub struct MemoryRecord {
     pub id: String,
     pub kind: String,
+    pub content_type: String,
+    pub retention_tier: String,
+    pub scope: String,
     pub project: String,
     pub title: String,
     pub content: String,
@@ -414,5 +585,35 @@ mod tests {
             term_tokens("how do i deploy the release").expect("term tokens"),
             ["deploy", "release"]
         );
+    }
+
+    #[test]
+    fn legacy_working_kind_maps_to_independent_axes() {
+        let axes = MemoryAxes::from_legacy_kind("working").expect("working axes");
+        assert_eq!(axes.content_type, MemoryContentType::Semantic);
+        assert_eq!(axes.retention_tier, MemoryRetentionTier::Working);
+        assert_eq!(axes.scope, MemoryScope::Workspace);
+        assert_eq!(axes.legacy_kind(), "working");
+
+        let durable = MemoryAxes::from_legacy_kind("preference").expect("durable axes");
+        assert_eq!(durable.content_type, MemoryContentType::Preference);
+        assert_eq!(durable.retention_tier, MemoryRetentionTier::Durable);
+        assert_eq!(durable.legacy_kind(), "preference");
+    }
+
+    #[test]
+    fn explicit_axes_override_legacy_kind_independently() {
+        let axes = MemoryAxes::with_overrides(
+            "semantic",
+            Some("procedural"),
+            Some("working"),
+            Some("principal"),
+        )
+        .expect("overridden axes");
+        assert_eq!(axes.content_type, MemoryContentType::Procedural);
+        assert_eq!(axes.retention_tier, MemoryRetentionTier::Working);
+        assert_eq!(axes.scope, MemoryScope::Principal);
+        assert_eq!(axes.legacy_kind(), "working");
+        assert!(MemoryAxes::with_overrides("working", Some("working"), None, None).is_err());
     }
 }

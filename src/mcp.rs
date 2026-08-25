@@ -58,6 +58,9 @@ pub struct DomainSearchParams {
 #[serde(deny_unknown_fields)]
 pub struct MemoryRememberParams {
     kind: String,
+    content_type: Option<String>,
+    retention_tier: Option<String>,
+    scope: Option<String>,
     project: String,
     title: String,
     content: String,
@@ -84,6 +87,9 @@ pub struct MemoryRecallParams {
     query: String,
     project: Option<String>,
     kind: Option<String>,
+    content_type: Option<String>,
+    retention_tier: Option<String>,
+    scope: Option<String>,
     limit: Option<usize>,
 }
 
@@ -92,6 +98,9 @@ pub struct MemoryRecallParams {
 pub struct MemoryExportParams {
     project: Option<String>,
     kind: Option<String>,
+    content_type: Option<String>,
+    retention_tier: Option<String>,
+    scope: Option<String>,
     limit: Option<usize>,
 }
 
@@ -578,9 +587,18 @@ impl BrainServer {
             supersedes_id: params.supersedes_id,
             valid_until: params.valid_until,
         };
+        let axes = match crate::memory::MemoryAxes::with_overrides(
+            &input.kind,
+            params.content_type.as_deref(),
+            params.retention_tier.as_deref(),
+            params.scope.as_deref(),
+        ) {
+            Ok(axes) => axes,
+            Err(error) => return format!("invalid memory axes: {error}"),
+        };
         match self
             .store
-            .remember_scoped(&input, &visible_acl, principal.is_owner())
+            .remember_scoped_with_axes(&input, &visible_acl, principal.is_owner(), axes)
         {
             Ok(memory) => {
                 self.audit_principal(
@@ -661,10 +679,13 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
-        match self.store.recall_memories(
+        match self.store.recall_memories_with_axes(
             &params.query,
             params.project.as_deref(),
             params.kind.as_deref(),
+            params.content_type.as_deref(),
+            params.retention_tier.as_deref(),
+            params.scope.as_deref(),
             params.limit.unwrap_or(10),
             &principal.visible_acl(),
         ) {
@@ -820,9 +841,12 @@ impl BrainServer {
             );
             return "authorization error: memory scope required".into();
         }
-        match self.store.export_memories(
+        match self.store.export_memories_with_axes(
             params.project.as_deref(),
             params.kind.as_deref(),
+            params.content_type.as_deref(),
+            params.retention_tier.as_deref(),
+            params.scope.as_deref(),
             params
                 .limit
                 .unwrap_or(10_000)
@@ -1509,6 +1533,9 @@ mod tests {
                     query: "shared launch phrase".into(),
                     project: Some("demo".into()),
                     kind: None,
+                    content_type: None,
+                    retention_tier: None,
+                    scope: None,
                     limit: Some(10),
                 }))
                 .await,
@@ -1536,6 +1563,9 @@ mod tests {
                     query: "shared launch phrase".into(),
                     project: Some("demo".into()),
                     kind: None,
+                    content_type: None,
+                    retention_tier: None,
+                    scope: None,
                     limit: Some(10),
                 }))
                 .await,

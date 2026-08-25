@@ -339,6 +339,9 @@ struct ContextRequest {
 #[serde(deny_unknown_fields)]
 struct MemoryRememberRequest {
     kind: String,
+    content_type: Option<String>,
+    retention_tier: Option<String>,
+    scope: Option<String>,
     project: String,
     title: String,
     content: String,
@@ -359,6 +362,9 @@ struct MemoryRecallRequest {
     query: String,
     project: Option<String>,
     kind: Option<String>,
+    content_type: Option<String>,
+    retention_tier: Option<String>,
+    scope: Option<String>,
     #[serde(default = "default_memory_limit")]
     limit: usize,
 }
@@ -368,6 +374,9 @@ struct MemoryRecallRequest {
 struct MemoryExportParams {
     project: Option<String>,
     kind: Option<String>,
+    content_type: Option<String>,
+    retention_tier: Option<String>,
+    scope: Option<String>,
     #[serde(default = "default_memory_export_limit")]
     limit: usize,
 }
@@ -1540,6 +1549,13 @@ async fn remember_memory(
             "memory ACL exceeds principal visibility".into(),
         ));
     };
+    let axes = crate::memory::MemoryAxes::with_overrides(
+        &request.kind,
+        request.content_type.as_deref(),
+        request.retention_tier.as_deref(),
+        request.scope.as_deref(),
+    )
+    .map_err(|error| (StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))?;
     let input = MemoryInput {
         kind: request.kind,
         project: request.project.clone(),
@@ -1566,7 +1582,7 @@ async fn remember_memory(
     };
     match state
         .store
-        .remember_scoped(&input, &visible_acl, principal.is_owner())
+        .remember_scoped_with_axes(&input, &visible_acl, principal.is_owner(), axes)
     {
         Ok(memory) => {
             record_audit(
@@ -1631,10 +1647,13 @@ async fn recall_memories(
     validate_query(&request.query)?;
     validate_retrieval_scope(request.project.as_deref(), None)?;
     let started = Instant::now();
-    match state.store.recall_memories(
+    match state.store.recall_memories_with_axes(
         &request.query,
         request.project.as_deref(),
         request.kind.as_deref(),
+        request.content_type.as_deref(),
+        request.retention_tier.as_deref(),
+        request.scope.as_deref(),
         request
             .limit
             .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
@@ -1737,9 +1756,12 @@ async fn export_memories(
 ) -> Result<Json<Vec<crate::memory::MemoryRecord>>, (StatusCode, String)> {
     validate_retrieval_scope(params.project.as_deref(), None)?;
     let started = Instant::now();
-    match state.store.export_memories(
+    match state.store.export_memories_with_axes(
         params.project.as_deref(),
         params.kind.as_deref(),
+        params.content_type.as_deref(),
+        params.retention_tier.as_deref(),
+        params.scope.as_deref(),
         params.limit,
         &principal.visible_acl(),
     ) {

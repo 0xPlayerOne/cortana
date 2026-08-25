@@ -12,12 +12,16 @@ contract is `cortana.memory.v1`.
   recalled after its owning task unless explicitly remembered.
 - **Derived context:** a `ContextBundle` projection; it is rebuildable and never canonical.
 
-Memory content types are `semantic`, `episodic`, `procedural`, and `preference`. The existing public
-`working` kind is retained for compatibility and is a working-retention record, not a fifth content
-type. Future schema work separates `content_type` from `retention_tier` without silently rewriting
-existing records.
+Memory content types are `semantic`, `episodic`, `procedural`, and `preference`. The public
+`content_type` field is independent from `retention_tier` and `scope`. The existing public `kind`
+field remains a compatibility projection: `working` means a semantic record with `working`
+retention, while every durable record projects its content type (`semantic`, `episodic`,
+`procedural`, or `preference`). Legacy rows migrate additively, so existing tombstones and meaning
+are preserved and older clients can continue filtering by `kind`.
 
-Retention tiers are `working` and `durable`. Lifecycle operations are `observe` (candidate input),
+Retention tiers are `working` and `durable`. Scope values are `session`, `principal`, `workspace`,
+and `owner-global`; the current authorization boundary still requires project and ACL checks for
+every scope. Lifecycle operations are `observe` (candidate input),
 `remember`/`retain` (approved canonical write), `recall` (read), `consolidate` (approved merge),
 `reflect` (non-mutating derivation), `supersede`, and `forget`/`retract`.
 
@@ -32,14 +36,17 @@ must remain isolated.
 ## Lifecycle rules
 
 1. `remember` is explicit and idempotent for a `(project, dedupe_key)` pair.
-2. A memory has provenance, confidence, importance, valid-from/valid-until, ACL, and status.
+2. A memory has independent content type, retention tier, scope, provenance, confidence,
+   importance, valid-from/valid-until, ACL, and status.
 3. `recall` excludes retracted, superseded, expired, or ACL-invisible records.
 4. `reflect` is strictly non-mutating; it may propose candidates but cannot write them.
 5. Consolidation, automatic retention, and contradiction resolution require an approved policy and
    preserve provenance. They are not enabled by retrieval alone.
 6. `forget`/redaction removes the record from recall and increments `memory_revision`; audit data
    contains metadata only and never memory content.
-7. Memory revisions invalidate dependent context/query caches, while source corpus revisions remain
+7. Schema-axis migration is additive and idempotent. It does not increment `memory_revision`;
+   revision changes only when a canonical memory record changes. Memory revisions invalidate
+   dependent context/query caches, while source corpus revisions remain
    independent.
 
 ## Provider boundary

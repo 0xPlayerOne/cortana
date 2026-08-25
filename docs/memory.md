@@ -15,21 +15,28 @@ separate from source knowledge. External memory providers are not product depend
 
 ## Memory model
 
-Each memory has one of five types:
+Each memory has independent content and retention axes:
 
 - `semantic` — a durable fact or relationship;
 - `episodic` — an event, decision, or interaction;
 - `procedural` — a repeatable workflow or preference for how work is done;
 - `preference` — a stable user preference;
-- `working` — short-lived task state that can be superseded or redacted.
+- `content_type` is `semantic`, `episodic`, `procedural`, or `preference`;
+- `retention_tier` is `durable` or `working`;
+- `scope` is `session`, `principal`, `workspace`, or `owner-global`.
+
+The legacy `kind` field remains readable and writable during the compatibility window. A
+`working` kind is represented as semantic content with working retention; durable kinds project
+their content type. New callers should set the independent axes when they need a non-default
+combination.
 
 Working memories may include an RFC3339 `valid_until` timestamp. Recall and answer
 context automatically exclude expired records, so agents can keep short-lived task
 state without a cleanup race. Durable facts should omit the expiry and be replaced
 or forgotten explicitly when they change.
 
-Every record carries a workspace/project, ACL, provenance, source and source
-id, confidence, importance, timestamps, and a lifecycle status. Writes are
+Every record carries independent content type, retention tier, scope, a workspace/project, ACL,
+provenance, source and source id, confidence, importance, timestamps, and a lifecycle status. Writes are
 idempotent when an agent supplies a `dedupe_key`. Replacements atomically mark
 the previous record `superseded`; forgetting redacts content and leaves only a
 minimal tombstone for auditability.
@@ -71,7 +78,10 @@ cortana memory remember --kind preference --project work \
 cortana memory remember --kind working --project work \
   --title "Current task" --content "Validate the release" \
   --valid-until "2026-08-16T18:00:00Z"
-cortana memory recall "release notes" --project work
+cortana memory remember --kind semantic --content-type procedural \
+  --retention-tier working --scope principal --project work \
+  --title "Current procedure" --content "Validate the release"
+cortana memory recall "release notes" --project work --retention-tier durable
 cortana memory export --project work --limit 10000 > work-memory.json
 cortana memory forget MEMORY_ID
 ```
@@ -79,7 +89,10 @@ cortana memory forget MEMORY_ID
 HTTP clients can use `POST /v1/memory`, `POST /v1/memory/recall`, and
 `POST /v1/memory/forget`, or `GET /v1/memory/export`. Shared agents need the `memory` scope in addition to
 their normal query/status scopes; ACLs are enforced before content is returned
-or redacted.
+or redacted. The remember, recall, and export contracts accept independent
+`content_type`, `retention_tier`, and `scope` fields/filters; `kind` remains a
+backward-compatible alias. `owner-global` requires owner authorization even
+when an ACL label would otherwise match.
 
 ## Operating boundaries
 

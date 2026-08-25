@@ -115,7 +115,9 @@ export function ContextPanel({
                   <div className="utility-item-main">
                     <strong>{memory.title}</strong>
                     <time>
-                      {memory.kind} · {memory.project} · confidence {memory.confidence.toFixed(2)}
+                      {memory.content_type ?? memory.kind} · {memory.retention_tier ?? 'durable'} ·{' '}
+                      {memory.scope ?? 'workspace'} · {memory.project} · confidence{' '}
+                      {memory.confidence.toFixed(2)}
                       {memory.valid_until
                         ? ` · expires ${new Date(memory.valid_until).toLocaleDateString()}`
                         : ''}

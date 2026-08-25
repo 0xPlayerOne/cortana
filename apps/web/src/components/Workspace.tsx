@@ -516,7 +516,9 @@ function AnswerView({
               <h2>{memory.title}</h2>
               <p>{memory.content}</p>
               <small>
-                {memory.kind} · {memory.project} · confidence {memory.confidence.toFixed(2)}
+                {memory.content_type ?? memory.kind} · {memory.retention_tier ?? 'durable'} ·{' '}
+                {memory.scope ?? 'workspace'} · {memory.project} · confidence{' '}
+                {memory.confidence.toFixed(2)}
                 {memory.valid_until
                   ? ` · expires ${new Date(memory.valid_until).toLocaleDateString()}`
                   : ''}
