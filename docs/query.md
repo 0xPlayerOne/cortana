@@ -7,7 +7,7 @@ Cortana separates agent retrieval from human-facing answers.
 
 ## Current release boundary
 
-The current protected source and published package are `v0.34.44`. Query-only retrieval, native
+The current protected source and published package are `v0.39.0`. Query-only retrieval, native
 memory separation, ACL filtering, bounded context, citations, cache invalidation, and extractive
 fallback remain the safe defaults; provider-backed synthesis is still an explicit opt-in.
 
@@ -94,8 +94,9 @@ The subcommand accepts the same optional filters and strict bounds as the API co
 Out-of-contract values are rejected at parse time. Output is stable JSON with the same shape as
 `/v1/context`: the assembled `context` Markdown with numbered `[n]` citations, the included
 `evidence` rows, relevant `memories`, and `metrics` (`retrieved`, `included`, `omitted`,
-`memories_retrieved`, `memories_included`, `memories_omitted`, `estimated_tokens`, and the
-applied token budget). The bundle also reports `retrieval_mode` (`hybrid` or
+`memories_retrieved`, `memories_included`, `memories_omitted`, `estimated_tokens`, `source_tokens`,
+`reduced_tokens`, `reduction_ratio`, and the applied token budget). The bundle also reports
+`retrieval_mode` (`hybrid` or
 `lexical-fallback`) and, when degraded, a non-secret `retrieval_warning`. Like every other command, it runs against the local index only; use
 `--offline` for the deterministic embedding path when the index generation matches.
 
@@ -161,6 +162,13 @@ model = "auto-efficient"
 max_planned_queries = 4
 retrieval_limit = 10
 result_limit = 20
+candidate_multiplier = 8
+semantic_weight = 1.0
+lexical_weight = 1.2
+idf_weight = 0.08
+recency_weight = 0.1
+# Optional deterministic local second pass; disabled by default.
+reranker_enabled = false
 context_tokens = 8000
 output_tokens = 1200
 request_timeout_seconds = 45
@@ -197,6 +205,18 @@ api_key_env = "CORTANA_QUERY_API_KEY"
 Keep the key in the process environment or the private `[runtime].env_file`; never put its value in
 the TOML file.
 
+The ranking contract is `cortana.retrieval.ranking.v2`. It combines bounded semantic and lexical
+candidate pools with reciprocal-rank fusion, IDF term coverage, recency, exact lexical matching,
+and canonical-record deduplication. The tuning values above are clamped before use and are part of
+the answer cache key. When enabled, the local reranker applies a bounded title/phrase/term-coverage
+boost to the already bounded candidate set; it makes no provider calls and fails open to the fused
+ranking. It remains disabled by default until approved-corpus evaluation demonstrates a quality
+win within the latency budget.
+
+Search responses expose non-secret ranking diagnostics in `x-cortana-retrieval-*` headers:
+ranking contract, fused candidate count, deduplicated count, and returned count. They contain no
+query, document, path, credential, or provider content.
+
 ## Cache behavior
 
 Answers are keyed by:
@@ -207,6 +227,7 @@ Answers are keyed by:
 - embedding fingerprint;
 - model endpoint/name;
 - planner, retrieval, context, and output bounds.
+- retrieval ranking contract and bounded tuning values.
 
 Changed/deleted content and changed source timestamps invalidate prior keys. TTL and least-recently
 used bounds are configurable:
@@ -225,7 +246,8 @@ instead of being hidden until the TTL expires.
 ## Failure contract
 
 Planner failure uses the original query. Individual retrieval failures are reported as warnings
-while successful evidence continues. If the embedding provider is unavailable or exceeds the
+while successful evidence continues. If the embedding provider is unavailable, returns no or
+invalid vectors, has a dimension mismatch, or exceeds the
 five-second interactive budget, retrieval falls back to lexical search and marks the response
 `retrieval_degraded` (answers) or `retrieval_mode = lexical-fallback` (contexts); the fallback is
 not cached for configured model-backed answers. Model unavailability, timeout, invalid JSON, missing

@@ -2176,6 +2176,7 @@ function desktopUpdateStatusSuffix(update: DesktopUpdate | null): string {
   }
   if (update.restart_required || update.phase === 'installed') return ' · Restart required'
   if (update.phase === 'failed') return ' · update failed'
+  if (update.phase === 'unavailable') return ' · no signed package for this platform'
   if (update.phase === 'available' && update.available_version) {
     return ` · ${update.available_version} available`
   }

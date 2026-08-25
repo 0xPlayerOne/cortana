@@ -44,4 +44,9 @@ pub struct StoredChunk {
     pub acl: Vec<String>,
     pub embedding: Vec<f32>,
     pub updated_at: DateTime<Utc>,
+    /// Derived chunk lineage. Legacy rows may have no policy metadata.
+    pub strategy: Option<String>,
+    pub parent_key: Option<String>,
+    pub previous_key: Option<String>,
+    pub next_key: Option<String>,
 }

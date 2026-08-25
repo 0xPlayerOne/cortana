@@ -20,16 +20,19 @@ retention, while every durable record projects its content type (`semantic`, `ep
 are preserved and older clients can continue filtering by `kind`.
 
 Retention tiers are `working` and `durable`. Scope values are `session`, `principal`, `workspace`,
-and `owner-global`; the current authorization boundary still requires project and ACL checks for
-every scope. Lifecycle operations are `observe` (candidate input),
+and `owner-global`. Workspace writes require project and ACL checks, and owner-global operations
+require authenticated owner authorization even when ACL labels match. Session and principal are
+reserved values that fail closed on writes until the canonical record stores their verified
+identity binding. Lifecycle operations are `observe` (candidate input),
 `remember`/`retain` (approved canonical write), `recall` (read), `consolidate` (approved merge),
 `reflect` (non-mutating derivation), `supersede`, and `forget`/`retract`.
 
 ## Scope
 
 Scope is one of `session`, `principal`, `workspace/project`, or explicitly approved owner-global.
-The current store represents workspace/project scope in `project` plus ACL labels. Principal and
-agent scope is enforced by the auth policy before recall or mutation. A selected workspace is a UI
+The current store represents workspace/project scope in `project` plus ACL labels. It does not yet
+persist the principal or session identity needed to authorize those narrower scopes, so it rejects
+those writes instead of approximating identity with ACL membership. A selected workspace is a UI
 filter, never authorization. Cross-workspace dedupe, cache, supersession, export, and revision paths
 must remain isolated.
 
