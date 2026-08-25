@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.0](https://github.com/0xPlayerOne/cortana/compare/v0.40.0...v0.41.0) (2026-08-25)
+
+
+### Features
+
+* **memory:** add bounded observation candidates ([#2127](https://github.com/0xPlayerOne/cortana/issues/2127)) ([08e3a42](https://github.com/0xPlayerOne/cortana/commit/08e3a427226196ca3cf6e6cfc2c1fb91fd0f712a))
+
 ## [0.40.0](https://github.com/0xPlayerOne/cortana/compare/v0.39.4...v0.40.0) (2026-08-25)
 
 
