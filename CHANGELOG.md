@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.0](https://github.com/0xPlayerOne/cortana/compare/v0.34.46...v0.35.0) (2026-08-25)
+
+
+### Features
+
+* **contracts:** complete M2 safety foundation ([#2107](https://github.com/0xPlayerOne/cortana/issues/2107)) ([a3e896c](https://github.com/0xPlayerOne/cortana/commit/a3e896c224471d7a5010805f45e0548ab291ff57))
+
 ## [0.34.46](https://github.com/0xPlayerOne/cortana/compare/v0.34.45...v0.34.46) (2026-08-24)
 
 
