@@ -55,6 +55,7 @@ pub struct AppState {
     ingestion: Arc<IngestionStatus>,
     workspaces: Arc<Vec<WorkspaceConfig>>,
     answer: AnswerEngine,
+    retrieval_tuning: retrieval::RetrievalTuning,
     memory_defaults: crate::memory::MemoryDefaults,
     audit_max_events: usize,
     auth_config_path: Option<std::path::PathBuf>,
@@ -100,6 +101,7 @@ impl AppState {
             ingestion: Arc::new(IngestionStatus::default()),
             workspaces: Arc::new(Vec::new()),
             answer,
+            retrieval_tuning: retrieval::RetrievalTuning::default(),
             memory_defaults: crate::memory::MemoryDefaults::default(),
             audit_max_events: crate::config::AuthConfig::default().audit_max_events,
             auth_config_path: None,
@@ -115,10 +117,12 @@ impl AppState {
             importance: config.memory.default_importance,
         };
         self.audit_max_events = config.auth.audit_max_events;
+        self.retrieval_tuning = config.query.retrieval_tuning();
         self
     }
 
     pub fn with_answer_engine(mut self, answer: AnswerEngine) -> Self {
+        self.retrieval_tuning = answer.retrieval_tuning();
         self.answer = answer;
         self
     }
@@ -1340,7 +1344,7 @@ async fn search(
     let started = Instant::now();
     state.metrics.record(&principal, PrincipalMetric::Search);
     let acl = principal.visible_acl();
-    match retrieval::retrieve_scoped_with_status(
+    match retrieval::retrieve_scoped_with_status_tuned(
         &state.store,
         &state.embedder,
         &request.query,
@@ -1348,6 +1352,7 @@ async fn search(
         request.source.as_deref(),
         request.limit.min(50),
         &acl,
+        state.retrieval_tuning,
     )
     .await
     {
@@ -1435,7 +1440,7 @@ async fn context(
     let started = Instant::now();
     state.metrics.record(&principal, PrincipalMetric::Context);
     let acl = principal.visible_acl();
-    let retrieval = match retrieval::retrieve_scoped_with_status(
+    let retrieval = match retrieval::retrieve_scoped_with_status_tuned(
         &state.store,
         &state.embedder,
         &request.query,
@@ -1443,6 +1448,7 @@ async fn context(
         request.source.as_deref(),
         request.limit.min(50),
         &acl,
+        state.retrieval_tuning,
     )
     .await
     {

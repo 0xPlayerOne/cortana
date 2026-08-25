@@ -1166,6 +1166,7 @@ async fn main() -> Result<()> {
                     config.memory.default_confidence,
                     config.memory.default_importance,
                 )
+                .with_retrieval_tuning(config.query.retrieval_tuning())
                 .with_source_groups(code_sources, message_sources)
                 .with_configured_sources(configured_sources);
             let server = if let Some(token_env) = reloadable_token_env {

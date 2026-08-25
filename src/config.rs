@@ -375,6 +375,22 @@ impl Default for QueryConfig {
     }
 }
 
+impl QueryConfig {
+    /// Return the bounded retrieval policy shared by HTTP, MCP, CLI, and
+    /// provider-backed answer paths.
+    pub fn retrieval_tuning(&self) -> crate::retrieval::RetrievalTuning {
+        crate::retrieval::RetrievalTuning {
+            candidate_multiplier: self.candidate_multiplier,
+            semantic_weight: self.semantic_weight,
+            lexical_weight: self.lexical_weight,
+            idf_weight: self.idf_weight,
+            recency_weight: self.recency_weight,
+            reranker_enabled: self.reranker_enabled,
+        }
+        .bounded()
+    }
+}
+
 impl Default for ConnectorConfig {
     fn default() -> Self {
         Self {

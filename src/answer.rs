@@ -228,15 +228,7 @@ impl AnswerEngine {
         config.output_tokens = config.output_tokens.clamp(64, 8_000);
         config.request_concurrency = config.request_concurrency.clamp(1, 16);
         config.answer_timeout_seconds = config.answer_timeout_seconds.clamp(1, 55);
-        let tuning = retrieval::RetrievalTuning {
-            candidate_multiplier: config.candidate_multiplier,
-            semantic_weight: config.semantic_weight,
-            lexical_weight: config.lexical_weight,
-            idf_weight: config.idf_weight,
-            recency_weight: config.recency_weight,
-            reranker_enabled: config.reranker_enabled,
-        }
-        .bounded();
+        let tuning = config.retrieval_tuning();
         config.candidate_multiplier = tuning.candidate_multiplier;
         config.semantic_weight = tuning.semantic_weight;
         config.lexical_weight = tuning.lexical_weight;
@@ -583,16 +575,8 @@ impl AnswerEngine {
         Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
     }
 
-    fn retrieval_tuning(&self) -> retrieval::RetrievalTuning {
-        retrieval::RetrievalTuning {
-            candidate_multiplier: self.config.candidate_multiplier,
-            semantic_weight: self.config.semantic_weight,
-            lexical_weight: self.config.lexical_weight,
-            idf_weight: self.config.idf_weight,
-            recency_weight: self.config.recency_weight,
-            reranker_enabled: self.config.reranker_enabled,
-        }
-        .bounded()
+    pub fn retrieval_tuning(&self) -> retrieval::RetrievalTuning {
+        self.config.retrieval_tuning()
     }
 }
 
