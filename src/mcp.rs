@@ -432,31 +432,36 @@ impl BrainServer {
                     started,
                 );
                 let max_tokens = params.max_tokens.unwrap_or(8_000);
-                let memory_revision = principal
-                    .has_scope(MEMORY_SCOPE)
-                    .then(|| self.store.memory_revision())
-                    .transpose();
-                let bundle = match memory_revision {
-                    Ok(memory_revision) => context::build_with_retrieval_and_memory(
-                        &params.query,
-                        &retrieval.evidence,
-                        &memories,
-                        max_tokens,
-                        retrieval.mode.as_str(),
-                        retrieval.warning.as_deref(),
-                    )
-                    .with_metadata(context::metadata(
-                        max_tokens,
-                        self.store.corpus_revision().unwrap_or_default(),
-                        memory_revision,
-                        Some(self.embedder.fingerprint()),
-                        params.project.as_deref(),
-                        params.source.as_deref(),
-                        &acl,
-                        retrieval.warning.as_deref(),
-                    )),
+                let corpus_revision = match self.store.corpus_revision() {
+                    Ok(revision) => revision,
                     Err(error) => return format!("context contract error: {error}"),
                 };
+                let memory_revision = if principal.has_scope(MEMORY_SCOPE) {
+                    match self.store.memory_revision() {
+                        Ok(revision) => Some(revision),
+                        Err(error) => return format!("context contract error: {error}"),
+                    }
+                } else {
+                    None
+                };
+                let bundle = context::build_with_retrieval_and_memory(
+                    &params.query,
+                    &retrieval.evidence,
+                    &memories,
+                    max_tokens,
+                    retrieval.mode.as_str(),
+                    retrieval.warning.as_deref(),
+                )
+                .with_metadata(context::metadata(
+                    max_tokens,
+                    corpus_revision,
+                    memory_revision,
+                    Some(self.embedder.fingerprint()),
+                    params.project.as_deref(),
+                    params.source.as_deref(),
+                    &acl,
+                    retrieval.warning.as_deref(),
+                ));
                 serde_json::to_string(&bundle).unwrap_or_else(|error| error.to_string())
             }
             Err(error) => {
