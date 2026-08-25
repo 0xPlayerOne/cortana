@@ -929,8 +929,13 @@ def evaluate_manifest(
             second_digest = second_response.get("canonical_digest")
             digest_checked = isinstance(digest, str) and isinstance(second_digest, str)
             digest_reused = digest_checked and digest == second_digest
-            content_unchanged = digest_reused and response.get("context") == second_response.get(
-                "context"
+            context_value = response.get("context")
+            second_context_value = second_response.get("context")
+            content_unchanged = (
+                digest_reused
+                and isinstance(context_value, str)
+                and isinstance(second_context_value, str)
+                and context_value == second_context_value
             )
             context_reports.append(
                 {
