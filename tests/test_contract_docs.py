@@ -3,7 +3,6 @@
 import json
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -58,7 +57,10 @@ def test_public_fixtures_are_transport_safe_and_normalized() -> None:
     assert bundle["context_bundle_id"].startswith("ctx_")
     assert len(bundle["canonical_digest"]) == 64
     assert len(bundle["privacy_scope_digest"]) == 64
-    assert all(secret not in json.dumps(bundle).lower() for secret in ("password", "bearer", "api_key", "/users/"))
+    assert all(
+        secret not in json.dumps(bundle).lower()
+        for secret in ("password", "bearer", "api_key", "/users/")
+    )
 
     rows = [json.loads(line) for line in read("tests/fixtures/connector-v1.jsonl").splitlines()]
     assert [row["source_id"] for row in rows] == ["doc-1", "doc-2"]
