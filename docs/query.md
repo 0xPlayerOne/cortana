@@ -161,6 +161,13 @@ model = "auto-efficient"
 max_planned_queries = 4
 retrieval_limit = 10
 result_limit = 20
+candidate_multiplier = 8
+semantic_weight = 1.0
+lexical_weight = 1.2
+idf_weight = 0.08
+recency_weight = 0.1
+# Reserved for a separately evaluated reranker; disabled by default.
+reranker_enabled = false
 context_tokens = 8000
 output_tokens = 1200
 request_timeout_seconds = 45
@@ -197,6 +204,17 @@ api_key_env = "CORTANA_QUERY_API_KEY"
 Keep the key in the process environment or the private `[runtime].env_file`; never put its value in
 the TOML file.
 
+The ranking contract is `cortana.retrieval.ranking.v2`. It combines bounded semantic and lexical
+candidate pools with reciprocal-rank fusion, IDF term coverage, recency, exact lexical matching,
+and canonical-record deduplication. The five tuning values above are clamped before use and are
+part of the answer cache key. A future local/provider reranker must remain optional, bounded, and
+failure-tolerant; setting `reranker_enabled` does not silently make an unevaluated provider a
+correctness dependency.
+
+Search responses expose non-secret ranking diagnostics in `x-cortana-retrieval-*` headers:
+ranking contract, fused candidate count, deduplicated count, and returned count. They contain no
+query, document, path, credential, or provider content.
+
 ## Cache behavior
 
 Answers are keyed by:
@@ -207,6 +225,7 @@ Answers are keyed by:
 - embedding fingerprint;
 - model endpoint/name;
 - planner, retrieval, context, and output bounds.
+- retrieval ranking contract and bounded tuning values.
 
 Changed/deleted content and changed source timestamps invalidate prior keys. TTL and least-recently
 used bounds are configurable:
@@ -225,7 +244,8 @@ instead of being hidden until the TTL expires.
 ## Failure contract
 
 Planner failure uses the original query. Individual retrieval failures are reported as warnings
-while successful evidence continues. If the embedding provider is unavailable or exceeds the
+while successful evidence continues. If the embedding provider is unavailable, returns no or
+invalid vectors, has a dimension mismatch, or exceeds the
 five-second interactive budget, retrieval falls back to lexical search and marks the response
 `retrieval_degraded` (answers) or `retrieval_mode = lexical-fallback` (contexts); the fallback is
 not cached for configured model-backed answers. Model unavailability, timeout, invalid JSON, missing
