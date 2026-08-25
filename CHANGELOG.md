@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.36.0](https://github.com/0xPlayerOne/cortana/compare/v0.35.3...v0.36.0) (2026-08-25)
+
+
+### Features
+
+* **testing:** parallelize categorized validation suites ([#2115](https://github.com/0xPlayerOne/cortana/issues/2115)) ([0679a25](https://github.com/0xPlayerOne/cortana/commit/0679a2552a79ab6f069b5cfe21b8429d547aec5e))
+
 ## [0.35.3](https://github.com/0xPlayerOne/cortana/compare/v0.35.2...v0.35.3) (2026-08-25)
 
 

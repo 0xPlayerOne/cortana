@@ -1,6 +1,6 @@
 [project]
 name = "cortana-brain"
-version = "0.35.3"
+version = "0.36.0"
 description = "Local-first, agent-native second brain with configurable ingestion and hybrid retrieval."
 readme = "README.md"
 requires-python = ">=3.11"
