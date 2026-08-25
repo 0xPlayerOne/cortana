@@ -109,6 +109,81 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
             "brain_status must report the embedding fingerprint"
         );
 
+        let expires_at = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        let candidate_arguments = serde_json::json!({
+            "observation_kind": "evidence-backed",
+            "content_type": "semantic",
+            "retention_tier": "working",
+            "scope": "workspace",
+            "project": "work",
+            "title": "MCP candidate",
+            "content": "Review this bounded candidate",
+            "source": "mcp-test",
+            "source_id": "candidate-1",
+            "dedupe_key": "mcp-candidate-1",
+            "confidence": 0.8,
+            "importance": 0.5,
+            "sensitivity": "normal",
+            "acl": ["work"],
+            "provenance": {"test": true},
+            "expires_at": expires_at
+        })
+        .as_object()
+        .expect("candidate arguments")
+        .clone();
+        let proposed = client
+            .call_tool(
+                CallToolRequestParams::new("propose_memory_candidate")
+                    .with_arguments(candidate_arguments),
+            )
+            .await?;
+        assert_ne!(proposed.is_error, Some(true), "candidate proposal failed");
+        let proposed_text = proposed
+            .content
+            .iter()
+            .filter_map(|content| content.as_text())
+            .map(|text| text.text.as_str())
+            .collect::<Vec<_>>()
+            .join("");
+        let proposed_json: Value = serde_json::from_str(&proposed_text)?;
+        let candidate_id = proposed_json["id"].as_str().expect("candidate id");
+
+        let classified = client
+            .call_tool(
+                CallToolRequestParams::new("classify_memory_candidate").with_arguments(
+                    serde_json::json!({"id": candidate_id})
+                        .as_object()
+                        .expect("classification arguments")
+                        .clone(),
+                ),
+            )
+            .await?;
+        assert_ne!(classified.is_error, Some(true), "classification failed");
+        let classified_text = classified
+            .content
+            .iter()
+            .filter_map(|content| content.as_text())
+            .map(|text| text.text.as_str())
+            .collect::<Vec<_>>()
+            .join("");
+        let classification: Value = serde_json::from_str(&classified_text)?;
+        assert_eq!(classification["candidate_id"], candidate_id);
+        assert_eq!(classification["classification"], "temporary-working");
+        assert_eq!(classification["compared_memory_count"], 0);
+
+        let after: CallToolResult = client
+            .call_tool(CallToolRequestParams::new("brain_status"))
+            .await?;
+        let after_text = after
+            .content
+            .iter()
+            .filter_map(|content| content.as_text())
+            .map(|text| text.text.as_str())
+            .collect::<Vec<_>>()
+            .join("");
+        let after_stats: Value = serde_json::from_str(&after_text)?;
+        assert_eq!(after_stats["memory_revision"], stats["memory_revision"]);
+
         client.cancel().await?;
         anyhow::Ok(())
     })

@@ -2001,10 +2001,12 @@ async fn classify_memory_candidate(
         );
         return Err((StatusCode::FORBIDDEN, "memory scope required".into()));
     }
-    match state
-        .store
-        .classify_memory_candidate(&id, &principal.visible_acl(), principal.is_owner())
-    {
+    match state.store.classify_memory_candidate(
+        &id,
+        &principal.name,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    ) {
         Ok(result) => {
             record_audit(
                 &state,

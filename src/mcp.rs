@@ -928,6 +928,7 @@ impl BrainServer {
         }
         match self.store.classify_memory_candidate(
             &params.id,
+            &principal.name,
             &principal.visible_acl(),
             principal.is_owner(),
         ) {

@@ -1969,6 +1969,7 @@ impl Store {
     pub fn classify_memory_candidate(
         &self,
         id: &str,
+        principal_id: &str,
         principal_acl: &[String],
         owner: bool,
     ) -> Result<CandidateClassification> {
@@ -1985,26 +1986,38 @@ impl Store {
             "sensitive candidates require explicit review and cannot be classified"
         );
         let scope = memory::MemoryScope::parse(&candidate.scope)?;
+        anyhow::ensure!(
+            scope != memory::MemoryScope::Principal
+                || candidate.created_by == principal_id
+                || owner,
+            "candidate ACL denied"
+        );
         if scope == memory::MemoryScope::OwnerGlobal {
             anyhow::ensure!(
                 owner,
                 "owner-global candidate scope requires owner authorization"
             );
         }
-        let export_acl = if owner {
-            vec!["*".to_owned()]
+        let memories = if owner {
+            self.export_memories_with_axes_as_owner(
+                Some(&candidate.project),
+                None,
+                Some(&candidate.content_type),
+                Some(&candidate.retention_tier),
+                Some(&candidate.scope),
+                memory::MAX_MEMORY_EXPORT_LIMIT,
+            )?
         } else {
-            principal_acl.to_vec()
+            self.export_memories_with_axes(
+                Some(&candidate.project),
+                None,
+                Some(&candidate.content_type),
+                Some(&candidate.retention_tier),
+                Some(&candidate.scope),
+                memory::MAX_MEMORY_EXPORT_LIMIT,
+                principal_acl,
+            )?
         };
-        let memories = self.export_memories_with_axes(
-            Some(&candidate.project),
-            None,
-            Some(&candidate.content_type),
-            Some(&candidate.retention_tier),
-            Some(&candidate.scope),
-            memory::MAX_MEMORY_EXPORT_LIMIT,
-            &export_acl,
-        )?;
         Ok(classification::classify(&candidate, &memories))
     }
 
@@ -7132,7 +7145,12 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
         let candidate = store
-            .propose_memory_candidate(&candidate_input("work", None), &["work".into()], false)
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
             .expect("candidate");
         let mut canonical = crate::memory::MemoryInput {
             kind: "working".into(),
@@ -7152,7 +7170,7 @@ mod tests {
         let canonical_record = store.remember(&canonical).expect("canonical memory");
         let revision = store.memory_revision().expect("revision");
         let result = store
-            .classify_memory_candidate(&candidate.id, &["work".into()], false)
+            .classify_memory_candidate(&candidate.id, "agent-a", &["work".into()], false)
             .expect("classification");
         assert_eq!(result.classification, "exact-duplicate");
         let canonical_id = canonical_record.id.clone();
@@ -7165,7 +7183,7 @@ mod tests {
         canonical.source_id = "personal-canonical".into();
         store.remember(&canonical).expect("out-of-scope memory");
         let result = store
-            .classify_memory_candidate(&candidate.id, &["work".into()], false)
+            .classify_memory_candidate(&candidate.id, "agent-a", &["work".into()], false)
             .expect("scoped classification");
         assert_eq!(result.classification, "exact-duplicate");
         assert_eq!(result.supporting_memory_ids, vec![canonical_id]);

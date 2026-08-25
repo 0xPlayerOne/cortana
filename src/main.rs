@@ -2446,7 +2446,7 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                 }
             }
             MemoryCandidateAction::Classify { id } => {
-                match store.classify_memory_candidate(id, &["*".into()], true) {
+                match store.classify_memory_candidate(id, "owner", &["*".into()], true) {
                     Ok(classification) => {
                         record_cli_memory_audit(
                             store,

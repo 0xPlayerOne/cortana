@@ -1,8 +1,8 @@
 //! Deterministic, review-only classification for bounded memory observations.
 //!
-//! This module deliberately has no model or network dependency.  It compares
-//! a candidate only with canonical records that the caller is already allowed
-//! to see and returns a recommendation; it never mutates either store.
+//! Deterministic classification is always available without a provider. An
+//! optional provider adapter may refine a result, but invalid or failed model
+//! output degrades to a bounded review-required deterministic outcome.
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -77,6 +77,85 @@ pub struct CandidateClassification {
     pub compared_memory_count: usize,
 }
 
+pub trait ClassificationProvider: Send + Sync {
+    fn classify(
+        &self,
+        candidate: &ObservationCandidate,
+        memories: &[MemoryRecord],
+    ) -> std::result::Result<CandidateClassification, String>;
+}
+
+pub fn classify_with_optional_provider(
+    candidate: &ObservationCandidate,
+    memories: &[MemoryRecord],
+    provider: Option<&dyn ClassificationProvider>,
+) -> CandidateClassification {
+    let deterministic = classify(candidate, memories);
+    let Some(provider) = provider else {
+        return deterministic;
+    };
+    match provider.classify(candidate, memories) {
+        Ok(result) if provider_result_is_valid(candidate, memories, &result) => result,
+        Ok(_) | Err(_) => review_required_provider_fallback(deterministic),
+    }
+}
+
+fn provider_result_is_valid(
+    candidate: &ObservationCandidate,
+    memories: &[MemoryRecord],
+    result: &CandidateClassification,
+) -> bool {
+    const KINDS: &[&str] = &[
+        "new",
+        "exact-duplicate",
+        "semantic-duplicate",
+        "reinforcement",
+        "contradiction",
+        "supersession",
+        "temporary-working",
+        "discard",
+    ];
+    const ACTIONS: &[&str] = &[
+        "retain-for-review",
+        "merge-with-existing",
+        "reinforce-existing",
+        "replace-existing-after-review",
+        "keep-temporary",
+        "discard",
+    ];
+    let visible_ids = memories
+        .iter()
+        .filter(|memory| memory_is_active(memory))
+        .filter(|memory| memory.project == candidate.project && memory.acl == candidate.acl)
+        .map(|memory| memory.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    result.candidate_id == candidate.id
+        && KINDS.contains(&result.classification.as_str())
+        && ACTIONS.contains(&result.proposed_action.as_str())
+        && result.confidence.is_finite()
+        && (0.0..=1.0).contains(&result.confidence)
+        && result.explanation.len() <= MAX_EXPLANATION_BYTES
+        && result
+            .unresolved_ambiguity
+            .as_ref()
+            .is_none_or(|value| value.len() <= MAX_EXPLANATION_BYTES)
+        && result.supporting_memory_ids.len() <= memories.len().min(32)
+        && result
+            .supporting_memory_ids
+            .iter()
+            .all(|id| visible_ids.contains(id.as_str()))
+}
+
+fn review_required_provider_fallback(
+    mut deterministic: CandidateClassification,
+) -> CandidateClassification {
+    deterministic.proposed_action = ProposedAction::RetainForReview.as_str().into();
+    deterministic.unresolved_ambiguity = Some(
+        "model-assisted comparison unavailable or invalid; deterministic review required".into(),
+    );
+    deterministic
+}
+
 #[derive(Clone, Debug)]
 struct Match<'a> {
     memory: &'a MemoryRecord,
@@ -92,7 +171,16 @@ pub fn classify(
     candidate: &ObservationCandidate,
     memories: &[MemoryRecord],
 ) -> CandidateClassification {
-    let compared_memory_count = memories.len();
+    let eligible_memories = memories
+        .iter()
+        .filter(|memory| memory_is_active(memory))
+        .filter(|memory| memory.project == candidate.project)
+        .filter(|memory| memory.acl == candidate.acl)
+        .filter(|memory| memory.content_type == candidate.content_type)
+        .filter(|memory| memory.retention_tier == candidate.retention_tier)
+        .filter(|memory| memory.scope == candidate.scope)
+        .collect::<Vec<_>>();
+    let compared_memory_count = eligible_memories.len();
     if candidate.status != "pending" {
         return report(
             candidate,
@@ -118,12 +206,8 @@ pub fn classify(
         );
     }
 
-    let mut matches: Vec<Match<'_>> = memories
-        .iter()
-        .filter(|memory| memory.project == candidate.project)
-        .filter(|memory| memory.content_type == candidate.content_type)
-        .filter(|memory| memory.retention_tier == candidate.retention_tier)
-        .filter(|memory| memory.scope == candidate.scope)
+    let mut matches: Vec<Match<'_>> = eligible_memories
+        .into_iter()
         .filter_map(|memory| {
             let candidate_text = normalized_text(&candidate.title, &candidate.content);
             let memory_text = normalized_text(&memory.title, &memory.content);
@@ -176,18 +260,6 @@ pub fn classify(
     };
 
     let supporting = vec![best.memory.id.clone()];
-    if candidate.retention_tier == "working" && memory_is_stale(best.memory) {
-        return report(
-            candidate,
-            ClassificationKind::TemporaryWorking,
-            supporting,
-            "candidate matches only an expired working memory; keep the observation temporary",
-            0.86,
-            ProposedAction::KeepTemporary,
-            Some("the prior working state is stale"),
-            compared_memory_count,
-        );
-    }
     if best.exact {
         return report(
             candidate,
@@ -266,6 +338,15 @@ fn memory_is_stale(memory: &MemoryRecord) -> bool {
             .map(|value| value.with_timezone(&Utc) <= Utc::now())
             .unwrap_or(false)
     })
+}
+
+fn memory_is_active(memory: &MemoryRecord) -> bool {
+    if memory.status != "active" || memory_is_stale(memory) {
+        return false;
+    }
+    DateTime::parse_from_rfc3339(&memory.valid_from)
+        .map(|value| value.with_timezone(&Utc) <= Utc::now())
+        .unwrap_or(false)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -353,12 +434,12 @@ fn preference_value_conflict(
     memory: &MemoryRecord,
     similarity: f64,
 ) -> bool {
+    let candidate_text = normalized_text(&candidate.title, &candidate.content);
+    let memory_text = normalized_text(&memory.title, &memory.content);
     candidate.content_type == "preference"
         && similarity >= 0.35
-        && normalized_text(&candidate.title, &candidate.content)
-            .split_whitespace()
-            .zip(normalized_text(&memory.title, &memory.content).split_whitespace())
-            .any(|(left, right)| left != right)
+        && (has_change_marker(&candidate_text) || has_change_marker(&memory_text))
+        && candidate_text != memory_text
 }
 
 #[cfg(test)]
@@ -374,6 +455,7 @@ mod tests {
             content_type: content_type.into(),
             retention_tier: retention_tier.into(),
             scope: "workspace".into(),
+            created_by: "agent-a".into(),
             project: "work".into(),
             title: "Decision".into(),
             content: content.into(),
@@ -448,6 +530,59 @@ mod tests {
     }
 
     #[test]
+    fn preference_paraphrases_are_not_contradictions() {
+        let candidate = candidate("Prefer concise release notes", "preference", "durable");
+        let existing = memory("Prefer short release notes", "preference", "durable");
+        let result = classify(&candidate, &[existing]);
+        assert_ne!(result.classification, "contradiction");
+        assert_ne!(result.classification, "supersession");
+    }
+
+    #[test]
+    fn retired_expired_future_and_disjoint_acl_memories_are_not_compared() {
+        let candidate = candidate("Deploy on Friday", "semantic", "durable");
+        let mut retired = memory("Deploy on Friday", "semantic", "durable");
+        retired.status = "superseded".into();
+        let mut expired = memory("Deploy on Friday", "semantic", "durable");
+        expired.id = "expired".into();
+        expired.valid_until = Some((Utc::now() - Duration::hours(1)).to_rfc3339());
+        let mut future = memory("Deploy on Friday", "semantic", "durable");
+        future.id = "future".into();
+        future.valid_from = (Utc::now() + Duration::hours(1)).to_rfc3339();
+        let mut disjoint = memory("Deploy on Friday", "semantic", "durable");
+        disjoint.id = "disjoint".into();
+        disjoint.acl = vec!["private".into()];
+        let result = classify(&candidate, &[retired, expired, future, disjoint]);
+        assert_eq!(result.classification, "new");
+        assert_eq!(result.compared_memory_count, 0);
+    }
+
+    struct FailingProvider;
+
+    impl ClassificationProvider for FailingProvider {
+        fn classify(
+            &self,
+            _candidate: &ObservationCandidate,
+            _memories: &[MemoryRecord],
+        ) -> std::result::Result<CandidateClassification, String> {
+            Err("provider unavailable".into())
+        }
+    }
+
+    #[test]
+    fn optional_provider_failure_is_bounded_and_review_required() {
+        let result = classify_with_optional_provider(
+            &candidate("Deploy Friday", "semantic", "durable"),
+            &[],
+            Some(&FailingProvider),
+        );
+        assert_eq!(result.proposed_action, "retain-for-review");
+        let ambiguity = result.unresolved_ambiguity.expect("review reason");
+        assert!(ambiguity.len() <= MAX_EXPLANATION_BYTES);
+        assert!(!ambiguity.contains("provider unavailable"));
+    }
+
+    #[test]
     fn working_candidates_stay_temporary_and_low_quality_is_discarded() {
         let result = classify(
             &candidate("Short-lived context", "semantic", "working"),
@@ -461,7 +596,8 @@ mod tests {
             &[stale],
         );
         assert_eq!(result.classification, "temporary-working");
-        assert!(result.unresolved_ambiguity.is_some());
+        assert_eq!(result.compared_memory_count, 0);
+        assert!(result.supporting_memory_ids.is_empty());
         let mut low = candidate("x", "semantic", "durable");
         low.confidence = 0.1;
         assert_eq!(classify(&low, &[]).classification, "discard");

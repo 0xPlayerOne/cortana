@@ -48,7 +48,7 @@ principal or workspace boundary.
 
 ### Classification
 
-`classify` is a deterministic, provider-free, review-only comparison of one pending candidate with
+`classify` is a deterministic, provider-independent, review-only comparison of one pending candidate with
 visible canonical records having the same project, ACL, content type, retention tier, and scope.
 It returns a traceable candidate id, supporting memory ids, explanation, confidence, proposed action,
 and unresolved ambiguity. Results are one of `new`, `exact-duplicate`, `semantic-duplicate`,
@@ -56,6 +56,9 @@ and unresolved ambiguity. Results are one of `new`, `exact-duplicate`, `semantic
 Classification never writes canonical memory, advances `memory_revision`, resurrects tombstones, or
 creates a supersession edge. Conflicting preferences, changed decisions, and low-confidence
 ambiguity remain review-required. Cross-project records and invisible ACLs are not compared.
+Retracted, superseded, expired, and not-yet-valid records are excluded. An optional model adapter
+may refine the deterministic result; provider failure or invalid output returns a bounded,
+review-required deterministic fallback without exposing provider errors.
 
 Principal-scoped candidates persist the authenticated creator identity and are visible or mutable
 only to that principal (or the owner). Session candidates fail closed until the transport supplies
