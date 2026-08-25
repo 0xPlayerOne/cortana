@@ -10,6 +10,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "scripts" / "install-agent-integrations.sh"
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="agent installer requires bash")
 def test_installer_accepts_current_codex_symlink(tmp_path: Path) -> None:

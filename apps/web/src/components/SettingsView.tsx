@@ -2058,13 +2058,13 @@ function AuditList({ title, events }: { title: string; events: AuditEvent[] }) {
         <p>No events available.</p>
       ) : (
         events.map((event, index) => (
-          <article key={`${String(event.id || event.at_unix_seconds || 'event')}:${index}`}>
-            <strong>{String(event.event || event.action || 'event')}</strong>
+          <article key={`${String(event['id'] || event['at_unix_seconds'] || 'event')}:${index}`}>
+            <strong>{String(event['event'] || event['action'] || 'event')}</strong>
             <time>
-              {event.timestamp
-                ? new Date(String(event.timestamp)).toLocaleString()
-                : event.at_unix_seconds
-                  ? new Date(Number(event.at_unix_seconds) * 1000).toLocaleString()
+              {event['timestamp']
+                ? new Date(String(event['timestamp'])).toLocaleString()
+                : event['at_unix_seconds']
+                  ? new Date(Number(event['at_unix_seconds']) * 1000).toLocaleString()
                   : ''}
             </time>
             <pre>{JSON.stringify(event, null, 2)}</pre>
@@ -2965,7 +2965,7 @@ function SourcesSection({
     }
   }
 
-  const discoverGithubRepositories = async (index: number, source: SourceSettings) => {
+  const discoverGithubRepositories = async (source: SourceSettings) => {
     if (!canValidate) {
       setError('Save source changes before discovering repositories.')
       return
@@ -2997,7 +2997,7 @@ function SourcesSection({
     changeSource(index, { repositories })
   }
 
-  const discoverDiscordChannels = async (index: number, source: SourceSettings) => {
+  const discoverDiscordChannels = async (source: SourceSettings) => {
     if (!canValidate) {
       setError('Save source changes before discovering channels.')
       return
@@ -3043,7 +3043,7 @@ function SourcesSection({
     changeSource(index, { channels: [...new Set(channels)] })
   }
 
-  const discoverDiscordServers = async (index: number, source: SourceSettings) => {
+  const discoverDiscordServers = async (source: SourceSettings) => {
     if (!canValidate) {
       setError('Save source changes before discovering servers.')
       return
@@ -3073,7 +3073,7 @@ function SourcesSection({
     changeSource(index, { servers })
   }
 
-  const discoverSlackWorkspaces = async (index: number, source: SourceSettings) => {
+  const discoverSlackWorkspaces = async (source: SourceSettings) => {
     if (!canValidate) {
       setError('Save source changes before discovering workspaces.')
       return
@@ -3106,7 +3106,7 @@ function SourcesSection({
     })
   }
 
-  const discoverBuzzCommunities = async (index: number, source: SourceSettings) => {
+  const discoverBuzzCommunities = async (source: SourceSettings) => {
     if (!canValidate) {
       setError('Save source changes before discovering communities.')
       return
@@ -3650,7 +3650,7 @@ function SourcesSection({
                           disabled={
                             !canValidate || sourceLocked || buzzCommunitiesLoading === source.name
                           }
-                          onClick={() => void discoverBuzzCommunities(index, source)}
+                          onClick={() => void discoverBuzzCommunities(source)}
                         >
                           {buzzCommunitiesLoading === source.name ? (
                             <LoaderCircle className="spin" size={14} />
@@ -3847,7 +3847,7 @@ function SourcesSection({
                               sourceLocked ||
                               githubRepositoriesLoading === source.name
                             }
-                            onClick={() => void discoverGithubRepositories(index, source)}
+                            onClick={() => void discoverGithubRepositories(source)}
                           >
                             {githubRepositoriesLoading === source.name ? (
                               <LoaderCircle className="spin" size={14} />
@@ -3932,7 +3932,7 @@ function SourcesSection({
                                 sourceLocked ||
                                 discordServersLoading === source.name
                               }
-                              onClick={() => void discoverDiscordServers(index, source)}
+                              onClick={() => void discoverDiscordServers(source)}
                             >
                               {discordServersLoading === source.name ? (
                                 <LoaderCircle className="spin" size={14} />
@@ -3987,7 +3987,7 @@ function SourcesSection({
                                 sourceLocked ||
                                 discordChannelsLoading === source.name
                               }
-                              onClick={() => void discoverDiscordChannels(index, source)}
+                              onClick={() => void discoverDiscordChannels(source)}
                             >
                               {discordChannelsLoading === source.name ? (
                                 <LoaderCircle className="spin" size={14} />
@@ -4245,7 +4245,7 @@ function SourcesSection({
                                   sourceLocked ||
                                   slackWorkspacesLoading === source.name
                                 }
-                                onClick={() => void discoverSlackWorkspaces(index, source)}
+                                onClick={() => void discoverSlackWorkspaces(source)}
                               >
                                 {slackWorkspacesLoading === source.name ? (
                                   <LoaderCircle className="spin" size={14} />

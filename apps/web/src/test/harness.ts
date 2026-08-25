@@ -8,5 +8,6 @@ const { configure } = await import('@testing-library/dom')
 
 // Cold Bun workers and the first happy-dom render can exceed Testing
 // Library's one-second polling default on developer machines. Keep the test
-// harness bounded, but leave enough time for a legitimate initial render.
-configure({ asyncUtilTimeout: 5_000 })
+// harness bounded, but leave enough time for a legitimate initial render when
+// Code Foundry is running independent suites in parallel.
+configure({ asyncUtilTimeout: 10_000 })
