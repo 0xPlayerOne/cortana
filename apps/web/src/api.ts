@@ -35,6 +35,7 @@ import type {
   BuzzCommunityList,
   ProviderModelKind,
   ProviderModelList,
+  ReflectResponse,
 } from './types'
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
@@ -406,6 +407,31 @@ export async function getContext(
   })
   if (!response.ok) throw new Error(`Context retrieval failed (${response.status})`)
   return (await response.json()) as ContextBundle
+}
+
+export async function getReflection(
+  objective: string,
+  project?: string,
+  source?: string,
+  signal?: AbortSignal
+): Promise<ReflectResponse> {
+  const response = await authorizedFetch('/v1/memory/reflect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      objective,
+      project: project || null,
+      memory: { limit: 32 },
+      include_evidence: true,
+      token_budget: 2048,
+      provider_policy: 'deterministic-only',
+      deadline_ms: 5000,
+      source: source || null,
+    }),
+    signal,
+  })
+  if (!response.ok) throw new Error(`Reflection failed (${response.status})`)
+  return (await response.json()) as ReflectResponse
 }
 
 export async function getDocuments(

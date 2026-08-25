@@ -1,4 +1,4 @@
-import { FileText, LoaderCircle, Search } from 'lucide-react'
+import { FileText, LoaderCircle, Search, Sparkles } from 'lucide-react'
 import {
   type CSSProperties,
   type FormEvent,
@@ -21,6 +21,7 @@ import {
   getDocuments,
   getContext,
   getGraph,
+  getReflection,
   getStatus,
   openDesktopSourceSetup,
   runDesktopServicesActionAll,
@@ -899,6 +900,56 @@ export function App() {
     }
   }
 
+  async function runReflection() {
+    const value = query.trim()
+    if (!value || loading) return
+    const requestId = ++searchRequestRef.current
+    const requestedScope = searchScope(source, effectiveWorkspace, value)
+    const controller = new AbortController()
+    searchAbortRef.current?.abort()
+    searchAbortRef.current = controller
+    searchScopeRef.current = requestedScope
+    setLoading(true)
+    setError('')
+    setWorkspaceTab('answer')
+    try {
+      const reflection = await getReflection(
+        value,
+        effectiveWorkspace || undefined,
+        source || undefined,
+        controller.signal
+      )
+      if (searchRequestRef.current !== requestId || searchScopeRef.current !== requestedScope)
+        return
+      const sections = [
+        ...reflection.claims.map((item) => item.text),
+        ...reflection.patterns.map((item) => item.statement),
+        ...reflection.tensions.map((item) => item.statement),
+        ...reflection.recommendations.map((item) => item.statement),
+      ]
+      setAnswer({
+        contract_version: reflection.contract_version,
+        query: value,
+        answer: sections.join('\n\n') || 'No grounded reflection was available for this scope.',
+        evidence: [],
+        plan: { queries: [value], model_generated: false },
+        mode: 'extractive',
+        cached: false,
+        latency_ms: 0,
+        warnings: reflection.status === 'completed' ? [] : [reflection.status],
+        memory_revision: reflection.memory_revision,
+      })
+      setEvidence([])
+      setActiveQuery(value)
+      setSelected(0)
+    } catch (caught) {
+      if (controller.signal.aborted || isAbort(caught)) return
+      setError(caught instanceof Error ? caught.message : 'Reflection failed')
+    } finally {
+      if (searchRequestRef.current === requestId && !controller.signal.aborted) setLoading(false)
+    }
+  }
+
   function submit(event: FormEvent) {
     event.preventDefault()
     const value = query.trim()
@@ -1485,6 +1536,17 @@ export function App() {
           ) : (
             <kbd>{shortcutLabel('MOD K')}</kbd>
           )}
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label="Reflect on this objective"
+            title="Reflect on active memory and scoped evidence"
+            onClick={() => void runReflection()}
+            disabled={loading || !query.trim()}
+          >
+            <Sparkles size={15} />
+            Reflect
+          </Button>
         </form>
         <TitleActions
           context

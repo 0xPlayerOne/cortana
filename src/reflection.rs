@@ -7,18 +7,23 @@
 //! principal first, then pass only the bounded, scoped inputs to this module.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
+use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::acl_allows;
 use crate::context::estimate_tokens;
 use crate::contracts::{privacy_scope_digest, stable_json_digest};
+use crate::embed::Embedder;
 use crate::memory::{
     MemoryContentType, MemoryKind, MemoryRecord, MemoryRetentionTier, MemoryScope,
 };
 use crate::model::Evidence;
+use crate::store::Store;
 
 pub const REFLECTION_CONTRACT_VERSION: &str = "cortana.reflection.v1";
 pub const MIN_REFLECTION_TOKEN_BUDGET: usize = 256;
@@ -36,7 +41,7 @@ pub const MAX_REFLECTION_CANDIDATES: usize = 8;
 pub const MAX_REFLECTION_DEADLINE_MS: u64 = 30_000;
 pub const MAX_REFLECTION_TEXT_BYTES: usize = 512;
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProviderPolicy {
     /// Use only the deterministic local implementation.
@@ -50,7 +55,7 @@ pub enum ProviderPolicy {
     RequireProvider,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryReflectFilter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -81,7 +86,7 @@ fn default_memory_limit() -> usize {
     32
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReflectRequest {
     pub objective: String,
@@ -223,7 +228,7 @@ pub struct ReflectResponse {
 /// bounded records. A provider response is accepted only when every claim is
 /// grounded in one of those records; otherwise the caller receives a bounded
 /// failure or deterministic fallback according to `ProviderPolicy`.
-pub trait ReflectionProvider {
+pub trait ReflectionProvider: Send + Sync {
     fn name(&self) -> &str;
     fn reflect(
         &self,
@@ -248,13 +253,108 @@ pub fn reflect(request: &ReflectRequest, inputs: &ReflectionInputs<'_>) -> Resul
     reflect_with_provider(request, inputs, None)
 }
 
+/// First-party integration used by HTTP and MCP. Inputs are obtained only
+/// through Cortana's existing scoped store and retrieval paths.
+pub async fn reflect_authorized(
+    store: &Store,
+    embedder: &Arc<dyn Embedder>,
+    request: &ReflectRequest,
+    principal_acl: &[String],
+    owner: bool,
+) -> Result<ReflectResponse> {
+    validate_request(request)?;
+    let memories = authorized_memories(store, request, principal_acl, owner)?;
+    let evidence = if request.include_evidence {
+        let project = request.project.as_deref().ok_or_else(|| {
+            anyhow::anyhow!("reflection requires a project filter when evidence is included")
+        })?;
+        crate::retrieval::retrieve_scoped(
+            store,
+            embedder,
+            &request.objective,
+            Some(project),
+            request.source.as_deref(),
+            MAX_REFLECTION_EVIDENCE_LIMIT,
+            principal_acl,
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
+    let revision = store.memory_revision()?;
+    reflect(
+        request,
+        &ReflectionInputs {
+            memories: &memories,
+            evidence: &evidence,
+            evidence_project: request.project.as_deref(),
+            principal_acl,
+            owner,
+            memory_revision: revision,
+        },
+    )
+}
+
+/// Local CLI integration when no retrieval runtime is initialized.
+pub fn reflect_authorized_memory_only(
+    store: &Store,
+    request: &ReflectRequest,
+    principal_acl: &[String],
+    owner: bool,
+) -> Result<ReflectResponse> {
+    anyhow::ensure!(
+        !request.include_evidence,
+        "CLI reflection requires include_evidence=false; use HTTP or MCP for scoped evidence retrieval"
+    );
+    let memories = authorized_memories(store, request, principal_acl, owner)?;
+    reflect(
+        request,
+        &ReflectionInputs {
+            memories: &memories,
+            evidence: &[],
+            evidence_project: None,
+            principal_acl,
+            owner,
+            memory_revision: store.memory_revision()?,
+        },
+    )
+}
+
+fn authorized_memories(
+    store: &Store,
+    request: &ReflectRequest,
+    principal_acl: &[String],
+    owner: bool,
+) -> Result<Vec<MemoryRecord>> {
+    if owner {
+        store.export_memories_with_axes_as_owner(
+            request.project.as_deref(),
+            request.memory.kind.as_deref(),
+            request.memory.content_type.as_deref(),
+            request.memory.retention_tier.as_deref(),
+            request.memory.scope.as_deref(),
+            request.memory.limit,
+        )
+    } else {
+        store.export_memories_with_axes(
+            request.project.as_deref(),
+            request.memory.kind.as_deref(),
+            request.memory.content_type.as_deref(),
+            request.memory.retention_tier.as_deref(),
+            request.memory.scope.as_deref(),
+            request.memory.limit,
+            principal_acl,
+        )
+    }
+}
+
 /// Main reflection entry point. This function is intentionally pure with
 /// respect to the store: it never receives a `Store`, so it cannot mutate
 /// canonical memory or advance the supplied revision.
 pub fn reflect_with_provider(
     request: &ReflectRequest,
     inputs: &ReflectionInputs<'_>,
-    provider: Option<&dyn ReflectionProvider>,
+    provider: Option<Arc<dyn ReflectionProvider>>,
 ) -> Result<ReflectResponse> {
     validate_request(request)?;
     let started = Instant::now();
@@ -266,7 +366,7 @@ pub fn reflect_with_provider(
         request.source.as_deref(),
         inputs.principal_acl,
     );
-    let provider_name = provider.map(|item| item.name().to_string());
+    let provider_name = provider.as_ref().map(|item| item.name().to_string());
 
     let mut provider_outcome = ProviderOutcome {
         policy: request.provider_policy,
@@ -277,9 +377,45 @@ pub fn reflect_with_provider(
 
     if request.provider_policy != ProviderPolicy::DeterministicOnly {
         if let Some(provider) = provider {
-            match provider.reflect(request, &selected, &evidence) {
-                Ok(output) => {
-                    if let Err(error) = validate_provider_output(&output, &selected, &evidence) {
+            let (sender, receiver) = mpsc::sync_channel(1);
+            let provider_request = request.clone();
+            let provider_memories = selected.clone();
+            let provider_evidence = evidence.clone();
+            std::thread::spawn(move || {
+                let _ = sender.send(provider.reflect(
+                    &provider_request,
+                    &provider_memories,
+                    &provider_evidence,
+                ));
+            });
+            let remaining =
+                Duration::from_millis(request.deadline_ms).saturating_sub(started.elapsed());
+            match receiver.recv_timeout(remaining) {
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    provider_outcome.status = "deadline_exceeded".into();
+                    provider_outcome.detail = Some("reflection provider exceeded deadline".into());
+                    if request.provider_policy == ProviderPolicy::RequireProvider {
+                        return Ok(empty_response(
+                            request,
+                            request_digest,
+                            scope_digest,
+                            inputs.memory_revision,
+                            ReflectStatus::DeadlineExceeded,
+                            provider_outcome,
+                            selected.len(),
+                            inputs.evidence.len(),
+                            evidence.len(),
+                        ));
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    provider_outcome.status = "failed".into();
+                    provider_outcome.detail = Some("reflection provider disconnected".into());
+                }
+                Ok(Ok(output)) => {
+                    if let Err(error) =
+                        validate_provider_output(request, &output, &selected, &evidence)
+                    {
                         provider_outcome.status = "failed".into();
                         provider_outcome.detail = Some(error.to_string());
                         if request.provider_policy == ProviderPolicy::RequireProvider {
@@ -312,7 +448,7 @@ pub fn reflect_with_provider(
                         return Ok(response);
                     }
                 }
-                Err(error) => {
+                Ok(Err(error)) => {
                     provider_outcome.status = "failed".into();
                     provider_outcome.detail = Some(sanitize_detail(&error));
                     if request.provider_policy == ProviderPolicy::RequireProvider {
@@ -431,14 +567,6 @@ fn authorize_and_select_memories(
     let mut projects = BTreeSet::new();
     let mut selected = Vec::new();
     for memory in inputs.memories {
-        if let Some(project) = request.project.as_deref() {
-            if memory.project != project {
-                continue;
-            }
-        }
-        if !memory_matches_filter(memory, &request.memory)? {
-            continue;
-        }
         anyhow::ensure!(
             inputs.owner || acl_allows(&memory.acl, inputs.principal_acl),
             "reflection input contains memory outside principal ACL"
@@ -447,6 +575,18 @@ fn authorize_and_select_memories(
             inputs.owner || memory.scope != MemoryScope::OwnerGlobal.as_str(),
             "owner-global memory requires owner authorization"
         );
+        if let Some(project) = request.project.as_deref() {
+            anyhow::ensure!(
+                memory.project == project,
+                "reflection input crosses the requested project boundary"
+            );
+        }
+        if !memory_is_active(memory) {
+            continue;
+        }
+        if !memory_matches_filter(memory, &request.memory)? {
+            continue;
+        }
         projects.insert(memory.project.clone());
         selected.push(memory.clone());
         if selected.len() >= request.memory.limit {
@@ -462,6 +602,22 @@ fn authorize_and_select_memories(
         }
     }
     Ok(selected)
+}
+
+fn memory_is_active(memory: &MemoryRecord) -> bool {
+    if memory.status != "active" {
+        return false;
+    }
+    let now = Utc::now();
+    let started = DateTime::parse_from_rfc3339(&memory.valid_from)
+        .map(|value| value.with_timezone(&Utc) <= now)
+        .unwrap_or(false);
+    let unexpired = memory.valid_until.as_deref().is_none_or(|value| {
+        DateTime::parse_from_rfc3339(value)
+            .map(|expires| expires.with_timezone(&Utc) > now)
+            .unwrap_or(false)
+    });
+    started && unexpired
 }
 
 fn memory_matches_filter(memory: &MemoryRecord, filter: &MemoryReflectFilter) -> Result<bool> {
@@ -494,15 +650,17 @@ fn select_evidence(
     if !request.include_evidence {
         return Ok(Vec::new());
     }
-    if let (Some(project), Some(evidence_project)) =
-        (request.project.as_deref(), inputs.evidence_project)
-    {
+    if !inputs.evidence.is_empty() {
+        let project = request.project.as_deref().ok_or_else(|| {
+            anyhow::anyhow!("reflection requires a project filter when evidence is included")
+        })?;
+        let evidence_project = inputs.evidence_project.ok_or_else(|| {
+            anyhow::anyhow!("reflection evidence requires an authorized project scope")
+        })?;
         anyhow::ensure!(
             project == evidence_project,
             "reflection evidence crosses the requested project boundary"
         );
-    } else if !inputs.evidence.is_empty() && request.project.is_none() {
-        bail!("reflection requires a project filter when evidence is included");
     }
     let mut ids = BTreeSet::new();
     let mut evidence = Vec::new();
@@ -702,11 +860,23 @@ fn response_from_output(
             canonical_memory_mutated: false,
         },
     };
-    response.metrics.estimated_tokens = estimate_tokens(&serde_json::to_string(&response)?);
-    anyhow::ensure!(
-        response.metrics.estimated_tokens <= request.token_budget,
-        "reflection response exceeds token budget"
-    );
+    loop {
+        response.metrics.estimated_tokens = estimate_tokens(&serde_json::to_string(&response)?);
+        if response.metrics.estimated_tokens <= request.token_budget {
+            break;
+        }
+        if response.proposed_candidates.pop().is_some()
+            || response.recommendations.pop().is_some()
+            || response.tensions.pop().is_some()
+            || response.patterns.pop().is_some()
+            || response.chronology.pop().is_some()
+            || response.claims.pop().is_some()
+            || response.evidence_ids.pop().is_some()
+        {
+            continue;
+        }
+        break;
+    }
     Ok(response)
 }
 
@@ -751,27 +921,72 @@ fn empty_response(
 }
 
 fn validate_provider_output(
+    request: &ReflectRequest,
     output: &ProviderReflection,
     memories: &[MemoryRecord],
     evidence: &[Evidence],
 ) -> Result<()> {
+    anyhow::ensure!(
+        output.claims.len() <= MAX_REFLECTION_CLAIMS,
+        "too many claims"
+    );
+    anyhow::ensure!(
+        output.patterns.len() <= MAX_REFLECTION_PATTERNS,
+        "too many patterns"
+    );
+    anyhow::ensure!(
+        output.tensions.len() <= MAX_REFLECTION_TENSIONS,
+        "too many tensions"
+    );
+    anyhow::ensure!(
+        output.recommendations.len() <= MAX_REFLECTION_RECOMMENDATIONS,
+        "too many recommendations"
+    );
+    anyhow::ensure!(
+        output.proposed_candidates.len() <= MAX_REFLECTION_CANDIDATES,
+        "too many proposed candidates"
+    );
+    anyhow::ensure!(
+        output.chronology.len() <= MAX_REFLECTION_MEMORY_LIMIT,
+        "too many chronology entries"
+    );
     let memory_ids: BTreeSet<&str> = memories.iter().map(|item| item.id.as_str()).collect();
     let evidence_ids: BTreeSet<&str> = evidence.iter().map(|item| item.chunk_id.as_str()).collect();
     for claim in &output.claims {
-        ensure_ids(&claim.supporting_memory_ids, &memory_ids, "claim memory")?;
-        ensure_ids(
+        validate_text("claim.text", &claim.text, MAX_REFLECTION_TEXT_BYTES)?;
+        anyhow::ensure!(
+            !claim.supporting_memory_ids.is_empty() || !claim.supporting_evidence_ids.is_empty(),
+            "claim support cannot be empty"
+        );
+        ensure_optional_ids(&claim.supporting_memory_ids, &memory_ids, "claim memory")?;
+        ensure_optional_ids(
             &claim.supporting_evidence_ids,
             &evidence_ids,
             "claim evidence",
         )?;
     }
     for item in &output.patterns {
+        validate_text(
+            "pattern.statement",
+            &item.statement,
+            MAX_REFLECTION_TEXT_BYTES,
+        )?;
         ensure_ids(&item.supporting_memory_ids, &memory_ids, "pattern memory")?;
     }
     for item in &output.tensions {
+        validate_text(
+            "tension.statement",
+            &item.statement,
+            MAX_REFLECTION_TEXT_BYTES,
+        )?;
         ensure_ids(&item.supporting_memory_ids, &memory_ids, "tension memory")?;
     }
     for item in &output.recommendations {
+        validate_text(
+            "recommendation.statement",
+            &item.statement,
+            MAX_REFLECTION_TEXT_BYTES,
+        )?;
         ensure_ids(
             &item.supporting_memory_ids,
             &memory_ids,
@@ -783,14 +998,43 @@ fn validate_provider_output(
             item.approval_required,
             "provider candidate must require approval"
         );
+        let requested_project = request.project.as_deref().unwrap_or_default();
+        anyhow::ensure!(
+            !requested_project.is_empty() && item.project == requested_project,
+            "provider candidate crosses the requested project boundary"
+        );
+        validate_text("candidate.title", &item.title, MAX_REFLECTION_TEXT_BYTES)?;
+        validate_text(
+            "candidate.content",
+            &item.content,
+            MAX_REFLECTION_TEXT_BYTES,
+        )?;
+        MemoryContentType::parse(&item.content_type)?;
+        MemoryRetentionTier::parse(&item.retention_tier)?;
+        let scope = MemoryScope::parse(&item.scope)?;
+        anyhow::ensure!(
+            scope == MemoryScope::Workspace,
+            "provider candidate must remain workspace-scoped"
+        );
         ensure_ids(&item.supporting_memory_ids, &memory_ids, "candidate memory")?;
     }
     for item in &output.chronology {
+        validate_text("chronology.title", &item.title, MAX_REFLECTION_TEXT_BYTES)?;
+        DateTime::parse_from_rfc3339(&item.observed_at)
+            .map_err(|_| anyhow::anyhow!("chronology timestamp is invalid"))?;
         anyhow::ensure!(
             memory_ids.contains(item.memory_id.as_str()),
             "chronology memory is ungrounded"
         );
     }
+    Ok(())
+}
+
+fn ensure_optional_ids(ids: &[String], allowed: &BTreeSet<&str>, label: &str) -> Result<()> {
+    anyhow::ensure!(
+        ids.iter().all(|id| allowed.contains(id.as_str())),
+        "{label} contains an unknown reference"
+    );
     Ok(())
 }
 
@@ -814,13 +1058,18 @@ fn validate_text(name: &str, value: &str, max_bytes: usize) -> Result<()> {
 }
 
 fn safe_excerpt(value: &str, max_bytes: usize) -> String {
-    value
+    let sanitized = value
         .chars()
         .filter(|character| !character.is_control())
-        .collect::<String>()
-        .chars()
-        .take(max_bytes)
-        .collect()
+        .collect::<String>();
+    if sanitized.len() <= max_bytes {
+        return sanitized;
+    }
+    let mut end = max_bytes;
+    while !sanitized.is_char_boundary(end) {
+        end -= 1;
+    }
+    sanitized[..end].to_owned()
 }
 
 fn sanitize_detail(value: &str) -> String {
@@ -1001,7 +1250,8 @@ mod tests {
         };
         let mut request = request();
         request.provider_policy = ProviderPolicy::PreferProvider;
-        let response = reflect_with_provider(&request, &inputs, Some(&Failing)).expect("fallback");
+        let response =
+            reflect_with_provider(&request, &inputs, Some(Arc::new(Failing))).expect("fallback");
         assert_eq!(response.status, ReflectStatus::Fallback);
         assert_eq!(response.provider.status, "fallback");
         assert!(!response.claims.is_empty());
@@ -1038,6 +1288,153 @@ mod tests {
             !serde_json::to_string(&response)
                 .unwrap()
                 .contains("private source content")
+        );
+    }
+
+    #[test]
+    fn rejects_unscoped_evidence_and_explicit_cross_project_inputs() {
+        let memories = vec![memory("m1", "release policy", "other", &["work"])];
+        let evidence = vec![Evidence {
+            chunk_id: "doc-1:0".into(),
+            source: "notes".into(),
+            source_id: "note-1".into(),
+            title: "Release note".into(),
+            uri: None,
+            content: "scoped content".into(),
+            score: 1.0,
+            semantic_rank: Some(1),
+            lexical_rank: Some(1),
+            updated_at: Utc::now(),
+        }];
+        let mut request = request();
+        request.include_evidence = true;
+        let inputs = ReflectionInputs {
+            memories: &[],
+            evidence: &evidence,
+            evidence_project: None,
+            principal_acl: &["work".into()],
+            owner: false,
+            memory_revision: 1,
+        };
+        assert!(reflect(&request, &inputs).is_err());
+        let inputs = ReflectionInputs {
+            memories: &memories,
+            evidence: &[],
+            evidence_project: None,
+            principal_acl: &["work".into()],
+            owner: false,
+            memory_revision: 1,
+        };
+        request.include_evidence = false;
+        assert!(reflect(&request, &inputs).is_err());
+    }
+
+    #[test]
+    fn inactive_memories_are_excluded_and_response_degrades_to_budget() {
+        let mut memories = (0..40)
+            .map(|index| {
+                memory(
+                    &format!("m{index}"),
+                    &"detail ".repeat(100),
+                    "work",
+                    &["work"],
+                )
+            })
+            .collect::<Vec<_>>();
+        memories[0].status = "superseded".into();
+        memories[1].valid_until = Some("2000-01-01T00:00:00Z".into());
+        let inputs = ReflectionInputs {
+            memories: &memories,
+            evidence: &[],
+            evidence_project: None,
+            principal_acl: &["work".into()],
+            owner: false,
+            memory_revision: 1,
+        };
+        let mut request = request();
+        request.token_budget = MIN_REFLECTION_TOKEN_BUDGET;
+        request.memory.limit = 40;
+        let response = reflect(&request, &inputs).expect("bounded reflection");
+        assert_eq!(response.metrics.memories_included, 38);
+        assert!(response.metrics.estimated_tokens <= request.token_budget);
+        assert!(
+            response
+                .claims
+                .iter()
+                .all(|claim| claim.supporting_memory_ids != ["m0"]
+                    && claim.supporting_memory_ids != ["m1"])
+        );
+    }
+
+    #[test]
+    fn provider_timeout_and_invalid_candidate_fail_closed() {
+        struct Slow;
+        impl ReflectionProvider for Slow {
+            fn name(&self) -> &str {
+                "slow"
+            }
+            fn reflect(
+                &self,
+                _: &ReflectRequest,
+                _: &[MemoryRecord],
+                _: &[Evidence],
+            ) -> Result<ProviderReflection, String> {
+                std::thread::sleep(Duration::from_millis(50));
+                Ok(ProviderReflection::default())
+            }
+        }
+        let memories = vec![memory("m1", "release policy", "work", &["work"])];
+        let inputs = ReflectionInputs {
+            memories: &memories,
+            evidence: &[],
+            evidence_project: None,
+            principal_acl: &["work".into()],
+            owner: false,
+            memory_revision: 1,
+        };
+        let mut request = request();
+        request.provider_policy = ProviderPolicy::RequireProvider;
+        request.deadline_ms = 1;
+        let response = reflect_with_provider(&request, &inputs, Some(Arc::new(Slow)))
+            .expect("deadline outcome");
+        assert_eq!(response.status, ReflectStatus::DeadlineExceeded);
+
+        struct Invalid;
+        impl ReflectionProvider for Invalid {
+            fn name(&self) -> &str {
+                "invalid"
+            }
+            fn reflect(
+                &self,
+                _: &ReflectRequest,
+                _: &[MemoryRecord],
+                _: &[Evidence],
+            ) -> Result<ProviderReflection, String> {
+                Ok(ProviderReflection {
+                    proposed_candidates: vec![ProposedReflectCandidate {
+                        project: "other".into(),
+                        title: "unsafe".into(),
+                        content: "unsafe".into(),
+                        content_type: "semantic".into(),
+                        retention_tier: "durable".into(),
+                        scope: "owner-global".into(),
+                        supporting_memory_ids: vec!["m1".into()],
+                        approval_required: true,
+                    }],
+                    ..Default::default()
+                })
+            }
+        }
+        request.provider_policy = ProviderPolicy::PreferProvider;
+        request.deadline_ms = 5_000;
+        let response =
+            reflect_with_provider(&request, &inputs, Some(Arc::new(Invalid))).expect("fallback");
+        assert_eq!(response.status, ReflectStatus::Fallback);
+        assert!(
+            response
+                .proposed_candidates
+                .iter()
+                .all(|item| item.project == "work")
         );
     }
 }

@@ -66,6 +66,7 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
                 "propose_memory_candidate",
                 "recall",
                 "redact_memory_candidate",
+                "reflect_memory",
                 "remember",
                 "search",
                 "search_code",
@@ -170,6 +171,31 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
         assert_eq!(classification["candidate_id"], candidate_id);
         assert_eq!(classification["classification"], "temporary-working");
         assert_eq!(classification["compared_memory_count"], 0);
+
+        let reflected = client
+            .call_tool(
+                CallToolRequestParams::new("reflect_memory").with_arguments(
+                    serde_json::json!({
+                        "objective": "summarize active work memory",
+                        "project": "work"
+                    })
+                    .as_object()
+                    .expect("reflection arguments")
+                    .clone(),
+                ),
+            )
+            .await?;
+        assert_ne!(reflected.is_error, Some(true), "reflection failed");
+        let reflected_text = reflected
+            .content
+            .iter()
+            .filter_map(|content| content.as_text())
+            .map(|text| text.text.as_str())
+            .collect::<Vec<_>>()
+            .join("");
+        let reflection: Value = serde_json::from_str(&reflected_text)?;
+        assert_eq!(reflection["status"], "completed");
+        assert_eq!(reflection["metrics"]["canonical_memory_mutated"], false);
 
         let after: CallToolResult = client
             .call_tool(CallToolRequestParams::new("brain_status"))

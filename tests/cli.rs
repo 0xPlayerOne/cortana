@@ -2258,3 +2258,71 @@ fn provider_model_discovery_lists_advertised_models_from_loopback_provider() {
         serde_json::json!(["completion"])
     );
 }
+
+#[test]
+fn memory_reflect_cli_reads_active_memory_without_mutating_it() {
+    let directory = tempdir().expect("temporary directory");
+    let config = directory.path().join("config.toml");
+    fs::write(
+        &config,
+        format!("data_dir = {:?}\n", directory.path().join("data")),
+    )
+    .expect("write config");
+
+    Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args([
+            "memory",
+            "remember",
+            "--kind",
+            "procedural",
+            "--project",
+            "work",
+            "--title",
+            "Launch gate",
+            "--content",
+            "Assign a rollback owner before launch",
+        ])
+        .assert()
+        .success();
+
+    let output = Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args([
+            "memory",
+            "reflect",
+            "Review launch risk",
+            "--project",
+            "work",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let reflected: serde_json::Value =
+        serde_json::from_slice(&output).expect("valid reflection JSON");
+    assert_eq!(reflected["status"], "completed");
+    assert_eq!(reflected["objective"], "Review launch risk");
+    assert_eq!(reflected["project"], "work");
+    assert_eq!(reflected["metrics"]["canonical_memory_mutated"], false);
+    assert_eq!(reflected["metrics"]["memories_included"], 1);
+
+    let exported = Command::cargo_bin("cortana")
+        .expect("binary exists")
+        .args(["--config"])
+        .arg(&config)
+        .args(["memory", "export", "--project", "work"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let memories: serde_json::Value =
+        serde_json::from_slice(&exported).expect("valid memory export JSON");
+    assert_eq!(memories.as_array().expect("memory array").len(), 1);
+}

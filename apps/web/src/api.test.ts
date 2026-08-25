@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 
-import { getStatus } from './api'
+import { getReflection, getStatus } from './api'
 
 const originalFetch = globalThis.fetch
 
@@ -29,5 +29,51 @@ describe('status transport', () => {
     ) as unknown as typeof fetch
 
     await expect(getStatus()).rejects.toThrow('Status request failed (503)')
+  })
+})
+
+describe('reflection transport', () => {
+  test('posts a bounded scoped request to the reflection endpoint', async () => {
+    let requestInput: RequestInfo | URL | undefined
+    let requestInit: RequestInit | undefined
+    globalThis.fetch = mock((input: RequestInfo | URL, init?: RequestInit) => {
+      requestInput = input
+      requestInit = init
+      return Promise.resolve(
+        Response.json({
+          contract_version: 'memory-reflection.v1',
+          status: 'completed',
+          objective: 'Review launch risk',
+          project: 'work',
+          memory_revision: 4,
+          claims: [],
+          patterns: [],
+          tensions: [],
+          recommendations: [],
+          evidence_ids: [],
+          metrics: {
+            memories_included: 0,
+            evidence_included: 0,
+            estimated_tokens: 0,
+            canonical_memory_mutated: false,
+          },
+        })
+      )
+    }) as unknown as typeof fetch
+
+    await getReflection('Review launch risk', 'work', 'github')
+
+    expect(String(requestInput)).toBe('/v1/memory/reflect')
+    expect(requestInit?.method).toBe('POST')
+    expect(JSON.parse(String(requestInit?.body))).toEqual({
+      objective: 'Review launch risk',
+      project: 'work',
+      memory: { limit: 32 },
+      include_evidence: true,
+      token_budget: 2048,
+      provider_policy: 'deterministic-only',
+      deadline_ms: 5000,
+      source: 'github',
+    })
   })
 })

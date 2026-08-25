@@ -620,6 +620,7 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/memory/recall", post(recall_memories))
         .route("/v1/memory/forget", post(forget_memory))
         .route("/v1/memory/export", get(export_memories))
+        .route("/v1/memory/reflect", post(reflect_memory))
         .route(
             "/v1/memory/candidates",
             post(propose_memory_candidate).get(list_memory_candidates),
@@ -695,6 +696,7 @@ async fn authorize(
         | "/v1/memory/recall"
         | "/v1/memory/forget"
         | "/v1/memory/export"
+        | "/v1/memory/reflect"
         | "/v1/memory/candidates" => MEMORY_SCOPE,
         path if path.starts_with("/v1/memory/candidates/") => MEMORY_SCOPE,
         "/v1/status" | "/readyz" => STATUS_SCOPE,
@@ -1966,6 +1968,76 @@ async fn export_memory_candidates(
     }
 }
 
+async fn reflect_memory(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    Json(request): Json<crate::reflection::ReflectRequest>,
+) -> Result<Json<crate::reflection::ReflectResponse>, (StatusCode, String)> {
+    let started = Instant::now();
+    if !principal.has_scope(MEMORY_SCOPE) {
+        record_audit(
+            &state,
+            &principal,
+            "memory.reflect",
+            request.project.as_deref(),
+            request.source.as_deref(),
+            "forbidden",
+            None,
+            started,
+        );
+        return Err((StatusCode::FORBIDDEN, "memory scope required".into()));
+    }
+    match crate::reflection::reflect_authorized(
+        &state.store,
+        &state.embedder,
+        &request,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    )
+    .await
+    {
+        Ok(response) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.reflect",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "succeeded",
+                Some(response.metrics.memories_included),
+                started,
+            );
+            Ok(Json(response))
+        }
+        Err(error) if crate::memory::is_authorization_error(&error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.reflect",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "forbidden",
+                None,
+                started,
+            );
+            Err((StatusCode::FORBIDDEN, "reflection scope denied".into()))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.reflect",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "failed",
+                None,
+                started,
+            );
+            Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
+        }
+    }
+}
+
 async fn cancel_memory_candidate(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
@@ -3001,6 +3073,46 @@ mod tests {
                 .await
                 .expect("memory denial response");
         assert_eq!(memory_denied.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn reflection_route_accepts_a_memory_scoped_principal_without_query_scope() {
+        let (_directory, state) = test_state();
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("MEMORY_TOKEN".into(), "memory-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "memory-agent".into(),
+            token_env: "MEMORY_TOKEN".into(),
+            scopes: vec![MEMORY_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let app =
+            router(state.with_auth_policy(AuthPolicy::from_config(&config).expect("auth policy")));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/memory/reflect")
+                    .header(header::AUTHORIZATION, "Bearer memory-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"objective":"Review launch risk","project":"work"}"#,
+                    ))
+                    .expect("reflection request"),
+            )
+            .await
+            .expect("reflection response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .expect("reflection body");
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&body).expect("reflection JSON response");
+        assert_eq!(parsed["objective"], "Review launch risk");
+        assert_eq!(parsed["metrics"]["canonical_memory_mutated"], false);
     }
 
     #[tokio::test]

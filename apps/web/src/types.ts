@@ -634,6 +634,30 @@ export type AnswerResponse = {
   } | null
 }
 
+export type ReflectResponse = {
+  contract_version: string
+  status:
+    'completed' | 'fallback' | 'provider_unavailable' | 'provider_failed' | 'deadline_exceeded'
+  objective: string
+  project?: string | null
+  memory_revision: number
+  claims: Array<{
+    text: string
+    supporting_memory_ids: string[]
+    supporting_evidence_ids: string[]
+  }>
+  patterns: Array<{ statement: string; supporting_memory_ids: string[] }>
+  tensions: Array<{ statement: string; supporting_memory_ids: string[] }>
+  recommendations: Array<{ statement: string; supporting_memory_ids: string[] }>
+  evidence_ids: string[]
+  metrics: {
+    memories_included: number
+    evidence_included: number
+    estimated_tokens: number
+    canonical_memory_mutated: false
+  }
+}
+
 export type ContextBundle = {
   contract_version?: string
   context_bundle_id?: string

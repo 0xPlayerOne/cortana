@@ -55,11 +55,13 @@ Provider behavior is explicit:
   no synthesized result.
 
 Deadline exhaustion returns `deadline-exceeded` and clears partial derived
-results. A reflection call never receives a `Store`, never writes canonical
-memory, never creates a candidate row, and never advances `memory_revision`.
+results. The pure reflection engine has no mutation capability; first-party
+adapters may read through the scoped Store and retrieval paths but never write
+canonical memory, create a candidate row, or advance `memory_revision`.
 The response reports the unchanged observed revision and
 `canonical_memory_mutated: false`.
 
-HTTP, MCP, CLI, and Desktop adapters should call this contract only after
-their normal query/memory scope authorization. They must not turn a proposed
+HTTP (`POST /v1/memory/reflect`), MCP (`reflect_memory`), CLI
+(`cortana memory reflect`), and the Desktop Reflect action call this contract
+only after normal memory-scope authorization. They never turn a proposed
 candidate into canonical memory implicitly.
