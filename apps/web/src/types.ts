@@ -596,6 +596,7 @@ export type DesktopUpdate = {
     | 'idle'
     | 'checking'
     | 'current'
+    | 'unavailable'
     | 'available'
     | 'downloading'
     | 'installing'

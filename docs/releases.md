@@ -9,17 +9,26 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.34.44
+## Current release: v0.39.0
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.34.44` tag is the current source and release boundary. It is a version-only Release Please
-marker generated after the direct-main workflow and documentation reconciliation reached `main`.
+`v0.39.0` tag is the current source and release boundary. It contains the completed M5 retrieval
+quality and evaluation implementation from [PR #2149](https://github.com/0xPlayerOne/cortana/pull/2149)
+and was published by [release PR #2153](https://github.com/0xPlayerOne/cortana/pull/2153).
 Release-assets workflow
-[`32786195441`](https://github.com/0xPlayerOne/cortana/actions/runs/32786195441) published
-all macOS/Linux/Windows core and Desktop lanes. The independent strict verifier passed all 18
-assets, checksums, updater signatures, manifest checks, and packaged-core checks; the package is
-complete. This verifies package integrity, not native GUI, OAuth, or OS trust acceptance.
+[`32877997628`](https://github.com/0xPlayerOne/cortana/actions/runs/32877997628) published the
+macOS/Linux core archives and Linux/Windows Desktop packages. The macOS Desktop lane failed
+closed because the required Apple Developer ID and notarization secrets are not configured; no
+trusted macOS Desktop package was published. The strict cross-platform verifier therefore remains
+blocked, while the valid partial updater manifest contains only the signed Linux and Windows
+targets. This verifies neither native GUI, OAuth, nor operating-system trust acceptance.
+
+The updater endpoint is intentionally valid even when a platform package is unavailable. The
+Desktop reports “No signed package is published for this platform” rather than treating a valid
+partial release as a malformed JSON/network failure. See [#2154](https://github.com/0xPlayerOne/cortana/issues/2154)
+for the remaining Apple credential gate and [#2155](https://github.com/0xPlayerOne/cortana/pull/2155)
+for the fail-closed release/updater handling.
 
 The v0.34.44 marker carries forward the verified v0.34.43 runtime and source-validation evidence
 and adds no application behavior beyond release metadata. The direct-main workflow and stale
