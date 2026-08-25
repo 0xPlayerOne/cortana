@@ -111,6 +111,10 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
       GITHUB_TOKEN: ${{ github.token }}
+      # Ad-hoc macOS bundles are an emergency compatibility path for the
+      # existing local Desktop install. Keep it opt-in at the repository level
+      # until Developer ID/notarization credentials are available.
+      CORTANA_ALLOW_ADHOC_MACOS_RELEASE: ${{ vars.CORTANA_ALLOW_ADHOC_MACOS_RELEASE || 'false' }}
       TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
       CORTANA_DESKTOP_TARGET: ${{ matrix.target }}
@@ -151,6 +155,14 @@ jobs:
           APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
         run: |
           set -euo pipefail
+          if [[ -z "${APPLE_CERTIFICATE:-}" && -z "${APPLE_CERTIFICATE_PASSWORD:-}" && -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+            if [[ "${CORTANA_ALLOW_ADHOC_MACOS_RELEASE:-false}" == "true" ]]; then
+              echo 'Apple signing secrets are unavailable; building an explicitly opted-in ad-hoc macOS bundle.'
+              exit 0
+            fi
+            echo 'missing macOS signing secrets; set CORTANA_ALLOW_ADHOC_MACOS_RELEASE=true only for an emergency ad-hoc release' >&2
+            exit 1
+          fi
           for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do
             if [[ -z "${!name:-}" ]]; then
               echo "missing required macOS signing secret: $name" >&2
@@ -201,7 +213,9 @@ jobs:
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # Tauri's documented ad-hoc sentinel is `-`; the old release lane
+          # used it explicitly and produced the working v0.36 macOS bundle.
+          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && (secrets.APPLE_SIGNING_IDENTITY || '-') || '' }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -218,8 +232,19 @@ jobs:
         if: runner.os == 'macOS'
         env:
           CORTANA_VERSION: ${{ env.RELEASE_TAG }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
+          if [[ -z "${APPLE_CERTIFICATE:-}" && -z "${APPLE_CERTIFICATE_PASSWORD:-}" && -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+            [[ "${CORTANA_ALLOW_ADHOC_MACOS_RELEASE:-false}" == "true" ]] || {
+              echo 'macOS trust verification requires Apple signing secrets' >&2
+              exit 1
+            }
+            echo 'skipped Developer ID/notarization verification for explicitly opted-in ad-hoc macOS release' >&2
+            exit 0
+          fi
           app="$(find "apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos" -maxdepth 1 -type d -name 'Cortana.app' -print -quit)"
           [[ -n "$app" ]] || { echo 'signed macOS application bundle not found' >&2; exit 1; }
           scripts/verify-macos-trust.sh "$app" "${CORTANA_VERSION#v}" arm64
@@ -272,6 +297,10 @@ jobs:
       RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
       GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
+      CORTANA_ALLOW_ADHOC_MACOS_RELEASE: ${{ vars.CORTANA_ALLOW_ADHOC_MACOS_RELEASE || 'false' }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
       CORTANA_REQUIRE_MINISIGN: '1'
       CORTANA_REQUIRE_GATEKEEPER: '1'
     steps:
@@ -286,7 +315,17 @@ jobs:
             brew install minisign
           fi
       - name: Verify published macOS package trust
-        run: scripts/verify-macos-package.sh "$RELEASE_TAG"
+        run: |
+          set -euo pipefail
+          if [[ -z "${APPLE_CERTIFICATE:-}" && -z "${APPLE_CERTIFICATE_PASSWORD:-}" && -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
+            [[ "${CORTANA_ALLOW_ADHOC_MACOS_RELEASE:-false}" == "true" ]] || {
+              echo 'macOS package trust verification requires Apple signing secrets' >&2
+              exit 1
+            }
+            echo 'skipped Developer ID/notarization verification for explicitly opted-in ad-hoc macOS release' >&2
+            exit 0
+          fi
+          scripts/verify-macos-package.sh "$RELEASE_TAG"
 
   verify:
     name: Verify published release assets
