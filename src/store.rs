@@ -2154,6 +2154,34 @@ impl Store {
                     attempts: u8::try_from(attempts).unwrap_or(u8::MAX),
                 });
             }
+            let reconciled_status = if candidate.status == "accepted" {
+                "cancelled"
+            } else {
+                "dead-letter"
+            };
+            let reconciled = transaction.execute(
+                "UPDATE memory_consolidation_jobs
+                 SET status=?3,last_error=?4,updated_at=?5
+                 WHERE candidate_id=?1 AND policy_version=?2
+                   AND status IN ('queued','running','retry','paused')",
+                params![
+                    id,
+                    policy_identity,
+                    reconciled_status,
+                    format!("candidate-terminal:{}", candidate.status),
+                    now
+                ],
+            )?;
+            if reconciled > 0 {
+                transaction.commit()?;
+                return Ok(ConsolidationOutcome {
+                    candidate_id: id.into(),
+                    status: reconciled_status.into(),
+                    decision: report,
+                    memory_id: None,
+                    attempts: 0,
+                });
+            }
         }
         transaction.execute(
             "UPDATE memory_consolidation_jobs
@@ -8012,5 +8040,66 @@ mod tests {
             )
             .expect("job count");
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn persistent_consumer_reconciles_a_terminal_candidate_job() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let candidate = store
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("candidate");
+        let policy = crate::consolidation::ConsolidationPolicy::default();
+        store
+            .consolidate_memory_candidate(
+                &candidate.id,
+                &policy,
+                "agent-a",
+                &["work".into()],
+                false,
+                false,
+            )
+            .expect("review job");
+        {
+            let connection = store.connection.lock().expect("store lock");
+            connection
+                .execute(
+                    "UPDATE memory_consolidation_jobs SET status='running' WHERE candidate_id=?1",
+                    [&candidate.id],
+                )
+                .expect("running job");
+            connection
+                .execute(
+                    "UPDATE memory_candidates SET status='accepted' WHERE id=?1",
+                    [&candidate.id],
+                )
+                .expect("accepted candidate");
+        }
+
+        let outcomes = store
+            .process_pending_memory_consolidation(
+                &policy,
+                "owner",
+                &["*".into()],
+                true,
+                policy.max_queue,
+            )
+            .expect("recover queue");
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].status, "cancelled");
+        let connection = store.connection.lock().expect("store lock");
+        let status: String = connection
+            .query_row(
+                "SELECT status FROM memory_consolidation_jobs WHERE candidate_id=?1",
+                [&candidate.id],
+                |row| row.get(0),
+            )
+            .expect("job status");
+        assert_eq!(status, "cancelled");
     }
 }
