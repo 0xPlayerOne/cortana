@@ -12,6 +12,9 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 2
 fi
 
+# Release verification is strict by default. Set this only for an explicitly
+# local diagnostic of an unsigned/ad-hoc fixture; it is not release evidence.
+
 version="${tag#v}"
 requested_arch="${CORTANA_MAC_ARCH:-$(uname -m)}"
 case "$requested_arch" in
@@ -134,12 +137,10 @@ core_version="$("$core" --version)"
   exit 1
 }
 
-"$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/verify-packaged-core.sh" "$core"
+verifier_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+"$verifier_dir/verify-packaged-core.sh" "$core"
 
-codesign --verify --deep --strict "$app"
-echo "strict codesign verification passed: $app"
-
-require_gatekeeper="${CORTANA_REQUIRE_GATEKEEPER:-0}"
+require_gatekeeper="${CORTANA_REQUIRE_GATEKEEPER:-1}"
 case "$require_gatekeeper" in
   0|1) ;;
   *)
@@ -148,12 +149,15 @@ case "$require_gatekeeper" in
     ;;
 esac
 
-if spctl --assess --type execute "$app"; then
-  echo "Gatekeeper assessment passed: Developer ID/notarization trust is available"
+if [[ "$require_gatekeeper" == "1" ]]; then
+  "$verifier_dir/verify-macos-trust.sh" "$app" "$version" "$release_arch"
 else
-  echo "Gatekeeper assessment rejected: Developer ID/notarization is not configured" >&2
-  if [[ "$require_gatekeeper" == "1" ]]; then
-    exit 1
+  codesign --verify --deep --strict "$app"
+  echo "strict codesign verification passed: $app"
+  if spctl --assess --type execute "$app"; then
+    echo "Gatekeeper assessment passed: Developer ID/notarization trust is available"
+  else
+    echo "Gatekeeper assessment rejected: Developer ID/notarization is not configured" >&2
   fi
 fi
 

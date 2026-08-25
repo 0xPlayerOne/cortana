@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri_plugin_updater::{Error as UpdaterError, Update, UpdaterExt};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::settings;
@@ -78,11 +78,15 @@ impl UpdaterState {
         // cannot be initialized (for example in a headless test runtime). The
         // previous `?` returned while leaving the snapshot stuck at `checking`.
         let result = match app.updater() {
-            Ok(updater) => updater
-                .check()
-                .await
-                .map_err(|error| format!("check for signed Cortana update: {error}")),
-            Err(error) => Err(format!("initialize signed updater: {error}")),
+            Ok(updater) => updater.check().await,
+            Err(error) => {
+                let error = format!("initialize signed updater: {error}");
+                self.update_snapshot(|snapshot| {
+                    snapshot.phase = "failed";
+                    snapshot.error = Some(error.clone());
+                });
+                return Err(error);
+            }
         };
 
         match result {
@@ -116,11 +120,27 @@ impl UpdaterState {
                 });
                 Ok(self.status())
             }
+            Err(error) if is_target_unavailable(&error) => {
+                *self.pending.lock().await = None;
+                self.update_snapshot(|snapshot| {
+                    // A release can be valid while deliberately omitting an
+                    // unsigned or unavailable platform. Treat that as a
+                    // supported no-update state instead of surfacing a
+                    // misleading network/JSON failure to the user.
+                    snapshot.phase = "unavailable";
+                    snapshot.available_version = None;
+                    snapshot.release_date = None;
+                    snapshot.release_notes = None;
+                    snapshot.error = None;
+                    snapshot.restart_required = false;
+                });
+                Ok(self.status())
+            }
             Err(error) => {
+                let error = format!("check for signed Cortana update: {error}");
                 *self.pending.lock().await = None;
                 self.update_snapshot(|snapshot| {
                     snapshot.phase = "failed";
-                    snapshot.available_version = None;
                     snapshot.error = Some(error.clone());
                 });
                 Err(error)
@@ -302,6 +322,13 @@ fn bounded(value: &str, max_chars: usize) -> String {
     value.chars().take(max_chars).collect()
 }
 
+fn is_target_unavailable(error: &UpdaterError) -> bool {
+    matches!(
+        error,
+        UpdaterError::TargetNotFound(_) | UpdaterError::TargetsNotFound(_)
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -313,6 +340,18 @@ mod tests {
         assert_eq!(snapshot.github_url, GITHUB_URL);
         assert!(snapshot.changelog.len() <= MAX_RELEASE_NOTES_CHARS);
         assert_eq!(bounded("cortana", 4), "cort");
+    }
+
+    #[test]
+    fn missing_platform_is_a_nonfatal_update_state() {
+        assert!(is_target_unavailable(&UpdaterError::TargetNotFound(
+            "darwin-aarch64".into()
+        )));
+        assert!(is_target_unavailable(&UpdaterError::TargetsNotFound(vec![
+            "darwin-aarch64-app".into(),
+            "darwin-aarch64".into(),
+        ])));
+        assert!(!is_target_unavailable(&UpdaterError::ReleaseNotFound));
     }
 
     #[test]

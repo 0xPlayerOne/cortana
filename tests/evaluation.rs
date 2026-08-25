@@ -27,6 +27,24 @@ fn deterministic_evaluation_cli_passes_built_in_thresholds() {
     assert_eq!(report["metrics"]["case_pass_rate"], 1.0);
     assert_eq!(report["answer"]["cache_hit"], true);
     assert_eq!(report["answer"]["cache_invalidated_after_update"], true);
+    assert_eq!(report["activation"]["activated"], false);
+    assert_eq!(report["activation"]["provider"], serde_json::Value::Null);
+    assert_eq!(
+        report["activation"]["retrieval_contract_version"],
+        "cortana.retrieval.v2"
+    );
+    assert!(
+        report["activation"]["corpus_revision"]
+            .as_u64()
+            .unwrap_or(0)
+            > 0
+    );
+    assert_eq!(
+        report["activation"]["evaluation_report_digest"]
+            .as_str()
+            .map(str::len),
+        Some(64)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -105,6 +123,12 @@ async fn model_evaluation_synthesizes_even_when_production_config_disables_synth
     assert_eq!(report["answer"]["fallback_mode"], false);
     assert_eq!(report["answer"]["cache_hit"], true);
     assert_eq!(report["passed"], true);
+    assert_eq!(report["activation"]["activated"], true);
+    assert_eq!(
+        report["activation"]["provider"],
+        format!("http://{address}")
+    );
+    assert_eq!(report["activation"]["model"], "mock-model");
     assert_eq!(
         calls.load(Ordering::SeqCst),
         4,

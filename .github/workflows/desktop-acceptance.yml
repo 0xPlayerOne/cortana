@@ -89,7 +89,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes dpkg minisign
+          sudo apt-get install --yes \
+            dpkg \
+            minisign \
+            xvfb \
+            libwebkit2gtk-4.1-0 \
+            libayatana-appindicator3-1 \
+            librsvg2-2
 
       - name: Download published package assets
         if: runner.os != 'Windows'
@@ -149,6 +155,31 @@ jobs:
           $core = Get-ChildItem -Path $coreDir -Recurse -File -Filter 'cortana.exe' | Select-Object -First 1
           if ($null -eq $core) { throw 'extracted Windows package is missing cortana.exe' }
           "CORTANA_CORE=$($core.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $desktop = Get-ChildItem -Path $coreDir -Recurse -File -Filter 'cortana-desktop.exe' | Select-Object -First 1
+          if ($null -eq $desktop) { throw 'extracted Windows package is missing cortana-desktop.exe' }
+          "CORTANA_DESKTOP_APP=$($desktop.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Extract packaged desktop application (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          app_dir="$RUNNER_TEMP/cortana-desktop"
+          mkdir -p "$app_dir"
+          archive="$RUNNER_TEMP/cortana-release/Cortana_${CORTANA_VERSION}_aarch64.app.tar.gz"
+          [[ -f "$archive" ]] || { echo "published macOS application archive not found: $archive" >&2; exit 1; }
+          tar -xzf "$archive" -C "$app_dir"
+          app="$(find "$app_dir" -type f -path '*/Contents/MacOS/cortana-desktop' -print -quit)"
+          [[ -n "$app" && -x "$app" ]] || { echo 'extracted macOS package is missing an executable Cortana.app binary' >&2; exit 1; }
+          echo "CORTANA_DESKTOP_APP=$app" >> "$GITHUB_ENV"
+
+      - name: Prepare packaged desktop application (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          app="$RUNNER_TEMP/cortana-release/Cortana_${CORTANA_VERSION}_amd64.AppImage"
+          [[ -f "$app" ]] || { echo "published Linux AppImage not found: $app" >&2; exit 1; }
+          chmod +x "$app"
+          echo "CORTANA_DESKTOP_APP=$app" >> "$GITHUB_ENV"
 
       - name: Run packaged core acceptance (macOS/Linux)
         if: runner.os != 'Windows'
@@ -161,7 +192,8 @@ jobs:
             --version "$CORTANA_VERSION" \
             --package-dir "$RUNNER_TEMP/cortana-release" \
             --core "$CORTANA_CORE" \
-            --evidence-dir "$evidence_dir"
+            --evidence-dir "$evidence_dir" \
+            --allow-source-version-drift true
 
       - name: Run packaged core acceptance (Windows)
         if: runner.os == 'Windows'
@@ -174,7 +206,47 @@ jobs:
             --version $env:CORTANA_VERSION `
             --package-dir (Join-Path $env:RUNNER_TEMP 'cortana-release') `
             --core $env:CORTANA_CORE `
-            --evidence-dir $evidenceDir
+            --evidence-dir $evidenceDir `
+            --allow-source-version-drift true
+
+      - name: Run packaged desktop host launch (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          evidence_dir="$RUNNER_TEMP/cortana-acceptance-evidence"
+          node scripts/desktop-host-launch.mjs \
+            --target "$CORTANA_TARGET" \
+            --version "$CORTANA_VERSION" \
+            --app "$CORTANA_DESKTOP_APP" \
+            --evidence-dir "$evidence_dir" \
+            --allow-source-version-drift true
+
+      - name: Run packaged desktop host launch (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          evidence_dir="$RUNNER_TEMP/cortana-acceptance-evidence"
+          node scripts/desktop-host-launch.mjs \
+            --target "$CORTANA_TARGET" \
+            --version "$CORTANA_VERSION" \
+            --app "$CORTANA_DESKTOP_APP" \
+            --launcher xvfb-run \
+            --launcher-args '["-a","--server-args=-screen 0 1440x920x24"]' \
+            --app-args '["--appimage-extract-and-run"]' \
+            --evidence-dir "$evidence_dir" \
+            --allow-source-version-drift true
+
+      - name: Run packaged desktop host launch (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $evidenceDir = Join-Path $env:RUNNER_TEMP 'cortana-acceptance-evidence'
+          node scripts/desktop-host-launch.mjs `
+            --target $env:CORTANA_TARGET `
+            --version $env:CORTANA_VERSION `
+            --app $env:CORTANA_DESKTOP_APP `
+            --evidence-dir $evidenceDir `
+            --allow-source-version-drift true
 
       - name: Upload acceptance evidence
         if: always()

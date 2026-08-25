@@ -38,6 +38,9 @@ Cover:
 - latency and resource bounds.
 
 This lane may run in CI and must never open the configured personal index or contact a live source.
+The repository-owned `bun run test:eval` command executes the deterministic Rust evaluator against
+the pinned synthetic fixture; it is part of `test:unit` so every validation run exercises the M5
+quality gate without contacting a provider or source.
 
 ### Approved-corpus retrieval
 
@@ -55,7 +58,22 @@ The manifest defines:
 - whether memory may participate;
 - whether the case is retrieval-only, extractive-answer, or synthesis-enabled.
 
+The baseline harness accepts three read-only case classes: `retrieval_cases` call `/v1/search`,
+`context_cases` call `/v1/context` and verify bounded inclusion/omission metrics, and
+`answer_cases` call `/v1/answer` and validate citations against returned evidence. Context cases
+must provide a `max_tokens` value between 256 and 64,000. A case may also declare
+`forbidden_projects` and `forbidden_sources`; any returned matching scope is a hard failure.
+Each successful context case is repeated once within the operator budget. The report records only
+boolean `digest_reused` and `content_unchanged` outcomes, so unchanged pinned inputs can be
+measured without retaining query or context content.
+Evidence responses do not expose project labels in every API version, so scope checks are
+enforced when labels are present and the request's authenticated ACL remains authoritative.
+
 Raw queries and source content remain outside the repository. Reports contain only bounded metrics and non-secret identifiers.
+
+The checked-in `eval/live-manifest.example.json` is a schema template only. Replace its
+placeholders in an operator-controlled local or encrypted manifest; do not commit real queries,
+source IDs, or corpus content.
 
 ### Provider-backed answers
 
@@ -77,6 +95,10 @@ Measure:
 - privacy disclosure and opt-in behavior.
 
 Every accepted factual paragraph must cite returned authorized evidence. Provider failure must return an explicit bounded fallback without blocking core retrieval.
+The model-backed report emits an activation record containing the sanitized provider authority,
+exact model, API/retrieval contract versions, pinned corpus revision, and a digest of the bounded
+report. `activated` is true only when the opt-in gate passes; provider paths, credentials, and raw
+queries are never recorded.
 
 ### Source operations
 
@@ -233,6 +255,11 @@ Package integrity and OS trust are separate claims.
 - fallback correctness;
 - duplicate-source crowding.
 
+The approved-corpus report records deterministic latency p50/p95/p99, source diversity, duplicate
+source crowding, lexical fallback rate, answer cache reuse, citation failures, forbidden-scope
+leaks, and context token inclusion/omission and budget compliance. These are diagnostic baseline
+measurements; later retrieval changes compare against the same corpus and manifest revisions.
+
 ### Memory quality
 
 - candidate precision/recall;
@@ -319,7 +346,62 @@ Private manifests must be:
 - free of reusable credentials;
 - reported through non-secret case and evidence identifiers.
 
+### Governance contract
+
+The checked-in `eval/live-manifest.example.json` is a transport-safe template,
+not a usable personal manifest. An operator-owned manifest must include a
+`governance` object with `contract_version: cortana.approved-corpus.v1` and
+the following controls:
+
+- `scope.workspaces`, `scope.sources`, and `scope.forbidden_sources` are
+  opaque identifiers. A case may only name an allowed workspace/source, and
+  `scope.memory` explicitly says whether native memory participates.
+- `coverage` records the minimum number of cases for each representative
+  workspace/source pair. Start with notes, Drive, Gmail, Calendar, Buzz, and
+  memory when those connectors are enabled; add later connectors as separate
+  coverage entries rather than silently treating an untested source as
+  covered.
+- Every case has a stable `id`, expected and forbidden evidence identifiers,
+  and one explicit mode: `retrieval-only`, `extractive-answer`, or
+  `provider-synthesis`. Answer cases may additionally set bounded
+  `answer_criteria.required_terms`, `min_citations`, and `allow_abstain`.
+- `resource_bounds` pins request/total latency, response bytes, case count,
+  and an operator memory ceiling. The evaluator clamps its runtime limits to
+  these values; a threshold cannot grant an unbounded run.
+- `storage` is `local` or `encrypted-local`; credentials must remain
+  external. `reviewer_access` names authorized reviewer identifiers and
+  requires explicit approval. Reviewer IDs are not emitted in reports.
+- `lifecycle` records retention days, operator/reviewer-confirmed deletion,
+  controlled redaction, and stop/revoke incident handling. These are required
+  governance decisions, not prose-only recommendations.
+- `provider_synthesis_enabled` is an explicit opt-in. A synthesis case is
+  rejected during validation unless that flag is true; extractive and
+  retrieval-only cases remain independently measurable.
+
+The validator also requires `operator_controlled`, `raw_data_external`,
+`credentials_external`, and `private_paths_external` to be true. It rejects
+filesystem paths in governance identifiers, duplicate case IDs, out-of-scope
+cases, incomplete coverage, unsafe lifecycle values, and resource bounds over
+the evaluator safety caps. This is a contract check only: it never opens a
+source connector, writes to an index, mutates memory, or verifies corpus
+content.
+
+An approved live manifest should also carry a non-secret `corpus` block with an operator-chosen
+`id`, `revision`, `sha256:` digest, storage class (`local` or `encrypted-local`), and approval
+window. The bounded live evaluator hashes the manifest file and emits only the manifest digest plus
+the corpus identifiers/revision/digest in its report. Approval timestamps, reviewer labels, raw
+queries, source content, private paths, and credentials never leave the local run.
+
+The evaluator records the non-secret governance contract version and a digest
+of the normalized workspace/source scope. A changed corpus digest, manifest
+digest, or governance scope digest is a provenance change, not evidence of a
+product regression, and must be reviewed independently.
+
 A corpus or manifest change must not be misreported as a code regression.
+
+Issue #2046 consumes this manifest/provenance contract but does not close corpus governance in
+#2045. The final approved-corpus gate remains blocked until an authorized operator supplies a
+governed, read-only manifest and index under the controls defined by #2045.
 
 ## Reports
 

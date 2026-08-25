@@ -38,6 +38,24 @@ class Client:
     def post(self, path: str, *, json: dict, timeout: float) -> Response:
         assert timeout > 0
         self.calls.append((path, json))
+        if path == "/v1/context":
+            return Response(
+                {
+                    "context": "private context must never appear in the report",
+                    "evidence": [{"source_id": "work-release", "source": "runbooks"}],
+                    "metrics": {
+                        "retrieved": 2,
+                        "included": 1,
+                        "omitted": 1,
+                        "memories_retrieved": 0,
+                        "memories_included": 0,
+                        "memories_omitted": 0,
+                        "estimated_tokens": 200,
+                        "max_tokens": 256,
+                    },
+                    "retrieval_mode": "lexical-fallback",
+                }
+            )
         if path == "/v1/search":
             response = Response(
                 [
@@ -76,6 +94,49 @@ class Client:
 def manifest() -> dict:
     return {
         "version": 1,
+        "corpus": {
+            "id": "approved-fixture-corpus",
+            "revision": "2026-08-25",
+            "digest": "sha256:" + "1" * 64,
+            "storage": "encrypted-local",
+            "approved_at": "2026-08-25T00:00:00Z",
+            "expires_at": "2027-08-25T00:00:00Z",
+            "reviewer": "test-reviewer",
+        },
+        "governance": {
+            "contract_version": "cortana.approved-corpus.v1",
+            "operator_controlled": True,
+            "raw_data_external": True,
+            "credentials_external": True,
+            "private_paths_external": True,
+            "scope": {
+                "workspaces": ["work"],
+                "sources": ["runbooks"],
+                "forbidden_sources": ["personal"],
+                "memory": "excluded",
+            },
+            "storage": {"mode": "encrypted-local", "credentials_external": True},
+            "reviewer_access": {
+                "mode": "local-only",
+                "reviewers": ["test-reviewer"],
+                "approval_required": True,
+            },
+            "lifecycle": {
+                "retention_days": 90,
+                "deletion": "operator-confirmed",
+                "redaction": "operator-controlled",
+                "incident": "stop-revoke-notify",
+            },
+            "resource_bounds": {
+                "max_request_seconds": 30,
+                "max_total_seconds": 300,
+                "max_response_bytes": 4 * 1024 * 1024,
+                "max_memory_mb": 1024,
+                "max_cases": 100,
+            },
+            "coverage": [{"workspace": "work", "source": "runbooks", "minimum_cases": 0}],
+            "provider_synthesis_enabled": True,
+        },
         "thresholds": {
             "min_recall_at_k": 1.0,
             "min_mrr": 1.0,
@@ -87,6 +148,7 @@ def manifest() -> dict:
         "retrieval_cases": [
             {
                 "name": "release-runbook",
+                "id": "retrieval-release-runbook",
                 "query": "release verification",
                 "project": "work",
                 "source": "runbooks",
@@ -98,6 +160,8 @@ def manifest() -> dict:
         "answer_cases": [
             {
                 "name": "release-answer",
+                "id": "answer-release-runbook",
+                "mode": "provider-synthesis",
                 "query": "is the release verified?",
                 "project": "work",
                 "source": "runbooks",
@@ -118,6 +182,9 @@ def test_live_evaluation_measures_retrieval_answer_citations_and_cache() -> None
     assert report["passed"] is True
     assert report["read_only"] is True
     assert report["cache_invalidation_checked"] is False
+    assert report["provenance"]["corpus"]["id"] == "approved-fixture-corpus"
+    assert report["provenance"]["corpus"]["revision"] == "2026-08-25"
+    assert "release verification" not in json.dumps(report["provenance"])
     assert report["metrics"]["recall_at_k"] == 1.0
     assert report["metrics"]["mrr"] == 1.0
     assert report["metrics"]["cache_hit_rate"] == 1.0
@@ -141,9 +208,62 @@ def test_live_manifest_rejects_unsafe_query_and_unknown_version() -> None:
         live.validate_manifest(invalid)
 
 
+def test_manifest_rejects_unsafe_or_expired_corpus_metadata() -> None:
+    invalid = manifest()
+    invalid["corpus"]["digest"] = "sha256:not-a-digest"
+    with pytest.raises(live.ManifestError, match="corpus.digest"):
+        live.validate_manifest(invalid)
+
+
+def test_manifest_rejects_governance_scope_coverage_and_provider_without_opt_in() -> None:
+    invalid = manifest()
+    invalid["governance"]["scope"]["sources"] = ["notes"]
+    with pytest.raises(live.ManifestError, match="one configured source"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["governance"]["coverage"][0]["minimum_cases"] = 3
+    with pytest.raises(live.ManifestError, match="coverage is incomplete"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["governance"]["provider_synthesis_enabled"] = False
+    with pytest.raises(live.ManifestError, match="explicit governance opt-in"):
+        live.validate_manifest(invalid)
+
+
+def test_manifest_rejects_private_paths_and_unsafe_lifecycle() -> None:
+    invalid = manifest()
+    invalid["governance"]["scope"]["sources"] = ["/Users/private/source"]
+    with pytest.raises(live.ManifestError, match="filesystem paths"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["governance"]["lifecycle"]["deletion"] = "automatic"
+    with pytest.raises(live.ManifestError, match="lifecycle.deletion"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["governance"]["resource_bounds"]["max_cases"] = 1
+    with pytest.raises(live.ManifestError, match="max_cases"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["corpus"]["id"] = "/private/path"
+    with pytest.raises(live.ManifestError, match="path separator"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["corpus"]["expires_at"] = "2026-01-01T00:00:00Z"
+    with pytest.raises(live.ManifestError, match="timestamps"):
+        live.validate_manifest(invalid)
+
+
 def test_checked_in_live_manifest_example_is_valid() -> None:
     checked = live.load_manifest(ROOT / "eval/live-manifest.example.json")
     assert checked["version"] == 1
+    assert checked["manifest_digest"].startswith("sha256:")
+    assert checked["corpus"]["storage"] == "encrypted-local"
     assert len(checked["retrieval_cases"]) == 1
     assert len(checked["answer_cases"]) == 1
 
@@ -217,3 +337,78 @@ def test_live_answer_fails_closed_when_required_terms_are_missing() -> None:
     assert report["answer_cases"][0]["answer_terms_checked"] == 1
     assert report["answer_cases"][0]["answer_terms_missing"] == 1
     assert "a phrase the provider did not answer" not in json.dumps(report)
+
+
+def test_context_baseline_records_token_bounds_fallback_and_latency_metrics() -> None:
+    context_manifest = manifest()
+    context_manifest["retrieval_cases"] = []
+    context_manifest["answer_cases"] = []
+    context_manifest["context_cases"] = [
+        {
+            "name": "bounded-work-context",
+            "query": "private query omitted from reports",
+            "project": "work",
+            "source": "runbooks",
+            "top_k": 5,
+            "max_tokens": 256,
+            "expected_source_ids": ["work-release"],
+            "forbidden_source_ids": ["personal-secret"],
+        }
+    ]
+
+    report = live.evaluate_manifest(live.validate_manifest(context_manifest), Client())
+
+    assert report["passed"] is True
+    assert report["metrics"]["context_pass_rate"] == 1.0
+    assert report["metrics"]["retrieval_fallback_rate"] == 1.0
+    assert report["metrics"]["token_inclusion_rate"] == 0.5
+    assert report["metrics"]["token_omission_rate"] == 0.5
+    assert report["metrics"]["token_budget_compliance_rate"] == 1.0
+    assert report["metrics"]["latency_ms_p50"] >= 0
+    assert report["context_cases"][0]["retrieval_mode"] == "lexical-fallback"
+    assert report["context_cases"][0]["token_budget_valid"] is True
+    assert "private query omitted" not in json.dumps(report)
+    assert "private context must never" not in json.dumps(report)
+
+
+def test_scope_and_citation_metrics_fail_closed_for_forbidden_evidence() -> None:
+    class LeakingClient(Client):
+        def post(self, path: str, *, json: dict, timeout: float) -> Response:
+            self.calls.append((path, json))
+            if path == "/v1/search":
+                return Response(
+                    [
+                        {
+                            "source_id": "personal-secret",
+                            "source": "personal",
+                            "project": "personal",
+                        }
+                    ]
+                )
+            return Response(
+                {
+                    "answer": "Do not expose this. [1]",
+                    "evidence": [
+                        {
+                            "source_id": "personal-secret",
+                            "source": "personal",
+                            "project": "personal",
+                        }
+                    ],
+                    "mode": "extractive",
+                    "cached": False,
+                }
+            )
+
+    leaking_manifest = manifest()
+    leaking_manifest["retrieval_cases"][0]["forbidden_projects"] = ["personal"]
+    leaking_manifest["retrieval_cases"][0]["forbidden_sources"] = ["personal"]
+    leaking_manifest["answer_cases"][0]["forbidden_projects"] = ["personal"]
+    leaking_manifest["answer_cases"][0]["forbidden_sources"] = ["personal"]
+    report = live.evaluate_manifest(live.validate_manifest(leaking_manifest), LeakingClient())
+
+    assert report["passed"] is False
+    assert report["metrics"]["forbidden_source_leak_count"] == 6
+    assert report["metrics"]["invalid_citation_count"] == 0
+    assert report["retrieval_cases"][0]["project_scope_valid"] is False
+    assert report["answer_cases"][0]["forbidden_project_leaks"] == ["personal"]

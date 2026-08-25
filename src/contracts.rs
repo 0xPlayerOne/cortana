@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 
 pub const ENTITY_CONTRACT_VERSION: &str = "cortana.entity.v1";
 pub const CONTEXT_CONTRACT_VERSION: &str = "cortana.context.v1";
-pub const RETRIEVAL_CONTRACT_VERSION: &str = "cortana.retrieval.v1";
+pub const RETRIEVAL_CONTRACT_VERSION: &str = "cortana.retrieval.v2";
 pub const API_CONTRACT_VERSION: &str = "cortana.api.v1";
 pub const CONNECTOR_CONTRACT_VERSION: &str = "cortana.connector.v1";
 pub const MEMORY_CONTRACT_VERSION: &str = "cortana.memory.v1";

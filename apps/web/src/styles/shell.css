@@ -188,15 +188,6 @@
   color: var(--amber);
 }
 
-.rail-button.active::before {
-  position: absolute;
-  left: -1px;
-  width: 3px;
-  height: 24px;
-  background: var(--amber);
-  content: '';
-}
-
 .rail-spacer {
   flex: 1;
 }

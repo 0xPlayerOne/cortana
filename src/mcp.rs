@@ -20,7 +20,7 @@ use crate::{
     context,
     embed::Embedder,
     memory::{MemoryInput, MemoryStats},
-    retrieval,
+    retrieval::{self, RetrievalTuning},
     store::Store,
 };
 
@@ -173,6 +173,7 @@ pub struct BrainServer {
     configured_sources: Vec<ConfiguredSourceStatus>,
     retrieval_fallbacks: Arc<AtomicU64>,
     memory_defaults: crate::memory::MemoryDefaults,
+    retrieval_tuning: RetrievalTuning,
 }
 
 #[derive(Clone)]
@@ -224,6 +225,7 @@ impl BrainServer {
             configured_sources: Vec::new(),
             retrieval_fallbacks: Arc::new(AtomicU64::new(0)),
             memory_defaults: crate::memory::MemoryDefaults::default(),
+            retrieval_tuning: RetrievalTuning::default(),
         }
     }
 
@@ -237,6 +239,11 @@ impl BrainServer {
             confidence,
             importance,
         };
+        self
+    }
+
+    pub fn with_retrieval_tuning(mut self, tuning: RetrievalTuning) -> Self {
+        self.retrieval_tuning = tuning.bounded();
         self
     }
 
@@ -329,7 +336,7 @@ impl BrainServer {
             return format!("invalid request: {error}");
         }
         let acl = principal.visible_acl();
-        match retrieval::retrieve_scoped_with_status(
+        match retrieval::retrieve_scoped_with_status_tuned(
             &self.store,
             &self.embedder,
             &params.query,
@@ -340,6 +347,7 @@ impl BrainServer {
                 .unwrap_or(10)
                 .clamp(1, retrieval::MAX_RESULT_LIMIT),
             &acl,
+            self.retrieval_tuning,
         )
         .await
         {
@@ -426,7 +434,7 @@ impl BrainServer {
             return format!("invalid request: {error}");
         }
         let acl = principal.visible_acl();
-        match retrieval::retrieve_scoped_with_status(
+        match retrieval::retrieve_scoped_with_status_tuned(
             &self.store,
             &self.embedder,
             &params.query,
@@ -437,6 +445,7 @@ impl BrainServer {
                 .unwrap_or(20)
                 .clamp(1, retrieval::MAX_RESULT_LIMIT),
             &acl,
+            self.retrieval_tuning,
         )
         .await
         {
@@ -445,9 +454,18 @@ impl BrainServer {
                     self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed);
                 }
                 let memories = if principal.has_scope(MEMORY_SCOPE) {
-                    self
-                        .store
-                        .recall_memories(
+                    let recalled = if principal.is_owner() {
+                        self.store.recall_memories_as_owner(
+                            &params.query,
+                            params.project.as_deref(),
+                            None,
+                            params
+                                .limit
+                                .unwrap_or(20)
+                                .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
+                        )
+                    } else {
+                        self.store.recall_memories(
                             &params.query,
                             params.project.as_deref(),
                             None,
@@ -457,7 +475,8 @@ impl BrainServer {
                                 .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
                             &acl,
                         )
-                        .unwrap_or_else(|error| {
+                    };
+                    recalled.unwrap_or_else(|error| {
                             tracing::warn!(%error, "native memory recall unavailable while building MCP context");
                             Vec::new()
                         })
@@ -951,16 +970,29 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
-        match self.store.recall_memories_with_axes(
-            &params.query,
-            params.project.as_deref(),
-            params.kind.as_deref(),
-            params.content_type.as_deref(),
-            params.retention_tier.as_deref(),
-            params.scope.as_deref(),
-            params.limit.unwrap_or(10),
-            &principal.visible_acl(),
-        ) {
+        let recalled = if principal.is_owner() {
+            self.store.recall_memories_with_axes_as_owner(
+                &params.query,
+                params.project.as_deref(),
+                params.kind.as_deref(),
+                params.content_type.as_deref(),
+                params.retention_tier.as_deref(),
+                params.scope.as_deref(),
+                params.limit.unwrap_or(10),
+            )
+        } else {
+            self.store.recall_memories_with_axes(
+                &params.query,
+                params.project.as_deref(),
+                params.kind.as_deref(),
+                params.content_type.as_deref(),
+                params.retention_tier.as_deref(),
+                params.scope.as_deref(),
+                params.limit.unwrap_or(10),
+                &principal.visible_acl(),
+            )
+        };
+        match recalled {
             Ok(memories) => {
                 self.audit_principal(
                     &principal,
@@ -1113,18 +1145,31 @@ impl BrainServer {
             );
             return "authorization error: memory scope required".into();
         }
-        match self.store.export_memories_with_axes(
-            params.project.as_deref(),
-            params.kind.as_deref(),
-            params.content_type.as_deref(),
-            params.retention_tier.as_deref(),
-            params.scope.as_deref(),
-            params
-                .limit
-                .unwrap_or(10_000)
-                .min(crate::memory::MAX_MEMORY_EXPORT_LIMIT),
-            &principal.visible_acl(),
-        ) {
+        let limit = params
+            .limit
+            .unwrap_or(10_000)
+            .min(crate::memory::MAX_MEMORY_EXPORT_LIMIT);
+        let exported = if principal.is_owner() {
+            self.store.export_memories_with_axes_as_owner(
+                params.project.as_deref(),
+                params.kind.as_deref(),
+                params.content_type.as_deref(),
+                params.retention_tier.as_deref(),
+                params.scope.as_deref(),
+                limit,
+            )
+        } else {
+            self.store.export_memories_with_axes(
+                params.project.as_deref(),
+                params.kind.as_deref(),
+                params.content_type.as_deref(),
+                params.retention_tier.as_deref(),
+                params.scope.as_deref(),
+                limit,
+                &principal.visible_acl(),
+            )
+        };
+        match exported {
             Ok(memories) => {
                 self.audit_principal(
                     &principal,

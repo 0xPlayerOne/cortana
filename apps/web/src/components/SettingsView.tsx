@@ -1697,7 +1697,9 @@ function UpdatesSection({
               ? `Version ${update.available_version} is available`
               : update?.phase === 'current'
                 ? 'You are up to date'
-                : `Updater status: ${update?.phase || 'idle'}`}
+                : update?.phase === 'unavailable'
+                  ? 'No signed package is published for this platform'
+                  : `Updater status: ${update?.phase || 'idle'}`}
           </small>
         </div>
         <div className="service-actions">
