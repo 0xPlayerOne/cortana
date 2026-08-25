@@ -6,7 +6,7 @@
 //! Transport layers (HTTP, MCP, CLI, and Desktop) should authorize their
 //! principal first, then pass only the bounded, scoped inputs to this module.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::time::{Duration, Instant};
 
@@ -38,6 +38,7 @@ pub const MAX_REFLECTION_PATTERNS: usize = 16;
 pub const MAX_REFLECTION_TENSIONS: usize = 16;
 pub const MAX_REFLECTION_RECOMMENDATIONS: usize = 16;
 pub const MAX_REFLECTION_CANDIDATES: usize = 8;
+pub const MAX_PROVIDER_OUTPUT_BYTES: usize = 128 * 1024;
 
 static ACTIVE_PROVIDERS: OnceLock<Mutex<BTreeSet<usize>>> = OnceLock::new();
 
@@ -402,23 +403,33 @@ pub fn reflect_authorized_memory_only(
     );
     let revision = store.memory_revision()?;
     let memories = authorized_memories(store, request, principal_acl, owner)?;
-    anyhow::ensure!(
-        started.elapsed() < Duration::from_millis(request.deadline_ms),
-        "reflection deadline exceeded while reading memory"
-    );
+    if started.elapsed() >= Duration::from_millis(request.deadline_ms) {
+        return Ok(deadline_exceeded_response(
+            request,
+            revision,
+            principal_acl,
+            memories.len(),
+            0,
+            "reflection deadline exceeded while reading memory",
+        ));
+    }
     anyhow::ensure!(
         store.memory_revision()? == revision,
         "memory changed while reflection inputs were being collected"
     );
     let mut bounded_request = request.clone();
-    bounded_request.deadline_ms = u64::try_from(
-        Duration::from_millis(request.deadline_ms)
-            .checked_sub(started.elapsed())
-            .ok_or_else(|| anyhow::anyhow!("reflection deadline exceeded before synthesis"))?
-            .as_millis(),
-    )
-    .unwrap_or(1)
-    .max(1);
+    let Some(remaining) = Duration::from_millis(request.deadline_ms).checked_sub(started.elapsed())
+    else {
+        return Ok(deadline_exceeded_response(
+            request,
+            revision,
+            principal_acl,
+            memories.len(),
+            0,
+            "reflection deadline exceeded before synthesis",
+        ));
+    };
+    bounded_request.deadline_ms = u64::try_from(remaining.as_millis()).unwrap_or(1).max(1);
     reflect(
         &bounded_request,
         &ReflectionInputs {
@@ -1058,7 +1069,7 @@ fn empty_response(
     evidence_considered: usize,
     evidence_included: usize,
 ) -> ReflectResponse {
-    ReflectResponse {
+    let mut response = ReflectResponse {
         contract_version: REFLECTION_CONTRACT_VERSION.into(),
         request_digest,
         status,
@@ -1083,6 +1094,23 @@ fn empty_response(
             memory_revision,
             canonical_memory_mutated: false,
         },
+    };
+    loop {
+        response.metrics.estimated_tokens = serde_json::to_string(&response)
+            .map(|serialized| estimate_tokens(&serialized))
+            .unwrap_or(usize::MAX);
+        if response.metrics.estimated_tokens <= request.token_budget {
+            return response;
+        }
+        if response.provider.detail.take().is_some() || response.project.take().is_some() {
+            continue;
+        }
+        if !response.objective.is_empty() {
+            let next_bytes = response.objective.len() / 2;
+            response.objective = safe_excerpt(&response.objective, next_bytes);
+            continue;
+        }
+        return response;
     }
 }
 
@@ -1118,15 +1146,6 @@ fn validate_provider_output(
     );
     let memory_ids: BTreeSet<&str> = memories.iter().map(|item| item.id.as_str()).collect();
     let evidence_ids: BTreeSet<&str> = evidence.iter().map(|item| item.chunk_id.as_str()).collect();
-    let serialized_output = serde_json::to_string(output)?.to_lowercase();
-    for item in evidence {
-        for fingerprint in private_evidence_fingerprints(&item.content) {
-            anyhow::ensure!(
-                !serialized_output.contains(&fingerprint),
-                "provider output echoes private evidence content"
-            );
-        }
-    }
     for claim in &output.claims {
         validate_text("claim.text", &claim.text, MAX_REFLECTION_TEXT_BYTES)?;
         anyhow::ensure!(
@@ -1184,6 +1203,17 @@ fn validate_provider_output(
             &item.content,
             MAX_REFLECTION_TEXT_BYTES,
         )?;
+        validate_text(
+            "candidate.content_type",
+            &item.content_type,
+            MAX_REFLECTION_SOURCE_BYTES,
+        )?;
+        validate_text(
+            "candidate.retention_tier",
+            &item.retention_tier,
+            MAX_REFLECTION_SOURCE_BYTES,
+        )?;
+        validate_text("candidate.scope", &item.scope, MAX_REFLECTION_SOURCE_BYTES)?;
         MemoryContentType::parse(&item.content_type)?;
         MemoryRetentionTier::parse(&item.retention_tier)?;
         let scope = MemoryScope::parse(&item.scope)?;
@@ -1195,6 +1225,7 @@ fn validate_provider_output(
     }
     for item in &output.chronology {
         validate_text("chronology.title", &item.title, MAX_REFLECTION_TEXT_BYTES)?;
+        validate_text("chronology.observed_at", &item.observed_at, 64)?;
         DateTime::parse_from_rfc3339(&item.observed_at)
             .map_err(|_| anyhow::anyhow!("chronology timestamp is invalid"))?;
         anyhow::ensure!(
@@ -1202,29 +1233,66 @@ fn validate_provider_output(
             "chronology memory is ungrounded"
         );
     }
+    let serialized_output = serde_json::to_string(output)?;
+    anyhow::ensure!(
+        serialized_output.len() <= MAX_PROVIDER_OUTPUT_BYTES,
+        "provider output exceeds {MAX_PROVIDER_OUTPUT_BYTES} bytes"
+    );
+    ensure_no_private_evidence_echo(&provider_output_text(output), evidence)?;
     Ok(())
 }
 
-fn private_evidence_fingerprints(content: &str) -> Vec<String> {
-    let normalized = content.to_lowercase();
-    let characters = normalized.chars().collect::<Vec<_>>();
-    if characters.len() < 4 {
-        return Vec::new();
-    }
-    if characters.len() <= 16 {
-        return vec![normalized];
-    }
-    let mut fingerprints = characters
-        .windows(16)
+fn ensure_no_private_evidence_echo(serialized_output: &str, evidence: &[Evidence]) -> Result<()> {
+    let normalized_output = serialized_output.to_lowercase();
+    let output_characters = normalized_output.chars().collect::<Vec<_>>();
+    let output_windows = output_characters
+        .windows(4)
         .map(|window| window.iter().collect::<String>())
-        .collect::<Vec<_>>();
-    for length in 4..16 {
-        fingerprints.push(characters[characters.len() - length..].iter().collect());
+        .collect::<HashSet<_>>();
+    for item in evidence {
+        let normalized = item.content.to_lowercase();
+        let characters = normalized.chars().collect::<Vec<_>>();
+        if characters.len() < 4 {
+            anyhow::ensure!(
+                normalized.is_empty() || !normalized_output.contains(&normalized),
+                "provider output echoes private evidence content"
+            );
+            continue;
+        }
+        anyhow::ensure!(
+            !characters
+                .windows(4)
+                .any(|window| { output_windows.contains(&window.iter().collect::<String>()) }),
+            "provider output echoes private evidence content"
+        );
     }
-    fingerprints
+    Ok(())
+}
+
+fn provider_output_text(output: &ProviderReflection) -> String {
+    let mut values = Vec::new();
+    values.extend(output.claims.iter().map(|item| item.text.as_str()));
+    values.extend(output.patterns.iter().map(|item| item.statement.as_str()));
+    values.extend(output.tensions.iter().map(|item| item.statement.as_str()));
+    values.extend(
+        output
+            .recommendations
+            .iter()
+            .map(|item| item.statement.as_str()),
+    );
+    for item in &output.proposed_candidates {
+        values.push(item.title.as_str());
+        values.push(item.content.as_str());
+    }
+    values.extend(output.chronology.iter().map(|item| item.title.as_str()));
+    values.join("\n")
 }
 
 fn ensure_optional_ids(ids: &[String], allowed: &BTreeSet<&str>, label: &str) -> Result<()> {
+    anyhow::ensure!(
+        ids.len() <= allowed.len(),
+        "{label} contains too many references"
+    );
     anyhow::ensure!(
         ids.iter().all(|id| allowed.contains(id.as_str())),
         "{label} contains an unknown reference"
@@ -1413,6 +1481,22 @@ mod tests {
         assert_eq!(response.status, ReflectStatus::ProviderUnavailable);
         assert!(response.claims.is_empty());
         assert_eq!(response.memory_revision, 7);
+
+        let mut tight_request = request.clone();
+        tight_request.objective = "x".repeat(MAX_REFLECTION_OBJECTIVE_BYTES);
+        tight_request.project = Some("p".repeat(MAX_REFLECTION_PROJECT_BYTES));
+        tight_request.token_budget = MIN_REFLECTION_TOKEN_BUDGET;
+        let response = deadline_exceeded_response(
+            &tight_request,
+            7,
+            &["work".into()],
+            1,
+            0,
+            "reflection deadline exceeded while reading memory",
+        );
+        assert!(response.metrics.estimated_tokens > 0);
+        assert!(response.metrics.estimated_tokens <= tight_request.token_budget);
+        assert!(response.claims.is_empty());
     }
 
     #[test]
@@ -1485,6 +1569,33 @@ mod tests {
                 .unwrap()
                 .contains("private source content")
         );
+
+        struct Echo;
+        impl ReflectionProvider for Echo {
+            fn name(&self) -> &str {
+                "echo"
+            }
+            fn reflect(
+                &self,
+                _: &ReflectRequest,
+                _: &[MemoryRecord],
+                _: &[Evidence],
+            ) -> Result<ProviderReflection, String> {
+                Ok(ProviderReflection {
+                    claims: vec![ReflectClaim {
+                        text: "private source".into(),
+                        supporting_memory_ids: Vec::new(),
+                        supporting_evidence_ids: vec!["doc-1:0".into()],
+                    }],
+                    ..Default::default()
+                })
+            }
+        }
+        request.provider_policy = ProviderPolicy::PreferProvider;
+        let response = reflect_with_provider(&request, &inputs, Some(Arc::new(Echo)))
+            .expect("private echo falls back");
+        assert_eq!(response.status, ReflectStatus::Fallback);
+        assert_eq!(response.provider.status, "fallback");
     }
 
     #[test]
@@ -1560,33 +1671,6 @@ mod tests {
                 .all(|claim| claim.supporting_memory_ids != ["m0"]
                     && claim.supporting_memory_ids != ["m1"])
         );
-
-        struct Echo;
-        impl ReflectionProvider for Echo {
-            fn name(&self) -> &str {
-                "echo"
-            }
-            fn reflect(
-                &self,
-                _: &ReflectRequest,
-                _: &[MemoryRecord],
-                _: &[Evidence],
-            ) -> Result<ProviderReflection, String> {
-                Ok(ProviderReflection {
-                    claims: vec![ReflectClaim {
-                        text: "source content".into(),
-                        supporting_memory_ids: Vec::new(),
-                        supporting_evidence_ids: vec!["doc-1:0".into()],
-                    }],
-                    ..Default::default()
-                })
-            }
-        }
-        request.provider_policy = ProviderPolicy::PreferProvider;
-        let response = reflect_with_provider(&request, &inputs, Some(Arc::new(Echo)))
-            .expect("private echo falls back");
-        assert_eq!(response.status, ReflectStatus::Fallback);
-        assert_eq!(response.provider.status, "fallback");
     }
 
     #[test]
