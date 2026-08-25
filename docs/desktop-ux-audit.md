@@ -20,6 +20,8 @@ macOS Developer ID/notarization acceptance.
 The workflow may verify a historical published tag from a newer verifier checkout. In that case
 it explicitly allows source-version drift, records the requested release version in the component
 version fields, and preserves the verifier checkout versions plus a drift marker in the evidence.
+On Linux, the host-launch lane installs the packaged application's GTK/WebKit runtime dependencies
+and runs the AppImage under Xvfb before checking for stable process startup.
 
 ## Product principles
 

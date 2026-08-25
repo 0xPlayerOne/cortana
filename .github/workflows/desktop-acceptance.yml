@@ -89,7 +89,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes dpkg minisign xvfb
+          sudo apt-get install --yes \
+            dpkg \
+            minisign \
+            xvfb \
+            libwebkit2gtk-4.1-0 \
+            libayatana-appindicator3-1 \
+            librsvg2-2
 
       - name: Download published package assets
         if: runner.os != 'Windows'
