@@ -340,20 +340,40 @@ pub fn reflect_authorized_memory_only(
     principal_acl: &[String],
     owner: bool,
 ) -> Result<ReflectResponse> {
+    let started = Instant::now();
+    validate_request(request)?;
     anyhow::ensure!(
         !request.include_evidence,
         "CLI reflection requires include_evidence=false; use HTTP or MCP for scoped evidence retrieval"
     );
+    let revision = store.memory_revision()?;
     let memories = authorized_memories(store, request, principal_acl, owner)?;
+    anyhow::ensure!(
+        started.elapsed() < Duration::from_millis(request.deadline_ms),
+        "reflection deadline exceeded while reading memory"
+    );
+    anyhow::ensure!(
+        store.memory_revision()? == revision,
+        "memory changed while reflection inputs were being collected"
+    );
+    let mut bounded_request = request.clone();
+    bounded_request.deadline_ms = u64::try_from(
+        Duration::from_millis(request.deadline_ms)
+            .checked_sub(started.elapsed())
+            .ok_or_else(|| anyhow::anyhow!("reflection deadline exceeded before synthesis"))?
+            .as_millis(),
+    )
+    .unwrap_or(1)
+    .max(1);
     reflect(
-        request,
+        &bounded_request,
         &ReflectionInputs {
             memories: &memories,
             evidence: &[],
             evidence_project: None,
             principal_acl,
             owner,
-            memory_revision: store.memory_revision()?,
+            memory_revision: revision,
         },
     )
 }
@@ -495,7 +515,8 @@ pub fn reflect_with_provider(
                     }
                     Ok(Err(error)) => {
                         provider_outcome.status = "failed".into();
-                        provider_outcome.detail = Some(sanitize_detail(&error));
+                        let _ = error;
+                        provider_outcome.detail = Some("reflection provider failed".into());
                         if request.provider_policy == ProviderPolicy::RequireProvider {
                             return Ok(empty_response(
                                 request,
@@ -1035,13 +1056,14 @@ fn validate_provider_output(
     );
     let memory_ids: BTreeSet<&str> = memories.iter().map(|item| item.id.as_str()).collect();
     let evidence_ids: BTreeSet<&str> = evidence.iter().map(|item| item.chunk_id.as_str()).collect();
-    let serialized_output = serde_json::to_string(output)?;
+    let serialized_output = serde_json::to_string(output)?.to_lowercase();
     for item in evidence {
-        let fingerprint = safe_excerpt(&item.content, 32);
-        anyhow::ensure!(
-            fingerprint.len() < 16 || !serialized_output.contains(&fingerprint),
-            "provider output echoes private evidence content"
-        );
+        for fingerprint in private_evidence_fingerprints(&item.content) {
+            anyhow::ensure!(
+                !serialized_output.contains(&fingerprint),
+                "provider output echoes private evidence content"
+            );
+        }
     }
     for claim in &output.claims {
         validate_text("claim.text", &claim.text, MAX_REFLECTION_TEXT_BYTES)?;
@@ -1121,6 +1143,25 @@ fn validate_provider_output(
     Ok(())
 }
 
+fn private_evidence_fingerprints(content: &str) -> Vec<String> {
+    let normalized = content.to_lowercase();
+    let characters = normalized.chars().collect::<Vec<_>>();
+    if characters.len() < 4 {
+        return Vec::new();
+    }
+    if characters.len() <= 16 {
+        return vec![normalized];
+    }
+    let mut fingerprints = characters
+        .windows(16)
+        .map(|window| window.iter().collect::<String>())
+        .collect::<Vec<_>>();
+    for length in 4..16 {
+        fingerprints.push(characters[characters.len() - length..].iter().collect());
+    }
+    fingerprints
+}
+
 fn ensure_optional_ids(ids: &[String], allowed: &BTreeSet<&str>, label: &str) -> Result<()> {
     anyhow::ensure!(
         ids.iter().all(|id| allowed.contains(id.as_str())),
@@ -1161,10 +1202,6 @@ fn safe_excerpt(value: &str, max_bytes: usize) -> String {
         end -= 1;
     }
     sanitized[..end].to_owned()
-}
-
-fn sanitize_detail(value: &str) -> String {
-    safe_excerpt(value, 256)
 }
 
 fn normalized_text(memory: &MemoryRecord) -> String {
@@ -1327,7 +1364,7 @@ mod tests {
                 _: &[MemoryRecord],
                 _: &[Evidence],
             ) -> Result<ProviderReflection, String> {
-                Err("provider timed out".into())
+                Err("provider failed with private source content".into())
             }
         }
         let memories = vec![memory("m1", "release policy", "work", &["work"])];
@@ -1345,6 +1382,10 @@ mod tests {
             reflect_with_provider(&request, &inputs, Some(Arc::new(Failing))).expect("fallback");
         assert_eq!(response.status, ReflectStatus::Fallback);
         assert_eq!(response.provider.status, "fallback");
+        assert_eq!(
+            response.provider.detail.as_deref(),
+            Some("reflection provider failed")
+        );
         assert!(!response.claims.is_empty());
     }
 
@@ -1455,6 +1496,33 @@ mod tests {
                 .all(|claim| claim.supporting_memory_ids != ["m0"]
                     && claim.supporting_memory_ids != ["m1"])
         );
+
+        struct Echo;
+        impl ReflectionProvider for Echo {
+            fn name(&self) -> &str {
+                "echo"
+            }
+            fn reflect(
+                &self,
+                _: &ReflectRequest,
+                _: &[MemoryRecord],
+                _: &[Evidence],
+            ) -> Result<ProviderReflection, String> {
+                Ok(ProviderReflection {
+                    claims: vec![ReflectClaim {
+                        text: "source content".into(),
+                        supporting_memory_ids: Vec::new(),
+                        supporting_evidence_ids: vec!["doc-1:0".into()],
+                    }],
+                    ..Default::default()
+                })
+            }
+        }
+        request.provider_policy = ProviderPolicy::PreferProvider;
+        let response = reflect_with_provider(&request, &inputs, Some(Arc::new(Echo)))
+            .expect("private echo falls back");
+        assert_eq!(response.status, ReflectStatus::Fallback);
+        assert_eq!(response.provider.status, "fallback");
     }
 
     #[test]
