@@ -336,15 +336,55 @@ Private manifests must be:
 - free of reusable credentials;
 - reported through non-secret case and evidence identifiers.
 
+### Governance contract
+
+The checked-in `eval/live-manifest.example.json` is a transport-safe template,
+not a usable personal manifest. An operator-owned manifest must include a
+`governance` object with `contract_version: cortana.approved-corpus.v1` and
+the following controls:
+
+- `scope.workspaces`, `scope.sources`, and `scope.forbidden_sources` are
+  opaque identifiers. A case may only name an allowed workspace/source, and
+  `scope.memory` explicitly says whether native memory participates.
+- `coverage` records the minimum number of cases for each representative
+  workspace/source pair. Start with notes, Drive, Gmail, Calendar, Buzz, and
+  memory when those connectors are enabled; add later connectors as separate
+  coverage entries rather than silently treating an untested source as
+  covered.
+- Every case has a stable `id`, expected and forbidden evidence identifiers,
+  and one explicit mode: `retrieval-only`, `extractive-answer`, or
+  `provider-synthesis`. Answer cases may additionally set bounded
+  `answer_criteria.required_terms`, `min_citations`, and `allow_abstain`.
+- `resource_bounds` pins request/total latency, response bytes, case count,
+  and an operator memory ceiling. The evaluator clamps its runtime limits to
+  these values; a threshold cannot grant an unbounded run.
+- `storage` is `local` or `encrypted-local`; credentials must remain
+  external. `reviewer_access` names authorized reviewer identifiers and
+  requires explicit approval. Reviewer IDs are not emitted in reports.
+- `lifecycle` records retention days, operator/reviewer-confirmed deletion,
+  controlled redaction, and stop/revoke incident handling. These are required
+  governance decisions, not prose-only recommendations.
+- `provider_synthesis_enabled` is an explicit opt-in. A synthesis case is
+  rejected during validation unless that flag is true; extractive and
+  retrieval-only cases remain independently measurable.
+
+The validator also requires `operator_controlled`, `raw_data_external`,
+`credentials_external`, and `private_paths_external` to be true. It rejects
+filesystem paths in governance identifiers, duplicate case IDs, out-of-scope
+cases, incomplete coverage, unsafe lifecycle values, and resource bounds over
+the evaluator safety caps. This is a contract check only: it never opens a
+source connector, writes to an index, mutates memory, or verifies corpus
+content.
+
 An approved live manifest should also carry a non-secret `corpus` block with an operator-chosen
 `id`, `revision`, `sha256:` digest, storage class (`local` or `encrypted-local`), and approval
 window. The bounded live evaluator hashes the manifest file and emits only the manifest digest plus
 the corpus identifiers/revision/digest in its report. Approval timestamps, reviewer labels, raw
 queries, source content, private paths, and credentials never leave the local run.
 
-The evaluator accepts manifests without this optional block for compatibility with older fixtures;
-those runs cannot be used as the final approved-corpus gate until the operator records the corpus
-provenance. A changed corpus digest or manifest digest is a provenance change, not evidence of a
+The evaluator records the non-secret governance contract version and a digest
+of the normalized workspace/source scope. A changed corpus digest, manifest
+digest, or governance scope digest is a provenance change, not evidence of a
 product regression, and must be reviewed independently.
 
 A corpus or manifest change must not be misreported as a code regression.
