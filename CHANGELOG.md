@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.3](https://github.com/0xPlayerOne/cortana/compare/v0.39.2...v0.39.3) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ui:** remove sidebar hover accent ([#2159](https://github.com/0xPlayerOne/cortana/issues/2159)) ([8c2dee6](https://github.com/0xPlayerOne/cortana/commit/8c2dee6c2866397270aa972ab550d6feb7fd2093))
+
 ## [0.39.2](https://github.com/0xPlayerOne/cortana/compare/v0.39.1...v0.39.2) (2026-08-25)
 
 
