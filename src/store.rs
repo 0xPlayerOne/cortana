@@ -287,6 +287,7 @@ impl Store {
                content_type TEXT NOT NULL,
                retention_tier TEXT NOT NULL,
                scope TEXT NOT NULL,
+               created_by TEXT NOT NULL DEFAULT 'legacy-owner',
                project TEXT NOT NULL,
                title TEXT NOT NULL,
                content TEXT NOT NULL,
@@ -325,9 +326,7 @@ impl Store {
              CREATE INDEX IF NOT EXISTS idx_memory_candidates_scope
                ON memory_candidates(project,status,created_at DESC);
              CREATE INDEX IF NOT EXISTS idx_memory_candidates_expiry
-               ON memory_candidates(status,expires_at);
-             CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_candidates_project_dedupe
-               ON memory_candidates(project,dedupe_key) WHERE dedupe_key IS NOT NULL;",
+               ON memory_candidates(status,expires_at);",
         )?;
         connection.execute(
             "INSERT OR IGNORE INTO meta(key,value) VALUES('corpus_revision','0')",
@@ -363,6 +362,7 @@ impl Store {
         migrate_embedding_blobs(&mut connection)?;
         migrate_memory_axes(&mut connection)?;
         migrate_memory_dedupe_scope(&mut connection)?;
+        migrate_memory_candidates(&mut connection)?;
         connection.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_memories_scope
                ON memories(project,kind,status,updated_at DESC);
@@ -1704,6 +1704,7 @@ impl Store {
     pub fn propose_memory_candidate(
         &self,
         input: &ObservationCandidateInput,
+        principal_id: &str,
         principal_acl: &[String],
         owner: bool,
     ) -> Result<ObservationCandidate> {
@@ -1725,6 +1726,14 @@ impl Store {
             "owner-global candidate scope requires owner authorization"
         );
         anyhow::ensure!(
+            scope != memory::MemoryScope::Session,
+            "session candidate scope requires a session identity binding and is not yet supported"
+        );
+        anyhow::ensure!(
+            !principal_id.trim().is_empty(),
+            "candidate principal is required"
+        );
+        anyhow::ensure!(
             owner || acl_allows(&acl, principal_acl),
             "candidate ACL denied"
         );
@@ -1732,32 +1741,19 @@ impl Store {
         let now = memory::now();
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
-        let active_count: i64 = transaction.query_row(
-            "SELECT COUNT(*) FROM memory_candidates
-             WHERE project=?1 AND status='pending' AND julianday(expires_at)>julianday(?2)",
-            params![input.project, now],
-            |row| row.get(0),
-        )?;
-        anyhow::ensure!(
-            active_count < observation::MAX_CANDIDATES_PER_PROJECT as i64,
-            "candidate limit reached for project; review, cancel, or expire pending observations"
-        );
         if let Some(dedupe_key) = input.dedupe_key.as_deref() {
             if let Some(existing) = transaction
                 .query_row(
-                    "SELECT id,observation_kind,content_type,retention_tier,scope,project,title,content,
+                    "SELECT id,observation_kind,content_type,retention_tier,scope,created_by,project,title,content,
                             source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
                             provenance_json,expires_at,rejection_reason,created_at,updated_at
-                     FROM memory_candidates WHERE project=?1 AND dedupe_key=?2",
-                    params![input.project, dedupe_key],
+                     FROM memory_candidates
+                     WHERE project=?1 AND scope=?2 AND created_by=?3 AND dedupe_key=?4",
+                    params![input.project, scope.as_str(), principal_id, dedupe_key],
                     observation_candidate_from_row,
                 )
                 .optional()?
             {
-                anyhow::ensure!(
-                    owner || acl_allows(&existing.acl, principal_acl),
-                    "candidate dedupe key is outside principal visibility"
-                );
                 anyhow::ensure!(
                     existing.status == "pending"
                         && existing.observation_kind == observation_kind.as_str()
@@ -1768,6 +1764,8 @@ impl Store {
                         && existing.content == input.content
                         && existing.source == input.source
                         && existing.source_id == input.source_id
+                        && existing.confidence == input.confidence
+                        && existing.importance == input.importance
                         && existing.sensitivity == sensitivity.as_str()
                         && existing.acl == acl
                         && existing.provenance == provenance
@@ -1778,19 +1776,40 @@ impl Store {
                 return Ok(existing);
             }
         }
+        let active_count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM memory_candidates
+             WHERE project=?1 AND status='pending' AND julianday(expires_at)>julianday(?2)",
+            params![input.project, now],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(
+            active_count < observation::MAX_CANDIDATES_PER_PROJECT as i64,
+            "candidate limit reached for project; review, cancel, or expire pending observations"
+        );
+        let recent_count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM memory_candidates
+             WHERE created_by=?1 AND julianday(created_at)>=julianday(?2,'-1 hour')",
+            params![principal_id, now],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(
+            recent_count < observation::MAX_CANDIDATES_PER_PRINCIPAL_PER_HOUR as i64,
+            "candidate rate limit reached; retry after the bounded review window"
+        );
         let id = uuid::Uuid::new_v4().to_string();
         transaction.execute(
             "INSERT INTO memory_candidates(
-               id,observation_kind,content_type,retention_tier,scope,project,title,content,
+               id,observation_kind,content_type,retention_tier,scope,created_by,project,title,content,
                source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
                provenance_json,expires_at,rejection_reason,created_at,updated_at)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'pending',?15,?16,?17,NULL,?18,?18)",
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'pending',?16,?17,?18,NULL,?19,?19)",
             params![
                 id,
                 observation_kind.as_str(),
                 content_type.as_str(),
                 retention_tier.as_str(),
                 scope.as_str(),
+                principal_id,
                 input.project,
                 input.title,
                 input.content,
@@ -1812,13 +1831,63 @@ impl Store {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn list_memory_candidates(
         &self,
         project: Option<&str>,
         observation_kind: Option<&str>,
         scope: Option<&str>,
         limit: usize,
+        principal_id: &str,
         principal_acl: &[String],
+        owner: bool,
+    ) -> Result<Vec<ObservationCandidate>> {
+        self.query_memory_candidates(
+            project,
+            observation_kind,
+            scope,
+            limit,
+            principal_id,
+            principal_acl,
+            owner,
+            observation::MAX_CANDIDATE_LIST_LIMIT,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_memory_candidates(
+        &self,
+        project: Option<&str>,
+        observation_kind: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<Vec<ObservationCandidate>> {
+        self.query_memory_candidates(
+            project,
+            observation_kind,
+            scope,
+            limit,
+            principal_id,
+            principal_acl,
+            owner,
+            observation::MAX_CANDIDATE_EXPORT_LIMIT,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn query_memory_candidates(
+        &self,
+        project: Option<&str>,
+        observation_kind: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+        max_limit: usize,
     ) -> Result<Vec<ObservationCandidate>> {
         self.expire_memory_candidates()?;
         let normalized_kind = observation_kind
@@ -1829,48 +1898,61 @@ impl Store {
             .map(memory::MemoryScope::parse)
             .transpose()?
             .map(|value| value.as_str().to_string());
-        if normalized_scope.as_deref() == Some("owner-global")
-            && !principal_acl.iter().any(|value| value == "*")
-        {
+        if normalized_scope.as_deref() == Some("owner-global") && !owner {
             bail!("owner-global candidate scope requires owner authorization");
         }
         let connection = self.read_connection.lock().expect("store lock poisoned");
         let acl_json = serde_json::to_string(principal_acl)?;
         let mut statement = connection.prepare(
-            "SELECT id,observation_kind,content_type,retention_tier,scope,project,title,content,
+            "SELECT id,observation_kind,content_type,retention_tier,scope,created_by,project,title,content,
                     source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
                     provenance_json,expires_at,rejection_reason,created_at,updated_at
              FROM memory_candidates
              WHERE (?1 IS NULL OR project=?1)
                AND (?2 IS NULL OR observation_kind=?2)
                AND (?3 IS NULL OR scope=?3)
+               AND (?4 OR scope<>'owner-global')
+               AND (scope<>'principal' OR created_by=?5)
                AND (json_array_length(acl_json)=0 OR EXISTS(
-                 SELECT 1 FROM json_each(?4) principal_acl
+                 SELECT 1 FROM json_each(?6) principal_acl
                  WHERE principal_acl.value='*' OR EXISTS(
                    SELECT 1 FROM json_each(acl_json) candidate_acl
                    WHERE candidate_acl.value=principal_acl.value)))
-             ORDER BY created_at DESC,id DESC LIMIT ?5",
+             ORDER BY created_at DESC,id DESC LIMIT ?7",
         )?;
         let rows = statement.query_map(
             params![
                 project,
                 normalized_kind.as_deref(),
                 normalized_scope.as_deref(),
+                owner,
+                principal_id,
                 acl_json,
-                i64::try_from(limit.clamp(1, observation::MAX_CANDIDATE_EXPORT_LIMIT))
-                    .unwrap_or(i64::MAX),
+                i64::try_from(limit.clamp(1, max_limit)).unwrap_or(i64::MAX),
             ],
             observation_candidate_from_row,
         )?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(Into::into)
+        let mut result = Vec::new();
+        let mut response_bytes = 2usize;
+        for row in rows {
+            let candidate = row?;
+            let candidate_bytes = serde_json::to_vec(&candidate)?.len().saturating_add(1);
+            if response_bytes.saturating_add(candidate_bytes)
+                > observation::MAX_CANDIDATE_RESPONSE_BYTES
+            {
+                break;
+            }
+            response_bytes = response_bytes.saturating_add(candidate_bytes);
+            result.push(candidate);
+        }
+        Ok(result)
     }
 
     pub fn memory_candidate(&self, id: &str) -> Result<Option<ObservationCandidate>> {
         let connection = self.read_connection.lock().expect("store lock poisoned");
         connection
             .query_row(
-                "SELECT id,observation_kind,content_type,retention_tier,scope,project,title,content,
+                "SELECT id,observation_kind,content_type,retention_tier,scope,created_by,project,title,content,
                         source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
                         provenance_json,expires_at,rejection_reason,created_at,updated_at
                  FROM memory_candidates WHERE id=?1",
@@ -1884,25 +1966,42 @@ impl Store {
     pub fn cancel_memory_candidate_scoped(
         &self,
         id: &str,
+        principal_id: &str,
         principal_acl: &[String],
         owner: bool,
     ) -> Result<bool> {
-        self.update_memory_candidate_status(id, "cancelled", principal_acl, owner, false)
+        self.update_memory_candidate_status(
+            id,
+            "cancelled",
+            principal_id,
+            principal_acl,
+            owner,
+            false,
+        )
     }
 
     pub fn redact_memory_candidate_scoped(
         &self,
         id: &str,
+        principal_id: &str,
         principal_acl: &[String],
         owner: bool,
     ) -> Result<bool> {
-        self.update_memory_candidate_status(id, "redacted", principal_acl, owner, true)
+        self.update_memory_candidate_status(
+            id,
+            "redacted",
+            principal_id,
+            principal_acl,
+            owner,
+            true,
+        )
     }
 
     fn update_memory_candidate_status(
         &self,
         id: &str,
         status: &str,
+        principal_id: &str,
         principal_acl: &[String],
         owner: bool,
         redact: bool,
@@ -1910,20 +2009,22 @@ impl Store {
         let now = memory::now();
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
-        let acl_json: Option<String> = transaction
+        let authorization: Option<(String, String, String)> = transaction
             .query_row(
-                "SELECT acl_json FROM memory_candidates WHERE id=?1 AND status='pending'",
+                "SELECT scope,created_by,acl_json FROM memory_candidates WHERE id=?1 AND status='pending'",
                 [id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()?;
-        let Some(acl_json) = acl_json else {
+        let Some((scope, created_by, acl_json)) = authorization else {
             transaction.commit()?;
             return Ok(false);
         };
         let acl: Vec<String> = serde_json::from_str(&acl_json)?;
         anyhow::ensure!(
-            owner || acl_allows(&acl, principal_acl),
+            (owner || scope != "owner-global")
+                && (scope != "principal" || created_by == principal_id)
+                && (owner || acl_allows(&acl, principal_acl)),
             "candidate ACL denied"
         );
         let changed = if redact {
@@ -3648,6 +3749,32 @@ fn migrate_memory_dedupe_scope(connection: &mut Connection) -> Result<()> {
     Ok(())
 }
 
+/// Upgrade the candidate queue independently from canonical memory. The
+/// marker makes interrupted initialization safe to resume, while the creator
+/// dimension prevents one principal's retry key from revealing another's.
+fn migrate_memory_candidates(connection: &mut Connection) -> Result<()> {
+    let transaction = connection.transaction()?;
+    ensure_column(
+        &transaction,
+        "memory_candidates",
+        "created_by",
+        "TEXT NOT NULL DEFAULT 'legacy-owner'",
+    )?;
+    transaction.execute_batch(
+        "DROP INDEX IF EXISTS idx_memory_candidates_project_dedupe;
+         CREATE UNIQUE INDEX idx_memory_candidates_project_dedupe
+           ON memory_candidates(project,scope,created_by,dedupe_key)
+           WHERE dedupe_key IS NOT NULL;",
+    )?;
+    transaction.execute(
+        "INSERT INTO meta(key,value) VALUES('memory_candidates_schema','1')
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
 /// Add the independent M6 memory axes without rewriting canonical meaning or
 /// bumping `memory_revision`. The columns are additive so an older binary can
 /// still read the legacy `kind` field while the new binary exposes the
@@ -3912,34 +4039,35 @@ fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryRec
 fn observation_candidate_from_row(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<ObservationCandidate> {
-    let acl_json: String = row.get(15)?;
-    let provenance_json: String = row.get(16)?;
+    let acl_json: String = row.get(16)?;
+    let provenance_json: String = row.get(17)?;
     Ok(ObservationCandidate {
         id: row.get(0)?,
         observation_kind: row.get(1)?,
         content_type: row.get(2)?,
         retention_tier: row.get(3)?,
         scope: row.get(4)?,
-        project: row.get(5)?,
-        title: row.get(6)?,
-        content: row.get(7)?,
-        source: row.get(8)?,
-        source_id: row.get(9)?,
-        dedupe_key: row.get(10)?,
-        confidence: row.get(11)?,
-        importance: row.get(12)?,
-        sensitivity: row.get(13)?,
-        status: row.get(14)?,
+        created_by: row.get(5)?,
+        project: row.get(6)?,
+        title: row.get(7)?,
+        content: row.get(8)?,
+        source: row.get(9)?,
+        source_id: row.get(10)?,
+        dedupe_key: row.get(11)?,
+        confidence: row.get(12)?,
+        importance: row.get(13)?,
+        sensitivity: row.get(14)?,
+        status: row.get(15)?,
         acl: serde_json::from_str(&acl_json).map_err(|error| {
-            rusqlite::Error::FromSqlConversionFailure(15, Type::Text, Box::new(error))
-        })?,
-        provenance: serde_json::from_str(&provenance_json).map_err(|error| {
             rusqlite::Error::FromSqlConversionFailure(16, Type::Text, Box::new(error))
         })?,
-        expires_at: row.get(17)?,
-        rejection_reason: row.get(18)?,
-        created_at: row.get(19)?,
-        updated_at: row.get(20)?,
+        provenance: serde_json::from_str(&provenance_json).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(17, Type::Text, Box::new(error))
+        })?,
+        expires_at: row.get(18)?,
+        rejection_reason: row.get(19)?,
+        created_at: row.get(20)?,
+        updated_at: row.get(21)?,
     })
 }
 
@@ -6664,10 +6792,10 @@ mod tests {
         let revision = store.memory_revision().expect("memory revision");
         let input = candidate_input("work", Some("retry-1"));
         let first = store
-            .propose_memory_candidate(&input, &["work".into()], false)
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
             .expect("candidate");
         let retry = store
-            .propose_memory_candidate(&input, &["work".into()], false)
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
             .expect("idempotent candidate retry");
         assert_eq!(first.id, retry.id);
         assert_eq!(store.memory_revision().expect("stable revision"), revision);
@@ -6679,7 +6807,15 @@ mod tests {
         );
         assert_eq!(
             store
-                .list_memory_candidates(Some("work"), None, None, 10, &["work".into()])
+                .list_memory_candidates(
+                    Some("work"),
+                    None,
+                    None,
+                    10,
+                    "agent-a",
+                    &["work".into()],
+                    false
+                )
                 .expect("candidate list")
                 .len(),
             1
@@ -6693,12 +6829,12 @@ mod tests {
         let mut sensitive = candidate_input("work", None);
         sensitive.sensitivity = "sensitive".into();
         let error = store
-            .propose_memory_candidate(&sensitive, &["work".into()], false)
+            .propose_memory_candidate(&sensitive, "agent-a", &["work".into()], false)
             .expect_err("sensitive candidate must fail closed");
         assert!(error.to_string().contains("sensitive observations"));
         let personal = candidate_input("personal", None);
         let error = store
-            .propose_memory_candidate(&personal, &["work".into()], false)
+            .propose_memory_candidate(&personal, "agent-a", &["work".into()], false)
             .expect_err("cross-workspace ACL must fail closed");
         assert!(error.to_string().contains("candidate ACL denied"));
     }
@@ -6708,11 +6844,16 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
         let candidate = store
-            .propose_memory_candidate(&candidate_input("work", None), &["work".into()], false)
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
             .expect("candidate");
         assert!(
             store
-                .redact_memory_candidate_scoped(&candidate.id, &["work".into()], false)
+                .redact_memory_candidate_scoped(&candidate.id, "agent-a", &["work".into()], false)
                 .expect("redact candidate")
         );
         let redacted = store
@@ -6726,6 +6867,218 @@ mod tests {
                 .provenance
                 .as_object()
                 .is_some_and(|value| value.is_empty())
+        );
+        let exported = store
+            .export_memory_candidates(
+                Some("work"),
+                None,
+                None,
+                100,
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("candidate export");
+        assert_eq!(exported.len(), 1);
+        assert_eq!(exported[0].status, "redacted");
+        assert!(
+            !serde_json::to_string(&exported)
+                .expect("json")
+                .contains("created_by")
+        );
+    }
+
+    #[test]
+    fn candidate_retry_compares_salience_and_precedes_capacity_checks() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let input = candidate_input("work", Some("retry-complete"));
+        let first = store
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+            .expect("candidate");
+        {
+            let connection = store.connection.lock().expect("store lock");
+            connection
+                .execute(
+                    "UPDATE memory_candidates SET created_at='2020-01-01T00:00:00Z' WHERE id=?1",
+                    [&first.id],
+                )
+                .expect("age candidate");
+            for index in 0..observation::MAX_CANDIDATES_PER_PROJECT {
+                connection
+                    .execute(
+                        "INSERT INTO memory_candidates(
+                           id,observation_kind,content_type,retention_tier,scope,created_by,project,
+                           title,content,source,source_id,dedupe_key,confidence,importance,sensitivity,
+                           status,acl_json,provenance_json,expires_at,created_at,updated_at)
+                         VALUES(?1,'evidence-backed','semantic','working','workspace','seed','work',
+                           'seed','seed','test',?1,NULL,0.5,0.5,'normal','pending','[\"work\"]','{}',
+                           '2099-01-01T00:00:00Z','2020-01-01T00:00:00Z','2020-01-01T00:00:00Z')",
+                        [format!("seed-{index}")],
+                    )
+                    .expect("seed capacity");
+            }
+        }
+        let retry = store
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+            .expect("retry remains idempotent at capacity");
+        assert_eq!(retry.id, first.id);
+
+        let mut changed = input;
+        changed.confidence = 0.2;
+        let error = store
+            .propose_memory_candidate(&changed, "agent-a", &["work".into()], false)
+            .expect_err("changed confidence is not an idempotent retry");
+        assert!(error.to_string().contains("different proposal"));
+    }
+
+    #[test]
+    fn candidate_scope_and_rate_limits_are_bound_to_the_principal() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut principal = candidate_input("work", None);
+        principal.scope = "principal".into();
+        let candidate = store
+            .propose_memory_candidate(&principal, "agent-a", &["work".into()], false)
+            .expect("principal candidate");
+        assert_eq!(candidate.created_by, "agent-a");
+        assert!(
+            store
+                .list_memory_candidates(
+                    Some("work"),
+                    None,
+                    Some("principal"),
+                    10,
+                    "agent-b",
+                    &["work".into()],
+                    false
+                )
+                .expect("isolated list")
+                .is_empty()
+        );
+        assert!(
+            store
+                .cancel_memory_candidate_scoped(&candidate.id, "agent-b", &["work".into()], false)
+                .is_err()
+        );
+
+        let mut session = candidate_input("work", None);
+        session.scope = "session".into();
+        assert!(
+            store
+                .propose_memory_candidate(&session, "agent-a", &["work".into()], false)
+                .expect_err("unbound session must fail")
+                .to_string()
+                .contains("session identity binding")
+        );
+
+        for index in 0..observation::MAX_CANDIDATES_PER_PRINCIPAL_PER_HOUR - 1 {
+            let mut input = candidate_input("work", None);
+            input.source_id = format!("rate-{index}");
+            store
+                .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+                .expect("within rate");
+        }
+        let error = store
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect_err("rate limit");
+        assert!(error.to_string().contains("rate limit"));
+    }
+
+    #[test]
+    fn owner_global_candidates_require_owner_on_every_path() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut input = candidate_input("work", None);
+        input.scope = "owner-global".into();
+        let candidate = store
+            .propose_memory_candidate(&input, "owner", &["*".into()], true)
+            .expect("owner candidate");
+        assert!(
+            store
+                .list_memory_candidates(
+                    Some("work"),
+                    None,
+                    None,
+                    10,
+                    "wildcard-user",
+                    &["*".into()],
+                    false
+                )
+                .expect("non-owner list")
+                .is_empty()
+        );
+        assert!(
+            store
+                .cancel_memory_candidate_scoped(
+                    &candidate.id,
+                    "wildcard-user",
+                    &["*".into()],
+                    false
+                )
+                .is_err()
+        );
+        assert_eq!(
+            store
+                .connection
+                .lock()
+                .expect("store lock")
+                .query_row(
+                    "SELECT value FROM meta WHERE key='memory_candidates_schema'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("candidate schema marker"),
+            "1"
+        );
+    }
+
+    #[test]
+    fn migrates_legacy_candidate_queue_with_creator_binding_and_marker() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("store.sqlite3");
+        let connection = Connection::open(&path).expect("legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE memory_candidates(
+                   id TEXT PRIMARY KEY,observation_kind TEXT NOT NULL,content_type TEXT NOT NULL,
+                   retention_tier TEXT NOT NULL,scope TEXT NOT NULL,project TEXT NOT NULL,
+                   title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,source_id TEXT NOT NULL,
+                   dedupe_key TEXT,confidence REAL NOT NULL,importance REAL NOT NULL,sensitivity TEXT NOT NULL,
+                   status TEXT NOT NULL,acl_json TEXT NOT NULL,provenance_json TEXT NOT NULL,
+                   expires_at TEXT NOT NULL,rejection_reason TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+                 CREATE UNIQUE INDEX idx_memory_candidates_project_dedupe
+                   ON memory_candidates(project,dedupe_key) WHERE dedupe_key IS NOT NULL;",
+            )
+            .expect("legacy candidate schema");
+        drop(connection);
+
+        let store = Store::open(&path).expect("migrated store");
+        let connection = store.connection.lock().expect("store lock");
+        let has_creator = connection
+            .prepare("PRAGMA table_info(memory_candidates)")
+            .expect("candidate columns")
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("candidate column rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("candidate column names")
+            .into_iter()
+            .any(|column| column == "created_by");
+        assert!(has_creator);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT value FROM meta WHERE key='memory_candidates_schema'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("schema marker"),
+            "1"
         );
     }
 }

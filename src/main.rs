@@ -463,6 +463,17 @@ enum MemoryCandidateAction {
         #[arg(short = 'n', long, default_value_t = 100)]
         limit: usize,
     },
+    /// Export bounded candidates, including lifecycle tombstones, for audit or backup.
+    Export {
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        observation_kind: Option<String>,
+        #[arg(long)]
+        scope: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 10_000)]
+        limit: usize,
+    },
     /// Cancel a pending candidate.
     Cancel { id: String },
     /// Redact a pending candidate while retaining its tombstone.
@@ -2295,6 +2306,7 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                         provenance,
                         expires_at: expires_at.clone(),
                     },
+                    "owner",
                     &["*".into()],
                     true,
                 );
@@ -2333,20 +2345,45 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                 observation_kind,
                 scope,
                 limit,
+            }
+            | MemoryCandidateAction::Export {
+                project,
+                observation_kind,
+                scope,
+                limit,
             } => {
-                let result = store.list_memory_candidates(
-                    project.as_deref(),
-                    observation_kind.as_deref(),
-                    scope.as_deref(),
-                    *limit,
-                    &["*".into()],
-                );
+                let export = matches!(action, MemoryCandidateAction::Export { .. });
+                let result = if export {
+                    store.export_memory_candidates(
+                        project.as_deref(),
+                        observation_kind.as_deref(),
+                        scope.as_deref(),
+                        *limit,
+                        "owner",
+                        &["*".into()],
+                        true,
+                    )
+                } else {
+                    store.list_memory_candidates(
+                        project.as_deref(),
+                        observation_kind.as_deref(),
+                        scope.as_deref(),
+                        *limit,
+                        "owner",
+                        &["*".into()],
+                        true,
+                    )
+                };
                 match result {
                     Ok(candidates) => {
                         record_cli_memory_audit(
                             store,
                             config.auth.audit_max_events,
-                            "candidate.list",
+                            if export {
+                                "candidate.export"
+                            } else {
+                                "candidate.list"
+                            },
                             project.as_deref(),
                             None,
                             "succeeded",
@@ -2360,7 +2397,11 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                         record_cli_memory_audit(
                             store,
                             config.auth.audit_max_events,
-                            "candidate.list",
+                            if export {
+                                "candidate.export"
+                            } else {
+                                "candidate.list"
+                            },
                             project.as_deref(),
                             None,
                             "failed",
@@ -2379,9 +2420,9 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                     "candidate.cancel"
                 };
                 let result = if redact {
-                    store.redact_memory_candidate_scoped(id, &["*".into()], true)
+                    store.redact_memory_candidate_scoped(id, "owner", &["*".into()], true)
                 } else {
-                    store.cancel_memory_candidate_scoped(id, &["*".into()], true)
+                    store.cancel_memory_candidate_scoped(id, "owner", &["*".into()], true)
                 };
                 match result {
                     Ok(true) => {

@@ -625,6 +625,10 @@ pub fn router(state: AppState) -> Router {
             post(propose_memory_candidate).get(list_memory_candidates),
         )
         .route(
+            "/v1/memory/candidates/export",
+            get(export_memory_candidates),
+        )
+        .route(
             "/v1/memory/candidates/{id}/cancel",
             post(cancel_memory_candidate),
         )
@@ -1846,9 +1850,12 @@ async fn propose_memory_candidate(
         provenance: request.provenance,
         expires_at: request.expires_at,
     };
-    let result = state
-        .store
-        .propose_memory_candidate(&input, &visible_acl, principal.is_owner());
+    let result = state.store.propose_memory_candidate(
+        &input,
+        &principal.name,
+        &visible_acl,
+        principal.is_owner(),
+    );
     match result {
         Ok(candidate) => {
             record_audit(
@@ -1890,7 +1897,9 @@ async fn list_memory_candidates(
         params.observation_kind.as_deref(),
         params.scope.as_deref(),
         params.limit,
+        &principal.name,
         &principal.visible_acl(),
+        principal.is_owner(),
     ) {
         Ok(candidates) => {
             record_audit(
@@ -1918,6 +1927,38 @@ async fn list_memory_candidates(
             );
             Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
         }
+    }
+}
+
+async fn export_memory_candidates(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumQuery(params): AxumQuery<MemoryCandidateListParams>,
+) -> Result<Json<Vec<crate::observation::ObservationCandidate>>, (StatusCode, String)> {
+    let started = Instant::now();
+    match state.store.export_memory_candidates(
+        params.project.as_deref(),
+        params.observation_kind.as_deref(),
+        params.scope.as_deref(),
+        params.limit,
+        &principal.name,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    ) {
+        Ok(candidates) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.export",
+                params.project.as_deref(),
+                None,
+                "succeeded",
+                Some(candidates.len()),
+                started,
+            );
+            Ok(Json(candidates))
+        }
+        Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
     }
 }
 
@@ -1952,12 +1993,14 @@ async fn update_memory_candidate(
     let result = if redact {
         state.store.redact_memory_candidate_scoped(
             id,
+            &principal.name,
             &principal.visible_acl(),
             principal.is_owner(),
         )
     } else {
         state.store.cancel_memory_candidate_scoped(
             id,
+            &principal.name,
             &principal.visible_acl(),
             principal.is_owner(),
         )

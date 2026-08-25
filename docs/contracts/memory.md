@@ -34,16 +34,22 @@ identity binding. Lifecycle operations are `observe` (candidate input),
 the same independent content/retention/scope axes as memory, a source and source id, explicit
 provenance, confidence/importance, ACL, sensitivity, a dedupe hint, and a required expiry no more
 than seven days away. Candidate content is capped at 8 KiB and provenance at 4 KiB; pending
-proposals are capped at 1,000 per project. Sensitive or restricted proposals fail closed and are
+proposals are capped at 1,000 per project and 100 submissions per authenticated principal per
+rolling hour. Sensitive or restricted proposals fail closed and are
 reported as rejected without being stored. Candidate retries with an identical project/dedupe key
 and payload are idempotent.
 
 Candidates are never indexed by memory FTS, returned by `recall` or `context`, or counted in
-`memory_revision`. They are visible only through the scoped candidate list path and may be
+`memory_revision`. They are visible only through bounded scoped list/export paths and may be
 cancelled, expire automatically, or be redacted to a tombstone. Every create, rejection, list,
 cancel, expiry, and redaction operation is audit-recorded with metadata only. ACL and owner-global
 scope checks apply before candidate content is returned or changed; a candidate cannot cross its
 principal or workspace boundary.
+
+Principal-scoped candidates persist the authenticated creator identity and are visible or mutable
+only to that principal (or the owner). Session candidates fail closed until the transport supplies
+a verified session binding. Creator identities support authorization and rate limiting but are not
+serialized in candidate responses.
 
 ## Scope
 

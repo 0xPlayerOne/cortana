@@ -767,10 +767,12 @@ impl BrainServer {
             provenance: serde_json::Value::Object(params.provenance.into_iter().collect()),
             expires_at: params.expires_at,
         };
-        match self
-            .store
-            .propose_memory_candidate(&input, &visible_acl, principal.is_owner())
-        {
+        match self.store.propose_memory_candidate(
+            &input,
+            &principal.name,
+            &visible_acl,
+            principal.is_owner(),
+        ) {
             Ok(candidate) => {
                 self.audit_principal(
                     &principal,
@@ -818,7 +820,9 @@ impl BrainServer {
             params.observation_kind.as_deref(),
             params.scope.as_deref(),
             params.limit.unwrap_or(100),
+            &principal.name,
             &principal.visible_acl(),
+            principal.is_owner(),
         ) {
             Ok(candidates) => {
                 self.audit_principal(
@@ -844,6 +848,46 @@ impl BrainServer {
                 );
                 format!("candidate list error: {error}")
             }
+        }
+    }
+
+    #[tool(
+        description = "Export bounded observation candidates visible to the current principal, including lifecycle tombstones, for audit or backup."
+    )]
+    async fn export_memory_candidates(
+        &self,
+        Parameters(params): Parameters<MemoryCandidateListParams>,
+    ) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            return "authorization error: memory scope required".into();
+        }
+        match self.store.export_memory_candidates(
+            params.project.as_deref(),
+            params.observation_kind.as_deref(),
+            params.scope.as_deref(),
+            params.limit.unwrap_or(100),
+            &principal.name,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        ) {
+            Ok(candidates) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_candidate.export",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(candidates.len()),
+                    started,
+                );
+                serde_json::to_string(&candidates).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => format!("candidate export error: {error}"),
         }
     }
 
@@ -884,12 +928,14 @@ impl BrainServer {
         let result = if redact {
             self.store.redact_memory_candidate_scoped(
                 &id,
+                &principal.name,
                 &principal.visible_acl(),
                 principal.is_owner(),
             )
         } else {
             self.store.cancel_memory_candidate_scoped(
                 &id,
+                &principal.name,
                 &principal.visible_acl(),
                 principal.is_owner(),
             )

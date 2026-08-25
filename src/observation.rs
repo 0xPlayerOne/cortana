@@ -19,7 +19,10 @@ pub const MAX_CANDIDATE_SOURCE_ID_BYTES: usize = 512;
 pub const MAX_CANDIDATE_DEDUPE_KEY_BYTES: usize = 512;
 pub const MAX_CANDIDATE_PROVENANCE_BYTES: usize = 4 * 1024;
 pub const MAX_CANDIDATES_PER_PROJECT: usize = 1_000;
+pub const MAX_CANDIDATES_PER_PRINCIPAL_PER_HOUR: usize = 100;
+pub const MAX_CANDIDATE_LIST_LIMIT: usize = 100;
 pub const MAX_CANDIDATE_EXPORT_LIMIT: usize = 10_000;
+pub const MAX_CANDIDATE_RESPONSE_BYTES: usize = 1024 * 1024;
 pub const MAX_CANDIDATE_TTL: Duration = Duration::days(7);
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -110,6 +113,8 @@ pub struct ObservationCandidate {
     pub content_type: String,
     pub retention_tier: String,
     pub scope: String,
+    #[serde(skip_serializing)]
+    pub created_by: String,
     pub project: String,
     pub title: String,
     pub content: String,
