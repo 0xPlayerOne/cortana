@@ -628,6 +628,10 @@ pub fn router(state: AppState) -> Router {
             "/v1/memory/candidates/{id}/redact",
             post(redact_memory_candidate),
         )
+        .route(
+            "/v1/memory/candidates/{id}/classify",
+            post(classify_memory_candidate),
+        )
         .route("/v1/answer", post(answer))
         .route("/v1/audit", get(audit_events))
         .route("/v1/auth/reload", post(reload_auth))
@@ -1878,6 +1882,74 @@ async fn redact_memory_candidate(
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     update_memory_candidate(&state, &principal, &id, true).await
+}
+
+async fn classify_memory_candidate(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<crate::classification::CandidateClassification>, (StatusCode, String)> {
+    let started = Instant::now();
+    if !principal.has_scope(MEMORY_SCOPE) {
+        record_audit(
+            &state,
+            &principal,
+            "memory.candidate.classify",
+            None,
+            None,
+            "forbidden",
+            None,
+            started,
+        );
+        return Err((StatusCode::FORBIDDEN, "memory scope required".into()));
+    }
+    match state
+        .store
+        .classify_memory_candidate(&id, &principal.visible_acl(), principal.is_owner())
+    {
+        Ok(result) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.classify",
+                None,
+                None,
+                "succeeded",
+                Some(1),
+                started,
+            );
+            Ok(Json(result))
+        }
+        Err(error)
+            if crate::memory::is_authorization_error(&error)
+                || error.to_string() == "candidate ACL denied" =>
+        {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.classify",
+                None,
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            Err((StatusCode::FORBIDDEN, "candidate ACL denied".into()))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.classify",
+                None,
+                None,
+                "failed",
+                None,
+                started,
+            );
+            Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
+        }
+    }
 }
 
 async fn update_memory_candidate(

@@ -71,6 +71,8 @@ The native MCP tools are:
   review queue. It is not canonical memory and is not recallable until explicitly promoted.
 - `list_memory_candidates` — list candidates visible to the current principal.
 - `cancel_memory_candidate` / `redact_memory_candidate` — close or redact pending proposals.
+- `classify_memory_candidate` — compare one visible pending candidate with same-scope canonical
+  memory using deterministic local rules; this is review-only and never mutates memory.
 
 The equivalent CLI is:
 
@@ -99,8 +101,9 @@ backward-compatible alias. `owner-global` requires owner authorization even
 when an ACL label would otherwise match.
 
 Candidate HTTP endpoints are `POST /v1/memory/candidates`, `GET /v1/memory/candidates`,
-`POST /v1/memory/candidates/{id}/cancel`, and `POST /v1/memory/candidates/{id}/redact`. The CLI
-equivalent is `cortana memory candidate propose|list|cancel|redact`. Candidate submissions require
+`POST /v1/memory/candidates/{id}/cancel`, `POST /v1/memory/candidates/{id}/redact`, and
+`POST /v1/memory/candidates/{id}/classify`. The CLI equivalent is
+`cortana memory candidate propose|list|cancel|redact|classify`. Candidate submissions require
 an explicit JSON provenance object, source id, sensitivity, and expiry; content is limited to 8 KiB,
 provenance to 4 KiB, and expiry to seven days. The bounded path rejects sensitive/restricted
 proposals and never advances the canonical memory revision.

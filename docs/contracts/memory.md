@@ -43,6 +43,17 @@ cancel, expiry, and redaction operation is audit-recorded with metadata only. AC
 scope checks apply before candidate content is returned or changed; a candidate cannot cross its
 principal or workspace boundary.
 
+### Classification
+
+`classify` is a deterministic, provider-free, review-only comparison of one pending candidate with
+visible canonical records having the same project, ACL, content type, retention tier, and scope.
+It returns a traceable candidate id, supporting memory ids, explanation, confidence, proposed action,
+and unresolved ambiguity. Results are one of `new`, `exact-duplicate`, `semantic-duplicate`,
+`reinforcement`, `contradiction`, `supersession`, `temporary-working`, or `discard`.
+Classification never writes canonical memory, advances `memory_revision`, resurrects tombstones, or
+creates a supersession edge. Conflicting preferences, changed decisions, and low-confidence
+ambiguity remain review-required. Cross-project records and invisible ACLs are not compared.
+
 ## Scope
 
 Scope is one of `session`, `principal`, `workspace/project`, or explicitly approved owner-global.

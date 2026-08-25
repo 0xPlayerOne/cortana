@@ -2,6 +2,7 @@ pub mod answer;
 pub mod api;
 pub mod auth;
 pub mod buzz_communities;
+pub mod classification;
 pub mod config;
 pub mod connectors;
 pub mod context;

@@ -14,6 +14,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::auth::acl_allows;
+use crate::classification::{self, CandidateClassification};
 use crate::memory::{self, MemoryInput, MemoryRecord, MemorySearchResult, MemoryStats};
 use crate::model::{Document, StoredChunk};
 use crate::observation::{self, ObservationCandidate, ObservationCandidateInput};
@@ -1661,6 +1662,50 @@ impl Store {
             )
             .optional()
             .map_err(Into::into)
+    }
+
+    /// Classify a visible pending candidate against canonical memory without
+    /// mutating either table or advancing `memory_revision`.
+    pub fn classify_memory_candidate(
+        &self,
+        id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<CandidateClassification> {
+        self.expire_memory_candidates()?;
+        let candidate = self
+            .memory_candidate(id)?
+            .ok_or_else(|| anyhow::anyhow!("memory candidate not found"))?;
+        anyhow::ensure!(
+            owner || acl_allows(&candidate.acl, principal_acl),
+            "candidate ACL denied"
+        );
+        anyhow::ensure!(
+            candidate.sensitivity == observation::CandidateSensitivity::Normal.as_str(),
+            "sensitive candidates require explicit review and cannot be classified"
+        );
+        let scope = memory::MemoryScope::parse(&candidate.scope)?;
+        if scope == memory::MemoryScope::OwnerGlobal {
+            anyhow::ensure!(
+                owner,
+                "owner-global candidate scope requires owner authorization"
+            );
+        }
+        let export_acl = if owner {
+            vec!["*".to_owned()]
+        } else {
+            principal_acl.to_vec()
+        };
+        let memories = self.export_memories_with_axes(
+            Some(&candidate.project),
+            None,
+            Some(&candidate.content_type),
+            Some(&candidate.retention_tier),
+            Some(&candidate.scope),
+            memory::MAX_MEMORY_EXPORT_LIMIT,
+            &export_acl,
+        )?;
+        Ok(classification::classify(&candidate, &memories))
     }
 
     pub fn cancel_memory_candidate_scoped(
@@ -6213,5 +6258,49 @@ mod tests {
                 .as_object()
                 .is_some_and(|value| value.is_empty())
         );
+    }
+
+    #[test]
+    fn candidate_classification_is_scoped_review_only_and_does_not_change_revision() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let candidate = store
+            .propose_memory_candidate(&candidate_input("work", None), &["work".into()], false)
+            .expect("candidate");
+        let mut canonical = crate::memory::MemoryInput {
+            kind: "working".into(),
+            project: "work".into(),
+            title: candidate.title.clone(),
+            content: candidate.content.clone(),
+            source: "memory".into(),
+            source_id: "canonical-1".into(),
+            dedupe_key: None,
+            confidence: 0.8,
+            importance: 0.5,
+            acl: vec!["work".into()],
+            provenance: serde_json::json!({"source":"test"}),
+            supersedes_id: None,
+            valid_until: None,
+        };
+        let canonical_record = store.remember(&canonical).expect("canonical memory");
+        let revision = store.memory_revision().expect("revision");
+        let result = store
+            .classify_memory_candidate(&candidate.id, &["work".into()], false)
+            .expect("classification");
+        assert_eq!(result.classification, "exact-duplicate");
+        let canonical_id = canonical_record.id.clone();
+        assert_eq!(result.supporting_memory_ids, vec![canonical_id.clone()]);
+        assert_eq!(store.memory_revision().expect("stable revision"), revision);
+
+        // A different project and an ACL-invisible record are never compared.
+        canonical.project = "personal".into();
+        canonical.acl = vec!["personal".into()];
+        canonical.source_id = "personal-canonical".into();
+        store.remember(&canonical).expect("out-of-scope memory");
+        let result = store
+            .classify_memory_candidate(&candidate.id, &["work".into()], false)
+            .expect("scoped classification");
+        assert_eq!(result.classification, "exact-duplicate");
+        assert_eq!(result.supporting_memory_ids, vec![canonical_id]);
     }
 }
