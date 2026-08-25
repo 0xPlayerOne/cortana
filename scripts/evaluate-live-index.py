@@ -11,12 +11,14 @@ provider error bodies.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
 import time
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -29,12 +31,14 @@ MAX_QUERY_BYTES = 16 * 1024
 MAX_ID_BYTES = 512
 MAX_ANSWER_TERMS = 32
 MAX_ANSWER_TERM_BYTES = 256
+MAX_CORPUS_METADATA_BYTES = 256
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 MAX_TOTAL_SECONDS = 300.0
 MAX_REQUEST_SECONDS = 60.0
 DEFAULT_REQUEST_SECONDS = 30.0
 DEFAULT_TOTAL_SECONDS = 300.0
 _CITATION = re.compile(r"\[(\d+)\]")
+_SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class ManifestError(ValueError):
@@ -93,6 +97,71 @@ def _answer_terms(value: Any, label: str) -> list[str]:
     return result
 
 
+def _corpus_metadata(value: Any) -> dict[str, str] | None:
+    """Validate non-secret provenance for an operator-approved corpus.
+
+    The manifest still keeps raw queries outside the repository.  This small
+    metadata block lets a report distinguish a corpus or approval change from
+    a product regression without echoing private content or filesystem paths.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ManifestError("corpus must be an object")
+
+    def metadata_text(name: str, *, required: bool = True) -> str | None:
+        result = _bounded_text(value.get(name), f"corpus.{name}", required=required)
+        if result is not None and len(result.encode("utf-8")) > MAX_CORPUS_METADATA_BYTES:
+            raise ManifestError(f"corpus.{name} exceeds the {MAX_CORPUS_METADATA_BYTES} byte limit")
+        if result is not None and any(separator in result for separator in ("/", "\\")):
+            raise ManifestError(f"corpus.{name} must not contain a path separator")
+        return result
+
+    corpus_id = metadata_text("id")
+    revision = metadata_text("revision")
+    digest = metadata_text("digest")
+    assert corpus_id is not None and revision is not None and digest is not None
+    if _SHA256_DIGEST.fullmatch(digest) is None:
+        raise ManifestError("corpus.digest must be a sha256:<64 lowercase hex> digest")
+
+    storage = metadata_text("storage")
+    if storage not in {"local", "encrypted-local"}:
+        raise ManifestError("corpus.storage must be `local` or `encrypted-local`")
+    approved_at = metadata_text("approved_at")
+    expires_at = metadata_text("expires_at", required=False)
+    try:
+        approved_time = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
+        if approved_time.tzinfo is None:
+            raise ValueError("timezone required")
+        expires_time = (
+            datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if expires_at is not None
+            else None
+        )
+        if expires_time is not None and (
+            expires_time.tzinfo is None or expires_time <= approved_time
+        ):
+            raise ValueError("expiry must be after approval")
+    except ValueError as error:
+        raise ManifestError(
+            "corpus approval timestamps must be RFC3339 with a valid window"
+        ) from error
+
+    reviewer = metadata_text("reviewer", required=False)
+    result = {
+        "id": corpus_id,
+        "revision": revision,
+        "digest": digest,
+        "storage": storage,
+        "approved_at": approved_at,
+    }
+    if expires_at is not None:
+        result["expires_at"] = expires_at
+    if reviewer is not None:
+        result["reviewer"] = reviewer
+    return result
+
+
 def _case(value: Any, label: str, *, answer: bool = False) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ManifestError(f"{label} must be an object")
@@ -138,6 +207,7 @@ def validate_manifest(value: Any) -> dict[str, Any]:
         raise ManifestError("manifest must contain at least one case")
     if len(retrieval_cases) + len(answer_cases) > MAX_CASES:
         raise ManifestError(f"manifest contains more than {MAX_CASES} cases")
+    corpus = _corpus_metadata(value.get("corpus"))
     thresholds = value.get("thresholds", {})
     if not isinstance(thresholds, dict):
         raise ManifestError("thresholds must be an object")
@@ -168,6 +238,7 @@ def validate_manifest(value: Any) -> dict[str, Any]:
             checked_thresholds[name] = float(threshold)
     return {
         "version": 1,
+        "corpus": corpus,
         "thresholds": checked_thresholds,
         "retrieval_cases": [
             _case(item, f"retrieval_cases[{index}]") for index, item in enumerate(retrieval_cases)
@@ -180,16 +251,19 @@ def validate_manifest(value: Any) -> dict[str, Any]:
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
-    metadata = path.stat()
     if not path.is_file():
         raise ManifestError("manifest is not a regular file")
+    metadata = path.stat()
     if metadata.st_size > MAX_MANIFEST_BYTES:
         raise ManifestError(f"manifest exceeds the {MAX_MANIFEST_BYTES} byte limit")
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_bytes()
+        value = json.loads(raw.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ManifestError("manifest is not valid UTF-8 JSON") from error
-    return validate_manifest(value)
+    manifest = validate_manifest(value)
+    manifest["manifest_digest"] = f"sha256:{hashlib.sha256(raw).hexdigest()}"
+    return manifest
 
 
 def _request_payload(case: Mapping[str, Any]) -> dict[str, Any]:
@@ -437,10 +511,22 @@ def evaluate_manifest(
         and metrics["provider_fallback_rate"] <= thresholds["max_provider_fallback_rate"]
         and metrics["max_latency_ms"] <= thresholds["max_latency_ms"]
     )
+    provenance: dict[str, Any] = {}
+    manifest_digest = manifest.get("manifest_digest")
+    if isinstance(manifest_digest, str):
+        provenance["manifest_digest"] = manifest_digest
+    corpus = manifest.get("corpus")
+    if isinstance(corpus, dict):
+        # Reports intentionally carry identifiers and digests only.  Approval
+        # timestamps, reviewer labels, and all case content stay local.
+        provenance["corpus"] = {
+            key: corpus[key] for key in ("id", "revision", "digest") if key in corpus
+        }
     return {
         "evaluation": "cortana-live-index-v1",
         "passed": passed,
         "read_only": True,
+        "provenance": provenance,
         "cache_invalidation_checked": False,
         "metrics": metrics,
         "thresholds": thresholds,

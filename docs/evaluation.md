@@ -319,6 +319,17 @@ Private manifests must be:
 - free of reusable credentials;
 - reported through non-secret case and evidence identifiers.
 
+An approved live manifest should also carry a non-secret `corpus` block with an operator-chosen
+`id`, `revision`, `sha256:` digest, storage class (`local` or `encrypted-local`), and approval
+window. The bounded live evaluator hashes the manifest file and emits only the manifest digest plus
+the corpus identifiers/revision/digest in its report. Approval timestamps, reviewer labels, raw
+queries, source content, private paths, and credentials never leave the local run.
+
+The evaluator accepts manifests without this optional block for compatibility with older fixtures;
+those runs cannot be used as the final approved-corpus gate until the operator records the corpus
+provenance. A changed corpus digest or manifest digest is a provenance change, not evidence of a
+product regression, and must be reviewed independently.
+
 A corpus or manifest change must not be misreported as a code regression.
 
 ## Reports
