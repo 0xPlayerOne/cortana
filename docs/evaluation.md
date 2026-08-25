@@ -92,6 +92,10 @@ Measure:
 - privacy disclosure and opt-in behavior.
 
 Every accepted factual paragraph must cite returned authorized evidence. Provider failure must return an explicit bounded fallback without blocking core retrieval.
+The model-backed report emits an activation record containing the sanitized provider authority,
+exact model, API/retrieval contract versions, pinned corpus revision, and a digest of the bounded
+report. `activated` is true only when the opt-in gate passes; provider paths, credentials, and raw
+queries are never recorded.
 
 ### Source operations
 
