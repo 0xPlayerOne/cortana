@@ -138,6 +138,23 @@ pub struct QueryConfig {
     pub retrieval_limit: usize,
     #[serde(default = "default_query_result_limit")]
     pub result_limit: usize,
+    /// Candidate depth multiplier for semantic and lexical retrieval. The
+    /// runtime clamps this to a bounded 1–32 range.
+    #[serde(default = "default_query_candidate_multiplier")]
+    pub candidate_multiplier: usize,
+    #[serde(default = "default_query_semantic_weight")]
+    pub semantic_weight: f32,
+    #[serde(default = "default_query_lexical_weight")]
+    pub lexical_weight: f32,
+    #[serde(default = "default_query_idf_weight")]
+    pub idf_weight: f32,
+    #[serde(default = "default_query_recency_weight")]
+    pub recency_weight: f32,
+    /// Enables Cortana's bounded deterministic local reranker. It never calls
+    /// a provider and remains disabled by default until approved-corpus
+    /// evaluation demonstrates a quality win within the latency budget.
+    #[serde(default)]
+    pub reranker_enabled: bool,
     #[serde(default = "default_query_context_tokens")]
     pub context_tokens: usize,
     #[serde(default = "default_query_output_tokens")]
@@ -341,6 +358,12 @@ impl Default for QueryConfig {
             max_planned_queries: default_query_max_planned_queries(),
             retrieval_limit: default_query_retrieval_limit(),
             result_limit: default_query_result_limit(),
+            candidate_multiplier: default_query_candidate_multiplier(),
+            semantic_weight: default_query_semantic_weight(),
+            lexical_weight: default_query_lexical_weight(),
+            idf_weight: default_query_idf_weight(),
+            recency_weight: default_query_recency_weight(),
+            reranker_enabled: false,
             context_tokens: default_query_context_tokens(),
             output_tokens: default_query_output_tokens(),
             request_timeout_seconds: default_query_timeout(),
@@ -349,6 +372,22 @@ impl Default for QueryConfig {
             cache_max_entries: default_query_cache_entries(),
             cache_ttl_seconds: default_query_cache_ttl(),
         }
+    }
+}
+
+impl QueryConfig {
+    /// Return the bounded retrieval policy shared by HTTP, MCP, CLI, and
+    /// provider-backed answer paths.
+    pub fn retrieval_tuning(&self) -> crate::retrieval::RetrievalTuning {
+        crate::retrieval::RetrievalTuning {
+            candidate_multiplier: self.candidate_multiplier,
+            semantic_weight: self.semantic_weight,
+            lexical_weight: self.lexical_weight,
+            idf_weight: self.idf_weight,
+            recency_weight: self.recency_weight,
+            reranker_enabled: self.reranker_enabled,
+        }
+        .bounded()
     }
 }
 
@@ -797,6 +836,26 @@ const fn default_query_retrieval_limit() -> usize {
 
 const fn default_query_result_limit() -> usize {
     20
+}
+
+const fn default_query_candidate_multiplier() -> usize {
+    8
+}
+
+const fn default_query_semantic_weight() -> f32 {
+    1.0
+}
+
+const fn default_query_lexical_weight() -> f32 {
+    1.2
+}
+
+const fn default_query_idf_weight() -> f32 {
+    0.08
+}
+
+const fn default_query_recency_weight() -> f32 {
+    0.1
 }
 
 const fn default_query_context_tokens() -> usize {

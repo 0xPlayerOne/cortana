@@ -20,8 +20,10 @@ retention, while every durable record projects its content type (`semantic`, `ep
 are preserved and older clients can continue filtering by `kind`.
 
 Retention tiers are `working` and `durable`. Scope values are `session`, `principal`, `workspace`,
-and `owner-global`; the current authorization boundary still requires project and ACL checks for
-every scope. Lifecycle operations are `observe` (candidate input),
+and `owner-global`. Workspace writes require project and ACL checks, and owner-global operations
+require authenticated owner authorization even when ACL labels match. Session and principal are
+reserved values that fail closed on writes until the canonical record stores their verified
+identity binding. Lifecycle operations are `observe` (candidate input),
 `remember`/`retain` (approved canonical write), `recall` (read), `consolidate` (approved merge),
 `reflect` (non-mutating derivation), `supersede`, and `forget`/`retract`.
 
@@ -32,12 +34,13 @@ every scope. Lifecycle operations are `observe` (candidate input),
 the same independent content/retention/scope axes as memory, a source and source id, explicit
 provenance, confidence/importance, ACL, sensitivity, a dedupe hint, and a required expiry no more
 than seven days away. Candidate content is capped at 8 KiB and provenance at 4 KiB; pending
-proposals are capped at 1,000 per project. Sensitive or restricted proposals fail closed and are
+proposals are capped at 1,000 per project and 100 submissions per authenticated principal per
+rolling hour. Sensitive or restricted proposals fail closed and are
 reported as rejected without being stored. Candidate retries with an identical project/dedupe key
 and payload are idempotent.
 
 Candidates are never indexed by memory FTS, returned by `recall` or `context`, or counted in
-`memory_revision`. They are visible only through the scoped candidate list path and may be
+`memory_revision`. They are visible only through bounded scoped list/export paths and may be
 cancelled, expire automatically, or be redacted to a tombstone. Every create, rejection, list,
 cancel, expiry, and redaction operation is audit-recorded with metadata only. ACL and owner-global
 scope checks apply before candidate content is returned or changed; a candidate cannot cross its
@@ -45,7 +48,7 @@ principal or workspace boundary.
 
 ### Classification
 
-`classify` is a deterministic, provider-free, review-only comparison of one pending candidate with
+`classify` is a deterministic, provider-independent, review-only comparison of one pending candidate with
 visible canonical records having the same project, ACL, content type, retention tier, and scope.
 It returns a traceable candidate id, supporting memory ids, explanation, confidence, proposed action,
 and unresolved ambiguity. Results are one of `new`, `exact-duplicate`, `semantic-duplicate`,
@@ -53,6 +56,14 @@ and unresolved ambiguity. Results are one of `new`, `exact-duplicate`, `semantic
 Classification never writes canonical memory, advances `memory_revision`, resurrects tombstones, or
 creates a supersession edge. Conflicting preferences, changed decisions, and low-confidence
 ambiguity remain review-required. Cross-project records and invisible ACLs are not compared.
+Retracted, superseded, expired, and not-yet-valid records are excluded. An optional model adapter
+may refine the deterministic result; provider failure or invalid output returns a bounded,
+review-required deterministic fallback without exposing provider errors.
+
+Principal-scoped candidates persist the authenticated creator identity and are visible or mutable
+only to that principal (or the owner). Session candidates fail closed until the transport supplies
+a verified session binding. Creator identities support authorization and rate limiting but are not
+serialized in candidate responses.
 
 ### Approval-aware consolidation
 
@@ -82,8 +93,9 @@ change explicit memory writes, recall, source retrieval, export, or deletion beh
 ## Scope
 
 Scope is one of `session`, `principal`, `workspace/project`, or explicitly approved owner-global.
-The current store represents workspace/project scope in `project` plus ACL labels. Principal and
-agent scope is enforced by the auth policy before recall or mutation. A selected workspace is a UI
+The current store represents workspace/project scope in `project` plus ACL labels. It does not yet
+persist the principal or session identity needed to authorize those narrower scopes, so it rejects
+those writes instead of approximating identity with ACL membership. A selected workspace is a UI
 filter, never authorization. Cross-workspace dedupe, cache, supersession, export, and revision paths
 must remain isolated.
 

@@ -9,7 +9,7 @@ retain.
 
 ## Current release boundary
 
-The current protected source and published package are `v0.34.44`. Native memory remains the only
+The current protected source and published package are `v0.39.0`. Native memory remains the only
 supported memory engine: it is local, explicit-write, ACL-filtered, auditable, exportable, and
 separate from source knowledge. External memory providers are not product dependencies.
 
@@ -24,6 +24,11 @@ Each memory has independent content and retention axes:
 - `content_type` is `semantic`, `episodic`, `procedural`, or `preference`;
 - `retention_tier` is `durable` or `working`;
 - `scope` is `session`, `principal`, `workspace`, or `owner-global`.
+
+`workspace` is the generally available scoped-write boundary. `owner-global`
+requires an authenticated owner. `session` and `principal` are reserved contract
+values and fail closed on writes until the store carries and verifies their
+identity binding; an ACL label is not treated as that binding.
 
 The legacy `kind` field remains readable and writable during the compatibility window. A
 `working` kind is represented as semantic content with working retention; durable kinds project
@@ -70,6 +75,7 @@ The native MCP tools are:
 - `propose_memory_candidate` — submit one bounded, provenance-bearing observation to the isolated
   review queue. It is not canonical memory and is not recallable until explicitly promoted.
 - `list_memory_candidates` — list candidates visible to the current principal.
+- `export_memory_candidates` — export a bounded, scoped candidate audit/backup view.
 - `cancel_memory_candidate` / `redact_memory_candidate` — close or redact pending proposals.
 - `classify_memory_candidate` — compare one visible pending candidate with same-scope canonical
   memory using deterministic local rules; this is review-only and never mutates memory.
@@ -95,7 +101,7 @@ cortana memory remember --kind working --project work \
   --title "Current task" --content "Validate the release" \
   --valid-until "2026-08-16T18:00:00Z"
 cortana memory remember --kind semantic --content-type procedural \
-  --retention-tier working --scope principal --project work \
+  --retention-tier working --scope workspace --project work \
   --title "Current procedure" --content "Validate the release"
 cortana memory recall "release notes" --project work --retention-tier durable
 cortana memory export --project work --limit 10000 > work-memory.json
@@ -108,12 +114,14 @@ their normal query/status scopes; ACLs are enforced before content is returned
 or redacted. The remember, recall, and export contracts accept independent
 `content_type`, `retention_tier`, and `scope` fields/filters; `kind` remains a
 backward-compatible alias. `owner-global` requires owner authorization even
-when an ACL label would otherwise match.
-
+when an ACL label would otherwise match. Requests to write `session` or
+`principal` scope are rejected until their identity-binding fields are
+implemented.
 Candidate HTTP endpoints are `POST /v1/memory/candidates`, `GET /v1/memory/candidates`,
+`GET /v1/memory/candidates/export`,
 `POST /v1/memory/candidates/{id}/cancel`, `POST /v1/memory/candidates/{id}/redact`, and
 `POST /v1/memory/candidates/{id}/classify`. The CLI equivalent is
-`cortana memory candidate propose|list|cancel|redact|classify`. Candidate submissions require
+`cortana memory candidate propose|list|export|cancel|redact|classify`. Candidate submissions require
 an explicit JSON provenance object, source id, sensitivity, and expiry; content is limited to 8 KiB,
 provenance to 4 KiB, and expiry to seven days. The bounded path rejects sensitive/restricted
 proposals and never advances the canonical memory revision.

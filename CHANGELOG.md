@@ -1,5 +1,106 @@
 # Changelog
 
+## [0.40.0](https://github.com/0xPlayerOne/cortana/compare/v0.39.4...v0.40.0) (2026-08-25)
+
+
+### Features
+
+* **memory:** separate retention and scope axes ([#2123](https://github.com/0xPlayerOne/cortana/issues/2123)) ([dad4864](https://github.com/0xPlayerOne/cortana/commit/dad486403901c8da5c60a626bb83b94e323bc61f))
+
+## [0.39.4](https://github.com/0xPlayerOne/cortana/compare/v0.39.3...v0.39.4) (2026-08-25)
+
+
+### Bug Fixes
+
+* **release:** omit empty macOS signing credentials ([#2169](https://github.com/0xPlayerOne/cortana/issues/2169)) ([95de012](https://github.com/0xPlayerOne/cortana/commit/95de01288b5dd6cb06459ae915fc69628bf3f36e))
+
+## [0.39.3](https://github.com/0xPlayerOne/cortana/compare/v0.39.2...v0.39.3) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ui:** remove sidebar hover accent ([#2159](https://github.com/0xPlayerOne/cortana/issues/2159)) ([8c2dee6](https://github.com/0xPlayerOne/cortana/commit/8c2dee6c2866397270aa972ab550d6feb7fd2093))
+
+## [0.39.2](https://github.com/0xPlayerOne/cortana/compare/v0.39.1...v0.39.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **release:** recover macOS updater packages explicitly ([#2157](https://github.com/0xPlayerOne/cortana/issues/2157)) ([94b45ef](https://github.com/0xPlayerOne/cortana/commit/94b45ef3116245d31d8661df62ef3687aecf986c))
+
+## [0.39.1](https://github.com/0xPlayerOne/cortana/compare/v0.39.0...v0.39.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **release:** publish partial updater manifests safely ([#2155](https://github.com/0xPlayerOne/cortana/issues/2155)) ([a797953](https://github.com/0xPlayerOne/cortana/commit/a797953bc572634f93169402aed14074fd265587))
+
+## [0.39.0](https://github.com/0xPlayerOne/cortana/compare/v0.38.0...v0.39.0) (2026-08-25)
+
+
+### Features
+
+* **chunking:** add deterministic structured chunking ([5621b58](https://github.com/0xPlayerOne/cortana/commit/5621b58daa56f9f06b90717dea392df46e369a28))
+* **context:** expose bounded reduction telemetry ([330d187](https://github.com/0xPlayerOne/cortana/commit/330d18771682ea25668a9629f169d1dcd698763f))
+* **eval:** baseline retrieval and citation metrics ([22ad65b](https://github.com/0xPlayerOne/cortana/commit/22ad65ba17e5d854343fe2b069aafe209a144d8c))
+* **eval:** enforce approved corpus governance ([825aa1c](https://github.com/0xPlayerOne/cortana/commit/825aa1cc6082c095ee3151f465ea4e83fe0cfabe))
+* **eval:** measure context digest reuse ([3c31832](https://github.com/0xPlayerOne/cortana/commit/3c31832b43fca9899b682ffba67e01b5fb52b50d))
+* **eval:** record provider activation decisions ([31380a8](https://github.com/0xPlayerOne/cortana/commit/31380a8f29a2d295fd7f4e526c2bbd776ae183ab))
+* **query:** tune ranking and harden lexical fallback ([407bc06](https://github.com/0xPlayerOne/cortana/commit/407bc06d1ca31d9c94ea182818b54ae050d3b3a3))
+* **retrieval:** add bounded local reranker ([81f0bd8](https://github.com/0xPlayerOne/cortana/commit/81f0bd8a0e9604ce8be0c1fb0e2b8872815e8d9e))
+
+
+### Bug Fixes
+
+* **eval:** require context payload for reuse metric ([5a7856d](https://github.com/0xPlayerOne/cortana/commit/5a7856d7b77320888a17fd637e23e5082798b47e))
+* **retrieval:** apply tuning across query surfaces ([2210963](https://github.com/0xPlayerOne/cortana/commit/2210963f53fe33f4cb8ec6ae21c8db5c72a48a0c))
+* **retrieval:** satisfy strict clippy lint ([3a08700](https://github.com/0xPlayerOne/cortana/commit/3a08700a660dc3667d93ae53108df9a060c9ac32))
+
+
+### Tests
+
+* **eval:** run deterministic quality gate in unit checks ([c625ad6](https://github.com/0xPlayerOne/cortana/commit/c625ad65f304c8676f8f62c8eddc2f09cd92fe75))
+
+## [0.38.0](https://github.com/0xPlayerOne/cortana/compare/v0.37.5...v0.38.0) (2026-08-25)
+
+
+### Features
+
+* **eval:** record approved corpus provenance ([abfc8c1](https://github.com/0xPlayerOne/cortana/commit/abfc8c178f806a0db70b8e2afcafcd1fc1bf542a))
+
+## [0.37.5](https://github.com/0xPlayerOne/cortana/compare/v0.37.4...v0.37.5) (2026-08-25)
+
+
+### Bug Fixes
+
+* **acceptance:** install Linux desktop runtime dependencies ([4b006f7](https://github.com/0xPlayerOne/cortana/commit/4b006f72e8576d3c551bf57f9066fb0992d485a5))
+
+
+### CI
+
+* **release:** fail closed on macOS trust gates ([#2145](https://github.com/0xPlayerOne/cortana/issues/2145)) ([3e7de47](https://github.com/0xPlayerOne/cortana/commit/3e7de4728279d6c0bc9f10b050d2d089786458db))
+
+## [0.37.4](https://github.com/0xPlayerOne/cortana/compare/v0.37.3...v0.37.4) (2026-08-25)
+
+
+### Bug Fixes
+
+* **acceptance:** support historical release verification ([3856f75](https://github.com/0xPlayerOne/cortana/commit/3856f756d366eca95f74d966352d977cd91ebc73))
+
+## [0.37.3](https://github.com/0xPlayerOne/cortana/compare/v0.37.2...v0.37.3) (2026-08-25)
+
+
+### Bug Fixes
+
+* **desktop:** resolve published host package names ([cda65d2](https://github.com/0xPlayerOne/cortana/commit/cda65d25180bbab9cf71bc44bf5d1b14d714b78a))
+
+## [0.37.2](https://github.com/0xPlayerOne/cortana/compare/v0.37.1...v0.37.2) (2026-08-25)
+
+
+### Tests
+
+* **desktop:** verify packaged host startup ([fc44283](https://github.com/0xPlayerOne/cortana/commit/fc442834510554dcb94b76a09ea5adea0be6ddf3))
+
 ## [0.37.1](https://github.com/0xPlayerOne/cortana/compare/v0.37.0...v0.37.1) (2026-08-25)
 
 

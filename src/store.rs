@@ -14,6 +14,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::auth::acl_allows;
+use crate::chunking::{CHUNKING_CONTRACT_VERSION, ChunkSpec};
 use crate::classification::{self, CandidateClassification};
 use crate::consolidation::{
     self, ConsolidationDecision, ConsolidationOutcome, ConsolidationPolicy, PolicyContext,
@@ -236,7 +237,9 @@ impl Store {
              CREATE TABLE IF NOT EXISTS chunks(
                id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
                ordinal INTEGER NOT NULL, content TEXT NOT NULL, embedding_json TEXT NOT NULL,
-               embedding_blob BLOB);
+               embedding_blob BLOB, chunk_key TEXT, strategy TEXT,
+               parent_key TEXT, previous_key TEXT, next_key TEXT,
+               start_byte INTEGER, end_byte INTEGER, policy_version TEXT);
              CREATE TABLE IF NOT EXISTS embedding_cache(
                fingerprint TEXT NOT NULL, content_hash TEXT NOT NULL,
                embedding_json TEXT NOT NULL, embedding_blob BLOB, hits INTEGER NOT NULL DEFAULT 0,
@@ -288,6 +291,7 @@ impl Store {
                content_type TEXT NOT NULL,
                retention_tier TEXT NOT NULL,
                scope TEXT NOT NULL,
+               created_by TEXT NOT NULL DEFAULT 'legacy-owner',
                project TEXT NOT NULL,
                title TEXT NOT NULL,
                content TEXT NOT NULL,
@@ -340,9 +344,7 @@ impl Store {
              CREATE INDEX IF NOT EXISTS idx_memory_candidates_scope
                ON memory_candidates(project,status,created_at DESC);
              CREATE INDEX IF NOT EXISTS idx_memory_candidates_expiry
-               ON memory_candidates(status,expires_at);
-             CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_candidates_project_dedupe
-               ON memory_candidates(project,dedupe_key) WHERE dedupe_key IS NOT NULL;",
+               ON memory_candidates(status,expires_at);",
         )?;
         connection.execute(
             "INSERT OR IGNORE INTO meta(key,value) VALUES('corpus_revision','0')",
@@ -353,6 +355,14 @@ impl Store {
             [],
         )?;
         ensure_document_content_column(&connection)?;
+        ensure_column(&connection, "chunks", "chunk_key", "TEXT")?;
+        ensure_column(&connection, "chunks", "strategy", "TEXT")?;
+        ensure_column(&connection, "chunks", "parent_key", "TEXT")?;
+        ensure_column(&connection, "chunks", "previous_key", "TEXT")?;
+        ensure_column(&connection, "chunks", "next_key", "TEXT")?;
+        ensure_column(&connection, "chunks", "start_byte", "INTEGER")?;
+        ensure_column(&connection, "chunks", "end_byte", "INTEGER")?;
+        ensure_column(&connection, "chunks", "policy_version", "TEXT")?;
         ensure_column(
             &connection,
             "sync_runs",
@@ -368,13 +378,16 @@ impl Store {
         ensure_column(&connection, "sync_runs", "progress_updated_at", "TEXT")?;
         backfill_document_links(&mut connection)?;
         migrate_embedding_blobs(&mut connection)?;
-        migrate_memory_axes(&connection)?;
+        migrate_memory_axes(&mut connection)?;
         migrate_memory_dedupe_scope(&mut connection)?;
+        migrate_memory_candidates(&mut connection)?;
         connection.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_memories_scope
                ON memories(project,kind,status,updated_at DESC);
              CREATE INDEX IF NOT EXISTS idx_memories_status
                ON memories(status,updated_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_memories_axes
+               ON memories(project,content_type,retention_tier,scope,status,updated_at DESC);
              CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_project_dedupe
                ON memories(project,dedupe_key) WHERE dedupe_key IS NOT NULL",
         )?;
@@ -831,6 +844,95 @@ impl Store {
         Ok(true)
     }
 
+    /// Upsert a document using the versioned structured-chunk contract. The
+    /// canonical document row is identical to `upsert`; only derived chunk
+    /// identity and lineage fields differ. This makes rollout reversible by
+    /// deleting/rebuilding derived chunks without rewriting source content.
+    pub fn upsert_structured(
+        &self,
+        document: &Document,
+        chunks: &[(ChunkSpec, Vec<f32>)],
+    ) -> Result<bool> {
+        let id = stable_id(&document.source, &document.source_id);
+        let hash = document_hash(document)?;
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let previous: Option<(String, bool, Option<String>)> = connection
+            .query_row(
+                "SELECT d.content_hash,length(d.content)>0,
+                        (SELECT c.policy_version FROM chunks c
+                         WHERE c.document_id=d.id ORDER BY c.ordinal LIMIT 1)
+                 FROM documents d WHERE d.id=?1",
+                [&id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        if previous
+            .as_ref()
+            .is_some_and(|(previous_hash, has_content, policy)| {
+                previous_hash == &hash
+                    && *has_content
+                    && policy.as_deref() == Some(CHUNKING_CONTRACT_VERSION)
+            })
+        {
+            return Ok(false);
+        }
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "DELETE FROM chunks_fts WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id=?1)",
+            [&id],
+        )?;
+        transaction.execute("DELETE FROM chunks WHERE document_id=?1", [&id])?;
+        transaction.execute(
+            "INSERT INTO documents(id,source,source_id,title,uri,content_hash,updated_at,project,acl_json,metadata_json,content)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+             ON CONFLICT(id) DO UPDATE SET title=excluded.title,uri=excluded.uri,
+             content_hash=excluded.content_hash,updated_at=excluded.updated_at,project=excluded.project,
+             acl_json=excluded.acl_json,metadata_json=excluded.metadata_json,content=excluded.content",
+            params![id, document.source, document.source_id, document.title, document.uri, hash,
+                document.updated_at.to_rfc3339(), document.project,
+                serde_json::to_string(&document.acl)?, document.metadata.to_string(),
+                document.content],
+        )?;
+        transaction.execute("DELETE FROM document_links WHERE document_id=?1", [&id])?;
+        for target in metadata_reference_strings(&document.metadata) {
+            transaction.execute(
+                "INSERT OR IGNORE INTO document_links(document_id,target) VALUES(?1,?2)",
+                params![id, target],
+            )?;
+        }
+        for (spec, embedding) in chunks {
+            let chunk_id = format!("{id}:{}", spec.key);
+            transaction.execute(
+                "INSERT INTO chunks(
+                   id,document_id,ordinal,content,embedding_json,embedding_blob,
+                   chunk_key,strategy,parent_key,previous_key,next_key,start_byte,end_byte,policy_version
+                 ) VALUES(?1,?2,?3,?4,'[]',?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+                params![
+                    chunk_id,
+                    id,
+                    spec.ordinal as i64,
+                    &spec.content,
+                    encode_embedding(embedding),
+                    &spec.key,
+                    spec.strategy.as_str(),
+                    &spec.parent_key,
+                    spec.previous_key.as_deref(),
+                    spec.next_key.as_deref(),
+                    spec.start_byte as i64,
+                    spec.end_byte as i64,
+                    spec.policy_version,
+                ],
+            )?;
+            transaction.execute(
+                "INSERT INTO chunks_fts(chunk_id,title,content) VALUES(?1,?2,?3)",
+                params![chunk_id, document.title, &spec.content],
+            )?;
+        }
+        bump_corpus_revision(&transaction)?;
+        transaction.commit()?;
+        Ok(true)
+    }
+
     pub fn needs_update(&self, document: &Document) -> Result<bool> {
         let id = stable_id(&document.source, &document.source_id);
         let hash = document_hash(document)?;
@@ -845,6 +947,26 @@ impl Store {
         Ok(!previous
             .as_ref()
             .is_some_and(|(previous_hash, has_content)| previous_hash == &hash && *has_content))
+    }
+
+    /// Structured chunking is a derived-index revision. A document with the
+    /// same canonical hash still needs one rebuild when its chunks were
+    /// created by the legacy ordinal-only policy.
+    pub fn needs_structured_update(&self, document: &Document) -> Result<bool> {
+        if self.needs_update(document)? {
+            return Ok(true);
+        }
+        let id = stable_id(&document.source, &document.source_id);
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let policy: Option<String> = connection
+            .query_row(
+                "SELECT c.policy_version FROM chunks c
+                 WHERE c.document_id=?1 ORDER BY c.ordinal LIMIT 1",
+                [&id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(policy.as_deref() != Some(CHUNKING_CONTRACT_VERSION))
     }
 
     pub fn refresh_timestamp(&self, document: &Document) -> Result<()> {
@@ -1146,6 +1268,13 @@ impl Store {
             axes.scope != memory::MemoryScope::OwnerGlobal || owner,
             "owner-global memory scope requires owner authorization"
         );
+        anyhow::ensure!(
+            matches!(
+                axes.scope,
+                memory::MemoryScope::Workspace | memory::MemoryScope::OwnerGlobal
+            ),
+            "session and principal memory scopes require an identity binding and are not yet supported"
+        );
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
         let id = self.remember_in_transaction(&transaction, input, principal_acl, owner, axes)?;
@@ -1212,6 +1341,10 @@ impl Store {
         };
         if let Some(existing) = &existing {
             anyhow::ensure!(
+                existing.scope != "owner-global" || owner,
+                "owner-global memory scope requires owner authorization"
+            );
+            anyhow::ensure!(
                 owner || acl_allows(&existing.acl, principal_acl),
                 "memory dedupe key is outside principal visibility"
             );
@@ -1267,30 +1400,34 @@ impl Store {
             memory.status == "active"
                 && memory::valid_until_is_active(memory.valid_until.as_deref(), &now)
         });
-        let supersession_target: Option<(String, Vec<String>, Option<String>)> =
+        let supersession_target: Option<(String, String, Vec<String>, Option<String>)> =
             if let Some(previous_id) = input.supersedes_id.as_deref() {
                 transaction
                     .query_row(
-                        "SELECT project,acl_json,valid_until FROM memories
+                        "SELECT project,scope,acl_json,valid_until FROM memories
                          WHERE id=?1 AND status='active'",
                         [previous_id],
                         |row| {
-                            let acl_json: String = row.get(1)?;
+                            let acl_json: String = row.get(2)?;
                             let acl = serde_json::from_str(&acl_json).map_err(|error| {
                                 rusqlite::Error::FromSqlConversionFailure(
-                                    1,
+                                    2,
                                     Type::Text,
                                     Box::new(error),
                                 )
                             })?;
-                            Ok((row.get(0)?, acl, row.get(2)?))
+                            Ok((row.get(0)?, row.get(1)?, acl, row.get(3)?))
                         },
                     )
                     .optional()?
             } else {
                 None
             };
-        if let Some((previous_project, previous_acl, _)) = &supersession_target {
+        if let Some((previous_project, previous_scope, previous_acl, _)) = &supersession_target {
+            anyhow::ensure!(
+                previous_scope != "owner-global" || owner,
+                "owner-global memory scope requires owner authorization"
+            );
             anyhow::ensure!(
                 owner || acl_allows(previous_acl, principal_acl),
                 "memory supersession target is outside principal visibility"
@@ -1303,11 +1440,12 @@ impl Store {
         if let Some(previous_id) = input.supersedes_id.as_deref() {
             anyhow::ensure!(previous_id != id, "memory cannot supersede itself");
         }
-        let supersedes_active = supersession_target
-            .as_ref()
-            .is_some_and(|(_, _, valid_until)| {
-                memory::valid_until_is_active(valid_until.as_deref(), &now)
-            });
+        let supersedes_active =
+            supersession_target
+                .as_ref()
+                .is_some_and(|(_, _, _, valid_until)| {
+                    memory::valid_until_is_active(valid_until.as_deref(), &now)
+                });
         anyhow::ensure!(
             replaces_active || supersedes_active || active_count < max_active as i64,
             "active memory limit reached ({max_active}); retract or supersede an existing memory before adding another"
@@ -1379,7 +1517,37 @@ impl Store {
         limit: usize,
         principal_acl: &[String],
     ) -> Result<Vec<MemorySearchResult>> {
-        self.recall_memories_with_axes(query, project, kind, None, None, None, limit, principal_acl)
+        self.recall_memories_with_axes_authorized(
+            query,
+            project,
+            kind,
+            None,
+            None,
+            None,
+            limit,
+            principal_acl,
+            false,
+        )
+    }
+
+    pub fn recall_memories_as_owner(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemorySearchResult>> {
+        self.recall_memories_with_axes_authorized(
+            query,
+            project,
+            kind,
+            None,
+            None,
+            None,
+            limit,
+            &["*".into()],
+            true,
+        )
     }
 
     /// Recall memories with independent compatibility-kind, content-type,
@@ -1395,6 +1563,56 @@ impl Store {
         scope: Option<&str>,
         limit: usize,
         principal_acl: &[String],
+    ) -> Result<Vec<MemorySearchResult>> {
+        self.recall_memories_with_axes_authorized(
+            query,
+            project,
+            kind,
+            content_type,
+            retention_tier,
+            scope,
+            limit,
+            principal_acl,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn recall_memories_with_axes_as_owner(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        kind: Option<&str>,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemorySearchResult>> {
+        self.recall_memories_with_axes_authorized(
+            query,
+            project,
+            kind,
+            content_type,
+            retention_tier,
+            scope,
+            limit,
+            &["*".into()],
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn recall_memories_with_axes_authorized(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        kind: Option<&str>,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+        owner: bool,
     ) -> Result<Vec<MemorySearchResult>> {
         let match_query = memory::fts_query(query)?;
         let fallback_query = memory::fts_query_or(query)?;
@@ -1416,9 +1634,7 @@ impl Store {
             .map(memory::MemoryScope::parse)
             .transpose()?
             .map(|value| value.as_str().to_string());
-        if normalized_scope.as_deref() == Some("owner-global")
-            && !principal_acl.iter().any(|value| value == "*")
-        {
+        if normalized_scope.as_deref() == Some("owner-global") && !owner {
             bail!("owner-global memory scope requires owner authorization");
         }
         let connection = self.read_connection.lock().expect("store lock poisoned");
@@ -1444,8 +1660,9 @@ impl Store {
                    AND (?4 IS NULL OR m.content_type=?4)
                    AND (?5 IS NULL OR m.retention_tier=?5)
                    AND (?6 IS NULL OR m.scope=?6)
-                   AND m.valid_from<=?7
-                   AND (m.valid_until IS NULL OR julianday(m.valid_until)>julianday(?7))
+                   AND (?7 OR m.scope<>'owner-global')
+                   AND m.valid_from<=?8
+                   AND (m.valid_until IS NULL OR julianday(m.valid_until)>julianday(?8))
                    AND json_valid(m.acl_json)
                    AND json_type(m.acl_json)='array'
                    AND NOT EXISTS (
@@ -1455,7 +1672,7 @@ impl Store {
                    AND (
                      json_array_length(m.acl_json)=0
                      OR EXISTS (
-                       SELECT 1 FROM json_each(?8) AS principal_acl
+                       SELECT 1 FROM json_each(?9) AS principal_acl
                        WHERE principal_acl.type='text'
                          AND (
                            principal_acl.value='*'
@@ -1468,7 +1685,7 @@ impl Store {
                      )
                    )
                  ORDER BY bm25(memories_fts),m.importance DESC,m.confidence DESC,m.updated_at DESC
-                 LIMIT ?9",
+                 LIMIT ?10",
             )?;
             let rows = statement.query_map(
                 params![
@@ -1478,6 +1695,7 @@ impl Store {
                     normalized_content_type.as_deref(),
                     normalized_retention_tier.as_deref(),
                     normalized_scope.as_deref(),
+                    owner,
                     now,
                     principal_acl_json,
                     candidate_limit
@@ -1516,6 +1734,7 @@ impl Store {
     pub fn propose_memory_candidate(
         &self,
         input: &ObservationCandidateInput,
+        principal_id: &str,
         principal_acl: &[String],
         owner: bool,
     ) -> Result<ObservationCandidate> {
@@ -1537,6 +1756,14 @@ impl Store {
             "owner-global candidate scope requires owner authorization"
         );
         anyhow::ensure!(
+            scope != memory::MemoryScope::Session,
+            "session candidate scope requires a session identity binding and is not yet supported"
+        );
+        anyhow::ensure!(
+            !principal_id.trim().is_empty(),
+            "candidate principal is required"
+        );
+        anyhow::ensure!(
             owner || acl_allows(&acl, principal_acl),
             "candidate ACL denied"
         );
@@ -1544,32 +1771,19 @@ impl Store {
         let now = memory::now();
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
-        let active_count: i64 = transaction.query_row(
-            "SELECT COUNT(*) FROM memory_candidates
-             WHERE project=?1 AND status='pending' AND julianday(expires_at)>julianday(?2)",
-            params![input.project, now],
-            |row| row.get(0),
-        )?;
-        anyhow::ensure!(
-            active_count < observation::MAX_CANDIDATES_PER_PROJECT as i64,
-            "candidate limit reached for project; review, cancel, or expire pending observations"
-        );
         if let Some(dedupe_key) = input.dedupe_key.as_deref() {
             if let Some(existing) = transaction
                 .query_row(
-                    "SELECT id,observation_kind,content_type,retention_tier,scope,project,title,content,
+                    "SELECT id,observation_kind,content_type,retention_tier,scope,created_by,project,title,content,
                             source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
                             provenance_json,expires_at,rejection_reason,created_at,updated_at
-                     FROM memory_candidates WHERE project=?1 AND dedupe_key=?2",
-                    params![input.project, dedupe_key],
+                     FROM memory_candidates
+                     WHERE project=?1 AND scope=?2 AND created_by=?3 AND dedupe_key=?4",
+                    params![input.project, scope.as_str(), principal_id, dedupe_key],
                     observation_candidate_from_row,
                 )
                 .optional()?
             {
-                anyhow::ensure!(
-                    owner || acl_allows(&existing.acl, principal_acl),
-                    "candidate dedupe key is outside principal visibility"
-                );
                 anyhow::ensure!(
                     existing.status == "pending"
                         && existing.observation_kind == observation_kind.as_str()
@@ -1580,6 +1794,8 @@ impl Store {
                         && existing.content == input.content
                         && existing.source == input.source
                         && existing.source_id == input.source_id
+                        && existing.confidence == input.confidence
+                        && existing.importance == input.importance
                         && existing.sensitivity == sensitivity.as_str()
                         && existing.acl == acl
                         && existing.provenance == provenance
@@ -1590,19 +1806,40 @@ impl Store {
                 return Ok(existing);
             }
         }
+        let active_count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM memory_candidates
+             WHERE project=?1 AND status='pending' AND julianday(expires_at)>julianday(?2)",
+            params![input.project, now],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(
+            active_count < observation::MAX_CANDIDATES_PER_PROJECT as i64,
+            "candidate limit reached for project; review, cancel, or expire pending observations"
+        );
+        let recent_count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM memory_candidates
+             WHERE created_by=?1 AND julianday(created_at)>=julianday(?2,'-1 hour')",
+            params![principal_id, now],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(
+            recent_count < observation::MAX_CANDIDATES_PER_PRINCIPAL_PER_HOUR as i64,
+            "candidate rate limit reached; retry after the bounded review window"
+        );
         let id = uuid::Uuid::new_v4().to_string();
         transaction.execute(
             "INSERT INTO memory_candidates(
-               id,observation_kind,content_type,retention_tier,scope,project,title,content,
+               id,observation_kind,content_type,retention_tier,scope,created_by,project,title,content,
                source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
                provenance_json,expires_at,rejection_reason,created_at,updated_at)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'pending',?15,?16,?17,NULL,?18,?18)",
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,'pending',?16,?17,?18,NULL,?19,?19)",
             params![
                 id,
                 observation_kind.as_str(),
                 content_type.as_str(),
                 retention_tier.as_str(),
                 scope.as_str(),
+                principal_id,
                 input.project,
                 input.title,
                 input.content,
@@ -1624,13 +1861,63 @@ impl Store {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn list_memory_candidates(
         &self,
         project: Option<&str>,
         observation_kind: Option<&str>,
         scope: Option<&str>,
         limit: usize,
+        principal_id: &str,
         principal_acl: &[String],
+        owner: bool,
+    ) -> Result<Vec<ObservationCandidate>> {
+        self.query_memory_candidates(
+            project,
+            observation_kind,
+            scope,
+            limit,
+            principal_id,
+            principal_acl,
+            owner,
+            observation::MAX_CANDIDATE_LIST_LIMIT,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_memory_candidates(
+        &self,
+        project: Option<&str>,
+        observation_kind: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<Vec<ObservationCandidate>> {
+        self.query_memory_candidates(
+            project,
+            observation_kind,
+            scope,
+            limit,
+            principal_id,
+            principal_acl,
+            owner,
+            observation::MAX_CANDIDATE_EXPORT_LIMIT,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn query_memory_candidates(
+        &self,
+        project: Option<&str>,
+        observation_kind: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+        max_limit: usize,
     ) -> Result<Vec<ObservationCandidate>> {
         self.expire_memory_candidates()?;
         let normalized_kind = observation_kind
@@ -1641,48 +1928,61 @@ impl Store {
             .map(memory::MemoryScope::parse)
             .transpose()?
             .map(|value| value.as_str().to_string());
-        if normalized_scope.as_deref() == Some("owner-global")
-            && !principal_acl.iter().any(|value| value == "*")
-        {
+        if normalized_scope.as_deref() == Some("owner-global") && !owner {
             bail!("owner-global candidate scope requires owner authorization");
         }
         let connection = self.read_connection.lock().expect("store lock poisoned");
         let acl_json = serde_json::to_string(principal_acl)?;
         let mut statement = connection.prepare(
-            "SELECT id,observation_kind,content_type,retention_tier,scope,project,title,content,
+            "SELECT id,observation_kind,content_type,retention_tier,scope,created_by,project,title,content,
                     source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
                     provenance_json,expires_at,rejection_reason,created_at,updated_at
              FROM memory_candidates
              WHERE (?1 IS NULL OR project=?1)
                AND (?2 IS NULL OR observation_kind=?2)
                AND (?3 IS NULL OR scope=?3)
+               AND (?4 OR scope<>'owner-global')
+               AND (scope<>'principal' OR created_by=?5)
                AND (json_array_length(acl_json)=0 OR EXISTS(
-                 SELECT 1 FROM json_each(?4) principal_acl
+                 SELECT 1 FROM json_each(?6) principal_acl
                  WHERE principal_acl.value='*' OR EXISTS(
                    SELECT 1 FROM json_each(acl_json) candidate_acl
                    WHERE candidate_acl.value=principal_acl.value)))
-             ORDER BY created_at DESC,id DESC LIMIT ?5",
+             ORDER BY created_at DESC,id DESC LIMIT ?7",
         )?;
         let rows = statement.query_map(
             params![
                 project,
                 normalized_kind.as_deref(),
                 normalized_scope.as_deref(),
+                owner,
+                principal_id,
                 acl_json,
-                i64::try_from(limit.clamp(1, observation::MAX_CANDIDATE_EXPORT_LIMIT))
-                    .unwrap_or(i64::MAX),
+                i64::try_from(limit.clamp(1, max_limit)).unwrap_or(i64::MAX),
             ],
             observation_candidate_from_row,
         )?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(Into::into)
+        let mut result = Vec::new();
+        let mut response_bytes = 2usize;
+        for row in rows {
+            let candidate = row?;
+            let candidate_bytes = serde_json::to_vec(&candidate)?.len().saturating_add(1);
+            if response_bytes.saturating_add(candidate_bytes)
+                > observation::MAX_CANDIDATE_RESPONSE_BYTES
+            {
+                break;
+            }
+            response_bytes = response_bytes.saturating_add(candidate_bytes);
+            result.push(candidate);
+        }
+        Ok(result)
     }
 
     pub fn memory_candidate(&self, id: &str) -> Result<Option<ObservationCandidate>> {
         let connection = self.read_connection.lock().expect("store lock poisoned");
         connection
             .query_row(
-                "SELECT id,observation_kind,content_type,retention_tier,scope,project,title,content,
+                "SELECT id,observation_kind,content_type,retention_tier,scope,created_by,project,title,content,
                         source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
                         provenance_json,expires_at,rejection_reason,created_at,updated_at
                  FROM memory_candidates WHERE id=?1",
@@ -1698,6 +1998,7 @@ impl Store {
     pub fn classify_memory_candidate(
         &self,
         id: &str,
+        principal_id: &str,
         principal_acl: &[String],
         owner: bool,
     ) -> Result<CandidateClassification> {
@@ -1714,26 +2015,38 @@ impl Store {
             "sensitive candidates require explicit review and cannot be classified"
         );
         let scope = memory::MemoryScope::parse(&candidate.scope)?;
+        anyhow::ensure!(
+            scope != memory::MemoryScope::Principal
+                || candidate.created_by == principal_id
+                || owner,
+            "candidate ACL denied"
+        );
         if scope == memory::MemoryScope::OwnerGlobal {
             anyhow::ensure!(
                 owner,
                 "owner-global candidate scope requires owner authorization"
             );
         }
-        let export_acl = if owner {
-            vec!["*".to_owned()]
+        let memories = if owner {
+            self.export_memories_with_axes_as_owner(
+                Some(&candidate.project),
+                None,
+                Some(&candidate.content_type),
+                Some(&candidate.retention_tier),
+                Some(&candidate.scope),
+                memory::MAX_MEMORY_EXPORT_LIMIT,
+            )?
         } else {
-            principal_acl.to_vec()
+            self.export_memories_with_axes(
+                Some(&candidate.project),
+                None,
+                Some(&candidate.content_type),
+                Some(&candidate.retention_tier),
+                Some(&candidate.scope),
+                memory::MAX_MEMORY_EXPORT_LIMIT,
+                principal_acl,
+            )?
         };
-        let memories = self.export_memories_with_axes(
-            Some(&candidate.project),
-            None,
-            Some(&candidate.content_type),
-            Some(&candidate.retention_tier),
-            Some(&candidate.scope),
-            memory::MAX_MEMORY_EXPORT_LIMIT,
-            &export_acl,
-        )?;
         Ok(classification::classify(&candidate, &memories))
     }
 
@@ -1975,25 +2288,42 @@ impl Store {
     pub fn cancel_memory_candidate_scoped(
         &self,
         id: &str,
+        principal_id: &str,
         principal_acl: &[String],
         owner: bool,
     ) -> Result<bool> {
-        self.update_memory_candidate_status(id, "cancelled", principal_acl, owner, false)
+        self.update_memory_candidate_status(
+            id,
+            "cancelled",
+            principal_id,
+            principal_acl,
+            owner,
+            false,
+        )
     }
 
     pub fn redact_memory_candidate_scoped(
         &self,
         id: &str,
+        principal_id: &str,
         principal_acl: &[String],
         owner: bool,
     ) -> Result<bool> {
-        self.update_memory_candidate_status(id, "redacted", principal_acl, owner, true)
+        self.update_memory_candidate_status(
+            id,
+            "redacted",
+            principal_id,
+            principal_acl,
+            owner,
+            true,
+        )
     }
 
     fn update_memory_candidate_status(
         &self,
         id: &str,
         status: &str,
+        principal_id: &str,
         principal_acl: &[String],
         owner: bool,
         redact: bool,
@@ -2001,20 +2331,22 @@ impl Store {
         let now = memory::now();
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
-        let acl_json: Option<String> = transaction
+        let authorization: Option<(String, String, String)> = transaction
             .query_row(
-                "SELECT acl_json FROM memory_candidates WHERE id=?1 AND status='pending'",
+                "SELECT scope,created_by,acl_json FROM memory_candidates WHERE id=?1 AND status='pending'",
                 [id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()?;
-        let Some(acl_json) = acl_json else {
+        let Some((scope, created_by, acl_json)) = authorization else {
             transaction.commit()?;
             return Ok(false);
         };
         let acl: Vec<String> = serde_json::from_str(&acl_json)?;
         anyhow::ensure!(
-            owner || acl_allows(&acl, principal_acl),
+            (owner || scope != "owner-global")
+                && (scope != "principal" || created_by == principal_id)
+                && (owner || acl_allows(&acl, principal_acl)),
             "candidate ACL denied"
         );
         let changed = if redact {
@@ -2084,17 +2416,21 @@ impl Store {
         let now = memory::now();
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
-        let acl_json: Option<String> = transaction
+        let access: Option<(String, String)> = transaction
             .query_row(
-                "SELECT acl_json FROM memories WHERE id=?1 AND status='active'",
+                "SELECT scope,acl_json FROM memories WHERE id=?1 AND status='active'",
                 [id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        let Some(acl_json) = acl_json else {
+        let Some((scope, acl_json)) = access else {
             transaction.commit()?;
             return Ok(false);
         };
+        anyhow::ensure!(
+            scope != "owner-global" || owner,
+            "owner-global memory scope requires owner authorization"
+        );
         let acl: Vec<String> = serde_json::from_str(&acl_json)?;
         anyhow::ensure!(
             owner || acl_allows(&acl, principal_acl),
@@ -2156,7 +2492,8 @@ impl Store {
                    COALESCE(SUM(CASE WHEN status='retracted' THEN 1 ELSE 0 END),0),
                    COALESCE(SUM(CASE WHEN status='superseded' THEN 1 ELSE 0 END),0)
                  FROM memories
-                 WHERE json_valid(acl_json)
+                 WHERE scope<>'owner-global'
+                   AND json_valid(acl_json)
                    AND json_type(acl_json)='array'
                    AND NOT EXISTS (
                      SELECT 1 FROM json_each(acl_json) AS memory_acl
@@ -2199,7 +2536,34 @@ impl Store {
         limit: usize,
         principal_acl: &[String],
     ) -> Result<Vec<MemoryRecord>> {
-        self.export_memories_with_axes(project, kind, None, None, None, limit, principal_acl)
+        self.export_memories_with_axes_authorized(
+            project,
+            kind,
+            None,
+            None,
+            None,
+            limit,
+            principal_acl,
+            false,
+        )
+    }
+
+    pub fn export_memories_as_owner(
+        &self,
+        project: Option<&str>,
+        kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryRecord>> {
+        self.export_memories_with_axes_authorized(
+            project,
+            kind,
+            None,
+            None,
+            None,
+            limit,
+            &["*".into()],
+            true,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2212,6 +2576,52 @@ impl Store {
         scope: Option<&str>,
         limit: usize,
         principal_acl: &[String],
+    ) -> Result<Vec<MemoryRecord>> {
+        self.export_memories_with_axes_authorized(
+            project,
+            kind,
+            content_type,
+            retention_tier,
+            scope,
+            limit,
+            principal_acl,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_memories_with_axes_as_owner(
+        &self,
+        project: Option<&str>,
+        kind: Option<&str>,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryRecord>> {
+        self.export_memories_with_axes_authorized(
+            project,
+            kind,
+            content_type,
+            retention_tier,
+            scope,
+            limit,
+            &["*".into()],
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn export_memories_with_axes_authorized(
+        &self,
+        project: Option<&str>,
+        kind: Option<&str>,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+        owner: bool,
     ) -> Result<Vec<MemoryRecord>> {
         let normalized_kind = kind
             .map(memory::MemoryKind::parse)
@@ -2229,6 +2639,9 @@ impl Store {
             .map(memory::MemoryScope::parse)
             .transpose()?
             .map(|value| value.as_str().to_string());
+        if normalized_scope.as_deref() == Some("owner-global") && !owner {
+            bail!("owner-global memory scope requires owner authorization");
+        }
         let limit = limit.clamp(1, memory::MAX_MEMORY_EXPORT_LIMIT);
         let connection = self.read_connection.lock().expect("store lock poisoned");
         let principal_acl_json = serde_json::to_string(principal_acl)?;
@@ -2243,6 +2656,7 @@ impl Store {
                AND (?3 IS NULL OR content_type=?3)
                AND (?4 IS NULL OR retention_tier=?4)
                AND (?5 IS NULL OR scope=?5)
+               AND (?6 OR scope<>'owner-global')
                AND json_valid(acl_json)
                AND json_type(acl_json)='array'
                AND NOT EXISTS (
@@ -2252,7 +2666,7 @@ impl Store {
                    AND (
                  json_array_length(acl_json)=0
                  OR EXISTS (
-                       SELECT 1 FROM json_each(?6) AS principal_acl
+                       SELECT 1 FROM json_each(?7) AS principal_acl
                    WHERE principal_acl.type='text'
                      AND (
                        principal_acl.value='*'
@@ -2265,7 +2679,7 @@ impl Store {
                  )
                )
              ORDER BY updated_at DESC,id DESC
-             LIMIT ?7",
+             LIMIT ?8",
         )?;
         let rows = statement.query_map(
             params![
@@ -2274,6 +2688,7 @@ impl Store {
                 normalized_content_type,
                 normalized_retention_tier,
                 normalized_scope,
+                owner,
                 principal_acl_json,
                 i64::try_from(limit).unwrap_or(i64::MAX)
             ],
@@ -2509,7 +2924,8 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
             "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,d.acl_json,
-                    c.embedding_blob,c.embedding_json,d.updated_at
+                    c.embedding_blob,c.embedding_json,d.updated_at,c.strategy,
+                    c.parent_key,c.previous_key,c.next_key
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
         )?;
@@ -2607,7 +3023,8 @@ impl Store {
             .join(",");
         let sql = format!(
             "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,d.acl_json,
-                    c.embedding_blob,c.embedding_json,d.updated_at
+                    c.embedding_blob,c.embedding_json,d.updated_at,c.strategy,
+                    c.parent_key,c.previous_key,c.next_key
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE c.id IN ({placeholders})"
         );
@@ -3544,6 +3961,10 @@ fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
         updated_at: DateTime::parse_from_rfc3339(&updated_at)
             .map(|value| value.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now()),
+        strategy: row.get(10)?,
+        parent_key: row.get(11)?,
+        previous_key: row.get(12)?,
+        next_key: row.get(13)?,
     })
 }
 
@@ -3650,35 +4071,68 @@ fn migrate_memory_dedupe_scope(connection: &mut Connection) -> Result<()> {
     Ok(())
 }
 
+/// Upgrade the candidate queue independently from canonical memory. The
+/// marker makes interrupted initialization safe to resume, while the creator
+/// dimension prevents one principal's retry key from revealing another's.
+fn migrate_memory_candidates(connection: &mut Connection) -> Result<()> {
+    let transaction = connection.transaction()?;
+    ensure_column(
+        &transaction,
+        "memory_candidates",
+        "created_by",
+        "TEXT NOT NULL DEFAULT 'legacy-owner'",
+    )?;
+    transaction.execute_batch(
+        "DROP INDEX IF EXISTS idx_memory_candidates_project_dedupe;
+         CREATE UNIQUE INDEX idx_memory_candidates_project_dedupe
+           ON memory_candidates(project,scope,created_by,dedupe_key)
+           WHERE dedupe_key IS NOT NULL;",
+    )?;
+    transaction.execute(
+        "INSERT INTO meta(key,value) VALUES('memory_candidates_schema','1')
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
 /// Add the independent M6 memory axes without rewriting canonical meaning or
 /// bumping `memory_revision`. The columns are additive so an older binary can
 /// still read the legacy `kind` field while the new binary exposes the
 /// separated contract. Legacy `working` rows become semantic working records;
 /// all other legacy kinds become durable records of the same content type.
-fn migrate_memory_axes(connection: &Connection) -> Result<()> {
-    let had_content_type = table_has_column(connection, "memories", "content_type")?;
-    let had_retention_tier = table_has_column(connection, "memories", "retention_tier")?;
-    let had_scope = table_has_column(connection, "memories", "scope")?;
+fn migrate_memory_axes(connection: &mut Connection) -> Result<()> {
+    let transaction = connection.transaction()?;
     ensure_column(
-        connection,
+        &transaction,
         "memories",
         "content_type",
         "TEXT NOT NULL DEFAULT 'semantic'",
     )?;
     ensure_column(
-        connection,
+        &transaction,
         "memories",
         "retention_tier",
         "TEXT NOT NULL DEFAULT 'durable'",
     )?;
     ensure_column(
-        connection,
+        &transaction,
         "memories",
         "scope",
         "TEXT NOT NULL DEFAULT 'workspace'",
     )?;
-    if !had_content_type {
-        connection.execute(
+    let migration_complete = transaction
+        .query_row(
+            "SELECT value FROM meta WHERE key='memory_axes_schema'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .as_deref()
+        == Some("1");
+    if !migration_complete {
+        transaction.execute(
             "UPDATE memories SET content_type=CASE lower(trim(kind))
                WHEN 'episodic' THEN 'episodic'
                WHEN 'procedural' THEN 'procedural'
@@ -3686,30 +4140,25 @@ fn migrate_memory_axes(connection: &Connection) -> Result<()> {
                ELSE 'semantic' END",
             [],
         )?;
-    }
-    if !had_retention_tier {
-        connection.execute(
+        transaction.execute(
             "UPDATE memories SET retention_tier=CASE lower(trim(kind))
                WHEN 'working' THEN 'working' ELSE 'durable' END",
             [],
         )?;
+        transaction.execute("UPDATE memories SET scope='workspace'", [])?;
     }
-    if !had_scope {
-        connection.execute("UPDATE memories SET scope='workspace'", [])?;
-    }
-    connection.execute(
-        "INSERT OR IGNORE INTO meta(key,value) VALUES('memory_axes_schema','1')",
+    transaction.execute(
+        "INSERT INTO meta(key,value) VALUES('memory_axes_schema','1')
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         [],
     )?;
+    transaction.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_axes
+         ON memories(project,content_type,retention_tier,scope,status,updated_at DESC)",
+        [],
+    )?;
+    transaction.commit()?;
     Ok(())
-}
-
-fn table_has_column(connection: &Connection, table: &str, column: &str) -> Result<bool> {
-    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
-    let columns = statement
-        .query_map([], |row| row.get::<_, String>(1))?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    Ok(columns.iter().any(|existing| existing == column))
 }
 
 fn ensure_column(
@@ -3912,34 +4361,35 @@ fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryRec
 fn observation_candidate_from_row(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<ObservationCandidate> {
-    let acl_json: String = row.get(15)?;
-    let provenance_json: String = row.get(16)?;
+    let acl_json: String = row.get(16)?;
+    let provenance_json: String = row.get(17)?;
     Ok(ObservationCandidate {
         id: row.get(0)?,
         observation_kind: row.get(1)?,
         content_type: row.get(2)?,
         retention_tier: row.get(3)?,
         scope: row.get(4)?,
-        project: row.get(5)?,
-        title: row.get(6)?,
-        content: row.get(7)?,
-        source: row.get(8)?,
-        source_id: row.get(9)?,
-        dedupe_key: row.get(10)?,
-        confidence: row.get(11)?,
-        importance: row.get(12)?,
-        sensitivity: row.get(13)?,
-        status: row.get(14)?,
+        created_by: row.get(5)?,
+        project: row.get(6)?,
+        title: row.get(7)?,
+        content: row.get(8)?,
+        source: row.get(9)?,
+        source_id: row.get(10)?,
+        dedupe_key: row.get(11)?,
+        confidence: row.get(12)?,
+        importance: row.get(13)?,
+        sensitivity: row.get(14)?,
+        status: row.get(15)?,
         acl: serde_json::from_str(&acl_json).map_err(|error| {
-            rusqlite::Error::FromSqlConversionFailure(15, Type::Text, Box::new(error))
-        })?,
-        provenance: serde_json::from_str(&provenance_json).map_err(|error| {
             rusqlite::Error::FromSqlConversionFailure(16, Type::Text, Box::new(error))
         })?,
-        expires_at: row.get(17)?,
-        rejection_reason: row.get(18)?,
-        created_at: row.get(19)?,
-        updated_at: row.get(20)?,
+        provenance: serde_json::from_str(&provenance_json).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(17, Type::Text, Box::new(error))
+        })?,
+        expires_at: row.get(18)?,
+        rejection_reason: row.get(19)?,
+        created_at: row.get(20)?,
+        updated_at: row.get(21)?,
     })
 }
 
@@ -4022,6 +4472,35 @@ mod tests {
             acl: Vec::new(),
             metadata: serde_json::json!({}),
         }
+    }
+
+    #[test]
+    fn structured_chunks_persist_lineage_and_are_idempotent() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut value = document("structured", "# One\nalpha\n\n# Two\nbeta");
+        value.metadata = serde_json::json!({"mime_type": "text/markdown"});
+        let specs = crate::chunking::chunk_document(&value);
+        let embedded = specs
+            .iter()
+            .map(|spec| (spec.clone(), vec![1.0_f32, 0.0]))
+            .collect::<Vec<_>>();
+        assert!(
+            store
+                .upsert_structured(&value, &embedded)
+                .expect("structured insert")
+        );
+        assert!(!store.needs_structured_update(&value).expect("policy check"));
+        let rows = store.all_chunks(None, None).expect("stored chunks");
+        assert_eq!(rows.len(), specs.len());
+        assert_eq!(rows[0].strategy.as_deref(), Some("markdown_section"));
+        assert!(rows[0].parent_key.is_some());
+        assert_eq!(rows[1].previous_key.as_deref(), Some(specs[0].key.as_str()));
+        assert!(
+            !store
+                .upsert_structured(&value, &embedded)
+                .expect("idempotent insert")
+        );
     }
 
     #[test]
@@ -4290,6 +4769,58 @@ mod tests {
                 .retention_tier,
             "working"
         );
+        let indexes = Connection::open(&path)
+            .expect("inspect indexes")
+            .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='memories'")
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .expect("memory indexes");
+        assert!(indexes.iter().any(|name| name == "idx_memories_axes"));
+    }
+
+    #[test]
+    fn resumes_partially_applied_memory_axes_migration_without_losing_legacy_meaning() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("partial-memory-axes.sqlite3");
+        let connection = Connection::open(&path).expect("partial database");
+        connection
+            .execute_batch(
+                "CREATE TABLE memories(
+                   id TEXT PRIMARY KEY,kind TEXT NOT NULL,
+                   content_type TEXT NOT NULL DEFAULT 'semantic',
+                   retention_tier TEXT NOT NULL DEFAULT 'durable',
+                   scope TEXT NOT NULL DEFAULT 'workspace',project TEXT NOT NULL,
+                   title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,
+                   source_id TEXT NOT NULL,dedupe_key TEXT,confidence REAL NOT NULL,
+                   importance REAL NOT NULL,status TEXT NOT NULL,acl_json TEXT NOT NULL,
+                   provenance_json TEXT NOT NULL,observed_at TEXT NOT NULL,
+                   valid_from TEXT NOT NULL,valid_until TEXT,supersedes_id TEXT,
+                   created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+                 INSERT INTO memories(
+                   id,kind,project,title,content,source,source_id,dedupe_key,
+                   confidence,importance,status,acl_json,provenance_json,
+                   observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at)
+                 VALUES(
+                   'preference-id','preference','work','Preference','durable preference',
+                   'agent','preference-id',NULL,0.8,0.6,'active','[\"work\"]','{}',
+                   '2026-01-01T00:00:00Z','2026-01-01T00:00:00Z',NULL,NULL,
+                   '2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');",
+            )
+            .expect("partial schema");
+        drop(connection);
+
+        let migrated = Store::open(&path).expect("resume migration");
+        let preference = migrated
+            .memory("preference-id")
+            .expect("preference memory")
+            .expect("preference record");
+        assert_eq!(preference.content_type, "preference");
+        assert_eq!(preference.retention_tier, "durable");
+        assert_eq!(preference.scope, "workspace");
+        assert_eq!(migrated.memory_revision().expect("revision"), 0);
     }
 
     #[test]
@@ -4315,7 +4846,7 @@ mod tests {
             "semantic",
             Some("semantic"),
             Some("working"),
-            Some("principal"),
+            Some("workspace"),
         )
         .expect("working axes");
         store
@@ -4347,7 +4878,7 @@ mod tests {
                 None,
                 None,
                 Some("working"),
-                Some("principal"),
+                Some("workspace"),
                 10,
                 &["work".into()],
             )
@@ -4368,6 +4899,130 @@ mod tests {
             .expect("durable recall");
         assert_eq!(durable.len(), 1);
         assert_eq!(durable[0].memory.source_id, "durable-note");
+    }
+
+    #[test]
+    fn unbound_session_and_principal_memory_scopes_fail_closed() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let input = crate::memory::MemoryInput {
+            kind: "semantic".into(),
+            project: "work".into(),
+            title: "Scoped note".into(),
+            content: "Scoped content".into(),
+            source: "agent".into(),
+            source_id: "scoped-note".into(),
+            dedupe_key: None,
+            confidence: 0.8,
+            importance: 0.6,
+            acl: vec!["work".into()],
+            provenance: serde_json::json!({"test":true}),
+            supersedes_id: None,
+            valid_until: None,
+        };
+        for scope in ["session", "principal"] {
+            let axes = crate::memory::MemoryAxes::with_overrides(
+                "semantic",
+                None,
+                Some("working"),
+                Some(scope),
+            )
+            .expect("axes");
+            let error = store
+                .remember_scoped_with_axes(&input, &["work".into()], false, axes)
+                .expect_err("unbound narrow scope must fail closed");
+            assert!(error.to_string().contains("identity binding"));
+        }
+    }
+
+    #[test]
+    fn owner_global_memory_is_hidden_from_acl_matching_non_owners() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let input = crate::memory::MemoryInput {
+            kind: "preference".into(),
+            project: "work".into(),
+            title: "Owner preference".into(),
+            content: "Prefer private owner policy".into(),
+            source: "owner".into(),
+            source_id: "owner-preference".into(),
+            dedupe_key: Some("owner-preference".into()),
+            confidence: 0.9,
+            importance: 0.8,
+            acl: vec!["work".into()],
+            provenance: serde_json::json!({"test":true}),
+            supersedes_id: None,
+            valid_until: None,
+        };
+        let axes = crate::memory::MemoryAxes::with_overrides(
+            "preference",
+            None,
+            None,
+            Some("owner-global"),
+        )
+        .expect("owner axes");
+        let owner_memory = store
+            .remember_scoped_with_axes(&input, &["*".into()], true, axes)
+            .expect("owner memory");
+
+        assert!(
+            store
+                .recall_memories(
+                    "private owner policy",
+                    Some("work"),
+                    None,
+                    10,
+                    &["work".into()]
+                )
+                .expect("scoped recall")
+                .is_empty()
+        );
+        assert!(
+            store
+                .export_memories(None, None, 100, &["work".into()])
+                .expect("scoped export")
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .memory_stats_scoped(&["work".into()])
+                .expect("scoped stats")
+                .total,
+            0
+        );
+        assert!(
+            store
+                .forget_memory_scoped(&owner_memory.id, &["work".into()], false)
+                .is_err()
+        );
+
+        let overwrite_error = store
+            .remember_scoped_with_axes(
+                &crate::memory::MemoryInput {
+                    content: "Overwrite owner policy".into(),
+                    ..input.clone()
+                },
+                &["work".into()],
+                false,
+                crate::memory::MemoryAxes::from_legacy_kind("preference").expect("workspace axes"),
+            )
+            .expect_err("non-owner dedupe must not reach owner-global memory");
+        assert!(overwrite_error.to_string().contains("owner authorization"));
+
+        let supersede_error = store
+            .remember_scoped(
+                &crate::memory::MemoryInput {
+                    title: "Replacement".into(),
+                    source_id: "replacement".into(),
+                    dedupe_key: Some("replacement".into()),
+                    supersedes_id: Some(owner_memory.id),
+                    ..input
+                },
+                &["work".into()],
+                false,
+            )
+            .expect_err("non-owner must not supersede owner-global memory");
+        assert!(supersede_error.to_string().contains("owner authorization"));
     }
 
     #[test]
@@ -6459,10 +7114,10 @@ mod tests {
         let revision = store.memory_revision().expect("memory revision");
         let input = candidate_input("work", Some("retry-1"));
         let first = store
-            .propose_memory_candidate(&input, &["work".into()], false)
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
             .expect("candidate");
         let retry = store
-            .propose_memory_candidate(&input, &["work".into()], false)
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
             .expect("idempotent candidate retry");
         assert_eq!(first.id, retry.id);
         assert_eq!(store.memory_revision().expect("stable revision"), revision);
@@ -6474,7 +7129,15 @@ mod tests {
         );
         assert_eq!(
             store
-                .list_memory_candidates(Some("work"), None, None, 10, &["work".into()])
+                .list_memory_candidates(
+                    Some("work"),
+                    None,
+                    None,
+                    10,
+                    "agent-a",
+                    &["work".into()],
+                    false
+                )
                 .expect("candidate list")
                 .len(),
             1
@@ -6488,12 +7151,12 @@ mod tests {
         let mut sensitive = candidate_input("work", None);
         sensitive.sensitivity = "sensitive".into();
         let error = store
-            .propose_memory_candidate(&sensitive, &["work".into()], false)
+            .propose_memory_candidate(&sensitive, "agent-a", &["work".into()], false)
             .expect_err("sensitive candidate must fail closed");
         assert!(error.to_string().contains("sensitive observations"));
         let personal = candidate_input("personal", None);
         let error = store
-            .propose_memory_candidate(&personal, &["work".into()], false)
+            .propose_memory_candidate(&personal, "agent-a", &["work".into()], false)
             .expect_err("cross-workspace ACL must fail closed");
         assert!(error.to_string().contains("candidate ACL denied"));
     }
@@ -6503,11 +7166,16 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
         let candidate = store
-            .propose_memory_candidate(&candidate_input("work", None), &["work".into()], false)
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
             .expect("candidate");
         assert!(
             store
-                .redact_memory_candidate_scoped(&candidate.id, &["work".into()], false)
+                .redact_memory_candidate_scoped(&candidate.id, "agent-a", &["work".into()], false)
                 .expect("redact candidate")
         );
         let redacted = store
@@ -6522,6 +7190,218 @@ mod tests {
                 .as_object()
                 .is_some_and(|value| value.is_empty())
         );
+        let exported = store
+            .export_memory_candidates(
+                Some("work"),
+                None,
+                None,
+                100,
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("candidate export");
+        assert_eq!(exported.len(), 1);
+        assert_eq!(exported[0].status, "redacted");
+        assert!(
+            !serde_json::to_string(&exported)
+                .expect("json")
+                .contains("created_by")
+        );
+    }
+
+    #[test]
+    fn candidate_retry_compares_salience_and_precedes_capacity_checks() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let input = candidate_input("work", Some("retry-complete"));
+        let first = store
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+            .expect("candidate");
+        {
+            let connection = store.connection.lock().expect("store lock");
+            connection
+                .execute(
+                    "UPDATE memory_candidates SET created_at='2020-01-01T00:00:00Z' WHERE id=?1",
+                    [&first.id],
+                )
+                .expect("age candidate");
+            for index in 0..observation::MAX_CANDIDATES_PER_PROJECT {
+                connection
+                    .execute(
+                        "INSERT INTO memory_candidates(
+                           id,observation_kind,content_type,retention_tier,scope,created_by,project,
+                           title,content,source,source_id,dedupe_key,confidence,importance,sensitivity,
+                           status,acl_json,provenance_json,expires_at,created_at,updated_at)
+                         VALUES(?1,'evidence-backed','semantic','working','workspace','seed','work',
+                           'seed','seed','test',?1,NULL,0.5,0.5,'normal','pending','[\"work\"]','{}',
+                           '2099-01-01T00:00:00Z','2020-01-01T00:00:00Z','2020-01-01T00:00:00Z')",
+                        [format!("seed-{index}")],
+                    )
+                    .expect("seed capacity");
+            }
+        }
+        let retry = store
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+            .expect("retry remains idempotent at capacity");
+        assert_eq!(retry.id, first.id);
+
+        let mut changed = input;
+        changed.confidence = 0.2;
+        let error = store
+            .propose_memory_candidate(&changed, "agent-a", &["work".into()], false)
+            .expect_err("changed confidence is not an idempotent retry");
+        assert!(error.to_string().contains("different proposal"));
+    }
+
+    #[test]
+    fn candidate_scope_and_rate_limits_are_bound_to_the_principal() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut principal = candidate_input("work", None);
+        principal.scope = "principal".into();
+        let candidate = store
+            .propose_memory_candidate(&principal, "agent-a", &["work".into()], false)
+            .expect("principal candidate");
+        assert_eq!(candidate.created_by, "agent-a");
+        assert!(
+            store
+                .list_memory_candidates(
+                    Some("work"),
+                    None,
+                    Some("principal"),
+                    10,
+                    "agent-b",
+                    &["work".into()],
+                    false
+                )
+                .expect("isolated list")
+                .is_empty()
+        );
+        assert!(
+            store
+                .cancel_memory_candidate_scoped(&candidate.id, "agent-b", &["work".into()], false)
+                .is_err()
+        );
+
+        let mut session = candidate_input("work", None);
+        session.scope = "session".into();
+        assert!(
+            store
+                .propose_memory_candidate(&session, "agent-a", &["work".into()], false)
+                .expect_err("unbound session must fail")
+                .to_string()
+                .contains("session identity binding")
+        );
+
+        for index in 0..observation::MAX_CANDIDATES_PER_PRINCIPAL_PER_HOUR - 1 {
+            let mut input = candidate_input("work", None);
+            input.source_id = format!("rate-{index}");
+            store
+                .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+                .expect("within rate");
+        }
+        let error = store
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect_err("rate limit");
+        assert!(error.to_string().contains("rate limit"));
+    }
+
+    #[test]
+    fn owner_global_candidates_require_owner_on_every_path() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut input = candidate_input("work", None);
+        input.scope = "owner-global".into();
+        let candidate = store
+            .propose_memory_candidate(&input, "owner", &["*".into()], true)
+            .expect("owner candidate");
+        assert!(
+            store
+                .list_memory_candidates(
+                    Some("work"),
+                    None,
+                    None,
+                    10,
+                    "wildcard-user",
+                    &["*".into()],
+                    false
+                )
+                .expect("non-owner list")
+                .is_empty()
+        );
+        assert!(
+            store
+                .cancel_memory_candidate_scoped(
+                    &candidate.id,
+                    "wildcard-user",
+                    &["*".into()],
+                    false
+                )
+                .is_err()
+        );
+        assert_eq!(
+            store
+                .connection
+                .lock()
+                .expect("store lock")
+                .query_row(
+                    "SELECT value FROM meta WHERE key='memory_candidates_schema'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("candidate schema marker"),
+            "1"
+        );
+    }
+
+    #[test]
+    fn migrates_legacy_candidate_queue_with_creator_binding_and_marker() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("store.sqlite3");
+        let connection = Connection::open(&path).expect("legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE memory_candidates(
+                   id TEXT PRIMARY KEY,observation_kind TEXT NOT NULL,content_type TEXT NOT NULL,
+                   retention_tier TEXT NOT NULL,scope TEXT NOT NULL,project TEXT NOT NULL,
+                   title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,source_id TEXT NOT NULL,
+                   dedupe_key TEXT,confidence REAL NOT NULL,importance REAL NOT NULL,sensitivity TEXT NOT NULL,
+                   status TEXT NOT NULL,acl_json TEXT NOT NULL,provenance_json TEXT NOT NULL,
+                   expires_at TEXT NOT NULL,rejection_reason TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+                 CREATE UNIQUE INDEX idx_memory_candidates_project_dedupe
+                   ON memory_candidates(project,dedupe_key) WHERE dedupe_key IS NOT NULL;",
+            )
+            .expect("legacy candidate schema");
+        drop(connection);
+
+        let store = Store::open(&path).expect("migrated store");
+        let connection = store.connection.lock().expect("store lock");
+        let has_creator = connection
+            .prepare("PRAGMA table_info(memory_candidates)")
+            .expect("candidate columns")
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("candidate column rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("candidate column names")
+            .into_iter()
+            .any(|column| column == "created_by");
+        assert!(has_creator);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT value FROM meta WHERE key='memory_candidates_schema'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("schema marker"),
+            "1"
+        );
     }
 
     #[test]
@@ -6529,7 +7409,12 @@ mod tests {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
         let candidate = store
-            .propose_memory_candidate(&candidate_input("work", None), &["work".into()], false)
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
             .expect("candidate");
         let mut canonical = crate::memory::MemoryInput {
             kind: "working".into(),
@@ -6549,7 +7434,7 @@ mod tests {
         let canonical_record = store.remember(&canonical).expect("canonical memory");
         let revision = store.memory_revision().expect("revision");
         let result = store
-            .classify_memory_candidate(&candidate.id, &["work".into()], false)
+            .classify_memory_candidate(&candidate.id, "agent-a", &["work".into()], false)
             .expect("classification");
         assert_eq!(result.classification, "exact-duplicate");
         let canonical_id = canonical_record.id.clone();
@@ -6562,7 +7447,7 @@ mod tests {
         canonical.source_id = "personal-canonical".into();
         store.remember(&canonical).expect("out-of-scope memory");
         let result = store
-            .classify_memory_candidate(&candidate.id, &["work".into()], false)
+            .classify_memory_candidate(&candidate.id, "agent-a", &["work".into()], false)
             .expect("scoped classification");
         assert_eq!(result.classification, "exact-duplicate");
         assert_eq!(result.supporting_memory_ids, vec![canonical_id]);

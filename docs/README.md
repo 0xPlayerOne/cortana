@@ -22,6 +22,7 @@ Cortana documentation is divided by authority. Each document should define one d
 | Planning and documentation ownership                    | [Planning and tracking](planning.md)                                                                                                      |
 | Architecture diagrams                                   | [Architecture](architecture/)                                                                                                             |
 | Canonical entities and persistence                      | [Core entity contract](contracts/core-entities.md)                                                                                        |
+| Structured retrieval units                              | [Structured chunking](chunking.md)                                                                                                        |
 | ContextBundle identity and pinning                      | [ContextBundle contract](contracts/context-bundle.md)                                                                                     |
 | Connector and reconciliation semantics                  | [Connector contract](contracts/connectors.md)                                                                                             |
 | Workspace, principal, and ACL mapping                   | [Identity contract](contracts/identity.md)                                                                                                |

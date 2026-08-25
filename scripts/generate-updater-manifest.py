@@ -43,6 +43,14 @@ def main() -> int:
         default=Path("latest.json"),
         help="manifest output path (default: latest.json)",
     )
+    parser.add_argument(
+        "--allow-partial",
+        action="store_true",
+        help=(
+            "publish a valid manifest for the signed updater targets that exist; "
+            "the strict release verifier still rejects incomplete releases"
+        ),
+    )
     args = parser.parse_args()
 
     repo = os.environ.get("GH_REPO") or os.environ.get("GITHUB_REPOSITORY")
@@ -66,7 +74,7 @@ def main() -> int:
             if name not in assets
         }
     )
-    if missing:
+    if missing and not args.allow_partial:
         raise SystemExit("release is missing updater assets: " + ", ".join(missing))
 
     signatures: dict[str, str] = {}
@@ -90,11 +98,16 @@ def main() -> int:
     for platform, template in PLATFORM_ASSETS.items():
         archive = template.format(version=version)
         signature_name = f"{archive}.sig"
+        if archive not in assets or signature_name not in assets:
+            continue
         asset = assets[archive]
         url = asset.get("url") or asset.get("apiUrl")
         if not isinstance(url, str) or not url:
             raise SystemExit(f"release asset has no API URL: {archive}")
         platforms[platform] = {"signature": signature_for(signature_name), "url": url}
+
+    if not platforms:
+        raise SystemExit("release has no signed updater assets")
 
     published_at = release.get("publishedAt")
     if not isinstance(published_at, str) or not published_at:
@@ -107,7 +120,8 @@ def main() -> int:
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    print(f"generated updater manifest for {args.tag} with {len(platforms)} platforms")
+    mode = " (partial)" if missing else ""
+    print(f"generated updater manifest for {args.tag} with {len(platforms)} platforms{mode}")
     return 0
 
 
