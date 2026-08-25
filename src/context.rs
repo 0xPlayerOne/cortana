@@ -125,7 +125,7 @@ pub fn metadata(
     ContextMetadata {
         contract_version: CONTEXT_CONTRACT_VERSION.into(),
         created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
-        token_budget,
+        token_budget: token_budget.clamp(MIN_CONTEXT_TOKENS, MAX_CONTEXT_TOKENS),
         corpus_revision,
         memory_revision,
         embedding_fingerprint,
