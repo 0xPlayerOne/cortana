@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.1](https://github.com/0xPlayerOne/cortana/compare/v0.37.0...v0.37.1) (2026-08-25)
+
+
+### Tests
+
+* **desktop:** add packaged acceptance evidence lane ([#2121](https://github.com/0xPlayerOne/cortana/issues/2121)) ([752bf80](https://github.com/0xPlayerOne/cortana/commit/752bf80a240ddff7d036a878ce8d7ea0f48e5567))
+
 ## [0.37.0](https://github.com/0xPlayerOne/cortana/compare/v0.36.0...v0.37.0) (2026-08-25)
 
 
