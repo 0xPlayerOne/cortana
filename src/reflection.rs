@@ -7,6 +7,8 @@
 //! principal first, then pass only the bounded, scoped inputs to this module.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::io::{self, Write};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
 use std::time::{Duration, Instant};
 
@@ -39,6 +41,7 @@ pub const MAX_REFLECTION_TENSIONS: usize = 16;
 pub const MAX_REFLECTION_RECOMMENDATIONS: usize = 16;
 pub const MAX_REFLECTION_CANDIDATES: usize = 8;
 pub const MAX_PROVIDER_OUTPUT_BYTES: usize = 128 * 1024;
+const MIN_PRIVATE_EVIDENCE_FINGERPRINT_CHARS: usize = 12;
 
 static ACTIVE_PROVIDERS: OnceLock<Mutex<BTreeSet<usize>>> = OnceLock::new();
 
@@ -512,10 +515,12 @@ pub fn reflect_with_provider(
                 let provider_memories = selected.clone();
                 let provider_evidence = evidence.clone();
                 std::thread::spawn(move || {
-                    let result =
-                        provider.reflect(&provider_request, &provider_memories, &provider_evidence);
-                    let _ = sender.send(result);
+                    let result = catch_unwind(AssertUnwindSafe(|| {
+                        provider.reflect(&provider_request, &provider_memories, &provider_evidence)
+                    }))
+                    .unwrap_or_else(|_| Err("reflection provider panicked".into()));
                     release_provider(provider_key);
+                    let _ = sender.send(result);
                 });
                 let remaining =
                     Duration::from_millis(request.deadline_ms).saturating_sub(started.elapsed());
@@ -1233,26 +1238,47 @@ fn validate_provider_output(
             "chronology memory is ungrounded"
         );
     }
-    let serialized_output = serde_json::to_string(output)?;
-    anyhow::ensure!(
-        serialized_output.len() <= MAX_PROVIDER_OUTPUT_BYTES,
-        "provider output exceeds {MAX_PROVIDER_OUTPUT_BYTES} bytes"
-    );
+    serde_json::to_writer(BoundedWriter::new(MAX_PROVIDER_OUTPUT_BYTES), output)
+        .map_err(|error| anyhow::anyhow!("provider output exceeds its aggregate bound: {error}"))?;
     ensure_no_private_evidence_echo(&provider_output_text(output), evidence)?;
     Ok(())
+}
+
+struct BoundedWriter {
+    remaining: usize,
+}
+
+impl BoundedWriter {
+    fn new(limit: usize) -> Self {
+        Self { remaining: limit }
+    }
+}
+
+impl Write for BoundedWriter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        if buffer.len() > self.remaining {
+            return Err(io::Error::other("serialized value is too large"));
+        }
+        self.remaining -= buffer.len();
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 fn ensure_no_private_evidence_echo(serialized_output: &str, evidence: &[Evidence]) -> Result<()> {
     let normalized_output = serialized_output.to_lowercase();
     let output_characters = normalized_output.chars().collect::<Vec<_>>();
     let output_windows = output_characters
-        .windows(4)
+        .windows(MIN_PRIVATE_EVIDENCE_FINGERPRINT_CHARS)
         .map(|window| window.iter().collect::<String>())
         .collect::<HashSet<_>>();
     for item in evidence {
         let normalized = item.content.to_lowercase();
         let characters = normalized.chars().collect::<Vec<_>>();
-        if characters.len() < 4 {
+        if characters.len() < MIN_PRIVATE_EVIDENCE_FINGERPRINT_CHARS {
             anyhow::ensure!(
                 normalized.is_empty() || !normalized_output.contains(&normalized),
                 "provider output echoes private evidence content"
@@ -1261,7 +1287,7 @@ fn ensure_no_private_evidence_echo(serialized_output: &str, evidence: &[Evidence
         }
         anyhow::ensure!(
             !characters
-                .windows(4)
+                .windows(MIN_PRIVATE_EVIDENCE_FINGERPRINT_CHARS)
                 .any(|window| { output_windows.contains(&window.iter().collect::<String>()) }),
             "provider output echoes private evidence content"
         );
@@ -1297,15 +1323,31 @@ fn ensure_optional_ids(ids: &[String], allowed: &BTreeSet<&str>, label: &str) ->
         ids.iter().all(|id| allowed.contains(id.as_str())),
         "{label} contains an unknown reference"
     );
+    validate_reference_ids(ids, label)?;
     Ok(())
 }
 
 fn ensure_ids(ids: &[String], allowed: &BTreeSet<&str>, label: &str) -> Result<()> {
     anyhow::ensure!(!ids.is_empty(), "{label} support cannot be empty");
     anyhow::ensure!(
+        ids.len() <= allowed.len(),
+        "{label} contains too many references"
+    );
+    anyhow::ensure!(
         ids.iter().all(|id| allowed.contains(id.as_str())),
         "{label} contains an unknown reference"
     );
+    validate_reference_ids(ids, label)?;
+    Ok(())
+}
+
+fn validate_reference_ids(ids: &[String], label: &str) -> Result<()> {
+    anyhow::ensure!(
+        ids.iter().all(|id| id.len() <= MAX_REFLECTION_SOURCE_BYTES),
+        "{label} contains an oversized reference"
+    );
+    let unique = ids.iter().collect::<BTreeSet<_>>();
+    anyhow::ensure!(unique.len() == ids.len(), "{label} contains duplicates");
     Ok(())
 }
 
@@ -1570,6 +1612,33 @@ mod tests {
                 .contains("private source content")
         );
 
+        struct Paraphrase;
+        impl ReflectionProvider for Paraphrase {
+            fn name(&self) -> &str {
+                "paraphrase"
+            }
+            fn reflect(
+                &self,
+                _: &ReflectRequest,
+                _: &[MemoryRecord],
+                _: &[Evidence],
+            ) -> Result<ProviderReflection, String> {
+                Ok(ProviderReflection {
+                    claims: vec![ReflectClaim {
+                        text: "The source supports the release policy".into(),
+                        supporting_memory_ids: Vec::new(),
+                        supporting_evidence_ids: vec!["doc-1:0".into()],
+                    }],
+                    ..Default::default()
+                })
+            }
+        }
+        request.provider_policy = ProviderPolicy::PreferProvider;
+        let response = reflect_with_provider(&request, &inputs, Some(Arc::new(Paraphrase)))
+            .expect("grounded paraphrase succeeds");
+        assert_eq!(response.status, ReflectStatus::Completed);
+        assert_eq!(response.provider.status, "succeeded");
+
         struct Echo;
         impl ReflectionProvider for Echo {
             fn name(&self) -> &str {
@@ -1591,7 +1660,6 @@ mod tests {
                 })
             }
         }
-        request.provider_policy = ProviderPolicy::PreferProvider;
         let response = reflect_with_provider(&request, &inputs, Some(Arc::new(Echo)))
             .expect("private echo falls back");
         assert_eq!(response.status, ReflectStatus::Fallback);
@@ -1748,6 +1816,100 @@ mod tests {
                 .proposed_candidates
                 .iter()
                 .all(|item| item.project == "work")
+        );
+    }
+
+    #[test]
+    fn provider_panic_releases_concurrency_guard_for_retry() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct PanicOnce(AtomicUsize);
+        impl ReflectionProvider for PanicOnce {
+            fn name(&self) -> &str {
+                "panic-once"
+            }
+            fn reflect(
+                &self,
+                _: &ReflectRequest,
+                _: &[MemoryRecord],
+                _: &[Evidence],
+            ) -> Result<ProviderReflection, String> {
+                if self.0.fetch_add(1, Ordering::SeqCst) == 0 {
+                    panic!("provider panic");
+                }
+                Ok(ProviderReflection {
+                    claims: vec![ReflectClaim {
+                        text: "The release policy is active".into(),
+                        supporting_memory_ids: vec!["m1".into()],
+                        supporting_evidence_ids: Vec::new(),
+                    }],
+                    ..Default::default()
+                })
+            }
+        }
+
+        let memories = vec![memory("m1", "release policy", "work", &["work"])];
+        let inputs = ReflectionInputs {
+            memories: &memories,
+            evidence: &[],
+            evidence_project: None,
+            principal_acl: &["work".into()],
+            owner: false,
+            memory_revision: 1,
+        };
+        let mut request = request();
+        request.provider_policy = ProviderPolicy::PreferProvider;
+        let provider: Arc<dyn ReflectionProvider> = Arc::new(PanicOnce(AtomicUsize::new(0)));
+
+        let first = reflect_with_provider(&request, &inputs, Some(provider.clone()))
+            .expect("panic falls back");
+        assert_eq!(first.status, ReflectStatus::Fallback);
+        assert_eq!(first.provider.status, "fallback");
+
+        let retry =
+            reflect_with_provider(&request, &inputs, Some(provider)).expect("retry succeeds");
+        assert_eq!(retry.status, ReflectStatus::Completed);
+        assert_eq!(retry.provider.status, "succeeded");
+    }
+
+    #[test]
+    fn provider_reference_and_aggregate_bounds_fail_before_response_serialization() {
+        let memories = (0..MAX_REFLECTION_MEMORY_LIMIT)
+            .map(|index| {
+                memory(
+                    &format!("m{index:03}-{}", "x".repeat(120)),
+                    "release policy",
+                    "work",
+                    &["work"],
+                )
+            })
+            .collect::<Vec<_>>();
+        let all_ids = memories
+            .iter()
+            .map(|item| item.id.clone())
+            .collect::<Vec<_>>();
+
+        let duplicate = ProviderReflection {
+            claims: vec![ReflectClaim {
+                text: "Duplicate support".into(),
+                supporting_memory_ids: vec![all_ids[0].clone(), all_ids[0].clone()],
+                supporting_evidence_ids: Vec::new(),
+            }],
+            ..Default::default()
+        };
+        assert!(validate_provider_output(&request(), &duplicate, &memories, &[]).is_err());
+
+        let oversized_aggregate = ProviderReflection {
+            patterns: (0..MAX_REFLECTION_PATTERNS)
+                .map(|index| ReflectPattern {
+                    statement: format!("Pattern {index}"),
+                    supporting_memory_ids: all_ids.clone(),
+                })
+                .collect(),
+            ..Default::default()
+        };
+        assert!(
+            validate_provider_output(&request(), &oversized_aggregate, &memories, &[]).is_err()
         );
     }
 }
