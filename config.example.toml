@@ -46,7 +46,7 @@ lexical_weight = 1.2
 idf_weight = 0.08
 recency_weight = 0.1
 # Reserved for an evaluated, bounded reranker; keep disabled until its provider contract lands.
-reranker_enabled = false
+reranker_enabled = false # deterministic local second pass; no provider calls
 context_tokens = 8000
 output_tokens = 1200
 request_timeout_seconds = 45

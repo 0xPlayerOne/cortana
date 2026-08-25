@@ -167,7 +167,7 @@ semantic_weight = 1.0
 lexical_weight = 1.2
 idf_weight = 0.08
 recency_weight = 0.1
-# Reserved for a separately evaluated reranker; disabled by default.
+# Optional deterministic local second pass; disabled by default.
 reranker_enabled = false
 context_tokens = 8000
 output_tokens = 1200
@@ -207,10 +207,11 @@ the TOML file.
 
 The ranking contract is `cortana.retrieval.ranking.v2`. It combines bounded semantic and lexical
 candidate pools with reciprocal-rank fusion, IDF term coverage, recency, exact lexical matching,
-and canonical-record deduplication. The five tuning values above are clamped before use and are
-part of the answer cache key. A future local/provider reranker must remain optional, bounded, and
-failure-tolerant; setting `reranker_enabled` does not silently make an unevaluated provider a
-correctness dependency.
+and canonical-record deduplication. The tuning values above are clamped before use and are part of
+the answer cache key. When enabled, the local reranker applies a bounded title/phrase/term-coverage
+boost to the already bounded candidate set; it makes no provider calls and fails open to the fused
+ranking. It remains disabled by default until approved-corpus evaluation demonstrates a quality
+win within the latency budget.
 
 Search responses expose non-secret ranking diagnostics in `x-cortana-retrieval-*` headers:
 ranking contract, fused candidate count, deduplicated count, and returned count. They contain no
