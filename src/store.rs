@@ -2134,6 +2134,12 @@ impl Store {
             report.reason_code = "capacity".into();
             report.explanation = "active memory capacity is full; review, expire, forget, or supersede a record first".into();
         }
+        transaction.execute(
+            "UPDATE memory_consolidation_jobs
+             SET status='cancelled',last_error='superseded-policy',updated_at=?2
+             WHERE policy_version<>?1 AND status IN ('queued','running','retry','paused')",
+            params![policy_identity, now],
+        )?;
         let legacy_terminal: Option<(String, i64, Option<String>)> = transaction
             .query_row(
                 "SELECT status,attempts,memory_id FROM memory_consolidation_jobs
@@ -2144,6 +2150,24 @@ impl Store {
             )
             .optional()?;
         if candidate.status != "pending" {
+            let reconciled_status = if candidate.status == "accepted" {
+                "cancelled"
+            } else {
+                "dead-letter"
+            };
+            transaction.execute(
+                "UPDATE memory_consolidation_jobs
+                 SET status=?3,last_error=?4,updated_at=?5
+                 WHERE candidate_id=?1 AND policy_version=?2
+                   AND status IN ('queued','running','retry','paused')",
+                params![
+                    id,
+                    policy_identity,
+                    reconciled_status,
+                    format!("candidate-terminal:{}", candidate.status),
+                    now
+                ],
+            )?;
             if let Some((status, attempts, memory_id)) = legacy_terminal {
                 transaction.commit()?;
                 return Ok(ConsolidationOutcome {
@@ -2154,11 +2178,6 @@ impl Store {
                     attempts: u8::try_from(attempts).unwrap_or(u8::MAX),
                 });
             }
-            let reconciled_status = if candidate.status == "accepted" {
-                "cancelled"
-            } else {
-                "dead-letter"
-            };
             let reconciled = transaction.execute(
                 "UPDATE memory_consolidation_jobs
                  SET status=?3,last_error=?4,updated_at=?5
@@ -2292,10 +2311,9 @@ impl Store {
                         ConsolidationDecision::AutoRetain
                             | ConsolidationDecision::Approve
                             | ConsolidationDecision::Working
+                            | ConsolidationDecision::Reject
                     ) {
                         "queued"
-                    } else if report.decision == ConsolidationDecision::Reject {
-                        "dead-letter"
                     } else {
                         "paused"
                     },
@@ -2409,7 +2427,7 @@ impl Store {
                     axes,
                 ) {
                     Ok(id) => id,
-                    Err(error) => {
+                    Err(_) => {
                         transaction.rollback()?;
                         let retry_status = if next_attempt > i64::from(policy.max_retries) {
                             "dead-letter"
@@ -2418,11 +2436,28 @@ impl Store {
                         };
                         connection.execute(
                             "UPDATE memory_consolidation_jobs
-                             SET status=?2,last_error='canonical write failed',updated_at=?3
+                             SET status=?2,last_error='canonical-write-failed',updated_at=?3
                              WHERE id=?1",
                             params![job_id, retry_status, memory::now()],
                         )?;
-                        return Err(error);
+                        drop(connection);
+                        self.record_audit(
+                            "system",
+                            "memory.consolidation",
+                            Some(&candidate.project),
+                            Some("candidate"),
+                            retry_status,
+                            Some(1),
+                            0,
+                            10_000,
+                        )?;
+                        return Ok(ConsolidationOutcome {
+                            candidate_id: id.into(),
+                            status: retry_status.into(),
+                            decision: report,
+                            memory_id: None,
+                            attempts: u8::try_from(next_attempt).unwrap_or(u8::MAX),
+                        });
                     }
                 };
                 let changed = transaction.execute(
@@ -2492,10 +2527,10 @@ impl Store {
         anyhow::ensure!(owner, "consolidation recovery requires owner authorization");
         policy.validate()?;
         let policy_identity = policy.identity()?;
-        let candidate_ids = {
+        let candidate_jobs = {
             let connection = self.read_connection.lock().expect("store lock poisoned");
             let mut statement = connection.prepare(
-                "SELECT candidate_id FROM memory_consolidation_jobs
+                "SELECT candidate_id,decision FROM memory_consolidation_jobs
                  WHERE policy_version=?1 AND status IN ('queued','retry','running')
                  ORDER BY priority DESC,created_at ASC,id ASC LIMIT ?2",
             )?;
@@ -2505,19 +2540,19 @@ impl Store {
                         policy_identity,
                         i64::try_from(limit.clamp(1, policy.max_queue)).unwrap_or(i64::MAX)
                     ],
-                    |row| row.get::<_, String>(0),
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
                 )?
                 .collect::<rusqlite::Result<Vec<_>>>()?
         };
         let mut outcomes = Vec::new();
-        for candidate_id in candidate_ids {
+        for (candidate_id, decision) in candidate_jobs {
             if let Ok(outcome) = self.consolidate_memory_candidate(
                 &candidate_id,
                 policy,
                 principal_id,
                 principal_acl,
                 owner,
-                false,
+                decision == ConsolidationDecision::Approve.as_str(),
             ) {
                 outcomes.push(outcome);
             }
@@ -8101,5 +8136,199 @@ mod tests {
             )
             .expect("job status");
         assert_eq!(status, "cancelled");
+    }
+
+    #[test]
+    fn discard_classification_atomically_rejects_the_candidate() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut input = candidate_input("work", None);
+        input.retention_tier = "durable".into();
+        input.content = "x".into();
+        input.confidence = 0.1;
+        let candidate = store
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+            .expect("candidate");
+        let policy = crate::consolidation::ConsolidationPolicy {
+            enabled: true,
+            ..Default::default()
+        };
+
+        let outcome = store
+            .consolidate_memory_candidate(
+                &candidate.id,
+                &policy,
+                "agent-a",
+                &["work".into()],
+                false,
+                false,
+            )
+            .expect("reject candidate");
+        assert_eq!(outcome.status, "rejected");
+        assert_eq!(outcome.decision.decision, ConsolidationDecision::Reject);
+        assert_eq!(
+            store
+                .memory_candidate(&candidate.id)
+                .expect("candidate")
+                .expect("candidate row")
+                .status,
+            "rejected"
+        );
+        assert_eq!(store.memory_stats().expect("memory stats").total, 0);
+    }
+
+    #[test]
+    fn persistent_consumer_recovers_an_explicit_approval() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut input = candidate_input("work", None);
+        input.retention_tier = "durable".into();
+        input.confidence = 0.2;
+        let candidate = store
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+            .expect("candidate");
+        let policy = crate::consolidation::ConsolidationPolicy {
+            enabled: true,
+            ..Default::default()
+        };
+        store
+            .consolidate_memory_candidate(
+                &candidate.id,
+                &policy,
+                "agent-a",
+                &["work".into()],
+                false,
+                false,
+            )
+            .expect("pause for review");
+        {
+            let connection = store.connection.lock().expect("store lock");
+            connection
+                .execute(
+                    "UPDATE memory_consolidation_jobs
+                     SET decision='approve',status='running' WHERE candidate_id=?1",
+                    [&candidate.id],
+                )
+                .expect("simulate approved crash");
+        }
+
+        let outcomes = store
+            .process_pending_memory_consolidation(&policy, "agent-a", &["work".into()], true, 10)
+            .expect("recover approval");
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].status, "accepted");
+    }
+
+    #[test]
+    fn policy_changes_cancel_stale_jobs_before_scheduling() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let candidate = store
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("candidate");
+        let first_policy = crate::consolidation::ConsolidationPolicy::default();
+        store
+            .consolidate_memory_candidate(
+                &candidate.id,
+                &first_policy,
+                "agent-a",
+                &["work".into()],
+                false,
+                false,
+            )
+            .expect("first policy");
+        let mut second_policy = first_policy.clone();
+        second_policy.auto_retain_min_importance = 0.7;
+        store
+            .consolidate_memory_candidate(
+                &candidate.id,
+                &second_policy,
+                "agent-a",
+                &["work".into()],
+                false,
+                false,
+            )
+            .expect("second policy");
+
+        let connection = store.connection.lock().expect("store lock");
+        let stale_status: String = connection
+            .query_row(
+                "SELECT status FROM memory_consolidation_jobs WHERE policy_version=?1",
+                [first_policy.identity().expect("first identity")],
+                |row| row.get(0),
+            )
+            .expect("stale job");
+        assert_eq!(stale_status, "cancelled");
+    }
+
+    #[test]
+    fn legacy_terminal_outcome_also_reconciles_a_current_running_job() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let candidate = store
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("candidate");
+        let policy = crate::consolidation::ConsolidationPolicy::default();
+        store
+            .consolidate_memory_candidate(
+                &candidate.id,
+                &policy,
+                "agent-a",
+                &["work".into()],
+                false,
+                false,
+            )
+            .expect("current job");
+        {
+            let connection = store.connection.lock().expect("store lock");
+            connection
+                .execute(
+                    "UPDATE memory_consolidation_jobs SET status='running' WHERE candidate_id=?1",
+                    [&candidate.id],
+                )
+                .expect("running current job");
+            connection
+                .execute(
+                    "INSERT INTO memory_consolidation_jobs(
+                       id,candidate_id,policy_version,classification,decision,status,priority,
+                       attempts,last_error,memory_id,created_at,updated_at)
+                     SELECT ?2,candidate_id,?3,classification,decision,'complete',priority,
+                       1,NULL,NULL,created_at,updated_at
+                     FROM memory_consolidation_jobs WHERE candidate_id=?1",
+                    params![candidate.id, "legacy-terminal", policy.version],
+                )
+                .expect("legacy terminal job");
+            connection
+                .execute(
+                    "UPDATE memory_candidates SET status='accepted' WHERE id=?1",
+                    [&candidate.id],
+                )
+                .expect("terminal candidate");
+        }
+
+        let outcomes = store
+            .process_pending_memory_consolidation(&policy, "owner", &["*".into()], true, 10)
+            .expect("recover jobs");
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].status, "complete");
+        let connection = store.connection.lock().expect("store lock");
+        let current_status: String = connection
+            .query_row(
+                "SELECT status FROM memory_consolidation_jobs WHERE candidate_id=?1 AND policy_version=?2",
+                params![candidate.id, policy.identity().expect("policy identity")],
+                |row| row.get(0),
+            )
+            .expect("current status");
+        assert_eq!(current_status, "cancelled");
     }
 }
