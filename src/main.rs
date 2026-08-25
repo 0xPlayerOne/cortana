@@ -2452,7 +2452,19 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                         println!("{}", serde_json::json!({"id": id, "updated": true}));
                         Ok(())
                     }
-                    Ok(false) => anyhow::bail!("pending candidate not found: {id}"),
+                    Ok(false) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            operation,
+                            None,
+                            None,
+                            "not_found",
+                            Some(0),
+                            started,
+                        );
+                        anyhow::bail!("pending candidate not found: {id}")
+                    }
                     Err(error) => {
                         record_cli_memory_audit(
                             store,
