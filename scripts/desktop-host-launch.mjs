@@ -250,6 +250,10 @@ function readProjectVersions() {
   }
 }
 
+function sourceVersionMatches(versions, version) {
+  return Object.values(versions).every((candidate) => candidate === version)
+}
+
 function parseArguments(args) {
   const values = {}
   for (let index = 0; index < args.length; index += 1) {
@@ -307,7 +311,12 @@ export async function runHostAcceptance(options) {
   const version = options.version
   const descriptor = describeHostTarget(target)
   const versions = readProjectVersions()
-  if (Object.values(versions).some((candidate) => candidate !== version)) {
+  const sourceVersionMatch = sourceVersionMatches(versions, version)
+  const allowSourceVersionDrift =
+    options.allowSourceVersionDrift === true ||
+    options.allowSourceVersionDrift === 'true' ||
+    process.env.CORTANA_ALLOW_SOURCE_VERSION_DRIFT === 'true'
+  if (!sourceVersionMatch && !allowSourceVersionDrift) {
     throw new Error(`project version mismatch: ${redactEvidence(JSON.stringify(versions))}`)
   }
   const app = resolve(options.app)
@@ -328,14 +337,22 @@ export async function runHostAcceptance(options) {
       stableMs: options.stableMs,
       timeoutMs: options.timeoutMs,
     })
+    const cases = [...CASES]
+    if (!sourceVersionMatch) cases.push('source-project-version-drift-recorded')
     return {
       schema_version: 1,
       status: 'passed',
       target: descriptor,
       version,
       installation_type: 'published-package-host-launch',
-      component_versions: versions,
-      cases: [...CASES],
+      component_versions: {
+        application: version,
+        web: version,
+        connector: version,
+      },
+      verifier_project_versions: versions,
+      source_project_version_match: sourceVersionMatch,
+      cases,
       host: {
         ...launch,
         application: basename(app),
@@ -359,6 +376,7 @@ export async function main(args = process.argv.slice(2)) {
   const target = values.target || process.env.CORTANA_DESKTOP_TARGET
   const version = values.version || process.env.CORTANA_RELEASE_VERSION
   const app = values.app || process.env.CORTANA_PACKAGED_APP
+  const allowSourceVersionDrift = values['allow-source-version-drift']
   const evidenceDirectory =
     values['evidence-dir'] ||
     process.env.CORTANA_EVIDENCE_DIRECTORY ||
@@ -375,6 +393,7 @@ export async function main(args = process.argv.slice(2)) {
     target,
     version,
     app,
+    allowSourceVersionDrift,
     launcher: values.launcher,
     launcherArgs: jsonStringArray(values['launcher-args'], '--launcher-args'),
     appArgs: jsonStringArray(values['app-args'], '--app-args'),

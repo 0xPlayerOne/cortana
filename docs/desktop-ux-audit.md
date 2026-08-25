@@ -17,6 +17,10 @@ x86_64. This proves packaged process startup and isolated state setup only. It d
 interactive GUI, browser OAuth, tray/service, native-dialog, updater, accessibility, or
 macOS Developer ID/notarization acceptance.
 
+The workflow may verify a historical published tag from a newer verifier checkout. In that case
+it explicitly allows source-version drift, records the requested release version in the component
+version fields, and preserves the verifier checkout versions plus a drift marker in the evidence.
+
 ## Product principles
 
 - Desktop is the primary human surface, not the canonical database or background-service authority.

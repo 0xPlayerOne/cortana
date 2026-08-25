@@ -123,6 +123,49 @@ test('acceptance verifies a complete release fixture and packaged core evaluatio
   }
 })
 
+test('historical release acceptance records verifier source-version drift', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cortana-package-acceptance-drift-'))
+  const packageDirectory = join(directory, 'release-assets')
+  const core = join(directory, 'cortana')
+  mkdirSync(packageDirectory)
+  const version = '0.37.0'
+  const artifacts = [
+    `Cortana_${version}_aarch64.app.tar.gz`,
+    `Cortana_${version}_aarch64.dmg`,
+    `Cortana_${version}_aarch64.app.tar.gz.sig`,
+  ]
+  try {
+    for (const artifact of artifacts) writeFileSync(join(packageDirectory, artifact), 'fixture')
+    writeFileSync(
+      core,
+      `#!/usr/bin/env node\nif (process.argv.includes('--version')) console.log('cortana ${version}'); else console.log(JSON.stringify({ passed: true }))\n`
+    )
+    chmodSync(core, 0o755)
+
+    const evidence = runAcceptance({
+      target: 'aarch64-apple-darwin',
+      version,
+      packageDirectory,
+      core,
+      allowSourceVersionDrift: true,
+    })
+    expect(evidence).toMatchObject({
+      status: 'passed',
+      version,
+      component_versions: {
+        application: version,
+        web: version,
+        core: version,
+        connector: version,
+      },
+      source_project_version_match: false,
+    })
+    expect(evidence.cases).toContain('source-project-version-drift-recorded')
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('acceptance evidence records the packaged contract required by the audit', () => {
   const directory = mkdtempSync(join(tmpdir(), 'cortana-package-acceptance-contract-'))
   const packageDirectory = join(directory, 'release-assets')

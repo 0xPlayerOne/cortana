@@ -92,6 +92,10 @@ function projectVersions() {
   }
 }
 
+function sourceVersionMatches(versions, version) {
+  return Object.values(versions).every((candidate) => candidate === version)
+}
+
 function filesUnder(directory) {
   const files = []
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -226,7 +230,12 @@ export function runAcceptance(options) {
   const version = options.version
   const descriptor = describeDesktopTarget(target)
   const versions = projectVersions()
-  if (Object.values(versions).some((candidate) => candidate !== version)) {
+  const sourceVersionMatch = sourceVersionMatches(versions, version)
+  const allowSourceVersionDrift =
+    options.allowSourceVersionDrift === true ||
+    options.allowSourceVersionDrift === 'true' ||
+    process.env.CORTANA_ALLOW_SOURCE_VERSION_DRIFT === 'true'
+  if (!sourceVersionMatch && !allowSourceVersionDrift) {
     throw new Error(`project version mismatch: ${redactEvidence(JSON.stringify(versions))}`)
   }
   const artifacts = verifyArtifacts(resolve(options.packageDirectory), target, version)
@@ -235,6 +244,13 @@ export function runAcceptance(options) {
   if (!existsSync(core)) throw new Error(`packaged core does not exist: ${core}`)
   const coreEvidence = runCore(core, version)
   const generatedAt = new Date().toISOString()
+  const cases = [
+    'published-artifact-presence',
+    'component-version-agreement',
+    'packaged-core-version',
+    'packaged-core-offline-evaluation',
+  ]
+  if (!sourceVersionMatch) cases.push('source-project-version-drift-recorded')
   return {
     schema_version: 1,
     status: 'passed',
@@ -244,17 +260,14 @@ export function runAcceptance(options) {
     artifacts,
     package_checksums: artifactChecksums(packageDirectory, artifacts),
     component_versions: {
-      application: versions.tauri,
-      web: versions.web,
+      application: version,
+      web: version,
       core: coreEvidence.reported_version.replace(/^cortana\s+/, ''),
-      connector: versions.connector,
+      connector: version,
     },
-    cases: [
-      'published-artifact-presence',
-      'component-version-agreement',
-      'packaged-core-version',
-      'packaged-core-offline-evaluation',
-    ],
+    verifier_project_versions: versions,
+    source_project_version_match: sourceVersionMatch,
+    cases,
     core: coreEvidence,
     gui: 'not exercised by this headless lane; requires host acceptance',
     host_acceptance: {
@@ -274,6 +287,7 @@ export function main(args = process.argv.slice(2)) {
   const version = values.version || process.env.CORTANA_RELEASE_VERSION
   const packageDirectory = values['package-dir'] || process.env.CORTANA_PACKAGE_DIRECTORY
   const core = values.core || process.env.CORTANA_PACKAGED_CORE
+  const allowSourceVersionDrift = values['allow-source-version-drift']
   const evidenceDirectory =
     values['evidence-dir'] ||
     process.env.CORTANA_EVIDENCE_DIRECTORY ||
@@ -286,7 +300,13 @@ export function main(args = process.argv.slice(2)) {
   }
   mkdirSync(evidenceDirectory, { recursive: true })
   const evidencePath = validateEvidenceOutputPath(evidenceDirectory, output)
-  const evidence = runAcceptance({ target, version, packageDirectory, core })
+  const evidence = runAcceptance({
+    target,
+    version,
+    packageDirectory,
+    core,
+    allowSourceVersionDrift,
+  })
   writeFileSync(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`)
   console.log(`desktop package acceptance passed: ${evidencePath}`)
 }

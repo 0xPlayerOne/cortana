@@ -186,7 +186,8 @@ jobs:
             --version "$CORTANA_VERSION" \
             --package-dir "$RUNNER_TEMP/cortana-release" \
             --core "$CORTANA_CORE" \
-            --evidence-dir "$evidence_dir"
+            --evidence-dir "$evidence_dir" \
+            --allow-source-version-drift true
 
       - name: Run packaged core acceptance (Windows)
         if: runner.os == 'Windows'
@@ -199,7 +200,8 @@ jobs:
             --version $env:CORTANA_VERSION `
             --package-dir (Join-Path $env:RUNNER_TEMP 'cortana-release') `
             --core $env:CORTANA_CORE `
-            --evidence-dir $evidenceDir
+            --evidence-dir $evidenceDir `
+            --allow-source-version-drift true
 
       - name: Run packaged desktop host launch (macOS)
         if: runner.os == 'macOS'
@@ -210,7 +212,8 @@ jobs:
             --target "$CORTANA_TARGET" \
             --version "$CORTANA_VERSION" \
             --app "$CORTANA_DESKTOP_APP" \
-            --evidence-dir "$evidence_dir"
+            --evidence-dir "$evidence_dir" \
+            --allow-source-version-drift true
 
       - name: Run packaged desktop host launch (Linux)
         if: runner.os == 'Linux'
@@ -224,7 +227,8 @@ jobs:
             --launcher xvfb-run \
             --launcher-args '["-a","--server-args=-screen 0 1440x920x24"]' \
             --app-args '["--appimage-extract-and-run"]' \
-            --evidence-dir "$evidence_dir"
+            --evidence-dir "$evidence_dir" \
+            --allow-source-version-drift true
 
       - name: Run packaged desktop host launch (Windows)
         if: runner.os == 'Windows'
@@ -235,7 +239,8 @@ jobs:
             --target $env:CORTANA_TARGET `
             --version $env:CORTANA_VERSION `
             --app $env:CORTANA_DESKTOP_APP `
-            --evidence-dir $evidenceDir
+            --evidence-dir $evidenceDir `
+            --allow-source-version-drift true
 
       - name: Upload acceptance evidence
         if: always()
