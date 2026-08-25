@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.37.5](https://github.com/0xPlayerOne/cortana/compare/v0.37.4...v0.37.5) (2026-08-25)
+
+
+### Bug Fixes
+
+* **acceptance:** install Linux desktop runtime dependencies ([4b006f7](https://github.com/0xPlayerOne/cortana/commit/4b006f72e8576d3c551bf57f9066fb0992d485a5))
+
+
+### CI
+
+* **release:** fail closed on macOS trust gates ([#2145](https://github.com/0xPlayerOne/cortana/issues/2145)) ([3e7de47](https://github.com/0xPlayerOne/cortana/commit/3e7de4728279d6c0bc9f10b050d2d089786458db))
+
 ## [0.37.4](https://github.com/0xPlayerOne/cortana/compare/v0.37.3...v0.37.4) (2026-08-25)
 
 
