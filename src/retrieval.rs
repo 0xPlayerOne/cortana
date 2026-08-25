@@ -294,6 +294,9 @@ pub async fn retrieve_sources_scoped_with_status(
     })
 }
 
+// The public tuned entry point mirrors the stable retrieval call shape while
+// accepting the bounded policy inputs needed by evaluation and configuration.
+#[allow(clippy::too_many_arguments)]
 pub async fn retrieve_scoped_with_status_tuned(
     store: &Store,
     embedder: &Arc<dyn Embedder>,
@@ -474,6 +477,9 @@ fn rank(
     .0)
 }
 
+// Keep the low-level ranking helper explicit: each scope and ranking input is
+// independently audited and the call sites remain easy to compare in tests.
+#[allow(clippy::too_many_arguments)]
 fn rank_with_tuning(
     store: &Store,
     query: &str,
