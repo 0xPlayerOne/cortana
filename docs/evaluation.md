@@ -55,7 +55,19 @@ The manifest defines:
 - whether memory may participate;
 - whether the case is retrieval-only, extractive-answer, or synthesis-enabled.
 
+The baseline harness accepts three read-only case classes: `retrieval_cases` call `/v1/search`,
+`context_cases` call `/v1/context` and verify bounded inclusion/omission metrics, and
+`answer_cases` call `/v1/answer` and validate citations against returned evidence. Context cases
+must provide a `max_tokens` value between 256 and 64,000. A case may also declare
+`forbidden_projects` and `forbidden_sources`; any returned matching scope is a hard failure.
+Evidence responses do not expose project labels in every API version, so scope checks are
+enforced when labels are present and the request's authenticated ACL remains authoritative.
+
 Raw queries and source content remain outside the repository. Reports contain only bounded metrics and non-secret identifiers.
+
+The checked-in `eval/live-manifest.example.json` is a schema template only. Replace its
+placeholders in an operator-controlled local or encrypted manifest; do not commit real queries,
+source IDs, or corpus content.
 
 ### Provider-backed answers
 
@@ -233,6 +245,11 @@ Package integrity and OS trust are separate claims.
 - fallback correctness;
 - duplicate-source crowding.
 
+The approved-corpus report records deterministic latency p50/p95/p99, source diversity, duplicate
+source crowding, lexical fallback rate, answer cache reuse, citation failures, forbidden-scope
+leaks, and context token inclusion/omission and budget compliance. These are diagnostic baseline
+measurements; later retrieval changes compare against the same corpus and manifest revisions.
+
 ### Memory quality
 
 - candidate precision/recall;
@@ -331,6 +348,10 @@ provenance. A changed corpus digest or manifest digest is a provenance change, n
 product regression, and must be reviewed independently.
 
 A corpus or manifest change must not be misreported as a code regression.
+
+Issue #2046 consumes this manifest/provenance contract but does not close corpus governance in
+#2045. The final approved-corpus gate remains blocked until an authorized operator supplies a
+governed, read-only manifest and index under the controls defined by #2045.
 
 ## Reports
 
