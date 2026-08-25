@@ -194,6 +194,21 @@ def test_bounded_trial_retries_once_after_a_transient_connector_failure(
     assert len(drive_trials) == 2, drive_trials
 
 
+def test_reuse_validation_does_not_replace_a_fresh_production_record(
+    tmp_path: Path,
+) -> None:
+    _require_bash()
+    result, log = _run_smoke(tmp_path, "--sync", "--reuse-validation")
+    assert result.returncode == 0, result.stderr
+    assert "drive\tgoogle-drive\ttrue\treused\tpassed" in result.stdout
+
+    invocations = _invocations(log)
+    assert all("validate-source" not in invocation for invocation in invocations)
+    drive_trial = _find(invocations, "sync", "--source", "drive")
+    assert "--no-reconcile" in drive_trial
+    assert "--require-validation" in drive_trial
+
+
 def test_non_retryable_trial_failure_fails_fast(tmp_path: Path) -> None:
     _require_bash()
     result, log = _run_smoke(tmp_path, "--sync", sync_error="invalid_grant")

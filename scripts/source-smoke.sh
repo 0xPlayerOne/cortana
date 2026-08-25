@@ -15,7 +15,9 @@ Usage: scripts/source-smoke.sh [OPTIONS] [SOURCE ...]
 Validate configured sources within a bounded budget. Filesystem/code sources
 are validated as a bounded sample (--sample); connector sources keep ordinary
 fail-closed validation. With --sync, also ingest a bounded, non-reconciling
-trial; filesystem/code trials require --include-filesystem.
+trial; filesystem/code trials require --include-filesystem. Use
+--reuse-validation with --sync when a fresh, larger validation already exists;
+the trial's smaller limits then cannot replace that persisted validation.
 
 Options:
   --config PATH             Cortana TOML configuration
@@ -24,6 +26,7 @@ Options:
   --max-bytes N             Per-source content-byte cap (default: 5242880)
   --max-seconds N           Per-source wall-clock cap (default: 60)
   --sync                    Run a non-reconciling trial sync after validation
+  --reuse-validation        Reuse current validation via --require-validation
   --include-disabled        Validate disabled configured sources too
   --include-filesystem      Allow trial syncs for filesystem/code sources
   -h, --help                Show this help
@@ -42,6 +45,7 @@ max_bytes="${CORTANA_SOURCE_SMOKE_MAX_BYTES:-5242880}"
 max_seconds="${CORTANA_SOURCE_SMOKE_MAX_SECONDS:-60}"
 sync_attempts="${CORTANA_SOURCE_SMOKE_SYNC_ATTEMPTS:-2}"
 run_sync=0
+reuse_validation=0
 include_disabled=0
 include_filesystem=0
 
@@ -76,6 +80,10 @@ while (($#)); do
       run_sync=1
       shift
       ;;
+    --reuse-validation)
+      reuse_validation=1
+      shift
+      ;;
     --include-disabled)
       include_disabled=1
       shift
@@ -102,6 +110,11 @@ while (($#)); do
       ;;
   esac
 done
+
+if ((reuse_validation && !run_sync)); then
+  echo "--reuse-validation requires --sync" >&2
+  exit 2
+fi
 
 if [[ ! -x "$binary_path" && -x "${binary_path}.exe" ]]; then
   binary_path="${binary_path}.exe"
@@ -208,25 +221,33 @@ for entry in "${configured_sources[@]}"; do
 
   validation_log="$smoke_tmpdir/validation.log"
   sync_log="$smoke_tmpdir/sync.log"
-  # Filesystem/code validations explicitly opt into a bounded sample so a root
-  # larger than the budget records a partial validation instead of failing;
-  # connector sources keep the ordinary fail-closed preflight. The sample can
-  # authorize only the equally bounded non-reconciling trial below.
-  validation_args=(
-    validate-source "$source"
-    --max-documents "$max_documents"
-    --max-bytes "$max_bytes"
-    --max-seconds "$max_seconds"
-  )
-  if [[ "$kind" == "filesystem" ]]; then
-    validation_args+=(--sample)
-  fi
-  if "$binary_path" --config "$config_path" "${validation_args[@]}" \
-      >"$validation_log" 2>&1; then
-    validation_status="passed"
+  if ((reuse_validation)); then
+    # A bounded preflight is a persisted authority record, not merely a probe:
+    # running it here would replace a fresh production-budget validation with
+    # the smaller trial limits. Let the guarded sync verify the existing record
+    # without mutating validation state.
+    validation_status="reused"
   else
-    note="validation: $(classify_failure "$validation_log")"
-    failures=$((failures + 1))
+    # Filesystem/code validations explicitly opt into a bounded sample so a
+    # root larger than the budget records a partial validation instead of
+    # failing; connector sources keep the ordinary fail-closed preflight. The
+    # sample can authorize only the equally bounded non-reconciling trial below.
+    validation_args=(
+      validate-source "$source"
+      --max-documents "$max_documents"
+      --max-bytes "$max_bytes"
+      --max-seconds "$max_seconds"
+    )
+    if [[ "$kind" == "filesystem" ]]; then
+      validation_args+=(--sample)
+    fi
+    if "$binary_path" --config "$config_path" "${validation_args[@]}" \
+        >"$validation_log" 2>&1; then
+      validation_status="passed"
+    else
+      note="validation: $(classify_failure "$validation_log")"
+      failures=$((failures + 1))
+    fi
   fi
 
   if ((run_sync)); then
@@ -236,7 +257,7 @@ for entry in "${configured_sources[@]}"; do
     elif [[ "$kind" == "filesystem" && "$include_filesystem" -ne 1 ]]; then
       sync_status="skipped-filesystem"
       note="${note:+$note; }filesystem trial requires --include-filesystem"
-    elif [[ "$validation_status" != "passed" ]]; then
+    elif [[ "$validation_status" != "passed" && "$validation_status" != "reused" ]]; then
       sync_status="skipped-validation"
       note="${note:+$note; }trial requires successful validation"
     else
