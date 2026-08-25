@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.0](https://github.com/0xPlayerOne/cortana/compare/v0.39.4...v0.40.0) (2026-08-25)
+
+
+### Features
+
+* **memory:** separate retention and scope axes ([#2123](https://github.com/0xPlayerOne/cortana/issues/2123)) ([dad4864](https://github.com/0xPlayerOne/cortana/commit/dad486403901c8da5c60a626bb83b94e323bc61f))
+
 ## [0.39.4](https://github.com/0xPlayerOne/cortana/compare/v0.39.3...v0.39.4) (2026-08-25)
 
 
