@@ -1,0 +1,185 @@
+name: Desktop acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag to verify (for example v0.37.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-acceptance-${{ github.workflow }}-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: ${{ matrix.platform }} / ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            platform: macOS
+            target: aarch64-apple-darwin
+            core_archive: aarch64-apple-darwin
+            release_patterns: |
+              Cortana_*_aarch64.app.tar.gz
+              Cortana_*_aarch64.app.tar.gz.sig
+              Cortana_*_aarch64.dmg
+              cortana-*-aarch64-apple-darwin.tar.gz
+          - runner: ubuntu-24.04
+            platform: Linux
+            target: x86_64-unknown-linux-gnu
+            core_archive: x86_64-unknown-linux-gnu
+            release_patterns: |
+              Cortana_*_amd64.AppImage
+              Cortana_*_amd64.AppImage.sig
+              Cortana_*_amd64.deb
+              Cortana_*_amd64.deb.sig
+              Cortana-*-1.x86_64.rpm
+              Cortana-*-1.x86_64.rpm.sig
+              cortana-*-x86_64-unknown-linux-gnu.tar.gz
+          - runner: windows-latest
+            platform: Windows
+            target: x86_64-pc-windows-msvc
+            core_archive: windows-msvc
+            release_patterns: |
+              Cortana_*_x64-setup.exe
+              Cortana_*_x64-setup.exe.sig
+              Cortana_*_x64_en-US.msi
+              Cortana_*_x64_en-US.msi.sig
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      CORTANA_TARGET: ${{ matrix.target }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout release verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validate release input
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release tag must be a plain semver tag such as v0.37.0" >&2
+            exit 2
+          fi
+          echo "CORTANA_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
+
+      - name: Validate release input (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
+            throw 'release tag must be a plain semver tag such as v0.37.0'
+          }
+          "CORTANA_VERSION=$($env:RELEASE_TAG.Substring(1))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install Linux package tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes dpkg minisign
+
+      - name: Download published package assets
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          release_dir="$RUNNER_TEMP/cortana-release"
+          mkdir -p "$release_dir"
+          while IFS= read -r pattern; do
+            [[ -z "$pattern" ]] && continue
+            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$pattern" --dir "$release_dir"
+          done <<'PATTERNS'
+          ${{ matrix.release_patterns }}
+          PATTERNS
+
+      - name: Download published package assets (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:RUNNER_TEMP 'cortana-release'
+          New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
+          $patterns = @(
+            'Cortana_*_x64-setup.exe',
+            'Cortana_*_x64-setup.exe.sig',
+            'Cortana_*_x64_en-US.msi',
+            'Cortana_*_x64_en-US.msi.sig'
+          )
+          foreach ($pattern in $patterns) {
+            gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern $pattern --dir $releaseDir
+            if ($LASTEXITCODE -ne 0) { throw "failed to download $pattern" }
+          }
+
+      - name: Extract packaged core
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          core_dir="$RUNNER_TEMP/cortana-core"
+          mkdir -p "$core_dir"
+          archive="$(find "$RUNNER_TEMP/cortana-release" -maxdepth 1 -type f -name "cortana-${RELEASE_TAG}-${{ matrix.core_archive }}.tar.gz" -print -quit)"
+          [[ -n "$archive" ]] || { echo "published core archive not found" >&2; exit 1; }
+          tar -xzf "$archive" -C "$core_dir"
+          core="$(find "$core_dir" -type f -path '*/bin/cortana' -print -quit)"
+          [[ -n "$core" && -x "$core" ]] || { echo "extracted packaged core is missing or not executable" >&2; exit 1; }
+          echo "CORTANA_CORE=$core" >> "$GITHUB_ENV"
+
+      - name: Extract packaged core (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:RUNNER_TEMP 'cortana-release'
+          $coreDir = Join-Path $env:RUNNER_TEMP 'cortana-core'
+          New-Item -ItemType Directory -Force -Path $coreDir | Out-Null
+          $msi = Get-ChildItem -Path $releaseDir -Filter 'Cortana_*_x64_en-US.msi' | Select-Object -First 1
+          if ($null -eq $msi) { throw 'published Windows MSI was not downloaded' }
+          $target = "TARGETDIR=$coreDir"
+          $process = Start-Process msiexec.exe -Wait -PassThru -NoNewWindow -ArgumentList @('/a', $msi.FullName, '/qn', $target)
+          if ($process.ExitCode -ne 0) { throw "MSI administrative extraction failed: $($process.ExitCode)" }
+          $core = Get-ChildItem -Path $coreDir -Recurse -File -Filter 'cortana.exe' | Select-Object -First 1
+          if ($null -eq $core) { throw 'extracted Windows package is missing cortana.exe' }
+          "CORTANA_CORE=$($core.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run packaged core acceptance (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          evidence_dir="$RUNNER_TEMP/cortana-acceptance-evidence"
+          mkdir -p "$evidence_dir"
+          node scripts/desktop-package-acceptance.mjs \
+            --target "$CORTANA_TARGET" \
+            --version "$CORTANA_VERSION" \
+            --package-dir "$RUNNER_TEMP/cortana-release" \
+            --core "$CORTANA_CORE" \
+            --evidence-dir "$evidence_dir"
+
+      - name: Run packaged core acceptance (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $evidenceDir = Join-Path $env:RUNNER_TEMP 'cortana-acceptance-evidence'
+          New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
+          node scripts/desktop-package-acceptance.mjs `
+            --target $env:CORTANA_TARGET `
+            --version $env:CORTANA_VERSION `
+            --package-dir (Join-Path $env:RUNNER_TEMP 'cortana-release') `
+            --core $env:CORTANA_CORE `
+            --evidence-dir $evidenceDir
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-acceptance-${{ matrix.target }}
+          path: ${{ runner.temp }}/cortana-acceptance-evidence
+          if-no-files-found: warn
