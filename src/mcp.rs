@@ -20,7 +20,7 @@ use crate::{
     context,
     embed::Embedder,
     memory::{MemoryInput, MemoryStats},
-    retrieval,
+    retrieval::{self, RetrievalTuning},
     store::Store,
 };
 
@@ -127,6 +127,7 @@ pub struct BrainServer {
     configured_sources: Vec<ConfiguredSourceStatus>,
     retrieval_fallbacks: Arc<AtomicU64>,
     memory_defaults: crate::memory::MemoryDefaults,
+    retrieval_tuning: RetrievalTuning,
 }
 
 #[derive(Clone)]
@@ -178,6 +179,7 @@ impl BrainServer {
             configured_sources: Vec::new(),
             retrieval_fallbacks: Arc::new(AtomicU64::new(0)),
             memory_defaults: crate::memory::MemoryDefaults::default(),
+            retrieval_tuning: RetrievalTuning::default(),
         }
     }
 
@@ -191,6 +193,11 @@ impl BrainServer {
             confidence,
             importance,
         };
+        self
+    }
+
+    pub fn with_retrieval_tuning(mut self, tuning: RetrievalTuning) -> Self {
+        self.retrieval_tuning = tuning.bounded();
         self
     }
 
@@ -283,7 +290,7 @@ impl BrainServer {
             return format!("invalid request: {error}");
         }
         let acl = principal.visible_acl();
-        match retrieval::retrieve_scoped_with_status(
+        match retrieval::retrieve_scoped_with_status_tuned(
             &self.store,
             &self.embedder,
             &params.query,
@@ -294,6 +301,7 @@ impl BrainServer {
                 .unwrap_or(10)
                 .clamp(1, retrieval::MAX_RESULT_LIMIT),
             &acl,
+            self.retrieval_tuning,
         )
         .await
         {
@@ -380,7 +388,7 @@ impl BrainServer {
             return format!("invalid request: {error}");
         }
         let acl = principal.visible_acl();
-        match retrieval::retrieve_scoped_with_status(
+        match retrieval::retrieve_scoped_with_status_tuned(
             &self.store,
             &self.embedder,
             &params.query,
@@ -391,6 +399,7 @@ impl BrainServer {
                 .unwrap_or(20)
                 .clamp(1, retrieval::MAX_RESULT_LIMIT),
             &acl,
+            self.retrieval_tuning,
         )
         .await
         {
