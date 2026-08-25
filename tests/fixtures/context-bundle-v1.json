@@ -1,0 +1,28 @@
+{
+  "contract_version": "cortana.context.v1",
+  "context_bundle_id": "ctx_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "canonical_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "created_at": "2026-01-01T00:00:00.000Z",
+  "token_budget": 8000,
+  "query": "release process",
+  "context": "# Cortana evidence context",
+  "evidence": [],
+  "memories": [],
+  "metrics": {
+    "retrieved": 0,
+    "included": 0,
+    "omitted": 0,
+    "memories_retrieved": 0,
+    "memories_included": 0,
+    "memories_omitted": 0,
+    "estimated_tokens": 1,
+    "max_tokens": 8000
+  },
+  "retrieval_mode": "hybrid",
+  "degradation": null,
+  "corpus_revision": 3,
+  "memory_revision": 2,
+  "embedding_fingerprint": "deterministic:16",
+  "retrieval_contract_version": "cortana.retrieval.v1",
+  "privacy_scope_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}
