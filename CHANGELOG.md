@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.39.0](https://github.com/0xPlayerOne/cortana/compare/v0.38.0...v0.39.0) (2026-08-25)
+
+
+### Features
+
+* **chunking:** add deterministic structured chunking ([5621b58](https://github.com/0xPlayerOne/cortana/commit/5621b58daa56f9f06b90717dea392df46e369a28))
+* **context:** expose bounded reduction telemetry ([330d187](https://github.com/0xPlayerOne/cortana/commit/330d18771682ea25668a9629f169d1dcd698763f))
+* **eval:** baseline retrieval and citation metrics ([22ad65b](https://github.com/0xPlayerOne/cortana/commit/22ad65ba17e5d854343fe2b069aafe209a144d8c))
+* **eval:** enforce approved corpus governance ([825aa1c](https://github.com/0xPlayerOne/cortana/commit/825aa1cc6082c095ee3151f465ea4e83fe0cfabe))
+* **eval:** measure context digest reuse ([3c31832](https://github.com/0xPlayerOne/cortana/commit/3c31832b43fca9899b682ffba67e01b5fb52b50d))
+* **eval:** record provider activation decisions ([31380a8](https://github.com/0xPlayerOne/cortana/commit/31380a8f29a2d295fd7f4e526c2bbd776ae183ab))
+* **query:** tune ranking and harden lexical fallback ([407bc06](https://github.com/0xPlayerOne/cortana/commit/407bc06d1ca31d9c94ea182818b54ae050d3b3a3))
+* **retrieval:** add bounded local reranker ([81f0bd8](https://github.com/0xPlayerOne/cortana/commit/81f0bd8a0e9604ce8be0c1fb0e2b8872815e8d9e))
+
+
+### Bug Fixes
+
+* **eval:** require context payload for reuse metric ([5a7856d](https://github.com/0xPlayerOne/cortana/commit/5a7856d7b77320888a17fd637e23e5082798b47e))
+* **retrieval:** apply tuning across query surfaces ([2210963](https://github.com/0xPlayerOne/cortana/commit/2210963f53fe33f4cb8ec6ae21c8db5c72a48a0c))
+* **retrieval:** satisfy strict clippy lint ([3a08700](https://github.com/0xPlayerOne/cortana/commit/3a08700a660dc3667d93ae53108df9a060c9ac32))
+
+
+### Tests
+
+* **eval:** run deterministic quality gate in unit checks ([c625ad6](https://github.com/0xPlayerOne/cortana/commit/c625ad65f304c8676f8f62c8eddc2f09cd92fe75))
+
 ## [0.38.0](https://github.com/0xPlayerOne/cortana/compare/v0.37.5...v0.38.0) (2026-08-25)
 
 
