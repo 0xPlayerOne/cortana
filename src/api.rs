@@ -31,6 +31,7 @@ use crate::{
     context::{self as context_bundle, ContextBundle},
     embed::Embedder,
     memory::MemoryInput,
+    observation::ObservationCandidateInput,
     retrieval,
     source_status::{self, ConfiguredSourceStatus},
     store::{AuditEvent, DocumentCursor, DocumentSummary, Store, StoreStats},
@@ -387,6 +388,40 @@ struct MemoryForgetRequest {
     id: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryCandidateRequest {
+    observation_kind: String,
+    content_type: String,
+    retention_tier: String,
+    scope: String,
+    project: String,
+    title: String,
+    content: String,
+    source: String,
+    source_id: String,
+    dedupe_key: Option<String>,
+    confidence: f32,
+    importance: f32,
+    sensitivity: String,
+    acl: Option<Vec<String>>,
+    provenance: serde_json::Value,
+    expires_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MemoryCandidateListParams {
+    project: Option<String>,
+    observation_kind: Option<String>,
+    scope: Option<String>,
+    #[serde(default = "default_memory_candidate_limit")]
+    limit: usize,
+}
+
+fn default_memory_candidate_limit() -> usize {
+    100
+}
+
 #[derive(Debug, Serialize)]
 struct MemoryForgetResponse {
     id: String,
@@ -581,6 +616,18 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/memory/recall", post(recall_memories))
         .route("/v1/memory/forget", post(forget_memory))
         .route("/v1/memory/export", get(export_memories))
+        .route(
+            "/v1/memory/candidates",
+            post(propose_memory_candidate).get(list_memory_candidates),
+        )
+        .route(
+            "/v1/memory/candidates/{id}/cancel",
+            post(cancel_memory_candidate),
+        )
+        .route(
+            "/v1/memory/candidates/{id}/redact",
+            post(redact_memory_candidate),
+        )
         .route("/v1/answer", post(answer))
         .route("/v1/audit", get(audit_events))
         .route("/v1/auth/reload", post(reload_auth))
@@ -632,9 +679,12 @@ async fn authorize(
     };
     let required_scope = match path {
         "/metrics" | "/v1/audit" | "/v1/auth/reload" => ADMIN_SCOPE,
-        "/v1/memory" | "/v1/memory/recall" | "/v1/memory/forget" | "/v1/memory/export" => {
-            MEMORY_SCOPE
-        }
+        "/v1/memory"
+        | "/v1/memory/recall"
+        | "/v1/memory/forget"
+        | "/v1/memory/export"
+        | "/v1/memory/candidates" => MEMORY_SCOPE,
+        path if path.starts_with("/v1/memory/candidates/") => MEMORY_SCOPE,
         "/v1/status" | "/readyz" => STATUS_SCOPE,
         _ => QUERY_SCOPE,
     };
@@ -1684,6 +1734,227 @@ async fn recall_memories(
                 started,
             );
             Err(internal_error(error))
+        }
+    }
+}
+
+async fn propose_memory_candidate(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    Json(request): Json<MemoryCandidateRequest>,
+) -> Result<Json<crate::observation::ObservationCandidate>, (StatusCode, String)> {
+    let started = Instant::now();
+    let requested_acl = request.acl.unwrap_or_default();
+    let visible_acl = principal.visible_acl();
+    let acl = if principal.is_owner() {
+        requested_acl
+    } else if requested_acl.is_empty() {
+        visible_acl.clone()
+    } else if requested_acl
+        .iter()
+        .all(|label| visible_acl.iter().any(|visible| visible == label))
+    {
+        requested_acl
+    } else {
+        record_audit(
+            &state,
+            &principal,
+            "memory.candidate.create",
+            Some(&request.project),
+            Some(&request.source),
+            "forbidden",
+            None,
+            started,
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            "candidate ACL exceeds principal visibility".into(),
+        ));
+    };
+    let input = ObservationCandidateInput {
+        observation_kind: request.observation_kind,
+        content_type: request.content_type,
+        retention_tier: request.retention_tier,
+        scope: request.scope,
+        project: request.project.clone(),
+        title: request.title,
+        content: request.content,
+        source: request.source,
+        source_id: request.source_id,
+        dedupe_key: request.dedupe_key,
+        confidence: request.confidence,
+        importance: request.importance,
+        sensitivity: request.sensitivity,
+        acl,
+        provenance: request.provenance,
+        expires_at: request.expires_at,
+    };
+    let result = state
+        .store
+        .propose_memory_candidate(&input, &visible_acl, principal.is_owner());
+    match result {
+        Ok(candidate) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.create",
+                Some(&candidate.project),
+                Some(&candidate.source),
+                "succeeded",
+                Some(1),
+                started,
+            );
+            Ok(Json(candidate))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.create",
+                Some(&input.project),
+                Some(&input.source),
+                "rejected",
+                None,
+                started,
+            );
+            Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
+        }
+    }
+}
+
+async fn list_memory_candidates(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumQuery(params): AxumQuery<MemoryCandidateListParams>,
+) -> Result<Json<Vec<crate::observation::ObservationCandidate>>, (StatusCode, String)> {
+    let started = Instant::now();
+    match state.store.list_memory_candidates(
+        params.project.as_deref(),
+        params.observation_kind.as_deref(),
+        params.scope.as_deref(),
+        params.limit,
+        &principal.visible_acl(),
+    ) {
+        Ok(candidates) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.list",
+                params.project.as_deref(),
+                None,
+                "succeeded",
+                Some(candidates.len()),
+                started,
+            );
+            Ok(Json(candidates))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.list",
+                params.project.as_deref(),
+                None,
+                "failed",
+                None,
+                started,
+            );
+            Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
+        }
+    }
+}
+
+async fn cancel_memory_candidate(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    update_memory_candidate(&state, &principal, &id, false).await
+}
+
+async fn redact_memory_candidate(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    update_memory_candidate(&state, &principal, &id, true).await
+}
+
+async fn update_memory_candidate(
+    state: &AppState,
+    principal: &Principal,
+    id: &str,
+    redact: bool,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let started = Instant::now();
+    let action = if redact {
+        "memory.candidate.redact"
+    } else {
+        "memory.candidate.cancel"
+    };
+    let result = if redact {
+        state.store.redact_memory_candidate_scoped(
+            id,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        )
+    } else {
+        state.store.cancel_memory_candidate_scoped(
+            id,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        )
+    };
+    match result {
+        Ok(true) => {
+            record_audit(
+                state,
+                principal,
+                action,
+                None,
+                None,
+                "succeeded",
+                Some(1),
+                started,
+            );
+            Ok(Json(
+                serde_json::json!({"id": id, "updated": true, "status": if redact { "redacted" } else { "cancelled" }}),
+            ))
+        }
+        Ok(false) => {
+            record_audit(
+                state,
+                principal,
+                action,
+                None,
+                None,
+                "not_found",
+                Some(0),
+                started,
+            );
+            Err((StatusCode::NOT_FOUND, "pending candidate not found".into()))
+        }
+        Err(error)
+            if crate::memory::is_authorization_error(&error)
+                || error.to_string() == "candidate ACL denied" =>
+        {
+            record_audit(
+                state,
+                principal,
+                action,
+                None,
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            Err((StatusCode::FORBIDDEN, "candidate ACL denied".into()))
+        }
+        Err(error) => {
+            record_audit(
+                state, principal, action, None, None, "failed", None, started,
+            );
+            Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
         }
     }
 }

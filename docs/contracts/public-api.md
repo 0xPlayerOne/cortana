@@ -24,6 +24,7 @@ semantic fields, authorization behavior, limits, revisions, and degradation stat
 | Search        | `POST /v1/search`        | `search`        | `search --json`        | evidence list + retrieval metadata   |
 | Context       | `POST /v1/context`       | `context`       | `context --json`       | [ContextBundle](context-bundle.md)   |
 | Memory recall | `POST /v1/memory/recall` | `memory_recall` | `memory recall --json` | scoped memory records                |
+| Memory candidate | `POST/GET /v1/memory/candidates` | `propose_memory_candidate`, `list_memory_candidates` | `memory candidate propose/list` | bounded, review-only proposals |
 | Status        | `GET /v1/status`         | `brain_status`  | `status --json`        | bounded health/store/source metadata |
 | Audit         | `GET /v1/audit`          | `audit`         | `audit export`         | metadata-only audit records          |
 

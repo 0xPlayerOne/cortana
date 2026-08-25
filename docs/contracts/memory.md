@@ -25,6 +25,24 @@ every scope. Lifecycle operations are `observe` (candidate input),
 `remember`/`retain` (approved canonical write), `recall` (read), `consolidate` (approved merge),
 `reflect` (non-mutating derivation), `supersede`, and `forget`/`retract`.
 
+## Observation candidates
+
+`memory_candidates` is an isolated review queue for bounded proposals. A candidate has an
+`observation_kind` (`harness-scratchpad`, `execution-event`, `evidence-backed`, or `user-authored`),
+the same independent content/retention/scope axes as memory, a source and source id, explicit
+provenance, confidence/importance, ACL, sensitivity, a dedupe hint, and a required expiry no more
+than seven days away. Candidate content is capped at 8 KiB and provenance at 4 KiB; pending
+proposals are capped at 1,000 per project. Sensitive or restricted proposals fail closed and are
+reported as rejected without being stored. Candidate retries with an identical project/dedupe key
+and payload are idempotent.
+
+Candidates are never indexed by memory FTS, returned by `recall` or `context`, or counted in
+`memory_revision`. They are visible only through the scoped candidate list path and may be
+cancelled, expire automatically, or be redacted to a tombstone. Every create, rejection, list,
+cancel, expiry, and redaction operation is audit-recorded with metadata only. ACL and owner-global
+scope checks apply before candidate content is returned or changed; a candidate cannot cross its
+principal or workspace boundary.
+
 ## Scope
 
 Scope is one of `session`, `principal`, `workspace/project`, or explicitly approved owner-global.

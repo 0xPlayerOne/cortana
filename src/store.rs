@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use crate::auth::acl_allows;
 use crate::memory::{self, MemoryInput, MemoryRecord, MemorySearchResult, MemoryStats};
 use crate::model::{Document, StoredChunk};
+use crate::observation::{self, ObservationCandidate, ObservationCandidateInput};
 
 const DATABASE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const SYNC_RUNS_PER_SOURCE: usize = 100;
@@ -87,6 +88,17 @@ pub struct StoreStats {
 pub struct PublicAclSummary {
     pub project: String,
     pub documents: usize,
+}
+
+/// A bounded proposal that is intentionally excluded from canonical memory
+/// recall until an explicit review/promotion step accepts it.
+#[derive(Clone, Debug, Serialize)]
+pub struct CandidateStats {
+    pub pending: i64,
+    pub expired: i64,
+    pub cancelled: i64,
+    pub redacted: i64,
+    pub total: i64,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -266,6 +278,28 @@ impl Store {
                supersedes_id TEXT,
                created_at TEXT NOT NULL,
                updated_at TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS memory_candidates(
+               id TEXT PRIMARY KEY,
+               observation_kind TEXT NOT NULL,
+               content_type TEXT NOT NULL,
+               retention_tier TEXT NOT NULL,
+               scope TEXT NOT NULL,
+               project TEXT NOT NULL,
+               title TEXT NOT NULL,
+               content TEXT NOT NULL,
+               source TEXT NOT NULL,
+               source_id TEXT NOT NULL,
+               dedupe_key TEXT,
+               confidence REAL NOT NULL,
+               importance REAL NOT NULL,
+               sensitivity TEXT NOT NULL,
+               status TEXT NOT NULL,
+               acl_json TEXT NOT NULL,
+               provenance_json TEXT NOT NULL,
+               expires_at TEXT NOT NULL,
+               rejection_reason TEXT,
+               created_at TEXT NOT NULL,
+               updated_at TEXT NOT NULL);
              CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
                memory_id UNINDEXED, title, content, tokenize='unicode61');
              CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
@@ -284,7 +318,13 @@ impl Store {
              CREATE INDEX IF NOT EXISTS idx_memories_scope
                ON memories(project,kind,status,updated_at DESC);
              CREATE INDEX IF NOT EXISTS idx_memories_status
-               ON memories(status,updated_at DESC);",
+               ON memories(status,updated_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_memory_candidates_scope
+               ON memory_candidates(project,status,created_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_memory_candidates_expiry
+               ON memory_candidates(status,expires_at);
+             CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_candidates_project_dedupe
+               ON memory_candidates(project,dedupe_key) WHERE dedupe_key IS NOT NULL;",
         )?;
         connection.execute(
             "INSERT OR IGNORE INTO meta(key,value) VALUES('corpus_revision','0')",
@@ -1438,6 +1478,267 @@ impl Store {
         });
         results.truncate(result_limit);
         Ok(results)
+    }
+
+    /// Store a bounded observation proposal outside canonical memory. This
+    /// path intentionally never calls `bump_memory_revision` and therefore
+    /// cannot invalidate or populate the durable-memory recall cache.
+    pub fn propose_memory_candidate(
+        &self,
+        input: &ObservationCandidateInput,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<ObservationCandidate> {
+        let validated = observation::validate_input(input)?;
+        let observation_kind = validated.observation_kind;
+        let content_type = validated.content_type;
+        let retention_tier = validated.retention_tier;
+        let scope = validated.scope;
+        let sensitivity = validated.sensitivity;
+        let acl = validated.acl;
+        let provenance = validated.provenance;
+        let expires_at = validated.expires_at;
+        anyhow::ensure!(
+            sensitivity == observation::CandidateSensitivity::Normal,
+            "candidate rejected: sensitive observations require explicit review and are not accepted by the bounded capture path"
+        );
+        anyhow::ensure!(
+            scope != memory::MemoryScope::OwnerGlobal || owner,
+            "owner-global candidate scope requires owner authorization"
+        );
+        anyhow::ensure!(
+            owner || acl_allows(&acl, principal_acl),
+            "candidate ACL denied"
+        );
+        self.expire_memory_candidates()?;
+        let now = memory::now();
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let active_count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM memory_candidates
+             WHERE project=?1 AND status='pending' AND julianday(expires_at)>julianday(?2)",
+            params![input.project, now],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(
+            active_count < observation::MAX_CANDIDATES_PER_PROJECT as i64,
+            "candidate limit reached for project; review, cancel, or expire pending observations"
+        );
+        if let Some(dedupe_key) = input.dedupe_key.as_deref() {
+            if let Some(existing) = transaction
+                .query_row(
+                    "SELECT id,observation_kind,content_type,retention_tier,scope,project,title,content,
+                            source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
+                            provenance_json,expires_at,rejection_reason,created_at,updated_at
+                     FROM memory_candidates WHERE project=?1 AND dedupe_key=?2",
+                    params![input.project, dedupe_key],
+                    observation_candidate_from_row,
+                )
+                .optional()?
+            {
+                anyhow::ensure!(
+                    owner || acl_allows(&existing.acl, principal_acl),
+                    "candidate dedupe key is outside principal visibility"
+                );
+                anyhow::ensure!(
+                    existing.status == "pending"
+                        && existing.observation_kind == observation_kind.as_str()
+                        && existing.content_type == content_type.as_str()
+                        && existing.retention_tier == retention_tier.as_str()
+                        && existing.scope == scope.as_str()
+                        && existing.title == input.title
+                        && existing.content == input.content
+                        && existing.source == input.source
+                        && existing.source_id == input.source_id
+                        && existing.sensitivity == sensitivity.as_str()
+                        && existing.acl == acl
+                        && existing.provenance == provenance
+                        && existing.expires_at == expires_at,
+                    "candidate dedupe key already belongs to a different proposal"
+                );
+                transaction.commit()?;
+                return Ok(existing);
+            }
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        transaction.execute(
+            "INSERT INTO memory_candidates(
+               id,observation_kind,content_type,retention_tier,scope,project,title,content,
+               source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
+               provenance_json,expires_at,rejection_reason,created_at,updated_at)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'pending',?15,?16,?17,NULL,?18,?18)",
+            params![
+                id,
+                observation_kind.as_str(),
+                content_type.as_str(),
+                retention_tier.as_str(),
+                scope.as_str(),
+                input.project,
+                input.title,
+                input.content,
+                input.source,
+                input.source_id,
+                input.dedupe_key,
+                f64::from(input.confidence),
+                f64::from(input.importance),
+                sensitivity.as_str(),
+                serde_json::to_string(&acl)?,
+                serde_json::to_string(&provenance)?,
+                expires_at,
+                now,
+            ],
+        )?;
+        transaction.commit()?;
+        self.memory_candidate(&id).and_then(|candidate| {
+            candidate.ok_or_else(|| anyhow::anyhow!("candidate disappeared after commit"))
+        })
+    }
+
+    pub fn list_memory_candidates(
+        &self,
+        project: Option<&str>,
+        observation_kind: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+    ) -> Result<Vec<ObservationCandidate>> {
+        self.expire_memory_candidates()?;
+        let normalized_kind = observation_kind
+            .map(observation::ObservationKind::parse)
+            .transpose()?
+            .map(|kind| kind.as_str().to_string());
+        let normalized_scope = scope
+            .map(memory::MemoryScope::parse)
+            .transpose()?
+            .map(|value| value.as_str().to_string());
+        if normalized_scope.as_deref() == Some("owner-global")
+            && !principal_acl.iter().any(|value| value == "*")
+        {
+            bail!("owner-global candidate scope requires owner authorization");
+        }
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let acl_json = serde_json::to_string(principal_acl)?;
+        let mut statement = connection.prepare(
+            "SELECT id,observation_kind,content_type,retention_tier,scope,project,title,content,
+                    source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
+                    provenance_json,expires_at,rejection_reason,created_at,updated_at
+             FROM memory_candidates
+             WHERE (?1 IS NULL OR project=?1)
+               AND (?2 IS NULL OR observation_kind=?2)
+               AND (?3 IS NULL OR scope=?3)
+               AND (json_array_length(acl_json)=0 OR EXISTS(
+                 SELECT 1 FROM json_each(?4) principal_acl
+                 WHERE principal_acl.value='*' OR EXISTS(
+                   SELECT 1 FROM json_each(acl_json) candidate_acl
+                   WHERE candidate_acl.value=principal_acl.value)))
+             ORDER BY created_at DESC,id DESC LIMIT ?5",
+        )?;
+        let rows = statement.query_map(
+            params![
+                project,
+                normalized_kind.as_deref(),
+                normalized_scope.as_deref(),
+                acl_json,
+                i64::try_from(limit.clamp(1, observation::MAX_CANDIDATE_EXPORT_LIMIT))
+                    .unwrap_or(i64::MAX),
+            ],
+            observation_candidate_from_row,
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn memory_candidate(&self, id: &str) -> Result<Option<ObservationCandidate>> {
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        connection
+            .query_row(
+                "SELECT id,observation_kind,content_type,retention_tier,scope,project,title,content,
+                        source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
+                        provenance_json,expires_at,rejection_reason,created_at,updated_at
+                 FROM memory_candidates WHERE id=?1",
+                [id],
+                observation_candidate_from_row,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    pub fn cancel_memory_candidate_scoped(
+        &self,
+        id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<bool> {
+        self.update_memory_candidate_status(id, "cancelled", principal_acl, owner, false)
+    }
+
+    pub fn redact_memory_candidate_scoped(
+        &self,
+        id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<bool> {
+        self.update_memory_candidate_status(id, "redacted", principal_acl, owner, true)
+    }
+
+    fn update_memory_candidate_status(
+        &self,
+        id: &str,
+        status: &str,
+        principal_acl: &[String],
+        owner: bool,
+        redact: bool,
+    ) -> Result<bool> {
+        let now = memory::now();
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let acl_json: Option<String> = transaction
+            .query_row(
+                "SELECT acl_json FROM memory_candidates WHERE id=?1 AND status='pending'",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(acl_json) = acl_json else {
+            transaction.commit()?;
+            return Ok(false);
+        };
+        let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+        anyhow::ensure!(
+            owner || acl_allows(&acl, principal_acl),
+            "candidate ACL denied"
+        );
+        let changed = if redact {
+            transaction.execute("UPDATE memory_candidates SET status=?2,content='',provenance_json='{}',rejection_reason='redacted',updated_at=?3 WHERE id=?1 AND status='pending'", params![id, status, now])?
+        } else {
+            transaction.execute("UPDATE memory_candidates SET status=?2,updated_at=?3 WHERE id=?1 AND status='pending'", params![id, status, now])?
+        };
+        transaction.commit()?;
+        Ok(changed == 1)
+    }
+
+    fn expire_memory_candidates(&self) -> Result<usize> {
+        let now = memory::now();
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let changed = connection.execute(
+            "UPDATE memory_candidates SET status='expired',updated_at=?1
+             WHERE status='pending' AND julianday(expires_at)<=julianday(?1)",
+            [&now],
+        )?;
+        drop(connection);
+        if changed > 0 {
+            self.record_audit(
+                "system",
+                "memory.candidate.expire",
+                None,
+                None,
+                "succeeded",
+                Some(changed),
+                0,
+                10_000,
+            )?;
+        }
+        Ok(changed)
     }
 
     pub fn memory(&self, id: &str) -> Result<Option<MemoryRecord>> {
@@ -3299,6 +3600,40 @@ fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryRec
     })
 }
 
+fn observation_candidate_from_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<ObservationCandidate> {
+    let acl_json: String = row.get(15)?;
+    let provenance_json: String = row.get(16)?;
+    Ok(ObservationCandidate {
+        id: row.get(0)?,
+        observation_kind: row.get(1)?,
+        content_type: row.get(2)?,
+        retention_tier: row.get(3)?,
+        scope: row.get(4)?,
+        project: row.get(5)?,
+        title: row.get(6)?,
+        content: row.get(7)?,
+        source: row.get(8)?,
+        source_id: row.get(9)?,
+        dedupe_key: row.get(10)?,
+        confidence: row.get(11)?,
+        importance: row.get(12)?,
+        sensitivity: row.get(13)?,
+        status: row.get(14)?,
+        acl: serde_json::from_str(&acl_json).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(15, Type::Text, Box::new(error))
+        })?,
+        provenance: serde_json::from_str(&provenance_json).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(16, Type::Text, Box::new(error))
+        })?,
+        expires_at: row.get(17)?,
+        rejection_reason: row.get(18)?,
+        created_at: row.get(19)?,
+        updated_at: row.get(20)?,
+    })
+}
+
 fn stable_id(source: &str, source_id: &str) -> String {
     hex_digest(format!("{source}\0{source_id}").as_bytes())
 }
@@ -3361,7 +3696,7 @@ fn lexical_query_terms(query: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
+    use chrono::{Duration, Utc};
     use tempfile::tempdir;
 
     use super::*;
@@ -5785,5 +6120,98 @@ mod tests {
             })
             .expect_err("expired supersession must not bypass the active limit");
         assert!(error.to_string().contains("active memory limit reached"));
+    }
+
+    fn candidate_input(project: &str, dedupe_key: Option<&str>) -> ObservationCandidateInput {
+        ObservationCandidateInput {
+            observation_kind: "evidence-backed".into(),
+            content_type: "semantic".into(),
+            retention_tier: "working".into(),
+            scope: "workspace".into(),
+            project: project.into(),
+            title: "Candidate observation".into(),
+            content: "A bounded proposal that needs review".into(),
+            source: "test".into(),
+            source_id: "evidence-1".into(),
+            dedupe_key: dedupe_key.map(str::to_string),
+            confidence: 0.8,
+            importance: 0.5,
+            sensitivity: "normal".into(),
+            acl: vec![project.into()],
+            provenance: serde_json::json!({"source_id":"evidence-1"}),
+            expires_at: (Utc::now() + Duration::hours(1)).to_rfc3339(),
+        }
+    }
+
+    #[test]
+    fn candidates_are_isolated_from_recall_revision_and_idempotent() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let revision = store.memory_revision().expect("memory revision");
+        let input = candidate_input("work", Some("retry-1"));
+        let first = store
+            .propose_memory_candidate(&input, &["work".into()], false)
+            .expect("candidate");
+        let retry = store
+            .propose_memory_candidate(&input, &["work".into()], false)
+            .expect("idempotent candidate retry");
+        assert_eq!(first.id, retry.id);
+        assert_eq!(store.memory_revision().expect("stable revision"), revision);
+        assert!(
+            store
+                .recall_memories("bounded proposal", Some("work"), None, 10, &["work".into()])
+                .expect("memory recall")
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .list_memory_candidates(Some("work"), None, None, 10, &["work".into()])
+                .expect("candidate list")
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn candidates_fail_closed_for_sensitive_content_and_acl_crossing() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut sensitive = candidate_input("work", None);
+        sensitive.sensitivity = "sensitive".into();
+        let error = store
+            .propose_memory_candidate(&sensitive, &["work".into()], false)
+            .expect_err("sensitive candidate must fail closed");
+        assert!(error.to_string().contains("sensitive observations"));
+        let personal = candidate_input("personal", None);
+        let error = store
+            .propose_memory_candidate(&personal, &["work".into()], false)
+            .expect_err("cross-workspace ACL must fail closed");
+        assert!(error.to_string().contains("candidate ACL denied"));
+    }
+
+    #[test]
+    fn candidate_redaction_retains_tombstone_without_content() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let candidate = store
+            .propose_memory_candidate(&candidate_input("work", None), &["work".into()], false)
+            .expect("candidate");
+        assert!(
+            store
+                .redact_memory_candidate_scoped(&candidate.id, &["work".into()], false)
+                .expect("redact candidate")
+        );
+        let redacted = store
+            .memory_candidate(&candidate.id)
+            .expect("candidate lookup")
+            .expect("tombstone");
+        assert_eq!(redacted.status, "redacted");
+        assert!(redacted.content.is_empty());
+        assert!(
+            redacted
+                .provenance
+                .as_object()
+                .is_some_and(|value| value.is_empty())
+        );
     }
 }
