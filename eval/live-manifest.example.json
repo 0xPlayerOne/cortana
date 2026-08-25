@@ -13,6 +13,7 @@
     "min_recall_at_k": 0.8,
     "min_mrr": 0.6,
     "min_retrieval_pass_rate": 0.8,
+    "min_context_pass_rate": 0.8,
     "min_answer_pass_rate": 0.8,
     "min_citation_validity": 1.0,
     "max_retrieval_fallback_rate": 0.0,
@@ -26,6 +27,18 @@
       "project": "work",
       "source": "REPLACE_WITH_SOURCE",
       "top_k": 5,
+      "expected_source_ids": ["REPLACE_WITH_EXPECTED_SOURCE_ID"],
+      "forbidden_source_ids": ["REPLACE_WITH_FORBIDDEN_SOURCE_ID"]
+    }
+  ],
+  "context_cases": [
+    {
+      "name": "replace-with-an-approved-bounded-context-query",
+      "query": "REPLACE_WITH_A_QUERY",
+      "project": "work",
+      "source": "REPLACE_WITH_SOURCE",
+      "top_k": 5,
+      "max_tokens": 8000,
       "expected_source_ids": ["REPLACE_WITH_EXPECTED_SOURCE_ID"],
       "forbidden_source_ids": ["REPLACE_WITH_FORBIDDEN_SOURCE_ID"]
     }
