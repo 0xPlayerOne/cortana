@@ -208,20 +208,43 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cortana-desktop-${{ matrix.target }}-
             ${{ runner.os }}-cortana-desktop-
-      - name: Build, sign, and upload desktop
+      - name: Build, sign, and upload desktop (macOS Developer ID)
+        if: runner.os == 'macOS' && env.CORTANA_ALLOW_ADHOC_MACOS_RELEASE != 'true'
         uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # Tauri's documented ad-hoc sentinel is `-`; the old release lane
-          # used it explicitly and produced the working v0.36 macOS bundle.
-          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && (secrets.APPLE_SIGNING_IDENTITY || '-') || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_PATH: ${{ runner.temp }}/cortana-apple/AuthKey.p8
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ env.RELEASE_TAG }}
+          tauriScript: bun tauri
+          uploadUpdaterJson: false
+          args: ${{ matrix.args }}
+      - name: Build, sign, and upload desktop (macOS ad-hoc recovery)
+        if: runner.os == 'macOS' && env.CORTANA_ALLOW_ADHOC_MACOS_RELEASE == 'true'
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          # Do not pass empty APPLE_CERTIFICATE variables: Tauri treats their
+          # presence as a certificate import request and fails before bundling.
+          # `-` is the established ad-hoc identity used by the pre-credential
+          # release lane and keeps the existing local install compatible.
+          APPLE_SIGNING_IDENTITY: '-'
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ env.RELEASE_TAG }}
+          tauriScript: bun tauri
+          uploadUpdaterJson: false
+          args: ${{ matrix.args }}
+      - name: Build, sign, and upload desktop (Linux and Windows)
+        if: runner.os != 'macOS'
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
         with:
           projectPath: apps/desktop
           tagName: ${{ env.RELEASE_TAG }}
@@ -237,11 +260,7 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
-          if [[ -z "${APPLE_CERTIFICATE:-}" && -z "${APPLE_CERTIFICATE_PASSWORD:-}" && -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
-            [[ "${CORTANA_ALLOW_ADHOC_MACOS_RELEASE:-false}" == "true" ]] || {
-              echo 'macOS trust verification requires Apple signing secrets' >&2
-              exit 1
-            }
+          if [[ "${CORTANA_ALLOW_ADHOC_MACOS_RELEASE:-false}" == "true" ]]; then
             echo 'skipped Developer ID/notarization verification for explicitly opted-in ad-hoc macOS release' >&2
             exit 0
           fi
@@ -317,11 +336,7 @@ jobs:
       - name: Verify published macOS package trust
         run: |
           set -euo pipefail
-          if [[ -z "${APPLE_CERTIFICATE:-}" && -z "${APPLE_CERTIFICATE_PASSWORD:-}" && -z "${APPLE_SIGNING_IDENTITY:-}" ]]; then
-            [[ "${CORTANA_ALLOW_ADHOC_MACOS_RELEASE:-false}" == "true" ]] || {
-              echo 'macOS package trust verification requires Apple signing secrets' >&2
-              exit 1
-            }
+          if [[ "${CORTANA_ALLOW_ADHOC_MACOS_RELEASE:-false}" == "true" ]]; then
             echo 'skipped Developer ID/notarization verification for explicitly opted-in ad-hoc macOS release' >&2
             exit 0
           fi
