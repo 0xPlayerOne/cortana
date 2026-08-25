@@ -585,6 +585,10 @@ mod tests {
             acl: Vec::new(),
             embedding: vec![1.0, 0.0],
             updated_at: Utc::now(),
+            strategy: None,
+            parent_key: None,
+            previous_key: None,
+            next_key: None,
         }
     }
 

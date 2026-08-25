@@ -14,6 +14,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::auth::acl_allows;
+use crate::chunking::{CHUNKING_CONTRACT_VERSION, ChunkSpec};
 use crate::memory::{self, MemoryInput, MemoryRecord, MemorySearchResult, MemoryStats};
 use crate::model::{Document, StoredChunk};
 
@@ -217,7 +218,9 @@ impl Store {
              CREATE TABLE IF NOT EXISTS chunks(
                id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
                ordinal INTEGER NOT NULL, content TEXT NOT NULL, embedding_json TEXT NOT NULL,
-               embedding_blob BLOB);
+               embedding_blob BLOB, chunk_key TEXT, strategy TEXT,
+               parent_key TEXT, previous_key TEXT, next_key TEXT,
+               start_byte INTEGER, end_byte INTEGER, policy_version TEXT);
              CREATE TABLE IF NOT EXISTS embedding_cache(
                fingerprint TEXT NOT NULL, content_hash TEXT NOT NULL,
                embedding_json TEXT NOT NULL, embedding_blob BLOB, hits INTEGER NOT NULL DEFAULT 0,
@@ -289,6 +292,14 @@ impl Store {
             [],
         )?;
         ensure_document_content_column(&connection)?;
+        ensure_column(&connection, "chunks", "chunk_key", "TEXT")?;
+        ensure_column(&connection, "chunks", "strategy", "TEXT")?;
+        ensure_column(&connection, "chunks", "parent_key", "TEXT")?;
+        ensure_column(&connection, "chunks", "previous_key", "TEXT")?;
+        ensure_column(&connection, "chunks", "next_key", "TEXT")?;
+        ensure_column(&connection, "chunks", "start_byte", "INTEGER")?;
+        ensure_column(&connection, "chunks", "end_byte", "INTEGER")?;
+        ensure_column(&connection, "chunks", "policy_version", "TEXT")?;
         ensure_column(
             &connection,
             "sync_runs",
@@ -766,6 +777,95 @@ impl Store {
         Ok(true)
     }
 
+    /// Upsert a document using the versioned structured-chunk contract. The
+    /// canonical document row is identical to `upsert`; only derived chunk
+    /// identity and lineage fields differ. This makes rollout reversible by
+    /// deleting/rebuilding derived chunks without rewriting source content.
+    pub fn upsert_structured(
+        &self,
+        document: &Document,
+        chunks: &[(ChunkSpec, Vec<f32>)],
+    ) -> Result<bool> {
+        let id = stable_id(&document.source, &document.source_id);
+        let hash = document_hash(document)?;
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let previous: Option<(String, bool, Option<String>)> = connection
+            .query_row(
+                "SELECT d.content_hash,length(d.content)>0,
+                        (SELECT c.policy_version FROM chunks c
+                         WHERE c.document_id=d.id ORDER BY c.ordinal LIMIT 1)
+                 FROM documents d WHERE d.id=?1",
+                [&id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        if previous
+            .as_ref()
+            .is_some_and(|(previous_hash, has_content, policy)| {
+                previous_hash == &hash
+                    && *has_content
+                    && policy.as_deref() == Some(CHUNKING_CONTRACT_VERSION)
+            })
+        {
+            return Ok(false);
+        }
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "DELETE FROM chunks_fts WHERE chunk_id IN (SELECT id FROM chunks WHERE document_id=?1)",
+            [&id],
+        )?;
+        transaction.execute("DELETE FROM chunks WHERE document_id=?1", [&id])?;
+        transaction.execute(
+            "INSERT INTO documents(id,source,source_id,title,uri,content_hash,updated_at,project,acl_json,metadata_json,content)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
+             ON CONFLICT(id) DO UPDATE SET title=excluded.title,uri=excluded.uri,
+             content_hash=excluded.content_hash,updated_at=excluded.updated_at,project=excluded.project,
+             acl_json=excluded.acl_json,metadata_json=excluded.metadata_json,content=excluded.content",
+            params![id, document.source, document.source_id, document.title, document.uri, hash,
+                document.updated_at.to_rfc3339(), document.project,
+                serde_json::to_string(&document.acl)?, document.metadata.to_string(),
+                document.content],
+        )?;
+        transaction.execute("DELETE FROM document_links WHERE document_id=?1", [&id])?;
+        for target in metadata_reference_strings(&document.metadata) {
+            transaction.execute(
+                "INSERT OR IGNORE INTO document_links(document_id,target) VALUES(?1,?2)",
+                params![id, target],
+            )?;
+        }
+        for (spec, embedding) in chunks {
+            let chunk_id = format!("{id}:{}", spec.key);
+            transaction.execute(
+                "INSERT INTO chunks(
+                   id,document_id,ordinal,content,embedding_json,embedding_blob,
+                   chunk_key,strategy,parent_key,previous_key,next_key,start_byte,end_byte,policy_version
+                 ) VALUES(?1,?2,?3,?4,'[]',?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+                params![
+                    chunk_id,
+                    id,
+                    spec.ordinal as i64,
+                    &spec.content,
+                    encode_embedding(embedding),
+                    &spec.key,
+                    spec.strategy.as_str(),
+                    &spec.parent_key,
+                    spec.previous_key.as_deref(),
+                    spec.next_key.as_deref(),
+                    spec.start_byte as i64,
+                    spec.end_byte as i64,
+                    spec.policy_version,
+                ],
+            )?;
+            transaction.execute(
+                "INSERT INTO chunks_fts(chunk_id,title,content) VALUES(?1,?2,?3)",
+                params![chunk_id, document.title, &spec.content],
+            )?;
+        }
+        bump_corpus_revision(&transaction)?;
+        transaction.commit()?;
+        Ok(true)
+    }
+
     pub fn needs_update(&self, document: &Document) -> Result<bool> {
         let id = stable_id(&document.source, &document.source_id);
         let hash = document_hash(document)?;
@@ -780,6 +880,26 @@ impl Store {
         Ok(!previous
             .as_ref()
             .is_some_and(|(previous_hash, has_content)| previous_hash == &hash && *has_content))
+    }
+
+    /// Structured chunking is a derived-index revision. A document with the
+    /// same canonical hash still needs one rebuild when its chunks were
+    /// created by the legacy ordinal-only policy.
+    pub fn needs_structured_update(&self, document: &Document) -> Result<bool> {
+        if self.needs_update(document)? {
+            return Ok(true);
+        }
+        let id = stable_id(&document.source, &document.source_id);
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let policy: Option<String> = connection
+            .query_row(
+                "SELECT c.policy_version FROM chunks c
+                 WHERE c.document_id=?1 ORDER BY c.ordinal LIMIT 1",
+                [&id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(policy.as_deref() != Some(CHUNKING_CONTRACT_VERSION))
     }
 
     pub fn refresh_timestamp(&self, document: &Document) -> Result<()> {
@@ -1788,7 +1908,8 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
             "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,d.acl_json,
-                    c.embedding_blob,c.embedding_json,d.updated_at
+                    c.embedding_blob,c.embedding_json,d.updated_at,c.strategy,
+                    c.parent_key,c.previous_key,c.next_key
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
         )?;
@@ -1886,7 +2007,8 @@ impl Store {
             .join(",");
         let sql = format!(
             "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,d.acl_json,
-                    c.embedding_blob,c.embedding_json,d.updated_at
+                    c.embedding_blob,c.embedding_json,d.updated_at,c.strategy,
+                    c.parent_key,c.previous_key,c.next_key
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE c.id IN ({placeholders})"
         );
@@ -2823,6 +2945,10 @@ fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
         updated_at: DateTime::parse_from_rfc3339(&updated_at)
             .map(|value| value.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now()),
+        strategy: row.get(10)?,
+        parent_key: row.get(11)?,
+        previous_key: row.get(12)?,
+        next_key: row.get(13)?,
     })
 }
 
@@ -3199,6 +3325,35 @@ mod tests {
             acl: Vec::new(),
             metadata: serde_json::json!({}),
         }
+    }
+
+    #[test]
+    fn structured_chunks_persist_lineage_and_are_idempotent() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut value = document("structured", "# One\nalpha\n\n# Two\nbeta");
+        value.metadata = serde_json::json!({"mime_type": "text/markdown"});
+        let specs = crate::chunking::chunk_document(&value);
+        let embedded = specs
+            .iter()
+            .map(|spec| (spec.clone(), vec![1.0_f32, 0.0]))
+            .collect::<Vec<_>>();
+        assert!(
+            store
+                .upsert_structured(&value, &embedded)
+                .expect("structured insert")
+        );
+        assert!(!store.needs_structured_update(&value).expect("policy check"));
+        let rows = store.all_chunks(None, None).expect("stored chunks");
+        assert_eq!(rows.len(), specs.len());
+        assert_eq!(rows[0].strategy.as_deref(), Some("markdown_section"));
+        assert!(rows[0].parent_key.is_some());
+        assert_eq!(rows[1].previous_key.as_deref(), Some(specs[0].key.as_str()));
+        assert!(
+            !store
+                .upsert_structured(&value, &embedded)
+                .expect("idempotent insert")
+        );
     }
 
     #[test]
