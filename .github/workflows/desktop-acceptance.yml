@@ -159,7 +159,7 @@ jobs:
         run: |
           app_dir="$RUNNER_TEMP/cortana-desktop"
           mkdir -p "$app_dir"
-          archive="$RUNNER_TEMP/cortana-release/Cortana_${RELEASE_TAG}_aarch64.app.tar.gz"
+          archive="$RUNNER_TEMP/cortana-release/Cortana_${CORTANA_VERSION}_aarch64.app.tar.gz"
           [[ -f "$archive" ]] || { echo "published macOS application archive not found: $archive" >&2; exit 1; }
           tar -xzf "$archive" -C "$app_dir"
           app="$(find "$app_dir" -type f -path '*/Contents/MacOS/cortana-desktop' -print -quit)"
@@ -170,7 +170,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          app="$RUNNER_TEMP/cortana-release/Cortana_${RELEASE_TAG}_amd64.AppImage"
+          app="$RUNNER_TEMP/cortana-release/Cortana_${CORTANA_VERSION}_amd64.AppImage"
           [[ -f "$app" ]] || { echo "published Linux AppImage not found: $app" >&2; exit 1; }
           chmod +x "$app"
           echo "CORTANA_DESKTOP_APP=$app" >> "$GITHUB_ENV"
