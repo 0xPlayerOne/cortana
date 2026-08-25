@@ -37,6 +37,13 @@ MAX_TOTAL_SECONDS = 300.0
 MAX_REQUEST_SECONDS = 60.0
 DEFAULT_REQUEST_SECONDS = 30.0
 DEFAULT_TOTAL_SECONDS = 300.0
+MAX_GOVERNANCE_LIST = 64
+MAX_REVIEWERS = 16
+MAX_COVERAGE_ENTRIES = 64
+MAX_RETENTION_DAYS = 3650
+MAX_MEMORY_MB = 64 * 1024
+GOVERNANCE_VERSION = "cortana.approved-corpus.v1"
+CASE_MODES = {"retrieval-only", "extractive-answer", "provider-synthesis"}
 _CITATION = re.compile(r"\[(\d+)\]")
 _SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -70,6 +77,10 @@ def _source_ids(value: Any, label: str) -> list[str]:
             raise ManifestError(f"{label} contains an invalid ID")
         if len(item.encode("utf-8")) > MAX_ID_BYTES:
             raise ManifestError(f"{label} contains an oversized ID")
+        if any(character in item for character in "\r\n\x00"):
+            raise ManifestError(f"{label} contains a control character")
+        if item.startswith(("/", "\\")) or re.fullmatch(r"[A-Za-z]:[\\/].*", item):
+            raise ManifestError(f"{label} must not contain filesystem paths")
         result.append(item)
     return result
 
@@ -77,6 +88,39 @@ def _source_ids(value: Any, label: str) -> list[str]:
 def _bounded_ids(value: Any, label: str) -> list[str]:
     """Validate a bounded list of non-secret scope identifiers."""
     return _source_ids(value, label)
+
+
+def _governance_ids(value: Any, label: str, *, required: bool = False) -> list[str]:
+    """Validate opaque operator identifiers without accepting filesystem paths."""
+    if value is None:
+        if required:
+            raise ManifestError(f"{label} must contain at least one ID")
+        return []
+    if not isinstance(value, list) or len(value) > MAX_GOVERNANCE_LIST:
+        raise ManifestError(f"{label} must be a list of at most {MAX_GOVERNANCE_LIST} IDs")
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str) or not item.strip():
+            raise ManifestError(f"{label} contains an invalid ID")
+        if len(item.encode("utf-8")) > MAX_ID_BYTES:
+            raise ManifestError(f"{label} contains an oversized ID")
+        if any(character in item for character in "\r\n\x00"):
+            raise ManifestError(f"{label} contains a control character")
+        if item.startswith(("/", "\\")) or re.fullmatch(r"[A-Za-z]:[\\/].*", item):
+            raise ManifestError(f"{label} must not contain filesystem paths")
+        if item not in seen:
+            seen.add(item)
+            result.append(item)
+    if required and not result:
+        raise ManifestError(f"{label} must contain at least one ID")
+    return result
+
+
+def _governance_id(value: Any, label: str) -> str:
+    """Validate one opaque identifier used by a coverage entry."""
+    values = _governance_ids([value], label, required=True)
+    return values[0]
 
 
 def _answer_terms(value: Any, label: str) -> list[str]:
@@ -100,6 +144,199 @@ def _answer_terms(value: Any, label: str) -> list[str]:
             seen.add(normalized)
             result.append(item)
     return result
+
+
+def _governance(value: Any) -> dict[str, Any]:
+    """Validate the operator-controlled privacy and evaluation contract."""
+    if not isinstance(value, dict):
+        raise ManifestError("governance must be an object")
+    if value.get("contract_version") != GOVERNANCE_VERSION:
+        raise ManifestError(f"governance.contract_version must be {GOVERNANCE_VERSION}")
+    for name in (
+        "operator_controlled",
+        "raw_data_external",
+        "credentials_external",
+        "private_paths_external",
+    ):
+        if value.get(name) is not True:
+            raise ManifestError(f"governance.{name} must be true")
+
+    scope = value.get("scope")
+    if not isinstance(scope, dict):
+        raise ManifestError("governance.scope must be an object")
+    workspaces = _governance_ids(
+        scope.get("workspaces"), "governance.scope.workspaces", required=True
+    )
+    sources = _governance_ids(scope.get("sources"), "governance.scope.sources", required=True)
+    forbidden_sources = _governance_ids(
+        scope.get("forbidden_sources"), "governance.scope.forbidden_sources"
+    )
+    if set(workspaces) & set(forbidden_sources):
+        raise ManifestError("governance scope cannot forbid a workspace as a source")
+    memory = scope.get("memory", "excluded")
+    if memory not in {"excluded", "included"}:
+        raise ManifestError("governance.scope.memory must be `excluded` or `included`")
+
+    storage = value.get("storage")
+    if not isinstance(storage, dict):
+        raise ManifestError("governance.storage must be an object")
+    storage_mode = storage.get("mode")
+    if storage_mode not in {"local", "encrypted-local"}:
+        raise ManifestError("governance.storage.mode must be `local` or `encrypted-local`")
+    if storage.get("credentials_external") is not True:
+        raise ManifestError("governance.storage.credentials_external must be true")
+
+    reviewer_access = value.get("reviewer_access")
+    if not isinstance(reviewer_access, dict):
+        raise ManifestError("governance.reviewer_access must be an object")
+    access_mode = reviewer_access.get("mode")
+    if access_mode not in {"local-only", "encrypted-reviewer-store"}:
+        raise ManifestError(
+            "governance.reviewer_access.mode must be `local-only` or `encrypted-reviewer-store`"
+        )
+    reviewers = _governance_ids(
+        reviewer_access.get("reviewers"), "governance.reviewer_access.reviewers", required=True
+    )
+    if reviewer_access.get("approval_required") is not True:
+        raise ManifestError("governance.reviewer_access.approval_required must be true")
+    if len(reviewers) > MAX_REVIEWERS:
+        raise ManifestError(f"governance.reviewer_access.reviewers exceeds {MAX_REVIEWERS}")
+
+    lifecycle = value.get("lifecycle")
+    if not isinstance(lifecycle, dict):
+        raise ManifestError("governance.lifecycle must be an object")
+    retention_days = lifecycle.get("retention_days")
+    if (
+        not isinstance(retention_days, int)
+        or isinstance(retention_days, bool)
+        or not 1 <= retention_days <= MAX_RETENTION_DAYS
+    ):
+        raise ManifestError(
+            f"governance.lifecycle.retention_days must be between 1 and {MAX_RETENTION_DAYS}"
+        )
+    allowed_lifecycle = {
+        "deletion": {"operator-confirmed", "reviewer-confirmed"},
+        "redaction": {"operator-controlled", "reviewer-controlled"},
+        "incident": {"stop-revoke-notify", "stop-revoke"},
+    }
+    for name, allowed in allowed_lifecycle.items():
+        if lifecycle.get(name) not in allowed:
+            choices = " or ".join(f"`{item}`" for item in sorted(allowed))
+            raise ManifestError(f"governance.lifecycle.{name} must be {choices}")
+
+    bounds = value.get("resource_bounds")
+    if not isinstance(bounds, dict):
+        raise ManifestError("governance.resource_bounds must be an object")
+    max_request_seconds = bounds.get("max_request_seconds")
+    max_total_seconds = bounds.get("max_total_seconds")
+    max_response_bytes = bounds.get("max_response_bytes")
+    max_memory_mb = bounds.get("max_memory_mb")
+    if (
+        not isinstance(max_request_seconds, (int, float))
+        or isinstance(max_request_seconds, bool)
+        or not 0 < max_request_seconds <= MAX_REQUEST_SECONDS
+    ):
+        raise ManifestError(
+            f"governance.resource_bounds.max_request_seconds must be between 0 and {MAX_REQUEST_SECONDS}"
+        )
+    if (
+        not isinstance(max_total_seconds, (int, float))
+        or isinstance(max_total_seconds, bool)
+        or not max_request_seconds <= max_total_seconds <= MAX_TOTAL_SECONDS
+    ):
+        raise ManifestError(
+            "governance.resource_bounds.max_total_seconds must cover the request bound"
+        )
+    if (
+        not isinstance(max_response_bytes, int)
+        or isinstance(max_response_bytes, bool)
+        or not 1 <= max_response_bytes <= MAX_RESPONSE_BYTES
+    ):
+        raise ManifestError(
+            f"governance.resource_bounds.max_response_bytes must be between 1 and {MAX_RESPONSE_BYTES}"
+        )
+    if (
+        not isinstance(max_memory_mb, int)
+        or isinstance(max_memory_mb, bool)
+        or not 1 <= max_memory_mb <= MAX_MEMORY_MB
+    ):
+        raise ManifestError("governance.resource_bounds.max_memory_mb is outside the safety bound")
+    max_cases = bounds.get("max_cases", MAX_CASES)
+    if (
+        not isinstance(max_cases, int)
+        or isinstance(max_cases, bool)
+        or not 1 <= max_cases <= MAX_CASES
+    ):
+        raise ManifestError(
+            f"governance.resource_bounds.max_cases must be between 1 and {MAX_CASES}"
+        )
+
+    coverage = value.get("coverage")
+    if not isinstance(coverage, list) or not coverage or len(coverage) > MAX_COVERAGE_ENTRIES:
+        raise ManifestError("governance.coverage must be a non-empty bounded list")
+    checked_coverage: list[dict[str, Any]] = []
+    for index, item in enumerate(coverage):
+        label = f"governance.coverage[{index}]"
+        if not isinstance(item, dict):
+            raise ManifestError(f"{label} must be an object")
+        coverage_source = _governance_id(item.get("source"), f"{label}.source")
+        if coverage_source not in sources:
+            raise ManifestError(f"{label}.source must be one configured source")
+        coverage_workspace = _governance_id(item.get("workspace"), f"{label}.workspace")
+        if coverage_workspace not in workspaces:
+            raise ManifestError(f"{label}.workspace must be one configured workspace")
+        minimum_cases = item.get("minimum_cases", 1)
+        if (
+            not isinstance(minimum_cases, int)
+            or isinstance(minimum_cases, bool)
+            or not 0 <= minimum_cases <= MAX_CASES
+        ):
+            raise ManifestError(f"{label}.minimum_cases must be between 0 and {MAX_CASES}")
+        checked_coverage.append(
+            {
+                "workspace": coverage_workspace,
+                "source": coverage_source,
+                "minimum_cases": minimum_cases,
+            }
+        )
+
+    provider_synthesis_enabled = value.get("provider_synthesis_enabled", False)
+    if not isinstance(provider_synthesis_enabled, bool):
+        raise ManifestError("governance.provider_synthesis_enabled must be a boolean")
+    return {
+        "contract_version": GOVERNANCE_VERSION,
+        "operator_controlled": True,
+        "raw_data_external": True,
+        "credentials_external": True,
+        "private_paths_external": True,
+        "scope": {
+            "workspaces": workspaces,
+            "sources": sources,
+            "forbidden_sources": forbidden_sources,
+            "memory": memory,
+        },
+        "storage": {"mode": storage_mode, "credentials_external": True},
+        "reviewer_access": {
+            "mode": access_mode,
+            "reviewers": reviewers,
+            "approval_required": True,
+        },
+        "lifecycle": {
+            "retention_days": retention_days,
+            "deletion": lifecycle["deletion"],
+            "redaction": lifecycle["redaction"],
+            "incident": lifecycle["incident"],
+        },
+        "resource_bounds": {
+            "max_request_seconds": float(max_request_seconds),
+            "max_total_seconds": float(max_total_seconds),
+            "max_response_bytes": max_response_bytes,
+            "max_memory_mb": max_memory_mb,
+            "max_cases": max_cases,
+        },
+        "coverage": checked_coverage,
+        "provider_synthesis_enabled": provider_synthesis_enabled,
+    }
 
 
 def _corpus_metadata(value: Any) -> dict[str, str] | None:
@@ -177,8 +414,12 @@ def _case(
     if not isinstance(value, dict):
         raise ManifestError(f"{label} must be an object")
     name = _bounded_text(value.get("name"), f"{label}.name", required=True)
+    case_id = _bounded_text(value.get("id", name), f"{label}.id", required=True)
     query = _bounded_text(value.get("query"), f"{label}.query", required=True)
     project = _bounded_text(value.get("project"), f"{label}.project")
+    workspace = _bounded_text(value.get("workspace", project), f"{label}.workspace")
+    if project is not None and workspace is not None and project != workspace:
+        raise ManifestError(f"{label}.project and {label}.workspace must match")
     source = _bounded_text(value.get("source"), f"{label}.source")
     top_k = value.get("top_k", 10)
     if not isinstance(top_k, int) or isinstance(top_k, bool) or not 1 <= top_k <= 50:
@@ -190,22 +431,46 @@ def _case(
         or not 256 <= max_tokens <= 64_000
     ):
         raise ManifestError(f"{label}.max_tokens must be between 256 and 64000")
-    expected_source_ids = _source_ids(
-        value.get("expected_source_ids"), f"{label}.expected_source_ids"
-    )
+    mode = value.get("mode")
+    default_mode = "extractive-answer" if answer else "retrieval-only"
+    if mode is None:
+        mode = default_mode
+    if (
+        mode not in CASE_MODES
+        or (answer is False and mode != "retrieval-only")
+        or (answer is True and mode == "retrieval-only")
+    ):
+        raise ManifestError(f"{label}.mode must be a valid mode for this case list")
+    expected_value = value.get("expected_evidence_ids", value.get("expected_source_ids"))
+    forbidden_value = value.get("forbidden_evidence_ids", value.get("forbidden_source_ids"))
+    expected_source_ids = _source_ids(expected_value, f"{label}.expected_evidence_ids")
     if not expected_source_ids:
-        raise ManifestError(f"{label}.expected_source_ids must contain at least one ID")
+        raise ManifestError(f"{label}.expected_evidence_ids must contain at least one ID")
+    criteria = value.get("answer_criteria", {})
+    if not isinstance(criteria, dict):
+        raise ManifestError(f"{label}.answer_criteria must be an object")
+    required_terms_value = criteria.get("required_terms", value.get("required_answer_terms"))
+    min_citations = criteria.get("min_citations", 1 if answer else 0)
+    allow_abstain = criteria.get("allow_abstain", False)
+    if (
+        not isinstance(min_citations, int)
+        or isinstance(min_citations, bool)
+        or not 0 <= min_citations <= 32
+    ):
+        raise ManifestError(f"{label}.answer_criteria.min_citations must be between 0 and 32")
+    if not isinstance(allow_abstain, bool):
+        raise ManifestError(f"{label}.answer_criteria.allow_abstain must be a boolean")
     return {
         "name": name,
+        "id": case_id,
         "query": query,
-        "project": project,
+        "project": workspace,
+        "workspace": workspace,
         "source": source,
         "top_k": top_k,
         "max_tokens": max_tokens,
         "expected_source_ids": expected_source_ids,
-        "forbidden_source_ids": _source_ids(
-            value.get("forbidden_source_ids"), f"{label}.forbidden_source_ids"
-        ),
+        "forbidden_source_ids": _source_ids(forbidden_value, f"{label}.forbidden_evidence_ids"),
         "forbidden_projects": _bounded_ids(
             value.get("forbidden_projects"), f"{label}.forbidden_projects"
         ),
@@ -213,10 +478,13 @@ def _case(
             value.get("forbidden_sources"), f"{label}.forbidden_sources"
         ),
         "required_answer_terms": _answer_terms(
-            value.get("required_answer_terms"), f"{label}.required_answer_terms"
+            required_terms_value, f"{label}.answer_criteria.required_terms"
         )
         if answer
         else [],
+        "min_citations": min_citations if answer else 0,
+        "allow_abstain": allow_abstain if answer else False,
+        "mode": mode,
         "answer": answer,
     }
 
@@ -238,6 +506,47 @@ def validate_manifest(value: Any) -> dict[str, Any]:
     if len(retrieval_cases) + len(context_cases) + len(answer_cases) > MAX_CASES:
         raise ManifestError(f"manifest contains more than {MAX_CASES} cases")
     corpus = _corpus_metadata(value.get("corpus"))
+    governance = _governance(value.get("governance"))
+    if corpus is not None and corpus["storage"] != governance["storage"]["mode"]:
+        raise ManifestError("corpus.storage must match governance.storage.mode")
+    checked_retrieval_cases = [
+        _case(item, f"retrieval_cases[{index}]") for index, item in enumerate(retrieval_cases)
+    ]
+    checked_context_cases = [
+        _case(item, f"context_cases[{index}]", context=True)
+        for index, item in enumerate(context_cases)
+    ]
+    checked_answer_cases = [
+        _case(item, f"answer_cases[{index}]", answer=True)
+        for index, item in enumerate(answer_cases)
+    ]
+    cases = [*checked_retrieval_cases, *checked_context_cases, *checked_answer_cases]
+    if len(cases) > governance["resource_bounds"]["max_cases"]:
+        raise ManifestError("manifest exceeds governance.resource_bounds.max_cases")
+    case_ids = [case["id"] for case in cases]
+    if len(set(case_ids)) != len(case_ids):
+        raise ManifestError("case IDs must be unique")
+    allowed_workspaces = set(governance["scope"]["workspaces"])
+    allowed_sources = set(governance["scope"]["sources"])
+    forbidden_sources = set(governance["scope"]["forbidden_sources"])
+    for case in cases:
+        if case["workspace"] is not None and case["workspace"] not in allowed_workspaces:
+            raise ManifestError(f"case {case['id']} uses a workspace outside governance scope")
+        if case["source"] is not None and case["source"] not in allowed_sources:
+            raise ManifestError(f"case {case['id']} uses a source outside governance scope")
+        if case["source"] in forbidden_sources:
+            raise ManifestError(f"case {case['id']} uses a forbidden source")
+        if case["mode"] == "provider-synthesis" and not governance["provider_synthesis_enabled"]:
+            raise ManifestError("provider-synthesis cases require explicit governance opt-in")
+    for coverage in governance["coverage"]:
+        covered = sum(
+            case["workspace"] == coverage["workspace"] and case["source"] == coverage["source"]
+            for case in cases
+        )
+        if covered < coverage["minimum_cases"]:
+            raise ManifestError(
+                f"governance coverage is incomplete for {coverage['workspace']}/{coverage['source']}"
+            )
     thresholds = value.get("thresholds", {})
     if not isinstance(thresholds, dict):
         raise ManifestError("thresholds must be an object")
@@ -270,18 +579,11 @@ def validate_manifest(value: Any) -> dict[str, Any]:
     return {
         "version": 1,
         "corpus": corpus,
+        "governance": governance,
         "thresholds": checked_thresholds,
-        "retrieval_cases": [
-            _case(item, f"retrieval_cases[{index}]") for index, item in enumerate(retrieval_cases)
-        ],
-        "context_cases": [
-            _case(item, f"context_cases[{index}]", context=True)
-            for index, item in enumerate(context_cases)
-        ],
-        "answer_cases": [
-            _case(item, f"answer_cases[{index}]", answer=True)
-            for index, item in enumerate(answer_cases)
-        ],
+        "retrieval_cases": checked_retrieval_cases,
+        "context_cases": checked_context_cases,
+        "answer_cases": checked_answer_cases,
     }
 
 
@@ -315,7 +617,12 @@ def _request_payload(case: Mapping[str, Any], endpoint: str) -> dict[str, Any]:
 
 
 def _post(
-    client: httpx.Client, path: str, case: Mapping[str, Any], *, timeout_seconds: float
+    client: httpx.Client,
+    path: str,
+    case: Mapping[str, Any],
+    *,
+    timeout_seconds: float,
+    max_response_bytes: int = MAX_RESPONSE_BYTES,
 ) -> tuple[dict[str, Any] | list[Any] | None, int | None, int, dict[str, str]]:
     started = time.perf_counter()
     try:
@@ -329,7 +636,7 @@ def _post(
             body = bytearray()
             for chunk in response.iter_bytes():
                 body.extend(chunk)
-                if len(body) > MAX_RESPONSE_BYTES:
+                if len(body) > max_response_bytes:
                     return None, status, round((time.perf_counter() - started) * 1000), headers
     except httpx.HTTPError:
         return None, None, round((time.perf_counter() - started) * 1000), {}
@@ -411,6 +718,10 @@ def evaluate_manifest(
     request_seconds: float = DEFAULT_REQUEST_SECONDS,
     total_seconds: float = DEFAULT_TOTAL_SECONDS,
 ) -> dict[str, Any]:
+    bounds = manifest["governance"]["resource_bounds"]
+    request_seconds = min(request_seconds, bounds["max_request_seconds"])
+    total_seconds = min(total_seconds, bounds["max_total_seconds"])
+    max_response_bytes = bounds["max_response_bytes"]
     started = time.perf_counter()
     retrieval_reports: list[dict[str, Any]] = []
     context_reports: list[dict[str, Any]] = []
@@ -426,7 +737,11 @@ def evaluate_manifest(
             report_bucket.append(report)
             continue
         payload, status, latency_ms, headers = _post(
-            client, endpoint, case, timeout_seconds=min(request_seconds, remaining)
+            client,
+            endpoint,
+            case,
+            timeout_seconds=min(request_seconds, remaining),
+            max_response_bytes=max_response_bytes,
         )
         latency_samples.append(latency_ms)
         returned = _evidence_ids(payload)
@@ -486,8 +801,12 @@ def evaluate_manifest(
                 or not answer_source_values
                 or all(value == case["source"] for value in answer_source_values)
             )
-            citations_valid = _citation_validity(answer, len(returned))
-            citation_indices = {int(citation) - 1 for citation in _CITATION.findall(answer)}
+            citation_values = _CITATION.findall(answer)
+            citations_valid = (
+                _citation_validity(answer, len(returned))
+                and len(citation_values) >= case["min_citations"]
+            ) or (case["allow_abstain"] and not answer)
+            citation_indices = {int(citation) - 1 for citation in citation_values}
             forbidden_citations_absent = all(
                 index not in citation_indices
                 for index, source_id in enumerate(returned)
@@ -500,6 +819,9 @@ def evaluate_manifest(
             )
             answer_terms_valid = answer_terms_missing == 0
             synthesis_used = response.get("mode") == "synthesized"
+            answer_mode_valid = response.get("mode") == (
+                "synthesized" if case["mode"] == "provider-synthesis" else "extractive"
+            )
             warnings = response.get("warnings", [])
             fallback_provider_unavailable = isinstance(warnings, list) and any(
                 isinstance(warning, str) and "unavailable" in warning.lower()
@@ -508,7 +830,11 @@ def evaluate_manifest(
             remaining = total_seconds - (time.perf_counter() - started)
             if remaining > 0:
                 second_payload, second_status, second_latency, _ = _post(
-                    client, endpoint, case, timeout_seconds=min(request_seconds, remaining)
+                    client,
+                    endpoint,
+                    case,
+                    timeout_seconds=min(request_seconds, remaining),
+                    max_response_bytes=max_response_bytes,
                 )
             else:
                 second_payload, second_status, second_latency = None, None, 0
@@ -526,11 +852,14 @@ def evaluate_manifest(
                 and forbidden_citations_absent
                 and answer_terms_valid
                 and not fallback_provider_unavailable
+                and answer_mode_valid
                 and (not require_synthesis or synthesis_used)
             )
             answer_reports.append(
                 {
                     "name": case["name"],
+                    "case_id": case["id"],
+                    "mode": case["mode"],
                     "passed": passed,
                     "latency_ms": latency_ms,
                     "repeat_latency_ms": second_latency,
@@ -542,6 +871,9 @@ def evaluate_manifest(
                     "project_scope_valid": project_scope_valid,
                     "source_scope_valid": source_scope_valid,
                     "citations_valid": citations_valid,
+                    "citation_count": len(citation_values),
+                    "min_citations": case["min_citations"],
+                    "answer_mode_valid": answer_mode_valid,
                     "answer_terms_checked": len(required_terms),
                     "answer_terms_missing": answer_terms_missing,
                     "answer_terms_valid": answer_terms_valid,
@@ -623,6 +955,8 @@ def evaluate_manifest(
             retrieval_reports.append(
                 {
                     "name": case["name"],
+                    "case_id": case["id"],
+                    "mode": case["mode"],
                     "passed": status is not None
                     and status < 400
                     and not missing
@@ -766,6 +1100,16 @@ def evaluate_manifest(
         # timestamps, reviewer labels, and all case content stay local.
         provenance["corpus"] = {
             key: corpus[key] for key in ("id", "revision", "digest") if key in corpus
+        }
+    governance = manifest.get("governance")
+    if isinstance(governance, dict):
+        provenance["governance"] = {
+            "contract_version": governance["contract_version"],
+            "scope_digest": "sha256:"
+            + hashlib.sha256(
+                json.dumps(governance["scope"], sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+            "provider_synthesis_enabled": governance["provider_synthesis_enabled"],
         }
     return {
         "evaluation": "cortana-live-index-v1",
