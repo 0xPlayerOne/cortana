@@ -908,6 +908,30 @@ def evaluate_manifest(
             token_budget_valid = metrics_valid and (
                 context_metrics["estimated_tokens"] <= context_metrics["max_tokens"]
             )
+            # A repeated read-only context request is the operator-visible
+            # digest/content reuse check.  The server may still rebuild the
+            # bundle, but unchanged pinned inputs must produce the same digest
+            # and context bytes without exposing either in the report.
+            remaining = total_seconds - (time.perf_counter() - started)
+            if remaining > 0 and status is not None and status < 400:
+                second_payload, second_status, second_latency, _ = _post(
+                    client,
+                    endpoint,
+                    case,
+                    timeout_seconds=min(request_seconds, remaining),
+                    max_response_bytes=max_response_bytes,
+                )
+                latency_samples.append(second_latency)
+            else:
+                second_payload, second_status = None, None
+            second_response = second_payload if isinstance(second_payload, dict) else {}
+            digest = response.get("canonical_digest")
+            second_digest = second_response.get("canonical_digest")
+            digest_checked = isinstance(digest, str) and isinstance(second_digest, str)
+            digest_reused = digest_checked and digest == second_digest
+            content_unchanged = digest_reused and response.get("context") == second_response.get(
+                "context"
+            )
             context_reports.append(
                 {
                     "name": case["name"],
@@ -947,6 +971,9 @@ def evaluate_manifest(
                         if key in context_metrics
                     },
                     "token_budget_valid": token_budget_valid,
+                    "digest_checked": digest_checked and second_status is not None,
+                    "digest_reused": digest_reused,
+                    "content_unchanged": content_unchanged,
                     "error_status": status if status is None or status >= 400 else None,
                     **_source_metrics(rows),
                 }
@@ -1073,6 +1100,14 @@ def evaluate_manifest(
         "token_budget_compliance_rate": _ratio(
             sum(report.get("token_budget_valid") is True for report in context_reports),
             len(context_reports),
+        ),
+        "context_digest_reuse_rate": _ratio(
+            sum(report.get("digest_reused") is True for report in context_reports),
+            sum(report.get("digest_checked") is True for report in context_reports),
+        ),
+        "context_content_unchanged_rate": _ratio(
+            sum(report.get("content_unchanged") is True for report in context_reports),
+            sum(report.get("digest_checked") is True for report in context_reports),
         ),
         "cache_hit_rate": _ratio(
             sum(report.get("cache_hit") is True for report in answer_reports), len(answer_reports)
