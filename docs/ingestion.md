@@ -1,5 +1,7 @@
 # Ingestion
 
+The provider-neutral connector and reconciliation contract is [Connector contract](contracts/connectors.md).
+
 ## Current release boundary
 
 The current protected source and published package are `v0.34.44`. This metadata-only release

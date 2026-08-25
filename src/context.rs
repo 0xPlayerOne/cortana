@@ -1,5 +1,11 @@
-use serde::Serialize;
+use chrono::{SecondsFormat, Utc};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
+use crate::contracts::{
+    CONTEXT_CONTRACT_VERSION, ContextMetadata, DegradationState, RETRIEVAL_CONTRACT_VERSION,
+    privacy_scope_digest,
+};
 use crate::memory::MemorySearchResult;
 use crate::model::Evidence;
 
@@ -7,8 +13,13 @@ const CHARS_PER_TOKEN: usize = 4;
 pub const MIN_CONTEXT_TOKENS: usize = 256;
 pub const MAX_CONTEXT_TOKENS: usize = 64_000;
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ContextBundle {
+    pub contract_version: String,
+    pub context_bundle_id: String,
+    pub canonical_digest: String,
+    pub created_at: String,
+    pub token_budget: usize,
     pub query: String,
     pub context: String,
     pub evidence: Vec<Evidence>,
@@ -16,11 +27,20 @@ pub struct ContextBundle {
     pub memories: Vec<MemorySearchResult>,
     pub metrics: ContextMetrics,
     pub retrieval_mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degradation: Option<DegradationState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retrieval_warning: Option<String>,
+    pub corpus_revision: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_revision: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_fingerprint: Option<String>,
+    pub retrieval_contract_version: String,
+    pub privacy_scope_digest: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ContextMetrics {
     pub retrieved: usize,
     pub included: usize,
@@ -30,6 +50,92 @@ pub struct ContextMetrics {
     pub memories_omitted: usize,
     pub estimated_tokens: usize,
     pub max_tokens: usize,
+}
+
+#[derive(Serialize)]
+struct CanonicalBundle<'a> {
+    contract_version: &'a str,
+    token_budget: usize,
+    query: &'a str,
+    context: &'a str,
+    evidence: &'a [Evidence],
+    memories: &'a [MemorySearchResult],
+    metrics: &'a ContextMetrics,
+    retrieval_mode: &'a str,
+    degradation: &'a Option<DegradationState>,
+    corpus_revision: u64,
+    memory_revision: Option<u64>,
+    embedding_fingerprint: &'a Option<String>,
+    retrieval_contract_version: &'a str,
+    privacy_scope_digest: &'a str,
+}
+
+impl ContextBundle {
+    /// Attach revisions, scope, and provider metadata, then derive a stable
+    /// digest and context ID. Creation time is intentionally excluded from
+    /// the digest so equal inputs remain cache/replay compatible.
+    pub fn with_metadata(mut self, metadata: ContextMetadata) -> Self {
+        self.contract_version = metadata.contract_version;
+        self.created_at = metadata.created_at;
+        self.token_budget = metadata.token_budget;
+        self.corpus_revision = metadata.corpus_revision;
+        self.memory_revision = metadata.memory_revision;
+        self.embedding_fingerprint = metadata.embedding_fingerprint;
+        self.retrieval_contract_version = metadata.retrieval_contract_version;
+        self.privacy_scope_digest = metadata.privacy_scope_digest;
+        self.degradation = metadata.degradation;
+        self.canonical_digest = self.digest();
+        self.context_bundle_id = format!("ctx_{}", self.canonical_digest);
+        self
+    }
+
+    pub fn digest(&self) -> String {
+        let canonical = CanonicalBundle {
+            contract_version: &self.contract_version,
+            token_budget: self.token_budget,
+            query: &self.query,
+            context: &self.context,
+            evidence: &self.evidence,
+            memories: &self.memories,
+            metrics: &self.metrics,
+            retrieval_mode: &self.retrieval_mode,
+            degradation: &self.degradation,
+            corpus_revision: self.corpus_revision,
+            memory_revision: self.memory_revision,
+            embedding_fingerprint: &self.embedding_fingerprint,
+            retrieval_contract_version: &self.retrieval_contract_version,
+            privacy_scope_digest: &self.privacy_scope_digest,
+        };
+        let bytes = serde_json::to_vec(&canonical).expect("context bundle must serialize");
+        let digest = Sha256::digest(bytes);
+        digest.iter().map(|byte| format!("{byte:02x}")).collect()
+    }
+}
+
+pub fn metadata(
+    token_budget: usize,
+    corpus_revision: u64,
+    memory_revision: Option<u64>,
+    embedding_fingerprint: Option<String>,
+    project: Option<&str>,
+    source: Option<&str>,
+    acl: &[String],
+    retrieval_warning: Option<&str>,
+) -> ContextMetadata {
+    ContextMetadata {
+        contract_version: CONTEXT_CONTRACT_VERSION.into(),
+        created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+        token_budget,
+        corpus_revision,
+        memory_revision,
+        embedding_fingerprint,
+        retrieval_contract_version: RETRIEVAL_CONTRACT_VERSION.into(),
+        privacy_scope_digest: privacy_scope_digest(project, source, acl),
+        degradation: retrieval_warning.map(|detail| DegradationState {
+            code: "retrieval_degraded".into(),
+            detail: Some(detail.to_string()),
+        }),
+    }
 }
 
 pub fn build(query: &str, evidence: &[Evidence], max_tokens: usize) -> ContextBundle {
@@ -121,7 +227,21 @@ pub fn build_with_retrieval_and_memory(
     }
 
     let estimated_tokens = estimate_tokens(&context);
+    let metadata = ContextMetadata {
+        token_budget: max_tokens,
+        created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+        degradation: retrieval_warning.map(|detail| DegradationState {
+            code: "retrieval_degraded".into(),
+            detail: Some(detail.to_string()),
+        }),
+        ..ContextMetadata::default()
+    };
     ContextBundle {
+        contract_version: CONTEXT_CONTRACT_VERSION.into(),
+        context_bundle_id: String::new(),
+        canonical_digest: String::new(),
+        created_at: metadata.created_at.clone(),
+        token_budget: max_tokens,
         query: query.to_string(),
         context,
         metrics: ContextMetrics {
@@ -137,8 +257,15 @@ pub fn build_with_retrieval_and_memory(
         evidence: included,
         memories: included_memories,
         retrieval_mode: retrieval_mode.to_string(),
+        degradation: metadata.degradation.clone(),
         retrieval_warning: retrieval_warning.map(str::to_string),
+        corpus_revision: 0,
+        memory_revision: None,
+        embedding_fingerprint: None,
+        retrieval_contract_version: RETRIEVAL_CONTRACT_VERSION.into(),
+        privacy_scope_digest: metadata.privacy_scope_digest.clone(),
     }
+    .with_metadata(metadata)
 }
 
 pub fn estimate_tokens(value: &str) -> usize {
@@ -292,5 +419,29 @@ mod tests {
         assert!(bundle.context.contains("## Agent memory"));
         assert!(bundle.context.contains("### [memory 1] Release style"));
         assert!(bundle.context.find("## Agent memory") < bundle.context.find("### [1]"));
+    }
+
+    #[test]
+    fn bundle_identity_is_stable_and_revision_sensitive() {
+        let rows = vec![evidence("Deploy after validation.")];
+        let first = build("release", &rows, 2_000);
+        let second = build("release", &rows, 2_000);
+        assert_eq!(first.canonical_digest, second.canonical_digest);
+        assert_eq!(first.context_bundle_id, second.context_bundle_id);
+        assert!(first.context_bundle_id.starts_with("ctx_"));
+
+        let changed = first.clone().with_metadata(metadata(
+            2_000,
+            1,
+            Some(1),
+            Some("deterministic:16".into()),
+            Some("work"),
+            Some("notes"),
+            &["work".into()],
+            None,
+        ));
+        assert_ne!(first.canonical_digest, changed.canonical_digest);
+        assert!(!changed.privacy_scope_digest.contains("work"));
+        assert!(!changed.privacy_scope_digest.contains("notes"));
     }
 }

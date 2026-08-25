@@ -126,9 +126,17 @@ export function ContextPanel({
             </div>
           </>
         )}
+        {serverContext?.degradation && (
+          <p className="context-error" role="status">
+            Degraded retrieval: {serverContext.degradation.detail || serverContext.degradation.code}
+          </p>
+        )}
         <section className="provenance">
           <span className="section-title">Embedding</span>
           <p>{status?.embedding_fingerprint ?? 'unavailable'}</p>
+          {serverContext?.context_bundle_id && (
+            <p>Bundle {serverContext.context_bundle_id.slice(0, 16)}…</p>
+          )}
           <p>
             {contextTokens.toLocaleString()} context tokens ·{' '}
             {(status?.embedding_cache_hits ?? 0).toLocaleString()} cache hits

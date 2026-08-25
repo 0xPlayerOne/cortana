@@ -3726,7 +3726,17 @@ async fn context_bundle(
         });
     Ok(context::build_with_retrieval_and_memory(
         query, &evidence, &memories, max_tokens, "hybrid", None,
-    ))
+    )
+    .with_metadata(context::metadata(
+        max_tokens,
+        store.corpus_revision()?,
+        Some(store.memory_revision()?),
+        Some(embedder.fingerprint()),
+        project,
+        source,
+        &["*".into()],
+        None,
+    )))
 }
 
 /// Metadata-only audit trail for CLI context requests. The query text and

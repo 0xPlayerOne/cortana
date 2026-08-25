@@ -164,6 +164,9 @@ packaged-UI acceptance note.
 
 ## Workspaces and settings
 
+Workspace and principal mappings follow the [identity contract](contracts/identity.md). UI selection
+never grants authorization; the Rust runtime remains the authority for project and ACL checks.
+
 Workspaces are query/project scopes inside one canonical database, rather than separate indexes.
 This keeps embedding and query caches reusable while allowing agents and people to filter work,
 personal, or special context. The first desktop iteration permits one to three workspaces; the

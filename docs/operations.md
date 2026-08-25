@@ -1,5 +1,7 @@
 # Operations
 
+Operational trust boundaries and incident controls are defined in the [security and trust model](security-model.md).
+
 This guide defines the supported operational model for a local Cortana installation. It does not track current milestone status or open work.
 
 Current operational tasks and blockers belong in [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues). Tagged operational evidence belongs in [Release history](releases.md).
