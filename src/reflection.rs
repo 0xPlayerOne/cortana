@@ -283,14 +283,22 @@ pub async fn reflect_authorized(
     let started = Instant::now();
     let revision = store.memory_revision()?;
     let memories = authorized_memories(store, request, principal_acl, owner)?;
-    let remaining = Duration::from_millis(request.deadline_ms)
-        .checked_sub(started.elapsed())
-        .ok_or_else(|| anyhow::anyhow!("reflection deadline exceeded while reading memory"))?;
+    let Some(remaining) = Duration::from_millis(request.deadline_ms).checked_sub(started.elapsed())
+    else {
+        return Ok(deadline_exceeded_response(
+            request,
+            revision,
+            principal_acl,
+            memories.len(),
+            0,
+            "reflection deadline exceeded while reading memory",
+        ));
+    };
     let evidence = if request.include_evidence {
         let project = request.project.as_deref().ok_or_else(|| {
             anyhow::anyhow!("reflection requires a project filter when evidence is included")
         })?;
-        tokio::time::timeout(
+        match tokio::time::timeout(
             remaining,
             crate::retrieval::retrieve_scoped(
                 store,
@@ -303,7 +311,19 @@ pub async fn reflect_authorized(
             ),
         )
         .await
-        .map_err(|_| anyhow::anyhow!("reflection deadline exceeded while retrieving evidence"))??
+        {
+            Ok(result) => result?,
+            Err(_) => {
+                return Ok(deadline_exceeded_response(
+                    request,
+                    revision,
+                    principal_acl,
+                    memories.len(),
+                    0,
+                    "reflection deadline exceeded while retrieving evidence",
+                ));
+            }
+        }
     } else {
         Vec::new()
     };
@@ -312,14 +332,18 @@ pub async fn reflect_authorized(
         "memory changed while reflection inputs were being collected"
     );
     let mut bounded_request = request.clone();
-    bounded_request.deadline_ms = u64::try_from(
-        Duration::from_millis(request.deadline_ms)
-            .checked_sub(started.elapsed())
-            .ok_or_else(|| anyhow::anyhow!("reflection deadline exceeded before synthesis"))?
-            .as_millis(),
-    )
-    .unwrap_or(1)
-    .max(1);
+    let Some(remaining) = Duration::from_millis(request.deadline_ms).checked_sub(started.elapsed())
+    else {
+        return Ok(deadline_exceeded_response(
+            request,
+            revision,
+            principal_acl,
+            memories.len(),
+            evidence.len(),
+            "reflection deadline exceeded before synthesis",
+        ));
+    };
+    bounded_request.deadline_ms = u64::try_from(remaining.as_millis()).unwrap_or(1).max(1);
     reflect(
         &bounded_request,
         &ReflectionInputs {
@@ -330,6 +354,36 @@ pub async fn reflect_authorized(
             owner,
             memory_revision: revision,
         },
+    )
+}
+
+fn deadline_exceeded_response(
+    request: &ReflectRequest,
+    revision: u64,
+    principal_acl: &[String],
+    memories_considered: usize,
+    evidence_considered: usize,
+    detail: &str,
+) -> ReflectResponse {
+    empty_response(
+        request,
+        stable_json_digest(request),
+        privacy_scope_digest(
+            request.project.as_deref(),
+            request.source.as_deref(),
+            principal_acl,
+        ),
+        revision,
+        ReflectStatus::DeadlineExceeded,
+        ProviderOutcome {
+            policy: request.provider_policy,
+            selected: "deterministic".into(),
+            status: "deadline_exceeded".into(),
+            detail: Some(detail.into()),
+        },
+        memories_considered,
+        evidence_considered,
+        0,
     )
 }
 
@@ -482,7 +536,8 @@ pub fn reflect_with_provider(
                             validate_provider_output(request, &output, &selected, &evidence)
                         {
                             provider_outcome.status = "failed".into();
-                            provider_outcome.detail = Some(error.to_string());
+                            let _ = error;
+                            provider_outcome.detail = Some("provider output rejected".into());
                             if request.provider_policy == ProviderPolicy::RequireProvider {
                                 return Ok(empty_response(
                                     request,
@@ -781,10 +836,13 @@ fn deterministic_reflection(
             };
         }
         output.claims.push(ReflectClaim {
-            text: format!(
-                "{}: {}",
-                memory.title,
-                safe_excerpt(&memory.content, MAX_REFLECTION_TEXT_BYTES)
+            text: safe_excerpt(
+                &format!(
+                    "{}: {}",
+                    memory.title,
+                    safe_excerpt(&memory.content, MAX_REFLECTION_TEXT_BYTES)
+                ),
+                MAX_REFLECTION_TEXT_BYTES,
             ),
             supporting_memory_ids: vec![memory.id.clone()],
             supporting_evidence_ids: Vec::new(),
@@ -824,7 +882,11 @@ fn deterministic_reflection(
             supporting_memory_ids: ids.clone(),
         });
         if ids.len() >= 2 && output.proposed_candidates.len() < MAX_REFLECTION_CANDIDATES {
-            let project = request.project.clone().unwrap_or_default();
+            let project = request
+                .project
+                .clone()
+                .or_else(|| memories.first().map(|memory| memory.project.clone()))
+                .unwrap_or_default();
             output.proposed_candidates.push(ProposedReflectCandidate {
                 project,
                 title: format!("Observed {content_type} pattern"),
@@ -1306,13 +1368,15 @@ mod tests {
         assert!(!response.tensions.is_empty());
         assert!(!response.proposed_candidates.is_empty());
         assert!(response.proposed_candidates[0].approval_required);
+        assert!(!response.proposed_candidates[0].project.is_empty());
         assert_eq!(response.memory_revision, 42);
         assert!(!response.metrics.canonical_memory_mutated);
         assert!(
             response
                 .claims
                 .iter()
-                .all(|claim| !claim.supporting_memory_ids.is_empty())
+                .all(|claim| !claim.supporting_memory_ids.is_empty()
+                    && claim.text.len() <= MAX_REFLECTION_TEXT_BYTES)
         );
     }
 
