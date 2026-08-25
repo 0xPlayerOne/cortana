@@ -27,7 +27,9 @@
     "lint": "eslint apps/web/src",
     "docs:check": "uv run python scripts/check-docs-consistency.py",
     "test": "bun scripts/run-js-tests.mjs",
-    "test:unit": "bun scripts/run-js-tests.mjs && uv run pytest && uv run python scripts/check-docs-consistency.py",
+    "test:unit": "bun scripts/run-js-tests.mjs && uv run pytest -m 'not integration and not smoke' && uv run python scripts/check-docs-consistency.py",
+    "test:integration": "uv run pytest -m integration",
+    "test:smoke": "uv run pytest -m smoke",
     "type-check": "uv run mypy src/cortana && cargo check --all-targets && bun run --cwd apps/web typecheck",
     "typecheck": "bun run --cwd apps/web typecheck"
   },

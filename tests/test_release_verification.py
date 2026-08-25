@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 VERIFY_RELEASE = ROOT / "scripts" / "verify-release.sh"
 VERIFY_DESKTOP = ROOT / "scripts" / "verify-desktop-release.sh"
 VERIFY_PACKAGED = ROOT / "scripts" / "verify-packaged-core.sh"
+pytestmark = pytest.mark.integration
 UPDATER_PUBLIC_KEY = base64.b64decode(
     json.loads((ROOT / "apps/desktop/src-tauri/tauri.conf.json").read_text())["plugins"]["updater"][
         "pubkey"

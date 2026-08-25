@@ -51,6 +51,8 @@ sources = [
 
 SMOKE_SCRIPT = Path(__file__).parents[1] / "scripts" / "source-smoke.sh"
 
+pytestmark = pytest.mark.smoke
+
 
 def _require_bash() -> None:
     if os.name == "nt" or shutil.which("bash") is None:

@@ -46,6 +46,10 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 addopts = "--strict-config --strict-markers"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+  "integration: tests that exercise cross-process, packaging, or installer boundaries",
+  "smoke: bounded source and runtime health probes",
+]
 
 [tool.coverage.run]
 branch = true

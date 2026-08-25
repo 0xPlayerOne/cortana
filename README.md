@@ -113,6 +113,18 @@ The normal change path is:
 
 Do not authorize live sources, run broad ingestion, install recurring synchronization, change embedding generations, restore backups, expose remote access, or delete migration data merely because a development task mentions those capabilities.
 
+The Code Foundry test categories are available locally as well as in CI:
+
+```sh
+bun run test:unit        # JavaScript + non-integration Python + docs
+bun run test:integration # installer and packaging/release boundaries
+bun run test:smoke       # bounded source/runtime probes
+```
+
+JavaScript suites run in stable, isolated groups with a default cap of two
+parallel groups. Set `CORTANA_TEST_MAX_PARALLEL=1` when debugging a flaky suite
+or raise it only on a runner with enough CPU and memory headroom.
+
 ## License
 
 Cortana is licensed under [Apache License 2.0](LICENSE).

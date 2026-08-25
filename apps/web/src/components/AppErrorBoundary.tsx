@@ -8,17 +8,17 @@ type State = { failed: boolean }
 
 /** Keeps a renderer exception from leaving the desktop window blank. */
 export class AppErrorBoundary extends Component<Props, State> {
-  state: State = { failed: false }
+  override state: State = { failed: false }
 
   static getDerivedStateFromError(): State {
     return { failed: true }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
+  override componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('Cortana renderer failed', error, info.componentStack)
   }
 
-  render() {
+  override render() {
     if (!this.state.failed) return this.props.children
     return (
       <main className="empty-state runtime-error" role="alert">
