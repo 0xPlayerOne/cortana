@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "description": "Curated project skills for Cortana's Rust, Python, and Tauri/React codebase.",
+  "sources": {
+    "agent-hq": "0xPlayerOne/agent-hq/.agents/skills",
+    "control-plane": "0xPlayerOne/control-plane/.agents/skills"
+  },
+  "skills": [
+    "accessibility",
+    "code-review",
+    "code-simplification",
+    "frontend-ui-engineering",
+    "incremental-implementation",
+    "performance-optimization",
+    "security-and-hardening",
+    "shadcn",
+    "test-driven-development",
+    "typescript-advanced-types",
+    "verification-before-completion"
+  ],
+  "excluded": {
+    "turborepo": "Cortana is not a Turborepo workspace.",
+    "threejs-*": "Cortana has no Three.js surface; add a focused skill if graph visualization adopts it."
+  }
+}
