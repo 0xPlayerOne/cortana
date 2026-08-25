@@ -911,6 +911,53 @@ impl BrainServer {
         self.update_memory_candidate(params.id, true).await
     }
 
+    #[tool(
+        description = "Classify one visible pending memory candidate against same-scope canonical memory. This is deterministic, provider-free, review-only, and never mutates canonical memory."
+    )]
+    async fn classify_memory_candidate(
+        &self,
+        Parameters(params): Parameters<MemoryCandidateIdParams>,
+    ) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            return "authorization error: memory scope required".into();
+        }
+        match self.store.classify_memory_candidate(
+            &params.id,
+            &principal.name,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        ) {
+            Ok(result) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_candidate.classify",
+                    None,
+                    None,
+                    "succeeded",
+                    Some(1),
+                    started,
+                );
+                serde_json::to_string(&result).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_candidate.classify",
+                    None,
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("candidate classification error: {error}")
+            }
+        }
+    }
     async fn update_memory_candidate(&self, id: String, redact: bool) -> String {
         let started = Instant::now();
         let principal = match self.resolve_principal() {

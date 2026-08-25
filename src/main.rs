@@ -478,6 +478,8 @@ enum MemoryCandidateAction {
     Cancel { id: String },
     /// Redact a pending candidate while retaining its tombstone.
     Redact { id: String },
+    /// Classify a pending candidate against visible canonical memory without mutating it.
+    Classify { id: String },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -2441,6 +2443,37 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                     }
                     Ok(false) => anyhow::bail!("pending candidate not found: {id}"),
                     Err(error) => Err(error),
+                }
+            }
+            MemoryCandidateAction::Classify { id } => {
+                match store.classify_memory_candidate(id, "owner", &["*".into()], true) {
+                    Ok(classification) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            "candidate.classify",
+                            None,
+                            None,
+                            "succeeded",
+                            Some(1),
+                            started,
+                        );
+                        println!("{}", serde_json::to_string_pretty(&classification)?);
+                        Ok(())
+                    }
+                    Err(error) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            "candidate.classify",
+                            None,
+                            None,
+                            "failed",
+                            None,
+                            started,
+                        );
+                        Err(error)
+                    }
                 }
             }
         },

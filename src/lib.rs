@@ -3,6 +3,7 @@ pub mod api;
 pub mod auth;
 pub mod buzz_communities;
 pub mod chunking;
+pub mod classification;
 pub mod config;
 pub mod connectors;
 pub mod context;
