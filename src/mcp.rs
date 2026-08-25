@@ -147,6 +147,16 @@ pub struct MemoryCandidateIdParams {
     id: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryConsolidationParams {
+    id: String,
+    #[serde(default)]
+    enabled: bool,
+    #[serde(default)]
+    explicit_approval: bool,
+}
+
 /// Safe, non-secret source configuration exposed to agents through
 /// `brain_status`. This deliberately omits credential paths, environment names,
 /// and connector arguments.
@@ -1006,6 +1016,60 @@ impl BrainServer {
                     started,
                 );
                 format!("memory reflection error: {error}")
+            }
+        }
+    }
+
+    #[tool(
+        description = "Apply the versioned consolidation policy to one visible memory candidate. Automatic retention remains disabled unless enabled=true; explicit approval remains a separate flag."
+    )]
+    async fn consolidate_memory_candidate(
+        &self,
+        Parameters(params): Parameters<MemoryConsolidationParams>,
+    ) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            return "authorization error: memory scope required".into();
+        }
+        let policy = crate::consolidation::ConsolidationPolicy {
+            enabled: params.enabled,
+            ..Default::default()
+        };
+        match self.store.consolidate_memory_candidate(
+            &params.id,
+            &policy,
+            &principal.name,
+            &principal.visible_acl(),
+            principal.is_owner(),
+            params.explicit_approval,
+        ) {
+            Ok(outcome) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_candidate.consolidate",
+                    None,
+                    None,
+                    &outcome.status,
+                    Some(1),
+                    started,
+                );
+                serde_json::to_string(&outcome).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_candidate.consolidate",
+                    None,
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("candidate consolidation error: {error}")
             }
         }
     }

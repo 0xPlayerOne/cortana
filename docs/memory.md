@@ -80,6 +80,16 @@ The native MCP tools are:
 - `classify_memory_candidate` — compare one visible pending candidate with same-scope canonical
   memory using deterministic local rules; this is review-only and never mutates memory.
 
+Consolidation is a separate opt-in policy boundary. The default policy is disabled, and promotion
+must use the versioned `cortana.memory.consolidation.v1` rules. Safe, non-sensitive, in-scope,
+non-conflicting candidates may auto-retain only above configured confidence and importance
+thresholds; sensitive, contradictory, low-confidence, or cross-scope candidates remain review-only.
+Working retention stays bounded and cannot silently become durable. Queue entries are priority
+ordered, deduplicated by candidate and policy version, retry bounded, pausable, cancellable, and
+dead-lettered after repeated failures. Promotion uses the same atomic remember invariants as an
+explicit write and emits metadata-only audit events. Turning consolidation off has no effect on
+explicit memory or source retrieval.
+
 The equivalent CLI is:
 
 ```sh
@@ -110,8 +120,9 @@ implemented.
 Candidate HTTP endpoints are `POST /v1/memory/candidates`, `GET /v1/memory/candidates`,
 `GET /v1/memory/candidates/export`,
 `POST /v1/memory/candidates/{id}/cancel`, `POST /v1/memory/candidates/{id}/redact`, and
-`POST /v1/memory/candidates/{id}/classify`. The CLI equivalent is
-`cortana memory candidate propose|list|export|cancel|redact|classify`. Candidate submissions require
+`POST /v1/memory/candidates/{id}/classify`, and `POST /v1/memory/candidates/{id}/consolidate`.
+The CLI equivalent is
+`cortana memory candidate propose|list|export|cancel|redact|classify|consolidate`. Candidate submissions require
 an explicit JSON provenance object, source id, sensitivity, and expiry; content is limited to 8 KiB,
 provenance to 4 KiB, and expiry to seven days. The bounded path rejects sensitive/restricted
 proposals and never advances the canonical memory revision.

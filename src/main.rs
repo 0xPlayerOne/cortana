@@ -500,6 +500,17 @@ enum MemoryCandidateAction {
     Redact { id: String },
     /// Classify a pending candidate against visible canonical memory without mutating it.
     Classify { id: String },
+    /// Apply the versioned consolidation policy and print its explainable outcome.
+    Consolidate {
+        id: String,
+        #[arg(
+            long,
+            help = "Enable policy-controlled automatic retention for this request"
+        )]
+        enabled: bool,
+        #[arg(long, help = "Record explicit approval for review-required retention")]
+        approve: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -2507,8 +2518,32 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                         println!("{}", serde_json::json!({"id": id, "updated": true}));
                         Ok(())
                     }
-                    Ok(false) => anyhow::bail!("pending candidate not found: {id}"),
-                    Err(error) => Err(error),
+                    Ok(false) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            operation,
+                            None,
+                            None,
+                            "not_found",
+                            Some(0),
+                            started,
+                        );
+                        anyhow::bail!("pending candidate not found: {id}")
+                    }
+                    Err(error) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            operation,
+                            None,
+                            None,
+                            "failed",
+                            None,
+                            started,
+                        );
+                        Err(error)
+                    }
                 }
             }
             MemoryCandidateAction::Classify { id } => {
@@ -2532,6 +2567,52 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                             store,
                             config.auth.audit_max_events,
                             "candidate.classify",
+                            None,
+                            None,
+                            "failed",
+                            None,
+                            started,
+                        );
+                        Err(error)
+                    }
+                }
+            }
+            MemoryCandidateAction::Consolidate {
+                id,
+                enabled,
+                approve,
+            } => {
+                let policy = cortana::consolidation::ConsolidationPolicy {
+                    enabled: *enabled,
+                    ..Default::default()
+                };
+                match store.consolidate_memory_candidate(
+                    id,
+                    &policy,
+                    "owner",
+                    &["*".into()],
+                    true,
+                    *approve,
+                ) {
+                    Ok(outcome) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            "candidate.consolidate",
+                            None,
+                            None,
+                            &outcome.status,
+                            Some(1),
+                            started,
+                        );
+                        println!("{}", serde_json::to_string_pretty(&outcome)?);
+                        Ok(())
+                    }
+                    Err(error) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            "candidate.consolidate",
                             None,
                             None,
                             "failed",
