@@ -94,8 +94,9 @@ The subcommand accepts the same optional filters and strict bounds as the API co
 Out-of-contract values are rejected at parse time. Output is stable JSON with the same shape as
 `/v1/context`: the assembled `context` Markdown with numbered `[n]` citations, the included
 `evidence` rows, relevant `memories`, and `metrics` (`retrieved`, `included`, `omitted`,
-`memories_retrieved`, `memories_included`, `memories_omitted`, `estimated_tokens`, and the
-applied token budget). The bundle also reports `retrieval_mode` (`hybrid` or
+`memories_retrieved`, `memories_included`, `memories_omitted`, `estimated_tokens`, `source_tokens`,
+`reduced_tokens`, `reduction_ratio`, and the applied token budget). The bundle also reports
+`retrieval_mode` (`hybrid` or
 `lexical-fallback`) and, when degraded, a non-secret `retrieval_warning`. Like every other command, it runs against the local index only; use
 `--offline` for the deterministic embedding path when the index generation matches.
 
