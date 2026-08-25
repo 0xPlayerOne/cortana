@@ -10,6 +10,13 @@ Source tests, web tests, Rust tests, static archive inspection, checksum verific
 
 A supported Desktop claim requires a real package to complete the relevant native flows on the named operating system and architecture.
 
+The manual `Desktop acceptance` workflow adds a narrower published-package host lane: it extracts
+or selects the release application, starts it with disposable configuration and data directories,
+and stops it after a bounded startup window on macOS Apple Silicon, Linux x86_64, and Windows
+x86_64. This proves packaged process startup and isolated state setup only. It does not replace
+interactive GUI, browser OAuth, tray/service, native-dialog, updater, accessibility, or
+macOS Developer ID/notarization acceptance.
+
 ## Product principles
 
 - Desktop is the primary human surface, not the canonical database or background-service authority.

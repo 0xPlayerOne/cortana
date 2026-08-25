@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -78,11 +79,16 @@ function readJson(path) {
 
 function projectVersions() {
   const rootVersion = readJson(resolve(ROOT, 'package.json')).version
+  const connectorVersion = readFileSync(resolve(ROOT, 'pyproject.toml'), 'utf8').match(
+    /^version\s*=\s*["']([^"']+)["']/m
+  )?.[1]
+  if (!connectorVersion) throw new Error('connector project version is missing from pyproject.toml')
   return {
     ...(rootVersion ? { root: rootVersion } : {}),
     web: readJson(resolve(ROOT, 'apps/web/package.json')).version,
     desktop: readJson(resolve(ROOT, 'apps/desktop/package.json')).version,
     tauri: readJson(resolve(ROOT, 'apps/desktop/src-tauri/tauri.conf.json')).version,
+    connector: connectorVersion,
   }
 }
 
@@ -131,6 +137,18 @@ function verifyArtifacts(packageDirectory, target, version) {
     return name
   })
   return found
+}
+
+export function artifactChecksums(directory, artifacts) {
+  const packageDirectory = resolve(directory)
+  return Object.fromEntries(
+    artifacts.map((artifact) => [
+      artifact,
+      createHash('sha256')
+        .update(readFileSync(resolve(packageDirectory, artifact)))
+        .digest('hex'),
+    ])
+  )
 }
 
 function runCore(core, version) {
@@ -212,17 +230,41 @@ export function runAcceptance(options) {
     throw new Error(`project version mismatch: ${redactEvidence(JSON.stringify(versions))}`)
   }
   const artifacts = verifyArtifacts(resolve(options.packageDirectory), target, version)
+  const packageDirectory = resolve(options.packageDirectory)
   const core = resolve(options.core)
   if (!existsSync(core)) throw new Error(`packaged core does not exist: ${core}`)
+  const coreEvidence = runCore(core, version)
+  const generatedAt = new Date().toISOString()
   return {
     schema_version: 1,
     status: 'passed',
     target: descriptor,
     version,
+    installation_type: 'published-release-assets',
     artifacts,
-    core: runCore(core, version),
+    package_checksums: artifactChecksums(packageDirectory, artifacts),
+    component_versions: {
+      application: versions.tauri,
+      web: versions.web,
+      core: coreEvidence.reported_version.replace(/^cortana\s+/, ''),
+      connector: versions.connector,
+    },
+    cases: [
+      'published-artifact-presence',
+      'component-version-agreement',
+      'packaged-core-version',
+      'packaged-core-offline-evaluation',
+    ],
+    core: coreEvidence,
     gui: 'not exercised by this headless lane; requires host acceptance',
-    generated_at: new Date().toISOString(),
+    host_acceptance: {
+      status: 'not_exercised',
+      limitation:
+        'GUI, native dialogs, services, updater lifecycle, and OS trust require host acceptance',
+    },
+    reviewer: 'automated CI',
+    generated_at: generatedAt,
+    reviewed_at: generatedAt,
   }
 }
 
