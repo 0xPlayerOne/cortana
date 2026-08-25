@@ -41,6 +41,7 @@ pub const MAX_REFLECTION_TENSIONS: usize = 16;
 pub const MAX_REFLECTION_RECOMMENDATIONS: usize = 16;
 pub const MAX_REFLECTION_CANDIDATES: usize = 8;
 pub const MAX_PROVIDER_OUTPUT_BYTES: usize = 128 * 1024;
+const MAX_REFLECTION_REFERENCE_BYTES: usize = 256;
 const MIN_PRIVATE_EVIDENCE_FINGERPRINT_CHARS: usize = 12;
 
 static ACTIVE_PROVIDERS: OnceLock<Mutex<BTreeSet<usize>>> = OnceLock::new();
@@ -1343,7 +1344,8 @@ fn ensure_ids(ids: &[String], allowed: &BTreeSet<&str>, label: &str) -> Result<(
 
 fn validate_reference_ids(ids: &[String], label: &str) -> Result<()> {
     anyhow::ensure!(
-        ids.iter().all(|id| id.len() <= MAX_REFLECTION_SOURCE_BYTES),
+        ids.iter()
+            .all(|id| id.len() <= MAX_REFLECTION_REFERENCE_BYTES),
         "{label} contains an oversized reference"
     );
     let unique = ids.iter().collect::<BTreeSet<_>>();
@@ -1582,8 +1584,9 @@ mod tests {
     #[test]
     fn evidence_requires_matching_project_and_is_id_based() {
         let memories = vec![memory("m1", "release policy", "work", &["work"])];
+        let evidence_id = format!("{}:{}", "a".repeat(64), "b".repeat(64));
         let evidence = vec![Evidence {
-            chunk_id: "doc-1:0".into(),
+            chunk_id: evidence_id.clone(),
             source: "notes".into(),
             source_id: "note-1".into(),
             title: "Release note".into(),
@@ -1605,14 +1608,14 @@ mod tests {
             memory_revision: 2,
         };
         let response = reflect(&request, &inputs).expect("reflection");
-        assert_eq!(response.evidence_ids, vec!["doc-1:0"]);
+        assert_eq!(response.evidence_ids, vec![evidence_id.clone()]);
         assert!(
             !serde_json::to_string(&response)
                 .unwrap()
                 .contains("private source content")
         );
 
-        struct Paraphrase;
+        struct Paraphrase(String);
         impl ReflectionProvider for Paraphrase {
             fn name(&self) -> &str {
                 "paraphrase"
@@ -1627,19 +1630,23 @@ mod tests {
                     claims: vec![ReflectClaim {
                         text: "The source supports the release policy".into(),
                         supporting_memory_ids: Vec::new(),
-                        supporting_evidence_ids: vec!["doc-1:0".into()],
+                        supporting_evidence_ids: vec![self.0.clone()],
                     }],
                     ..Default::default()
                 })
             }
         }
         request.provider_policy = ProviderPolicy::PreferProvider;
-        let response = reflect_with_provider(&request, &inputs, Some(Arc::new(Paraphrase)))
-            .expect("grounded paraphrase succeeds");
+        let response = reflect_with_provider(
+            &request,
+            &inputs,
+            Some(Arc::new(Paraphrase(evidence_id.clone()))),
+        )
+        .expect("grounded paraphrase succeeds");
         assert_eq!(response.status, ReflectStatus::Completed);
         assert_eq!(response.provider.status, "succeeded");
 
-        struct Echo;
+        struct Echo(String);
         impl ReflectionProvider for Echo {
             fn name(&self) -> &str {
                 "echo"
@@ -1654,13 +1661,13 @@ mod tests {
                     claims: vec![ReflectClaim {
                         text: "private source".into(),
                         supporting_memory_ids: Vec::new(),
-                        supporting_evidence_ids: vec!["doc-1:0".into()],
+                        supporting_evidence_ids: vec![self.0.clone()],
                     }],
                     ..Default::default()
                 })
             }
         }
-        let response = reflect_with_provider(&request, &inputs, Some(Arc::new(Echo)))
+        let response = reflect_with_provider(&request, &inputs, Some(Arc::new(Echo(evidence_id))))
             .expect("private echo falls back");
         assert_eq!(response.status, ReflectStatus::Fallback);
         assert_eq!(response.provider.status, "fallback");
