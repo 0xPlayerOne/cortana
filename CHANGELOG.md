@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.0](https://github.com/0xPlayerOne/cortana/compare/v0.42.0...v0.43.0) (2026-08-25)
+
+
+### Features
+
+* **memory:** add approval-aware consolidation ([#2135](https://github.com/0xPlayerOne/cortana/issues/2135)) ([f67ba8b](https://github.com/0xPlayerOne/cortana/commit/f67ba8bf0313b209e6dbdab1af3ccfa4b4e0d737))
+
 ## [0.42.0](https://github.com/0xPlayerOne/cortana/compare/v0.41.0...v0.42.0) (2026-08-25)
 
 
