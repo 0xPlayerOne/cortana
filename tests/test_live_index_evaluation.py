@@ -103,6 +103,40 @@ def manifest() -> dict:
             "expires_at": "2027-08-25T00:00:00Z",
             "reviewer": "test-reviewer",
         },
+        "governance": {
+            "contract_version": "cortana.approved-corpus.v1",
+            "operator_controlled": True,
+            "raw_data_external": True,
+            "credentials_external": True,
+            "private_paths_external": True,
+            "scope": {
+                "workspaces": ["work"],
+                "sources": ["runbooks"],
+                "forbidden_sources": ["personal"],
+                "memory": "excluded",
+            },
+            "storage": {"mode": "encrypted-local", "credentials_external": True},
+            "reviewer_access": {
+                "mode": "local-only",
+                "reviewers": ["test-reviewer"],
+                "approval_required": True,
+            },
+            "lifecycle": {
+                "retention_days": 90,
+                "deletion": "operator-confirmed",
+                "redaction": "operator-controlled",
+                "incident": "stop-revoke-notify",
+            },
+            "resource_bounds": {
+                "max_request_seconds": 30,
+                "max_total_seconds": 300,
+                "max_response_bytes": 4 * 1024 * 1024,
+                "max_memory_mb": 1024,
+                "max_cases": 100,
+            },
+            "coverage": [{"workspace": "work", "source": "runbooks", "minimum_cases": 0}],
+            "provider_synthesis_enabled": True,
+        },
         "thresholds": {
             "min_recall_at_k": 1.0,
             "min_mrr": 1.0,
@@ -114,6 +148,7 @@ def manifest() -> dict:
         "retrieval_cases": [
             {
                 "name": "release-runbook",
+                "id": "retrieval-release-runbook",
                 "query": "release verification",
                 "project": "work",
                 "source": "runbooks",
@@ -125,6 +160,8 @@ def manifest() -> dict:
         "answer_cases": [
             {
                 "name": "release-answer",
+                "id": "answer-release-runbook",
+                "mode": "provider-synthesis",
                 "query": "is the release verified?",
                 "project": "work",
                 "source": "runbooks",
@@ -175,6 +212,40 @@ def test_manifest_rejects_unsafe_or_expired_corpus_metadata() -> None:
     invalid = manifest()
     invalid["corpus"]["digest"] = "sha256:not-a-digest"
     with pytest.raises(live.ManifestError, match="corpus.digest"):
+        live.validate_manifest(invalid)
+
+
+def test_manifest_rejects_governance_scope_coverage_and_provider_without_opt_in() -> None:
+    invalid = manifest()
+    invalid["governance"]["scope"]["sources"] = ["notes"]
+    with pytest.raises(live.ManifestError, match="one configured source"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["governance"]["coverage"][0]["minimum_cases"] = 3
+    with pytest.raises(live.ManifestError, match="coverage is incomplete"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["governance"]["provider_synthesis_enabled"] = False
+    with pytest.raises(live.ManifestError, match="explicit governance opt-in"):
+        live.validate_manifest(invalid)
+
+
+def test_manifest_rejects_private_paths_and_unsafe_lifecycle() -> None:
+    invalid = manifest()
+    invalid["governance"]["scope"]["sources"] = ["/Users/private/source"]
+    with pytest.raises(live.ManifestError, match="filesystem paths"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["governance"]["lifecycle"]["deletion"] = "automatic"
+    with pytest.raises(live.ManifestError, match="lifecycle.deletion"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["governance"]["resource_bounds"]["max_cases"] = 1
+    with pytest.raises(live.ManifestError, match="max_cases"):
         live.validate_manifest(invalid)
 
     invalid = manifest()

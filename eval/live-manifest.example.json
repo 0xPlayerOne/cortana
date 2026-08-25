@@ -9,6 +9,49 @@
     "expires_at": "2027-01-01T00:00:00Z",
     "reviewer": "replace-with-reviewer-id"
   },
+  "governance": {
+    "contract_version": "cortana.approved-corpus.v1",
+    "operator_controlled": true,
+    "raw_data_external": true,
+    "credentials_external": true,
+    "private_paths_external": true,
+    "scope": {
+      "workspaces": ["work"],
+      "sources": ["REPLACE_WITH_SOURCE"],
+      "forbidden_sources": ["personal"],
+      "memory": "excluded"
+    },
+    "storage": {
+      "mode": "encrypted-local",
+      "credentials_external": true
+    },
+    "reviewer_access": {
+      "mode": "local-only",
+      "reviewers": ["replace-with-reviewer-id"],
+      "approval_required": true
+    },
+    "lifecycle": {
+      "retention_days": 90,
+      "deletion": "operator-confirmed",
+      "redaction": "operator-controlled",
+      "incident": "stop-revoke-notify"
+    },
+    "resource_bounds": {
+      "max_request_seconds": 30,
+      "max_total_seconds": 300,
+      "max_response_bytes": 4194304,
+      "max_memory_mb": 1024,
+      "max_cases": 100
+    },
+    "coverage": [
+      {
+        "workspace": "work",
+        "source": "REPLACE_WITH_SOURCE",
+        "minimum_cases": 1
+      }
+    ],
+    "provider_synthesis_enabled": false
+  },
   "thresholds": {
     "min_recall_at_k": 0.8,
     "min_mrr": 0.6,
@@ -22,6 +65,7 @@
   },
   "retrieval_cases": [
     {
+      "id": "replace-with-approved-retrieval-case-id",
       "name": "replace-with-an-approved-work-query",
       "query": "REPLACE_WITH_A_QUERY",
       "project": "work",
@@ -45,7 +89,9 @@
   ],
   "answer_cases": [
     {
+      "id": "replace-with-approved-answer-case-id",
       "name": "replace-with-an-approved-cited-answer",
+      "mode": "extractive-answer",
       "query": "REPLACE_WITH_A_QUERY",
       "project": "work",
       "source": "REPLACE_WITH_SOURCE",
