@@ -17,6 +17,7 @@ pub mod memory;
 pub mod migration;
 pub mod model;
 pub mod oauth_common;
+pub mod observation;
 pub mod provider_models;
 pub mod readiness;
 pub mod retrieval;

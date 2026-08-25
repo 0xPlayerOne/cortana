@@ -14,6 +14,7 @@ use cortana::context::{self, ContextBundle};
 use cortana::embed::{CachedEmbedder, DeterministicEmbedder, Embedder, OpenAiEmbedder};
 use cortana::memory::MemoryInput;
 use cortana::model::Document;
+use cortana::observation::ObservationCandidateInput;
 use cortana::retrieval;
 use cortana::store::{Store, SyncRunStatus};
 use cortana::{
@@ -406,6 +407,77 @@ enum MemoryAction {
     },
     /// Redact a memory while retaining its audit tombstone.
     Forget { id: String },
+    /// Propose, list, cancel, or redact bounded observations before promotion.
+    Candidate {
+        #[command(subcommand)]
+        action: MemoryCandidateAction,
+    },
+}
+
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Subcommand)]
+enum MemoryCandidateAction {
+    /// Submit a bounded observation proposal; this never writes canonical memory.
+    Propose {
+        #[arg(long)]
+        observation_kind: String,
+        #[arg(long)]
+        content_type: String,
+        #[arg(long)]
+        retention_tier: String,
+        #[arg(long)]
+        scope: String,
+        #[arg(long)]
+        project: String,
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        content: String,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        source_id: String,
+        #[arg(long)]
+        dedupe_key: Option<String>,
+        #[arg(long)]
+        confidence: f32,
+        #[arg(long)]
+        importance: f32,
+        #[arg(long, default_value = "normal")]
+        sensitivity: String,
+        #[arg(long = "acl")]
+        acl: Vec<String>,
+        #[arg(long, help = "JSON provenance object")]
+        provenance: String,
+        #[arg(long)]
+        expires_at: String,
+    },
+    /// List candidates visible to the local owner.
+    List {
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        observation_kind: Option<String>,
+        #[arg(long)]
+        scope: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 100)]
+        limit: usize,
+    },
+    /// Export bounded candidates, including lifecycle tombstones, for audit or backup.
+    Export {
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        observation_kind: Option<String>,
+        #[arg(long)]
+        scope: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 10_000)]
+        limit: usize,
+    },
+    /// Cancel a pending candidate.
+    Cancel { id: String },
+    /// Redact a pending candidate while retaining its tombstone.
+    Redact { id: String },
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -807,7 +879,9 @@ async fn main() -> Result<()> {
                     action: AclAction::Apply { .. },
                 }
                 | Command::Memory {
-                    action: MemoryAction::Remember { .. } | MemoryAction::Forget { .. },
+                    action: MemoryAction::Remember { .. }
+                        | MemoryAction::Forget { .. }
+                        | MemoryAction::Candidate { .. },
                 }
         )
     ) {
@@ -2192,6 +2266,184 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                 }
             }
         }
+        MemoryAction::Candidate { action } => match action {
+            MemoryCandidateAction::Propose {
+                observation_kind,
+                content_type,
+                retention_tier,
+                scope,
+                project,
+                title,
+                content,
+                source,
+                source_id,
+                dedupe_key,
+                confidence,
+                importance,
+                sensitivity,
+                acl,
+                provenance,
+                expires_at,
+            } => {
+                let provenance = serde_json::from_str(provenance)
+                    .context("--provenance must be a valid JSON object")?;
+                let result = store.propose_memory_candidate(
+                    &ObservationCandidateInput {
+                        observation_kind: observation_kind.clone(),
+                        content_type: content_type.clone(),
+                        retention_tier: retention_tier.clone(),
+                        scope: scope.clone(),
+                        project: project.clone(),
+                        title: title.clone(),
+                        content: content.clone(),
+                        source: source.clone(),
+                        source_id: source_id.clone(),
+                        dedupe_key: dedupe_key.clone(),
+                        confidence: *confidence,
+                        importance: *importance,
+                        sensitivity: sensitivity.clone(),
+                        acl: acl.clone(),
+                        provenance,
+                        expires_at: expires_at.clone(),
+                    },
+                    "owner",
+                    &["*".into()],
+                    true,
+                );
+                match result {
+                    Ok(candidate) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            "candidate.create",
+                            Some(project),
+                            Some(source),
+                            "succeeded",
+                            Some(1),
+                            started,
+                        );
+                        println!("{}", serde_json::to_string_pretty(&candidate)?);
+                        Ok(())
+                    }
+                    Err(error) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            "candidate.create",
+                            Some(project),
+                            Some(source),
+                            "rejected",
+                            None,
+                            started,
+                        );
+                        Err(error)
+                    }
+                }
+            }
+            MemoryCandidateAction::List {
+                project,
+                observation_kind,
+                scope,
+                limit,
+            }
+            | MemoryCandidateAction::Export {
+                project,
+                observation_kind,
+                scope,
+                limit,
+            } => {
+                let export = matches!(action, MemoryCandidateAction::Export { .. });
+                let result = if export {
+                    store.export_memory_candidates(
+                        project.as_deref(),
+                        observation_kind.as_deref(),
+                        scope.as_deref(),
+                        *limit,
+                        "owner",
+                        &["*".into()],
+                        true,
+                    )
+                } else {
+                    store.list_memory_candidates(
+                        project.as_deref(),
+                        observation_kind.as_deref(),
+                        scope.as_deref(),
+                        *limit,
+                        "owner",
+                        &["*".into()],
+                        true,
+                    )
+                };
+                match result {
+                    Ok(candidates) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            if export {
+                                "candidate.export"
+                            } else {
+                                "candidate.list"
+                            },
+                            project.as_deref(),
+                            None,
+                            "succeeded",
+                            Some(candidates.len()),
+                            started,
+                        );
+                        println!("{}", serde_json::to_string_pretty(&candidates)?);
+                        Ok(())
+                    }
+                    Err(error) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            if export {
+                                "candidate.export"
+                            } else {
+                                "candidate.list"
+                            },
+                            project.as_deref(),
+                            None,
+                            "failed",
+                            None,
+                            started,
+                        );
+                        Err(error)
+                    }
+                }
+            }
+            MemoryCandidateAction::Cancel { id } | MemoryCandidateAction::Redact { id } => {
+                let redact = matches!(action, MemoryCandidateAction::Redact { .. });
+                let operation = if redact {
+                    "candidate.redact"
+                } else {
+                    "candidate.cancel"
+                };
+                let result = if redact {
+                    store.redact_memory_candidate_scoped(id, "owner", &["*".into()], true)
+                } else {
+                    store.cancel_memory_candidate_scoped(id, "owner", &["*".into()], true)
+                };
+                match result {
+                    Ok(true) => {
+                        record_cli_memory_audit(
+                            store,
+                            config.auth.audit_max_events,
+                            operation,
+                            None,
+                            None,
+                            "succeeded",
+                            Some(1),
+                            started,
+                        );
+                        println!("{}", serde_json::json!({"id": id, "updated": true}));
+                        Ok(())
+                    }
+                    Ok(false) => anyhow::bail!("pending candidate not found: {id}"),
+                    Err(error) => Err(error),
+                }
+            }
+        },
     }
 }
 

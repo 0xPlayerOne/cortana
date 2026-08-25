@@ -72,6 +72,11 @@ The native MCP tools are:
   token-bounded bundle.
 - `export` — export bounded native records, including redacted tombstones, for
   an operator-controlled backup or migration.
+- `propose_memory_candidate` — submit one bounded, provenance-bearing observation to the isolated
+  review queue. It is not canonical memory and is not recallable until explicitly promoted.
+- `list_memory_candidates` — list candidates visible to the current principal.
+- `export_memory_candidates` — export a bounded, scoped candidate audit/backup view.
+- `cancel_memory_candidate` / `redact_memory_candidate` — close or redact pending proposals.
 
 The equivalent CLI is:
 
@@ -100,6 +105,13 @@ backward-compatible alias. `owner-global` requires owner authorization even
 when an ACL label would otherwise match. Requests to write `session` or
 `principal` scope are rejected until their identity-binding fields are
 implemented.
+Candidate HTTP endpoints are `POST /v1/memory/candidates`, `GET /v1/memory/candidates`,
+`GET /v1/memory/candidates/export`,
+`POST /v1/memory/candidates/{id}/cancel`, and `POST /v1/memory/candidates/{id}/redact`. The CLI
+equivalent is `cortana memory candidate propose|list|export|cancel|redact`. Candidate submissions require
+an explicit JSON provenance object, source id, sensitivity, and expiry; content is limited to 8 KiB,
+provenance to 4 KiB, and expiry to seven days. The bounded path rejects sensitive/restricted
+proposals and never advances the canonical memory revision.
 
 ## Operating boundaries
 

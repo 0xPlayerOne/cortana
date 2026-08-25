@@ -110,6 +110,43 @@ pub struct MemoryForgetParams {
     id: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryCandidateParams {
+    observation_kind: String,
+    content_type: String,
+    retention_tier: String,
+    scope: String,
+    project: String,
+    title: String,
+    content: String,
+    source: String,
+    source_id: String,
+    dedupe_key: Option<String>,
+    confidence: f32,
+    importance: f32,
+    sensitivity: String,
+    acl: Option<Vec<String>>,
+    #[schemars(with = "std::collections::BTreeMap<String, serde_json::Value>")]
+    provenance: std::collections::BTreeMap<String, serde_json::Value>,
+    expires_at: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryCandidateListParams {
+    project: Option<String>,
+    observation_kind: Option<String>,
+    scope: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryCandidateIdParams {
+    id: String,
+}
+
 /// Safe, non-secret source configuration exposed to agents through
 /// `brain_status`. This deliberately omits credential paths, environment names,
 /// and connector arguments.
@@ -650,6 +687,287 @@ impl BrainServer {
                 } else {
                     format!("memory error: {error}")
                 }
+            }
+        }
+    }
+
+    #[tool(
+        description = "Submit one bounded, provenance-bearing observation for review. This never writes canonical memory or changes memory revision; full transcripts and sensitive proposals are rejected."
+    )]
+    async fn propose_memory_candidate(
+        &self,
+        Parameters(params): Parameters<MemoryCandidateParams>,
+    ) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.memory_candidate.create",
+                    Some(&params.project),
+                    Some(&params.source),
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                return format!("authorization error: {error}");
+            }
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            self.audit_principal(
+                &principal,
+                "mcp.memory_candidate.create",
+                Some(&params.project),
+                Some(&params.source),
+                "forbidden",
+                None,
+                started,
+            );
+            return "authorization error: memory scope required".into();
+        }
+        let requested_acl = params.acl.unwrap_or_default();
+        let visible_acl = principal.visible_acl();
+        let acl = if principal.is_owner() {
+            requested_acl
+        } else if requested_acl.is_empty() {
+            visible_acl.clone()
+        } else if requested_acl
+            .iter()
+            .all(|label| visible_acl.iter().any(|visible| visible == label))
+        {
+            requested_acl
+        } else {
+            self.audit_principal(
+                &principal,
+                "mcp.memory_candidate.create",
+                Some(&params.project),
+                Some(&params.source),
+                "forbidden",
+                None,
+                started,
+            );
+            return "authorization error: candidate ACL exceeds principal visibility".into();
+        };
+        let input = crate::observation::ObservationCandidateInput {
+            observation_kind: params.observation_kind,
+            content_type: params.content_type,
+            retention_tier: params.retention_tier,
+            scope: params.scope,
+            project: params.project.clone(),
+            title: params.title,
+            content: params.content,
+            source: params.source.clone(),
+            source_id: params.source_id,
+            dedupe_key: params.dedupe_key,
+            confidence: params.confidence,
+            importance: params.importance,
+            sensitivity: params.sensitivity,
+            acl,
+            provenance: serde_json::Value::Object(params.provenance.into_iter().collect()),
+            expires_at: params.expires_at,
+        };
+        match self.store.propose_memory_candidate(
+            &input,
+            &principal.name,
+            &visible_acl,
+            principal.is_owner(),
+        ) {
+            Ok(candidate) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_candidate.create",
+                    Some(&candidate.project),
+                    Some(&candidate.source),
+                    "succeeded",
+                    Some(1),
+                    started,
+                );
+                serde_json::to_string(&candidate).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_candidate.create",
+                    Some(&input.project),
+                    Some(&input.source),
+                    "rejected",
+                    None,
+                    started,
+                );
+                format!("candidate rejected: {error}")
+            }
+        }
+    }
+
+    #[tool(
+        description = "List bounded observation candidates visible to the current principal; candidates are not canonical memory recall results."
+    )]
+    async fn list_memory_candidates(
+        &self,
+        Parameters(params): Parameters<MemoryCandidateListParams>,
+    ) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            return "authorization error: memory scope required".into();
+        }
+        match self.store.list_memory_candidates(
+            params.project.as_deref(),
+            params.observation_kind.as_deref(),
+            params.scope.as_deref(),
+            params.limit.unwrap_or(100),
+            &principal.name,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        ) {
+            Ok(candidates) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_candidate.list",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(candidates.len()),
+                    started,
+                );
+                serde_json::to_string(&candidates).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_candidate.list",
+                    params.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("candidate list error: {error}")
+            }
+        }
+    }
+
+    #[tool(
+        description = "Export bounded observation candidates visible to the current principal, including lifecycle tombstones, for audit or backup."
+    )]
+    async fn export_memory_candidates(
+        &self,
+        Parameters(params): Parameters<MemoryCandidateListParams>,
+    ) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            return "authorization error: memory scope required".into();
+        }
+        match self.store.export_memory_candidates(
+            params.project.as_deref(),
+            params.observation_kind.as_deref(),
+            params.scope.as_deref(),
+            params.limit.unwrap_or(100),
+            &principal.name,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        ) {
+            Ok(candidates) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_candidate.export",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(candidates.len()),
+                    started,
+                );
+                serde_json::to_string(&candidates).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => format!("candidate export error: {error}"),
+        }
+    }
+
+    #[tool(
+        description = "Cancel a pending observation candidate without changing canonical memory."
+    )]
+    async fn cancel_memory_candidate(
+        &self,
+        Parameters(params): Parameters<MemoryCandidateIdParams>,
+    ) -> String {
+        self.update_memory_candidate(params.id, false).await
+    }
+
+    #[tool(
+        description = "Redact a pending observation candidate while retaining an audit tombstone."
+    )]
+    async fn redact_memory_candidate(
+        &self,
+        Parameters(params): Parameters<MemoryCandidateIdParams>,
+    ) -> String {
+        self.update_memory_candidate(params.id, true).await
+    }
+
+    async fn update_memory_candidate(&self, id: String, redact: bool) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            return "authorization error: memory scope required".into();
+        }
+        let action = if redact {
+            "mcp.memory_candidate.redact"
+        } else {
+            "mcp.memory_candidate.cancel"
+        };
+        let result = if redact {
+            self.store.redact_memory_candidate_scoped(
+                &id,
+                &principal.name,
+                &principal.visible_acl(),
+                principal.is_owner(),
+            )
+        } else {
+            self.store.cancel_memory_candidate_scoped(
+                &id,
+                &principal.name,
+                &principal.visible_acl(),
+                principal.is_owner(),
+            )
+        };
+        match result {
+            Ok(true) => {
+                self.audit_principal(
+                    &principal,
+                    action,
+                    None,
+                    None,
+                    "succeeded",
+                    Some(1),
+                    started,
+                );
+                serde_json::json!({"id": id, "updated": true}).to_string()
+            }
+            Ok(false) => {
+                self.audit_principal(
+                    &principal,
+                    action,
+                    None,
+                    None,
+                    "not_found",
+                    Some(0),
+                    started,
+                );
+                "pending candidate not found".into()
+            }
+            Err(error) => {
+                self.audit_principal(&principal, action, None, None, "failed", None, started);
+                format!("candidate update error: {error}")
             }
         }
     }
