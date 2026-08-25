@@ -14,6 +14,11 @@ Cortana treats every connector as a snapshot producer. Each successful run emits
 changed, atomically replaces their chunks, and reconciles records that disappeared from the
 completed snapshot. A failed connector never triggers deletion reconciliation.
 
+Derived retrieval units use the versioned [structured chunking contract](chunking.md): Markdown,
+HTML/exported documents, message threads, and compact calendar/structured records use source-aware
+boundaries, while unknown inputs retain the generic fallback. Canonical `Document` content, source
+identity, provenance, ACL, and citation fields are unchanged by chunk regeneration.
+
 Connector output is first captured in an owner-only on-disk spool and then ingested in bounded
 batches. This preserves complete-snapshot reconciliation without holding a large Drive, Gmail, or
 chat export in memory. Temporary spools are removed after success or failure, and reconciliation

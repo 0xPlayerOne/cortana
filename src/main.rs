@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use cortana::chunking::{ChunkSpec, chunk_document};
 use cortana::config::{Config, SourceConfig, default_config_path};
 use cortana::connectors;
 use cortana::context::{self, ContextBundle};
@@ -2832,7 +2833,7 @@ async fn ingest_documents_controlled(
         processed_documents = processed_documents.saturating_add(1);
         processed_bytes = processed_bytes
             .saturating_add(u64::try_from(document.content.len()).unwrap_or(u64::MAX));
-        if !store.needs_update(&document)? {
+        if !store.needs_structured_update(&document)? {
             store.refresh_timestamp(&document)?;
             unchanged += 1;
             if processed_documents.is_multiple_of(64) {
@@ -2840,9 +2841,9 @@ async fn ingest_documents_controlled(
             }
             continue;
         }
-        let texts = chunk(&document.content);
-        pending_chunks += texts.len();
-        pending.push((document, texts));
+        let chunks = chunk_document(&document);
+        pending_chunks += chunks.len();
+        pending.push((document, chunks));
         if pending_chunks >= EMBEDDING_REQUEST_SIZE * control.limits.request_concurrency {
             flush_ingest_batch(
                 store,
@@ -2876,7 +2877,7 @@ async fn ingest_documents_controlled(
 async fn flush_ingest_batch(
     store: &Store,
     embedder: &dyn Embedder,
-    pending: &mut Vec<(Document, Vec<String>)>,
+    pending: &mut Vec<(Document, Vec<ChunkSpec>)>,
     changed: &mut usize,
     unchanged: &mut usize,
     source: &str,
@@ -2894,7 +2895,7 @@ async fn flush_ingest_batch(
     let documents = std::mem::take(pending);
     let input = documents
         .iter()
-        .flat_map(|(_, texts)| texts.iter().cloned())
+        .flat_map(|(_, chunks)| chunks.iter().map(|chunk| chunk.content.clone()))
         .collect::<Vec<_>>();
     let mut vectors = vec![None; input.len()];
     let mut committed_documents = 0usize;
@@ -2920,7 +2921,7 @@ async fn flush_ingest_batch(
         // before waiting on the provider so an all-empty batch is valid too.
         while committed_documents < documents.len() && documents[committed_documents].1.is_empty() {
             let chunks = Vec::new();
-            if store.upsert(&documents[committed_documents].0, &chunks)? {
+            if store.upsert_structured(&documents[committed_documents].0, &chunks)? {
                 *changed += 1;
             } else {
                 *unchanged += 1;
@@ -2933,8 +2934,8 @@ async fn flush_ingest_batch(
             }
 
             while committed_documents < documents.len() {
-                let texts = &documents[committed_documents].1;
-                let end = vector_offset + texts.len();
+                let specs = &documents[committed_documents].1;
+                let end = vector_offset + specs.len();
                 anyhow::ensure!(
                     end <= vectors.len(),
                     "embedding provider returned vectors outside the input range"
@@ -2942,19 +2943,19 @@ async fn flush_ingest_batch(
                 if vectors[vector_offset..end].iter().any(Option::is_none) {
                     break;
                 }
-                let chunks = texts
+                let chunks = specs
                     .iter()
                     .enumerate()
-                    .map(|(offset, text)| {
+                    .map(|(offset, spec)| {
                         Ok::<_, anyhow::Error>((
-                            text.clone(),
+                            spec.clone(),
                             vectors[vector_offset + offset]
                                 .take()
                                 .context("embedding vector disappeared before commit")?,
                         ))
                     })
                     .collect::<Result<Vec<_>>>()?;
-                if store.upsert(&documents[committed_documents].0, &chunks)? {
+                if store.upsert_structured(&documents[committed_documents].0, &chunks)? {
                     *changed += 1;
                 } else {
                     *unchanged += 1;
@@ -3792,6 +3793,7 @@ fn record_cli_memory_audit(
     }
 }
 
+#[allow(dead_code)]
 fn chunk(content: &str) -> Vec<String> {
     const TARGET: usize = 1_600;
     const OVERLAP: usize = 200;
@@ -3859,6 +3861,7 @@ mod tests {
         private_file, require_sync_validation, run_connector_to_spool, validate_configured_source,
         validate_connector_spool, validation_overrides,
     };
+    use cortana::chunking::chunk_document;
     use cortana::config::{Config, SourceConfig};
     use cortana::embed::{DeterministicEmbedder, Embedder};
     use cortana::memory::MemoryInput;
@@ -5085,8 +5088,8 @@ mod tests {
                 metadata: serde_json::json!({}),
             })
             .map(|document| {
-                let texts = chunk(&document.content);
-                (document, texts)
+                let chunks = chunk_document(&document);
+                (document, chunks)
             })
             .collect::<Vec<_>>();
         let mut pending = documents;
