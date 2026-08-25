@@ -45,7 +45,7 @@ jobs:
           fi
           is_desktop_path() {
             case "$1" in
-              .github/workflows/desktop.yml|.github/workflows/desktop-acceptance.yml|bun.lock|package.json|Cargo.toml|Cargo.lock|rust-toolchain.toml|CHANGELOG.md|pyproject.toml|uv.lock|README.md|LICENSE|scripts/prepare-desktop-resources.mjs|scripts/prepare-desktop-sidecar.mjs|scripts/desktop-package-acceptance.mjs|scripts/verify-vendored-glib.mjs)
+              .github/workflows/desktop.yml|.github/workflows/desktop-acceptance.yml|bun.lock|package.json|Cargo.toml|Cargo.lock|rust-toolchain.toml|CHANGELOG.md|pyproject.toml|uv.lock|README.md|LICENSE|scripts/prepare-desktop-resources.mjs|scripts/prepare-desktop-sidecar.mjs|scripts/desktop-package-acceptance.mjs|scripts/desktop-host-launch.mjs|scripts/desktop-package-acceptance.test.mjs|scripts/desktop-host-launch.test.mjs|scripts/verify-vendored-glib.mjs)
                 return 0
                 ;;
             esac
