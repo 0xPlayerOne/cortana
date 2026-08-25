@@ -181,10 +181,12 @@ jobs:
       GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout release
+      - name: Checkout release tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          # Older releases may predate this helper; the release tag remains
+          # the asset target while main supplies the maintained tooling.
+          ref: main
       - name: Generate merged updater manifest
         run: python3 scripts/generate-updater-manifest.py "$RELEASE_TAG" --output "$RUNNER_TEMP/latest.json"
       - name: Upload merged updater manifest
