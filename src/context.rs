@@ -112,26 +112,30 @@ impl ContextBundle {
     }
 }
 
-pub fn metadata(
-    token_budget: usize,
-    corpus_revision: u64,
-    memory_revision: Option<u64>,
-    embedding_fingerprint: Option<String>,
-    project: Option<&str>,
-    source: Option<&str>,
-    acl: &[String],
-    retrieval_warning: Option<&str>,
-) -> ContextMetadata {
+pub struct ContextMetadataInput<'a> {
+    pub token_budget: usize,
+    pub corpus_revision: u64,
+    pub memory_revision: Option<u64>,
+    pub embedding_fingerprint: Option<String>,
+    pub project: Option<&'a str>,
+    pub source: Option<&'a str>,
+    pub acl: &'a [String],
+    pub retrieval_warning: Option<&'a str>,
+}
+
+pub fn metadata(input: ContextMetadataInput<'_>) -> ContextMetadata {
     ContextMetadata {
         contract_version: CONTEXT_CONTRACT_VERSION.into(),
         created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
-        token_budget: token_budget.clamp(MIN_CONTEXT_TOKENS, MAX_CONTEXT_TOKENS),
-        corpus_revision,
-        memory_revision,
-        embedding_fingerprint,
+        token_budget: input
+            .token_budget
+            .clamp(MIN_CONTEXT_TOKENS, MAX_CONTEXT_TOKENS),
+        corpus_revision: input.corpus_revision,
+        memory_revision: input.memory_revision,
+        embedding_fingerprint: input.embedding_fingerprint,
         retrieval_contract_version: RETRIEVAL_CONTRACT_VERSION.into(),
-        privacy_scope_digest: privacy_scope_digest(project, source, acl),
-        degradation: retrieval_warning.map(|detail| DegradationState {
+        privacy_scope_digest: privacy_scope_digest(input.project, input.source, input.acl),
+        degradation: input.retrieval_warning.map(|detail| DegradationState {
             code: "retrieval_degraded".into(),
             detail: Some(detail.to_string()),
         }),
@@ -430,16 +434,16 @@ mod tests {
         assert_eq!(first.context_bundle_id, second.context_bundle_id);
         assert!(first.context_bundle_id.starts_with("ctx_"));
 
-        let changed = first.clone().with_metadata(metadata(
-            2_000,
-            1,
-            Some(1),
-            Some("deterministic:16".into()),
-            Some("work"),
-            Some("notes"),
-            &["work".into()],
-            None,
-        ));
+        let changed = first.clone().with_metadata(metadata(ContextMetadataInput {
+            token_budget: 2_000,
+            corpus_revision: 1,
+            memory_revision: Some(1),
+            embedding_fingerprint: Some("deterministic:16".into()),
+            project: Some("work"),
+            source: Some("notes"),
+            acl: &["work".into()],
+            retrieval_warning: None,
+        }));
         assert_ne!(first.canonical_digest, changed.canonical_digest);
         assert!(!changed.privacy_scope_digest.contains("work"));
         assert!(!changed.privacy_scope_digest.contains("notes"));

@@ -452,16 +452,16 @@ impl BrainServer {
                     retrieval.mode.as_str(),
                     retrieval.warning.as_deref(),
                 )
-                .with_metadata(context::metadata(
-                    max_tokens,
+                .with_metadata(context::metadata(context::ContextMetadataInput {
+                    token_budget: max_tokens,
                     corpus_revision,
                     memory_revision,
-                    Some(self.embedder.fingerprint()),
-                    params.project.as_deref(),
-                    params.source.as_deref(),
-                    &acl,
-                    retrieval.warning.as_deref(),
-                ));
+                    embedding_fingerprint: Some(self.embedder.fingerprint()),
+                    project: params.project.as_deref(),
+                    source: params.source.as_deref(),
+                    acl: &acl,
+                    retrieval_warning: retrieval.warning.as_deref(),
+                }));
                 serde_json::to_string(&bundle).unwrap_or_else(|error| error.to_string())
             }
             Err(error) => {

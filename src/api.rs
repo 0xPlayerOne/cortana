@@ -1490,14 +1490,16 @@ async fn context(
         retrieval.warning.as_deref(),
     )
     .with_metadata(context_bundle::metadata(
-        request.max_tokens,
-        state.store.corpus_revision().map_err(internal_error)?,
-        memory_revision,
-        Some(state.embedder.fingerprint()),
-        request.project.as_deref(),
-        request.source.as_deref(),
-        &acl,
-        retrieval.warning.as_deref(),
+        context_bundle::ContextMetadataInput {
+            token_budget: request.max_tokens,
+            corpus_revision: state.store.corpus_revision().map_err(internal_error)?,
+            memory_revision,
+            embedding_fingerprint: Some(state.embedder.fingerprint()),
+            project: request.project.as_deref(),
+            source: request.source.as_deref(),
+            acl: &acl,
+            retrieval_warning: retrieval.warning.as_deref(),
+        },
     ));
     Ok(Json(bundle))
 }
