@@ -1370,6 +1370,28 @@ async fn search(
                     "false"
                 }),
             );
+            response.headers_mut().insert(
+                "x-cortana-retrieval-ranking",
+                HeaderValue::from_static(retrieval.diagnostics.contract_version),
+            );
+            for (name, value) in [
+                (
+                    "x-cortana-retrieval-candidates",
+                    retrieval.diagnostics.fused_candidates,
+                ),
+                (
+                    "x-cortana-retrieval-deduplicated",
+                    retrieval.diagnostics.deduplicated_candidates,
+                ),
+                (
+                    "x-cortana-retrieval-returned",
+                    retrieval.diagnostics.returned,
+                ),
+            ] {
+                if let Ok(value) = HeaderValue::try_from(value.to_string()) {
+                    response.headers_mut().insert(name, value);
+                }
+            }
             record_audit(
                 &state,
                 &principal,
@@ -3744,6 +3766,20 @@ mod tests {
                 .get("x-cortana-retrieval-degraded")
                 .and_then(|value| value.to_str().ok()),
             Some("true")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("x-cortana-retrieval-ranking")
+                .and_then(|value| value.to_str().ok()),
+            Some("cortana.retrieval.ranking.v2")
+        );
+        assert!(
+            response
+                .headers()
+                .get("x-cortana-retrieval-candidates")
+                .and_then(|value| value.to_str().ok())
+                .is_some()
         );
         let body = to_bytes(response.into_body(), 1024 * 1024)
             .await

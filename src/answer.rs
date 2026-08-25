@@ -90,6 +90,8 @@ pub struct QueryRuntimeStatus {
     pub result_limit: usize,
     pub cache_ttl_seconds: u64,
     pub answer_timeout_seconds: u64,
+    pub retrieval_ranking_version: String,
+    pub reranker_enabled: bool,
 }
 
 #[async_trait]
@@ -226,6 +228,19 @@ impl AnswerEngine {
         config.output_tokens = config.output_tokens.clamp(64, 8_000);
         config.request_concurrency = config.request_concurrency.clamp(1, 16);
         config.answer_timeout_seconds = config.answer_timeout_seconds.clamp(1, 55);
+        let tuning = retrieval::RetrievalTuning {
+            candidate_multiplier: config.candidate_multiplier,
+            semantic_weight: config.semantic_weight,
+            lexical_weight: config.lexical_weight,
+            idf_weight: config.idf_weight,
+            recency_weight: config.recency_weight,
+        }
+        .bounded();
+        config.candidate_multiplier = tuning.candidate_multiplier;
+        config.semantic_weight = tuning.semantic_weight;
+        config.lexical_weight = tuning.lexical_weight;
+        config.idf_weight = tuning.idf_weight;
+        config.recency_weight = tuning.recency_weight;
         Self {
             store,
             embedder,
@@ -247,6 +262,8 @@ impl AnswerEngine {
             result_limit: self.config.result_limit,
             cache_ttl_seconds: self.config.cache_ttl_seconds,
             answer_timeout_seconds: self.config.answer_timeout_seconds,
+            retrieval_ranking_version: retrieval::RETRIEVAL_RANKING_VERSION.into(),
+            reranker_enabled: self.config.reranker_enabled,
         }
     }
 
@@ -327,7 +344,7 @@ impl AnswerEngine {
             }
         };
         let searches = plan.queries.iter().map(|query| {
-            retrieval::retrieve_scoped_with_status(
+            retrieval::retrieve_scoped_with_status_tuned(
                 &self.store,
                 &self.embedder,
                 query,
@@ -335,6 +352,7 @@ impl AnswerEngine {
                 request.source.as_deref(),
                 self.config.retrieval_limit.min(50),
                 principal_acl,
+                self.retrieval_tuning(),
             )
         });
         let results = match tokio::time::timeout(remaining(deadline), join_all(searches)).await {
@@ -546,6 +564,8 @@ impl AnswerEngine {
             "model": self.model.as_ref().map(|_| self.config.model.as_str()),
             "model_url": self.model.as_ref().map(|_| self.config.base_url.as_str()),
             "embedding": self.embedder.fingerprint(),
+            "retrieval_ranking": retrieval::RETRIEVAL_RANKING_VERSION,
+            "retrieval_tuning": self.retrieval_tuning(),
             "query": normalize_query_for_cache(&request.query),
             "project": request.project,
             "source": request.source,
@@ -560,6 +580,17 @@ impl AnswerEngine {
         }))?;
         let digest = Sha256::digest(material);
         Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+    }
+
+    fn retrieval_tuning(&self) -> retrieval::RetrievalTuning {
+        retrieval::RetrievalTuning {
+            candidate_multiplier: self.config.candidate_multiplier,
+            semantic_weight: self.config.semantic_weight,
+            lexical_weight: self.config.lexical_weight,
+            idf_weight: self.config.idf_weight,
+            recency_weight: self.config.recency_weight,
+        }
+        .bounded()
     }
 }
 
