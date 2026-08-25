@@ -15,6 +15,32 @@ pub const CONNECTOR_CONTRACT_VERSION: &str = "cortana.connector.v1";
 pub const MEMORY_CONTRACT_VERSION: &str = "cortana.memory.v1";
 pub const IDENTITY_CONTRACT_VERSION: &str = "cortana.identity.v1";
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EntityLifecycle {
+    Active,
+    Configured,
+    Authorized,
+    Validated,
+    Enabled,
+    Disabled,
+    Revoked,
+    Quarantined,
+    Tombstoned,
+    Expired,
+    Superseded,
+    Retracted,
+    Deleted,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CanonicalEntityRef {
+    pub contract_version: String,
+    pub entity_type: String,
+    pub id: String,
+    pub revision: u64,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct DegradationState {
     pub code: String,
@@ -93,5 +119,20 @@ mod tests {
         assert_eq!(CONTEXT_CONTRACT_VERSION, "cortana.context.v1");
         assert_eq!(API_CONTRACT_VERSION, "cortana.api.v1");
         assert_eq!(ENTITY_CONTRACT_VERSION, "cortana.entity.v1");
+    }
+
+    #[test]
+    fn canonical_entity_refs_are_versioned_and_lifecycle_values_are_stable() {
+        let reference = CanonicalEntityRef {
+            contract_version: ENTITY_CONTRACT_VERSION.into(),
+            entity_type: "Document".into(),
+            id: "doc_opaque".into(),
+            revision: 4,
+        };
+        assert_eq!(reference.revision, 4);
+        assert_eq!(
+            serde_json::to_string(&EntityLifecycle::Quarantined).unwrap(),
+            "\"quarantined\""
+        );
     }
 }
