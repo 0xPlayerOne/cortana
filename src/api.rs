@@ -2107,6 +2107,16 @@ async fn consolidate_memory_candidate(
                         policy.max_queue,
                     ) {
                         tracing::warn!(%error, "memory consolidation recovery worker failed");
+                        let _ = store.record_audit(
+                            &principal_name,
+                            "memory.consolidation.recovery",
+                            None,
+                            Some("candidate"),
+                            "failed",
+                            None,
+                            0,
+                            10_000,
+                        );
                     }
                 });
             }
@@ -2128,7 +2138,19 @@ async fn consolidate_memory_candidate(
                 "candidate consolidation denied".into(),
             ))
         }
-        Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.consolidate",
+                None,
+                None,
+                "failed",
+                None,
+                started,
+            );
+            Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
+        }
     }
 }
 async fn update_memory_candidate(

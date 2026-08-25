@@ -2134,13 +2134,20 @@ impl Store {
             report.reason_code = "capacity".into();
             report.explanation = "active memory capacity is full; review, expire, forget, or supersede a record first".into();
         }
-        transaction.execute(
+        let stale_jobs = transaction.execute(
             "UPDATE memory_consolidation_jobs
              SET status='cancelled',last_error='superseded-policy',updated_at=?3
              WHERE candidate_id=?1 AND policy_version<>?2
                AND status IN ('queued','running','retry','paused')",
             params![id, policy_identity, now],
         )?;
+        if stale_jobs > 0 {
+            transaction.execute(
+                "INSERT INTO audit_events(timestamp,principal,action,project,source,outcome,result_count,latency_ms)
+                 VALUES(?1,'system','memory.consolidation.policy',?2,'candidate','cancelled',?3,0)",
+                params![now, &candidate.project, i64::try_from(stale_jobs).unwrap_or(i64::MAX)],
+            )?;
+        }
         let legacy_terminal: Option<(String, i64, Option<String>)> = transaction
             .query_row(
                 "SELECT status,attempts,memory_id FROM memory_consolidation_jobs
@@ -2171,6 +2178,17 @@ impl Store {
             )?;
             if let Some((status, attempts, memory_id)) = legacy_terminal {
                 transaction.commit()?;
+                drop(connection);
+                self.record_audit(
+                    "system",
+                    "memory.consolidation.reconcile",
+                    Some(&candidate.project),
+                    Some("candidate"),
+                    &status,
+                    Some(1),
+                    0,
+                    10_000,
+                )?;
                 return Ok(ConsolidationOutcome {
                     candidate_id: id.into(),
                     status,
@@ -2194,6 +2212,17 @@ impl Store {
             )?;
             if reconciled > 0 {
                 transaction.commit()?;
+                drop(connection);
+                self.record_audit(
+                    "system",
+                    "memory.consolidation.reconcile",
+                    Some(&candidate.project),
+                    Some("candidate"),
+                    reconciled_status,
+                    Some(1),
+                    0,
+                    10_000,
+                )?;
                 return Ok(ConsolidationOutcome {
                     candidate_id: id.into(),
                     status: reconciled_status.into(),
@@ -2213,6 +2242,17 @@ impl Store {
                 .optional()?;
             if let Some((status, attempts, memory_id)) = current_terminal {
                 transaction.commit()?;
+                drop(connection);
+                self.record_audit(
+                    "system",
+                    "memory.consolidation.reconcile",
+                    Some(&candidate.project),
+                    Some("candidate"),
+                    &status,
+                    Some(1),
+                    0,
+                    10_000,
+                )?;
                 return Ok(ConsolidationOutcome {
                     candidate_id: id.into(),
                     status,
@@ -2609,7 +2649,23 @@ impl Store {
                 principal_acl,
                 owner,
                 decision == ConsolidationDecision::Approve.as_str(),
-            )?;
+            );
+            let outcome = match outcome {
+                Ok(outcome) => outcome,
+                Err(error) => {
+                    self.record_audit(
+                        principal_id,
+                        "memory.consolidation.recovery",
+                        None,
+                        Some("candidate"),
+                        "failed",
+                        None,
+                        0,
+                        10_000,
+                    )?;
+                    return Err(error);
+                }
+            };
             outcomes.push(outcome);
         }
         Ok(outcomes)
@@ -2619,30 +2675,66 @@ impl Store {
     /// source retrieval. The state is persisted so a restart remains safe.
     pub fn pause_memory_consolidation(&self) -> Result<usize> {
         let connection = self.connection.lock().expect("store lock poisoned");
-        Ok(connection.execute(
+        let changed = connection.execute(
             "UPDATE memory_consolidation_jobs SET status='paused',updated_at=?1 WHERE status IN ('queued','retry','running')",
             [memory::now()],
-        )?)
+        )?;
+        drop(connection);
+        self.record_audit(
+            "system",
+            "memory.consolidation.pause",
+            None,
+            None,
+            "paused",
+            Some(changed),
+            0,
+            10_000,
+        )?;
+        Ok(changed)
     }
 
     /// Resume explicitly paused consolidation jobs. They return to the
     /// persistent queue and remain subject to their original policy version.
     pub fn resume_memory_consolidation(&self) -> Result<usize> {
         let connection = self.connection.lock().expect("store lock poisoned");
-        Ok(connection.execute(
+        let changed = connection.execute(
             "UPDATE memory_consolidation_jobs SET status='queued',updated_at=?1 WHERE status='paused'",
             [memory::now()],
-        )?)
+        )?;
+        drop(connection);
+        self.record_audit(
+            "system",
+            "memory.consolidation.resume",
+            None,
+            None,
+            "queued",
+            Some(changed),
+            0,
+            10_000,
+        )?;
+        Ok(changed)
     }
 
     /// Cancel queued or paused jobs; canonical memories are never removed by
     /// queue cancellation.
     pub fn cancel_memory_consolidation(&self, candidate_id: &str) -> Result<bool> {
         let connection = self.connection.lock().expect("store lock poisoned");
-        Ok(connection.execute(
+        let changed = connection.execute(
             "UPDATE memory_consolidation_jobs SET status='cancelled',updated_at=?2 WHERE candidate_id=?1 AND status IN ('queued','retry','paused')",
             params![candidate_id, memory::now()],
-        )? == 1)
+        )? == 1;
+        drop(connection);
+        self.record_audit(
+            "system",
+            "memory.consolidation.cancel",
+            None,
+            Some("candidate"),
+            if changed { "cancelled" } else { "unchanged" },
+            Some(usize::from(changed)),
+            0,
+            10_000,
+        )?;
+        Ok(changed)
     }
 
     pub fn cancel_memory_candidate_scoped(
@@ -8492,7 +8584,7 @@ mod tests {
                 |row| row.get(0),
             )
             .expect("audit count");
-        assert_eq!(audit_count, 1);
+        assert_eq!(audit_count, 2);
     }
 
     #[test]
