@@ -46,6 +46,14 @@ struct ExistingMemory {
     supersedes_id: Option<String>,
 }
 
+struct ExistingConsolidationJob {
+    id: String,
+    status: String,
+    attempts: i64,
+    memory_id: Option<String>,
+    updated_at: String,
+}
+
 fn bump_corpus_revision(transaction: &rusqlite::Transaction<'_>) -> Result<()> {
     transaction.execute(
         "UPDATE meta SET value=CAST(CAST(value AS INTEGER)+1 AS TEXT)
@@ -2099,16 +2107,22 @@ impl Store {
                 reviewer: None,
             },
         )?;
-        let scoped_active = if owner {
-            self.memory_stats()?.active
-        } else {
-            self.memory_stats_scoped(principal_acl)?.active
-        };
         let active_ceiling = policy
             .ceilings
             .max_active
             .min(self.memory_max_active.load(AtomicOrdering::Acquire));
-        if scoped_active >= i64::try_from(active_ceiling).unwrap_or(i64::MAX)
+        let now = memory::now();
+        let policy_identity = policy.identity()?;
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let active_count: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM memories
+             WHERE status='active'
+               AND (valid_until IS NULL OR julianday(valid_until)>julianday(?1))",
+            [&now],
+            |row| row.get(0),
+        )?;
+        if active_count >= i64::try_from(active_ceiling).unwrap_or(i64::MAX)
             && matches!(
                 report.decision,
                 ConsolidationDecision::AutoRetain
@@ -2120,43 +2134,75 @@ impl Store {
             report.reason_code = "capacity".into();
             report.explanation = "active memory capacity is full; review, expire, forget, or supersede a record first".into();
         }
-        let now = memory::now();
-        let policy_identity = policy.identity()?;
-        let mut connection = self.connection.lock().expect("store lock poisoned");
-        let transaction = connection.transaction()?;
-        let existing_job: Option<(String, String, String, i64, i64, Option<String>)> = transaction
+        transaction.execute(
+            "UPDATE memory_consolidation_jobs
+             SET policy_version=?3,updated_at=?4
+             WHERE candidate_id=?1 AND policy_version=?2
+               AND NOT EXISTS(
+                 SELECT 1 FROM memory_consolidation_jobs current
+                 WHERE current.candidate_id=?1 AND current.policy_version=?3)",
+            params![id, policy.version, policy_identity, now],
+        )?;
+        let existing_job: Option<ExistingConsolidationJob> = transaction
             .query_row(
-                "SELECT id,status,decision,attempts,priority,memory_id
+                "SELECT id,status,decision,attempts,priority,memory_id,updated_at
                  FROM memory_consolidation_jobs
                  WHERE candidate_id=?1 AND policy_version=?2",
                 params![id, policy_identity],
                 |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                        row.get(5)?,
-                    ))
+                    Ok(ExistingConsolidationJob {
+                        id: row.get(0)?,
+                        status: row.get(1)?,
+                        attempts: row.get(3)?,
+                        memory_id: row.get(5)?,
+                        updated_at: row.get(6)?,
+                    })
                 },
             )
             .optional()?;
-        let job_id = if let Some((job_id, status, _decision, attempts, _priority, memory_id)) =
-            existing_job
-        {
-            if explicit_approval
-                && status == "paused"
-                && matches!(
-                    report.decision,
-                    ConsolidationDecision::AutoRetain
-                        | ConsolidationDecision::Approve
-                        | ConsolidationDecision::Working
-                )
+        let job_id = if let Some(existing) = existing_job {
+            let ExistingConsolidationJob {
+                id: job_id,
+                status,
+                attempts,
+                memory_id,
+                updated_at,
+            } = existing;
+            if status == "retry" {
+                let retry_ready = DateTime::parse_from_rfc3339(&updated_at)
+                    .map(|value| {
+                        value.with_timezone(&Utc)
+                            + chrono::TimeDelta::seconds(
+                                i64::try_from(policy.retry_backoff_seconds).unwrap_or(i64::MAX),
+                            )
+                            <= Utc::now()
+                    })
+                    .unwrap_or(false);
+                if !retry_ready {
+                    transaction.commit()?;
+                    return Ok(ConsolidationOutcome {
+                        candidate_id: id.into(),
+                        status,
+                        decision: report,
+                        memory_id,
+                        attempts: u8::try_from(attempts).unwrap_or(u8::MAX),
+                    });
+                }
+            }
+            let promotable = matches!(
+                report.decision,
+                ConsolidationDecision::AutoRetain
+                    | ConsolidationDecision::Approve
+                    | ConsolidationDecision::Working
+            );
+            if status == "retry"
+                || status == "queued"
+                || status == "running"
+                || (explicit_approval && status == "paused" && promotable)
             {
                 transaction.execute(
                     "UPDATE memory_consolidation_jobs
-                     SET status='running',classification=?2,decision=?3,last_error=NULL,updated_at=?4
+                     SET status='queued',classification=?2,decision=?3,last_error=NULL,updated_at=?4
                      WHERE id=?1",
                     params![job_id, report.classification, report.decision.as_str(), now],
                 )?;
@@ -2172,6 +2218,16 @@ impl Store {
                 });
             }
         } else {
+            let queued_count: i64 = transaction.query_row(
+                "SELECT COUNT(*) FROM memory_consolidation_jobs
+                 WHERE status IN ('queued','running','retry','paused')",
+                [],
+                |row| row.get(0),
+            )?;
+            anyhow::ensure!(
+                queued_count < i64::try_from(policy.max_queue).unwrap_or(i64::MAX),
+                "consolidation queue is full"
+            );
             let job_id = uuid::Uuid::new_v4().to_string();
             transaction.execute(
                 "INSERT INTO memory_consolidation_jobs(
@@ -2190,7 +2246,7 @@ impl Store {
                             | ConsolidationDecision::Approve
                             | ConsolidationDecision::Working
                     ) {
-                        "running"
+                        "queued"
                     } else if report.decision == ConsolidationDecision::Reject {
                         "dead-letter"
                     } else {
@@ -2202,6 +2258,34 @@ impl Store {
             )?;
             job_id
         };
+
+        if report.decision == ConsolidationDecision::Review {
+            transaction.commit()?;
+            return Ok(ConsolidationOutcome {
+                candidate_id: id.into(),
+                status: "review".into(),
+                decision: report,
+                memory_id: None,
+                attempts: 0,
+            });
+        }
+
+        // Persist scheduling before work begins. A crash leaves a recoverable
+        // queued row rather than losing the request or duplicating memory.
+        transaction.commit()?;
+        let transaction = connection.transaction()?;
+        let attempts: i64 = transaction.query_row(
+            "SELECT attempts FROM memory_consolidation_jobs WHERE id=?1",
+            [&job_id],
+            |row| row.get(0),
+        )?;
+        let next_attempt = attempts.saturating_add(1);
+        transaction.execute(
+            "UPDATE memory_consolidation_jobs
+             SET status='running',attempts=?2,updated_at=?3
+             WHERE id=?1 AND status IN ('queued','retry')",
+            params![job_id, next_attempt, now],
+        )?;
 
         let mut memory_id = None;
         let status = match report.decision {
@@ -2249,8 +2333,30 @@ impl Store {
                     },
                     valid_until: report.expires_at.clone(),
                 };
-                let canonical_id =
-                    self.remember_in_transaction(&transaction, &input, principal_acl, owner, axes)?;
+                let canonical_id = match self.remember_in_transaction(
+                    &transaction,
+                    &input,
+                    principal_acl,
+                    owner,
+                    axes,
+                ) {
+                    Ok(id) => id,
+                    Err(error) => {
+                        transaction.rollback()?;
+                        let retry_status = if next_attempt > i64::from(policy.max_retries) {
+                            "dead-letter"
+                        } else {
+                            "retry"
+                        };
+                        connection.execute(
+                            "UPDATE memory_consolidation_jobs
+                             SET status=?2,last_error='canonical write failed',updated_at=?3
+                             WHERE id=?1",
+                            params![job_id, retry_status, memory::now()],
+                        )?;
+                        return Err(error);
+                    }
+                };
                 let changed = transaction.execute(
                     "UPDATE memory_candidates SET status='accepted',updated_at=?2 WHERE id=?1 AND status='pending'",
                     params![id, now],
@@ -2260,7 +2366,7 @@ impl Store {
                     "candidate changed state before consolidation committed"
                 );
                 transaction.execute(
-                    "UPDATE memory_consolidation_jobs SET status='complete',memory_id=?2,attempts=1,updated_at=?3 WHERE id=?1",
+                    "UPDATE memory_consolidation_jobs SET status='complete',memory_id=?2,updated_at=?3 WHERE id=?1",
                     params![job_id, canonical_id, now],
                 )?;
                 memory_id = Some(canonical_id);
@@ -2276,7 +2382,7 @@ impl Store {
                     "candidate changed state before consolidation committed"
                 );
                 transaction.execute(
-                    "UPDATE memory_consolidation_jobs SET status='dead-letter',attempts=1,last_error=?2,updated_at=?3 WHERE id=?1",
+                    "UPDATE memory_consolidation_jobs SET status='dead-letter',last_error=?2,updated_at=?3 WHERE id=?1",
                     params![job_id, report.reason_code, now],
                 )?;
                 "rejected"
@@ -2300,7 +2406,7 @@ impl Store {
             status: status.into(),
             decision: report,
             memory_id,
-            attempts: 1,
+            attempts: u8::try_from(next_attempt).unwrap_or(u8::MAX),
         })
     }
 
@@ -2393,18 +2499,37 @@ impl Store {
         } else {
             transaction.execute("UPDATE memory_candidates SET status=?2,updated_at=?3 WHERE id=?1 AND status='pending'", params![id, status, now])?
         };
+        if changed == 1 {
+            transaction.execute(
+                "UPDATE memory_consolidation_jobs
+                 SET status='cancelled',last_error=?2,updated_at=?3
+                 WHERE candidate_id=?1 AND status IN ('queued','retry','paused','running')",
+                params![id, status, now],
+            )?;
+        }
         transaction.commit()?;
         Ok(changed == 1)
     }
 
     fn expire_memory_candidates(&self) -> Result<usize> {
         let now = memory::now();
-        let connection = self.connection.lock().expect("store lock poisoned");
-        let changed = connection.execute(
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "UPDATE memory_consolidation_jobs
+             SET status='dead-letter',last_error='candidate-expired',updated_at=?1
+             WHERE status IN ('queued','retry','paused','running')
+               AND candidate_id IN (
+                 SELECT id FROM memory_candidates
+                 WHERE status='pending' AND julianday(expires_at)<=julianday(?1))",
+            [&now],
+        )?;
+        let changed = transaction.execute(
             "UPDATE memory_candidates SET status='expired',updated_at=?1
              WHERE status='pending' AND julianday(expires_at)<=julianday(?1)",
             [&now],
         )?;
+        transaction.commit()?;
         drop(connection);
         if changed > 0 {
             self.record_audit(
@@ -7661,5 +7786,66 @@ mod tests {
                 .status,
             "pending"
         );
+    }
+
+    #[test]
+    fn candidate_terminal_state_closes_jobs_and_legacy_policy_keys_migrate() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let candidate = store
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("candidate");
+        let policy = crate::consolidation::ConsolidationPolicy::default();
+        store
+            .consolidate_memory_candidate(
+                &candidate.id,
+                &policy,
+                "agent-a",
+                &["work".into()],
+                false,
+                false,
+            )
+            .expect("schedule review");
+        {
+            let connection = store.connection.lock().expect("store lock");
+            connection
+                .execute(
+                    "UPDATE memory_consolidation_jobs SET policy_version=?2 WHERE candidate_id=?1",
+                    params![candidate.id, policy.version],
+                )
+                .expect("legacy key");
+        }
+        let migrated = store
+            .consolidate_memory_candidate(
+                &candidate.id,
+                &policy,
+                "agent-a",
+                &["work".into()],
+                false,
+                false,
+            )
+            .expect("migrated retry");
+        assert_eq!(migrated.status, "paused");
+        assert!(
+            store
+                .cancel_memory_candidate_scoped(&candidate.id, "agent-a", &["work".into()], false,)
+                .expect("cancel candidate")
+        );
+        let connection = store.connection.lock().expect("store lock");
+        let job: (String, String, i64) = connection
+            .query_row(
+                "SELECT policy_version,status,COUNT(*) FROM memory_consolidation_jobs WHERE candidate_id=?1",
+                [&candidate.id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("job");
+        assert_eq!(job.0, policy.identity().unwrap());
+        assert_eq!(job.1, "cancelled");
+        assert_eq!(job.2, 1);
     }
 }

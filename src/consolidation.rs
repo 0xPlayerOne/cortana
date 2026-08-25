@@ -48,7 +48,23 @@ pub struct ConsolidationPolicy {
     pub max_queue: usize,
     pub max_retries: u8,
     pub retry_backoff_seconds: u64,
+    pub preferences: ConsolidationPreferences,
     pub ceilings: RetentionCeilings,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ConsolidationPreferences {
+    pub allow_auto_retain: bool,
+    pub allow_working_retention: bool,
+}
+
+impl Default for ConsolidationPreferences {
+    fn default() -> Self {
+        Self {
+            allow_auto_retain: true,
+            allow_working_retention: true,
+        }
+    }
 }
 
 impl Default for ConsolidationPolicy {
@@ -61,6 +77,7 @@ impl Default for ConsolidationPolicy {
             max_queue: DEFAULT_MAX_QUEUE,
             max_retries: DEFAULT_MAX_RETRIES,
             retry_backoff_seconds: 30,
+            preferences: ConsolidationPreferences::default(),
             ceilings: RetentionCeilings::default(),
         }
     }
@@ -240,6 +257,10 @@ pub fn evaluate(
         };
         reason_code = "low-confidence";
         explanation = "confidence is below the automatic retention threshold";
+    } else if candidate.retention_tier == "working" && !policy.preferences.allow_working_retention {
+        decision = ConsolidationDecision::Review;
+        reason_code = "preference-working-disabled";
+        explanation = "user preferences require review before retaining working memory";
     } else if candidate.retention_tier == "working" {
         decision = ConsolidationDecision::Working;
         reason_code = "working-retention";
@@ -248,6 +269,7 @@ pub fn evaluate(
         classification.classification.as_str(),
         "new" | "reinforcement" | "semantic-duplicate" | "exact-duplicate"
     ) && candidate.importance >= policy.auto_retain_min_importance
+        && policy.preferences.allow_auto_retain
     {
         decision = ConsolidationDecision::AutoRetain;
         reason_code = "thresholds-met";
@@ -334,7 +356,11 @@ impl ConsolidationQueue {
         if self.seen.get(&key).is_some_and(|status| {
             matches!(
                 status,
-                QueueStatus::Queued | QueueStatus::Running | QueueStatus::Complete
+                QueueStatus::Queued
+                    | QueueStatus::Running
+                    | QueueStatus::DeadLetter
+                    | QueueStatus::Cancelled
+                    | QueueStatus::Complete
             )
         }) {
             return Ok(());
@@ -606,5 +632,38 @@ mod tests {
         assert!(queue.pop().is_none());
         queue.resume();
         assert_eq!(queue.pop().unwrap().candidate_id, "candidate");
+    }
+
+    #[test]
+    fn user_preferences_can_disable_automatic_retention() {
+        let policy = ConsolidationPolicy {
+            enabled: true,
+            preferences: ConsolidationPreferences {
+                allow_auto_retain: false,
+                allow_working_retention: false,
+            },
+            ..Default::default()
+        };
+        let result = evaluate(
+            &candidate(),
+            &classification("new"),
+            &policy,
+            &PolicyContext::default(),
+        )
+        .unwrap();
+        assert_eq!(result.decision, ConsolidationDecision::Review);
+        assert_eq!(result.reason_code, "review-required");
+
+        let mut working = candidate();
+        working.retention_tier = "working".into();
+        let result = evaluate(
+            &working,
+            &classification("new"),
+            &policy,
+            &PolicyContext::default(),
+        )
+        .unwrap();
+        assert_eq!(result.decision, ConsolidationDecision::Review);
+        assert_eq!(result.reason_code, "preference-working-disabled");
     }
 }
