@@ -634,6 +634,51 @@ export type AnswerResponse = {
   } | null
 }
 
+export type ReflectResponse = {
+  contract_version: string
+  request_digest: string
+  status:
+    'completed' | 'fallback' | 'provider_unavailable' | 'provider_failed' | 'deadline_exceeded'
+  objective: string
+  project?: string | null
+  memory_revision: number
+  privacy_scope_digest: string
+  provider: {
+    policy: 'deterministic-only' | 'prefer-provider' | 'require-provider'
+    selected: string
+    status: string
+    detail?: string | null
+  }
+  claims: Array<{
+    text: string
+    supporting_memory_ids: string[]
+    supporting_evidence_ids: string[]
+  }>
+  patterns: Array<{ statement: string; supporting_memory_ids: string[] }>
+  tensions: Array<{ statement: string; supporting_memory_ids: string[] }>
+  recommendations: Array<{ statement: string; supporting_memory_ids: string[] }>
+  chronology: Array<{ observed_at: string; title: string; memory_id: string }>
+  proposed_candidates: Array<{
+    project: string
+    title: string
+    content: string
+    content_type: string
+    retention_tier: string
+    scope: string
+    supporting_memory_ids: string[]
+    approval_required: boolean
+  }>
+  evidence_ids: string[]
+  metrics: {
+    memories_considered: number
+    memories_included: number
+    evidence_considered: number
+    evidence_included: number
+    estimated_tokens: number
+    canonical_memory_mutated: false
+  }
+}
+
 export type ContextBundle = {
   contract_version?: string
   context_bundle_id?: string

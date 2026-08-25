@@ -29,6 +29,7 @@ Cortana documentation is divided by authority. Each document should define one d
 | Public API compatibility                                | [Public API contract](contracts/public-api.md)                                                                                            |
 | Security assets and trust boundaries                    | [Security and trust model](security-model.md)                                                                                             |
 | Native memory taxonomy                                  | [Memory contract](contracts/memory.md)                                                                                                    |
+| Bounded non-mutating memory reasoning                   | [Reflection contract](contracts/reflection.md)                                                                                            |
 | Extension policy                                        | [Extensions](EXTENSIONS.md)                                                                                                               |
 
 ## Authority model

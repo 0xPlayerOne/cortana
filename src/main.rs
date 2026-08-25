@@ -407,6 +407,26 @@ enum MemoryAction {
     },
     /// Redact a memory while retaining its audit tombstone.
     Forget { id: String },
+    /// Reflect over authorized active memory without mutating canonical records.
+    Reflect {
+        objective: String,
+        #[arg(long)]
+        project: Option<String>,
+        #[arg(long)]
+        kind: Option<String>,
+        #[arg(long)]
+        content_type: Option<String>,
+        #[arg(long)]
+        retention_tier: Option<String>,
+        #[arg(long)]
+        scope: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 32)]
+        limit: usize,
+        #[arg(long, default_value_t = 2_048)]
+        token_budget: usize,
+        #[arg(long, default_value_t = 5_000)]
+        deadline_ms: u64,
+    },
     /// Propose, list, cancel, or redact bounded observations before promotion.
     Candidate {
         #[command(subcommand)]
@@ -2278,6 +2298,52 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                     Err(error)
                 }
             }
+        }
+        MemoryAction::Reflect {
+            objective,
+            project,
+            kind,
+            content_type,
+            retention_tier,
+            scope,
+            limit,
+            token_budget,
+            deadline_ms,
+        } => {
+            let request = cortana::reflection::ReflectRequest {
+                objective: objective.clone(),
+                project: project.clone(),
+                memory: cortana::reflection::MemoryReflectFilter {
+                    kind: kind.clone(),
+                    content_type: content_type.clone(),
+                    retention_tier: retention_tier.clone(),
+                    scope: scope.clone(),
+                    limit: *limit,
+                },
+                include_evidence: false,
+                token_budget: *token_budget,
+                provider_policy: cortana::reflection::ProviderPolicy::DeterministicOnly,
+                deadline_ms: *deadline_ms,
+                source: None,
+            };
+            let response = cortana::reflection::reflect_authorized_memory_only(
+                store,
+                &request,
+                &["*".into()],
+                true,
+            )?;
+            record_cli_memory_audit(
+                store,
+                config.auth.audit_max_events,
+                "reflect",
+                project.as_deref(),
+                None,
+                "succeeded",
+                Some(response.metrics.memories_included),
+                started,
+            );
+            println!("{}", serde_json::to_string_pretty(&response)?);
+            Ok(())
         }
         MemoryAction::Candidate { action } => match action {
             MemoryCandidateAction::Propose {

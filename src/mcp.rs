@@ -970,6 +970,57 @@ impl BrainServer {
     }
 
     #[tool(
+        description = "Reflect over authorized active memory and optional scoped evidence without mutating canonical memory."
+    )]
+    async fn reflect_memory(
+        &self,
+        Parameters(request): Parameters<crate::reflection::ReflectRequest>,
+    ) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            return "authorization error: memory scope required".into();
+        }
+        match crate::reflection::reflect_authorized(
+            &self.store,
+            &self.embedder,
+            &request,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        )
+        .await
+        {
+            Ok(response) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory.reflect",
+                    request.project.as_deref(),
+                    request.source.as_deref(),
+                    "succeeded",
+                    Some(response.metrics.memories_included),
+                    started,
+                );
+                serde_json::to_string(&response).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory.reflect",
+                    request.project.as_deref(),
+                    request.source.as_deref(),
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("memory reflection error: {error}")
+            }
+        }
+    }
+
+    #[tool(
         description = "Apply the versioned consolidation policy to one visible memory candidate. Automatic retention remains disabled unless enabled=true; explicit approval remains a separate flag."
     )]
     async fn consolidate_memory_candidate(
@@ -1022,6 +1073,7 @@ impl BrainServer {
             }
         }
     }
+
     async fn update_memory_candidate(&self, id: String, redact: bool) -> String {
         let started = Instant::now();
         let principal = match self.resolve_principal() {

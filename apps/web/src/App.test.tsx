@@ -14,6 +14,7 @@ import type {
   BrainDocumentPage,
   BrainStatus,
   ContextBundle,
+  ReflectResponse,
 } from './types'
 
 // Capture the real api module, then register a mock that delegates every export
@@ -70,6 +71,9 @@ const state = {
         signal?: AbortSignal
       ) => Promise<ContextBundle>)
     | null,
+  reflection: null as
+    ((objective: string, project?: string, source?: string) => Promise<ReflectResponse>) | null,
+  reflectionCalls: [] as Array<{ objective: string; project?: string; source?: string }>,
   getDocument: null as ((id: string, signal?: AbortSignal) => Promise<BrainDocument>) | null,
   document: canonicalDocument,
 }
@@ -93,6 +97,12 @@ mock.module('./api', () => ({
     state.getContext
       ? state.getContext(query, project, source, signal)
       : Promise.reject(new Error('Context retrieval failed (503)')),
+  getReflection: (objective: string, project?: string, source?: string) => {
+    state.reflectionCalls.push({ objective, project, source })
+    return state.reflection
+      ? state.reflection(objective, project, source)
+      : Promise.reject(new Error('Reflection failed (503)'))
+  },
   getDesktopSettings: () => Promise.reject(new Error('Settings are available in Cortana Desktop')),
   getDesktopInfo: () =>
     Promise.reject(new Error('Desktop information is available in Cortana Desktop')),
@@ -120,6 +130,8 @@ afterEach(async () => {
   state.documentsCalls = []
   state.answer = null
   state.getContext = null
+  state.reflection = null
+  state.reflectionCalls = []
   state.getDocument = null
 })
 
@@ -129,6 +141,66 @@ async function flushAppBootstrap() {
     await Promise.resolve()
   })
 }
+
+test('Reflect presents grounded reflection separately from ordinary search', async () => {
+  window.localStorage.setItem('cortana.workspace-selection.v1', 'work')
+  state.reflection = (objective, project) =>
+    Promise.resolve({
+      contract_version: 'memory-reflection.v1',
+      request_digest: 'request-digest',
+      status: 'completed',
+      objective,
+      project,
+      memory_revision: 9,
+      privacy_scope_digest: 'scope-digest',
+      provider: { policy: 'deterministic-only', selected: 'deterministic', status: 'succeeded' },
+      claims: [
+        {
+          text: 'The launch checklist requires a rollback owner.',
+          supporting_memory_ids: ['memory-1'],
+          supporting_evidence_ids: [],
+        },
+      ],
+      patterns: [],
+      tensions: [],
+      recommendations: [
+        {
+          statement: 'Assign the rollback owner before launch.',
+          supporting_memory_ids: ['memory-1'],
+        },
+      ],
+      chronology: [],
+      proposed_candidates: [],
+      evidence_ids: [],
+      metrics: {
+        memories_considered: 1,
+        memories_included: 1,
+        evidence_considered: 0,
+        evidence_included: 0,
+        estimated_tokens: 24,
+        canonical_memory_mutated: false,
+      },
+    })
+
+  render(<App />)
+  await waitFor(() => expect(screen.getByText('Choose a document')).toBeTruthy())
+  await waitFor(() => expect(state.documentsCalls.at(-1)?.project).toBeTruthy())
+  await waitFor(() => expect(screen.queryByText('Loading documents…')).toBeNull())
+  const input = screen.getByLabelText('Search your knowledge')
+  fireEvent.change(input, { target: { value: 'Review launch risk' } })
+  expect((input as HTMLInputElement).value).toBe('Review launch risk')
+  const reflectButton = screen.getByRole('button', { name: 'Reflect on this objective' })
+  await waitFor(() => expect(reflectButton.hasAttribute('disabled')).toBe(false))
+  fireEvent.click(reflectButton)
+
+  await waitFor(() => expect(state.reflectionCalls).toHaveLength(1))
+  expect(state.reflectionCalls[0]?.objective).toBe('Review launch risk')
+  await waitFor(() =>
+    expect(screen.getByText('The launch checklist requires a rollback owner.')).toBeTruthy()
+  )
+  expect(screen.getAllByText(/Supporting memory: memory-1/).length).toBeGreaterThan(0)
+  expect(state.answer).toBeNull()
+})
 
 test('provides a keyboard skip link to the active main surface', async () => {
   render(<App />)

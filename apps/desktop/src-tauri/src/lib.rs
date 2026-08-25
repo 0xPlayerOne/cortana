@@ -77,11 +77,7 @@ impl BackendClient {
         url: Url,
         body: Option<Value>,
     ) -> Result<Value, String> {
-        let scope = match url.path() {
-            "/metrics" | "/v1/audit" | "/v1/auth/reload" => "admin",
-            "/v1/status" => "status",
-            _ => "query",
-        };
+        let scope = required_scope_for_path(url.path());
         let mut request = self.http.request(method, url);
         if let Some(token) = desktop_bearer_for_scope(scope)? {
             request = request.bearer_auth(token);
@@ -136,9 +132,20 @@ impl BackendClient {
     }
 }
 
+fn required_scope_for_path(path: &str) -> &'static str {
+    match path {
+        "/metrics" | "/v1/audit" | "/v1/auth/reload" => "admin",
+        "/v1/status" => "status",
+        "/v1/memory" | "/v1/memory/recall" | "/v1/memory/forget"
+        | "/v1/memory/export" | "/v1/memory/reflect" | "/v1/memory/candidates" => "memory",
+        path if path.starts_with("/v1/memory/candidates/") => "memory",
+        _ => "query",
+    }
+}
+
 #[cfg(test)]
 mod backend_tests {
-    use super::STATUS_WARMUP_MESSAGE;
+    use super::{STATUS_WARMUP_MESSAGE, required_scope_for_path};
 
     #[test]
     fn warmup_message_is_stable_and_bounded() {
@@ -147,6 +154,16 @@ mod backend_tests {
             "Cortana is warming up; live status will be available shortly"
         );
         assert!(STATUS_WARMUP_MESSAGE.len() < 256);
+    }
+
+    #[test]
+    fn memory_routes_request_memory_scoped_desktop_credentials() {
+        assert_eq!(required_scope_for_path("/v1/memory/reflect"), "memory");
+        assert_eq!(
+            required_scope_for_path("/v1/memory/candidates/id/consolidate"),
+            "memory"
+        );
+        assert_eq!(required_scope_for_path("/v1/search"), "query");
     }
 }
 
@@ -248,6 +265,13 @@ async fn brain_context(
     object.insert("max_tokens".into(), 8_000.into());
     backend
         .request(Method::POST, "/v1/context", Some(value))
+        .await
+}
+
+#[tauri::command]
+async fn brain_reflect(backend: State<'_, BackendClient>, request: Value) -> Result<Value, String> {
+    backend
+        .request(Method::POST, "/v1/memory/reflect", Some(request))
         .await
 }
 
@@ -1172,6 +1196,7 @@ pub fn run() {
             brain_status,
             brain_answer,
             brain_context,
+            brain_reflect,
             brain_documents,
             brain_document,
             brain_graph,

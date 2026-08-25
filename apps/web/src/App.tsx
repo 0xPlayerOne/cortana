@@ -1,4 +1,4 @@
-import { FileText, LoaderCircle, Search } from 'lucide-react'
+import { FileText, LoaderCircle, Search, Sparkles } from 'lucide-react'
 import {
   type CSSProperties,
   type FormEvent,
@@ -21,6 +21,7 @@ import {
   getDocuments,
   getContext,
   getGraph,
+  getReflection,
   getStatus,
   openDesktopSourceSetup,
   runDesktopServicesActionAll,
@@ -73,6 +74,7 @@ import type {
   DesktopSourceJob,
   DesktopUpdate,
   Evidence,
+  ReflectResponse,
 } from './types'
 
 const STATUS_REFRESH_MS = 15_000
@@ -86,6 +88,7 @@ export function App() {
   const [status, setStatus] = useState<BrainStatus | null>(null)
   const [evidence, setEvidence] = useState<Evidence[]>([])
   const [answer, setAnswer] = useState<AnswerResponse | null>(null)
+  const [reflection, setReflection] = useState<ReflectResponse | null>(null)
   const [selected, setSelected] = useState(0)
   const [source, setSource] = useState(() => (isDesktopApp ? readSourceSelectionPreference() : ''))
   const [loading, setLoading] = useState(true)
@@ -825,6 +828,7 @@ export function App() {
     setDocumentsError('')
     setDocumentLoading(false)
     setAnswer(null)
+    setReflection(null)
     setEvidence([])
     setSelected(0)
     setActiveDocument(null)
@@ -876,6 +880,7 @@ export function App() {
         return
       }
       setAnswer(next)
+      setReflection(null)
       setContextBundle(null)
       setEvidence(next.evidence)
       setActiveQuery(value)
@@ -887,6 +892,7 @@ export function App() {
       }
       setError(caught instanceof Error ? caught.message : 'Search failed')
       setAnswer(null)
+      setReflection(null)
       setEvidence([])
     } finally {
       if (
@@ -896,6 +902,40 @@ export function App() {
       ) {
         setLoading(false)
       }
+    }
+  }
+
+  async function runReflection() {
+    const value = query.trim()
+    if (!value || loading) return
+    const requestId = ++searchRequestRef.current
+    const requestedScope = searchScope(source, effectiveWorkspace, value)
+    const controller = new AbortController()
+    searchAbortRef.current?.abort()
+    searchAbortRef.current = controller
+    searchScopeRef.current = requestedScope
+    setLoading(true)
+    setError('')
+    setWorkspaceTab('answer')
+    try {
+      const reflection = await getReflection(
+        value,
+        effectiveWorkspace || undefined,
+        source || undefined,
+        controller.signal
+      )
+      if (searchRequestRef.current !== requestId || searchScopeRef.current !== requestedScope)
+        return
+      setAnswer(null)
+      setReflection(reflection)
+      setEvidence([])
+      setActiveQuery(value)
+      setSelected(0)
+    } catch (caught) {
+      if (controller.signal.aborted || isAbort(caught)) return
+      setError(caught instanceof Error ? caught.message : 'Reflection failed')
+    } finally {
+      if (searchRequestRef.current === requestId && !controller.signal.aborted) setLoading(false)
     }
   }
 
@@ -1485,6 +1525,17 @@ export function App() {
           ) : (
             <kbd>{shortcutLabel('MOD K')}</kbd>
           )}
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label="Reflect on this objective"
+            title="Reflect on active memory and scoped evidence"
+            onClick={() => void runReflection()}
+            disabled={loading || !query.trim()}
+          >
+            <Sparkles size={15} />
+            Reflect
+          </Button>
         </form>
         <TitleActions
           context
@@ -1496,7 +1547,7 @@ export function App() {
       <Navigation
         view={view}
         workspaceTab={workspaceTab}
-        resultAvailable={answer !== null || evidence.length > 0}
+        resultAvailable={answer !== null || reflection !== null || evidence.length > 0}
         onNavigate={navigate}
         onSearch={focusSearch}
         onOpenGraph={openGraph}
@@ -1671,6 +1722,7 @@ export function App() {
           <Workspace
             query={activeQuery}
             answer={answer}
+            reflection={reflection}
             evidence={evidence}
             selected={selected}
             loading={loading}

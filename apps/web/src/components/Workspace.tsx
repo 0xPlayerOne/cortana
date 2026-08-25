@@ -21,6 +21,7 @@ import type {
   BrainGraphNode,
   BrainGraphPage,
   Evidence,
+  ReflectResponse,
 } from '../types'
 
 const tabs = [
@@ -53,6 +54,7 @@ async function openSourceLink(href: string): Promise<boolean> {
 export function Workspace({
   query,
   answer,
+  reflection,
   evidence,
   selected,
   loading,
@@ -74,6 +76,7 @@ export function Workspace({
 }: {
   query: string
   answer: AnswerResponse | null
+  reflection: ReflectResponse | null
   evidence: Evidence[]
   selected: number
   loading: boolean
@@ -94,7 +97,7 @@ export function Workspace({
   onRetry: () => void
 }) {
   const active = evidence[selected] ?? null
-  const hasResults = answer !== null || evidence.length > 0
+  const hasResults = answer !== null || reflection !== null || evidence.length > 0
   const selectEvidenceByChunkId = (chunkId: string) => {
     const next = evidence.findIndex((item) => item.chunk_id === chunkId)
     if (next >= 0) {
@@ -107,8 +110,8 @@ export function Workspace({
     if (document) onTabChange('document')
   }, [document, onTabChange])
   useEffect(() => {
-    if (answer) onTabChange('answer')
-  }, [answer, onTabChange])
+    if (answer || reflection) onTabChange('answer')
+  }, [answer, reflection, onTabChange])
   useEffect(() => {
     // Keep an explicitly submitted search visible while retrieval is in
     // flight. The result tab is hidden from the tab strip until evidence
@@ -175,20 +178,24 @@ export function Workspace({
           title="Searching your brain"
           detail="Fusing semantic and exact-term evidence…"
         />
-      ) : evidence.length === 0 ? (
+      ) : evidence.length === 0 && !hasResults ? (
         <EmptyState title="No evidence found" detail="Try a broader phrase or another source." />
       ) : tab === 'timeline' ? (
         <TimelineView evidence={evidence} onSelect={selectEvidenceByChunkId} />
       ) : tab === 'answer' ? (
-        <AnswerView
-          query={query}
-          response={answer}
-          evidence={evidence}
-          onSelect={(index) => {
-            onSelect(index)
-            onTabChange('sources')
-          }}
-        />
+        reflection ? (
+          <ReflectionView response={reflection} />
+        ) : (
+          <AnswerView
+            query={query}
+            response={answer}
+            evidence={evidence}
+            onSelect={(index) => {
+              onSelect(index)
+              onTabChange('sources')
+            }}
+          />
+        )
       ) : (
         active && <DocumentView active={active} evidence={evidence} onSelect={onSelect} />
       )}
@@ -443,6 +450,73 @@ function DocumentView({
           again.
         </p>
       )}
+    </article>
+  )
+}
+
+function ReflectionView({ response }: { response: ReflectResponse }) {
+  const statements: Array<{ text: string; ids: string[]; evidenceIds?: string[] }> = [
+    ...response.claims.map((item) => ({
+      text: item.text,
+      ids: item.supporting_memory_ids,
+      evidenceIds: item.supporting_evidence_ids,
+    })),
+    ...response.patterns.map((item) => ({ text: item.statement, ids: item.supporting_memory_ids })),
+    ...response.tensions.map((item) => ({ text: item.statement, ids: item.supporting_memory_ids })),
+    ...response.recommendations.map((item) => ({
+      text: item.statement,
+      ids: item.supporting_memory_ids,
+    })),
+  ]
+  return (
+    <article className="answer-view" aria-label="Derived memory reflection">
+      <span className="eyebrow">Derived reflection · not canonical memory</span>
+      <h1>{response.objective}</h1>
+      <p className="answer-warning">
+        {response.status} · {response.provider.selected} · memory revision{' '}
+        {response.memory_revision}
+      </p>
+      <div className="answer-copy">
+        {statements.map((item, index) => (
+          <section key={`${item.text}:${index}`} className="answer-memory-entry">
+            <p>{item.text}</p>
+            <small>
+              Supporting memory: {item.ids.join(', ') || 'none'}
+              {'evidenceIds' in item && item.evidenceIds?.length
+                ? ` · evidence: ${item.evidenceIds.join(', ')}`
+                : ''}
+            </small>
+          </section>
+        ))}
+      </div>
+      {response.chronology.length > 0 && (
+        <section className="answer-memory" aria-label="Reflection chronology">
+          <h2>Chronology</h2>
+          {response.chronology.map((item) => (
+            <p key={`${item.memory_id}:${item.observed_at}`}>
+              {item.observed_at} · {item.title} · supporting memory {item.memory_id}
+            </p>
+          ))}
+        </section>
+      )}
+      {response.proposed_candidates.length > 0 && (
+        <section className="answer-memory" aria-label="Review-only proposed memories">
+          <h2>Proposed memories requiring approval</h2>
+          {response.proposed_candidates.map((item) => (
+            <article key={`${item.project}:${item.title}`} className="answer-memory-entry">
+              <h3>{item.title}</h3>
+              <p>{item.content}</p>
+              <small>
+                {item.content_type} · {item.retention_tier} · {item.scope} · support{' '}
+                {item.supporting_memory_ids.join(', ')}
+              </small>
+            </article>
+          ))}
+        </section>
+      )}
+      <p className="lead">
+        {response.metrics.memories_included} memories included · canonical memory unchanged
+      </p>
     </article>
   )
 }

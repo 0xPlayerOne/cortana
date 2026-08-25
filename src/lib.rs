@@ -22,6 +22,7 @@ pub mod oauth_common;
 pub mod observation;
 pub mod provider_models;
 pub mod readiness;
+pub mod reflection;
 pub mod retrieval;
 pub mod service;
 pub mod slack_oauth;
