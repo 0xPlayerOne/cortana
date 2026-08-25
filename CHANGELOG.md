@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.0](https://github.com/0xPlayerOne/cortana/compare/v0.41.0...v0.42.0) (2026-08-25)
+
+
+### Features
+
+* **memory:** classify bounded candidates ([#2174](https://github.com/0xPlayerOne/cortana/issues/2174)) ([2679406](https://github.com/0xPlayerOne/cortana/commit/26794064ce1ac94b504efd7efdd0960fc344e467))
+
 ## [0.41.0](https://github.com/0xPlayerOne/cortana/compare/v0.40.0...v0.41.0) (2026-08-25)
 
 
