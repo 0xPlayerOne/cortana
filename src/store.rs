@@ -2136,12 +2136,10 @@ impl Store {
         }
         transaction.execute(
             "UPDATE memory_consolidation_jobs
-             SET policy_version=?3,updated_at=?4
+             SET status='cancelled',last_error='legacy-policy-identity-unknown',updated_at=?3
              WHERE candidate_id=?1 AND policy_version=?2
-               AND NOT EXISTS(
-                 SELECT 1 FROM memory_consolidation_jobs current
-                 WHERE current.candidate_id=?1 AND current.policy_version=?3)",
-            params![id, policy.version, policy_identity, now],
+               AND status IN ('queued','running','retry','paused')",
+            params![id, policy.version, now],
         )?;
         let existing_job: Option<ExistingConsolidationJob> = transaction
             .query_row(
@@ -2260,6 +2258,12 @@ impl Store {
         };
 
         if report.decision == ConsolidationDecision::Review {
+            transaction.execute(
+                "UPDATE memory_consolidation_jobs
+                 SET status='paused',classification=?2,decision=?3,updated_at=?4
+                 WHERE id=?1 AND status IN ('queued','retry','running','paused')",
+                params![job_id, report.classification, report.decision.as_str(), now],
+            )?;
             transaction.commit()?;
             return Ok(ConsolidationOutcome {
                 candidate_id: id.into(),
@@ -2280,12 +2284,16 @@ impl Store {
             |row| row.get(0),
         )?;
         let next_attempt = attempts.saturating_add(1);
-        transaction.execute(
+        let claimed = transaction.execute(
             "UPDATE memory_consolidation_jobs
              SET status='running',attempts=?2,updated_at=?3
              WHERE id=?1 AND status IN ('queued','retry')",
             params![job_id, next_attempt, now],
         )?;
+        anyhow::ensure!(
+            claimed == 1,
+            "consolidation job was paused or cancelled before execution"
+        );
 
         let mut memory_id = None;
         let status = match report.decision {
@@ -7830,22 +7838,38 @@ mod tests {
                 false,
             )
             .expect("migrated retry");
-        assert_eq!(migrated.status, "paused");
+        assert_eq!(migrated.status, "review");
         assert!(
             store
                 .cancel_memory_candidate_scoped(&candidate.id, "agent-a", &["work".into()], false,)
                 .expect("cancel candidate")
         );
         let connection = store.connection.lock().expect("store lock");
-        let job: (String, String, i64) = connection
+        let count: i64 = connection
             .query_row(
-                "SELECT policy_version,status,COUNT(*) FROM memory_consolidation_jobs WHERE candidate_id=?1",
+                "SELECT COUNT(*) FROM memory_consolidation_jobs WHERE candidate_id=?1",
                 [&candidate.id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| row.get(0),
             )
-            .expect("job");
-        assert_eq!(job.0, policy.identity().unwrap());
-        assert_eq!(job.1, "cancelled");
-        assert_eq!(job.2, 1);
+            .expect("job count");
+        let current_status: String = connection
+            .query_row(
+                "SELECT status FROM memory_consolidation_jobs
+                 WHERE candidate_id=?1 AND policy_version=?2",
+                params![candidate.id, policy.identity().unwrap()],
+                |row| row.get(0),
+            )
+            .expect("current job");
+        let legacy_status: String = connection
+            .query_row(
+                "SELECT status FROM memory_consolidation_jobs
+                 WHERE candidate_id=?1 AND policy_version=?2",
+                params![candidate.id, policy.version],
+                |row| row.get(0),
+            )
+            .expect("legacy job");
+        assert_eq!(count, 2);
+        assert_eq!(current_status, "cancelled");
+        assert_eq!(legacy_status, "cancelled");
     }
 }
