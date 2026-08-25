@@ -76,6 +76,15 @@ class Client:
 def manifest() -> dict:
     return {
         "version": 1,
+        "corpus": {
+            "id": "approved-fixture-corpus",
+            "revision": "2026-08-25",
+            "digest": "sha256:" + "1" * 64,
+            "storage": "encrypted-local",
+            "approved_at": "2026-08-25T00:00:00Z",
+            "expires_at": "2027-08-25T00:00:00Z",
+            "reviewer": "test-reviewer",
+        },
         "thresholds": {
             "min_recall_at_k": 1.0,
             "min_mrr": 1.0,
@@ -118,6 +127,9 @@ def test_live_evaluation_measures_retrieval_answer_citations_and_cache() -> None
     assert report["passed"] is True
     assert report["read_only"] is True
     assert report["cache_invalidation_checked"] is False
+    assert report["provenance"]["corpus"]["id"] == "approved-fixture-corpus"
+    assert report["provenance"]["corpus"]["revision"] == "2026-08-25"
+    assert "release verification" not in json.dumps(report["provenance"])
     assert report["metrics"]["recall_at_k"] == 1.0
     assert report["metrics"]["mrr"] == 1.0
     assert report["metrics"]["cache_hit_rate"] == 1.0
@@ -141,9 +153,28 @@ def test_live_manifest_rejects_unsafe_query_and_unknown_version() -> None:
         live.validate_manifest(invalid)
 
 
+def test_manifest_rejects_unsafe_or_expired_corpus_metadata() -> None:
+    invalid = manifest()
+    invalid["corpus"]["digest"] = "sha256:not-a-digest"
+    with pytest.raises(live.ManifestError, match="corpus.digest"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["corpus"]["id"] = "/private/path"
+    with pytest.raises(live.ManifestError, match="path separator"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["corpus"]["expires_at"] = "2026-01-01T00:00:00Z"
+    with pytest.raises(live.ManifestError, match="timestamps"):
+        live.validate_manifest(invalid)
+
+
 def test_checked_in_live_manifest_example_is_valid() -> None:
     checked = live.load_manifest(ROOT / "eval/live-manifest.example.json")
     assert checked["version"] == 1
+    assert checked["manifest_digest"].startswith("sha256:")
+    assert checked["corpus"]["storage"] == "encrypted-local"
     assert len(checked["retrieval_cases"]) == 1
     assert len(checked["answer_cases"]) == 1
 
