@@ -162,15 +162,42 @@ jobs:
           projectPath: apps/desktop
           tagName: ${{ env.RELEASE_TAG }}
           tauriScript: bun tauri
+          uploadUpdaterJson: false
           args: ${{ matrix.args }}
 
-  verify:
-    name: Verify published release assets
+  manifest:
+    name: Generate updater manifest
     needs: [binaries, desktop]
     if: >-
       always() &&
       needs.binaries.result == 'success' &&
       needs.desktop.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Generate merged updater manifest
+        run: python3 scripts/generate-updater-manifest.py "$RELEASE_TAG" --output "$RUNNER_TEMP/latest.json"
+      - name: Upload merged updater manifest
+        run: gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/latest.json" --repo "$GH_REPO" --clobber
+
+  verify:
+    name: Verify published release assets
+    needs: [binaries, desktop, manifest]
+    if: >-
+      always() &&
+      needs.binaries.result == 'success' &&
+      needs.desktop.result == 'success' &&
+      needs.manifest.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
