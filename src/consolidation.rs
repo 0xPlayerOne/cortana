@@ -105,6 +105,14 @@ impl ConsolidationPolicy {
         );
         Ok(())
     }
+
+    /// Stable identity for the complete policy, not only its schema version.
+    /// Threshold or ceiling changes therefore cannot reuse an earlier job.
+    pub fn identity(&self) -> anyhow::Result<String> {
+        self.validate()?;
+        let digest = crate::contracts::stable_json_digest(self);
+        Ok(format!("{}:{}", self.version, &digest[..16]))
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -261,7 +269,7 @@ pub fn evaluate(
     };
     Ok(ConsolidationDecisionReport {
         candidate_id: candidate.id.clone(),
-        policy_version: policy.version.clone(),
+        policy_version: policy.identity()?,
         decision,
         classification: classification.classification.clone(),
         reason_code: reason_code.into(),
@@ -322,10 +330,6 @@ impl ConsolidationQueue {
         priority: u8,
     ) -> anyhow::Result<()> {
         anyhow::ensure!(!self.paused, "consolidation queue is paused");
-        anyhow::ensure!(
-            self.items.len() < self.max_items,
-            "consolidation queue is full"
-        );
         let key = format!("{policy_version}:{candidate_id}");
         if self.seen.get(&key).is_some_and(|status| {
             matches!(
@@ -335,6 +339,7 @@ impl ConsolidationQueue {
         }) {
             return Ok(());
         }
+        anyhow::ensure!(self.len() < self.max_items, "consolidation queue is full");
         let item = QueueItem {
             candidate_id: candidate_id.into(),
             policy_version: policy_version.into(),
@@ -355,8 +360,26 @@ impl ConsolidationQueue {
 
     pub fn pause(&mut self) {
         self.paused = true;
+        for item in &mut self.items {
+            if matches!(item.status, QueueStatus::Queued | QueueStatus::Retry) {
+                item.status = QueueStatus::Paused;
+                self.seen.insert(
+                    format!("{}:{}", item.policy_version, item.candidate_id),
+                    QueueStatus::Paused,
+                );
+            }
+        }
     }
     pub fn resume(&mut self) {
+        for item in &mut self.items {
+            if item.status == QueueStatus::Paused {
+                item.status = QueueStatus::Queued;
+                self.seen.insert(
+                    format!("{}:{}", item.policy_version, item.candidate_id),
+                    QueueStatus::Queued,
+                );
+            }
+        }
         self.paused = false;
     }
     pub fn cancel(&mut self, candidate_id: &str) -> bool {
@@ -396,6 +419,10 @@ impl ConsolidationQueue {
         } else {
             QueueStatus::Retry
         };
+        self.seen.insert(
+            format!("{}:{}", item.policy_version, item.candidate_id),
+            item.status,
+        );
         if item.status == QueueStatus::Retry {
             self.items.push_back(item);
             self.items.make_contiguous().sort_by(|left, right| {
@@ -429,6 +456,7 @@ mod tests {
     fn candidate() -> ObservationCandidate {
         ObservationCandidate {
             id: "candidate-1".into(),
+            created_by: "agent-a".into(),
             observation_kind: "evidence-backed".into(),
             content_type: "semantic".into(),
             retention_tier: "durable".into(),
@@ -556,5 +584,27 @@ mod tests {
         queue.retry(retry);
         assert!(queue.cancel("low"));
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn policy_identity_covers_thresholds_and_queue_dedupes_before_capacity() {
+        let policy = ConsolidationPolicy {
+            enabled: true,
+            max_queue: 1,
+            ..Default::default()
+        };
+        let mut changed = policy.clone();
+        changed.auto_retain_min_importance = 0.8;
+        assert_ne!(policy.identity().unwrap(), changed.identity().unwrap());
+
+        let mut queue = ConsolidationQueue::new(&policy).unwrap();
+        let identity = policy.identity().unwrap();
+        queue.enqueue("candidate", &identity, 1).unwrap();
+        queue.enqueue("candidate", &identity, 8).unwrap();
+        assert_eq!(queue.len(), 1);
+        queue.pause();
+        assert!(queue.pop().is_none());
+        queue.resume();
+        assert_eq!(queue.pop().unwrap().candidate_id, "candidate");
     }
 }
