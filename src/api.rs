@@ -1476,14 +1476,32 @@ async fn context(
         Some(retrieval.evidence.len().saturating_add(memories.len())),
         started,
     );
-    Ok(Json(context_bundle::build_with_retrieval_and_memory(
+    let memory_revision = principal
+        .has_scope(MEMORY_SCOPE)
+        .then(|| state.store.memory_revision())
+        .transpose()
+        .map_err(internal_error)?;
+    let bundle = context_bundle::build_with_retrieval_and_memory(
         &request.query,
         &retrieval.evidence,
         &memories,
         request.max_tokens,
         retrieval.mode.as_str(),
         retrieval.warning.as_deref(),
-    )))
+    )
+    .with_metadata(context_bundle::metadata(
+        context_bundle::ContextMetadataInput {
+            token_budget: request.max_tokens,
+            corpus_revision: state.store.corpus_revision().map_err(internal_error)?,
+            memory_revision,
+            embedding_fingerprint: Some(state.embedder.fingerprint()),
+            project: request.project.as_deref(),
+            source: request.source.as_deref(),
+            acl: &acl,
+            retrieval_warning: retrieval.warning.as_deref(),
+        },
+    ));
+    Ok(Json(bundle))
 }
 
 async fn remember_memory(
@@ -4407,6 +4425,31 @@ mod tests {
         assert_eq!(
             work_context_value["evidence"].as_array().map(Vec::len),
             Some(1)
+        );
+        assert_eq!(
+            work_context_value["contract_version"],
+            crate::contracts::CONTEXT_CONTRACT_VERSION
+        );
+        assert!(
+            work_context_value["context_bundle_id"]
+                .as_str()
+                .is_some_and(|value| value.starts_with("ctx_"))
+        );
+        assert_eq!(
+            work_context_value["retrieval_contract_version"],
+            crate::contracts::RETRIEVAL_CONTRACT_VERSION
+        );
+        assert_eq!(
+            work_context_value["canonical_digest"]
+                .as_str()
+                .map(str::len),
+            Some(64)
+        );
+        assert_eq!(
+            work_context_value["privacy_scope_digest"]
+                .as_str()
+                .map(str::len),
+            Some(64)
         );
 
         let admin_context = app

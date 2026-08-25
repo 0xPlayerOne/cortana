@@ -1,5 +1,8 @@
 # Agent integrations
 
+Shared transport compatibility is defined by the [Public API contract](contracts/public-api.md);
+context pins follow the [ContextBundle contract](contracts/context-bundle.md).
+
 Cortana exposes the same vertically integrated knowledge and memory pipeline through a portable
 agent skill, an MCP stdio server, a loopback HTTP API, and the CLI. Agents should start with the
 skill's `context` primitive (MCP,

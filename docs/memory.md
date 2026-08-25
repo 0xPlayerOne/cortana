@@ -1,5 +1,7 @@
 # Native agentic memory
 
+The durable taxonomy and lifecycle contract is [Native memory contract](contracts/memory.md).
+
 Cortana is vertically integrated: the same private SQLite store owns both
 source-backed knowledge and explicit agent memory. Documents and code remain
 evidence; memories are small, deliberate conclusions that agents choose to

@@ -600,6 +600,7 @@ export type DesktopUpdate = {
 export type AuditEvent = Record<string, unknown>
 
 export type AnswerResponse = {
+  contract_version?: string
   query: string
   answer: string
   evidence: Evidence[]
@@ -614,9 +615,20 @@ export type AnswerResponse = {
   warnings: string[]
   retrieval_mode?: 'hybrid' | 'lexical-fallback'
   retrieval_degraded?: boolean
+  corpus_revision?: number
+  memory_revision?: number | null
+  degradation?: {
+    code: string
+    detail?: string | null
+  } | null
 }
 
 export type ContextBundle = {
+  contract_version?: string
+  context_bundle_id?: string
+  canonical_digest?: string
+  created_at?: string
+  token_budget?: number
   query: string
   context: string
   evidence: Evidence[]
@@ -632,7 +644,16 @@ export type ContextBundle = {
     max_tokens: number
   }
   retrieval_mode?: 'hybrid' | 'lexical-fallback'
+  degradation?: {
+    code: string
+    detail?: string | null
+  } | null
   retrieval_warning?: string | null
+  corpus_revision?: number
+  memory_revision?: number | null
+  embedding_fingerprint?: string | null
+  retrieval_contract_version?: string
+  privacy_scope_digest?: string
 }
 
 export type AgentMemory = {

@@ -1,0 +1,2 @@
+{"source":"fixture","source_id":"doc-1","title":"First fixture","content":"Bounded connector input.","uri":"fixture://doc-1","updated_at":"2026-01-01T00:00:00Z","project":"work","acl":["work"],"metadata":{"kind":"test"}}
+{"source":"fixture","source_id":"doc-2","title":"Second fixture","content":"Stable source identity.","uri":"fixture://doc-2","updated_at":"2026-01-01T00:00:00Z","project":"work","acl":["work"],"metadata":{"kind":"test"}}

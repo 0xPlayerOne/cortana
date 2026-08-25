@@ -1,5 +1,8 @@
 # Query pipeline
 
+The public compatibility and ContextBundle contracts are [Public API](contracts/public-api.md) and
+[ContextBundle](contracts/context-bundle.md).
+
 Cortana separates agent retrieval from human-facing answers.
 
 ## Current release boundary

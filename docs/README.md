@@ -21,6 +21,13 @@ Cortana documentation is divided by authority. Each document should define one d
 | Evaluation methods and evidence                         | [Evaluation](evaluation.md)                                                                                                               |
 | Planning and documentation ownership                    | [Planning and tracking](planning.md)                                                                                                      |
 | Architecture diagrams                                   | [Architecture](architecture/)                                                                                                             |
+| Canonical entities and persistence                      | [Core entity contract](contracts/core-entities.md)                                                                                        |
+| ContextBundle identity and pinning                      | [ContextBundle contract](contracts/context-bundle.md)                                                                                     |
+| Connector and reconciliation semantics                  | [Connector contract](contracts/connectors.md)                                                                                             |
+| Workspace, principal, and ACL mapping                   | [Identity contract](contracts/identity.md)                                                                                                |
+| Public API compatibility                                | [Public API contract](contracts/public-api.md)                                                                                            |
+| Security assets and trust boundaries                    | [Security and trust model](security-model.md)                                                                                             |
+| Native memory taxonomy                                  | [Memory contract](contracts/memory.md)                                                                                                    |
 | Extension policy                                        | [Extensions](EXTENSIONS.md)                                                                                                               |
 
 ## Authority model
