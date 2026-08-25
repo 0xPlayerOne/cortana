@@ -958,7 +958,6 @@ impl BrainServer {
             }
         }
     }
-
     async fn update_memory_candidate(&self, id: String, redact: bool) -> String {
         let started = Instant::now();
         let principal = match self.resolve_principal() {

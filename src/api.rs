@@ -2051,7 +2051,6 @@ async fn classify_memory_candidate(
         }
     }
 }
-
 async fn update_memory_candidate(
     state: &AppState,
     principal: &Principal,

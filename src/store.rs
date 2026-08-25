@@ -7442,7 +7442,6 @@ mod tests {
             "1"
         );
     }
-
     #[test]
     fn candidate_classification_is_scoped_review_only_and_does_not_change_revision() {
         let directory = tempdir().expect("temporary directory");
