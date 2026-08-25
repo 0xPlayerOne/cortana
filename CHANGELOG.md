@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.3](https://github.com/0xPlayerOne/cortana/compare/v0.35.2...v0.35.3) (2026-08-25)
+
+
+### Maintenance
+
+* **agents:** sync reusable project skills ([#2113](https://github.com/0xPlayerOne/cortana/issues/2113)) ([b3ecffa](https://github.com/0xPlayerOne/cortana/commit/b3ecffa248b1dc6b7cc7b7f841c177ca63e68937))
+
 ## [0.35.2](https://github.com/0xPlayerOne/cortana/compare/v0.35.1...v0.35.2) (2026-08-25)
 
 
