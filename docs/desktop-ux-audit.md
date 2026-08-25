@@ -10,6 +10,19 @@ Source tests, web tests, Rust tests, static archive inspection, checksum verific
 
 A supported Desktop claim requires a real package to complete the relevant native flows on the named operating system and architecture.
 
+The manual `Desktop acceptance` workflow adds a narrower published-package host lane: it extracts
+or selects the release application, starts it with disposable configuration and data directories,
+and stops it after a bounded startup window on macOS Apple Silicon, Linux x86_64, and Windows
+x86_64. This proves packaged process startup and isolated state setup only. It does not replace
+interactive GUI, browser OAuth, tray/service, native-dialog, updater, accessibility, or
+macOS Developer ID/notarization acceptance.
+
+The workflow may verify a historical published tag from a newer verifier checkout. In that case
+it explicitly allows source-version drift, records the requested release version in the component
+version fields, and preserves the verifier checkout versions plus a drift marker in the evidence.
+On Linux, the host-launch lane installs the packaged application's GTK/WebKit runtime dependencies
+and runs the AppImage under Xvfb before checking for stable process startup.
+
 ## Product principles
 
 - Desktop is the primary human surface, not the canonical database or background-service authority.

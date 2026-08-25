@@ -4,15 +4,20 @@ The provider-neutral connector and reconciliation contract is [Connector contrac
 
 ## Current release boundary
 
-The current protected source and published package are `v0.34.44`. This metadata-only release
-retains the bounded connector, cursor, cache, retry, cancellation, and deletion-safety contracts
-described below. It does not authorize accounts, enable disabled sources, reconcile the index, or
-install recurring sync; source validation remains an explicit, bounded operator gate.
+The current protected source and published package are `v0.39.0`. This release retains the bounded
+connector, cursor, cache, retry, cancellation, and deletion-safety contracts described below. It
+does not authorize accounts, enable disabled sources, reconcile the index, or install recurring
+sync; source validation remains an explicit, bounded operator gate.
 
 Cortana treats every connector as a snapshot producer. Each successful run emits normalized
 `Document` JSON Lines with stable source IDs. Cortana embeds only records whose searchable payload
 changed, atomically replaces their chunks, and reconciles records that disappeared from the
 completed snapshot. A failed connector never triggers deletion reconciliation.
+
+Derived retrieval units use the versioned [structured chunking contract](chunking.md): Markdown,
+HTML/exported documents, message threads, and compact calendar/structured records use source-aware
+boundaries, while unknown inputs retain the generic fallback. Canonical `Document` content, source
+identity, provenance, ACL, and citation fields are unchanged by chunk regeneration.
 
 Connector output is first captured in an owner-only on-disk spool and then ingested in bounded
 batches. This preserves complete-snapshot reconciliation without holding a large Drive, Gmail, or

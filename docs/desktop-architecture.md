@@ -314,8 +314,23 @@ bun run desktop:build
 ```
 
 Updater signing authenticates the downloaded update payload; it is distinct from operating-system
-publisher trust. Until Apple Developer ID credentials and notarization are configured, macOS
-artifacts remain ad-hoc code-signed and Gatekeeper does not treat them as notarized applications.
+publisher trust. The macOS release job requires an Apple Developer ID certificate and either
+App Store Connect API-key or Apple ID notarization credentials. It fails before release
+completion when the bundle is not Developer ID signed, hardened, timestamped, Gatekeeper
+assessed, and stapled. Local builds remain ad-hoc and are not supported distribution evidence.
+
+If an existing ad-hoc macOS installation must be recovered before Apple credentials are
+available, an operator may explicitly set the repository variable
+`CORTANA_ALLOW_ADHOC_MACOS_RELEASE=true` and manually dispatch the release-assets workflow for
+the affected tag. That emergency path still signs the updater archive with Cortana's Tauri
+minisign key and keeps the strict asset/signature verifier enabled, but it skips Developer ID,
+Gatekeeper, and notarization checks. It is not a trusted distribution release; remove the
+variable as soon as the Apple signing secrets are configured.
+
+The release-only secrets are `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
+`APPLE_SIGNING_IDENTITY`, and either `APPLE_API_KEY`, `APPLE_API_ISSUER`,
+`APPLE_API_KEY_BASE64` or `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`. Secret values stay in
+GitHub Actions; the workflow never writes them to the repository or evidence artifacts.
 
 Update checks, downloads, signature verification, installation, and restart requests run in native
 Rust. The renderer can display version metadata, release notes, the compiled changelog, and bounded
