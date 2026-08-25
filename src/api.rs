@@ -422,6 +422,14 @@ struct MemoryCandidateListParams {
     limit: usize,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryConsolidationRequest {
+    policy: crate::consolidation::ConsolidationPolicy,
+    #[serde(default)]
+    explicit_approval: bool,
+}
+
 fn default_memory_candidate_limit() -> usize {
     100
 }
@@ -639,6 +647,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/v1/memory/candidates/{id}/classify",
             post(classify_memory_candidate),
+        )
+        .route(
+            "/v1/memory/candidates/{id}/consolidate",
+            post(consolidate_memory_candidate),
         )
         .route("/v1/answer", post(answer))
         .route("/v1/audit", get(audit_events))
@@ -2049,6 +2061,45 @@ async fn classify_memory_candidate(
             );
             Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
         }
+    }
+}
+
+async fn consolidate_memory_candidate(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumPath(id): AxumPath<String>,
+    Json(request): Json<MemoryConsolidationRequest>,
+) -> Result<Json<crate::consolidation::ConsolidationOutcome>, (StatusCode, String)> {
+    let started = Instant::now();
+    if !principal.has_scope(MEMORY_SCOPE) {
+        return Err((StatusCode::FORBIDDEN, "memory scope required".into()));
+    }
+    match state.store.consolidate_memory_candidate(
+        &id,
+        &request.policy,
+        &principal.name,
+        &principal.visible_acl(),
+        principal.is_owner(),
+        request.explicit_approval,
+    ) {
+        Ok(outcome) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.consolidate",
+                None,
+                None,
+                &outcome.status,
+                Some(1),
+                started,
+            );
+            Ok(Json(outcome))
+        }
+        Err(error) if crate::memory::is_authorization_error(&error) => Err((
+            StatusCode::FORBIDDEN,
+            "candidate consolidation denied".into(),
+        )),
+        Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
     }
 }
 async fn update_memory_candidate(
