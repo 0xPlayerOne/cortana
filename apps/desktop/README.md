@@ -57,9 +57,10 @@ bun run desktop:bundle:mac
 ```
 
 Updater-signed DMG/application archives, AppImage/deb, and Windows installers are created only by
-the release workflow. That workflow has access to the dedicated updater signing key; local builds
-do not require release secrets. macOS Developer ID signing and notarization require separate Apple
-credentials and are reported independently from the updater signature.
+the release workflow. That workflow has access to the dedicated updater signing key. macOS release
+builds additionally require the Apple Developer ID signing and notarization secrets; the workflow
+fails closed instead of publishing an ad-hoc package when those trust gates are absent. Local builds
+do not require release secrets and remain development-only ad-hoc bundles.
 
 The Settings **Readiness** panel runs an explicit, read-only scan. It checks the bundled runtime,
 uv, Python 3.11+, the connector environment, the configured local embedding runtime, and the core
