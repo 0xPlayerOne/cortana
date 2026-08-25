@@ -120,8 +120,9 @@ implemented.
 Candidate HTTP endpoints are `POST /v1/memory/candidates`, `GET /v1/memory/candidates`,
 `GET /v1/memory/candidates/export`,
 `POST /v1/memory/candidates/{id}/cancel`, `POST /v1/memory/candidates/{id}/redact`, and
-`POST /v1/memory/candidates/{id}/classify`. The CLI equivalent is
-`cortana memory candidate propose|list|export|cancel|redact|classify`. Candidate submissions require
+`POST /v1/memory/candidates/{id}/classify`, and `POST /v1/memory/candidates/{id}/consolidate`.
+The CLI equivalent is
+`cortana memory candidate propose|list|export|cancel|redact|classify|consolidate`. Candidate submissions require
 an explicit JSON provenance object, source id, sensitivity, and expiry; content is limited to 8 KiB,
 provenance to 4 KiB, and expiry to seven days. The bounded path rejects sensitive/restricted
 proposals and never advances the canonical memory revision.

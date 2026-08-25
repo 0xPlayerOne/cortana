@@ -2093,12 +2093,41 @@ async fn consolidate_memory_candidate(
                 Some(1),
                 started,
             );
+            if principal.is_owner() && request.policy.enabled {
+                let store = state.store.clone();
+                let policy = request.policy.clone();
+                let principal_name = principal.name.clone();
+                let principal_acl = principal.visible_acl();
+                tokio::task::spawn_blocking(move || {
+                    if let Err(error) = store.process_pending_memory_consolidation(
+                        &policy,
+                        &principal_name,
+                        &principal_acl,
+                        true,
+                        policy.max_queue,
+                    ) {
+                        tracing::warn!(%error, "memory consolidation recovery worker failed");
+                    }
+                });
+            }
             Ok(Json(outcome))
         }
-        Err(error) if crate::memory::is_authorization_error(&error) => Err((
-            StatusCode::FORBIDDEN,
-            "candidate consolidation denied".into(),
-        )),
+        Err(error) if crate::memory::is_authorization_error(&error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.consolidate",
+                None,
+                None,
+                "denied",
+                None,
+                started,
+            );
+            Err((
+                StatusCode::FORBIDDEN,
+                "candidate consolidation denied".into(),
+            ))
+        }
         Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
     }
 }

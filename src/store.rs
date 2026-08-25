@@ -2239,6 +2239,17 @@ impl Store {
                 ],
             )?;
             transaction.commit()?;
+            drop(connection);
+            self.record_audit(
+                "system",
+                "memory.consolidation.reconcile",
+                Some(&candidate.project),
+                Some("candidate"),
+                reconciled_status,
+                Some(1),
+                0,
+                10_000,
+            )?;
             return Ok(ConsolidationOutcome {
                 candidate_id: id.into(),
                 status: reconciled_status.into(),
@@ -2610,6 +2621,16 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         Ok(connection.execute(
             "UPDATE memory_consolidation_jobs SET status='paused',updated_at=?1 WHERE status IN ('queued','retry','running')",
+            [memory::now()],
+        )?)
+    }
+
+    /// Resume explicitly paused consolidation jobs. They return to the
+    /// persistent queue and remain subject to their original policy version.
+    pub fn resume_memory_consolidation(&self) -> Result<usize> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        Ok(connection.execute(
+            "UPDATE memory_consolidation_jobs SET status='queued',updated_at=?1 WHERE status='paused'",
             [memory::now()],
         )?)
     }
@@ -8122,6 +8143,44 @@ mod tests {
     }
 
     #[test]
+    fn paused_consolidation_jobs_can_resume_without_losing_policy_identity() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let candidate = store
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("candidate");
+        let policy = crate::consolidation::ConsolidationPolicy::default();
+        store
+            .consolidate_memory_candidate(
+                &candidate.id,
+                &policy,
+                "agent-a",
+                &["work".into()],
+                false,
+                false,
+            )
+            .expect("review job");
+        assert_eq!(store.resume_memory_consolidation().expect("resume"), 1);
+        assert_eq!(store.pause_memory_consolidation().expect("pause"), 1);
+        assert_eq!(store.resume_memory_consolidation().expect("resume"), 1);
+        let connection = store.connection.lock().expect("store lock");
+        let (status, policy_version): (String, String) = connection
+            .query_row(
+                "SELECT status,policy_version FROM memory_consolidation_jobs WHERE candidate_id=?1",
+                [&candidate.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("job status");
+        assert_eq!(status, "queued");
+        assert_eq!(policy_version, policy.identity().expect("policy identity"));
+    }
+
+    #[test]
     fn persistent_consumer_reconciles_a_terminal_candidate_job() {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
@@ -8426,6 +8485,14 @@ mod tests {
             )
             .expect("job count");
         assert_eq!(count, 1);
+        let audit_count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM audit_events WHERE action='memory.consolidation.reconcile' AND outcome='dead-letter'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("audit count");
+        assert_eq!(audit_count, 1);
     }
 
     #[test]
