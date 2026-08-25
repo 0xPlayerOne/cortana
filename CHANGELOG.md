@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.3](https://github.com/0xPlayerOne/cortana/compare/v0.37.2...v0.37.3) (2026-08-25)
+
+
+### Bug Fixes
+
+* **desktop:** resolve published host package names ([cda65d2](https://github.com/0xPlayerOne/cortana/commit/cda65d25180bbab9cf71bc44bf5d1b14d714b78a))
+
 ## [0.37.2](https://github.com/0xPlayerOne/cortana/compare/v0.37.1...v0.37.2) (2026-08-25)
 
 
