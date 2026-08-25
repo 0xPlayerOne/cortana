@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.2](https://github.com/0xPlayerOne/cortana/compare/v0.39.1...v0.39.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **release:** recover macOS updater packages explicitly ([#2157](https://github.com/0xPlayerOne/cortana/issues/2157)) ([94b45ef](https://github.com/0xPlayerOne/cortana/commit/94b45ef3116245d31d8661df62ef3687aecf986c))
+
 ## [0.39.1](https://github.com/0xPlayerOne/cortana/compare/v0.39.0...v0.39.1) (2026-08-25)
 
 
