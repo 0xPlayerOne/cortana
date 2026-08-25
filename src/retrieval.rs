@@ -27,6 +27,9 @@ pub struct RetrievalTuning {
     pub lexical_weight: f32,
     pub idf_weight: f32,
     pub recency_weight: f32,
+    /// Apply the bounded, deterministic local reranker after hybrid fusion.
+    /// It never calls a provider and remains disabled by default.
+    pub reranker_enabled: bool,
 }
 
 impl Default for RetrievalTuning {
@@ -37,6 +40,7 @@ impl Default for RetrievalTuning {
             lexical_weight: 1.2,
             idf_weight: 0.08,
             recency_weight: 0.1,
+            reranker_enabled: false,
         }
     }
 }
@@ -49,6 +53,7 @@ impl RetrievalTuning {
             lexical_weight: bounded_weight(self.lexical_weight, 1.2, 4.0),
             idf_weight: bounded_weight(self.idf_weight, 0.08, 1.0),
             recency_weight: bounded_weight(self.recency_weight, 0.1, 1.0),
+            reranker_enabled: self.reranker_enabled,
         }
     }
 }
@@ -544,10 +549,14 @@ fn rank_with_tuning(
             let semantic = semantic_scores.get(&id).copied().unwrap_or_default();
             let idf = idf_scores.get(&id).copied().unwrap_or_default();
             let reranked = score + 0.01 * semantic.max(0.0) + tuning.idf_weight * idf;
-            Some((
-                chunk,
-                reranked * (1.0 - tuning.recency_weight + tuning.recency_weight * recency),
-            ))
+            let recency_adjusted =
+                reranked * (1.0 - tuning.recency_weight + tuning.recency_weight * recency);
+            let score = if tuning.reranker_enabled {
+                apply_local_reranker(query, chunk, recency_adjusted)
+            } else {
+                recency_adjusted
+            };
+            Some((chunk, score))
         })
         .collect::<Vec<_>>();
     ranked.sort_by(|a, b| {
@@ -600,6 +609,37 @@ fn rank_with_tuning(
             returned,
         },
     ))
+}
+
+/// Apply a small deterministic second-pass score to the bounded candidate set.
+/// This deliberately uses only local title/content terms, so enabling it never
+/// introduces provider latency, secrets, or a new failure mode. The boost is
+/// capped and is included in the ranking version/cache key through tuning.
+fn apply_local_reranker(query: &str, chunk: &StoredChunk, score: f32) -> f32 {
+    let normalized_query = query.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized_query.is_empty() {
+        return score;
+    }
+    let title = chunk.title.to_ascii_lowercase();
+    let content = chunk.content.to_ascii_lowercase();
+    let query_lower = normalized_query.to_ascii_lowercase();
+    let phrase_boost = if content.contains(&query_lower) {
+        0.08
+    } else {
+        0.0
+    };
+    let title_boost = if title.contains(&query_lower) {
+        0.06
+    } else {
+        0.0
+    };
+    let exact_term_count = tokenize(&normalized_query)
+        .into_iter()
+        .filter(|term| title.contains(term) || content.contains(term))
+        .count()
+        .min(16);
+    let coverage_boost = (exact_term_count as f32 * 0.01).min(0.16);
+    score + phrase_boost + title_boost + coverage_boost
 }
 
 fn dedupe_key(chunk: &StoredChunk) -> (&str, &str) {
@@ -1121,6 +1161,7 @@ mod tests {
             lexical_weight: 9.0,
             idf_weight: f32::NAN,
             recency_weight: 2.0,
+            reranker_enabled: true,
         }
         .bounded();
         assert_eq!(tuning.candidate_multiplier, 32);
@@ -1128,6 +1169,27 @@ mod tests {
         assert_eq!(tuning.lexical_weight, 4.0);
         assert_eq!(tuning.idf_weight, 0.08);
         assert_eq!(tuning.recency_weight, 1.0);
+        assert!(tuning.reranker_enabled);
+    }
+
+    #[test]
+    fn local_reranker_is_bounded_and_prefers_exact_title_phrase() {
+        let exact = chunk(
+            "exact",
+            "Qwen embedding setup",
+            "Configure the Qwen embedding cache.",
+        );
+        let distractor = chunk(
+            "distractor",
+            "Embedding notes",
+            "General provider guidance.",
+        );
+        let base = 0.1;
+        assert!(
+            apply_local_reranker("Qwen embedding setup", &exact, base)
+                > apply_local_reranker("Qwen embedding setup", &distractor, base)
+        );
+        assert!(apply_local_reranker("Qwen embedding setup", &exact, base) < base + 0.31);
     }
 
     #[tokio::test]

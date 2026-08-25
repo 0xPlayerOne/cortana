@@ -234,6 +234,7 @@ impl AnswerEngine {
             lexical_weight: config.lexical_weight,
             idf_weight: config.idf_weight,
             recency_weight: config.recency_weight,
+            reranker_enabled: config.reranker_enabled,
         }
         .bounded();
         config.candidate_multiplier = tuning.candidate_multiplier;
@@ -589,6 +590,7 @@ impl AnswerEngine {
             lexical_weight: self.config.lexical_weight,
             idf_weight: self.config.idf_weight,
             recency_weight: self.config.recency_weight,
+            reranker_enabled: self.config.reranker_enabled,
         }
         .bounded()
     }

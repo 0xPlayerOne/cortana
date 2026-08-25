@@ -150,8 +150,9 @@ pub struct QueryConfig {
     pub idf_weight: f32,
     #[serde(default = "default_query_recency_weight")]
     pub recency_weight: f32,
-    /// Reserved for a bounded provider/local reranker. It is intentionally
-    /// disabled until a provider contract and evaluation gate are available.
+    /// Enables Cortana's bounded deterministic local reranker. It never calls
+    /// a provider and remains disabled by default until approved-corpus
+    /// evaluation demonstrates a quality win within the latency budget.
     #[serde(default)]
     pub reranker_enabled: bool,
     #[serde(default = "default_query_context_tokens")]
