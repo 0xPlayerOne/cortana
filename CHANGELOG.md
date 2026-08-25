@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.2](https://github.com/0xPlayerOne/cortana/compare/v0.37.1...v0.37.2) (2026-08-25)
+
+
+### Tests
+
+* **desktop:** verify packaged host startup ([fc44283](https://github.com/0xPlayerOne/cortana/commit/fc442834510554dcb94b76a09ea5adea0be6ddf3))
+
 ## [0.37.1](https://github.com/0xPlayerOne/cortana/compare/v0.37.0...v0.37.1) (2026-08-25)
 
 
