@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.0](https://github.com/0xPlayerOne/cortana/compare/v0.43.0...v0.44.0) (2026-08-25)
+
+
+### Features
+
+* **memory:** add bounded non-mutating reflection ([#2138](https://github.com/0xPlayerOne/cortana/issues/2138)) ([cc7a5fd](https://github.com/0xPlayerOne/cortana/commit/cc7a5fd68468040d7838a7a58a2dfb3e392fe5b0))
+
 ## [0.43.0](https://github.com/0xPlayerOne/cortana/compare/v0.42.0...v0.43.0) (2026-08-25)
 
 
