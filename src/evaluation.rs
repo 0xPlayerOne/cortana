@@ -7,11 +7,13 @@ use std::time::{Duration as StdDuration, Instant};
 
 use anyhow::{Context, Result, anyhow};
 use chrono::Duration;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::answer::{AnswerEngine, AnswerRequest};
 use crate::config::QueryConfig;
+use crate::contracts::{API_CONTRACT_VERSION, RETRIEVAL_CONTRACT_VERSION, stable_json_digest};
 use crate::embed::{DeterministicEmbedder, Embedder};
 use crate::model::{Document, Evidence};
 use crate::retrieval;
@@ -101,6 +103,22 @@ pub struct EvaluationReport {
     pub metrics: EvaluationMetrics,
     pub cases: Vec<CaseReport>,
     pub answer: AnswerEvaluation,
+    pub activation: ActivationRecord,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ActivationRecord {
+    /// Provider-backed synthesis may only be activated after the bounded
+    /// report passes. The default extractive run always leaves this false.
+    pub activated: bool,
+    /// Scheme and authority only; paths, query strings, and credentials are
+    /// deliberately omitted from the report.
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub contract_version: String,
+    pub retrieval_contract_version: String,
+    pub corpus_revision: u64,
+    pub evaluation_report_digest: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -311,7 +329,8 @@ async fn run_fixture(
         });
     }
 
-    let answer = evaluate_answer(&store, &embedder, &fixture, model).await?;
+    let corpus_revision = store.corpus_revision()?;
+    let answer = evaluate_answer(&store, &embedder, &fixture, model.clone()).await?;
     let recall_at_k = ratio(relevant_found, relevant_total);
     let mrr = if reciprocal_ranks.is_empty() {
         1.0
@@ -340,6 +359,12 @@ async fn run_fixture(
         && metrics.case_pass_rate >= thresholds.min_case_pass_rate
         && metrics.citation_validity >= thresholds.min_citation_validity
         && metrics.max_latency_ms <= thresholds.max_latency_ms;
+    let report_digest = stable_json_digest(&serde_json::json!({
+        "fixture_version": fixture.version,
+        "passed": passed,
+        "metrics": &metrics,
+    }));
+    let activation = activation_record(model.as_ref(), corpus_revision, passed, report_digest);
     Ok(EvaluationReport {
         fixture_version: fixture.version,
         passed,
@@ -347,7 +372,44 @@ async fn run_fixture(
         metrics,
         cases: case_reports,
         answer,
+        activation,
     })
+}
+
+fn activation_record(
+    model: Option<&(QueryConfig, Option<String>)>,
+    corpus_revision: u64,
+    passed: bool,
+    evaluation_report_digest: String,
+) -> ActivationRecord {
+    let (provider, model_name, requested) = model
+        .filter(|(config, _)| config.synthesis_enabled)
+        .map(|(config, _)| {
+            (
+                provider_identity(&config.base_url),
+                Some(config.model.clone()),
+                true,
+            )
+        })
+        .unwrap_or((None, None, false));
+    ActivationRecord {
+        activated: requested && passed,
+        provider,
+        model: model_name,
+        contract_version: API_CONTRACT_VERSION.into(),
+        retrieval_contract_version: RETRIEVAL_CONTRACT_VERSION.into(),
+        corpus_revision,
+        evaluation_report_digest,
+    }
+}
+
+fn provider_identity(base_url: &str) -> Option<String> {
+    let parsed = Url::parse(base_url).ok()?;
+    let host = parsed.host_str()?;
+    let authority = parsed
+        .port()
+        .map_or_else(|| host.to_string(), |port| format!("{host}:{port}"));
+    Some(format!("{}://{authority}", parsed.scheme()))
 }
 
 async fn evaluate_answer(
