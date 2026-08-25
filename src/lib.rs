@@ -5,6 +5,7 @@ pub mod buzz_communities;
 pub mod classification;
 pub mod config;
 pub mod connectors;
+pub mod consolidation;
 pub mod context;
 pub mod contracts;
 pub mod discord_rpc;

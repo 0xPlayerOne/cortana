@@ -74,6 +74,16 @@ The native MCP tools are:
 - `classify_memory_candidate` — compare one visible pending candidate with same-scope canonical
   memory using deterministic local rules; this is review-only and never mutates memory.
 
+Consolidation is a separate opt-in policy boundary. The default policy is disabled, and promotion
+must use the versioned `cortana.memory.consolidation.v1` rules. Safe, non-sensitive, in-scope,
+non-conflicting candidates may auto-retain only above configured confidence and importance
+thresholds; sensitive, contradictory, low-confidence, or cross-scope candidates remain review-only.
+Working retention stays bounded and cannot silently become durable. Queue entries are priority
+ordered, deduplicated by candidate and policy version, retry bounded, pausable, cancellable, and
+dead-lettered after repeated failures. Promotion uses the same atomic remember invariants as an
+explicit write and emits metadata-only audit events. Turning consolidation off has no effect on
+explicit memory or source retrieval.
+
 The equivalent CLI is:
 
 ```sh
