@@ -38,6 +38,9 @@ Cover:
 - latency and resource bounds.
 
 This lane may run in CI and must never open the configured personal index or contact a live source.
+The repository-owned `bun run test:eval` command executes the deterministic Rust evaluator against
+the pinned synthetic fixture; it is part of `test:unit` so every validation run exercises the M5
+quality gate without contacting a provider or source.
 
 ### Approved-corpus retrieval
 
