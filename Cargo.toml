@@ -1,6 +1,6 @@
 [package]
 name = "cortana"
-version = "0.36.0"
+version = "0.37.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Local-first, agent-native second brain with configurable ingestion and hybrid retrieval"
