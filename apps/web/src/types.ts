@@ -600,6 +600,7 @@ export type DesktopUpdate = {
 export type AuditEvent = Record<string, unknown>
 
 export type AnswerResponse = {
+  contract_version?: string
   query: string
   answer: string
   evidence: Evidence[]
@@ -614,6 +615,12 @@ export type AnswerResponse = {
   warnings: string[]
   retrieval_mode?: 'hybrid' | 'lexical-fallback'
   retrieval_degraded?: boolean
+  corpus_revision?: number
+  memory_revision?: number | null
+  degradation?: {
+    code: string
+    detail?: string | null
+  } | null
 }
 
 export type ContextBundle = {

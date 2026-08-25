@@ -12,6 +12,7 @@ use tokio::sync::Semaphore;
 
 use crate::config::{QueryConfig, validate_provider_base_url};
 use crate::context;
+use crate::contracts::{API_CONTRACT_VERSION, DegradationState};
 use crate::embed::Embedder;
 use crate::memory::MemorySearchResult;
 use crate::model::Evidence;
@@ -48,6 +49,8 @@ pub struct QueryPlan {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AnswerResponse {
+    #[serde(default = "default_api_contract_version")]
+    pub contract_version: String,
     pub query: String,
     pub answer: String,
     pub evidence: Vec<Evidence>,
@@ -62,6 +65,16 @@ pub struct AnswerResponse {
     pub retrieval_mode: String,
     #[serde(default)]
     pub retrieval_degraded: bool,
+    #[serde(default)]
+    pub corpus_revision: u64,
+    #[serde(default)]
+    pub memory_revision: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degradation: Option<DegradationState>,
+}
+
+fn default_api_contract_version() -> String {
+    API_CONTRACT_VERSION.into()
 }
 
 fn default_retrieval_mode() -> String {
@@ -387,7 +400,12 @@ impl AnswerEngine {
                 )
             }
         };
+        let degradation = retrieval_degraded.then(|| DegradationState {
+            code: "answer_degraded".into(),
+            detail: warnings.first().cloned(),
+        });
         let response = AnswerResponse {
+            contract_version: API_CONTRACT_VERSION.into(),
             query: request.query,
             answer,
             evidence,
@@ -403,6 +421,9 @@ impl AnswerEngine {
                 "hybrid".into()
             },
             retrieval_degraded,
+            corpus_revision: revision,
+            memory_revision,
+            degradation,
         };
         // Keep deterministic extractive answers cacheable when no model is
         // configured, but never persist a degraded response from a configured
