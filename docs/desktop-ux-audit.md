@@ -139,6 +139,8 @@ Verify:
 - provider-advertised model discovery with custom fallback;
 - staleness invalidation when endpoint, mode, or key reference changes;
 - write-only secret fields;
+- explicit migration to macOS Keychain, Windows Credential Manager, or Linux Secret Service;
+- rollback and redacted recovery when native credential storage is unavailable;
 - import/export with redaction;
 - generation-aware embedding changes;
 - automatic restart of only the affected services;
@@ -157,6 +159,8 @@ Verify:
 - menu-bar status and single-instance behavior;
 - login autostart;
 - service crash, stale state, port conflict, sleep/wake, logout/login, and restart recovery;
+- bounded durable activity for running, completed, failed, and cancelled service actions;
+- retry and recovery after timeout, late completion, or a concurrent-action rejection;
 - MCP and HTTP availability while the window is closed;
 - status derived from durable operational state rather than renderer assumptions.
 

@@ -11,6 +11,8 @@ use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use toml::{Table, Value};
 
+use crate::secure_storage;
+
 const MAX_WORKSPACES: usize = 3;
 const MAX_SOURCES: usize = 128;
 const MAX_AUTH_PRINCIPALS: usize = 64;
@@ -230,6 +232,13 @@ pub struct SettingsSnapshot {
     pub secrets: Vec<SecretState>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SecretStorageMigration {
+    pub backend: &'static str,
+    pub migrated: usize,
+    pub file_values_removed: bool,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct PortableSettings {
@@ -367,6 +376,10 @@ pub fn import_portable(path: &Path) -> Result<PortableImport, String> {
     import_portable_at(&default_config_path(), path)
 }
 
+pub fn migrate_secrets_to_secure_storage() -> Result<SecretStorageMigration, String> {
+    SettingsStore::default().migrate_secrets_to_secure_storage()
+}
+
 pub fn configured_source(name: &str) -> Result<SourceSettings, String> {
     validate_source_name(name)?;
     load()?
@@ -384,6 +397,11 @@ pub(crate) fn secret_value_for_env(name: &str) -> Result<Option<String>, String>
     validate_env_name(name)?;
     let config_path = default_config_path();
     let root = read_config(&config_path)?;
+    if secret_storage_backend(&root) == "native"
+        && let Some(value) = secure_storage::get(name)?
+    {
+        return Ok(Some(value));
+    }
     let path = secret_path(&root, &config_path)?;
     let secrets = read_secret_map(&path)?;
     Ok(secrets
@@ -550,7 +568,16 @@ impl SettingsStore {
         validate_external_sources(&root, &update.sources)?;
         apply_update(&mut root, &update, &secret_path);
 
-        if !update.secrets.is_empty() || !removed_auth_tokens.is_empty() {
+        let native_backend = secret_storage_backend(&root) == "native";
+        let native_undo = if native_backend {
+            Some(apply_native_secret_updates(
+                &update.secrets,
+                &removed_secret_names,
+            )?)
+        } else {
+            None
+        };
+        if !native_backend && (!update.secrets.is_empty() || !removed_auth_tokens.is_empty()) {
             ensure_managed_secret_path(&secret_path, &self.config_path)?;
             let mut secrets = read_secret_map(&secret_path)?;
             apply_secret_updates(&mut secrets, &update.secrets)?;
@@ -582,11 +609,118 @@ impl SettingsStore {
                 .map_err(|error| format!("back up Cortana settings: {error}"))?;
             set_owner_only(&backup)?;
         }
-        atomic_write(&self.config_path, rendered.as_bytes())?;
+        if let Err(error) = atomic_write(&self.config_path, rendered.as_bytes()) {
+            if native_backend {
+                if let Some(previous) = native_undo.as_ref() {
+                    let _ = restore_native_values(previous);
+                }
+            }
+            return Err(error);
+        }
         append_audit(&self.config_path, &update)?;
         self.load().map(|mut state| {
             state.restart_required = true;
             state
+        })
+    }
+
+    fn migrate_secrets_to_secure_storage(&self) -> Result<SecretStorageMigration, String> {
+        reject_symlink(&self.config_path)?;
+        let _config_lock = lock_config_file(&self.config_path)?;
+        let mut root = read_config(&self.config_path)?;
+        if secret_storage_backend(&root) == "native" {
+            return Ok(SecretStorageMigration {
+                backend: "native",
+                migrated: 0,
+                file_values_removed: false,
+            });
+        }
+
+        let secret_path = secret_path(&root, &self.config_path)?;
+        if self
+            .config_path
+            .parent()
+            .is_none_or(|parent| secret_path != parent.join("secrets.env"))
+            && secret_path.exists()
+        {
+            return Err(
+                "Desktop cannot migrate an externally managed secret file; move values through an explicit headless operation first"
+                    .into(),
+            );
+        }
+        let mut secrets = read_secret_map(&secret_path)?;
+        let referenced = referenced_secret_names(&root);
+        let names = referenced
+            .iter()
+            .filter(|name| secrets.contains_key(*name))
+            .cloned()
+            .collect::<Vec<_>>();
+        let previous = names
+            .iter()
+            .map(|name| Ok((name.clone(), secure_storage::get(name)?)))
+            .collect::<Result<BTreeMap<_, _>, String>>()?;
+
+        let migration_result = (|| {
+            for name in &names {
+                let value = secrets
+                    .get(name)
+                    .ok_or_else(|| format!("secret `{name}` disappeared during migration"))?;
+                secure_storage::set(name, value)?;
+                if secure_storage::get(name)?.as_deref() != Some(value.as_str()) {
+                    return Err(format!("secure storage verification failed for `{name}"));
+                }
+            }
+            Ok::<(), String>(())
+        })();
+        if let Err(error) = migration_result {
+            let _ = restore_native_values(&previous);
+            return Err(error);
+        }
+
+        let previous_secret_body = if names.is_empty() {
+            None
+        } else {
+            let body = fs::read(&secret_path)
+                .map_err(|error| format!("back up secret file before migration: {error}"))?;
+            for name in &names {
+                secrets.remove(name);
+            }
+            if let Err(error) = atomic_write(&secret_path, render_secrets(&secrets).as_bytes()) {
+                let _ = restore_native_values(&previous);
+                return Err(error);
+            }
+            Some(body)
+        };
+        set_secret_storage_backend(&mut root, "native");
+        let rendered = match toml::to_string_pretty(&root) {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                let _ = restore_native_values(&previous);
+                if let Some(body) = previous_secret_body.as_deref() {
+                    let _ = atomic_write(&secret_path, body);
+                }
+                return Err(format!("serialize secure storage settings: {error}"));
+            }
+        };
+        if let Err(error) = atomic_write(&self.config_path, rendered.as_bytes()) {
+            let _ = restore_native_values(&previous);
+            if let Some(body) = previous_secret_body.as_deref() {
+                let _ = atomic_write(&secret_path, body);
+            }
+            return Err(error);
+        }
+        let event = serde_json::json!({
+            "at_unix_seconds": now(),
+            "event": "secrets.migrated_to_secure_storage",
+            "migrated_secret_count": names.len(),
+            "file_values_removed": !names.is_empty(),
+            "secret_values_recorded": false,
+        });
+        append_audit_event(&self.config_path, &event)?;
+        Ok(SecretStorageMigration {
+            backend: "native",
+            migrated: names.len(),
+            file_values_removed: !names.is_empty(),
         })
     }
 }
@@ -836,6 +970,7 @@ fn snapshot(
         .parent()
         .map(|parent| parent.join("secrets.env") == secret_path)
         .unwrap_or(false);
+    let native_backend = secret_storage_backend(root) == "native";
     let mut secret_names = BTreeSet::new();
     secret_names.extend(embedding_api_key_env.iter().cloned());
     secret_names.extend(query_api_key_env.iter().cloned());
@@ -935,16 +1070,24 @@ fn snapshot(
         },
         secrets: secret_names
             .into_iter()
-            .map(|name| SecretState {
-                configured: secrets.contains_key(&name) || std::env::var_os(&name).is_some(),
-                source: if secrets.contains_key(&name) {
-                    "secret-file"
-                } else if std::env::var_os(&name).is_some() {
-                    "environment"
-                } else {
-                    "unset"
-                },
-                name,
+            .map(|name| {
+                let native_configured =
+                    native_backend && secure_storage::get(&name).ok().flatten().is_some();
+                SecretState {
+                    configured: native_configured
+                        || secrets.contains_key(&name)
+                        || std::env::var_os(&name).is_some(),
+                    source: if native_configured {
+                        "secure-storage"
+                    } else if secrets.contains_key(&name) {
+                        "secret-file"
+                    } else if std::env::var_os(&name).is_some() {
+                        "environment"
+                    } else {
+                        "unset"
+                    },
+                    name,
+                }
             })
             .collect(),
     }
@@ -1522,7 +1665,7 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
         "audit_max_events",
         update.runtime.audit_max_events as i64,
     );
-    if !update.secrets.is_empty() {
+    if !update.secrets.is_empty() && secret_storage_backend(root) != "native" {
         set_string(
             root,
             "runtime",
@@ -1684,6 +1827,60 @@ fn apply_secret_updates(
     Ok(())
 }
 
+fn secret_storage_backend(root: &Table) -> &'static str {
+    table(root, "desktop")
+        .and_then(|desktop| desktop.get("secret_storage"))
+        .and_then(Value::as_str)
+        .filter(|value| *value == "native")
+        .map_or("file", |_| "native")
+}
+
+fn set_secret_storage_backend(root: &mut Table, backend: &str) {
+    mutable_table(root, "desktop").insert("secret_storage".into(), Value::String(backend.into()));
+}
+
+fn apply_native_secret_updates(
+    updates: &[SecretUpdate],
+    removed_names: &[String],
+) -> Result<BTreeMap<String, Option<String>>, String> {
+    let mut names = BTreeSet::new();
+    names.extend(updates.iter().map(|update| update.name.clone()));
+    names.extend(removed_names.iter().cloned());
+    let previous = names
+        .iter()
+        .map(|name| Ok((name.clone(), secure_storage::get(name)?)))
+        .collect::<Result<BTreeMap<_, _>, String>>()?;
+    let result = (|| {
+        for update in updates {
+            if update.clear {
+                secure_storage::clear(&update.name)?;
+            } else if let Some(value) = &update.value {
+                secure_storage::set(&update.name, value)?;
+            }
+        }
+        for name in removed_names {
+            secure_storage::clear(name)?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let _ = restore_native_values(&previous);
+        return Err(error);
+    }
+    Ok(previous)
+}
+
+fn restore_native_values(previous: &BTreeMap<String, Option<String>>) -> Result<(), String> {
+    for (name, value) in previous {
+        if let Some(value) = value {
+            secure_storage::set(name, value)?;
+        } else {
+            secure_storage::clear(name)?;
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn default_config_path() -> PathBuf {
     std::env::var_os("CORTANA_CONFIG")
         .map(PathBuf::from)
@@ -1694,6 +1891,13 @@ pub(crate) fn default_config_path() -> PathBuf {
                 .unwrap_or_else(|| PathBuf::from(".config"))
                 .join("cortana/config.toml")
         })
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 /// Acquire the per-config lock used by all desktop configuration writers.
@@ -3242,6 +3446,16 @@ mod tests {
             .save(valid_update(temp.path()))
             .expect_err("malformed sections must not panic");
         assert!(error.contains("must be a TOML table"));
+    }
+
+    #[test]
+    fn secure_storage_backend_is_opt_in_and_scoped_to_the_desktop_marker() {
+        let mut root = Table::new();
+        assert_eq!(secret_storage_backend(&root), "file");
+        set_secret_storage_backend(&mut root, "native");
+        assert_eq!(secret_storage_backend(&root), "native");
+        set_secret_storage_backend(&mut root, "unexpected");
+        assert_eq!(secret_storage_backend(&root), "file");
     }
 
     #[test]

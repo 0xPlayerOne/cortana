@@ -21,6 +21,7 @@ tauri-build = { version = "2.6.3", features = [] }
 [dependencies]
 dirs = "6.0"
 fs2 = "0.4"
+keyring = "4.1.6"
 open = "5.4"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -32,7 +33,7 @@ tauri-plugin-process = "2.3.1"
 tauri-plugin-shell = "2.3.5"
 tauri-plugin-single-instance = "2.4.3"
 tauri-plugin-updater = { version = "2.10.1", features = ["rustls-tls"] }
-tokio = { version = "1.47", features = ["io-util", "macros", "process", "time"] }
+tokio = { version = "1.47", features = ["io-util", "macros", "process", "sync", "time"] }
 toml = "0.9"
 
 [target.'cfg(unix)'.dependencies]

@@ -22,6 +22,7 @@ import type {
   DesktopSettingsExport,
   DesktopSettingsImport,
   DesktopSettingsUpdate,
+  DesktopSecretStorageMigration,
   DesktopSourceJob,
   DesktopUpdate,
   AuditEvent,
@@ -49,6 +50,13 @@ export async function getDesktopSettings(): Promise<DesktopSettings> {
 export async function saveDesktopSettings(update: DesktopSettingsUpdate): Promise<DesktopSettings> {
   if (!isDesktopApp) throw new Error('Settings are available in Cortana Desktop')
   return invokeDesktop<DesktopSettings>('desktop_settings_save', { update })
+}
+
+export async function migrateDesktopSecrets(): Promise<DesktopSecretStorageMigration> {
+  if (!isDesktopApp) throw new Error('Secure-storage migration is available in Cortana Desktop')
+  return invokeDesktop<DesktopSecretStorageMigration>('desktop_secret_storage_migrate', {
+    approved: true,
+  })
 }
 
 export async function exportDesktopSettings(): Promise<DesktopSettingsExport | null> {

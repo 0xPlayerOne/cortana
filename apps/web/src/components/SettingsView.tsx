@@ -50,6 +50,7 @@ import {
   installDesktopSyncService,
   importDesktopSettings,
   migrateDesktopEmbeddingGeneration,
+  migrateDesktopSecrets,
   isDesktopApp,
   openDesktopSourceSetup,
   openDesktopProject,
@@ -618,33 +619,36 @@ export function SettingsView({
       <div className="settings-layout">
         <nav className="settings-nav" aria-label="Settings sections">
           {SETTINGS_NAV_PRIMARY_SECTIONS.map((item) => (
-            <button
+            <Button
+              variant="ghost"
               type="button"
               key={item}
               className={`settings-nav-item ${section === item ? 'active' : ''}`}
               onClick={() => setSection(item)}
             >
               {item[0].toUpperCase() + item.slice(1)}
-            </button>
+            </Button>
           ))}
           <div className="settings-nav-divider" aria-hidden="true" />
           {SETTINGS_NAV_SECONDARY_SECTIONS.map((item) => (
-            <button
+            <Button
+              variant="ghost"
               type="button"
               key={item}
               className={`settings-nav-item ${section === item ? 'active' : ''}`}
               onClick={() => setSection(item)}
             >
               {item[0].toUpperCase() + item.slice(1)}
-            </button>
+            </Button>
           ))}
-          <button
+          <Button
+            variant="ghost"
             type="button"
             className={`settings-nav-item ${section === 'memory' ? 'active' : ''}`}
             onClick={() => setSection('memory')}
           >
             Memory
-          </button>
+          </Button>
           <div className="settings-paths">
             <span>Config</span>
             <code title={settings.config_path}>{settings.config_path}</code>
@@ -864,7 +868,8 @@ function SetupGuide({
       </div>
       <div className="setup-steps">
         {steps.map((step, index) => (
-          <button
+          <Button
+            variant="ghost"
             type="button"
             key={step.section}
             className={step.complete ? 'complete' : ''}
@@ -875,7 +880,7 @@ function SetupGuide({
               <strong>{step.label}</strong>
               <small>{step.detail}</small>
             </span>
-          </button>
+          </Button>
         ))}
       </div>
       <p className="setup-save-state">
@@ -1744,9 +1749,14 @@ function UpdatesSection({
         <SafeMarkdown text={update?.changelog || 'Loading changelog…'} />
       </div>
       {update && (
-        <button type="button" className="link-button" onClick={() => void openProject()}>
+        <Button
+          variant="ghost"
+          type="button"
+          className="link-button"
+          onClick={() => void openProject()}
+        >
           View Cortana source on GitHub <ExternalLink size={13} />
-        </button>
+        </Button>
       )}
     </SettingsSection>
   )
@@ -5498,7 +5508,9 @@ function IngestionSection({ settings, update }: SettingsSectionProps) {
 }
 
 function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { dirty: boolean }) {
-  const [portableBusy, setPortableBusy] = useState<'export' | 'import' | 'open-secret' | ''>('')
+  const [portableBusy, setPortableBusy] = useState<
+    'export' | 'import' | 'open-secret' | 'migrate-secrets' | ''
+  >('')
   const [portableNotice, setPortableNotice] = useState('')
   const [portableError, setPortableError] = useState('')
   const setRuntime = (patch: Partial<DesktopSettings['runtime']>) =>
@@ -5557,6 +5569,32 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
       setPortableNotice('Opened the active secret file in your default application.')
     } catch (caught) {
       setPortableError(caught instanceof Error ? caught.message : 'Unable to open secret file')
+    } finally {
+      setPortableBusy('')
+    }
+  }
+
+  const migrateSecrets = async () => {
+    if (dirty) return
+    if (
+      !window.confirm(
+        'Move configured secret-file values into platform secure storage? This is explicit and recoverable, removes migrated plaintext values from secrets.env, and never includes secret values in the audit log.'
+      )
+    ) {
+      return
+    }
+    setPortableBusy('migrate-secrets')
+    setPortableNotice('')
+    setPortableError('')
+    try {
+      const result = await migrateDesktopSecrets()
+      setPortableNotice(
+        result.migrated === 0
+          ? 'Secure storage is already active, or no secret-file values were eligible to migrate.'
+          : `Migrated ${result.migrated} secret${result.migrated === 1 ? '' : 's'} to platform secure storage. Plaintext file values were removed.`
+      )
+    } catch (caught) {
+      setPortableError(caught instanceof Error ? caught.message : 'Secure-storage migration failed')
     } finally {
       setPortableBusy('')
     }
@@ -5654,6 +5692,22 @@ function AdvancedSection({ settings, update, dirty }: SettingsSectionProps & { d
               <FolderOpen size={14} />
             )}
             Open secret file
+          </Button>
+          <Button
+            variant="secondary"
+            type="button"
+            disabled={Boolean(portableBusy) || dirty}
+            title={
+              dirty ? 'Save or discard draft changes before migrating secrets' : 'Migrate secrets'
+            }
+            onClick={() => void migrateSecrets()}
+          >
+            {portableBusy === 'migrate-secrets' ? (
+              <LoaderCircle className="spin" size={14} />
+            ) : (
+              <KeyRound size={14} />
+            )}
+            Migrate to secure storage
           </Button>
         </div>
       </div>
