@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.4](https://github.com/0xPlayerOne/cortana/compare/v0.37.3...v0.37.4) (2026-08-25)
+
+
+### Bug Fixes
+
+* **acceptance:** support historical release verification ([3856f75](https://github.com/0xPlayerOne/cortana/commit/3856f756d366eca95f74d966352d977cd91ebc73))
+
 ## [0.37.3](https://github.com/0xPlayerOne/cortana/compare/v0.37.2...v0.37.3) (2026-08-25)
 
 
