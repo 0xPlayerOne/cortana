@@ -127,6 +127,9 @@ fn provider_result_is_valid(
         .iter()
         .filter(|memory| memory_is_active(memory))
         .filter(|memory| memory.project == candidate.project && memory.acl == candidate.acl)
+        .filter(|memory| memory.content_type == candidate.content_type)
+        .filter(|memory| memory.retention_tier == candidate.retention_tier)
+        .filter(|memory| memory.scope == candidate.scope)
         .map(|memory| memory.id.as_str())
         .collect::<std::collections::HashSet<_>>();
     result.candidate_id == candidate.id
@@ -360,7 +363,7 @@ fn report(
     unresolved_ambiguity: Option<&str>,
     compared_memory_count: usize,
 ) -> CandidateClassification {
-    let explanation = explanation.chars().take(MAX_EXPLANATION_BYTES).collect();
+    let explanation = bounded_text(explanation, MAX_EXPLANATION_BYTES);
     CandidateClassification {
         candidate_id: candidate.id.clone(),
         classification: classification.as_str().into(),
@@ -368,9 +371,21 @@ fn report(
         explanation,
         confidence: confidence.clamp(0.0, 1.0),
         proposed_action: proposed_action.as_str().into(),
-        unresolved_ambiguity: unresolved_ambiguity.map(str::to_owned),
+        unresolved_ambiguity: unresolved_ambiguity
+            .map(|value| bounded_text(value, MAX_EXPLANATION_BYTES)),
         compared_memory_count,
     }
+}
+
+fn bounded_text(value: &str, max_bytes: usize) -> String {
+    if value.len() <= max_bytes {
+        return value.to_owned();
+    }
+    let mut end = max_bytes;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_owned()
 }
 
 fn normalized_text(title: &str, content: &str) -> String {
@@ -569,6 +584,18 @@ mod tests {
         }
     }
 
+    struct FixedProvider(CandidateClassification);
+
+    impl ClassificationProvider for FixedProvider {
+        fn classify(
+            &self,
+            _candidate: &ObservationCandidate,
+            _memories: &[MemoryRecord],
+        ) -> std::result::Result<CandidateClassification, String> {
+            Ok(self.0.clone())
+        }
+    }
+
     #[test]
     fn optional_provider_failure_is_bounded_and_review_required() {
         let result = classify_with_optional_provider(
@@ -580,6 +607,27 @@ mod tests {
         let ambiguity = result.unresolved_ambiguity.expect("review reason");
         assert!(ambiguity.len() <= MAX_EXPLANATION_BYTES);
         assert!(!ambiguity.contains("provider unavailable"));
+    }
+
+    #[test]
+    fn provider_support_cannot_cross_memory_axes() {
+        let candidate = candidate("Deploy Friday", "semantic", "durable");
+        let mut wrong_axis = memory("Deploy Friday", "preference", "durable");
+        wrong_axis.id = "wrong-axis".into();
+        let provider = FixedProvider(CandidateClassification {
+            candidate_id: candidate.id.clone(),
+            classification: "semantic-duplicate".into(),
+            supporting_memory_ids: vec![wrong_axis.id.clone()],
+            explanation: "provider match".into(),
+            confidence: 0.9,
+            proposed_action: "merge-with-existing".into(),
+            unresolved_ambiguity: None,
+            compared_memory_count: 1,
+        });
+        let result = classify_with_optional_provider(&candidate, &[wrong_axis], Some(&provider));
+        assert_eq!(result.proposed_action, "retain-for-review");
+        assert!(result.supporting_memory_ids.is_empty());
+        assert!(result.unresolved_ambiguity.is_some());
     }
 
     #[test]
