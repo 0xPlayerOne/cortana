@@ -2020,7 +2020,6 @@ impl Store {
         };
         Ok(classification::classify(&candidate, &memories))
     }
-
     pub fn cancel_memory_candidate_scoped(
         &self,
         id: &str,
@@ -7139,7 +7138,6 @@ mod tests {
             "1"
         );
     }
-
     #[test]
     fn candidate_classification_is_scoped_review_only_and_does_not_change_revision() {
         let directory = tempdir().expect("temporary directory");
