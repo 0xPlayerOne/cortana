@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.1](https://github.com/0xPlayerOne/cortana/compare/v0.39.0...v0.39.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **release:** publish partial updater manifests safely ([#2155](https://github.com/0xPlayerOne/cortana/issues/2155)) ([a797953](https://github.com/0xPlayerOne/cortana/commit/a797953bc572634f93169402aed14074fd265587))
+
 ## [0.39.0](https://github.com/0xPlayerOne/cortana/compare/v0.38.0...v0.39.0) (2026-08-25)
 
 
