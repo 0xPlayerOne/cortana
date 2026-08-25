@@ -74,6 +74,11 @@ def _source_ids(value: Any, label: str) -> list[str]:
     return result
 
 
+def _bounded_ids(value: Any, label: str) -> list[str]:
+    """Validate a bounded list of non-secret scope identifiers."""
+    return _source_ids(value, label)
+
+
 def _answer_terms(value: Any, label: str) -> list[str]:
     if value is None:
         return []
@@ -162,7 +167,13 @@ def _corpus_metadata(value: Any) -> dict[str, str] | None:
     return result
 
 
-def _case(value: Any, label: str, *, answer: bool = False) -> dict[str, Any]:
+def _case(
+    value: Any,
+    label: str,
+    *,
+    answer: bool = False,
+    context: bool = False,
+) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ManifestError(f"{label} must be an object")
     name = _bounded_text(value.get("name"), f"{label}.name", required=True)
@@ -172,6 +183,13 @@ def _case(value: Any, label: str, *, answer: bool = False) -> dict[str, Any]:
     top_k = value.get("top_k", 10)
     if not isinstance(top_k, int) or isinstance(top_k, bool) or not 1 <= top_k <= 50:
         raise ManifestError(f"{label}.top_k must be between 1 and 50")
+    max_tokens = value.get("max_tokens", 8_000)
+    if context and (
+        not isinstance(max_tokens, int)
+        or isinstance(max_tokens, bool)
+        or not 256 <= max_tokens <= 64_000
+    ):
+        raise ManifestError(f"{label}.max_tokens must be between 256 and 64000")
     expected_source_ids = _source_ids(
         value.get("expected_source_ids"), f"{label}.expected_source_ids"
     )
@@ -183,9 +201,16 @@ def _case(value: Any, label: str, *, answer: bool = False) -> dict[str, Any]:
         "project": project,
         "source": source,
         "top_k": top_k,
+        "max_tokens": max_tokens,
         "expected_source_ids": expected_source_ids,
         "forbidden_source_ids": _source_ids(
             value.get("forbidden_source_ids"), f"{label}.forbidden_source_ids"
+        ),
+        "forbidden_projects": _bounded_ids(
+            value.get("forbidden_projects"), f"{label}.forbidden_projects"
+        ),
+        "forbidden_sources": _bounded_ids(
+            value.get("forbidden_sources"), f"{label}.forbidden_sources"
         ),
         "required_answer_terms": _answer_terms(
             value.get("required_answer_terms"), f"{label}.required_answer_terms"
@@ -200,12 +225,17 @@ def validate_manifest(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("version") != 1:
         raise ManifestError("manifest version must be 1")
     retrieval_cases = value.get("retrieval_cases", [])
+    context_cases = value.get("context_cases", [])
     answer_cases = value.get("answer_cases", [])
-    if not isinstance(retrieval_cases, list) or not isinstance(answer_cases, list):
-        raise ManifestError("retrieval_cases and answer_cases must be lists")
-    if not retrieval_cases and not answer_cases:
+    if (
+        not isinstance(retrieval_cases, list)
+        or not isinstance(context_cases, list)
+        or not isinstance(answer_cases, list)
+    ):
+        raise ManifestError("retrieval_cases, context_cases, and answer_cases must be lists")
+    if not retrieval_cases and not context_cases and not answer_cases:
         raise ManifestError("manifest must contain at least one case")
-    if len(retrieval_cases) + len(answer_cases) > MAX_CASES:
+    if len(retrieval_cases) + len(context_cases) + len(answer_cases) > MAX_CASES:
         raise ManifestError(f"manifest contains more than {MAX_CASES} cases")
     corpus = _corpus_metadata(value.get("corpus"))
     thresholds = value.get("thresholds", {})
@@ -215,6 +245,7 @@ def validate_manifest(value: Any) -> dict[str, Any]:
         "min_recall_at_k": 0.0,
         "min_mrr": 0.0,
         "min_retrieval_pass_rate": 0.0,
+        "min_context_pass_rate": 0.0,
         "min_answer_pass_rate": 0.0,
         "min_citation_validity": 0.0,
         "max_retrieval_fallback_rate": 1.0,
@@ -243,6 +274,10 @@ def validate_manifest(value: Any) -> dict[str, Any]:
         "retrieval_cases": [
             _case(item, f"retrieval_cases[{index}]") for index, item in enumerate(retrieval_cases)
         ],
+        "context_cases": [
+            _case(item, f"context_cases[{index}]", context=True)
+            for index, item in enumerate(context_cases)
+        ],
         "answer_cases": [
             _case(item, f"answer_cases[{index}]", answer=True)
             for index, item in enumerate(answer_cases)
@@ -266,14 +301,16 @@ def load_manifest(path: Path) -> dict[str, Any]:
     return manifest
 
 
-def _request_payload(case: Mapping[str, Any]) -> dict[str, Any]:
+def _request_payload(case: Mapping[str, Any], endpoint: str) -> dict[str, Any]:
     payload = {
         "query": case["query"],
         "project": case["project"],
         "source": case["source"],
     }
-    if not case["answer"]:
+    if endpoint in {"/v1/search", "/v1/context"}:
         payload["limit"] = case["top_k"]
+    if endpoint == "/v1/context":
+        payload["max_tokens"] = case["max_tokens"]
     return payload
 
 
@@ -283,7 +320,7 @@ def _post(
     started = time.perf_counter()
     try:
         with client.stream(
-            "POST", path, json=_request_payload(case), timeout=timeout_seconds
+            "POST", path, json=_request_payload(case, path), timeout=timeout_seconds
         ) as response:
             status = response.status_code
             headers = {key.lower(): value for key, value in response.headers.items()}
@@ -319,6 +356,40 @@ def _evidence_ids(payload: Any) -> list[str]:
     ]
 
 
+def _evidence_rows(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, (dict, list)):
+        return []
+    rows = payload if isinstance(payload, list) else payload.get("evidence", [])
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _percentile(values: Sequence[int], percentile: float) -> int:
+    """Return a deterministic nearest-rank percentile for bounded samples."""
+    if not values:
+        return 0
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, int((percentile * len(ordered)) + 0.999999) - 1))
+    return ordered[index]
+
+
+def _source_metrics(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    sources = [str(row["source"]) for row in rows if isinstance(row.get("source"), str)]
+    unique = len(set(sources))
+    returned = len(rows)
+    counts: dict[str, int] = {}
+    for source in sources:
+        counts[source] = counts.get(source, 0) + 1
+    duplicate_rows = sum(max(0, count - 1) for count in counts.values())
+    return {
+        "unique_sources": unique,
+        "source_diversity": unique / returned if returned else 1.0,
+        "duplicate_source_rows": duplicate_rows,
+        "duplicate_source_crowding": duplicate_rows / returned if returned else 0.0,
+    }
+
+
 def _reciprocal_rank(returned: Sequence[str], expected: Sequence[str]) -> float:
     expected_set = set(expected)
     for index, source_id in enumerate(returned):
@@ -342,37 +413,83 @@ def evaluate_manifest(
 ) -> dict[str, Any]:
     started = time.perf_counter()
     retrieval_reports: list[dict[str, Any]] = []
+    context_reports: list[dict[str, Any]] = []
     answer_reports: list[dict[str, Any]] = []
-    for case in [*manifest["retrieval_cases"], *manifest["answer_cases"]]:
+    latency_samples: list[int] = []
+    cases = [(case, "/v1/search", retrieval_reports) for case in manifest["retrieval_cases"]]
+    cases.extend((case, "/v1/context", context_reports) for case in manifest["context_cases"])
+    cases.extend((case, "/v1/answer", answer_reports) for case in manifest["answer_cases"])
+    for case, endpoint, report_bucket in cases:
         remaining = total_seconds - (time.perf_counter() - started)
         if remaining <= 0:
             report = {"name": case["name"], "passed": False, "error": "total_timeout"}
-            (answer_reports if case["answer"] else retrieval_reports).append(report)
+            report_bucket.append(report)
             continue
-        endpoint = "/v1/answer" if case["answer"] else "/v1/search"
         payload, status, latency_ms, headers = _post(
             client, endpoint, case, timeout_seconds=min(request_seconds, remaining)
         )
+        latency_samples.append(latency_ms)
         returned = _evidence_ids(payload)
+        rows = _evidence_rows(payload)
         expected = case["expected_source_ids"]
         forbidden = case["forbidden_source_ids"]
         returned_set = set(returned)
         missing = [source_id for source_id in expected if source_id not in returned_set]
         leaked = [source_id for source_id in forbidden if source_id in returned_set]
+        forbidden_project_leaks = sorted(
+            {
+                str(row["project"])
+                for row in rows
+                if isinstance(row.get("project"), str)
+                and row["project"] in case["forbidden_projects"]
+            }
+        )
+        forbidden_source_leaks = sorted(
+            {
+                str(row["source"])
+                for row in rows
+                if isinstance(row.get("source"), str) and row["source"] in case["forbidden_sources"]
+            }
+        )
+        project_values = [row.get("project") for row in rows if "project" in row]
+        project_scope_valid = (
+            case["project"] is None
+            or not project_values
+            or all(value == case["project"] for value in project_values)
+        )
+        source_values = [row.get("source") for row in rows if "source" in row]
+        source_scope_valid = (
+            case["source"] is None
+            or not source_values
+            or all(value == case["source"] for value in source_values)
+        )
         if case["answer"]:
             response = payload if isinstance(payload, dict) else {}
             answer = response.get("answer") if isinstance(response.get("answer"), str) else ""
             answer_evidence = response.get("evidence", [])
-            source_scope_valid = case["source"] is None or (
-                isinstance(answer_evidence, list)
-                and all(
-                    isinstance(item, dict) and item.get("source") == case["source"]
-                    for item in answer_evidence
-                )
+            answer_rows = (
+                [item for item in answer_evidence if isinstance(item, dict)]
+                if isinstance(answer_evidence, list)
+                else []
+            )
+            answer_project_values = [
+                item.get("project") for item in answer_rows if "project" in item
+            ]
+            project_scope_valid = (
+                case["project"] is None
+                or not answer_project_values
+                or all(value == case["project"] for value in answer_project_values)
+            )
+            answer_source_values = [item.get("source") for item in answer_rows if "source" in item]
+            source_scope_valid = (
+                case["source"] is None
+                or not answer_source_values
+                or all(value == case["source"] for value in answer_source_values)
             )
             citations_valid = _citation_validity(answer, len(returned))
+            citation_indices = {int(citation) - 1 for citation in _CITATION.findall(answer)}
             forbidden_citations_absent = all(
-                f"[{index + 1}]" not in answer
+                index not in citation_indices
                 for index, source_id in enumerate(returned)
                 if source_id in forbidden
             )
@@ -401,6 +518,9 @@ def evaluate_manifest(
                 and status < 400
                 and not missing
                 and not leaked
+                and not forbidden_project_leaks
+                and not forbidden_source_leaks
+                and project_scope_valid
                 and source_scope_valid
                 and citations_valid
                 and forbidden_citations_absent
@@ -417,6 +537,9 @@ def evaluate_manifest(
                     "returned_source_ids": returned,
                     "missing_source_ids": missing,
                     "leaked_source_ids": leaked,
+                    "forbidden_project_leaks": forbidden_project_leaks,
+                    "forbidden_source_leaks": forbidden_source_leaks,
+                    "project_scope_valid": project_scope_valid,
                     "source_scope_valid": source_scope_valid,
                     "citations_valid": citations_valid,
                     "answer_terms_checked": len(required_terms),
@@ -429,13 +552,74 @@ def evaluate_manifest(
                     "cache_hit": cache_hit,
                     "cache_checked": second_status is not None,
                     "error_status": status if status is None or status >= 400 else None,
+                    **_source_metrics(answer_rows),
+                }
+            )
+        elif endpoint == "/v1/context":
+            response = payload if isinstance(payload, dict) else {}
+            context_metrics = response.get("metrics", {})
+            if not isinstance(context_metrics, dict):
+                context_metrics = {}
+            required_metric_names = (
+                "retrieved",
+                "included",
+                "omitted",
+                "estimated_tokens",
+                "max_tokens",
+            )
+            metrics_valid = all(
+                isinstance(context_metrics.get(key), int)
+                and not isinstance(context_metrics.get(key), bool)
+                and context_metrics[key] >= 0
+                for key in required_metric_names
+            )
+            token_budget_valid = metrics_valid and (
+                context_metrics["estimated_tokens"] <= context_metrics["max_tokens"]
+            )
+            context_reports.append(
+                {
+                    "name": case["name"],
+                    "passed": (
+                        status is not None
+                        and status < 400
+                        and not missing
+                        and not leaked
+                        and not forbidden_project_leaks
+                        and not forbidden_source_leaks
+                        and project_scope_valid
+                        and source_scope_valid
+                        and token_budget_valid
+                    ),
+                    "latency_ms": latency_ms,
+                    "returned_source_ids": returned,
+                    "missing_source_ids": missing,
+                    "leaked_source_ids": leaked,
+                    "forbidden_project_leaks": forbidden_project_leaks,
+                    "forbidden_source_leaks": forbidden_source_leaks,
+                    "project_scope_valid": project_scope_valid,
+                    "source_scope_valid": source_scope_valid,
+                    "retrieval_mode": response.get("retrieval_mode"),
+                    "retrieval_degraded": response.get("retrieval_mode") == "lexical-fallback",
+                    "metrics": {
+                        key: context_metrics[key]
+                        for key in (
+                            "retrieved",
+                            "included",
+                            "omitted",
+                            "memories_retrieved",
+                            "memories_included",
+                            "memories_omitted",
+                            "estimated_tokens",
+                            "max_tokens",
+                        )
+                        if key in context_metrics
+                    },
+                    "token_budget_valid": token_budget_valid,
+                    "error_status": status if status is None or status >= 400 else None,
+                    **_source_metrics(rows),
                 }
             )
         else:
-            source_scope_valid = case["source"] is None or all(
-                isinstance(item, dict) and item.get("source") == case["source"]
-                for item in (payload if isinstance(payload, list) else [])
-            )
             retrieval_reports.append(
                 {
                     "name": case["name"],
@@ -443,14 +627,21 @@ def evaluate_manifest(
                     and status < 400
                     and not missing
                     and not leaked
+                    and not forbidden_project_leaks
+                    and not forbidden_source_leaks
+                    and project_scope_valid
                     and source_scope_valid,
                     "latency_ms": latency_ms,
                     "returned_source_ids": returned,
                     "missing_source_ids": missing,
                     "leaked_source_ids": leaked,
+                    "forbidden_project_leaks": forbidden_project_leaks,
+                    "forbidden_source_leaks": forbidden_source_leaks,
+                    "project_scope_valid": project_scope_valid,
                     "retrieval_mode": headers.get("x-cortana-retrieval-mode"),
                     "retrieval_degraded": headers.get("x-cortana-retrieval-degraded") == "true",
                     "error_status": status if status is None or status >= 400 else None,
+                    **_source_metrics(rows),
                 }
             )
 
@@ -468,12 +659,18 @@ def evaluate_manifest(
     answer_pass_rate = _ratio(
         sum(report.get("passed") is True for report in answer_reports), len(answer_reports)
     )
+    context_pass_rate = _ratio(
+        sum(report.get("passed") is True for report in context_reports), len(context_reports)
+    )
     citation_validity = _ratio(
         sum(report.get("citations_valid") is True for report in answer_reports), len(answer_reports)
     )
     retrieval_fallback_rate = _ratio(
-        sum(report.get("retrieval_degraded") is True for report in retrieval_reports),
-        len(retrieval_reports),
+        sum(
+            report.get("retrieval_degraded") is True
+            for report in [*retrieval_reports, *context_reports, *answer_reports]
+        ),
+        len(retrieval_reports) + len(context_reports) + len(answer_reports),
     )
     provider_fallback_rate = _ratio(
         sum(report.get("fallback_provider_unavailable") is True for report in answer_reports),
@@ -484,17 +681,64 @@ def evaluate_manifest(
         for case, report in zip(manifest["retrieval_cases"], retrieval_reports, strict=False)
         if case["expected_source_ids"]
     ]
+    all_reports = [*retrieval_reports, *context_reports, *answer_reports]
+    diversity_values = [
+        report["source_diversity"] for report in all_reports if "source_diversity" in report
+    ]
+    crowding_values = [
+        report["duplicate_source_crowding"]
+        for report in all_reports
+        if "duplicate_source_crowding" in report
+    ]
+    context_metric_rows = [report.get("metrics", {}) for report in context_reports]
+    retrieved_context_rows = sum(
+        metric.get("retrieved", 0)
+        for metric in context_metric_rows
+        if isinstance(metric.get("retrieved", 0), int)
+    )
+    included_context_rows = sum(
+        metric.get("included", 0)
+        for metric in context_metric_rows
+        if isinstance(metric.get("included", 0), int)
+    )
+    omitted_context_rows = sum(
+        metric.get("omitted", 0)
+        for metric in context_metric_rows
+        if isinstance(metric.get("omitted", 0), int)
+    )
     metrics = {
         "recall_at_k": retrieval_found / retrieval_expected if retrieval_expected else 1.0,
         "mrr": sum(mrr_values) / len(mrr_values) if mrr_values else 1.0,
         "retrieval_pass_rate": retrieval_pass_rate,
+        "context_pass_rate": context_pass_rate,
         "answer_pass_rate": answer_pass_rate,
         "citation_validity": citation_validity,
         "retrieval_fallback_rate": retrieval_fallback_rate,
         "provider_fallback_rate": provider_fallback_rate,
-        "max_latency_ms": max(
-            [report.get("latency_ms", 0) for report in [*retrieval_reports, *answer_reports]],
-            default=0,
+        "max_latency_ms": max(latency_samples, default=0),
+        "latency_ms_p50": _percentile(latency_samples, 0.50),
+        "latency_ms_p95": _percentile(latency_samples, 0.95),
+        "latency_ms_p99": _percentile(latency_samples, 0.99),
+        "source_diversity": (
+            sum(diversity_values) / len(diversity_values) if diversity_values else 1.0
+        ),
+        "duplicate_source_crowding": (
+            sum(crowding_values) / len(crowding_values) if crowding_values else 0.0
+        ),
+        "forbidden_source_leak_count": sum(
+            len(report.get("leaked_source_ids", []))
+            + len(report.get("forbidden_project_leaks", []))
+            + len(report.get("forbidden_source_leaks", []))
+            for report in all_reports
+        ),
+        "invalid_citation_count": sum(
+            report.get("citations_valid") is False for report in answer_reports
+        ),
+        "token_inclusion_rate": _ratio(included_context_rows, retrieved_context_rows),
+        "token_omission_rate": _ratio(omitted_context_rows, retrieved_context_rows),
+        "token_budget_compliance_rate": _ratio(
+            sum(report.get("token_budget_valid") is True for report in context_reports),
+            len(context_reports),
         ),
         "cache_hit_rate": _ratio(
             sum(report.get("cache_hit") is True for report in answer_reports), len(answer_reports)
@@ -505,6 +749,7 @@ def evaluate_manifest(
         metrics["recall_at_k"] >= thresholds["min_recall_at_k"]
         and metrics["mrr"] >= thresholds["min_mrr"]
         and metrics["retrieval_pass_rate"] >= thresholds["min_retrieval_pass_rate"]
+        and metrics["context_pass_rate"] >= thresholds["min_context_pass_rate"]
         and metrics["answer_pass_rate"] >= thresholds["min_answer_pass_rate"]
         and metrics["citation_validity"] >= thresholds["min_citation_validity"]
         and metrics["retrieval_fallback_rate"] <= thresholds["max_retrieval_fallback_rate"]
@@ -531,6 +776,7 @@ def evaluate_manifest(
         "metrics": metrics,
         "thresholds": thresholds,
         "retrieval_cases": retrieval_reports,
+        "context_cases": context_reports,
         "answer_cases": answer_reports,
     }
 
