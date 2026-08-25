@@ -105,7 +105,6 @@ backward-compatible alias. `owner-global` requires owner authorization even
 when an ACL label would otherwise match. Requests to write `session` or
 `principal` scope are rejected until their identity-binding fields are
 implemented.
-
 Candidate HTTP endpoints are `POST /v1/memory/candidates`, `GET /v1/memory/candidates`,
 `GET /v1/memory/candidates/export`,
 `POST /v1/memory/candidates/{id}/cancel`, and `POST /v1/memory/candidates/{id}/redact`. The CLI
