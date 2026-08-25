@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.2](https://github.com/0xPlayerOne/cortana/compare/v0.35.1...v0.35.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **release:** use current tooling for legacy manifests ([#2111](https://github.com/0xPlayerOne/cortana/issues/2111)) ([7b65978](https://github.com/0xPlayerOne/cortana/commit/7b65978dc139226b5144cf6324acf45a55eeb1fe))
+
 ## [0.35.1](https://github.com/0xPlayerOne/cortana/compare/v0.35.0...v0.35.1) (2026-08-25)
 
 
