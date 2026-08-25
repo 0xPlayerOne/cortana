@@ -38,6 +38,7 @@ import { SettingsView } from './components/SettingsView'
 import { SourcePanel } from './components/SourcePanel'
 import { UtilityView } from './components/UtilityView'
 import { Workspace, type WorkspaceTab } from './components/Workspace'
+import { Button } from './components/ui/Button'
 import { buildAgentContext, estimateTokens } from './context'
 import { embeddingLabel } from './operations'
 import { shortcutLabel } from './shortcuts'
@@ -623,6 +624,7 @@ export function App() {
         .then((next) => {
           if (disposed || desktopServicesRequestRef.current !== requestId) return
           setDesktopServices(next)
+          if (next.activity) setServiceActivity(next.activity)
           setDesktopServicesError('')
         })
         .catch((caught: unknown) => {
@@ -1517,7 +1519,10 @@ export function App() {
           desktopUpdate={desktopUpdate ?? undefined}
           onDesktopUpdate={setDesktopUpdate}
           services={desktopServices}
-          onServices={setDesktopServices}
+          onServices={(nextServices) => {
+            setDesktopServices(nextServices)
+            if (nextServices.activity) setServiceActivity(nextServices.activity)
+          }}
           servicesError={desktopServicesError}
           onServicesError={setDesktopServicesError}
           desktopInfo={desktopInfo}
@@ -1535,6 +1540,7 @@ export function App() {
               .then((nextServices) => {
                 if (desktopServicesRequestRef.current !== servicesRequestId) return
                 setDesktopServices(nextServices)
+                if (nextServices.activity) setServiceActivity(nextServices.activity)
                 setDesktopServicesError('')
               })
               .catch((caught: unknown) => {
@@ -1764,7 +1770,8 @@ export function App() {
             onMouseDown={(event) => event.stopPropagation()}
           >
             <strong>Commands</strong>
-            <button
+            <Button
+              variant="ghost"
               type="button"
               autoFocus
               onClick={() => {
@@ -1773,8 +1780,9 @@ export function App() {
               }}
             >
               Search the brain <kbd>{shortcutLabel('MOD K')}</kbd>
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => {
                 setCommandPaletteOpen(false)
@@ -1782,8 +1790,9 @@ export function App() {
               }}
             >
               Filter documents <kbd>{shortcutLabel('MOD ⇧ F')}</kbd>
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => {
                 setCommandPaletteOpen(false)
@@ -1792,9 +1801,10 @@ export function App() {
               }}
             >
               Reset to primary workspace
-            </button>
+            </Button>
             {workspaces.map((item) => (
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 key={item.id}
                 onClick={() => {
@@ -1803,9 +1813,10 @@ export function App() {
                 }}
               >
                 Switch to {item.name}
-              </button>
+              </Button>
             ))}
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => {
                 setCommandPaletteOpen(false)
@@ -1813,7 +1824,7 @@ export function App() {
               }}
             >
               Open settings
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -1887,7 +1898,8 @@ export function App() {
         <span className="status-spacer" />
         {isDemoMode && <span className="demo-badge">Demo data</span>}
         {isDesktopApp && (
-          <button
+          <Button
+            variant="ghost"
             type="button"
             className="status-link quick-tooltip quick-tooltip--above"
             data-tooltip={`Open the Updates section (Cortana ${desktopInfo?.desktop_version || '—'})`}
@@ -1899,7 +1911,7 @@ export function App() {
           >
             Cortana {desktopInfo?.desktop_version || '—'} · Updates
             {desktopUpdateStatusSuffix(desktopUpdate)}
-          </button>
+          </Button>
         )}
       </footer>
     </div>
@@ -1950,7 +1962,8 @@ function ActiveSourceJobs({ jobs, onOpen }: { jobs: DesktopSourceJob[]; onOpen: 
     )
     .join(', ')
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       className="source-jobs status-link quick-tooltip quick-tooltip--above"
       aria-label="Open active source jobs"
@@ -1959,7 +1972,7 @@ function ActiveSourceJobs({ jobs, onOpen }: { jobs: DesktopSourceJob[]; onOpen: 
     >
       <LoaderCircle className="spin" size={13} /> {active.length} active source job
       {active.length === 1 ? '' : 's'}
-    </button>
+    </Button>
   )
 }
 
@@ -1968,7 +1981,8 @@ function SourceJobsErrorIndicator({ error, onOpen }: { error: string; onOpen: ()
   if (!detail) return null
   const label = detail.length > 160 ? `${detail.slice(0, 157)}…` : detail
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       className="source-jobs status-link attention quick-tooltip quick-tooltip--above"
       aria-label="Open source job status"
@@ -1976,7 +1990,7 @@ function SourceJobsErrorIndicator({ error, onOpen }: { error: string; onOpen: ()
       onClick={onOpen}
     >
       <i /> Source jobs: {label}
-    </button>
+    </Button>
   )
 }
 
@@ -1991,7 +2005,8 @@ function SourceJobAttentionIndicator({
   if (attention.length === 0) return null
   const detail = attention.map((job) => `${job.project} · ${job.source} · ${job.status}`).join(', ')
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       className="source-jobs status-link attention quick-tooltip quick-tooltip--above"
       aria-label="Open source job attention"
@@ -1999,7 +2014,7 @@ function SourceJobAttentionIndicator({
       onClick={onOpen}
     >
       <i /> {attention.length} source job{attention.length === 1 ? '' : 's'} need attention
-    </button>
+    </Button>
   )
 }
 
@@ -2023,7 +2038,8 @@ function InstallerIndicator({
   const state = active ? 'running' : job.status === 'succeeded' ? 'healthy' : 'warning'
   const label = active ? `Install: ${job.tool} · ${job.status}` : `Install: ${job.status}`
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       className={`installer-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label={`Open installer status for ${job.tool}`}
@@ -2031,7 +2047,7 @@ function InstallerIndicator({
       onClick={onOpen}
     >
       <i /> {label}
-    </button>
+    </Button>
   )
 }
 
@@ -2047,7 +2063,8 @@ function ServiceActivityIndicator({
   const state = active ? 'running' : activity.status === 'succeeded' ? 'healthy' : 'warning'
   const action = activity.action === 'install' ? 'Install' : activity.action
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       className={`service-activity-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label="Open service activity"
@@ -2058,7 +2075,7 @@ function ServiceActivityIndicator({
       {!active && <i />}
       Service: {action} {activity.target}
       {active ? '…' : activity.status === 'succeeded' ? ' · done' : ' · failed'}
-    </button>
+    </Button>
   )
 }
 
@@ -2073,7 +2090,8 @@ function ReadinessActivityIndicator({
   const active = activity.status === 'running'
   const state = active ? 'running' : activity.status === 'succeeded' ? 'healthy' : 'warning'
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       className={`readiness-activity-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label="Open readiness activity"
@@ -2083,7 +2101,7 @@ function ReadinessActivityIndicator({
       {active && <LoaderCircle className="spin" size={13} />}
       {!active && <i />}
       Readiness: {active ? 'scanning…' : activity.status === 'succeeded' ? 'ready' : 'failed'}
-    </button>
+    </Button>
   )
 }
 
@@ -2100,7 +2118,8 @@ export function ServiceHealthIndicator({
 }) {
   if (error) {
     return (
-      <button
+      <Button
+        variant="ghost"
         type="button"
         className="service-activity-health warning quick-tooltip quick-tooltip--above"
         aria-label="Open service health"
@@ -2108,7 +2127,7 @@ export function ServiceHealthIndicator({
         onClick={onOpen}
       >
         <i /> Services: unavailable
-      </button>
+      </Button>
     )
   }
   if (!report) return null
@@ -2133,7 +2152,8 @@ export function ServiceHealthIndicator({
       ? 'Services: core attention'
       : `Services: core ${coreLoaded}/${core.length} online`
   return (
-    <button
+    <Button
+      variant="ghost"
       type="button"
       className={`service-activity-health ${state} quick-tooltip quick-tooltip--above`}
       aria-label="Open service health"
@@ -2141,7 +2161,7 @@ export function ServiceHealthIndicator({
       onClick={onOpen}
     >
       <i /> {label}
-    </button>
+    </Button>
   )
 }
 

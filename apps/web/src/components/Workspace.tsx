@@ -680,9 +680,14 @@ function GraphView({
           onChange={(event) => setFilter(event.target.value)}
         />
         {filter && (
-          <button type="button" className="link-button" onClick={() => setFilter('')}>
+          <Button
+            variant="ghost"
+            type="button"
+            className="link-button"
+            onClick={() => setFilter('')}
+          >
             Clear
-          </button>
+          </Button>
         )}
       </div>
       {graph && !usingEvidenceFallback && (
@@ -720,9 +725,9 @@ function GraphView({
       </div>
       {graphError && onRetry && (
         <div className="graph-actions">
-          <button type="button" className="link-button" onClick={onRetry}>
+          <Button variant="ghost" type="button" className="link-button" onClick={onRetry}>
             Retry graph
-          </button>
+          </Button>
         </div>
       )}
       {graph?.next_cursor && onLoadMore && (

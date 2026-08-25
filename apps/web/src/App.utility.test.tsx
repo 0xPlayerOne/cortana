@@ -279,6 +279,7 @@ test('graph and timeline evidence actions open the selected source', async () =>
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'release cadence' })).toBeTruthy()
   )
+  await waitFor(() => expect(railButton('Timeline').hasAttribute('disabled')).toBe(false))
 
   for (const rail of ['Graph', 'Timeline']) {
     fireEvent.click(railButton(rail))
@@ -393,6 +394,7 @@ test('timeline order controls navigate to the selected evidence entry', async ()
     expect(screen.getByRole('heading', { level: 1, name: 'timeline sort' })).toBeTruthy()
   )
 
+  await waitFor(() => expect(railButton('Timeline').hasAttribute('disabled')).toBe(false))
   fireEvent.click(railButton('Timeline'))
   await waitFor(() =>
     expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true')

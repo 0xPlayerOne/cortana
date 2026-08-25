@@ -245,9 +245,14 @@ function InboxView({
           {onRetrySourceJobs && (
             <>
               {' '}
-              <button type="button" className="link-button" onClick={onRetrySourceJobs}>
+              <Button
+                variant="ghost"
+                type="button"
+                className="link-button"
+                onClick={onRetrySourceJobs}
+              >
                 Retry source jobs
-              </button>
+              </Button>
             </>
           )}
         </p>
@@ -256,9 +261,9 @@ function InboxView({
         <p className="utility-error" role="status">
           {statusError} Showing the last known sync snapshot.{' '}
           {onRetryStatus && (
-            <button type="button" className="link-button" onClick={onRetryStatus}>
+            <Button variant="ghost" type="button" className="link-button" onClick={onRetryStatus}>
               Retry status
-            </button>
+            </Button>
           )}
         </p>
       )}
@@ -300,7 +305,8 @@ function InboxView({
                 </div>
                 <StatusPill status={job.status} />
                 {onCancelSourceJob && (
-                  <button
+                  <Button
+                    variant="compact"
                     type="button"
                     className="utility-cancel"
                     disabled={job.status === 'cancelling'}
@@ -308,7 +314,7 @@ function InboxView({
                     onClick={() => onCancelSourceJob(job.id)}
                   >
                     <CircleStop size={14} /> Cancel
-                  </button>
+                  </Button>
                 )}
               </div>
             ))}
